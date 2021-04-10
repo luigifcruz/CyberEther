@@ -25,6 +25,12 @@ Result OpenGL::init(Config cfg) {
     return Result::SUCCESS;
 }
 
+Result OpenGL::terminate() {
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return Result::SUCCESS;
+}
+
 Result OpenGL::getError(std::string func, std::string file, int line) {
     int error = glGetError();
     if (error != GL_NO_ERROR) {
@@ -62,7 +68,7 @@ Result OpenGL::checkProgramCompilation(uint program) {
     return Result::SUCCESS;
 }
 
-Result OpenGL::setupSurface() {
+Result OpenGL::createSurface() {
     glGenBuffers(1, &vbo);
     glGenBuffers(1, &ebo);
 
@@ -83,7 +89,14 @@ Result OpenGL::setupSurface() {
     return this->getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result OpenGL::setupShaders(const char *vertexSource, const char *fragmentSource) {
+Result OpenGL::destroySurface() {
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ebo);
+
+    return this->getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result OpenGL::createShaders(const char *vertexSource, const char *fragmentSource) {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexSource, NULL);
     glCompileShader(vertexShader);
@@ -104,6 +117,8 @@ Result OpenGL::setupShaders(const char *vertexSource, const char *fragmentSource
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
 
     if (checkProgramCompilation(shaderProgram) != Result::SUCCESS) {
         return Result::RENDER_BACKEND_ERROR;
@@ -114,15 +129,65 @@ Result OpenGL::setupShaders(const char *vertexSource, const char *fragmentSource
     return this->getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
+Result OpenGL::destroyShaders() {
+    glDeleteProgram(shaderProgram);
+
+    return this->getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result OpenGL::createImgui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    io = &ImGui::GetIO();
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+
+    return this->getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result OpenGL::destroyImgui() {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    return this->getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result OpenGL::startImgui() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    return this->getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result OpenGL::endImgui() {
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    return this->getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
 Result OpenGL::clear() {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    if (io != nullptr) {
+        this->startImgui();
+    }
 
     return this->getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result OpenGL::draw() {
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    if (io != nullptr) {
+        this->endImgui();
+    }
 
     return this->getError(__FUNCTION__, __FILE__, __LINE__);
 }

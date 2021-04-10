@@ -1,4 +1,4 @@
-.cache/*
+.cache
 build/*
 builddir/*
 __pycache__

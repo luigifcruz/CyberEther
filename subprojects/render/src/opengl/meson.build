@@ -1,6 +1,6 @@
 gl_deps = [
-  dependency('glesv2', required: false),
   dependency('glfw3', required: false),
+  dependency('glesv2', required: false),
 ]
 
 all_gl_deps_found = true
@@ -13,6 +13,12 @@ if all_gl_deps_found
   dep_lst += gl_deps
   src_lst += files([
     'opengl.cc',
+    '../imgui.cpp',
+    '../imgui_draw.cpp',
+    '../imgui_tables.cpp',
+    '../imgui_widgets.cpp',
+    '../imgui_impl_glfw.cpp',
+    '../imgui_impl_opengl3.cpp',
   ])
   message('OpenGL Backend Available: YES')
 else

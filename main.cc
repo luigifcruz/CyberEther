@@ -36,14 +36,25 @@ int main() {
     renderCfg.height = 1080;
     render->init(renderCfg);
 
-    render->setupSurface();
-    render->setupShaders(vertexSource, fragmentSource);
+    render->createSurface();
+    render->createShaders(vertexSource, fragmentSource);
+    render->createImgui();
 
     while (render->keepRunning()) {
         render->clear();
+
+        ImGui::Begin("Demo window");
+        ImGui::Button("Hello!");
+        ImGui::End();
+
         render->draw();
         render->step();
     }
+
+    render->destroyImgui();
+    render->destroyShaders();
+    render->destroySurface();
+    render->terminate();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }
