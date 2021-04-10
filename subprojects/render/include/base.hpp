@@ -3,7 +3,6 @@
 
 #include <iostream>
 
-#include "imgui.h"
 #include "types.hpp"
 
 namespace Render {
@@ -22,32 +21,42 @@ const uint elements[] = {
 };
 
 typedef struct {
-    std::string title;
     int width;
     int height;
+    bool resizable;
+    std::string title;
+
+    const char* vertexSource;
+    const char* fragmentSource;
+
+    bool enableImgui;
 } Config;
 
 class Backend {
 public:
     virtual ~Backend() = default;
     virtual BackendId getBackendId() = 0;
+
     virtual Result init(Config) = 0;
     virtual Result terminate() = 0;
+
     virtual Result clear() = 0;
     virtual Result draw() = 0;
     virtual Result step() = 0;
-    virtual Result createSurface() = 0;
-    virtual Result destroySurface() = 0;
-    virtual Result createShaders(const char*, const char*) = 0;
-    virtual Result destroyShaders() = 0;
-    virtual Result createImgui() = 0;
-    virtual Result destroyImgui() = 0;
+
     virtual bool keepRunning() = 0;
 
 protected:
-    ImGuiIO* io = nullptr;
+    Config config;
 
-private:
+    virtual Result createSurface() = 0;
+    virtual Result destroySurface() = 0;
+
+    virtual Result createShaders(const char*, const char*) = 0;
+    virtual Result destroyShaders() = 0;
+
+    virtual Result createImgui() = 0;
+    virtual Result destroyImgui() = 0;
     virtual Result startImgui() = 0;
     virtual Result endImgui() = 0;
 };

@@ -18,22 +18,15 @@ namespace Render {
 class OpenGL : public Backend {
 public:
     BackendId getBackendId();
+
     Result init(Config);
     Result terminate();
+
     Result clear();
     Result draw();
     Result step();
-    Result createSurface();
-    Result destroySurface();
-    Result createShaders(const char*, const char*);
-    Result destroyShaders();
-    Result createImgui();
-    Result destroyImgui();
-    bool keepRunning();
 
-    static Result getError(std::string, std::string, int);
-    static Result checkShaderCompilation(uint);
-    static Result checkProgramCompilation(uint);
+    bool keepRunning();
 
 private:
     GLFWwindow* window;
@@ -41,8 +34,20 @@ private:
     uint vbo, ebo;
     uint shaderProgram;
 
+    Result createSurface();
+    Result destroySurface();
+
+    Result createShaders(const char*, const char*);
+    Result destroyShaders();
+
+    Result createImgui();
+    Result destroyImgui();
     Result startImgui();
     Result endImgui();
+
+    static Result getError(std::string, std::string, int);
+    static Result checkShaderCompilation(uint);
+    static Result checkProgramCompilation(uint);
 };
 
 } // namespace Render

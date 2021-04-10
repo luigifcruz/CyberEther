@@ -13,6 +13,7 @@ Result OpenGL::init(Config cfg) {
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
 
     window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
     if (!window) {
@@ -22,10 +23,26 @@ Result OpenGL::init(Config cfg) {
 
     glfwMakeContextCurrent(window);
 
+    this->createSurface();
+    this->createShaders(cfg.vertexSource, cfg.fragmentSource);
+
+    if (cfg.enableImgui) {
+        this->createImgui();
+    }
+
+    config = cfg;
+
     return Result::SUCCESS;
 }
 
 Result OpenGL::terminate() {
+    this->destroyShaders();
+    this->destroySurface();
+
+    if (config.enableImgui) {
+        this->destroyImgui();
+    }
+
     glfwDestroyWindow(window);
     glfwTerminate();
     return Result::SUCCESS;
@@ -138,7 +155,15 @@ Result OpenGL::destroyShaders() {
 Result OpenGL::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    io = &ImGui::GetIO();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    float xscale, yscale;
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.ScaleAllSizes(xscale);
+    io.Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * xscale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
@@ -175,7 +200,7 @@ Result OpenGL::clear() {
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    if (io != nullptr) {
+    if (config.enableImgui) {
         this->startImgui();
     }
 
@@ -185,7 +210,7 @@ Result OpenGL::clear() {
 Result OpenGL::draw() {
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-    if (io != nullptr) {
+    if (config.enableImgui) {
         this->endImgui();
     }
 
@@ -193,6 +218,12 @@ Result OpenGL::draw() {
 }
 
 Result OpenGL::step() {
+    if (config.resizable) {
+        int display_w, display_h;
+        glfwGetFramebufferSize(window, &display_w, &display_h);
+        glViewport(0, 0, display_w, display_h);
+    }
+
     glfwSwapBuffers(window);
     glfwPollEvents();
 

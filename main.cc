@@ -34,11 +34,11 @@ int main() {
     renderCfg.title = "Demo App";
     renderCfg.width = 1920;
     renderCfg.height = 1080;
+    renderCfg.resizable = true;
+    renderCfg.enableImgui = true;
+    renderCfg.vertexSource = vertexSource;
+    renderCfg.fragmentSource = fragmentSource;
     render->init(renderCfg);
-
-    render->createSurface();
-    render->createShaders(vertexSource, fragmentSource);
-    render->createImgui();
 
     while (render->keepRunning()) {
         render->clear();
@@ -51,9 +51,6 @@ int main() {
         render->step();
     }
 
-    render->destroyImgui();
-    render->destroyShaders();
-    render->destroySurface();
     render->terminate();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
