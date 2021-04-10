@@ -16,15 +16,15 @@
 
 namespace Render {
 
-inline std::vector<Backend> AvailableBackends = {
-    #ifdef RENDER_OPENGL_BACKEND_AVAILABLE
-    Backend::OPENGL,
-    #endif
+inline std::vector<BackendId> AvailableBackends = {
+#ifdef RENDER_OPENGL_BACKEND_AVAILABLE
+    BackendId::OPENGL,
+#endif
 };
 
-inline std::unique_ptr<Render> GetRender(Backend backend_hint, bool force = false) {
+inline std::shared_ptr<Backend> instantiate(BackendId backend_hint, bool force = false) {
     auto a = AvailableBackends;
-    Backend render_id = backend_hint;
+    BackendId render_id = backend_hint;
 
     if (std::find(a.begin(), a.end(), render_id) == a.end()) {
         if (force) {
@@ -45,8 +45,8 @@ inline std::unique_ptr<Render> GetRender(Backend backend_hint, bool force = fals
 
     switch(render_id) {
 #ifdef RENDER_OPENGL_BACKEND_AVAILABLE
-        case Backend::OPENGL:
-            return std::make_unique<OpenGL>();
+        case BackendId::OPENGL:
+            return std::make_shared<OpenGL>();
 #endif
         default:
 #ifdef RENDER_DEBUG

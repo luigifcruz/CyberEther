@@ -6,7 +6,9 @@ project(
 
 cfg_lst = configuration_data()
 src_lst = []
-dep_lst = []
+dep_lst = [
+    subproject('render').get_variable('librender_dep'),
+]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
     include_directories('include'),

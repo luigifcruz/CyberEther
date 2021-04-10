@@ -1,4 +1,5 @@
 gl_deps = [
+  dependency('glesv2', required: false),
   dependency('glfw3', required: false),
 ]
 
