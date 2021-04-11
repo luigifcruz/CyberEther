@@ -1,3 +1,3 @@
 #define RENDER_VERSION_STR "@version@"
 
-#mesondefine RENDER_OPENGL_BACKEND_AVAILABLE
+#mesondefine RENDER_GLES_AVAILABLE

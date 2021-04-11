@@ -9,10 +9,13 @@ foreach x_dep : gl_deps
 endforeach
 
 if all_gl_deps_found
-  cfg_lst.set('RENDER_OPENGL_BACKEND_AVAILABLE', true)
+  cfg_lst.set('RENDER_GLES_AVAILABLE', true)
   dep_lst += gl_deps
   src_lst += files([
-    'opengl.cc',
+    'instance.cc',
+    'surface.cc',
+    'program.cc',
+    'api.cc',
     '../imgui.cpp',
     '../imgui_draw.cpp',
     '../imgui_tables.cpp',

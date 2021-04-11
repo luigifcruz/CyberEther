@@ -1,7 +1,10 @@
 #ifndef RENDER_TYPES_H
 #define RENDER_TYPES_H
 
+#include <vector>
+#include <memory>
 #include <iostream>
+#include <unistd.h>
 
 #include "magic_enum.hpp"
 
@@ -24,12 +27,12 @@ enum struct Result {
     FAILED_TO_OPEN_SCREEN,
 };
 
-enum struct BackendId {
-    OPENGL,
-    VULKAN,
-    D3D12,
-    METAL,
-    WEBGPU,
+enum struct API {
+	GLES,
+	VULKAN,
+	D3D12,
+	METAL,
+	WEBGPU,
 };
 
 } // namespace Render

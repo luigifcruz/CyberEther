@@ -8,7 +8,7 @@
 namespace Spectrum {
 
 typedef struct {
-    std::shared_ptr<Render::Backend> render;
+    std::shared_ptr<Render::API> render;
 } Config;
 
 class View {

@@ -1,5 +1,5 @@
-#ifndef RENDER_CYBERETHER_H
-#define RENDER_CYBERETHER_H
+#ifndef RENDER_H
+#define RENDER_H
 
 #include <memory>
 #include <vector>
@@ -10,51 +10,21 @@
 #include "magic_enum.hpp"
 #include "render_config.hpp"
 
-#ifdef RENDER_OPENGL_BACKEND_AVAILABLE
-#include "opengl/opengl.hpp"
+#ifdef RENDER_GLES_AVAILABLE
+#include "gles/api.hpp"
+#include "gles/instance.hpp"
+#include "gles/state.hpp"
+#include "gles/program.hpp"
+#include "gles/surface.hpp"
 #endif
 
 namespace Render {
 
-inline std::vector<BackendId> AvailableBackends = {
-#ifdef RENDER_OPENGL_BACKEND_AVAILABLE
-    BackendId::OPENGL,
+inline std::vector<API> AvailableAPIs = {
+#ifdef RENDER_GLES_AVAILABLE
+    API::GLES,
 #endif
 };
-
-inline std::shared_ptr<Backend> instantiate(BackendId backend_hint, bool force = false) {
-    auto a = AvailableBackends;
-    BackendId render_id = backend_hint;
-
-    if (std::find(a.begin(), a.end(), render_id) == a.end()) {
-        if (force) {
-            ASSERT_SUCCESS(Result::NO_RENDER_BACKEND_FOUND);
-        }
-
-        for (const auto& b : AvailableBackends) {
-#ifdef RENDER_DEBUG
-            std::cout << "[RENDER] Selected "
-                      << magic_enum::enum_name(backend_hint)
-                      << " backend not available, switching to "
-                      << magic_enum::enum_name(b)
-                      << "." << std::endl;
-#endif
-            render_id = b;
-        }
-    }
-
-    switch(render_id) {
-#ifdef RENDER_OPENGL_BACKEND_AVAILABLE
-        case BackendId::OPENGL:
-            return std::make_shared<OpenGL>();
-#endif
-        default:
-#ifdef RENDER_DEBUG
-            std::cerr << "[RENDER] No backend available." << std::endl;
-#endif
-            ASSERT_SUCCESS(Result::NO_RENDER_BACKEND_FOUND);
-    }
-}
 
 } // namespace Render
 
