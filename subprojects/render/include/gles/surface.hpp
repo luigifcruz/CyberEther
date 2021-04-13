@@ -16,8 +16,11 @@ public:
     Result start();
     Result end();
 
+    void* getRawTexture();
+
 private:
     State& state;
+    uint fbo, tex;
 };
 
 } // namespace Render

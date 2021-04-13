@@ -20,6 +20,9 @@ std::shared_ptr<GLES::Program> GLES::createProgram(Render::Program::Config& cfg)
     return instance->_createProgram(cfg, *state.get());
 }
 
+std::shared_ptr<GLES::Surface> GLES::createSurface(Render::Surface::Config& cfg) {
+    return instance->_createSurface(cfg, *state.get());
+}
 
 Result GLES::getError(std::string func, std::string file, int line) {
     int error = glGetError();

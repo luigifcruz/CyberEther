@@ -28,10 +28,18 @@ public:
         return ptr;
     };
 
+    std::shared_ptr<Surface> _createSurface(Surface::Config& cfg, State& state) {
+        auto ptr = std::make_shared<Surface>(cfg, state);
+        surfaces.push_back(ptr);
+        return ptr;
+    };
+
 private:
     State& state;
+    ImGuiIO* io;
 
     std::vector<std::shared_ptr<Program>> programs;
+    std::vector<std::shared_ptr<Surface>> surfaces;
 
     Result createBuffers();
     Result destroyBuffers();

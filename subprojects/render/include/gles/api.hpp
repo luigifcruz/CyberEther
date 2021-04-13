@@ -23,6 +23,7 @@ public:
 
     std::shared_ptr<Instance> createInstance(Render::Instance::Config&);
 	std::shared_ptr<Program> createProgram(Render::Program::Config&);
+    std::shared_ptr<Surface> createSurface(Render::Surface::Config&);
 
 private:
     std::unique_ptr<State> state;

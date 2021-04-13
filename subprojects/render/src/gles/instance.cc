@@ -21,6 +21,10 @@ Result GLES::Instance::init() {
 
     this->createBuffers();
 
+    for (auto &surface : surfaces) {
+        surface->create();
+    }
+
     for (auto &program : programs) {
         program->create();
     }
@@ -35,6 +39,10 @@ Result GLES::Instance::init() {
 Result GLES::Instance::terminate() {
     for (auto &program : programs) {
         program->destroy();
+    }
+
+    for (auto &surface : surfaces) {
+        surface->destroy();
     }
 
     this->destroyBuffers();
@@ -79,7 +87,10 @@ Result GLES::Instance::destroyBuffers() {
 Result GLES::Instance::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io = &ImGui::GetIO();
+
+    io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     float xscale, yscale;
     GLFWmonitor *monitor = glfwGetPrimaryMonitor();
@@ -87,7 +98,7 @@ Result GLES::Instance::createImgui() {
 
     ImGuiStyle &style = ImGui::GetStyle();
     style.ScaleAllSizes(xscale);
-    io.Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * xscale, NULL, NULL);
+    io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * xscale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
@@ -121,9 +132,6 @@ Result GLES::Instance::endImgui() {
 }
 
 Result GLES::Instance::clear() {
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
     if (a.enableImgui) {
         this->startImgui();
     }
@@ -132,7 +140,9 @@ Result GLES::Instance::clear() {
 }
 
 Result GLES::Instance::draw() {
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    for (auto &program : programs) {
+        program->draw();
+    }
 
     if (a.enableImgui) {
         this->endImgui();

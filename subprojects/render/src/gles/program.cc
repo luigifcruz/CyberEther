@@ -60,7 +60,75 @@ Result GLES::Program::create() {
         return Result::RENDER_BACKEND_ERROR;
     }
 
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars) {
+    // optimize: this can be cached
     glUseProgram(shaderProgram);
+    int loc = glGetUniformLocation(shaderProgram, name.c_str());
+
+    if (loc == 1) {
+#ifdef RENDER_DEBUG
+        std::cerr << "[RENDER:PROGRAM] Invalid program location." << std::endl;
+#endif
+        return Result::RENDER_BACKEND_ERROR;
+    }
+
+    switch(vars.size()) {
+        case 1:
+            glUniform1i(loc, vars.at(0));
+            break;
+        case 2:
+            glUniform2i(loc, vars.at(0), vars.at(1));
+            break;
+        case 3:
+            glUniform3i(loc, vars.at(0), vars.at(1), vars.at(2));
+            break;
+        case 4:
+            glUniform4i(loc, vars.at(0), vars.at(1), vars.at(2), vars.at(3));
+            break;
+        default:
+#ifdef RENDER_DEBUG
+        std::cerr << "[RENDER:PROGRAM] Invalid number of uniforms (vars.size() > 4)." << std::endl;
+#endif
+            return Result::RENDER_BACKEND_ERROR;
+    }
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Program::setUniform(std::string name, const std::vector<float> & vars) {
+    // optimize: this can be cached
+    glUseProgram(shaderProgram);
+    int loc = glGetUniformLocation(shaderProgram, name.c_str());
+
+    if (loc == 1) {
+#ifdef RENDER_DEBUG
+        std::cerr << "[RENDER:PROGRAM] Invalid program location." << std::endl;
+#endif
+        return Result::RENDER_BACKEND_ERROR;
+    }
+
+    switch(vars.size()) {
+        case 1:
+            glUniform1f(loc, vars.at(0));
+            break;
+        case 2:
+            glUniform2f(loc, vars.at(0), vars.at(1));
+            break;
+        case 3:
+            glUniform3f(loc, vars.at(0), vars.at(1), vars.at(2));
+            break;
+        case 4:
+            glUniform4f(loc, vars.at(0), vars.at(1), vars.at(2), vars.at(3));
+            break;
+        default:
+#ifdef RENDER_DEBUG
+        std::cerr << "[RENDER:PROGRAM] Invalid number of uniforms (vars.size() > 4)." << std::endl;
+#endif
+            return Result::RENDER_BACKEND_ERROR;
+    }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -72,6 +140,11 @@ Result GLES::Program::destroy() {
 }
 
 Result GLES::Program::draw() {
+    p.surface->start();
+    glUseProgram(shaderProgram);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    p.surface->end();
+
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 

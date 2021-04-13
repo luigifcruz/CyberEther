@@ -23,7 +23,7 @@ public:
     struct Config {
         int width;
         int height;
-        bool main;
+        bool default_s;
     };
 
     Surface(Config& c) : s(c) {};
@@ -33,6 +33,8 @@ public:
     virtual Result destroy() = 0;
     virtual Result start() = 0;
     virtual Result end() = 0;
+
+    virtual void* getRawTexture() = 0;
 
 protected:
     Config& s;
