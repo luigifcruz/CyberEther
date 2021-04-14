@@ -15,6 +15,7 @@ if all_gl_deps_found
     'instance.cc',
     'surface.cc',
     'program.cc',
+    'texture.cc',
     'api.cc',
     '../imgui.cpp',
     '../imgui_draw.cpp',

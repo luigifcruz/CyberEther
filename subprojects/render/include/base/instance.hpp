@@ -6,6 +6,19 @@
 
 namespace Render {
 
+const float vertices[] = {
+    // positions ////// // tex //////
+    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f, // top right
+    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f, // bottom right
+    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f, // bottom left
+    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f, // top left
+};
+
+const uint elements[] = {
+    0, 1, 2,
+    2, 3, 0
+};
+
 class Instance {
 public:
     struct Config {
@@ -16,7 +29,7 @@ public:
         bool enableImgui;
     };
 
-    Instance(Config& c) : a(c) {};
+    Instance(Config& c) : cfg(c) {};
     virtual ~Instance() = default;
 
     virtual Result init() = 0;
@@ -29,7 +42,7 @@ public:
     virtual bool keepRunning() = 0;
 
 protected:
-    Config& a;
+    Config& cfg;
 
     virtual Result createBuffers() = 0;
     virtual Result destroyBuffers() = 0;

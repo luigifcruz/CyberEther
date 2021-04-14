@@ -9,9 +9,9 @@ Result GLES::Instance::init() {
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_RESIZABLE, a.resizable);
+    glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
 
-    state.window = glfwCreateWindow(a.width, a.height, a.title.c_str(), NULL, NULL);
+    state.window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
     if (!state.window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -21,15 +21,11 @@ Result GLES::Instance::init() {
 
     this->createBuffers();
 
-    for (auto &surface : surfaces) {
-        surface->create();
-    }
-
     for (auto &program : programs) {
-        program->create();
+        ASSERT_SUCCESS(program->create());
     }
 
-    if (a.enableImgui) {
+    if (cfg.enableImgui) {
         this->createImgui();
     }
 
@@ -38,16 +34,12 @@ Result GLES::Instance::init() {
 
 Result GLES::Instance::terminate() {
     for (auto &program : programs) {
-        program->destroy();
-    }
-
-    for (auto &surface : surfaces) {
-        surface->destroy();
+        ASSERT_SUCCESS(program->destroy());
     }
 
     this->destroyBuffers();
 
-    if (a.enableImgui) {
+    if (cfg.enableImgui) {
         this->destroyImgui();
     }
 
@@ -132,7 +124,7 @@ Result GLES::Instance::endImgui() {
 }
 
 Result GLES::Instance::clear() {
-    if (a.enableImgui) {
+    if (cfg.enableImgui) {
         this->startImgui();
     }
 
@@ -141,10 +133,10 @@ Result GLES::Instance::clear() {
 
 Result GLES::Instance::draw() {
     for (auto &program : programs) {
-        program->draw();
+        ASSERT_SUCCESS(program->draw());
     }
 
-    if (a.enableImgui) {
+    if (cfg.enableImgui) {
         this->endImgui();
     }
 
@@ -152,9 +144,9 @@ Result GLES::Instance::draw() {
 }
 
 Result GLES::Instance::step() {
-    if (a.resizable) {
-        glfwGetFramebufferSize(state.window, &a.width, &a.height);
-        glViewport(0, 0, a.width, a.height);
+    if (cfg.resizable) {
+        glfwGetFramebufferSize(state.window, &cfg.width, &cfg.height);
+        glViewport(0, 0, cfg.width, cfg.height);
     }
 
     glfwSwapBuffers(state.window);

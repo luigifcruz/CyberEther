@@ -14,7 +14,7 @@ public:
         std::shared_ptr<Surface> surface;
     };
 
-    Program(Config& c) : p(c) {};
+    Program(Config& c) : cfg(c) {};
     virtual ~Program() = default;
 
     virtual Result create() = 0;
@@ -26,7 +26,7 @@ public:
     virtual Result draw() = 0;
 
 protected:
-    Config& p;
+    Config& cfg;
 };
 
 } // namespace Render

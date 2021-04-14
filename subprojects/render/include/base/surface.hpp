@@ -2,31 +2,17 @@
 #define RENDER_BASE_SURFACE_H
 
 #include "types.hpp"
+#include "texture.hpp"
 
 namespace Render {
-
-const float vertices[] = {
-    // positions ////// // tex //////
-    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f, // top right
-    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f, // bottom right
-    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f, // bottom left
-    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f, // top left
-};
-
-const uint elements[] = {
-    0, 1, 2,
-    2, 3, 0
-};
 
 class Surface {
 public:
     struct Config {
-        int width;
-        int height;
-        bool default_s;
+        std::shared_ptr<Texture> texture;
     };
 
-    Surface(Config& c) : s(c) {};
+    Surface(Config& c) : cfg(c) {};
     virtual ~Surface() = default;
 
     virtual Result create() = 0;
@@ -34,10 +20,8 @@ public:
     virtual Result start() = 0;
     virtual Result end() = 0;
 
-    virtual void* getRawTexture() = 0;
-
 protected:
-    Config& s;
+    Config& cfg;
 };
 
 } // namespace Render

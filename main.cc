@@ -41,18 +41,15 @@ int main() {
 
     auto api = Render::GLES();
 
-    Render::Instance::Config instanceConfig;
-    instanceConfig.width = 1920;
-    instanceConfig.height = 1080;
-    instanceConfig.resizable = true;
-    instanceConfig.enableImgui = true;
-    instanceConfig.title = "CyberEther";
-    auto render = api.createInstance(instanceConfig);
+    Render::Instance::Config instanceCfg;
+    instanceCfg.width = 1920;
+    instanceCfg.height = 1080;
+    instanceCfg.resizable = true;
+    instanceCfg.enableImgui = true;
+    instanceCfg.title = "CyberEther";
+    auto render = api.createInstance(instanceCfg);
 
     Render::Surface::Config mSurfaceCfg;
-    mSurfaceCfg.height = 1080;
-    mSurfaceCfg.width = 1920;
-    mSurfaceCfg.default_s = true;
     auto mSurface = api.createSurface(mSurfaceCfg);
 
     Render::Program::Config mProgramCfg;
@@ -61,10 +58,13 @@ int main() {
     mProgramCfg.surface = mSurface;
     auto mProgram = api.createProgram(mProgramCfg);
 
+    Render::Texture::Config textureCfg;
+    textureCfg.height = 1080;
+    textureCfg.width = 1920;
+    auto texture = api.createTexture(textureCfg);
+
     Render::Surface::Config surfaceCfg;
-    surfaceCfg.height = 1080;
-    surfaceCfg.width = 1920;
-    surfaceCfg.default_s = false;
+    surfaceCfg.texture = texture;
     auto surface = api.createSurface(surfaceCfg);
 
     Render::Program::Config programCfg;
@@ -114,8 +114,8 @@ int main() {
         ImGui::Begin("Scene Window");
 
         ImGui::GetWindowDrawList()->AddImage(
-            surface->getRawTexture(), ImVec2(ImGui::GetCursorScreenPos()),
-            ImVec2(ImGui::GetCursorScreenPos().x + instanceConfig.width/2.0, ImGui::GetCursorScreenPos().y + instanceConfig.height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+            (void*)texture->raw(), ImVec2(ImGui::GetCursorScreenPos()),
+            ImVec2(ImGui::GetCursorScreenPos().x + instanceCfg.width/2.0, ImGui::GetCursorScreenPos().y + instanceCfg.height/2.0), ImVec2(0, 1), ImVec2(1, 0));
 
         ImGui::End();
 

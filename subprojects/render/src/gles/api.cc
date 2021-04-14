@@ -21,7 +21,11 @@ std::shared_ptr<GLES::Program> GLES::createProgram(Render::Program::Config& cfg)
 }
 
 std::shared_ptr<GLES::Surface> GLES::createSurface(Render::Surface::Config& cfg) {
-    return instance->_createSurface(cfg, *state.get());
+    return std::make_shared<GLES::Surface>(cfg, *state.get());
+}
+
+std::shared_ptr<GLES::Texture> GLES::createTexture(Render::Texture::Config& cfg) {
+    return std::make_shared<GLES::Texture>(cfg, *state.get());
 }
 
 Result GLES::getError(std::string func, std::string file, int line) {

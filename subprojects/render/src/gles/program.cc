@@ -34,7 +34,7 @@ Result GLES::Program::checkProgramCompilation(uint program) {
 
 Result GLES::Program::create() {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, p.vertexSource, NULL);
+    glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
     glCompileShader(vertexShader);
 
     if (checkShaderCompilation(vertexShader) != Result::SUCCESS) {
@@ -42,7 +42,7 @@ Result GLES::Program::create() {
     }
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, p.fragmentSource, NULL);
+    glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
     glCompileShader(fragmentShader);
 
     if (checkShaderCompilation(fragmentShader) != Result::SUCCESS) {
@@ -59,6 +59,8 @@ Result GLES::Program::create() {
     if (checkProgramCompilation(shaderProgram) != Result::SUCCESS) {
         return Result::RENDER_BACKEND_ERROR;
     }
+
+    ASSERT_SUCCESS(cfg.surface->create());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -135,15 +137,16 @@ Result GLES::Program::setUniform(std::string name, const std::vector<float> & va
 
 Result GLES::Program::destroy() {
     glDeleteProgram(shaderProgram);
+    ASSERT_SUCCESS(cfg.surface->destroy());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Program::draw() {
-    p.surface->start();
+    ASSERT_SUCCESS(cfg.surface->start());
     glUseProgram(shaderProgram);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    p.surface->end();
+    ASSERT_SUCCESS(cfg.surface->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }

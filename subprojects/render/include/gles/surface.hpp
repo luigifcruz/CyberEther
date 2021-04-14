@@ -1,7 +1,6 @@
 #ifndef RENDER_GLES_SURFACE_H
 #define RENDER_GLES_SURFACE_H
 
-#include "base/surface.hpp"
 #include "gles/api.hpp"
 #include "gles/state.hpp"
 
@@ -16,11 +15,9 @@ public:
     Result start();
     Result end();
 
-    void* getRawTexture();
-
 private:
     State& state;
-    uint fbo, tex;
+    uint fbo;
 };
 
 } // namespace Render
