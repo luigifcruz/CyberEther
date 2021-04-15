@@ -15,7 +15,7 @@ namespace Render {
     if (result != Result::SUCCESS) { \
         std::cerr << "Render encountered an exception (" <<  magic_enum::enum_name(result) << ") in line " \
             << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
-        return result; \
+        throw result; \
     } \
 }
 #endif

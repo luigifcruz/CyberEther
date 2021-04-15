@@ -84,17 +84,19 @@ Result GLES::Instance::destroyBuffers() {
 Result GLES::Instance::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+
     io = &ImGui::GetIO();
+    style = &ImGui::GetStyle();
 
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    float xscale, yscale;
+    float xscale = 1.0, yscale = 1.0;
+#ifndef __EMSCRIPTEN__
     GLFWmonitor *monitor = glfwGetPrimaryMonitor();
     glfwGetMonitorContentScale(monitor, &xscale, &yscale);
-
-    ImGuiStyle &style = ImGui::GetStyle();
-    style.ScaleAllSizes(xscale);
+    style->ScaleAllSizes(xscale);
+#endif
     io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * xscale, NULL, NULL);
 
     ImGui::StyleColorsDark();
@@ -134,6 +136,8 @@ Result GLES::Instance::clear() {
     }
 
     glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -155,6 +159,8 @@ Result GLES::Instance::step() {
     glfwSwapBuffers(state.window);
     glfwPollEvents();
 
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

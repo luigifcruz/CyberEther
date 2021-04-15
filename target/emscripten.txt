@@ -1,0 +1,24 @@
+[binaries]
+c = 'emcc'
+cpp = 'em++'
+ar = 'emar'
+ranlib='emranlib'
+pkgconfig=['pkg-config']
+
+[built-in options]
+cpp_link_args = [
+    '-s', 'WASM=1',
+    '-O2',
+    '-s', 'FULL_ES3=1',
+    '-s', 'USE_GLFW=3',
+    '-s', 'USE_WEBGL2=1',
+    '-o', 'cyberether.html',
+    '--preload-file', './minime.jpg',
+    '--preload-file', './bernie',
+    '--preload-file', './roboto.ttf',
+    '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
+    '-s', 'INITIAL_MEMORY=128MB']
+c_args = cpp_link_args
+c_link_args = cpp_link_args
+cpp_args = cpp_link_args
+default_library = 'static'

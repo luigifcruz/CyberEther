@@ -31,7 +31,9 @@ public:
 
 private:
     State& state;
+
     ImGuiIO* io;
+    ImGuiStyle* style;
 
     uint vao, vbo, ebo;
 

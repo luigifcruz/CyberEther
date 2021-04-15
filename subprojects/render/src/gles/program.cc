@@ -39,7 +39,7 @@ Result GLES::Program::create() {
     glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
     glCompileShader(fragmentShader);
 
-    ASSERT_SUCCESS(checkShaderCompilation(fragmentShader))
+    ASSERT_SUCCESS(checkShaderCompilation(fragmentShader));
 
     shader = glCreateProgram();
     glAttachShader(shader, vertexShader);
@@ -56,7 +56,7 @@ Result GLES::Program::create() {
 
     int i = 0;
     for (const auto& texture : cfg.textures) {
-        ASSERT_SUCCESS(std::get<1>(texture)->fill());
+        ASSERT_SUCCESS(std::get<1>(texture)->create());
         ASSERT_SUCCESS(this->setUniform(std::get<0>(texture),
                     std::vector<int>{i++}))
     }
@@ -67,6 +67,9 @@ Result GLES::Program::create() {
 Result GLES::Program::destroy() {
     glDeleteProgram(shader);
     ASSERT_SUCCESS(cfg.surface->destroy());
+    for (const auto& texture : cfg.textures) {
+        ASSERT_SUCCESS(std::get<1>(texture)->destroy());
+    }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
