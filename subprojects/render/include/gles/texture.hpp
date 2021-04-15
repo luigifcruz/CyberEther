@@ -16,8 +16,9 @@ public:
     Result end();
 
     uint raw();
-    Result fill(const uint8_t*);
-    Result pour(const uint8_t*);
+    Result pour();
+    Result fill();
+    Result fill(int, int, int, int);
 
 private:
     State& state;

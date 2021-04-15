@@ -19,7 +19,7 @@ Result GLES::Instance::init() {
 
     glfwMakeContextCurrent(state.window);
 
-    this->createBuffers();
+    ASSERT_SUCCESS(this->createBuffers());
 
     for (auto &program : programs) {
         ASSERT_SUCCESS(program->create());
@@ -64,7 +64,6 @@ Result GLES::Instance::createBuffers() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -95,7 +94,7 @@ Result GLES::Instance::createImgui() {
     ImGui::StyleColorsDark();
 
     ImGui_ImplGlfw_InitForOpenGL(state.window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(nullptr);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }

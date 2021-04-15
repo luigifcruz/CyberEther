@@ -8,8 +8,9 @@ namespace Render {
 class Texture {
 public:
     struct Config {
-        int width;
-        int height;
+        int width = 0;
+        int height = 0;
+        uint8_t* buffer = nullptr;
     };
 
     Texture(Config& c) : cfg(c) {};
@@ -21,8 +22,9 @@ public:
     virtual Result end() = 0;
 
     virtual uint raw() = 0;
-    virtual Result pour(const uint8_t*) = 0;
-    virtual Result fill(const uint8_t*) = 0;
+    virtual Result pour() = 0;
+    virtual Result fill() = 0;
+    virtual Result fill(int, int, int, int) = 0;
 
 protected:
     Config& cfg;

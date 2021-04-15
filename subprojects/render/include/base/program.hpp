@@ -6,12 +6,16 @@
 
 namespace Render {
 
+typedef std::vector<std::tuple<std::string,
+        std::shared_ptr<Texture>>> TexturePlan;
+
 class Program {
 public:
     struct Config {
-        const char* const* vertexSource;
-        const char* const* fragmentSource;
+        const char* const* vertexSource = nullptr;
+        const char* const* fragmentSource = nullptr;
         std::shared_ptr<Surface> surface;
+        TexturePlan textures;
     };
 
     Program(Config& c) : cfg(c) {};

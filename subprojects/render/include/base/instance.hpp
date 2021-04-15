@@ -22,11 +22,11 @@ const uint elements[] = {
 class Instance {
 public:
     struct Config {
-        int width;
-        int height;
-        bool resizable;
-        std::string title;
-        bool enableImgui;
+        std::string title = "Render";
+        int width = 1280;
+        int height = 720;
+        bool resizable = false;
+        bool enableImgui = false;
     };
 
     Instance(Config& c) : cfg(c) {};

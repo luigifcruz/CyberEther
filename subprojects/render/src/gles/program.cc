@@ -8,10 +8,8 @@ Result GLES::Program::checkShaderCompilation(uint shader) {
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
     if (!success) {
         glGetShaderInfoLog(shader, 512, NULL, infoLog);
-#ifdef RENDER_DEBUG
         std::cout << "[OPENGL] Shader #" << shader << " compilation error:\n"
                   << infoLog << std::endl;
-#endif
         return Result::RENDER_BACKEND_ERROR;
     }
     return Result::SUCCESS;
@@ -23,10 +21,8 @@ Result GLES::Program::checkProgramCompilation(uint program) {
     glGetProgramiv(program, GL_LINK_STATUS, &success);
     if (!success) {
         glGetProgramInfoLog(program, 512, NULL, infoLog);
-#ifdef RENDER_DEBUG
         std::cout << "[OPENGL] Program #" << program << " compilation error:\n"
                   << infoLog << std::endl;
-#endif
         return Result::RENDER_BACKEND_ERROR;
     }
     return Result::SUCCESS;
@@ -37,17 +33,13 @@ Result GLES::Program::create() {
     glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
     glCompileShader(vertexShader);
 
-    if (checkShaderCompilation(vertexShader) != Result::SUCCESS) {
-        return Result::RENDER_BACKEND_ERROR;
-    }
+    ASSERT_SUCCESS(checkShaderCompilation(vertexShader));
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
     glCompileShader(fragmentShader);
 
-    if (checkShaderCompilation(fragmentShader) != Result::SUCCESS) {
-        return Result::RENDER_BACKEND_ERROR;
-    }
+    ASSERT_SUCCESS(checkShaderCompilation(fragmentShader))
 
     shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
@@ -62,11 +54,19 @@ Result GLES::Program::create() {
 
     ASSERT_SUCCESS(cfg.surface->create());
 
+    int i = 0;
+    for (const auto& texture : cfg.textures) {
+        ASSERT_SUCCESS(std::get<1>(texture)->fill());
+        ASSERT_SUCCESS(this->setUniform(std::get<0>(texture),
+                    std::vector<int>{i++}))
+    }
+
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars) {
     // optimize: this can be cached
+    // optimize: are std::vector performant?
     glUseProgram(shaderProgram);
     int loc = glGetUniformLocation(shaderProgram, name.c_str());
 
@@ -102,6 +102,7 @@ Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars
 
 Result GLES::Program::setUniform(std::string name, const std::vector<float> & vars) {
     // optimize: this can be cached
+    // optimize: are std::vector performant?
     glUseProgram(shaderProgram);
     int loc = glGetUniformLocation(shaderProgram, name.c_str());
 
@@ -144,8 +145,22 @@ Result GLES::Program::destroy() {
 
 Result GLES::Program::draw() {
     ASSERT_SUCCESS(cfg.surface->start());
+
+    int i = 0;
+    for (const auto& texture : cfg.textures) {
+        glActiveTexture(GL_TEXTURE0 + i++);
+        ASSERT_SUCCESS(std::get<1>(texture)->start());
+    }
+
     glUseProgram(shaderProgram);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    i = 0;
+    for (const auto& texture : cfg.textures) {
+        glActiveTexture(GL_TEXTURE0 + i++);
+        ASSERT_SUCCESS(std::get<1>(texture)->end());
+    }
+
     ASSERT_SUCCESS(cfg.surface->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
