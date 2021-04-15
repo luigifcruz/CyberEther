@@ -21,7 +21,7 @@ public:
 private:
     State& state;
 
-    uint shaderProgram;
+    uint shader;
 
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);

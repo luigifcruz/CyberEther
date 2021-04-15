@@ -48,7 +48,8 @@ Result GLES::Texture::fill() {
 
 Result GLES::Texture::fill(int yo, int xo, int w, int h) {
     ASSERT_SUCCESS(this->start());
-    glTexSubImage2D(GL_TEXTURE_2D, 0, xo, yo, w, h, GL_RGB, GL_UNSIGNED_BYTE, cfg.buffer);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, xo, yo, w, h,
+            GL_RGB, GL_UNSIGNED_BYTE, cfg.buffer);
     glGenerateMipmap(GL_TEXTURE_2D);
     ASSERT_SUCCESS(this->end());
 

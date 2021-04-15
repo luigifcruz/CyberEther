@@ -41,14 +41,14 @@ Result GLES::Program::create() {
 
     ASSERT_SUCCESS(checkShaderCompilation(fragmentShader))
 
-    shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
+    shader = glCreateProgram();
+    glAttachShader(shader, vertexShader);
+    glAttachShader(shader, fragmentShader);
+    glLinkProgram(shader);
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-    if (checkProgramCompilation(shaderProgram) != Result::SUCCESS) {
+    if (checkProgramCompilation(shader) != Result::SUCCESS) {
         return Result::RENDER_BACKEND_ERROR;
     }
 
@@ -64,11 +64,18 @@ Result GLES::Program::create() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
+Result GLES::Program::destroy() {
+    glDeleteProgram(shader);
+    ASSERT_SUCCESS(cfg.surface->destroy());
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
 Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars) {
     // optimize: this can be cached
     // optimize: are std::vector performant?
-    glUseProgram(shaderProgram);
-    int loc = glGetUniformLocation(shaderProgram, name.c_str());
+    glUseProgram(shader);
+    int loc = glGetUniformLocation(shader, name.c_str());
 
     if (loc == 1) {
 #ifdef RENDER_DEBUG
@@ -103,8 +110,8 @@ Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars
 Result GLES::Program::setUniform(std::string name, const std::vector<float> & vars) {
     // optimize: this can be cached
     // optimize: are std::vector performant?
-    glUseProgram(shaderProgram);
-    int loc = glGetUniformLocation(shaderProgram, name.c_str());
+    glUseProgram(shader);
+    int loc = glGetUniformLocation(shader, name.c_str());
 
     if (loc == 1) {
 #ifdef RENDER_DEBUG
@@ -136,13 +143,6 @@ Result GLES::Program::setUniform(std::string name, const std::vector<float> & va
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::destroy() {
-    glDeleteProgram(shaderProgram);
-    ASSERT_SUCCESS(cfg.surface->destroy());
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
 Result GLES::Program::draw() {
     ASSERT_SUCCESS(cfg.surface->start());
 
@@ -152,7 +152,7 @@ Result GLES::Program::draw() {
         ASSERT_SUCCESS(std::get<1>(texture)->start());
     }
 
-    glUseProgram(shaderProgram);
+    glUseProgram(shader);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     i = 0;

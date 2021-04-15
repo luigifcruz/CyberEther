@@ -9,8 +9,6 @@ namespace Render {
 class GLES::State {
 public:
     GLFWwindow* window;
-    uint vbo, ebo;
-    uint shaderProgram;
 };
 
 } // namespace Render

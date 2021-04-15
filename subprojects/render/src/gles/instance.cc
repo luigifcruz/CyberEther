@@ -49,13 +49,16 @@ Result GLES::Instance::terminate() {
 }
 
 Result GLES::Instance::createBuffers() {
-    glGenBuffers(1, &state.vbo);
-    glGenBuffers(1, &state.ebo);
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
 
-    glBindBuffer(GL_ARRAY_BUFFER, state.vbo);
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state.ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
@@ -64,13 +67,16 @@ Result GLES::Instance::createBuffers() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Instance::destroyBuffers() {
-    glDeleteBuffers(1, &state.vbo);
-    glDeleteBuffers(1, &state.ebo);
+    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ebo);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -127,6 +133,8 @@ Result GLES::Instance::clear() {
         this->startImgui();
     }
 
+    glBindVertexArray(vao);
+
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
@@ -143,13 +151,11 @@ Result GLES::Instance::draw() {
 }
 
 Result GLES::Instance::step() {
-    if (cfg.resizable) {
-        glfwGetFramebufferSize(state.window, &cfg.width, &cfg.height);
-        glViewport(0, 0, cfg.width, cfg.height);
-    }
-
+    glfwGetFramebufferSize(state.window, &cfg.width, &cfg.height);
     glfwSwapBuffers(state.window);
     glfwPollEvents();
+
+    glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }

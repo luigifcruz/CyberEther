@@ -11,7 +11,6 @@ Result GLES::Surface::create() {
     glGenFramebuffers(1, &fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     ASSERT_SUCCESS(cfg.texture->create());
-    // is the GL_COLOR_ATTACHMENT0 global??
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cfg.texture->raw(), 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -31,6 +30,7 @@ Result GLES::Surface::destroy() {
 
 Result GLES::Surface::start() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glViewport(0, 0, *cfg.width, *cfg.height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 

@@ -63,14 +63,16 @@ int main() {
     auto api = Render::GLES();
 
     Render::Instance::Config instanceCfg;
-    instanceCfg.width = 1920;
-    instanceCfg.height = 1080;
+    instanceCfg.width = width;
+    instanceCfg.height = height;
     instanceCfg.resizable = true;
     instanceCfg.enableImgui = true;
     instanceCfg.title = "CyberEther";
     auto render = api.createInstance(instanceCfg);
 
     Render::Surface::Config mSurfaceCfg;
+    mSurfaceCfg.width = &instanceCfg.width;
+    mSurfaceCfg.height = &instanceCfg.height;
     auto mSurface = api.createSurface(mSurfaceCfg);
 
     Render::Texture::Config amTextureCfg;
@@ -94,6 +96,8 @@ int main() {
     auto texture = api.createTexture(textureCfg);
 
     Render::Surface::Config surfaceCfg;
+    surfaceCfg.width = &textureCfg.width;
+    surfaceCfg.height = &textureCfg.height;
     surfaceCfg.texture = texture;
     auto surface = api.createSurface(surfaceCfg);
 

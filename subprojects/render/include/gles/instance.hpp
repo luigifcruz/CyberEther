@@ -33,6 +33,8 @@ private:
     State& state;
     ImGuiIO* io;
 
+    uint vao, vbo, ebo;
+
     std::vector<std::shared_ptr<Program>> programs;
 
     Result createBuffers();
