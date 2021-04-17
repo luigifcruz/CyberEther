@@ -120,6 +120,13 @@ void render_loop() {
     ImGui::SliderScalar("range", ImGuiDataType_Float, &scale, &scale_min, &scale_max);
     ImGui::End();
 
+    ImGui::Begin("Render Info");
+    ImGui::Text("Renderer Name: %s", render->renderer_str().c_str());
+    ImGui::Text("Renderer Vendor: %s", render->vendor_str().c_str());
+    ImGui::Text("Renderer Version: %s", render->version_str().c_str());
+    ImGui::Text("Renderer GLSL Version: %s", render->glsl_str().c_str());
+    ImGui::End();
+
     ImGui::Begin("Scene Window");
 
     ImGui::GetWindowDrawList()->AddImage(

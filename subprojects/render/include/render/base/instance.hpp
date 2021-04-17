@@ -42,6 +42,11 @@ public:
 
     virtual bool keepRunning() = 0;
 
+    virtual std::string renderer_str() = 0;
+    virtual std::string version_str() = 0;
+    virtual std::string vendor_str() = 0;
+    virtual std::string glsl_str() = 0;
+
     template<class T> static std::shared_ptr<T> Create(Instance::Config&);
     template<class T> std::shared_ptr<Program> createProgram(Program::Config&);
     template<class T> std::shared_ptr<Surface> createSurface(Surface::Config&);

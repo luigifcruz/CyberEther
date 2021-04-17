@@ -27,6 +27,11 @@ public:
 
     bool keepRunning();
 
+    std::string renderer_str();
+    std::string version_str();
+    std::string vendor_str();
+    std::string glsl_str();
+
 protected:
     ImGuiIO* io;
     ImGuiStyle* style;
@@ -42,6 +47,11 @@ protected:
     Result endImgui();
 
     static Result getError(std::string, std::string, int);
+    
+    std::string cached_renderer_str;
+    std::string cached_version_str;
+    std::string cached_vendor_str;
+    std::string cached_glsl_str;
 };
 
 struct State : Render::GLES {

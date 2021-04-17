@@ -10,6 +10,7 @@ Result GLES::init() {
         return Result::FAILED_TO_OPEN_SCREEN;
     }
 
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
@@ -22,6 +23,11 @@ Result GLES::init() {
     }
 
     glfwMakeContextCurrent(state->window);
+
+    cached_renderer_str = (const char*)glGetString(GL_RENDERER);
+    cached_version_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+    cached_vendor_str = (const char*)glGetString(GL_VENDOR);
+    cached_glsl_str = (const char*)glGetString(GL_VERSION);
 
     ASSERT_SUCCESS(this->createBuffers());
 
@@ -172,6 +178,22 @@ Result GLES::step() {
 
 bool GLES::keepRunning() {
     return !glfwWindowShouldClose(state->window);
+}
+
+std::string GLES::renderer_str() {
+    return cached_renderer_str;
+}
+
+std::string GLES::version_str() {
+    return cached_version_str;
+}
+
+std::string GLES::glsl_str() {
+    return cached_glsl_str;
+}
+
+std::string GLES::vendor_str() {
+    return cached_vendor_str;
 }
 
 Result GLES::getError(std::string func, std::string file, int line) {
