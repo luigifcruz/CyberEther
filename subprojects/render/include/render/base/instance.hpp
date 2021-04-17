@@ -1,17 +1,18 @@
 #ifndef RENDER_BASE_INSTANCE_H
 #define RENDER_BASE_INSTANCE_H
 
-#include "base/program.hpp"
-#include "base/surface.hpp"
+#include "render/types.hpp"
+#include "program.hpp"
+#include "surface.hpp"
+#include "texture.hpp"
 
 namespace Render {
 
 const float vertices[] = {
-    // positions ////// // tex //////
-    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f, // top right
-    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f, // bottom right
-    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f, // bottom left
-    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f, // top left
+    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f,
+    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f,
+    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f,
+    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f,
 };
 
 const uint elements[] = {
@@ -22,11 +23,11 @@ const uint elements[] = {
 class Instance {
 public:
     struct Config {
-        std::string title = "Render";
         int width = 1280;
         int height = 720;
         bool resizable = false;
         bool enableImgui = false;
+        std::string title = "Render";
     };
 
     Instance(Config& c) : cfg(c) {};
@@ -41,6 +42,11 @@ public:
 
     virtual bool keepRunning() = 0;
 
+    template<class T> static std::shared_ptr<T> Create(Instance::Config&);
+    template<class T> std::shared_ptr<Program> createProgram(Program::Config&);
+    template<class T> std::shared_ptr<Surface> createSurface(Surface::Config&);
+    template<class T> std::shared_ptr<Texture> createTexture(Texture::Config&);
+
 protected:
     Config& cfg;
 
@@ -51,6 +57,13 @@ protected:
     virtual Result destroyImgui() = 0;
     virtual Result startImgui() = 0;
     virtual Result endImgui() = 0;
+
+	static Result getError(std::string func, std::string file, int line);
+
+    struct State* state;
+    std::vector<std::shared_ptr<Program>> programs;
+    std::vector<std::shared_ptr<Surface>> surfaces;
+    std::vector<std::shared_ptr<Texture>> textures;
 };
 
 } // namespace Render

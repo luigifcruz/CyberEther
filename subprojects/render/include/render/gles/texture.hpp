@@ -1,8 +1,7 @@
 #ifndef RENDER_GLES_TEXTURE_H
 #define RENDER_GLES_TEXTURE_H
 
-#include "gles/api.hpp"
-#include "gles/state.hpp"
+#include "render/gles/instance.hpp"
 
 namespace Render {
 
@@ -20,7 +19,7 @@ public:
     Result fill();
     Result fill(int, int, int, int);
 
-private:
+protected:
     State& state;
     uint tex;
 };

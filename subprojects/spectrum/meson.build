@@ -11,6 +11,7 @@ dep_lst = [
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
+    include_directories('include/spectrum/tools'),
     include_directories('include'),
     include_directories('.'),
 ]

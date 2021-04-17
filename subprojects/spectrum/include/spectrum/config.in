@@ -1,0 +1,3 @@
+#define SPECTRUM_VERSION_STR "@version@"
+
+#mesondefine SPECTRUM_FFTW_AVAILABLE

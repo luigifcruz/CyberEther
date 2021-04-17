@@ -1,7 +1,7 @@
 #define RENDER_DEBUG
 
-#include "render/base.hpp"
-#include "spectrum/base.hpp"
+#include "render.hpp"
+#include "spectrum.hpp"
 
 #include <iostream>
 #ifdef __EMSCRIPTEN__
@@ -10,8 +10,6 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-
-using T = Render::GLES;
 
 const GLchar* vertexSource = R"END(#version 300 es
 layout (location = 0) in vec3 aPos;
@@ -61,25 +59,27 @@ unsigned char *data = stbi_load("minime.jpg", &width, &height, &nrChannels, 0);
 int width2, height2, nrChannels2;
 unsigned char *data2 = stbi_load("bernie", &width2, &height2, &nrChannels2, 0);
 
+auto api = Render::GLES();
+
 Render::Instance::Config instanceCfg;
 Render::Surface::Config mSurfaceCfg;
 Render::Texture::Config amTextureCfg;
 Render::Program::Config mProgramCfg;
 
-std::shared_ptr<Render::Instance> render;
-std::shared_ptr<Render::Surface> mSurface;
-std::shared_ptr<Render::Texture> amTexture;
-std::shared_ptr<Render::Program> mProgram;
+std::shared_ptr<Render::GLES::Instance> render;
+std::shared_ptr<Render::GLES::Surface> mSurface;
+std::shared_ptr<Render::GLES::Texture> amTexture;
+std::shared_ptr<Render::GLES::Program> mProgram;
 
 Render::Texture::Config textureCfg;
 Render::Surface::Config surfaceCfg;
 Render::Texture::Config aTextureCfg;
 Render::Program::Config programCfg;
 
-std::shared_ptr<Render::Texture> texture;
-std::shared_ptr<Render::Surface> surface;
-std::shared_ptr<Render::Texture> aTexture;
-std::shared_ptr<Render::Program> program;
+std::shared_ptr<Render::GLES::Texture> texture;
+std::shared_ptr<Render::GLES::Surface> surface;
+std::shared_ptr<Render::GLES::Texture> aTexture;
+std::shared_ptr<Render::GLES::Program> program;
 
 static float scale = 1.0f, scale_min = 0.0f, scale_max = 1.0f;
 
@@ -87,8 +87,6 @@ void render_loop() {
     render->clear();
 
     mProgram->setUniform("Scale", std::vector<float>{ scale });
-
-    ImGui::ShowMetricsWindow();
 
     // Create a window called "My First Tool", with a menu bar.
     ImGui::Begin("My First Tool", NULL, ImGuiWindowFlags_MenuBar);
@@ -140,38 +138,38 @@ int main() {
     instanceCfg.resizable = true;
     instanceCfg.enableImgui = true;
     instanceCfg.title = "CyberEther";
-    render = Render::Instance::Create<T>(instanceCfg);
+    render = api.createInstance(instanceCfg);
 
     mSurfaceCfg.width = &instanceCfg.width;
     mSurfaceCfg.height = &instanceCfg.height;
-    mSurface = render->createSurface<T>(mSurfaceCfg);
-
+    mSurface = api.createSurface(mSurfaceCfg);
+    
     amTextureCfg.height = height;
     amTextureCfg.width = width;
     amTextureCfg.buffer = data;
-    amTexture = render->createTexture<T>(amTextureCfg);
-
+    amTexture = api.createTexture(amTextureCfg);
+    
     mProgramCfg.fragmentSource = &mFragmentSource;
     mProgramCfg.vertexSource = &vertexSource;
     mProgramCfg.surface = mSurface;
     mProgramCfg.textures = Render::TexturePlan({
                 {"ourTexture", amTexture}
             });
-    mProgram = render->createProgram<T>(mProgramCfg);
+    mProgram = api.createProgram(mProgramCfg);
 
     textureCfg.height = height2;
     textureCfg.width = width2;
-    texture = render->createTexture<T>(textureCfg);
+    texture = api.createTexture(textureCfg);
 
     surfaceCfg.width = &textureCfg.width;
     surfaceCfg.height = &textureCfg.height;
     surfaceCfg.texture = texture;
-    surface = render->createSurface<T>(surfaceCfg);
+    surface = api.createSurface(surfaceCfg);
 
     aTextureCfg.height = height2;
     aTextureCfg.width = width2;
     aTextureCfg.buffer = data2;
-    aTexture = render->createTexture<T>(aTextureCfg);
+    aTexture = api.createTexture(aTextureCfg);
 
     programCfg.fragmentSource = &fragmentSource;
     programCfg.vertexSource = &vertexSource;
@@ -179,7 +177,7 @@ int main() {
     programCfg.textures = Render::TexturePlan({
                 {"ourTexture", aTexture}
             });
-    program = render->createProgram<T>(programCfg);
+    program = api.createProgram(programCfg);
 
     render->init();
 

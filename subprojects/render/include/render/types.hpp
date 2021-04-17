@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <iostream>
+#include <algorithm>
 #include <unistd.h>
 
 #include "magic_enum.hpp"

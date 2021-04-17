@@ -1,8 +1,11 @@
-#include "gles/instance.hpp"
+#include "render/gles/instance.hpp"
+#include "render/gles/program.hpp"
+#include "render/gles/surface.hpp"
+#include "render/gles/texture.hpp"
 
 namespace Render {
 
-Result GLES::Instance::init() {
+Result GLES::init() {
     if (!glfwInit()) {
         return Result::FAILED_TO_OPEN_SCREEN;
     }
@@ -11,13 +14,14 @@ Result GLES::Instance::init() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
 
-    state.window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
-    if (!state.window) {
+    state = (State*)malloc(sizeof(State));
+    state->window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
+    if (!state->window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
     }
 
-    glfwMakeContextCurrent(state.window);
+    glfwMakeContextCurrent(state->window);
 
     ASSERT_SUCCESS(this->createBuffers());
 
@@ -32,7 +36,7 @@ Result GLES::Instance::init() {
     return Result::SUCCESS;
 }
 
-Result GLES::Instance::terminate() {
+Result GLES::terminate() {
     for (auto &program : programs) {
         ASSERT_SUCCESS(program->destroy());
     }
@@ -43,12 +47,12 @@ Result GLES::Instance::terminate() {
         this->destroyImgui();
     }
 
-    glfwDestroyWindow(state.window);
+    glfwDestroyWindow(state->window);
     glfwTerminate();
     return Result::SUCCESS;
 }
 
-Result GLES::Instance::createBuffers() {
+Result GLES::createBuffers() {
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
@@ -73,7 +77,7 @@ Result GLES::Instance::createBuffers() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::destroyBuffers() {
+Result GLES::destroyBuffers() {
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ebo);
@@ -81,7 +85,7 @@ Result GLES::Instance::destroyBuffers() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::createImgui() {
+Result GLES::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -101,13 +105,13 @@ Result GLES::Instance::createImgui() {
 
     ImGui::StyleColorsDark();
 
-    ImGui_ImplGlfw_InitForOpenGL(state.window, true);
+    ImGui_ImplGlfw_InitForOpenGL(state->window, true);
     ImGui_ImplOpenGL3_Init(nullptr);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::destroyImgui() {
+Result GLES::destroyImgui() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -115,7 +119,7 @@ Result GLES::Instance::destroyImgui() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::startImgui() {
+Result GLES::startImgui() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -123,14 +127,14 @@ Result GLES::Instance::startImgui() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::endImgui() {
+Result GLES::endImgui() {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::clear() {
+Result GLES::clear() {
     if (cfg.enableImgui) {
         this->startImgui();
     }
@@ -142,7 +146,7 @@ Result GLES::Instance::clear() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::draw() {
+Result GLES::draw() {
     for (auto &program : programs) {
         ASSERT_SUCCESS(program->draw());
     }
@@ -154,9 +158,9 @@ Result GLES::Instance::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Instance::step() {
-    glfwGetFramebufferSize(state.window, &cfg.width, &cfg.height);
-    glfwSwapBuffers(state.window);
+Result GLES::step() {
+    glfwGetFramebufferSize(state->window, &cfg.width, &cfg.height);
+    glfwSwapBuffers(state->window);
     glfwPollEvents();
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -166,8 +170,19 @@ Result GLES::Instance::step() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-bool GLES::Instance::keepRunning() {
-    return !glfwWindowShouldClose(state.window);
+bool GLES::keepRunning() {
+    return !glfwWindowShouldClose(state->window);
+}
+
+Result GLES::getError(std::string func, std::string file, int line) {
+    int error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cout << "[OPENGL] GL returned an error #" << error
+                  << " inside function " << func << " @ "
+                  << file << ":" << line << std::endl;
+        return Result::RENDER_BACKEND_ERROR;
+    }
+    return Result::SUCCESS;
 }
 
 } // namespace Render

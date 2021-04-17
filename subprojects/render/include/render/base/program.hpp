@@ -1,7 +1,7 @@
 #ifndef RENDER_BASE_PROGRAM_H
 #define RENDER_BASE_PROGRAM_H
 
-#include "types.hpp"
+#include "render/types.hpp"
 #include "surface.hpp"
 
 namespace Render {

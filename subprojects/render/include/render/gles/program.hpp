@@ -1,8 +1,7 @@
 #ifndef RENDER_GLES_PROGRAM_H
 #define RENDER_GLES_PROGRAM_H
 
-#include "gles/api.hpp"
-#include "gles/state.hpp"
+#include "render/gles/instance.hpp"
 
 namespace Render {
 
@@ -18,7 +17,7 @@ public:
 
     Result draw();
 
-private:
+protected:
     State& state;
 
     uint shader;

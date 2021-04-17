@@ -1,6 +1,6 @@
 cfg_lst.set('version', meson.project_version())
 
-configure_file(input : 'render_config.hpp.in',
+configure_file(input : 'render/config.hpp.in',
                output : 'render_config.hpp',
                configuration : cfg_lst,
                install : true,

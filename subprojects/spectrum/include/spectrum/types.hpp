@@ -1,8 +1,15 @@
 #ifndef SPECTRUM_TYPES_H
 #define SPECTRUM_TYPES_H
 
+#include <vector>
+#include <memory>
 #include <iostream>
+#include <algorithm>
+#include <cstddef>
+#include <unistd.h>
 
+#include "render/base.hpp"
+#include "spectrum_config.hpp"
 #include "magic_enum.hpp"
 
 namespace Spectrum {
@@ -19,6 +26,20 @@ namespace Spectrum {
 
 enum struct Result {
     SUCCESS = 0,
+};
+
+enum struct DataFormat {
+    F32,
+    F64,
+    CF32,
+    CF64,
+};
+
+enum struct API {
+    FFTW,
+    CUDA,
+    SYCL,
+    SIGX,
 };
 
 } // namespace Spectrum

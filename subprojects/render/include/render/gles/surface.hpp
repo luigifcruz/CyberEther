@@ -1,8 +1,7 @@
 #ifndef RENDER_GLES_SURFACE_H
 #define RENDER_GLES_SURFACE_H
 
-#include "gles/api.hpp"
-#include "gles/state.hpp"
+#include "render/gles/instance.hpp"
 
 namespace Render {
 
@@ -15,7 +14,7 @@ public:
     Result start();
     Result end();
 
-private:
+protected:
     State& state;
     uint fbo;
 };

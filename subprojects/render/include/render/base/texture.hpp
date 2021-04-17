@@ -1,7 +1,7 @@
 #ifndef RENDER_BASE_TEXTURE_H
 #define RENDER_BASE_TEXTURE_H
 
-#include "types.hpp"
+#include "render/types.hpp"
 
 namespace Render {
 

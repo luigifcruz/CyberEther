@@ -458,7 +458,7 @@ static void ImGui_ImplGlfw_UpdateMonitors()
         monitor.MainSize = monitor.WorkSize = ImVec2((float)vid_mode->width, (float)vid_mode->height);
 #if GLFW_HAS_MONITOR_WORK_AREA
         int w, h;
-        glfwGetMonitorWorkarea(glfw_monitors[n], &x, &y, &w, &h);
+        //glfwGetMonitorWorkarea(glfw_monitors[n], &x, &y, &w, &h);
         if (w > 0 && h > 0) // Workaround a small GLFW issue reporting zero on monitor changes: https://github.com/glfw/glfw/pull/1761
         {
             monitor.WorkPos = ImVec2((float)x, (float)y);
@@ -468,7 +468,7 @@ static void ImGui_ImplGlfw_UpdateMonitors()
 #if GLFW_HAS_PER_MONITOR_DPI
         // Warning: the validity of monitor DPI information on Windows depends on the application DPI awareness settings, which generally needs to be set in the manifest or at runtime.
         float x_scale, y_scale;
-        glfwGetMonitorContentScale(glfw_monitors[n], &x_scale, &y_scale);
+        //glfwGetMonitorContentScale(glfw_monitors[n], &x_scale, &y_scale);
         monitor.DpiScale = x_scale;
 #endif
         platform_io.Monitors.push_back(monitor);
@@ -761,7 +761,7 @@ static bool ImGui_ImplGlfw_GetWindowMinimized(ImGuiViewport* viewport)
 static void ImGui_ImplGlfw_SetWindowAlpha(ImGuiViewport* viewport, float alpha)
 {
     ImGuiViewportDataGlfw* data = (ImGuiViewportDataGlfw*)viewport->PlatformUserData;
-    glfwSetWindowOpacity(data->Window, alpha);
+    //glfwSetWindowOpacity(data->Window, alpha);
 }
 #endif
 
