@@ -63,12 +63,17 @@ protected:
     virtual Result startImgui() = 0;
     virtual Result endImgui() = 0;
 
-	static Result getError(std::string func, std::string file, int line);
+    static Result getError(std::string func, std::string file, int line);
 
     struct State* state;
     std::vector<std::shared_ptr<Program>> programs;
     std::vector<std::shared_ptr<Surface>> surfaces;
     std::vector<std::shared_ptr<Texture>> textures;
+        
+    std::string cached_renderer_str;
+    std::string cached_version_str;
+    std::string cached_vendor_str;
+    std::string cached_glsl_str;
 };
 
 } // namespace Render
