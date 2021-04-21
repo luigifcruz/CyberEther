@@ -8,12 +8,14 @@
 #include "render/base/program.hpp"
 #include "render/base/surface.hpp"
 #include "render/base/texture.hpp"
+#include "render/base/vertex.hpp"
 
 #ifdef RENDER_GLES_AVAILABLE
 #include "render/gles/instance.hpp"
 #include "render/gles/program.hpp"
 #include "render/gles/surface.hpp"
 #include "render/gles/texture.hpp"
+#include "render/gles/vertex.hpp"
 #endif
 
 namespace Render {

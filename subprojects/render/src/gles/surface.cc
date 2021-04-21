@@ -3,27 +3,30 @@
 namespace Render {
 
 Result GLES::Surface::create() {
-    if (!cfg.texture) {
-        fbo = 0;
-        return Result::SUCCESS;
+    for (auto &program : programs) {
+        ASSERT_SUCCESS(program->create());
     }
 
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    ASSERT_SUCCESS(cfg.texture->create());
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cfg.texture->raw(), 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (cfg.texture) {
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        ASSERT_SUCCESS(cfg.texture->create());
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cfg.texture->raw(), 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Surface::destroy() {
-    if (!cfg.texture) {
-        return Result::SUCCESS;
+    for (auto &program : programs) {
+        ASSERT_SUCCESS(program->destroy());
     }
 
-    ASSERT_SUCCESS(cfg.texture->destroy());
-    glDeleteFramebuffers(1, &fbo);
+    if (cfg.texture) {
+        ASSERT_SUCCESS(cfg.texture->destroy());
+        glDeleteFramebuffers(1, &fbo);
+    }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -38,6 +41,11 @@ Result GLES::Surface::start() {
 }
 
 Result GLES::Surface::end() {
+    for (auto &program : programs) {
+        ASSERT_SUCCESS(program->start());
+        ASSERT_SUCCESS(program->end());
+    }
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

@@ -15,15 +15,14 @@ public:
     class Program;
 	class Surface;
     class Texture;
+    class Vertex;
 
     GLES(Config& c) : Render::Instance(c) {};
 
-    Result init();
-    Result terminate();
-
-    Result clear();
-    Result draw();
-    Result step();
+    Result create();
+    Result destroy();
+    Result start();
+    Result end();
 
     bool keepRunning();
 
@@ -36,10 +35,7 @@ protected:
     ImGuiIO* io;
     ImGuiStyle* style;
 
-    uint vao, vbo, ebo;
-
-    Result createBuffers();
-    Result destroyBuffers();
+    uint vao;
 
     Result createImgui();
     Result destroyImgui();

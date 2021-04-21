@@ -5,20 +5,9 @@
 #include "program.hpp"
 #include "surface.hpp"
 #include "texture.hpp"
+#include "vertex.hpp"
 
 namespace Render {
-
-const float vertices[] = {
-    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f,
-    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f,
-    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f,
-    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f,
-};
-
-const uint elements[] = {
-    0, 1, 2,
-    2, 3, 0
-};
 
 class Instance {
 public:
@@ -33,12 +22,12 @@ public:
     Instance(Config& c) : cfg(c) {};
     virtual ~Instance() = default;
 
-    virtual Result init() = 0;
-    virtual Result terminate() = 0;
+    virtual Result create() = 0;
+    virtual Result destroy() = 0;
+    virtual Result start() = 0;
+    virtual Result end() = 0;
 
-    virtual Result clear() = 0;
-    virtual Result draw() = 0;
-    virtual Result step() = 0;
+    Result bind(std::shared_ptr<Surface>);
 
     virtual bool keepRunning() = 0;
 
@@ -48,15 +37,16 @@ public:
     virtual std::string glsl_str() = 0;
 
     template<class T> static std::shared_ptr<T> Create(Instance::Config&);
-    template<class T> std::shared_ptr<Program> createProgram(Program::Config&);
-    template<class T> std::shared_ptr<Surface> createSurface(Surface::Config&);
-    template<class T> std::shared_ptr<Texture> createTexture(Texture::Config&);
+    template<class T> std::shared_ptr<Program> create(Program::Config&);
+    template<class T> std::shared_ptr<Surface> create(Surface::Config&);
+    template<class T> std::shared_ptr<Texture> create(Texture::Config&);
+    template<class T> std::shared_ptr<Vertex> create(Vertex::Config&);
 
 protected:
     Config& cfg;
+    struct State* state;
 
-    virtual Result createBuffers() = 0;
-    virtual Result destroyBuffers() = 0;
+    std::vector<std::shared_ptr<Surface>> surfaces;
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
@@ -65,11 +55,6 @@ protected:
 
     static Result getError(std::string func, std::string file, int line);
 
-    struct State* state;
-    std::vector<std::shared_ptr<Program>> programs;
-    std::vector<std::shared_ptr<Surface>> surfaces;
-    std::vector<std::shared_ptr<Texture>> textures;
-        
     std::string cached_renderer_str;
     std::string cached_version_str;
     std::string cached_vendor_str;

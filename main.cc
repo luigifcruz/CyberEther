@@ -55,6 +55,18 @@ void main() {
 }
 )END";
 
+const float vertices[] = {
+    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f,
+    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f,
+    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f,
+    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f,
+};
+
+const uint elements[] = {
+    0, 1, 2,
+    2, 3, 0
+};
+
 int width, height, nrChannels;
 unsigned char *data = stbi_load("minime.jpg", &width, &height, &nrChannels, 0);
 
@@ -65,26 +77,30 @@ Render::Instance::Config instanceCfg;
 Render::Surface::Config mSurfaceCfg;
 Render::Texture::Config amTextureCfg;
 Render::Program::Config mProgramCfg;
+Render::Vertex::Config mVertexCfg;
 
 std::shared_ptr<Render::Instance> render;
 std::shared_ptr<Render::Surface> mSurface;
 std::shared_ptr<Render::Texture> amTexture;
 std::shared_ptr<Render::Program> mProgram;
+std::shared_ptr<Render::Vertex> mVertex;
 
 Render::Texture::Config textureCfg;
 Render::Surface::Config surfaceCfg;
 Render::Texture::Config aTextureCfg;
 Render::Program::Config programCfg;
+Render::Vertex::Config vertexCfg;
 
 std::shared_ptr<Render::Texture> texture;
 std::shared_ptr<Render::Surface> surface;
 std::shared_ptr<Render::Texture> aTexture;
 std::shared_ptr<Render::Program> program;
+std::shared_ptr<Render::Vertex> vertex;
 
 static float scale = 1.0f, scale_min = 0.0f, scale_max = 1.0f;
 
 void render_loop() {
-    render->clear();
+    render->start();
 
     mProgram->setUniform("Scale", std::vector<float>{ scale });
 
@@ -135,8 +151,7 @@ void render_loop() {
 
     ImGui::End();
 
-    render->draw();
-    render->step();
+    render->end();
 }
 
 int main() {
@@ -149,46 +164,64 @@ int main() {
     instanceCfg.title = "CyberEther";
     render = Render::Instance::Create<T>(instanceCfg);
 
+    // Main Surface
+
     mSurfaceCfg.width = &instanceCfg.width;
     mSurfaceCfg.height = &instanceCfg.height;
-    mSurface = render->createSurface<T>(mSurfaceCfg);
+    mSurface = render->create<T>(mSurfaceCfg);
 
-    amTextureCfg.height = height;
-    amTextureCfg.width = width;
-    amTextureCfg.buffer = data;
-    amTexture = render->createTexture<T>(amTextureCfg);
+    render->bind(mSurface);
 
-    mProgramCfg.fragmentSource = &mFragmentSource;
-    mProgramCfg.vertexSource = &vertexSource;
-    mProgramCfg.surface = mSurface;
-    mProgramCfg.textures = Render::TexturePlan({
-                {"ourTexture", amTexture}
-            });
-    mProgram = render->createProgram<T>(mProgramCfg);
+    {
+        mVertex = render->create<T>(mVertexCfg);
+
+        mProgramCfg.fragmentSource = &mFragmentSource;
+        mProgramCfg.vertexSource = &vertexSource;
+        mProgramCfg.vertex = mVertex;
+        mProgram = render->create<T>(mProgramCfg);
+
+        amTextureCfg.height = height;
+        amTextureCfg.width = width;
+        amTextureCfg.buffer = data;
+        amTextureCfg.key = "ourTexture";
+        amTexture = render->create<T>(amTextureCfg);
+
+        mProgram->bind(amTexture);
+        mSurface->bind(mProgram);
+    }
+
+    // Framebuffer Surface
 
     textureCfg.height = height2;
     textureCfg.width = width2;
-    texture = render->createTexture<T>(textureCfg);
+    texture = render->create<T>(textureCfg);
 
     surfaceCfg.width = &textureCfg.width;
     surfaceCfg.height = &textureCfg.height;
     surfaceCfg.texture = texture;
-    surface = render->createSurface<T>(surfaceCfg);
+    surface = render->create<T>(surfaceCfg);
 
-    aTextureCfg.height = height2;
-    aTextureCfg.width = width2;
-    aTextureCfg.buffer = data2;
-    aTexture = render->createTexture<T>(aTextureCfg);
+    render->bind(surface);
 
-    programCfg.fragmentSource = &fragmentSource;
-    programCfg.vertexSource = &vertexSource;
-    programCfg.surface = surface;
-    programCfg.textures = Render::TexturePlan({
-                {"ourTexture", aTexture}
-            });
-    program = render->createProgram<T>(programCfg);
+    {
+        vertex = render->create<T>(mVertexCfg);
 
-    render->init();
+        programCfg.fragmentSource = &fragmentSource;
+        programCfg.vertexSource = &vertexSource;
+        programCfg.vertex = vertex;
+        program = render->create<T>(programCfg);
+
+        aTextureCfg.height = height2;
+        aTextureCfg.width = width2;
+        aTextureCfg.buffer = data2;
+        aTextureCfg.key = "ourTexture2";
+        aTexture = render->create<T>(aTextureCfg);
+
+        program->bind(aTexture);
+        surface->bind(program);
+    }
+
+    render->create();
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(render_loop, 0, 1);
@@ -197,7 +230,7 @@ int main() {
         render_loop();
 #endif
 
-    render->terminate();
+    render->destroy();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

@@ -3,6 +3,7 @@
 
 #include "render/types.hpp"
 #include "texture.hpp"
+#include "program.hpp"
 
 namespace Render {
 
@@ -22,8 +23,12 @@ public:
     virtual Result start() = 0;
     virtual Result end() = 0;
 
+    Result bind(std::shared_ptr<Program>);
+
 protected:
     Config& cfg;
+
+    std::vector<std::shared_ptr<Program>> programs;
 };
 
 } // namespace Render

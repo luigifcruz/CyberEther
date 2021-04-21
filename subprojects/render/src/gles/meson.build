@@ -16,6 +16,7 @@ if all_gl_deps_found
     'surface.cc',
     'program.cc',
     'texture.cc',
+    'vertex.cc',
   ])
   message('OpenGL Backend Available: YES')
 else

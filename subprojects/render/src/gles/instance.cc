@@ -5,7 +5,7 @@
 
 namespace Render {
 
-Result GLES::init() {
+Result GLES::create() {
     if (!glfwInit()) {
         return Result::FAILED_TO_OPEN_SCREEN;
     }
@@ -29,11 +29,14 @@ Result GLES::init() {
     cached_vendor_str = (const char*)glGetString(GL_VENDOR);
     cached_glsl_str = (const char*)glGetString(GL_VERSION);
 
-    ASSERT_SUCCESS(this->createBuffers());
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
 
-    for (auto &program : programs) {
-        ASSERT_SUCCESS(program->create());
+    for (auto &surface : surfaces) {
+        ASSERT_SUCCESS(surface->create());
     }
+
+    glBindVertexArray(0);
 
     if (cfg.enableImgui) {
         this->createImgui();
@@ -42,53 +45,19 @@ Result GLES::init() {
     return Result::SUCCESS;
 }
 
-Result GLES::terminate() {
-    for (auto &program : programs) {
-        ASSERT_SUCCESS(program->destroy());
+Result GLES::destroy() {
+    for (auto &surface : surfaces) {
+        ASSERT_SUCCESS(surface->destroy());
     }
-
-    this->destroyBuffers();
 
     if (cfg.enableImgui) {
         this->destroyImgui();
     }
 
+    glDeleteVertexArrays(1, &vao);
     glfwDestroyWindow(state->window);
     glfwTerminate();
     return Result::SUCCESS;
-}
-
-Result GLES::createBuffers() {
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-
-    glGenBuffers(1, &vbo);
-    glGenBuffers(1, &ebo);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result GLES::destroyBuffers() {
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &ebo);
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::createImgui() {
@@ -140,37 +109,30 @@ Result GLES::endImgui() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::clear() {
+Result GLES::start() {
     if (cfg.enableImgui) {
         this->startImgui();
     }
 
     glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::draw() {
-    for (auto &program : programs) {
-        ASSERT_SUCCESS(program->draw());
+Result GLES::end() {
+    for (auto &surface : surfaces) {
+        ASSERT_SUCCESS(surface->start());
+        ASSERT_SUCCESS(surface->end());
     }
 
     if (cfg.enableImgui) {
         this->endImgui();
     }
 
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result GLES::step() {
     glfwGetFramebufferSize(state->window, &cfg.width, &cfg.height);
     glfwSwapBuffers(state->window);
     glfwPollEvents();
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

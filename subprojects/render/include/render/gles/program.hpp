@@ -11,11 +11,11 @@ public:
 
     Result create();
     Result destroy();
+    Result start();
+    Result end();
 
     Result setUniform(std::string, const std::vector<int> &);
     Result setUniform(std::string, const std::vector<float> &);
-
-    Result draw();
 
 protected:
     State& state;

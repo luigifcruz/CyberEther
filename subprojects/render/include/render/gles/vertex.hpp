@@ -1,13 +1,13 @@
-#ifndef RENDER_GLES_SURFACE_H
-#define RENDER_GLES_SURFACE_H
+#ifndef RENDER_GLES_VERTEX_H
+#define RENDER_GLES_VERTEX_H
 
 #include "render/gles/instance.hpp"
 
 namespace Render {
 
-class GLES::Surface : public Render::Surface {
+class GLES::Vertex : public Render::Vertex {
 public:
-    Surface(Config& cfg, State& s) : Render::Surface(cfg), state(s) {};
+    Vertex(Config& cfg, State& s) : Render::Vertex(cfg), state(s) {};
 
     Result create();
     Result destroy();
@@ -16,9 +16,11 @@ public:
 
 protected:
     State& state;
-    uint fbo = 0;
+
+    uint vbo, ebo;
 };
 
 } // namespace Render
 
 #endif
+

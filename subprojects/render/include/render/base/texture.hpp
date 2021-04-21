@@ -10,6 +10,7 @@ public:
     struct Config {
         int width = 0;
         int height = 0;
+        std::string key;
         uint8_t* buffer = nullptr;
     };
 
@@ -20,6 +21,10 @@ public:
     virtual Result destroy() = 0;
     virtual Result start() = 0;
     virtual Result end() = 0;
+
+    Config& config() {
+        return cfg;
+    }
 
     virtual uint raw() = 0;
     virtual Result pour() = 0;

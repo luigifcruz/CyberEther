@@ -2,32 +2,6 @@
 
 namespace Render {
 
-Result GLES::Program::checkShaderCompilation(uint shader) {
-    int success;
-    char infoLog[512];
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        glGetShaderInfoLog(shader, 512, NULL, infoLog);
-        std::cout << "[OPENGL] Shader #" << shader << " compilation error:\n"
-                  << infoLog << std::endl;
-        return Result::RENDER_BACKEND_ERROR;
-    }
-    return Result::SUCCESS;
-}
-
-Result GLES::Program::checkProgramCompilation(uint program) {
-    int success;
-    char infoLog[512];
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(program, 512, NULL, infoLog);
-        std::cout << "[OPENGL] Program #" << program << " compilation error:\n"
-                  << infoLog << std::endl;
-        return Result::RENDER_BACKEND_ERROR;
-    }
-    return Result::SUCCESS;
-}
-
 Result GLES::Program::create() {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
@@ -52,23 +26,50 @@ Result GLES::Program::create() {
         return Result::RENDER_BACKEND_ERROR;
     }
 
-    ASSERT_SUCCESS(cfg.surface->create());
-
     int i = 0;
-    for (const auto& texture : cfg.textures) {
-        ASSERT_SUCCESS(std::get<1>(texture)->create());
-        ASSERT_SUCCESS(this->setUniform(std::get<0>(texture),
+    for (const auto& texture : textures) {
+        ASSERT_SUCCESS(texture->create());
+        ASSERT_SUCCESS(this->setUniform(texture->config().key,
                     std::vector<int>{i++}))
     }
+
+    ASSERT_SUCCESS(cfg.vertex->create());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Program::destroy() {
+    ASSERT_SUCCESS(cfg.vertex->destroy());
+
+    for (const auto& texture : textures) {
+        ASSERT_SUCCESS(texture->destroy());
+    }
+
     glDeleteProgram(shader);
-    ASSERT_SUCCESS(cfg.surface->destroy());
-    for (const auto& texture : cfg.textures) {
-        ASSERT_SUCCESS(std::get<1>(texture)->destroy());
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Program::start() {
+    int i = 0;
+    for (const auto& texture : textures) {
+        glActiveTexture(GL_TEXTURE0 + i++);
+        ASSERT_SUCCESS(texture->start());
+    }
+
+    ASSERT_SUCCESS(cfg.vertex->start());
+    glUseProgram(shader);
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Program::end() {
+    ASSERT_SUCCESS(cfg.vertex->end());
+
+    int i = 0;
+    for (const auto& texture : textures) {
+        glActiveTexture(GL_TEXTURE0 + i++);
+        ASSERT_SUCCESS(texture->end());
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -146,27 +147,30 @@ Result GLES::Program::setUniform(std::string name, const std::vector<float> & va
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::draw() {
-    ASSERT_SUCCESS(cfg.surface->start());
-
-    int i = 0;
-    for (const auto& texture : cfg.textures) {
-        glActiveTexture(GL_TEXTURE0 + i++);
-        ASSERT_SUCCESS(std::get<1>(texture)->start());
+Result GLES::Program::checkShaderCompilation(uint shader) {
+    int success;
+    char infoLog[512];
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(shader, 512, NULL, infoLog);
+        std::cout << "[OPENGL] Shader #" << shader << " compilation error:\n"
+                  << infoLog << std::endl;
+        return Result::RENDER_BACKEND_ERROR;
     }
+    return Result::SUCCESS;
+}
 
-    glUseProgram(shader);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-    i = 0;
-    for (const auto& texture : cfg.textures) {
-        glActiveTexture(GL_TEXTURE0 + i++);
-        ASSERT_SUCCESS(std::get<1>(texture)->end());
+Result GLES::Program::checkProgramCompilation(uint program) {
+    int success;
+    char infoLog[512];
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(program, 512, NULL, infoLog);
+        std::cout << "[OPENGL] Program #" << program << " compilation error:\n"
+                  << infoLog << std::endl;
+        return Result::RENDER_BACKEND_ERROR;
     }
-
-    ASSERT_SUCCESS(cfg.surface->end());
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 } // namespace Render

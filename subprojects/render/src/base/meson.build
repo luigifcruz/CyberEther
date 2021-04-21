@@ -1,3 +1,5 @@
 src_lst += files([
-  'instance.cc'
+  'instance.cc',
+  'program.cc',
+  'surface.cc',
 ])
