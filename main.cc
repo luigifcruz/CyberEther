@@ -164,21 +164,8 @@ int main() {
     instanceCfg.title = "CyberEther";
     render = Render::Instance::Create<T>(instanceCfg);
 
-    // Main Surface
-
-    mSurfaceCfg.width = &instanceCfg.width;
-    mSurfaceCfg.height = &instanceCfg.height;
-    mSurface = render->create<T>(mSurfaceCfg);
-
-    render->bind(mSurface);
-
     {
         mVertex = render->create<T>(mVertexCfg);
-
-        mProgramCfg.fragmentSource = &mFragmentSource;
-        mProgramCfg.vertexSource = &vertexSource;
-        mProgramCfg.vertex = mVertex;
-        mProgram = render->create<T>(mProgramCfg);
 
         amTextureCfg.height = height;
         amTextureCfg.width = width;
@@ -186,30 +173,20 @@ int main() {
         amTextureCfg.key = "ourTexture";
         amTexture = render->create<T>(amTextureCfg);
 
-        mProgram->bind(amTexture);
-        mSurface->bind(mProgram);
+        mProgramCfg.fragmentSource = &mFragmentSource;
+        mProgramCfg.vertexSource = &vertexSource;
+        mProgramCfg.vertex = mVertex;
+        mProgramCfg.textures = {amTexture};
+        mProgram = render->create<T>(mProgramCfg);
+
+        mSurfaceCfg.width = &instanceCfg.width;
+        mSurfaceCfg.height = &instanceCfg.height;
+        mSurfaceCfg.programs = {mProgram};
+        mSurface = render->create<T>(mSurfaceCfg);
     }
-
-    // Framebuffer Surface
-
-    textureCfg.height = height2;
-    textureCfg.width = width2;
-    texture = render->create<T>(textureCfg);
-
-    surfaceCfg.width = &textureCfg.width;
-    surfaceCfg.height = &textureCfg.height;
-    surfaceCfg.texture = texture;
-    surface = render->create<T>(surfaceCfg);
-
-    render->bind(surface);
 
     {
         vertex = render->create<T>(mVertexCfg);
-
-        programCfg.fragmentSource = &fragmentSource;
-        programCfg.vertexSource = &vertexSource;
-        programCfg.vertex = vertex;
-        program = render->create<T>(programCfg);
 
         aTextureCfg.height = height2;
         aTextureCfg.width = width2;
@@ -217,8 +194,21 @@ int main() {
         aTextureCfg.key = "ourTexture2";
         aTexture = render->create<T>(aTextureCfg);
 
-        program->bind(aTexture);
-        surface->bind(program);
+        programCfg.fragmentSource = &fragmentSource;
+        programCfg.vertexSource = &vertexSource;
+        programCfg.vertex = vertex;
+        programCfg.textures = {aTexture};
+        program = render->create<T>(programCfg);
+
+        textureCfg.height = height2;
+        textureCfg.width = width2;
+        texture = render->create<T>(textureCfg);
+
+        surfaceCfg.width = &textureCfg.width;
+        surfaceCfg.height = &textureCfg.height;
+        surfaceCfg.texture = texture;
+        surfaceCfg.programs = {program};
+        surface = render->create<T>(surfaceCfg);
     }
 
     render->create();

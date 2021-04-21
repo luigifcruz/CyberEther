@@ -17,6 +17,7 @@ public:
         bool resizable = false;
         bool enableImgui = false;
         std::string title = "Render";
+        std::vector<std::shared_ptr<Surface>> surfaces;
     };
 
     Instance(Config& c) : cfg(c) {};
@@ -26,8 +27,6 @@ public:
     virtual Result destroy() = 0;
     virtual Result start() = 0;
     virtual Result end() = 0;
-
-    Result bind(std::shared_ptr<Surface>);
 
     virtual bool keepRunning() = 0;
 
@@ -45,8 +44,6 @@ public:
 protected:
     Config& cfg;
     struct State* state;
-
-    std::vector<std::shared_ptr<Surface>> surfaces;
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;

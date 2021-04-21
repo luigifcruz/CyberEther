@@ -2,12 +2,6 @@
 
 namespace Render {
 
-Result Instance::bind(std::shared_ptr<Surface> surface) {
-    surfaces.push_back(surface);
-
-    return Result::SUCCESS;
-}
-
 template<class T>
 std::shared_ptr<T> Instance::Create(Instance::Config& cfg) {
     return std::make_shared<T>(cfg);
@@ -20,7 +14,9 @@ std::shared_ptr<Program> Instance::create(Program::Config& cfg) {
 
 template<class T>
 std::shared_ptr<Surface> Instance::create(Surface::Config& cfg) {
-    return std::make_shared<typename T::Surface>(cfg, *state);
+    auto surface = std::make_shared<typename T::Surface>(cfg, *state);
+    this->cfg.surfaces.push_back(surface);
+    return surface;
 }
 
 template<class T>

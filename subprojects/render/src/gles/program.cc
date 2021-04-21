@@ -27,10 +27,10 @@ Result GLES::Program::create() {
     }
 
     int i = 0;
-    for (const auto& texture : textures) {
+    for (const auto& texture : cfg.textures) {
         ASSERT_SUCCESS(texture->create());
         ASSERT_SUCCESS(this->setUniform(texture->config().key,
-                    std::vector<int>{i++}))
+                    std::vector<int>{i++}));
     }
 
     ASSERT_SUCCESS(cfg.vertex->create());
@@ -41,7 +41,7 @@ Result GLES::Program::create() {
 Result GLES::Program::destroy() {
     ASSERT_SUCCESS(cfg.vertex->destroy());
 
-    for (const auto& texture : textures) {
+    for (const auto& texture : cfg.textures) {
         ASSERT_SUCCESS(texture->destroy());
     }
 
@@ -52,7 +52,7 @@ Result GLES::Program::destroy() {
 
 Result GLES::Program::start() {
     int i = 0;
-    for (const auto& texture : textures) {
+    for (const auto& texture : cfg.textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
         ASSERT_SUCCESS(texture->start());
     }
@@ -67,7 +67,7 @@ Result GLES::Program::end() {
     ASSERT_SUCCESS(cfg.vertex->end());
 
     int i = 0;
-    for (const auto& texture : textures) {
+    for (const auto& texture : cfg.textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
         ASSERT_SUCCESS(texture->end());
     }

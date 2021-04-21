@@ -13,6 +13,7 @@ public:
         int* width;
         int* height;
         std::shared_ptr<Texture> texture;
+        std::vector<std::shared_ptr<Program>> programs;
     };
 
     Surface(Config& c) : cfg(c) {};
@@ -27,8 +28,6 @@ public:
 
 protected:
     Config& cfg;
-
-    std::vector<std::shared_ptr<Program>> programs;
 };
 
 } // namespace Render

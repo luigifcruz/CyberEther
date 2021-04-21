@@ -3,7 +3,7 @@
 namespace Render {
 
 Result GLES::Surface::create() {
-    for (auto &program : programs) {
+    for (auto &program : cfg.programs) {
         ASSERT_SUCCESS(program->create());
     }
 
@@ -19,7 +19,7 @@ Result GLES::Surface::create() {
 }
 
 Result GLES::Surface::destroy() {
-    for (auto &program : programs) {
+    for (auto &program : cfg.programs) {
         ASSERT_SUCCESS(program->destroy());
     }
 
@@ -41,7 +41,7 @@ Result GLES::Surface::start() {
 }
 
 Result GLES::Surface::end() {
-    for (auto &program : programs) {
+    for (auto &program : cfg.programs) {
         ASSERT_SUCCESS(program->start());
         ASSERT_SUCCESS(program->end());
     }

@@ -13,6 +13,7 @@ public:
         const char* const* vertexSource = nullptr;
         const char* const* fragmentSource = nullptr;
         std::shared_ptr<Vertex> vertex;
+        std::vector<std::shared_ptr<Texture>> textures;
     };
 
     Program(Config& c) : cfg(c) {};
@@ -23,15 +24,11 @@ public:
     virtual Result start() = 0;
     virtual Result end() = 0;
 
-    Result bind(std::shared_ptr<Texture>);
-
     virtual Result setUniform(std::string, const std::vector<int> &) = 0;
     virtual Result setUniform(std::string, const std::vector<float> &) = 0;
 
 protected:
     Config& cfg;
-
-    std::vector<std::shared_ptr<Texture>> textures;
 };
 
 } // namespace Render

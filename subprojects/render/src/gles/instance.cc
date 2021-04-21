@@ -32,7 +32,7 @@ Result GLES::create() {
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
-    for (auto &surface : surfaces) {
+    for (auto &surface : cfg.surfaces) {
         ASSERT_SUCCESS(surface->create());
     }
 
@@ -46,7 +46,7 @@ Result GLES::create() {
 }
 
 Result GLES::destroy() {
-    for (auto &surface : surfaces) {
+    for (auto &surface : cfg.surfaces) {
         ASSERT_SUCCESS(surface->destroy());
     }
 
@@ -120,7 +120,7 @@ Result GLES::start() {
 }
 
 Result GLES::end() {
-    for (auto &surface : surfaces) {
+    for (auto &surface : cfg.surfaces) {
         ASSERT_SUCCESS(surface->start());
         ASSERT_SUCCESS(surface->end());
     }
