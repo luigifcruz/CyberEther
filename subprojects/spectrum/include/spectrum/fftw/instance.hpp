@@ -2,16 +2,25 @@
 #define SPECTRUM_FFTW_INSTANCE_H
 
 #include "spectrum/base/instance.hpp"
-#include "spectrum/fftw/api.hpp"
 
 namespace Spectrum {
 
-class FFTW::Instance : public Spectrum::Instance {
+class FFTW : public Spectrum::Instance {
 public:
-    Instance(Config& c, State& s) : Spectrum::Instance(c), state(s) {};
+    class LinePlot;
 
-private:
-    State& state;
+    FFTW(Config& c) : Spectrum::Instance(c) {};
+
+    Result create();
+    Result destroy();
+
+    Result feed();
+
+protected:
+};
+
+struct State : Spectrum::FFTW {
+    std::shared_ptr<Render::Instance> render;
 };
 
 } // namespace Spectrum

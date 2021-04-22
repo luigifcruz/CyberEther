@@ -11,8 +11,8 @@ if all_fftw_deps_found
   cfg_lst.set('SPECTRUM_FFTW_AVAILABLE', true)
   dep_lst += fftw_deps
   src_lst += files([
-    'instance.cpp',
-    'api.cpp',
+    'instance.cc',
+    'lineplot.cc',
   ])
   message('FFTW Backend Available: YES')
 else

@@ -3,7 +3,12 @@
 
 #include "types.hpp"
 
+#include "spectrum/base/instance.hpp"
+#include "spectrum/base/lineplot.hpp"
+
 #ifdef SPECTRUM_FFTW_AVAILABLE
+#include "spectrum/fftw/instance.hpp"
+#include "spectrum/fftw/lineplot.hpp"
 #endif
 
 namespace Spectrum {

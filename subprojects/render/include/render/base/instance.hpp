@@ -17,6 +17,7 @@ public:
         float scale = -1.0; // if -1.0 it's set to automatic
         bool resizable = false;
         bool enableImgui = false;
+        bool enableDebug = false;
         std::string title = "Render";
         std::vector<std::shared_ptr<Surface>> surfaces;
     };

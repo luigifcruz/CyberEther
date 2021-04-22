@@ -60,6 +60,8 @@ Result GLES::destroy() {
 
     glfwDestroyWindow(state->window);
     glfwTerminate();
+    free(state);
+
     return Result::SUCCESS;
 }
 
@@ -108,10 +110,22 @@ Result GLES::endImgui() {
 }
 
 Result GLES::start() {
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
     glLineWidth(1.0 * cfg.scale);
 
     if (cfg.enableImgui) {
         this->startImgui();
+
+        if (cfg.enableDebug) {
+            ImGui::ShowMetricsWindow();
+            ImGui::Begin("Render Info");
+            ImGui::Text("Renderer Name: %s", this->renderer_str().c_str());
+            ImGui::Text("Renderer Vendor: %s", this->vendor_str().c_str());
+            ImGui::Text("Renderer Version: %s", this->version_str().c_str());
+            ImGui::Text("Renderer GLSL Version: %s", this->glsl_str().c_str());
+            ImGui::End();
+        }
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

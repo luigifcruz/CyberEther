@@ -35,6 +35,8 @@ protected:
     ImGuiIO* io;
     ImGuiStyle* style;
 
+    uint vao;
+
     Result createImgui();
     Result destroyImgui();
     Result startImgui();
