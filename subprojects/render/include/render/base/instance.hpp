@@ -29,6 +29,10 @@ public:
     virtual Result start() = 0;
     virtual Result end() = 0;
 
+    Config& config() {
+        return cfg;
+    }
+
     virtual bool keepRunning() = 0;
 
     virtual std::string renderer_str() = 0;

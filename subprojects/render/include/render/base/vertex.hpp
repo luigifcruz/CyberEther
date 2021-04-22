@@ -39,8 +39,11 @@ public:
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
-    virtual Result start() = 0;
-    virtual Result end() = 0;
+    virtual Result draw() = 0;
+
+    Config& config() {
+        return cfg;
+    }
 
     virtual Result update() = 0;
 

@@ -12,7 +12,7 @@ public:
     struct Config {
         const char* const* vertexSource = nullptr;
         const char* const* fragmentSource = nullptr;
-        std::shared_ptr<Vertex> vertex;
+        std::vector<std::shared_ptr<Vertex>> vertices;
         std::vector<std::shared_ptr<Texture>> textures;
     };
 
@@ -21,8 +21,11 @@ public:
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
-    virtual Result start() = 0;
-    virtual Result end() = 0;
+    virtual Result draw() = 0;
+
+    Config& config() {
+        return cfg;
+    }
 
     virtual Result setUniform(std::string, const std::vector<int> &) = 0;
     virtual Result setUniform(std::string, const std::vector<float> &) = 0;

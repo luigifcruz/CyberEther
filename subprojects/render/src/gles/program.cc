@@ -26,20 +26,24 @@ Result GLES::Program::create() {
         return Result::RENDER_BACKEND_ERROR;
     }
 
-    int i = 0;
+    i = 0;
     for (const auto& texture : cfg.textures) {
         ASSERT_SUCCESS(texture->create());
         ASSERT_SUCCESS(this->setUniform(texture->config().key,
                     std::vector<int>{i++}));
     }
 
-    ASSERT_SUCCESS(cfg.vertex->create());
+    for (const auto& vertex : cfg.vertices) {
+        ASSERT_SUCCESS(vertex->create());
+    }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Program::destroy() {
-    ASSERT_SUCCESS(cfg.vertex->destroy());
+    for (const auto& vertex : cfg.vertices) {
+        ASSERT_SUCCESS(vertex->destroy());
+    }
 
     for (const auto& texture : cfg.textures) {
         ASSERT_SUCCESS(texture->destroy());
@@ -50,23 +54,22 @@ Result GLES::Program::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::start() {
-    int i = 0;
+Result GLES::Program::draw() {
+    i = 0;
     for (const auto& texture : cfg.textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
         ASSERT_SUCCESS(texture->start());
     }
 
-    ASSERT_SUCCESS(cfg.vertex->start());
     glUseProgram(shader);
 
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
+    i = 0;
+    for (const auto& vertex : cfg.vertices) {
+        ASSERT_SUCCESS(this->setUniform("vertexIdx", std::vector<int>{i++}));
+        ASSERT_SUCCESS(vertex->draw());
+    }
 
-Result GLES::Program::end() {
-    ASSERT_SUCCESS(cfg.vertex->end());
-
-    int i = 0;
+    i = 0;
     for (const auto& texture : cfg.textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
         ASSERT_SUCCESS(texture->end());
@@ -80,13 +83,6 @@ Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars
     // optimize: are std::vector performant?
     glUseProgram(shader);
     int loc = glGetUniformLocation(shader, name.c_str());
-
-    if (loc == 1) {
-#ifdef RENDER_DEBUG
-        std::cerr << "[RENDER:PROGRAM] Invalid program location." << std::endl;
-#endif
-        return Result::RENDER_BACKEND_ERROR;
-    }
 
     switch(vars.size()) {
         case 1:
@@ -116,13 +112,6 @@ Result GLES::Program::setUniform(std::string name, const std::vector<float> & va
     // optimize: are std::vector performant?
     glUseProgram(shader);
     int loc = glGetUniformLocation(shader, name.c_str());
-
-    if (loc == 1) {
-#ifdef RENDER_DEBUG
-        std::cerr << "[RENDER:PROGRAM] Invalid program location." << std::endl;
-#endif
-        return Result::RENDER_BACKEND_ERROR;
-    }
 
     switch(vars.size()) {
         case 1:

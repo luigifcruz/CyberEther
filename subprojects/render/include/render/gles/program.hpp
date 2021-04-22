@@ -11,8 +11,7 @@ public:
 
     Result create();
     Result destroy();
-    Result start();
-    Result end();
+    Result draw();
 
     Result setUniform(std::string, const std::vector<int> &);
     Result setUniform(std::string, const std::vector<float> &);
@@ -21,6 +20,7 @@ protected:
     State& state;
 
     uint shader;
+    int i;
 
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);

@@ -31,19 +31,14 @@ Result GLES::Surface::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Surface::start() {
+Result GLES::Surface::draw() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glViewport(0, 0, *cfg.width, *cfg.height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result GLES::Surface::end() {
     for (auto &program : cfg.programs) {
-        ASSERT_SUCCESS(program->start());
-        ASSERT_SUCCESS(program->end());
+        ASSERT_SUCCESS(program->draw());
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

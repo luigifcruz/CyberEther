@@ -11,8 +11,7 @@ public:
 
     Result create();
     Result destroy();
-    Result start();
-    Result end();
+    Result draw();
 
 protected:
     State& state;

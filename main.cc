@@ -34,6 +34,7 @@ out vec4 FragColor;
 in vec2 TexCoord;
 
 uniform float Scale;
+uniform int vertexIdx;
 uniform sampler2D ourTexture;
 
 void main() {
@@ -49,10 +50,15 @@ out vec4 FragColor;
 in vec2 TexCoord;
 
 uniform float Scale;
+uniform int vertexIdx;
 uniform sampler2D ourTexture2;
 
 void main() {
-    FragColor = vec4(0.0, 0.0, 0.0, 0.0);//texture(ourTexture2, TexCoord);
+    if (vertexIdx == 1) {
+        FragColor = vec4(Scale, 1.0, 0.0, 0.0);
+    } else {
+        FragColor = texture(ourTexture2, TexCoord);
+    }
 }
 )END";
 
@@ -85,6 +91,7 @@ std::shared_ptr<Render::Surface> surface;
 std::shared_ptr<Render::Texture> aTexture;
 std::shared_ptr<Render::Program> program;
 std::shared_ptr<Render::Vertex> vertex;
+std::shared_ptr<Render::Vertex> vertexb;
 
 static float scale = -1.0f, scale_min = -1.0f, scale_max = 1.0f;
 
@@ -92,9 +99,8 @@ void render_loop() {
     render->start();
 
     vertexCfg.buffers.at(0).data[1] = scale;
+    program->setUniform("Scale", std::vector<float>{ scale });
     vertex->update();
-
-    mProgram->setUniform("Scale", std::vector<float>{ scale });
 
     ImGui::ShowMetricsWindow();
 
@@ -192,7 +198,7 @@ int main() {
 
         mProgramCfg.fragmentSource = &mFragmentSource;
         mProgramCfg.vertexSource = &vertexSource;
-        mProgramCfg.vertex = mVertex;
+        mProgramCfg.vertices = {mVertex};
         mProgramCfg.textures = {amTexture};
         mProgram = render->create<T>(mProgramCfg);
 
@@ -203,6 +209,7 @@ int main() {
     }
 
     {
+        vertexb = render->create<T>(mVertexCfg);
 
         vertexCfg.indices = p;
         vertexCfg.buffers = {
@@ -224,7 +231,7 @@ int main() {
 
         programCfg.fragmentSource = &fragmentSource;
         programCfg.vertexSource = &vertexSource;
-        programCfg.vertex = vertex;
+        programCfg.vertices = {vertexb, vertex};
         programCfg.textures = {aTexture};
         program = render->create<T>(programCfg);
 

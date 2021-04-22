@@ -21,10 +21,11 @@ public:
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
-    virtual Result start() = 0;
-    virtual Result end() = 0;
+    virtual Result draw() = 0;
 
-    Result bind(std::shared_ptr<Program>);
+    Config& config() {
+        return cfg;
+    }
 
 protected:
     Config& cfg;

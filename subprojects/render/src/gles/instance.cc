@@ -119,8 +119,7 @@ Result GLES::start() {
 
 Result GLES::end() {
     for (auto &surface : cfg.surfaces) {
-        ASSERT_SUCCESS(surface->start());
-        ASSERT_SUCCESS(surface->end());
+        ASSERT_SUCCESS(surface->draw());
     }
 
     if (cfg.enableImgui) {
