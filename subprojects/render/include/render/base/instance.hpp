@@ -14,6 +14,7 @@ public:
     struct Config {
         int width = 1280;
         int height = 720;
+        float scale = -1.0; // if -1.0 it's set to automatic
         bool resizable = false;
         bool enableImgui = false;
         std::string title = "Render";

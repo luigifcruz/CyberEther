@@ -1,6 +1,7 @@
 #define RENDER_DEBUG
 
 #include "render/base.hpp"
+#include "render/extras.hpp"
 #include "spectrum/base.hpp"
 
 #include <iostream>
@@ -51,21 +52,9 @@ uniform float Scale;
 uniform sampler2D ourTexture2;
 
 void main() {
-    FragColor = texture(ourTexture2, TexCoord);
+    FragColor = vec4(0.0, 0.0, 0.0, 0.0);//texture(ourTexture2, TexCoord);
 }
 )END";
-
-const float vertices[] = {
-    +1.0f, +1.0f, 0.0f, +0.0f, +0.0f,
-    +1.0f, -1.0f, 0.0f, +0.0f, +1.0f,
-    -1.0f, -1.0f, 0.0f, +1.0f, +1.0f,
-    -1.0f, +1.0f, 0.0f, +1.0f, +0.0f,
-};
-
-const uint elements[] = {
-    0, 1, 2,
-    2, 3, 0
-};
 
 int width, height, nrChannels;
 unsigned char *data = stbi_load("minime.jpg", &width, &height, &nrChannels, 0);
@@ -97,10 +86,13 @@ std::shared_ptr<Render::Texture> aTexture;
 std::shared_ptr<Render::Program> program;
 std::shared_ptr<Render::Vertex> vertex;
 
-static float scale = 1.0f, scale_min = 0.0f, scale_max = 1.0f;
+static float scale = -1.0f, scale_min = -1.0f, scale_max = 1.0f;
 
 void render_loop() {
     render->start();
+
+    vertexCfg.buffers.at(0).data[1] = scale;
+    vertex->update();
 
     mProgram->setUniform("Scale", std::vector<float>{ scale });
 
@@ -134,6 +126,7 @@ void render_loop() {
 
     ImGui::Begin("Uniform Tester");
     ImGui::SliderScalar("range", ImGuiDataType_Float, &scale, &scale_min, &scale_max);
+    ImGui::Text("Value: %f", vertexCfg.buffers.at(0).data[1]);
     ImGui::End();
 
     ImGui::Begin("Render Info");
@@ -157,6 +150,28 @@ void render_loop() {
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
+    static std::vector<float> a;
+    static std::vector<uint> p;
+    int b = 0;
+    for (float i = -1.0f; i < +1.0f; i += 0.10f) {
+        a.push_back(-1.0f);
+        a.push_back(i);
+        a.push_back(+0.0f);
+        p.push_back(b++);
+        a.push_back(+1.0f);
+        a.push_back(i);
+        a.push_back(+0.0f);
+        p.push_back(b++);
+        a.push_back(i);
+        a.push_back(-1.0f);
+        a.push_back(+0.0f);
+        p.push_back(b++);
+        a.push_back(i);
+        a.push_back(+1.0f);
+        a.push_back(+0.0f);
+        p.push_back(b++);
+    }
+
     instanceCfg.width = width;
     instanceCfg.height = height;
     instanceCfg.resizable = true;
@@ -165,6 +180,8 @@ int main() {
     render = Render::Instance::Create<T>(instanceCfg);
 
     {
+        mVertexCfg.buffers = Render::Extras::FillScreenVertices;
+        mVertexCfg.indices = Render::Extras::FillScreenIndices;
         mVertex = render->create<T>(mVertexCfg);
 
         amTextureCfg.height = height;
@@ -186,7 +203,18 @@ int main() {
     }
 
     {
-        vertex = render->create<T>(mVertexCfg);
+
+        vertexCfg.indices = p;
+        vertexCfg.buffers = {
+            {
+                .data = a.data(),
+                .size = a.size(),
+                .stride = 3,
+                .usage = Render::Vertex::Buffer::Dynamic,
+            },
+        };
+        vertexCfg.mode = Render::Vertex::Mode::Lines;
+        vertex = render->create<T>(vertexCfg);
 
         aTextureCfg.height = height2;
         aTextureCfg.width = width2;

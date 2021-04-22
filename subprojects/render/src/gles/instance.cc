@@ -24,19 +24,23 @@ Result GLES::create() {
 
     glfwMakeContextCurrent(state->window);
 
+    if (cfg.scale == -1.0) {
+#ifndef __EMSCRIPTEN__
+        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+        glfwGetMonitorContentScale(monitor, &cfg.scale, nullptr);
+#else
+        cfg.scale = 1.0;
+#endif
+    }
+
     cached_renderer_str = (const char*)glGetString(GL_RENDERER);
     cached_version_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
     cached_vendor_str = (const char*)glGetString(GL_VENDOR);
     cached_glsl_str = (const char*)glGetString(GL_VERSION);
 
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-
     for (auto &surface : cfg.surfaces) {
         ASSERT_SUCCESS(surface->create());
     }
-
-    glBindVertexArray(0);
 
     if (cfg.enableImgui) {
         this->createImgui();
@@ -54,7 +58,6 @@ Result GLES::destroy() {
         this->destroyImgui();
     }
 
-    glDeleteVertexArrays(1, &vao);
     glfwDestroyWindow(state->window);
     glfwTerminate();
     return Result::SUCCESS;
@@ -70,13 +73,8 @@ Result GLES::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    float xscale = 1.0, yscale = 1.0;
-#ifndef __EMSCRIPTEN__
-    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-    glfwGetMonitorContentScale(monitor, &xscale, &yscale);
-    style->ScaleAllSizes(xscale);
-#endif
-    io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * xscale, NULL, NULL);
+    style->ScaleAllSizes(cfg.scale);
+    io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * cfg.scale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
@@ -110,11 +108,11 @@ Result GLES::endImgui() {
 }
 
 Result GLES::start() {
+    glLineWidth(1.0 * cfg.scale);
+
     if (cfg.enableImgui) {
         this->startImgui();
     }
-
-    glBindVertexArray(vao);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -132,8 +130,6 @@ Result GLES::end() {
     glfwGetFramebufferSize(state->window, &cfg.width, &cfg.height);
     glfwSwapBuffers(state->window);
     glfwPollEvents();
-
-    glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }

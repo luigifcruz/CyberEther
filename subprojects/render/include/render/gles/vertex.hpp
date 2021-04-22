@@ -14,10 +14,12 @@ public:
     Result start();
     Result end();
 
+    Result update();
+
 protected:
     State& state;
 
-    uint vbo, ebo;
+    uint vao, ebo;
 };
 
 } // namespace Render

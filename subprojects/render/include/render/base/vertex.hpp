@@ -7,11 +7,31 @@ namespace Render {
 
 class Vertex {
 public:
+    enum Mode {
+        Triangles,
+        LineLoop,
+        Points,
+        Lines,
+    };
+
+    struct Buffer {
+        enum Usage {
+            Dynamic,
+            Static,
+            Stream,
+        };
+
+        float* data;
+        size_t size = 0;
+        size_t stride = 0;
+        Usage usage = Static;
+        uint index;
+    };
+
     struct Config {
-        float *vertices;
-        float *elements;
-        int a;
-        int b;
+        std::vector<Buffer> buffers;
+        std::vector<uint> indices;
+        Mode mode = Triangles;
     };
 
     Vertex(Config& c) : cfg(c) {};
@@ -21,6 +41,8 @@ public:
     virtual Result destroy() = 0;
     virtual Result start() = 0;
     virtual Result end() = 0;
+
+    virtual Result update() = 0;
 
 protected:
     Config& cfg;
