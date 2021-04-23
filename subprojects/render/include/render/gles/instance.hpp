@@ -31,9 +31,15 @@ public:
     std::string vendor_str();
     std::string glsl_str();
 
+    std::shared_ptr<Render::Surface> create(Render::Surface::Config&);
+    std::shared_ptr<Render::Program> create(Render::Program::Config&);
+    std::shared_ptr<Render::Texture> create(Render::Texture::Config&);
+    std::shared_ptr<Render::Vertex> create(Render::Vertex::Config&);
+
 protected:
     ImGuiIO* io;
     ImGuiStyle* style;
+    GLFWwindow* window;
 
     uint vao;
 
@@ -43,10 +49,6 @@ protected:
     Result endImgui();
 
     static Result getError(std::string, std::string, int);
-};
-
-struct State : Render::GLES {
-    GLFWwindow* window;
 };
 
 } // namespace Render

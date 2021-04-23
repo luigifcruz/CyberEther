@@ -26,6 +26,7 @@ namespace Spectrum {
 
 enum struct Result {
     SUCCESS = 0,
+    FAIL,
 };
 
 enum struct DataFormat {

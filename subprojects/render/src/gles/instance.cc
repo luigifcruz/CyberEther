@@ -2,6 +2,7 @@
 #include "render/gles/program.hpp"
 #include "render/gles/surface.hpp"
 #include "render/gles/texture.hpp"
+#include "render/gles/vertex.hpp"
 
 namespace Render {
 
@@ -15,14 +16,13 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
 
-    state = (State*)malloc(sizeof(State));
-    state->window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
-    if (!state->window) {
+    window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
+    if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
     }
 
-    glfwMakeContextCurrent(state->window);
+    glfwMakeContextCurrent(window);
 
     if (cfg.scale == -1.0) {
 #ifndef __EMSCRIPTEN__
@@ -58,9 +58,8 @@ Result GLES::destroy() {
         this->destroyImgui();
     }
 
-    glfwDestroyWindow(state->window);
+    glfwDestroyWindow(window);
     glfwTerminate();
-    free(state);
 
     return Result::SUCCESS;
 }
@@ -80,7 +79,7 @@ Result GLES::createImgui() {
 
     ImGui::StyleColorsDark();
 
-    ImGui_ImplGlfw_InitForOpenGL(state->window, true);
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(nullptr);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -140,15 +139,15 @@ Result GLES::end() {
         this->endImgui();
     }
 
-    glfwGetFramebufferSize(state->window, &cfg.width, &cfg.height);
-    glfwSwapBuffers(state->window);
+    glfwGetFramebufferSize(window, &cfg.width, &cfg.height);
+    glfwSwapBuffers(window);
     glfwPollEvents();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 bool GLES::keepRunning() {
-    return !glfwWindowShouldClose(state->window);
+    return !glfwWindowShouldClose(window);
 }
 
 std::string GLES::renderer_str() {
@@ -176,6 +175,24 @@ Result GLES::getError(std::string func, std::string file, int line) {
         return Result::RENDER_BACKEND_ERROR;
     }
     return Result::SUCCESS;
+}
+
+std::shared_ptr<Surface> GLES::create(Render::Surface::Config& cfg) {
+    auto surface = std::make_shared<GLES::Surface>(cfg, *this);
+    this->cfg.surfaces.push_back(surface);
+    return surface;
+}
+
+std::shared_ptr<Program> GLES::create(Render::Program::Config& cfg) {
+    return std::make_shared<GLES::Program>(cfg, *this);
+}
+
+std::shared_ptr<Texture> GLES::create(Render::Texture::Config& cfg) {
+    return std::make_shared<GLES::Texture>(cfg, *this);
+}
+
+std::shared_ptr<Vertex> GLES::create(Render::Vertex::Config& cfg) {
+    return std::make_shared<GLES::Vertex>(cfg, *this);
 }
 
 } // namespace Render

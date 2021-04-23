@@ -7,7 +7,7 @@ namespace Render {
 
 class GLES::Program : public Render::Program {
 public:
-    Program(Config& c, State& s) : Render::Program(c), state(s) {};
+    Program(Config& c, GLES& i) : Render::Program(c), inst(i) {};
 
     Result create();
     Result destroy();
@@ -17,10 +17,10 @@ public:
     Result setUniform(std::string, const std::vector<float> &);
 
 protected:
-    State& state;
+    GLES& inst;
 
-    uint shader;
     int i;
+    uint shader;
 
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);

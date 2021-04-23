@@ -7,7 +7,7 @@ namespace Render {
 
 class GLES::Vertex : public Render::Vertex {
 public:
-    Vertex(Config& cfg, State& s) : Render::Vertex(cfg), state(s) {};
+    Vertex(Config& cfg, GLES& i) : Render::Vertex(cfg), inst(i) {};
 
     Result create();
     Result destroy();
@@ -16,7 +16,7 @@ public:
     Result update();
 
 protected:
-    State& state;
+    GLES& inst;
 
     uint vao, ebo;
 };

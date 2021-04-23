@@ -16,11 +16,9 @@ public:
 
     Result feed();
 
-protected:
-};
+    std::shared_ptr<Spectrum::LinePlot> create(Spectrum::LinePlot::Config&);
 
-struct State : Spectrum::FFTW {
-    std::shared_ptr<Render::Instance> render;
+protected:
 };
 
 } // namespace Spectrum

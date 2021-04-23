@@ -30,6 +30,8 @@ public:
         return cfg;
     }
 
+    virtual std::shared_ptr<LinePlot> create(LinePlot::Config&) = 0;
+
 protected:
     Config& cfg;
 };

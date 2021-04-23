@@ -10,8 +10,8 @@ namespace Render {
 class Surface {
 public:
     struct Config {
-        int* width;
-        int* height;
+        int width;
+        int height;
         std::shared_ptr<Texture> texture;
         std::vector<std::shared_ptr<Program>> programs;
     };

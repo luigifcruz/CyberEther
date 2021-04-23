@@ -3,6 +3,7 @@
 namespace Render {
 
 Result GLES::Vertex::create() {
+    std::cout << __PRETTY_FUNCTION__ << std::endl;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 

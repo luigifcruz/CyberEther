@@ -9,9 +9,6 @@
 #include <emscripten.h>
 #endif
 
-using R = Render::GLES;
-using S = Spectrum::FFTW;
-
 static std::shared_ptr<Render::Instance> render;
 static std::shared_ptr<Spectrum::Instance> spectrum;
 static std::shared_ptr<Spectrum::LinePlot> lineplot;
@@ -33,31 +30,26 @@ void render_loop() {
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
-    Render::Instance::Config instanceCfg = {
-        .width = 1920,
-        .height = 1080,
-        .resizable = true,
-        .enableImgui = true,
-        .enableDebug = true,
-        .title = "CyberEther"
-    };
-    render = Render::Instance::Create<R>(instanceCfg);
+    Render::Instance::Config renderCfg;
+    renderCfg.width = 1920;
+    renderCfg.height = 1080;
+    renderCfg.resizable = true;
+    renderCfg.enableImgui = true;
+    renderCfg.enableDebug = true;
+    renderCfg.title = "CyberEther";
+    render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-    Spectrum::Instance::Config spectrumCfg = {
-        .render = render,
-        .bandwidth = 10e6,
-        .frequency = 96.9e6,
-        .size = 0,
-        .buffer = nullptr,
-        .format = Spectrum::DataFormat::CF64,
-    };
-    spectrum = Spectrum::Instance::Create<S>(spectrumCfg);
+    Spectrum::Instance::Config spectrumCfg;
+    spectrumCfg.render = render;
+    spectrum = Spectrum::Instantiate(Spectrum::API::FFTW, spectrumCfg);
 
-    Spectrum::LinePlot::Config lineplotCfg;
-    lineplot = spectrum->create<S>(lineplotCfg);
+    static Spectrum::LinePlot::Config lineplotCfg;
+    lineplotCfg.height = 1080;
+    lineplotCfg.width = 1920;
+    lineplot = spectrum->create(lineplotCfg);
 
-    render->create();
     spectrum->create();
+    render->create();
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(render_loop, 0, 1);
@@ -66,6 +58,7 @@ int main() {
         render_loop();
 #endif
 
+    spectrum->destroy();
     render->destroy();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;

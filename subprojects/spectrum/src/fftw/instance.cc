@@ -4,10 +4,6 @@
 namespace Spectrum {
 
 Result FFTW::create() {
-    state = (State*)malloc(sizeof(State));
-    std::cout << (state == nullptr) << std::endl;
-    state->render = cfg.render;
-
     for (const auto& lineplot : cfg.lineplots) {
         lineplot->create();
     }
@@ -20,13 +16,17 @@ Result FFTW::destroy() {
         lineplot->destroy();
     }
 
-    free(state);
-
     return Result::SUCCESS;
 }
 
 Result FFTW::feed() {
     return Result::SUCCESS;
+}
+
+std::shared_ptr<Spectrum::LinePlot> FFTW::create(Spectrum::LinePlot::Config& cfg) {
+    auto lineplot = std::make_shared<FFTW::LinePlot>(cfg, *this);
+    this->cfg.lineplots.push_back(lineplot);
+    return lineplot;
 }
 
 } // namespace Spectrum

@@ -7,7 +7,7 @@ namespace Render {
 
 class GLES::Texture : public Render::Texture {
 public:
-    Texture(Config& cfg, State& s) : Render::Texture(cfg), state(s) {};
+    Texture(Config& cfg, GLES& i) : Render::Texture(cfg), inst(i) {};
 
     Result create();
     Result destroy();
@@ -20,7 +20,7 @@ public:
     Result fill(int, int, int, int);
 
 protected:
-    State& state;
+    GLES& inst;
     uint tex;
 };
 

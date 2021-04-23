@@ -7,14 +7,15 @@ namespace Render {
 
 class GLES::Surface : public Render::Surface {
 public:
-    Surface(Config& cfg, State& s) : Render::Surface(cfg), state(s) {};
+    Surface(Config& cfg, GLES& i) : Render::Surface(cfg), inst(i) {};
 
     Result create();
     Result destroy();
     Result draw();
 
 protected:
-    State& state;
+    GLES& inst;
+
     uint fbo = 0;
 };
 

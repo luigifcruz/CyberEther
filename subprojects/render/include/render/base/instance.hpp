@@ -14,7 +14,7 @@ public:
     struct Config {
         int width = 1280;
         int height = 720;
-        float scale = -1.0; // if -1.0 it's set to automatic
+        float scale = -1.0;
         bool resizable = false;
         bool enableImgui = false;
         bool enableDebug = false;
@@ -41,15 +41,13 @@ public:
     virtual std::string vendor_str() = 0;
     virtual std::string glsl_str() = 0;
 
-    template<class T> static std::shared_ptr<T> Create(Instance::Config&);
-    template<class T> std::shared_ptr<Program> create(Program::Config&);
-    template<class T> std::shared_ptr<Surface> create(Surface::Config&);
-    template<class T> std::shared_ptr<Texture> create(Texture::Config&);
-    template<class T> std::shared_ptr<Vertex> create(Vertex::Config&);
+    virtual std::shared_ptr<Surface> create(Surface::Config&) = 0;
+    virtual std::shared_ptr<Program> create(Program::Config&) = 0;
+    virtual std::shared_ptr<Texture> create(Texture::Config&) = 0;
+    virtual std::shared_ptr<Vertex> create(Vertex::Config&) = 0;
 
 protected:
     Config& cfg;
-    struct State* state;
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;

@@ -7,7 +7,7 @@ namespace Spectrum {
 
 class FFTW::LinePlot : public Spectrum::LinePlot {
 public:
-    LinePlot(Config& cfg, State& s) : Spectrum::LinePlot(cfg), state(s) {};
+    LinePlot(Config& cfg, FFTW& i) : Spectrum::LinePlot(cfg), inst(i) {};
     virtual ~LinePlot() = default;
 
     Result create();
@@ -17,8 +17,7 @@ public:
     uint raw();
 
 protected:
-    State& state;
-    std::shared_ptr<Render::Texture> texture;
+    FFTW& inst;
 };
 
 } // namespace Render

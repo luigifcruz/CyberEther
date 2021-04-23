@@ -25,40 +25,32 @@ Result FFTW::LinePlot::create() {
         p.push_back(b++);
     }
 
-    Render::Vertex::Config gridVertexCfg = {
-        .buffers = {
-            {
-                .data = a.data(),
-                .size = a.size(),
-                .stride = 3,
-                .usage = Render::Vertex::Buffer::Dynamic,
-            },
+    vertexCfg.buffers = {
+        {
+            .data = a.data(),
+            .size = a.size(),
+            .stride = 3,
+            .usage = Render::Vertex::Buffer::Static,
         },
-        .indices = p,
-        .mode = Render::Vertex::Mode::Lines,
     };
-    auto vertex = state.render->create<Render::GLES>(gridVertexCfg);
+    vertexCfg.indices = p;
+    vertexCfg.mode = Render::Vertex::Mode::Lines;
+    vertex = inst.cfg.render->create(vertexCfg);
 
-    Render::Program::Config programCfg = {
-        .vertexSource = &vertexSource,
-        .fragmentSource = &fragmentSource,
-        .vertices = {vertex},
-    };
-    auto program = state.render->create<Render::GLES>(programCfg);
+    programCfg.vertexSource = &vertexSource;
+    programCfg.fragmentSource = &fragmentSource;
+    programCfg.vertices = {vertex};
+    program = inst.cfg.render->create(programCfg);
 
-    Render::Texture::Config textureCfg = {
-        .width = cfg.width,
-        .height = cfg.height,
-    };
-    texture = state.render->create<Render::GLES>(textureCfg);
+    textureCfg.width = cfg.width;
+    textureCfg.height = cfg.height;
+    texture = inst.cfg.render->create(textureCfg);
 
-    Render::Surface::Config surfaceCfg = {
-        .width = &textureCfg.width,
-        .height = &textureCfg.height,
-        .texture = texture,
-        .programs = {program},
-    };
-    auto surface = state.render->create<Render::GLES>(surfaceCfg);
+    surfaceCfg.width = cfg.width;
+    surfaceCfg.height = cfg.height;
+    surfaceCfg.texture = texture;
+    surfaceCfg.programs = {program};
+    surface = inst.cfg.render->create(surfaceCfg);
 
     return Result::SUCCESS;
 }

@@ -28,15 +28,23 @@ public:
 protected:
     Config& cfg;
 
+    Render::Texture::Config textureCfg;
+    Render::Program::Config programCfg;
+    Render::Surface::Config surfaceCfg;
+    Render::Vertex::Config vertexCfg;
+
+    std::shared_ptr<Render::Texture> texture;
+    std::shared_ptr<Render::Program> program;
+    std::shared_ptr<Render::Surface> surface;
+    std::shared_ptr<Render::Vertex> vertex;
+
     const GLchar* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;
-        layout (location = 1) in vec2 aTexCoord;
 
         out vec2 TexCoord;
 
         void main() {
             gl_Position = vec4(aPos, 1.0);
-            TexCoord = aTexCoord;
         }
     )END";
 
@@ -45,18 +53,10 @@ protected:
 
         out vec4 FragColor;
 
-        in vec2 TexCoord;
-
-        uniform float Scale;
         uniform int vertexIdx;
-        uniform sampler2D ourTexture2;
 
         void main() {
-            if (vertexIdx == 1) {
-                FragColor = vec4(Scale, 1.0, 0.0, 0.0);
-            } else {
-                FragColor = texture(ourTexture2, TexCoord);
-            }
+            FragColor = vec4(0.0, 0.0, 0.0, 0.0);
         }
     )END";
 };
