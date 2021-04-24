@@ -19,6 +19,8 @@ public:
     std::shared_ptr<Spectrum::LinePlot> create(Spectrum::LinePlot::Config&);
 
 protected:
+    std::complex<float>* fft_out;
+    fftwf_plan fft_plan;
 };
 
 } // namespace Spectrum

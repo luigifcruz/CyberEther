@@ -1,5 +1,5 @@
 fftw_deps = [
-  dependency('fftw3', required: false),
+  dependency('fftw3f', required: false),
 ]
 
 all_fftw_deps_found = true

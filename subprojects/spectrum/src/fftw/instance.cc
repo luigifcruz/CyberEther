@@ -4,6 +4,10 @@
 namespace Spectrum {
 
 Result FFTW::create() {
+    fft_out = (std::complex<float>*)malloc(sizeof(std::complex<float>) * cfg.size);
+    fft_plan = fftwf_plan_dft_1d(cfg.size, reinterpret_cast<fftwf_complex*>(cfg.buffer),
+            reinterpret_cast<fftwf_complex*>(fft_out), FFTW_FORWARD, FFTW_MEASURE);
+
     for (const auto& lineplot : cfg.lineplots) {
         lineplot->create();
     }
@@ -20,6 +24,8 @@ Result FFTW::destroy() {
 }
 
 Result FFTW::feed() {
+    fftwf_execute(fft_plan);
+
     for (const auto& lineplot : cfg.lineplots) {
         lineplot->draw();
     }

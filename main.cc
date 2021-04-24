@@ -9,12 +9,23 @@
 #include <emscripten.h>
 #endif
 
+#include <samurai/samurai.hpp>
+#include <complex>
+
+using namespace Samurai;
+
+ChannelId rx;
+auto device = Airspy::Device();
+
+static Spectrum::Instance::Config spectrumCfg;
 static std::shared_ptr<Render::Instance> render;
 static std::shared_ptr<Spectrum::Instance> spectrum;
 static std::shared_ptr<Spectrum::LinePlot> lineplot;
 
 void render_loop() {
+    ASSERT_SUCCESS(device.ReadStream(rx, spectrumCfg.buffer, spectrumCfg.size, 1000));
     spectrum->feed();
+
     render->start();
 
     ImGui::Begin("Scene Window");
@@ -39,15 +50,34 @@ int main() {
     renderCfg.title = "CyberEther";
     render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-    Spectrum::Instance::Config spectrumCfg;
     spectrumCfg.render = render;
+    spectrumCfg.bandwidth = 10e6;
+    spectrumCfg.frequency = 96.9e6;
+    spectrumCfg.size = 8192;
+    spectrumCfg.format = Spectrum::DataFormat::CF32;
+    spectrumCfg.buffer = (void*)malloc(sizeof(std::complex<float>) * spectrumCfg.size);
     spectrum = Spectrum::Instantiate(Spectrum::API::FFTW, spectrumCfg);
 
     static Spectrum::LinePlot::Config lineplotCfg;
     lineplotCfg.height = 1080;
-    lineplotCfg.width = 1920;
+    lineplotCfg.width = 4000;
     lineplot = spectrum->create(lineplotCfg);
 
+    Device::Config deviceConfig{};
+    deviceConfig.sampleRate = 10e6;
+    device.Enable(deviceConfig);
+
+    Channel::Config channelConfig{};
+    channelConfig.mode = Mode::RX;
+    channelConfig.dataFmt = Format::F32;
+    ASSERT_SUCCESS(device.EnableChannel(channelConfig, &rx));
+
+    Channel::State channelState{};
+    channelState.enableAGC = true;
+    channelState.frequency = 96.9e6;
+    ASSERT_SUCCESS(device.UpdateChannel(rx, channelState));
+
+    device.StartStream();
     spectrum->create();
     render->create();
 
@@ -60,6 +90,7 @@ int main() {
 
     spectrum->destroy();
     render->destroy();
+    device.StopStream();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

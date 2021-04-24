@@ -3,6 +3,7 @@
 
 #include "spectrum/types.hpp"
 #include "lineplot.hpp"
+#include <fftw3.h>
 
 namespace Spectrum {
 

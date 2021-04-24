@@ -1,0 +1,3 @@
+[submodule "subprojects/samurai"]
+	path = subprojects/samurai
+	url = git@github.com:luigifcruz/samurai.git

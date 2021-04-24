@@ -12,6 +12,7 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
+    glfwWindowHint(GLFW_SAMPLES, 4);
 
     window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
     if (!window) {
@@ -108,7 +109,7 @@ Result GLES::endImgui() {
 Result GLES::start() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glLineWidth(1.0 * cfg.scale);
+    glLineWidth(2.0 * cfg.scale);
 
     if (cfg.enableImgui) {
         this->startImgui();

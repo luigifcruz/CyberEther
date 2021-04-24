@@ -5,6 +5,7 @@ project(
 )
 
 dep_lst = [
+    subproject('samurai').get_variable('libsamurai_dep'),
     subproject('spectrum').get_variable('libspectrum_dep'),
     subproject('render').get_variable('librender_dep'),
 ]

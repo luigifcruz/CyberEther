@@ -1,13 +1,6 @@
 #include "spectrum/fftw/lineplot.hpp"
-#include <random>
 
 namespace Spectrum {
-
-float get_random() {
-    static std::default_random_engine e;
-    static std::uniform_real_distribution<> dis(-0.5, 0.5); // rage 0 - 1
-    return dis(e);
-}
 
 Result FFTW::LinePlot::create() {
     static std::vector<float> a;
@@ -26,11 +19,19 @@ Result FFTW::LinePlot::create() {
         a.push_back(+0.0f);
     }
 
-    for (float i = -1.0f; i < +1.0f; i += 1.0f/cfg.width) {
+    l.push_back(-1.0);
+    l.push_back(-1.0);
+    l.push_back(+0.0);
+    for (float i = -1.0f; i < +1.0f; i += 1.0f/(inst.cfg.size/2)) {
         l.push_back(i);
         l.push_back(get_random());
         l.push_back(+0.0f);
     }
+    l.push_back(+1.0);
+    l.push_back(-1.0);
+    l.push_back(+0.0);
+
+    std::cout << l.size() << std::endl;
 
     surface = inst.cfg.render->bind(surfaceCfg);
 
@@ -58,10 +59,10 @@ Result FFTW::LinePlot::create() {
             .data = l.data(),
             .size = l.size(),
             .stride = 3,
-            .usage = Render::Vertex::Buffer::Static,
+            .usage = Render::Vertex::Buffer::Dynamic,
         },
     };
-    lineVertexCfg.mode = Render::Vertex::Mode::Lines;
+    lineVertexCfg.mode = Render::Vertex::Mode::LineLoop;
     lineVertex = program->bind(lineVertexCfg);
 
     return Result::SUCCESS;
@@ -74,7 +75,7 @@ Result FFTW::LinePlot::destroy() {
 
 Result FFTW::LinePlot::draw() {
     for (int i = 0; i < l.size(); i += 3) {
-        l.at(i+1) = get_random();
+        l.at(i+1) = log10(inst.fft_out[i/3].real() * inst.fft_out[i/3].real() + inst.fft_out[i/3].imag() * inst.fft_out[i/3].imag()) / 4.0 + 0.5;
     }
     lineVertex->update();
 
