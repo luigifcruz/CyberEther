@@ -1,8 +1,5 @@
 #include "render/gles/instance.hpp"
-#include "render/gles/program.hpp"
 #include "render/gles/surface.hpp"
-#include "render/gles/texture.hpp"
-#include "render/gles/vertex.hpp"
 
 namespace Render {
 
@@ -38,7 +35,7 @@ Result GLES::create() {
     cached_vendor_str = (const char*)glGetString(GL_VENDOR);
     cached_glsl_str = (const char*)glGetString(GL_VERSION);
 
-    for (auto &surface : cfg.surfaces) {
+    for (auto &surface : surfaces) {
         ASSERT_SUCCESS(surface->create());
     }
 
@@ -50,7 +47,7 @@ Result GLES::create() {
 }
 
 Result GLES::destroy() {
-    for (auto &surface : cfg.surfaces) {
+    for (auto &surface : surfaces) {
         ASSERT_SUCCESS(surface->destroy());
     }
 
@@ -131,7 +128,7 @@ Result GLES::start() {
 }
 
 Result GLES::end() {
-    for (auto &surface : cfg.surfaces) {
+    for (auto &surface : surfaces) {
         ASSERT_SUCCESS(surface->draw());
     }
 
@@ -177,22 +174,10 @@ Result GLES::getError(std::string func, std::string file, int line) {
     return Result::SUCCESS;
 }
 
-std::shared_ptr<Surface> GLES::create(Render::Surface::Config& cfg) {
+std::shared_ptr<Surface> GLES::bind(Render::Surface::Config& cfg) {
     auto surface = std::make_shared<GLES::Surface>(cfg, *this);
-    this->cfg.surfaces.push_back(surface);
+    surfaces.push_back(surface);
     return surface;
-}
-
-std::shared_ptr<Program> GLES::create(Render::Program::Config& cfg) {
-    return std::make_shared<GLES::Program>(cfg, *this);
-}
-
-std::shared_ptr<Texture> GLES::create(Render::Texture::Config& cfg) {
-    return std::make_shared<GLES::Texture>(cfg, *this);
-}
-
-std::shared_ptr<Vertex> GLES::create(Render::Vertex::Config& cfg) {
-    return std::make_shared<GLES::Vertex>(cfg, *this);
 }
 
 } // namespace Render

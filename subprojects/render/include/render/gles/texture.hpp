@@ -9,11 +9,6 @@ class GLES::Texture : public Render::Texture {
 public:
     Texture(Config& cfg, GLES& i) : Render::Texture(cfg), inst(i) {};
 
-    Result create();
-    Result destroy();
-    Result start();
-    Result end();
-
     uint raw();
     Result pour();
     Result fill();
@@ -21,7 +16,16 @@ public:
 
 protected:
     GLES& inst;
+
     uint tex;
+
+    Result create();
+    Result destroy();
+    Result start();
+    Result end();
+
+    friend class GLES::Surface;
+    friend class GLES::Program;
 };
 
 } // namespace Render

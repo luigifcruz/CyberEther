@@ -31,24 +31,20 @@ public:
     std::string vendor_str();
     std::string glsl_str();
 
-    std::shared_ptr<Render::Surface> create(Render::Surface::Config&);
-    std::shared_ptr<Render::Program> create(Render::Program::Config&);
-    std::shared_ptr<Render::Texture> create(Render::Texture::Config&);
-    std::shared_ptr<Render::Vertex> create(Render::Vertex::Config&);
+    std::shared_ptr<Render::Surface> bind(Render::Surface::Config&);
 
 protected:
     ImGuiIO* io;
     ImGuiStyle* style;
     GLFWwindow* window;
+    std::vector<std::shared_ptr<GLES::Surface>> surfaces;
 
-    uint vao;
+    static Result getError(std::string, std::string, int);
 
     Result createImgui();
     Result destroyImgui();
     Result startImgui();
     Result endImgui();
-
-    static Result getError(std::string, std::string, int);
 };
 
 } // namespace Render

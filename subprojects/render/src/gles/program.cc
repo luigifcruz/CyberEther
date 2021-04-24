@@ -1,4 +1,6 @@
 #include "render/gles/program.hpp"
+#include "render/gles/texture.hpp"
+#include "render/gles/vertex.hpp"
 
 namespace Render {
 
@@ -27,13 +29,13 @@ Result GLES::Program::create() {
     }
 
     i = 0;
-    for (const auto& texture : cfg.textures) {
+    for (const auto& texture : textures) {
         ASSERT_SUCCESS(texture->create());
-        ASSERT_SUCCESS(this->setUniform(texture->config().key,
+        ASSERT_SUCCESS(this->setUniform(texture->cfg.key,
                     std::vector<int>{i++}));
     }
 
-    for (const auto& vertex : cfg.vertices) {
+    for (const auto& vertex : vertices) {
         ASSERT_SUCCESS(vertex->create());
     }
 
@@ -41,11 +43,11 @@ Result GLES::Program::create() {
 }
 
 Result GLES::Program::destroy() {
-    for (const auto& vertex : cfg.vertices) {
+    for (const auto& vertex : vertices) {
         ASSERT_SUCCESS(vertex->destroy());
     }
 
-    for (const auto& texture : cfg.textures) {
+    for (const auto& texture : textures) {
         ASSERT_SUCCESS(texture->destroy());
     }
 
@@ -56,7 +58,7 @@ Result GLES::Program::destroy() {
 
 Result GLES::Program::draw() {
     i = 0;
-    for (const auto& texture : cfg.textures) {
+    for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
         ASSERT_SUCCESS(texture->start());
     }
@@ -64,13 +66,13 @@ Result GLES::Program::draw() {
     glUseProgram(shader);
 
     i = 0;
-    for (const auto& vertex : cfg.vertices) {
+    for (const auto& vertex : vertices) {
         ASSERT_SUCCESS(this->setUniform("vertexIdx", std::vector<int>{i++}));
         ASSERT_SUCCESS(vertex->draw());
     }
 
     i = 0;
-    for (const auto& texture : cfg.textures) {
+    for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
         ASSERT_SUCCESS(texture->end());
     }
@@ -160,6 +162,18 @@ Result GLES::Program::checkProgramCompilation(uint program) {
         return Result::RENDER_BACKEND_ERROR;
     }
     return Result::SUCCESS;
+}
+
+std::shared_ptr<Texture> GLES::Program::bind(Render::Texture::Config& cfg) {
+    auto texture = std::make_shared<GLES::Texture>(cfg, inst);
+    textures.push_back(texture);
+    return texture;
+}
+
+std::shared_ptr<Vertex> GLES::Program::bind(Render::Vertex::Config& cfg) {
+    auto vertex = std::make_shared<GLES::Vertex>(cfg, inst);
+    vertices.push_back(vertex);
+    return vertex;
 }
 
 } // namespace Render

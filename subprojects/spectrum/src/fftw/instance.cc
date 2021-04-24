@@ -20,6 +20,10 @@ Result FFTW::destroy() {
 }
 
 Result FFTW::feed() {
+    for (const auto& lineplot : cfg.lineplots) {
+        lineplot->draw();
+    }
+
     return Result::SUCCESS;
 }
 

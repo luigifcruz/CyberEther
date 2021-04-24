@@ -28,15 +28,19 @@ public:
 protected:
     Config& cfg;
 
+    std::vector<float> l;
+
     Render::Texture::Config textureCfg;
     Render::Program::Config programCfg;
     Render::Surface::Config surfaceCfg;
-    Render::Vertex::Config vertexCfg;
+    Render::Vertex::Config gridVertexCfg;
+    Render::Vertex::Config lineVertexCfg;
 
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Program> program;
     std::shared_ptr<Render::Surface> surface;
-    std::shared_ptr<Render::Vertex> vertex;
+    std::shared_ptr<Render::Vertex> gridVertex;
+    std::shared_ptr<Render::Vertex> lineVertex;
 
     const GLchar* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;
@@ -56,7 +60,11 @@ protected:
         uniform int vertexIdx;
 
         void main() {
-            FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+            if (vertexIdx == 0) {
+                FragColor = vec4(0.27, 0.27, 0.27, 0.0);
+            } else {
+                FragColor = vec4(1.0, 0.0, 0.0, 0.0);
+            }
         }
     )END";
 };

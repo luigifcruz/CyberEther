@@ -3,7 +3,6 @@
 namespace Render {
 
 Result GLES::Vertex::create() {
-    std::cout << __PRETTY_FUNCTION__ << std::endl;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
@@ -29,9 +28,11 @@ Result GLES::Vertex::create() {
         glEnableVertexAttribArray(i++);
     }
 
-    glGenBuffers(1, &ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint), cfg.indices.data(), GL_STATIC_DRAW);
+    if (cfg.indices.size() != 0) {
+        glGenBuffers(1, &ebo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint), cfg.indices.data(), GL_STATIC_DRAW);
+    }
 
     glBindVertexArray(0);
 
@@ -50,20 +51,30 @@ Result GLES::Vertex::destroy() {
 
 Result GLES::Vertex::draw() {
     glBindVertexArray(vao);
+
+    uint mode = GL_TRIANGLES;
     switch (cfg.mode) {
         case Vertex::Mode::Triangles:
-            glDrawElements(GL_TRIANGLES, cfg.indices.size(), GL_UNSIGNED_INT, 0);
+            mode = GL_TRIANGLES;
             break;
         case Vertex::Mode::Lines:
-            glDrawElements(GL_LINES, cfg.indices.size(), GL_UNSIGNED_INT, 0);
+            mode = GL_LINES;
             break;
         case Vertex::Mode::Points:
-            glDrawElements(GL_POINTS, cfg.indices.size(), GL_UNSIGNED_INT, 0);
+            mode = GL_POINTS;
             break;
         case Vertex::Mode::LineLoop:
-            glDrawElements(GL_LINE_LOOP, cfg.indices.size(), GL_UNSIGNED_INT, 0);
+            mode = GL_LINE_LOOP;
             break;
     }
+
+    if (cfg.indices.size() == 0) {
+        auto buffer = cfg.buffers.at(0);
+        glDrawArrays(mode, 0, buffer.size / buffer.stride);
+    } else {
+        glDrawElements(mode, cfg.indices.size(), GL_UNSIGNED_INT, 0);
+    }
+
     glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

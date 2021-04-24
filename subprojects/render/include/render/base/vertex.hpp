@@ -34,24 +34,18 @@ public:
         Mode mode = Triangles;
     };
 
+    Config& cfg;
     Vertex(Config& c) : cfg(c) {};
     virtual ~Vertex() = default;
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
-    virtual Result draw() = 0;
-
-    Config& config() {
-        return cfg;
-    }
 
     virtual Result update() = 0;
 
 protected:
-    Config& cfg;
+    virtual Result create() = 0;
+    virtual Result destroy() = 0;
+    virtual Result draw() = 0;
 };
 
 } // namespace Render
 
 #endif
-

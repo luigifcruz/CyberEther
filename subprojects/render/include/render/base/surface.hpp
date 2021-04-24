@@ -10,25 +10,19 @@ namespace Render {
 class Surface {
 public:
     struct Config {
-        int width;
-        int height;
-        std::shared_ptr<Texture> texture;
-        std::vector<std::shared_ptr<Program>> programs;
     };
 
+    Config& cfg;
     Surface(Config& c) : cfg(c) {};
     virtual ~Surface() = default;
 
+    virtual std::shared_ptr<Render::Texture> bind(Render::Texture::Config&) = 0;
+    virtual std::shared_ptr<Render::Program> bind(Render::Program::Config&) = 0;
+
+protected:
     virtual Result create() = 0;
     virtual Result destroy() = 0;
     virtual Result draw() = 0;
-
-    Config& config() {
-        return cfg;
-    }
-
-protected:
-    Config& cfg;
 };
 
 } // namespace Render

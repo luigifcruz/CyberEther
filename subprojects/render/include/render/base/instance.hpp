@@ -19,20 +19,18 @@ public:
         bool enableImgui = false;
         bool enableDebug = false;
         std::string title = "Render";
-        std::vector<std::shared_ptr<Surface>> surfaces;
     };
 
+    Config& cfg;
     Instance(Config& c) : cfg(c) {};
     virtual ~Instance() = default;
+
+    virtual std::shared_ptr<Surface> bind(Surface::Config&) = 0;
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
     virtual Result start() = 0;
     virtual Result end() = 0;
-
-    Config& config() {
-        return cfg;
-    }
 
     virtual bool keepRunning() = 0;
 
@@ -41,20 +39,13 @@ public:
     virtual std::string vendor_str() = 0;
     virtual std::string glsl_str() = 0;
 
-    virtual std::shared_ptr<Surface> create(Surface::Config&) = 0;
-    virtual std::shared_ptr<Program> create(Program::Config&) = 0;
-    virtual std::shared_ptr<Texture> create(Texture::Config&) = 0;
-    virtual std::shared_ptr<Vertex> create(Vertex::Config&) = 0;
-
 protected:
-    Config& cfg;
+    static Result getError(std::string func, std::string file, int line);
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
     virtual Result startImgui() = 0;
     virtual Result endImgui() = 0;
-
-    static Result getError(std::string func, std::string file, int line);
 
     std::string cached_renderer_str;
     std::string cached_version_str;
