@@ -7,6 +7,7 @@ project(
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
+    dependency('threads'),
     subproject('render').get_variable('librender_dep'),
 ]
 inc_lst = [

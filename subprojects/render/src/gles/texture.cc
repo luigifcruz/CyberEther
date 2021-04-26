@@ -5,7 +5,7 @@ namespace Render {
 Result GLES::Texture::create() {
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, *cfg.width, *cfg.height, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cfg.width, cfg.height, 0,
             GL_RGB, GL_UNSIGNED_BYTE, cfg.buffer);
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -38,7 +38,7 @@ uint GLES::Texture::raw() {
 
 Result GLES::Texture::fill() {
     ASSERT_SUCCESS(this->start());
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, *cfg.width, *cfg.height, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cfg.width, cfg.height, 0,
             GL_RGB, GL_UNSIGNED_BYTE, cfg.buffer);
     glGenerateMipmap(GL_TEXTURE_2D);
     ASSERT_SUCCESS(this->end());

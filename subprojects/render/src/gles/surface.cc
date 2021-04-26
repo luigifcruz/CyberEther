@@ -36,7 +36,7 @@ Result GLES::Surface::destroy() {
 
 Result GLES::Surface::draw() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glViewport(0, 0, *texture->cfg.width, *texture->cfg.height);
+    glViewport(0, 0, texture->cfg.width, texture->cfg.height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 

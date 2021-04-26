@@ -8,8 +8,8 @@ namespace Render {
 class Texture {
 public:
     struct Config {
-        int *width = 0;
-        int *height = 0;
+        int width = 0;
+        int height = 0;
         std::string key;
         uint8_t* buffer = nullptr;
     };
@@ -17,6 +17,8 @@ public:
     Config& cfg;
     Texture(Config& c) : cfg(c) {};
     virtual ~Texture() = default;
+
+    //virtual Result resize(int, int) = 0;
 
     virtual uint raw() = 0;
     virtual Result pour() = 0;

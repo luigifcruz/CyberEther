@@ -24,7 +24,7 @@ Result FFTW::LinePlot::create() {
     l.push_back(+0.0);
     for (float i = -1.0f; i < +1.0f; i += 1.0f/(inst.cfg.size/2)) {
         l.push_back(i);
-        l.push_back(get_random());
+        l.push_back(+0.0f);
         l.push_back(+0.0f);
     }
     l.push_back(+1.0);
@@ -35,8 +35,8 @@ Result FFTW::LinePlot::create() {
 
     surface = inst.cfg.render->bind(surfaceCfg);
 
-    textureCfg.width = &cfg.width;
-    textureCfg.height = &cfg.height;
+    textureCfg.width = cfg.width;
+    textureCfg.height = cfg.height;
     texture = surface->bind(textureCfg);
 
     programCfg.vertexSource = &vertexSource;
@@ -73,9 +73,14 @@ Result FFTW::LinePlot::destroy() {
     return Result::SUCCESS;
 }
 
+float ms(std::complex<float> n, float o = 1.0) {
+    n /= o;
+    return n.real() * n.real() + n.imag() * n.imag();
+}
+
 Result FFTW::LinePlot::draw() {
     for (int i = 0; i < l.size(); i += 3) {
-        l.at(i+1) = log10(inst.fft_out[i/3].real() * inst.fft_out[i/3].real() + inst.fft_out[i/3].imag() * inst.fft_out[i/3].imag()) / 4.0 + 0.5;
+        l.at(i+1) = ((20 * log10(ms(inst.fft_out[i/3]) / inst.cfg.size)) / (200 / 2)) + 1;
     }
     lineVertex->update();
 
