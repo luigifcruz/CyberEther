@@ -31,17 +31,7 @@ Result FFTW::LinePlot::create() {
     l.push_back(-1.0);
     l.push_back(+0.0);
 
-    std::cout << l.size() << std::endl;
-
-    surface = inst.cfg.render->bind(surfaceCfg);
-
-    textureCfg.width = cfg.width;
-    textureCfg.height = cfg.height;
-    texture = surface->bind(textureCfg);
-
-    programCfg.vertexSource = &vertexSource;
-    programCfg.fragmentSource = &fragmentSource;
-    program = surface->bind(programCfg);
+    auto render = inst.cfg.render;
 
     gridVertexCfg.buffers = {
         {
@@ -51,8 +41,11 @@ Result FFTW::LinePlot::create() {
             .usage = Render::Vertex::Buffer::Static,
         },
     };
-    gridVertexCfg.mode = Render::Vertex::Mode::Lines;
-    gridVertex = program->bind(gridVertexCfg);
+    gridVertex = render->create(gridVertexCfg);
+
+    drawGridVertexCfg.buffer = gridVertex;
+    drawGridVertexCfg.mode = Render::Draw::Lines;
+    drawGridVertex = render->create(drawGridVertexCfg);
 
     lineVertexCfg.buffers = {
         {
@@ -62,25 +55,39 @@ Result FFTW::LinePlot::create() {
             .usage = Render::Vertex::Buffer::Dynamic,
         },
     };
-    lineVertexCfg.mode = Render::Vertex::Mode::LineLoop;
-    lineVertex = program->bind(lineVertexCfg);
+    lineVertex = render->create(lineVertexCfg);
+
+    drawLineVertexCfg.buffer = lineVertex;
+    drawLineVertexCfg.mode = Render::Draw::LineLoop;
+    drawLineVertex = render->create(drawLineVertexCfg);
+
+    programCfg.vertexSource = &vertexSource;
+    programCfg.fragmentSource = &fragmentSource;
+    programCfg.draws = {drawGridVertex, drawLineVertex};
+    program = render->create(programCfg);
+
+    textureCfg.width = cfg.width;
+    textureCfg.height = cfg.height;
+    texture = render->create(textureCfg);
+
+    surfaceCfg.framebuffer = texture;
+    surfaceCfg.programs = {program};
+    surface = render->create(surfaceCfg);
 
     return Result::SUCCESS;
 }
 
 Result FFTW::LinePlot::destroy() {
-
     return Result::SUCCESS;
 }
 
-float ms(std::complex<float> n, float o = 1.0) {
-    n /= o;
+float abs(std::complex<float> n) {
     return n.real() * n.real() + n.imag() * n.imag();
 }
 
 Result FFTW::LinePlot::draw() {
     for (int i = 0; i < l.size(); i += 3) {
-        l.at(i+1) = ((20 * log10(ms(inst.fft_out[i/3]) / inst.cfg.size)) / (200 / 2)) + 1;
+        l.at(i+1) = ((20 * log10(abs(inst.fft_out[i/3]) / inst.cfg.size)) / (200.0 / 2)) + 1;
     }
     lineVertex->update();
 

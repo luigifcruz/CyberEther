@@ -9,9 +9,6 @@ class GLES::Program : public Render::Program {
 public:
     Program(Config& c, GLES& i) : Render::Program(c), inst(i) {};
 
-    std::shared_ptr<Render::Texture> bind(Render::Texture::Config&);
-    std::shared_ptr<Render::Vertex> bind(Render::Vertex::Config&);
-
     Result setUniform(std::string, const std::vector<int>&);
     Result setUniform(std::string, const std::vector<float>&);
 
@@ -20,7 +17,8 @@ protected:
 
     int i;
     uint shader;
-    std::vector<std::shared_ptr<GLES::Vertex>> vertices;
+
+    std::vector<std::shared_ptr<GLES::Draw>> draws;
     std::vector<std::shared_ptr<GLES::Texture>> textures;
 
     Result create();

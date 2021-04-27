@@ -6,6 +6,7 @@
 #include "surface.hpp"
 #include "texture.hpp"
 #include "vertex.hpp"
+#include "draw.hpp"
 
 namespace Render {
 
@@ -18,14 +19,13 @@ public:
         bool resizable = false;
         bool enableImgui = false;
         bool enableDebug = false;
+        bool enableVsync = true;
         std::string title = "Render";
     };
 
     Config& cfg;
     Instance(Config& c) : cfg(c) {};
     virtual ~Instance() = default;
-
-    virtual std::shared_ptr<Surface> bind(Surface::Config&) = 0;
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
@@ -38,6 +38,12 @@ public:
     virtual std::string version_str() = 0;
     virtual std::string vendor_str() = 0;
     virtual std::string glsl_str() = 0;
+
+    virtual std::shared_ptr<Program> create(Program::Config&) = 0;
+    virtual std::shared_ptr<Surface> create(Surface::Config&) = 0;
+    virtual std::shared_ptr<Texture> create(Texture::Config&) = 0;
+    virtual std::shared_ptr<Vertex> create(Vertex::Config&) = 0;
+    virtual std::shared_ptr<Draw> create(Draw::Config&) = 0;
 
 protected:
     static Result getError(std::string func, std::string file, int line);

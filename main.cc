@@ -11,6 +11,7 @@
 
 #include <samurai/samurai.hpp>
 #include <complex>
+#include <future>
 
 using namespace Samurai;
 
@@ -25,7 +26,6 @@ static std::shared_ptr<Spectrum::LinePlot> lineplot;
 void render_loop() {
     ASSERT_SUCCESS(device.ReadStream(rx, spectrumCfg.buffer, spectrumCfg.size, 1000));
     spectrum->feed();
-
     render->start();
 
     ImGui::Begin("Scene Window");
@@ -35,6 +35,10 @@ void render_loop() {
         ImGui::GetCursorScreenPos().y + lineplot->config().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
     ImGui::End();
 
+    ImGui::Begin("Samurai Info");
+    ImGui::Text("Buffer Fill: %ld", device.BufferOccupancy(rx));
+    ImGui::End();
+
     render->end();
 }
 
@@ -42,11 +46,12 @@ int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
     Render::Instance::Config renderCfg;
-    renderCfg.width = 1920;
+    renderCfg.width = 3000;
     renderCfg.height = 1080;
     renderCfg.resizable = true;
     renderCfg.enableImgui = true;
     renderCfg.enableDebug = true;
+    renderCfg.enableVsync = false;
     renderCfg.title = "CyberEther";
     render = Render::Instantiate(Render::API::GLES, renderCfg);
 
@@ -58,7 +63,7 @@ int main() {
     spectrumCfg.buffer = (void*)malloc(sizeof(std::complex<float>) * spectrumCfg.size);
     spectrum = Spectrum::Instantiate(Spectrum::API::FFTW, spectrumCfg);
 
-    static Spectrum::LinePlot::Config lineplotCfg;
+    Spectrum::LinePlot::Config lineplotCfg;
     lineplotCfg.height = 1080;
     lineplotCfg.width = 4000;
     lineplot = spectrum->create(lineplotCfg);
@@ -77,9 +82,9 @@ int main() {
     channelState.frequency = 96.9e6;
     ASSERT_SUCCESS(device.UpdateChannel(rx, channelState));
 
-    device.StartStream();
     spectrum->create();
     render->create();
+    device.StartStream();
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(render_loop, 0, 1);
@@ -88,9 +93,9 @@ int main() {
         render_loop();
 #endif
 
+    device.StopStream();
     spectrum->destroy();
     render->destroy();
-    device.StopStream();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

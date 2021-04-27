@@ -16,6 +16,7 @@ public:
 	class Surface;
     class Texture;
     class Vertex;
+    class Draw;
 
     GLES(Config& c) : Render::Instance(c) {};
 
@@ -31,7 +32,11 @@ public:
     std::string vendor_str();
     std::string glsl_str();
 
-    std::shared_ptr<Render::Surface> bind(Render::Surface::Config&);
+    std::shared_ptr<Render::Program> create(Render::Program::Config&);
+    std::shared_ptr<Render::Surface> create(Render::Surface::Config&);
+    std::shared_ptr<Render::Texture> create(Render::Texture::Config&);
+    std::shared_ptr<Render::Vertex> create(Render::Vertex::Config&);
+    std::shared_ptr<Render::Draw> create(Render::Draw::Config&);
 
 protected:
     ImGuiIO* io;

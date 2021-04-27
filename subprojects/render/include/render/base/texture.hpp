@@ -18,8 +18,6 @@ public:
     Texture(Config& c) : cfg(c) {};
     virtual ~Texture() = default;
 
-    //virtual Result resize(int, int) = 0;
-
     virtual uint raw() = 0;
     virtual Result pour() = 0;
     virtual Result fill() = 0;

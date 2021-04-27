@@ -15,12 +15,17 @@ protected:
     GLES& inst;
 
     uint vao, ebo;
+    uint vertex_count;
 
     Result create();
     Result destroy();
-    Result draw();
+    Result start();
+    Result end();
 
-    friend class GLES::Program;
+    uint count();
+    uint buffered();
+
+    friend class GLES::Draw;
 };
 
 } // namespace Render

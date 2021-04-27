@@ -26,12 +26,14 @@ Result GLES::Vertex::create() {
         glBufferData(GL_ARRAY_BUFFER, buffer.size * sizeof(float), buffer.data, usage);
         glVertexAttribPointer(i, buffer.stride, GL_FLOAT, GL_FALSE, buffer.stride * sizeof(float), 0);
         glEnableVertexAttribArray(i++);
+        vertex_count = buffer.size / buffer.stride;
     }
 
     if (cfg.indices.size() != 0) {
         glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint), cfg.indices.data(), GL_STATIC_DRAW);
+        vertex_count = cfg.indices.size();
     }
 
     glBindVertexArray(0);
@@ -49,32 +51,13 @@ Result GLES::Vertex::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Vertex::draw() {
+Result GLES::Vertex::start() {
     glBindVertexArray(vao);
 
-    uint mode = GL_TRIANGLES;
-    switch (cfg.mode) {
-        case Vertex::Mode::Triangles:
-            mode = GL_TRIANGLES;
-            break;
-        case Vertex::Mode::Lines:
-            mode = GL_LINES;
-            break;
-        case Vertex::Mode::Points:
-            mode = GL_POINTS;
-            break;
-        case Vertex::Mode::LineLoop:
-            mode = GL_LINE_LOOP;
-            break;
-    }
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
 
-    if (cfg.indices.size() == 0) {
-        auto buffer = cfg.buffers.at(0);
-        glDrawArrays(mode, 0, buffer.size / buffer.stride);
-    } else {
-        glDrawElements(mode, cfg.indices.size(), GL_UNSIGNED_INT, 0);
-    }
-
+Result GLES::Vertex::end() {
     glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -89,6 +72,14 @@ Result GLES::Vertex::update() {
     glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+uint GLES::Vertex::buffered() {
+    return cfg.indices.size() != 0;
+}
+
+uint GLES::Vertex::count() {
+    return vertex_count;
 }
 
 } // namespace Render

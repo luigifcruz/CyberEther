@@ -5,16 +5,21 @@
 namespace Render {
 
 Result GLES::Surface::create() {
-    for (auto &program : programs) {
-        auto a = static_cast<GLES::Program*>(program.get());
-        ASSERT_SUCCESS(a->create());
+    framebuffer = std::dynamic_pointer_cast<GLES::Texture>(cfg.framebuffer);
+
+    for (const auto& program : cfg.programs) {
+        programs.push_back(std::dynamic_pointer_cast<GLES::Program>(program));
     }
 
-    if (texture) {
+    for (auto &program : programs) {
+        RENDER_ASSERT_SUCCESS(program->create());
+    }
+
+    if (framebuffer) {
         glGenFramebuffers(1, &fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        ASSERT_SUCCESS(texture->create());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture->raw(), 0);
+        RENDER_ASSERT_SUCCESS(framebuffer->create());
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->raw(), 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
@@ -23,11 +28,11 @@ Result GLES::Surface::create() {
 
 Result GLES::Surface::destroy() {
     for (auto &program : programs) {
-        ASSERT_SUCCESS(program->destroy());
+        RENDER_ASSERT_SUCCESS(program->destroy());
     }
 
-    if (texture) {
-        ASSERT_SUCCESS(texture->destroy());
+    if (framebuffer) {
+        RENDER_ASSERT_SUCCESS(framebuffer->destroy());
         glDeleteFramebuffers(1, &fbo);
     }
 
@@ -36,29 +41,17 @@ Result GLES::Surface::destroy() {
 
 Result GLES::Surface::draw() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glViewport(0, 0, texture->cfg.width, texture->cfg.height);
+    glViewport(0, 0, framebuffer->cfg.width, framebuffer->cfg.height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     for (auto &program : programs) {
-        ASSERT_SUCCESS(program->draw());
+        RENDER_ASSERT_SUCCESS(program->draw());
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-std::shared_ptr<Texture> GLES::Surface::bind(Render::Texture::Config& cfg) {
-    // validation here?
-    texture = std::make_shared<GLES::Texture>(cfg, inst);
-    return texture;
-}
-
-std::shared_ptr<Program> GLES::Surface::bind(Render::Program::Config& cfg) {
-    auto program = std::make_shared<GLES::Program>(cfg, inst);
-    programs.push_back(program);
-    return program;
 }
 
 } // namespace Render

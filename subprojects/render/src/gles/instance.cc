@@ -1,5 +1,9 @@
 #include "render/gles/instance.hpp"
+#include "render/gles/program.hpp"
 #include "render/gles/surface.hpp"
+#include "render/gles/texture.hpp"
+#include "render/gles/vertex.hpp"
+#include "render/gles/draw.hpp"
 
 namespace Render {
 
@@ -13,6 +17,7 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
     glfwWindowHint(GLFW_SAMPLES, 4);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.enableVsync);
 
     window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
     if (!window) {
@@ -37,7 +42,7 @@ Result GLES::create() {
     cached_glsl_str = (const char*)glGetString(GL_VERSION);
 
     for (auto &surface : surfaces) {
-        ASSERT_SUCCESS(surface->create());
+        RENDER_ASSERT_SUCCESS(surface->create());
     }
 
     if (cfg.enableImgui) {
@@ -49,7 +54,7 @@ Result GLES::create() {
 
 Result GLES::destroy() {
     for (auto &surface : surfaces) {
-        ASSERT_SUCCESS(surface->destroy());
+        RENDER_ASSERT_SUCCESS(surface->destroy());
     }
 
     if (cfg.enableImgui) {
@@ -130,7 +135,7 @@ Result GLES::start() {
 
 Result GLES::end() {
     for (auto &surface : surfaces) {
-        ASSERT_SUCCESS(surface->draw());
+        RENDER_ASSERT_SUCCESS(surface->draw());
     }
 
     if (cfg.enableImgui) {
@@ -175,10 +180,26 @@ Result GLES::getError(std::string func, std::string file, int line) {
     return Result::SUCCESS;
 }
 
-std::shared_ptr<Surface> GLES::bind(Render::Surface::Config& cfg) {
-    auto surface = std::make_shared<GLES::Surface>(cfg, *this);
+std::shared_ptr<Render::Program> GLES::create(Render::Program::Config& cfg) {
+    return std::make_shared<Program>(cfg, *this);
+}
+
+std::shared_ptr<Render::Surface> GLES::create(Render::Surface::Config& cfg) {
+    auto surface = std::make_shared<Surface>(cfg, *this);
     surfaces.push_back(surface);
     return surface;
+}
+
+std::shared_ptr<Render::Texture> GLES::create(Render::Texture::Config& cfg) {
+    return std::make_shared<Texture>(cfg, *this);
+}
+
+std::shared_ptr<Render::Vertex> GLES::create(Render::Vertex::Config& cfg) {
+    return std::make_shared<Vertex>(cfg, *this);
+}
+
+std::shared_ptr<Render::Draw> GLES::create(Render::Draw::Config& cfg) {
+    return std::make_shared<Draw>(cfg, *this);
 }
 
 } // namespace Render

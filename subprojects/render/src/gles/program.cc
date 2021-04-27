@@ -1,21 +1,29 @@
 #include "render/gles/program.hpp"
 #include "render/gles/texture.hpp"
-#include "render/gles/vertex.hpp"
+#include "render/gles/draw.hpp"
 
 namespace Render {
 
 Result GLES::Program::create() {
+    for (const auto& draw : cfg.draws) {
+        draws.push_back(std::dynamic_pointer_cast<GLES::Draw>(draw));
+    }
+
+    for (const auto& texture : cfg.textures) {
+        textures.push_back(std::dynamic_pointer_cast<GLES::Texture>(texture));
+    }
+
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
     glCompileShader(vertexShader);
 
-    ASSERT_SUCCESS(checkShaderCompilation(vertexShader));
+    RENDER_ASSERT_SUCCESS(checkShaderCompilation(vertexShader));
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
     glCompileShader(fragmentShader);
 
-    ASSERT_SUCCESS(checkShaderCompilation(fragmentShader));
+    RENDER_ASSERT_SUCCESS(checkShaderCompilation(fragmentShader));
 
     shader = glCreateProgram();
     glAttachShader(shader, vertexShader);
@@ -30,25 +38,25 @@ Result GLES::Program::create() {
 
     i = 0;
     for (const auto& texture : textures) {
-        ASSERT_SUCCESS(texture->create());
-        ASSERT_SUCCESS(this->setUniform(texture->cfg.key,
+        RENDER_ASSERT_SUCCESS(texture->create());
+        RENDER_ASSERT_SUCCESS(this->setUniform(texture->cfg.key,
                     std::vector<int>{i++}));
     }
 
-    for (const auto& vertex : vertices) {
-        ASSERT_SUCCESS(vertex->create());
+    for (const auto& draw : draws) {
+        RENDER_ASSERT_SUCCESS(draw->create());
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Program::destroy() {
-    for (const auto& vertex : vertices) {
-        ASSERT_SUCCESS(vertex->destroy());
+    for (const auto& draw : draws) {
+        RENDER_ASSERT_SUCCESS(draw->destroy());
     }
 
     for (const auto& texture : textures) {
-        ASSERT_SUCCESS(texture->destroy());
+        RENDER_ASSERT_SUCCESS(texture->destroy());
     }
 
     glDeleteProgram(shader);
@@ -60,21 +68,21 @@ Result GLES::Program::draw() {
     i = 0;
     for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
-        ASSERT_SUCCESS(texture->start());
+        RENDER_ASSERT_SUCCESS(texture->start());
     }
 
     glUseProgram(shader);
 
     i = 0;
-    for (const auto& vertex : vertices) {
-        ASSERT_SUCCESS(this->setUniform("vertexIdx", std::vector<int>{i++}));
-        ASSERT_SUCCESS(vertex->draw());
+    for (const auto& draw : draws) {
+        RENDER_ASSERT_SUCCESS(this->setUniform("drawIndex", std::vector<int>{i++}));
+        RENDER_ASSERT_SUCCESS(draw->draw());
     }
 
     i = 0;
     for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
-        ASSERT_SUCCESS(texture->end());
+        RENDER_ASSERT_SUCCESS(texture->end());
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -87,10 +95,7 @@ Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars
     int loc = glGetUniformLocation(shader, name.c_str());
 
     switch(vars.size()) {
-        case 1:
-            glUniform1i(loc, vars.at(0));
-            break;
-        case 2:
+        case 1: glUniform1i(loc, vars.at(0)); break; case 2:
             glUniform2i(loc, vars.at(0), vars.at(1));
             break;
         case 3:
@@ -162,18 +167,6 @@ Result GLES::Program::checkProgramCompilation(uint program) {
         return Result::RENDER_BACKEND_ERROR;
     }
     return Result::SUCCESS;
-}
-
-std::shared_ptr<Texture> GLES::Program::bind(Render::Texture::Config& cfg) {
-    auto texture = std::make_shared<GLES::Texture>(cfg, inst);
-    textures.push_back(texture);
-    return texture;
-}
-
-std::shared_ptr<Vertex> GLES::Program::bind(Render::Vertex::Config& cfg) {
-    auto vertex = std::make_shared<GLES::Vertex>(cfg, inst);
-    vertices.push_back(vertex);
-    return vertex;
 }
 
 } // namespace Render

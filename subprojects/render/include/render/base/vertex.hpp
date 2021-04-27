@@ -7,13 +7,6 @@ namespace Render {
 
 class Vertex {
 public:
-    enum Mode {
-        Triangles,
-        LineLoop,
-        Points,
-        Lines,
-    };
-
     struct Buffer {
         enum Usage {
             Dynamic,
@@ -31,7 +24,6 @@ public:
     struct Config {
         std::vector<Buffer> buffers;
         std::vector<uint> indices;
-        Mode mode = Triangles;
     };
 
     Config& cfg;
@@ -43,7 +35,8 @@ public:
 protected:
     virtual Result create() = 0;
     virtual Result destroy() = 0;
-    virtual Result draw() = 0;
+    virtual Result start() = 0;
+    virtual Result end() = 0;
 };
 
 } // namespace Render

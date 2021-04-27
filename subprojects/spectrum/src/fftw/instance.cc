@@ -16,6 +16,8 @@ Result FFTW::create() {
 }
 
 Result FFTW::destroy() {
+    fftwf_destroy_plan(fft_plan);
+
     for (const auto& lineplot : cfg.lineplots) {
         lineplot->destroy();
     }

@@ -4,6 +4,7 @@
 #include "render/types.hpp"
 #include "texture.hpp"
 #include "vertex.hpp"
+#include "draw.hpp"
 
 namespace Render {
 
@@ -12,14 +13,13 @@ public:
     struct Config {
         const char* const* vertexSource = nullptr;
         const char* const* fragmentSource = nullptr;
+        std::vector<std::shared_ptr<Draw>> draws;
+        std::vector<std::shared_ptr<Texture>> textures;
     };
 
     Config& cfg;
     Program(Config& c) : cfg(c) {};
     virtual ~Program() = default;
-
-    virtual std::shared_ptr<Render::Texture> bind(Render::Texture::Config&) = 0;
-    virtual std::shared_ptr<Render::Vertex> bind(Render::Vertex::Config&) = 0;
 
     virtual Result setUniform(std::string, const std::vector<int>&) = 0;
     virtual Result setUniform(std::string, const std::vector<float>&) = 0;

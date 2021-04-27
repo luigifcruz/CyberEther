@@ -32,7 +32,7 @@ inline std::shared_ptr<Instance> Instantiate(API api_hint, Instance::Config& cfg
     if (std::find(AvailableAPIs.begin(), AvailableAPIs.end(),
                 api_hint) == AvailableAPIs.end()) {
         if (force) {
-            ASSERT_SUCCESS(Result::NO_RENDER_BACKEND_FOUND);
+            RENDER_ASSERT_SUCCESS(Result::NO_RENDER_BACKEND_FOUND);
         }
 
         for (const auto& a : AvailableAPIs) {
@@ -56,7 +56,7 @@ inline std::shared_ptr<Instance> Instantiate(API api_hint, Instance::Config& cfg
 #ifdef RENDER_DEBUG
             std::cerr << "[RENDER] No API available." << std::endl;
 #endif
-            ASSERT_SUCCESS(Result::NO_RENDER_BACKEND_FOUND);
+            RENDER_ASSERT_SUCCESS(Result::NO_RENDER_BACKEND_FOUND);
     }
 }
 

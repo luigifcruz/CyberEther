@@ -13,8 +13,6 @@ cpp_link_args = [
     '-s', 'USE_GLFW=3',
     '-s', 'USE_WEBGL2=1',
     '-o', 'cyberether.html',
-    '--preload-file', './minime.jpg',
-    '--preload-file', './bernie',
     '--preload-file', './roboto.ttf',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
     '-s', 'INITIAL_MEMORY=128MB']

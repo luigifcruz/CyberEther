@@ -9,20 +9,21 @@
 
 #include "magic_enum.hpp"
 
-namespace Render {
-
-#ifndef ASSERT_SUCCESS
-#define ASSERT_SUCCESS(result) { \
+#ifndef RENDER_ASSERT_SUCCESS
+#define RENDER_ASSERT_SUCCESS(result) { \
     if (result != Result::SUCCESS) { \
-        std::cerr << "Render encountered an exception (" <<  magic_enum::enum_name(result) << ") in line " \
-            << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
+        std::cerr << "Render encountered an exception (" <<  magic_enum::enum_name(result) << ") in " \
+            << __PRETTY_FUNCTION__ << " in line " << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
         throw result; \
     } \
 }
 #endif
 
+namespace Render {
+
 enum struct Result {
     SUCCESS = 0,
+    ERROR,
     RENDER_BACKEND_ERROR,
     NO_RENDER_BACKEND_FOUND,
     FAILED_TO_OPEN_SCREEN,
