@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_LPT_CONFIG_H
-#define JETSTREAM_LPT_CONFIG_H
+#ifndef JETSTREAM_LPT_GENERIC_H
+#define JETSTREAM_LPT_GENERIC_H
 
 #include "jetstream/base.hpp"
 #include "render/base.hpp"
@@ -13,13 +13,22 @@ struct Config {
     std::shared_ptr<Render::Instance> render;
 };
 
-class State {
+class Generic : public Transform {
 public:
+    explicit Generic(Config& c) : cfg(c) {};
+    virtual ~Generic() = default;
+
     std::shared_ptr<Render::Texture> tex() const {
         return texture;
     };
 
+    Config conf() const {
+        return cfg;
+    }
+
 protected:
+    Config& cfg;
+
     std::vector<float> a;
     std::vector<float> l;
 

@@ -6,12 +6,20 @@ ranlib='emranlib'
 pkgconfig=['pkg-config']
 
 [built-in options]
+prefix='/home/luigi/sandbox/webusb-libusb/build'
 cpp_link_args = [
-    '-s', 'WASM=1',
     '-O2',
+    '-s', 'WASM=1',
     '-s', 'FULL_ES3=1',
     '-s', 'USE_GLFW=3',
     '-s', 'USE_WEBGL2=1',
+    '-s', 'USE_PTHREADS=1',
+    '-s', 'ASYNCIFY=1',
+    '-L/home/luigi/sandbox/webusb-libusb/build/lib',
+    '--bind',
+    '-msimd128',
+    '-lairspy',
+    '-lusb-1.0',
     '-o', 'cyberether.html',
     '--preload-file', './roboto.ttf',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',

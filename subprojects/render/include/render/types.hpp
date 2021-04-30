@@ -9,6 +9,8 @@
 
 #include "magic_enum.hpp"
 
+typedef unsigned int uint;
+
 #ifndef RENDER_ASSERT_SUCCESS
 #define RENDER_ASSERT_SUCCESS(result) { \
     if (result != Result::SUCCESS) { \

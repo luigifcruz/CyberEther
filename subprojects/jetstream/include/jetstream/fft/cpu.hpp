@@ -1,20 +1,18 @@
 #ifndef JETSTREAM_FFT_FFTW_H
 #define JETSTREAM_FFT_FFTW_H
 
-#include "jetstream/fft/config.hpp"
+#include "jetstream/fft/generic.hpp"
 
 #include <fftw3.h>
 
 namespace Jetstream::FFT {
 
-class CPU : public Transform {
+class CPU : public Generic {
 public:
     explicit CPU(Config& c);
     ~CPU();
 
 protected:
-    Config& cfg;
-
     Result underlyingCompute();
     Result underlyingPresent();
 

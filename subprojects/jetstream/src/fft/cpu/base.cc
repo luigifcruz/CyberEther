@@ -1,9 +1,8 @@
 #include "jetstream/fft/cpu.hpp"
-#include <fftw3.h>
 
 namespace Jetstream::FFT {
 
-CPU::CPU(Config& c) : cfg(c) {
+CPU::CPU(Config& c) : Generic(c) {
     cfg.output = std::make_shared<std::vector<std::complex<float>>>();
     cfg.output->resize(cfg.input->size());
 

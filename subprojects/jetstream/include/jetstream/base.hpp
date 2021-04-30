@@ -21,8 +21,9 @@ public:
     explicit Transform() {};
     virtual ~Transform() = default;
 
-    Result compute(std::shared_ptr<Transform> input = nullptr) {
-        future = std::async(std::launch::async, [=](){
+    Result compute(std::shared_ptr<Transform> input = nullptr, bool async = true) {
+        auto mode = (async) ? std::launch::async : std::launch::deferred;
+        future = std::async(mode, [=](){
             if (input) {
                 input->barrier();
             }

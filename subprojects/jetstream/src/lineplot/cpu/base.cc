@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-CPU::CPU(Config& c) : cfg(c) {
+CPU::CPU(Config& c) : Generic(c) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         a.push_back(-1.0f);
         a.push_back(i);
@@ -95,4 +95,4 @@ Result CPU::underlyingPresent() {
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::FFT
+} // namespace Jetstream::Lineplot

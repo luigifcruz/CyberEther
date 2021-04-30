@@ -1,18 +1,16 @@
 #ifndef JETSTREAM_LPT_CPU_H
 #define JETSTREAM_LPT_CPU_H
 
-#include "jetstream/lineplot/config.hpp"
+#include "jetstream/lineplot/generic.hpp"
 
 namespace Jetstream::Lineplot {
 
-class CPU : public Transform, public State {
+class CPU : public Generic  {
 public:
     explicit CPU(Config& c);
     ~CPU();
 
 protected:
-    Config& cfg;
-
     Result underlyingCompute();
     Result underlyingPresent();
 };
