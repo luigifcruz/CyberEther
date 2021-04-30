@@ -8,6 +8,16 @@
 
 #include "jetstream_config.hpp"
 
+#ifndef JETSTREAM_ASSERT_SUCCESS
+#define JETSTREAM_ASSERT_SUCCESS(result) { \
+    if (result != Jetstream::Result::SUCCESS) { \
+        std::cerr << "Jetstream encountered an exception (" <<  magic_enum::enum_name(result) << ") in " \
+            << __PRETTY_FUNCTION__ << " in line " << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
+        throw result; \
+    } \
+}
+#endif
+
 namespace Jetstream {
 
 enum Result {
@@ -16,6 +26,24 @@ enum Result {
     ERROR_FUTURE_INVALID,
 };
 
+namespace DF {
+    namespace CPU {
+        typedef struct CF32V {
+            std::shared_ptr<std::vector<std::complex<float>>> input;
+            std::shared_ptr<std::vector<std::complex<float>>> output;
+        } CF32V;
+    }
+
+    namespace CUDA {
+        typedef struct CF32V {
+            float* input = nullptr;
+            size_t input_size;
+            float* output = nullptr;
+            size_t output_size;
+        } CF32V;
+    }
+}
+
 class Transform {
 public:
     explicit Transform() {};
@@ -23,12 +51,15 @@ public:
 
     Result compute(std::shared_ptr<Transform> input = nullptr, bool async = true) {
         auto mode = (async) ? std::launch::async : std::launch::deferred;
-        future = std::async(mode, [=](){
+        future = std::async(mode, [&](){
             if (input) {
-                input->barrier();
+                auto result = input->barrier();
+                if (result != Result::SUCCESS) {
+                    return result;
+                }
             }
 
-            std::lock_guard<std::mutex> guard(mutex);
+            std::scoped_lock<std::mutex> guard(mutex);
             return this->underlyingCompute();
         });
 
@@ -36,18 +67,12 @@ public:
     }
 
     Result barrier() {
-        if (future.valid()) {
-            return future.get();
-        }
-        return Result::ERROR_FUTURE_INVALID;
+        return future.get();
     }
 
     Result present() {
-        if (this->barrier() == Result::SUCCESS) {
-            std::lock_guard<std::mutex> guard(mutex);
-            return this->underlyingPresent();
-        }
-        return Result::ERROR_FUTURE_INVALID;
+        std::scoped_lock<std::mutex> guard(mutex);
+        return this->underlyingPresent();
     }
 
 protected:
@@ -58,26 +83,25 @@ protected:
     virtual Result underlyingPresent() = 0;
 };
 
-class Executor {
-public:
-inline static Result Barrier(const std::vector<std::shared_ptr<Transform>> transforms) {
+inline Result Barrier(const std::vector<std::shared_ptr<Transform>> transforms) {
     for (const auto& transform : transforms) {
-        if (transform->barrier() != Result::SUCCESS) {
-            return Result::ERROR;
+        auto result = transform->barrier();
+        if (result != Result::SUCCESS) {
+            return result;
         }
     }
     return Result::SUCCESS;
 }
 
-inline static Result Present(const std::vector<std::shared_ptr<Transform>> transforms) {
+inline Result Present(const std::vector<std::shared_ptr<Transform>> transforms) {
     for (const auto& transform : transforms) {
-        if (transform->present() != Result::SUCCESS) {
-            return Result::ERROR;
+        auto result = transform->present();
+        if (result != Result::SUCCESS) {
+            return result;
         }
     }
     return Result::SUCCESS;
 }
-};
 
 } // namespace Jetstream
 

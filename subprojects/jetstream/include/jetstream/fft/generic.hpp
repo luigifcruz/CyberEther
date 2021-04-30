@@ -6,8 +6,6 @@
 namespace Jetstream::FFT {
 
 struct Config {
-    std::shared_ptr<std::vector<std::complex<float>>> input;
-    std::shared_ptr<std::vector<std::complex<float>>> output;
 };
 
 class Generic : public Transform {

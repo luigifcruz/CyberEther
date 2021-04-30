@@ -6,48 +6,58 @@
 #endif
 
 #include "render/base.hpp"
-
 #include "samurai/samurai.hpp"
-
 #include "jetstream/fft/base.hpp"
 #include "jetstream/lineplot/base.hpp"
 
-using namespace Samurai;
+namespace T = Jetstream::DF::CPU;
 
-ChannelId rx;
-auto device = Airspy::Device();
-std::shared_ptr<Render::Instance> render;
+struct State {
+    bool streaming = false;
 
-std::shared_ptr<Jetstream::FFT::Generic> fft;
-std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
+    Samurai::ChannelId rx;
+    std::shared_ptr<Render::Instance> render;
+    std::shared_ptr<Samurai::Airspy::Device> device;
 
-std::shared_ptr<std::vector<std::complex<float>>> input;
+    T::CF32V fftDf;
+    std::shared_ptr<Jetstream::FFT::Generic> fft;
 
-void render_loop() {
-    render->start();
+    T::CF32V lptDf;
+    std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
+};
 
-    ASSERT_SUCCESS(device.ReadStream(rx, input->data(), input->size(), 1000));
+void dsp_loop(std::shared_ptr<State> state) {
+    while (state->streaming) {
+        state->device->ReadStream(state->rx, state->fftDf.input->data(), state->fftDf.input->size(), 1000);
+        JETSTREAM_ASSERT_SUCCESS(state->fft->compute());
+        JETSTREAM_ASSERT_SUCCESS(state->lpt->compute(state->fft));
+        JETSTREAM_ASSERT_SUCCESS(state->lpt->barrier())
+    }
+}
 
-    fft->compute();
-    lpt->compute(fft);
-    lpt->present();
+void render_loop(std::shared_ptr<State> state) {
+    state->render->start();
+
+    state->lpt->present();
 
     ImGui::Begin("Lineplot");
     ImGui::GetWindowDrawList()->AddImage(
-        (void*)lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-        ImVec2(ImGui::GetCursorScreenPos().x + lpt->conf().width/2.0,
-        ImGui::GetCursorScreenPos().y + lpt->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+        (void*)state->lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
+        ImVec2(ImGui::GetCursorScreenPos().x + state->lpt->conf().width/2.0,
+        ImGui::GetCursorScreenPos().y + state->lpt->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
     ImGui::End();
 
     ImGui::Begin("Samurai Info");
-    ImGui::Text("Buffer Fill: %ld", device.BufferOccupancy(rx));
+    ImGui::Text("Buffer Fill: %ld", state->device->BufferOccupancy(state->rx));
     ImGui::End();
 
-    render->end();
+    state->render->end();
 }
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
+
+    auto state = std::make_shared<State>();
 
     Render::Instance::Config renderCfg;
     renderCfg.width = 3000;
@@ -55,48 +65,52 @@ int main() {
     renderCfg.resizable = true;
     renderCfg.enableImgui = true;
     renderCfg.enableDebug = true;
-    renderCfg.enableVsync = false;
+    renderCfg.enableVsync = true;
     renderCfg.title = "CyberEther";
-    render = Render::Instantiate(Render::API::GLES, renderCfg);
+    state->render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-    Device::Config deviceConfig{};
+    state->device = std::make_shared<Samurai::Airspy::Device>();
+
+    Samurai::Device::Config deviceConfig;
     deviceConfig.sampleRate = 10e6;
-    device.Enable(deviceConfig);
+    state->device->Enable(deviceConfig);
 
-    Channel::Config channelConfig{};
-    channelConfig.mode = Mode::RX;
-    channelConfig.dataFmt = Format::F32;
-    ASSERT_SUCCESS(device.EnableChannel(channelConfig, &rx));
+    Samurai::Channel::Config channelConfig;
+    channelConfig.mode = Samurai::Mode::RX;
+    channelConfig.dataFmt = Samurai::Format::F32;
+    state->device->EnableChannel(channelConfig, &state->rx);
 
-    Channel::State channelState{};
+    Samurai::Channel::State channelState;
     channelState.enableAGC = true;
     channelState.frequency = 545.5e6;
-    ASSERT_SUCCESS(device.UpdateChannel(rx, channelState));
-
-    input = std::make_shared<std::vector<std::complex<float>>>();
-    input->resize(221184);
+    state->device->UpdateChannel(state->rx, channelState);
 
     Jetstream::FFT::Config fftCfg;
-    fftCfg.input = input;
-    fft = std::make_shared<Jetstream::FFT::CPU>(fftCfg);
+    state->fftDf.input = std::make_shared<std::vector<std::complex<float>>>(8192*8);
+    state->fft = Jetstream::FFT::Instantiate(fftCfg, state->fftDf);
 
-    Jetstream::Lineplot::Config lptCfg;
-    lptCfg.input = fftCfg.output;
-    lptCfg.render = render;
-    lpt = std::make_shared<Jetstream::Lineplot::CPU>(lptCfg);
+    Jetstream::Lineplot::Config lptCfg{state->render};
+    state->lptDf.input = state->fftDf.output;
+    state->lpt = Jetstream::Lineplot::Instantiate(lptCfg, state->lptDf);
 
-    render->create();
-    device.StartStream();
+    state->render->create();
+    state->device->StartStream();
+
+    state->streaming = true;
+    std::thread dsp(dsp_loop, state);
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(render_loop, 0, 1);
 #else
-    while(render->keepRunning())
-        render_loop();
+    while(state->render->keepRunning())
+        render_loop(state);
 #endif
 
-    device.StopStream();
-    render->destroy();
+    state->streaming = false;
+    dsp.join();
+
+    state->device->StopStream();
+    state->render->destroy();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

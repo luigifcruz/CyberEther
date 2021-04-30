@@ -33,5 +33,3 @@ static std::vector<uint> FillScreenIndices = {
 } // namespace Render::Extras
 
 #endif
-
-

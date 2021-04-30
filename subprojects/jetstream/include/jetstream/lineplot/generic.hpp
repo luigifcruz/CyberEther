@@ -7,10 +7,9 @@
 namespace Jetstream::Lineplot {
 
 struct Config {
+    std::shared_ptr<Render::Instance> render;
     int width = 5000;
     int height = 1000;
-    std::shared_ptr<std::vector<std::complex<float>>> input;
-    std::shared_ptr<Render::Instance> render;
 };
 
 class Generic : public Transform {

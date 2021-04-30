@@ -7,10 +7,12 @@ namespace Jetstream::Lineplot {
 
 class CPU : public Generic  {
 public:
-    explicit CPU(Config& c);
+    explicit CPU(Config&, DF::CPU::CF32V&);
     ~CPU();
 
 protected:
+    DF::CPU::CF32V& df;
+
     Result underlyingCompute();
     Result underlyingPresent();
 };
@@ -18,4 +20,3 @@ protected:
 } // namespace Jetstream::Lineplot
 
 #endif
-
