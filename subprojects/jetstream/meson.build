@@ -1,5 +1,5 @@
 project(
-    'spectrum', 'cpp',
+    'jetstream', 'cpp',
     version: '0.0.0',
     default_options: ['cpp_std=c++17', 'prefix=/usr', 'optimization=3']
 )
@@ -8,11 +8,9 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
     dependency('threads'),
-    subproject('render').get_variable('librender_dep'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
-    include_directories('include/spectrum/tools'),
     include_directories('include'),
     include_directories('.'),
 ]
@@ -20,15 +18,16 @@ inc_lst = [
 subdir('src')
 subdir('include')
 
-libspectrum = library(
-    'spectrum',
+libjetstream = library(
+    'jetstream',
     src_lst,
     include_directories: inc_lst,
     dependencies: dep_lst,
     install: true
 )
 
-libspectrum_dep = declare_dependency(
+libjetstream_dep = declare_dependency(
     include_directories: inc_lst,
-    link_with: libspectrum
+    link_with: libjetstream
 )
+

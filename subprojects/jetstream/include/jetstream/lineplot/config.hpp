@@ -1,33 +1,26 @@
-#ifndef SPECTRUM_BASE_LINEPLOT_H
-#define SPECTRUM_BASE_LINEPLOT_H
+#ifndef JETSTREAM_LPT_CONFIG_H
+#define JETSTREAM_LPT_CONFIG_H
 
-#include "spectrum/types.hpp"
+#include "jetstream/base.hpp"
+#include "render/base.hpp"
 
-namespace Spectrum {
+namespace Jetstream::Lineplot {
 
-class LinePlot {
+struct Config {
+    int width = 5000;
+    int height = 1000;
+    std::shared_ptr<std::vector<std::complex<float>>> input;
+    std::shared_ptr<Render::Instance> render;
+};
+
+class State {
 public:
-    struct Config {
-        int width = 1280;
-        int height = 480;
+    std::shared_ptr<Render::Texture> tex() const {
+        return texture;
     };
 
-    LinePlot(Config& c) : cfg(c) {};
-    virtual ~LinePlot() = default;
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
-    virtual Result draw() = 0;
-
-    Config& config() {
-        return cfg;
-    }
-
-    virtual uint raw() = 0;
-
 protected:
-    Config& cfg;
-
+    std::vector<float> a;
     std::vector<float> l;
 
     Render::Texture::Config textureCfg;
@@ -75,7 +68,6 @@ protected:
     )END";
 };
 
-} // namespace Render
+} // namespace Jetstream::Lineplot
 
 #endif
-

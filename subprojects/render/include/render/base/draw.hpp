@@ -11,6 +11,7 @@ public:
     enum Mode {
         TriangleFan,
         Triangles,
+        LineStrip,
         LineLoop,
         Points,
         Lines,

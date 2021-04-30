@@ -39,8 +39,10 @@ public:
     virtual std::string vendor_str() = 0;
     virtual std::string glsl_str() = 0;
 
+    virtual std::shared_ptr<Surface> createAndBind(Surface::Config&) = 0;
+    virtual Result unbind(std::shared_ptr<Surface>) = 0;
+
     virtual std::shared_ptr<Program> create(Program::Config&) = 0;
-    virtual std::shared_ptr<Surface> create(Surface::Config&) = 0;
     virtual std::shared_ptr<Texture> create(Texture::Config&) = 0;
     virtual std::shared_ptr<Vertex> create(Vertex::Config&) = 0;
     virtual std::shared_ptr<Draw> create(Draw::Config&) = 0;

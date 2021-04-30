@@ -1,9 +1,8 @@
-#include "spectrum/fftw/lineplot.hpp"
+#include "jetstream/lineplot/cpu.hpp"
 
-namespace Spectrum {
+namespace Jetstream::Lineplot {
 
-Result FFTW::LinePlot::create() {
-    static std::vector<float> a;
+CPU::CPU(Config& c) : cfg(c) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         a.push_back(-1.0f);
         a.push_back(i);
@@ -19,19 +18,13 @@ Result FFTW::LinePlot::create() {
         a.push_back(+0.0f);
     }
 
-    l.push_back(-1.0);
-    l.push_back(-1.0);
-    l.push_back(+0.0);
-    for (float i = -1.0f; i < +1.0f; i += 1.0f/(inst.cfg.size/2)) {
+    for (float i = -1.0f; i < +1.0f; i += 1.0f/((float)cfg.input->size()/2)) {
         l.push_back(i);
         l.push_back(+0.0f);
         l.push_back(+0.0f);
     }
-    l.push_back(+1.0);
-    l.push_back(-1.0);
-    l.push_back(+0.0);
 
-    auto render = inst.cfg.render;
+    auto render = cfg.render;
 
     gridVertexCfg.buffers = {
         {
@@ -58,7 +51,7 @@ Result FFTW::LinePlot::create() {
     lineVertex = render->create(lineVertexCfg);
 
     drawLineVertexCfg.buffer = lineVertex;
-    drawLineVertexCfg.mode = Render::Draw::LineLoop;
+    drawLineVertexCfg.mode = Render::Draw::LineStrip;
     drawLineVertex = render->create(drawLineVertexCfg);
 
     programCfg.vertexSource = &vertexSource;
@@ -72,31 +65,34 @@ Result FFTW::LinePlot::create() {
 
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    surface = render->create(surfaceCfg);
-
-    return Result::SUCCESS;
+    surface = render->createAndBind(surfaceCfg);
 }
 
-Result FFTW::LinePlot::destroy() {
-    return Result::SUCCESS;
+CPU::~CPU() {
 }
 
 float abs(std::complex<float> n) {
     return n.real() * n.real() + n.imag() * n.imag();
 }
 
-Result FFTW::LinePlot::draw() {
-    for (int i = 0; i < l.size(); i += 3) {
-        l.at(i+1) = ((20 * log10(abs(inst.fft_out[i/3]) / inst.cfg.size)) / (200.0 / 2)) + 1;
-    }
-    lineVertex->update();
+Result CPU::underlyingCompute() {
+    for (int i = 0; i < cfg.input->size(); i++) {
+        int ix;
 
+        if (i < cfg.input->size() / 2) {
+            ix = (cfg.input->size() / 2) + i;
+        } else {
+            ix = i - (cfg.input->size() / 2);
+        }
+
+        l[(i*3)+1] = ((20 * log10(abs(cfg.input->at(ix)) / cfg.input->size())) / (200.0 / 2)) + 1;
+    }
     return Result::SUCCESS;
 }
 
-uint FFTW::LinePlot::raw() {
-    return texture->raw();
+Result CPU::underlyingPresent() {
+    lineVertex->update();
+    return Result::SUCCESS;
 }
 
-} // namespace Spectrum
-
+} // namespace Jetstream::FFT

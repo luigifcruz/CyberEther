@@ -1,38 +1,45 @@
 #define RENDER_DEBUG
 
 #include "render/base.hpp"
-#include "render/extras.hpp"
-#include "spectrum/base.hpp"
+
+#include "samurai/samurai.hpp"
+
+#include "jetstream/fft/base.hpp"
+#include "jetstream/lineplot/base.hpp"
 
 #include <iostream>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 
-#include <samurai/samurai.hpp>
-#include <complex>
-#include <future>
-
 using namespace Samurai;
 
 ChannelId rx;
 auto device = Airspy::Device();
+std::shared_ptr<Render::Instance> render;
 
-static Spectrum::Instance::Config spectrumCfg;
-static std::shared_ptr<Render::Instance> render;
-static std::shared_ptr<Spectrum::Instance> spectrum;
-static std::shared_ptr<Spectrum::LinePlot> lineplot;
+std::shared_ptr<Jetstream::Transform> fft;
+Jetstream::Lineplot::Config lptCfg;
+std::shared_ptr<Jetstream::Lineplot::CPU> lpt;
+std::shared_ptr<Jetstream::Transform> wpt;
+std::shared_ptr<Jetstream::Transform> hpt;
+
+std::shared_ptr<std::vector<std::complex<float>>> input;
 
 void render_loop() {
-    ASSERT_SUCCESS(device.ReadStream(rx, spectrumCfg.buffer, spectrumCfg.size, 1000));
-    spectrum->feed();
     render->start();
+
+    ASSERT_SUCCESS(device.ReadStream(rx, input->data(), input->size(), 1000));
+
+    fft->compute();
+    lpt->compute(fft);
+    lpt->present();
 
     ImGui::Begin("Scene Window");
     ImGui::GetWindowDrawList()->AddImage(
-        (void*)lineplot->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-        ImVec2(ImGui::GetCursorScreenPos().x + lineplot->config().width/2.0,
-        ImGui::GetCursorScreenPos().y + lineplot->config().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+        (void*)lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
+        ImVec2(ImGui::GetCursorScreenPos().x + lptCfg.width/2.0,
+        ImGui::GetCursorScreenPos().y + lptCfg.height/2.0), ImVec2(0, 1), ImVec2(1, 0));
     ImGui::End();
 
     ImGui::Begin("Samurai Info");
@@ -55,19 +62,6 @@ int main() {
     renderCfg.title = "CyberEther";
     render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-    spectrumCfg.render = render;
-    spectrumCfg.bandwidth = 10e6;
-    spectrumCfg.frequency = 96.9e6;
-    spectrumCfg.size = 8192;
-    spectrumCfg.format = Spectrum::DataFormat::CF32;
-    spectrumCfg.buffer = (void*)malloc(sizeof(std::complex<float>) * spectrumCfg.size);
-    spectrum = Spectrum::Instantiate(Spectrum::API::FFTW, spectrumCfg);
-
-    Spectrum::LinePlot::Config lineplotCfg;
-    lineplotCfg.height = 1080;
-    lineplotCfg.width = 4000;
-    lineplot = spectrum->create(lineplotCfg);
-
     Device::Config deviceConfig{};
     deviceConfig.sampleRate = 10e6;
     device.Enable(deviceConfig);
@@ -82,7 +76,17 @@ int main() {
     channelState.frequency = 96.9e6;
     ASSERT_SUCCESS(device.UpdateChannel(rx, channelState));
 
-    spectrum->create();
+    input = std::make_shared<std::vector<std::complex<float>>>();
+    input->resize(8192);
+
+    Jetstream::FFT::Config fftCfg;
+    fftCfg.input = input;
+    fft = std::make_shared<Jetstream::FFT::CPU>(fftCfg);
+
+    lptCfg.input = fftCfg.output;
+    lptCfg.render = render;
+    lpt = std::make_shared<Jetstream::Lineplot::CPU>(lptCfg);
+
     render->create();
     device.StartStream();
 
@@ -94,7 +98,6 @@ int main() {
 #endif
 
     device.StopStream();
-    spectrum->destroy();
     render->destroy();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;

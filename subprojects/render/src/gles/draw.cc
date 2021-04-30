@@ -30,6 +30,9 @@ Result GLES::Draw::draw() {
         case Draw::Mode::Lines:
             mode = GL_LINES;
             break;
+        case Draw::Mode::LineStrip:
+            mode = GL_LINE_STRIP;
+            break;
         case Draw::Mode::Points:
             mode = GL_POINTS;
             break;

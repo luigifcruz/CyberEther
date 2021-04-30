@@ -180,14 +180,21 @@ Result GLES::getError(std::string func, std::string file, int line) {
     return Result::SUCCESS;
 }
 
-std::shared_ptr<Render::Program> GLES::create(Render::Program::Config& cfg) {
-    return std::make_shared<Program>(cfg, *this);
-}
-
-std::shared_ptr<Render::Surface> GLES::create(Render::Surface::Config& cfg) {
+std::shared_ptr<Render::Surface> GLES::createAndBind(Render::Surface::Config& cfg) {
     auto surface = std::make_shared<Surface>(cfg, *this);
     surfaces.push_back(surface);
     return surface;
+}
+
+Result GLES::unbind(std::shared_ptr<Render::Surface> surface) {
+    if (std::remove(surfaces.begin(), surfaces.end(), surface) != surfaces.end()) {
+        return Result::SUCCESS;
+    }
+    return Result::ERROR;
+}
+
+std::shared_ptr<Render::Program> GLES::create(Render::Program::Config& cfg) {
+    return std::make_shared<Program>(cfg, *this);
 }
 
 std::shared_ptr<Render::Texture> GLES::create(Render::Texture::Config& cfg) {

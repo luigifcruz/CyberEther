@@ -4,8 +4,8 @@ namespace Render {
 
 Result GLES::Vertex::create() {
     glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
 
+    this->start();
     int i = 0;
     for (auto& buffer : cfg.buffers) {
         uint usage = GL_STATIC_DRAW;
@@ -35,8 +35,7 @@ Result GLES::Vertex::create() {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint), cfg.indices.data(), GL_STATIC_DRAW);
         vertex_count = cfg.indices.size();
     }
-
-    glBindVertexArray(0);
+    this->end();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -64,12 +63,12 @@ Result GLES::Vertex::end() {
 }
 
 Result GLES::Vertex::update() {
-    glBindVertexArray(vao);
+    this->start();
     for (auto& buffer : cfg.buffers) {
         glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
         glBufferSubData(GL_ARRAY_BUFFER, 0, buffer.size * sizeof(float), buffer.data);
     }
-    glBindVertexArray(0);
+    this->end();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
