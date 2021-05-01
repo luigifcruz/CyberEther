@@ -26,6 +26,8 @@ struct State {
     std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
 };
 
+auto state = std::make_shared<State>();
+
 void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
         state->device->ReadStream(state->rx, state->fftDf.input->data(), state->fftDf.input->size(), 1000);
@@ -35,7 +37,7 @@ void dsp_loop(std::shared_ptr<State> state) {
     }
 }
 
-void render_loop(std::shared_ptr<State> state) {
+void render_loop() {
     state->render->start();
 
     state->lpt->present();
@@ -56,8 +58,6 @@ void render_loop(std::shared_ptr<State> state) {
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
-
-    auto state = std::make_shared<State>();
 
     Render::Instance::Config renderCfg;
     renderCfg.width = 3000;
@@ -103,7 +103,7 @@ int main() {
     emscripten_set_main_loop(render_loop, 0, 1);
 #else
     while(state->render->keepRunning())
-        render_loop(state);
+        render_loop();
 #endif
 
     state->streaming = false;
