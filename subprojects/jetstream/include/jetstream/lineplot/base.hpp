@@ -6,7 +6,7 @@
 
 namespace Jetstream::Lineplot {
 
-inline std::shared_ptr<CPU> Instantiate(Config& config, I& input) {
+inline std::shared_ptr<CPU> Instantiate(Config& config, CPU::I& input) {
     return std::make_shared<CPU>(config, input);
 }
 

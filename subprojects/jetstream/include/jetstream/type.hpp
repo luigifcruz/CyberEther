@@ -29,11 +29,11 @@ enum Result {
 namespace cpu {
     namespace arr {
         struct c32 {
-            const std::unique_ptr<std::vector<std::complex<float>>> data;
+            std::vector<std::complex<float>> data;
         };
 
         struct c64 {
-            const std::unique_ptr<std::vector<std::complex<double>>> data;
+            std::vector<std::complex<double>> data;
         };
     }
 }

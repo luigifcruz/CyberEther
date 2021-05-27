@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-CPU::CPU(Config& c, DF::CPU::CF32V& d) : Generic(c), df(d) {
+CPU::CPU(Config& c, I& i) : Generic(c), input(i) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         a.push_back(-1.0f);
         a.push_back(i);
@@ -18,7 +18,7 @@ CPU::CPU(Config& c, DF::CPU::CF32V& d) : Generic(c), df(d) {
         a.push_back(+0.0f);
     }
 
-    for (float i = -1.0f; i < +1.0f; i += 1.0f/((float)df.input->size()/2)) {
+    for (float i = -1.0f; i < +1.0f; i += 1.0f/((float)input.data.size()/2)) {
         l.push_back(i);
         l.push_back(+0.0f);
         l.push_back(+0.0f);
@@ -76,16 +76,16 @@ float abs(std::complex<float> n) {
 }
 
 Result CPU::underlyingCompute() {
-    for (int i = 0; i < df.input->size(); i++) {
+    for (int i = 0; i < input.data.size(); i++) {
         int ix;
 
-        if (i < df.input->size() / 2) {
-            ix = (df.input->size() / 2) + i;
+        if (i < input.data.size() / 2) {
+            ix = (input.data.size() / 2) + i;
         } else {
-            ix = i - (df.input->size() / 2);
+            ix = i - (input.data.size() / 2);
         }
 
-        l[(i*3)+1] = ((20 * log10(abs(df.input->at(ix)) / df.input->size())) / (200.0 / 2)) + 1;
+        l[(i*3)+1] = ((20 * log10(abs(input.data.at(ix)) / input.data.size())) / (200.0 / 2)) + 1;
     }
     return Result::SUCCESS;
 }

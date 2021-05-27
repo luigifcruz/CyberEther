@@ -2,14 +2,13 @@
 
 namespace Jetstream::FFT {
 
-CPU::CPU(Config& c, DF::CPU::CF32V& d) : Generic(c), df(d) {
-    df.output = std::make_shared<std::vector<std::complex<float>>>();
-    df.output->resize(df.input->size());
+CPU::CPU(Config& c, I& i) : Generic(c), input(i) {
+    output.data.resize(input.data.size());
 
     std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
 
-    cf_plan = fftwf_plan_dft_1d(df.input->size(), reinterpret_cast<fftwf_complex*>(df.input->data()),
-            reinterpret_cast<fftwf_complex*>(df.output->data()), FFTW_FORWARD, FFTW_MEASURE);
+    cf_plan = fftwf_plan_dft_1d(input.data.size(), reinterpret_cast<fftwf_complex*>(input.data.data()),
+            reinterpret_cast<fftwf_complex*>(output.data.data()), FFTW_FORWARD, FFTW_MEASURE);
 }
 
 CPU::~CPU() {

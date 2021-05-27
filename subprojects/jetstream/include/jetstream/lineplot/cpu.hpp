@@ -5,10 +5,10 @@
 
 namespace Jetstream::Lineplot {
 
-using I = cpu::arr::c32;
-
 class CPU : public Generic  {
 public:
+    using I = cpu::arr::c32;
+
     explicit CPU(Config&, I&);
     ~CPU();
 
