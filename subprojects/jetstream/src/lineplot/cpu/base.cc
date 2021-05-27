@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-CPU::CPU(Config& c, I& i) : Generic(c), input(i) {
+CPU::CPU(Config& c, std::shared_ptr<Module> m, I& i) : Generic(c, m), input(i) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         a.push_back(-1.0f);
         a.push_back(i);

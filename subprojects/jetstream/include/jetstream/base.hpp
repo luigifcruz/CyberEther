@@ -7,14 +7,14 @@ namespace Jetstream {
 
 class Module {
 public:
-    explicit Module() {};
+    explicit Module(std::shared_ptr<Module> producer = nullptr) : producer(producer) {};
     virtual ~Module() = default;
 
-    Result compute(std::shared_ptr<Module> input = nullptr, bool async = true) {
+    Result compute(bool async = true) {
         auto mode = (async) ? std::launch::async : std::launch::deferred;
         future = std::async(mode, [&](){
-            if (input) {
-                auto result = input->barrier();
+            if (producer) {
+                auto result = producer->barrier();
                 if (result != Result::SUCCESS) {
                     return result;
                 }
@@ -39,6 +39,7 @@ public:
 protected:
     std::mutex mutex;
     std::future<Result> future;
+    std::shared_ptr<Module> producer;
 
     virtual Result underlyingCompute() = 0;
     virtual Result underlyingPresent() = 0;

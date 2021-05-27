@@ -14,7 +14,7 @@ struct Config {
 
 class Generic : public Module {
 public:
-    explicit Generic(Config& c) : cfg(c) {};
+    explicit Generic(Config& c, std::shared_ptr<Module> m) : Module(m), cfg(c) {};
     virtual ~Generic() = default;
 
     std::shared_ptr<Render::Texture> tex() const {

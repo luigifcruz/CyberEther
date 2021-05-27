@@ -1,10 +1,5 @@
 #define RENDER_DEBUG
 
-#include <iostream>
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
 #include "jetstream/fft/base.hpp"
@@ -30,7 +25,7 @@ struct State {
 
     Jetstream::cpu::arr::c32 input;
     std::shared_ptr<Jetstream::FFT::CPU> fft;
-    std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
+    std::shared_ptr<Jetstream::Lineplot::CPU> lpt;
 
 };
 
@@ -40,7 +35,7 @@ void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
         state->device->ReadStream(state->rx, state->input.data.data(), state->input.data.size(), 1000);
         JETSTREAM_ASSERT_SUCCESS(state->fft->compute());
-        JETSTREAM_ASSERT_SUCCESS(state->lpt->compute(state->fft));
+        JETSTREAM_ASSERT_SUCCESS(state->lpt->compute());
         JETSTREAM_ASSERT_SUCCESS(state->lpt->barrier());
     }
 }
@@ -94,10 +89,11 @@ int main() {
     state->device->UpdateChannel(state->rx, channelState);
 
     state->input.data.resize(8192*8);
-    state->fft = Jetstream::FFT::Instantiate(state->cfg.fft, state->input);
+
+    state->fft = std::make_shared<Jetstream::FFT::CPU>(state->cfg.fft, state->input);
 
     state->cfg.lpt.render = state->render;
-    state->lpt = Jetstream::Lineplot::Instantiate(state->cfg.lpt, state->fft->out());
+    state->lpt = std::make_shared<Jetstream::Lineplot::CPU>(state->cfg.lpt, state->fft, state->fft->out());
 
     state->render->create();
     state->device->StartStream();
@@ -105,12 +101,9 @@ int main() {
     state->streaming = true;
     std::thread dsp(dsp_loop, state);
 
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop(render_loop, 0, 1);
-#else
-    while(state->render->keepRunning())
+    while(state->render->keepRunning()) {
         render_loop();
-#endif
+    }
 
     state->streaming = false;
     dsp.join();

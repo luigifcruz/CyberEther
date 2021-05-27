@@ -9,7 +9,7 @@ class CPU : public Generic  {
 public:
     using I = cpu::arr::c32;
 
-    explicit CPU(Config&, I&);
+    explicit CPU(Config&, std::shared_ptr<Module>, I&);
     ~CPU();
 
 protected:
