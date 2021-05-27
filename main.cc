@@ -16,17 +16,9 @@ struct State {
     Samurai::ChannelId rx;
     std::shared_ptr<Samurai::Airspy::Device> device;
 
-
     // Jetstream
-    struct {
-        Jetstream::FFT::Config fft;
-        Jetstream::Lineplot::Config lpt;
-    } cfg;
-
     Jetstream::cpu::arr::c32 input;
-    std::shared_ptr<Jetstream::FFT::CPU> fft;
-    std::shared_ptr<Jetstream::Lineplot::CPU> lpt;
-
+    std::vector<std::shared_ptr<Jetstream::Module>> modules;
 };
 
 auto state = std::make_shared<State>();
@@ -34,34 +26,15 @@ auto state = std::make_shared<State>();
 void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
         state->device->ReadStream(state->rx, state->input.data.data(), state->input.data.size(), 1000);
-        JETSTREAM_ASSERT_SUCCESS(state->fft->compute());
-        JETSTREAM_ASSERT_SUCCESS(state->lpt->compute());
-        JETSTREAM_ASSERT_SUCCESS(state->lpt->barrier());
+        JETSTREAM_ASSERT_SUCCESS(Jetstream::Compute(state->modules));
+        JETSTREAM_ASSERT_SUCCESS(Jetstream::Barrier(state->modules));
     }
-}
-
-void render_loop() {
-    state->render->start();
-
-    state->lpt->present();
-
-    ImGui::Begin("Lineplot");
-    ImGui::GetWindowDrawList()->AddImage(
-        (void*)state->lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-        ImVec2(ImGui::GetCursorScreenPos().x + state->lpt->conf().width/2.0,
-        ImGui::GetCursorScreenPos().y + state->lpt->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
-    ImGui::End();
-
-    ImGui::Begin("Samurai Info");
-    ImGui::Text("Buffer Fill: %ld", state->device->BufferOccupancy(state->rx));
-    ImGui::End();
-
-    state->render->end();
 }
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
+    // Configure Render
     Render::Instance::Config renderCfg;
     renderCfg.width = 3000;
     renderCfg.height = 1080;
@@ -72,6 +45,7 @@ int main() {
     renderCfg.title = "CyberEther";
     state->render = Render::Instantiate(Render::API::GLES, renderCfg);
 
+    // Configure Samurai Radio
     state->device = std::make_shared<Samurai::Airspy::Device>();
 
     Samurai::Device::Config deviceConfig;
@@ -88,21 +62,43 @@ int main() {
     channelState.frequency = 545.5e6;
     state->device->UpdateChannel(state->rx, channelState);
 
+    // Configure Jetstream Modules
     state->input.data.resize(8192*8);
 
-    state->fft = std::make_shared<Jetstream::FFT::CPU>(state->cfg.fft, state->input);
+    Jetstream::FFT::Config fftCfg;
+    auto fft = Jetstream::FFT::Instantiate(fftCfg, state->input);
 
-    state->cfg.lpt.render = state->render;
-    state->lpt = std::make_shared<Jetstream::Lineplot::CPU>(state->cfg.lpt, state->fft, state->fft->out());
+    Jetstream::Lineplot::Config lptCfg;
+    lptCfg.render = state->render;
+    auto lpt = Jetstream::Lineplot::Instantiate(lptCfg, fft, fft->out());
 
+    // Add Jetstream modules to the execution pipeline.
+    state->modules.push_back(fft);
+    state->modules.push_back(lpt);
+
+    // Start Components
+    state->streaming = true;
     state->render->create();
     state->device->StartStream();
-
-    state->streaming = true;
     std::thread dsp(dsp_loop, state);
 
     while(state->render->keepRunning()) {
-        render_loop();
+        state->render->start();
+
+        JETSTREAM_ASSERT_SUCCESS(Jetstream::Present(state->modules));
+
+        ImGui::Begin("Lineplot");
+        ImGui::GetWindowDrawList()->AddImage(
+            (void*)lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
+            ImVec2(ImGui::GetCursorScreenPos().x + lpt->conf().width/2.0,
+            ImGui::GetCursorScreenPos().y + lpt->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::End();
+
+        ImGui::Begin("Samurai Info");
+        ImGui::Text("Buffer Fill: %ld", state->device->BufferOccupancy(state->rx));
+        ImGui::End();
+
+        state->render->end();
     }
 
     state->streaming = false;

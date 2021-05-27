@@ -28,7 +28,10 @@ public:
     }
 
     Result barrier() {
-        return future.get();
+        if (future.valid()) {
+            future.wait();
+        }
+        return Result::SUCCESS;
     }
 
     Result present() {
@@ -44,6 +47,16 @@ protected:
     virtual Result underlyingCompute() = 0;
     virtual Result underlyingPresent() = 0;
 };
+
+inline Result Compute(const std::vector<std::shared_ptr<Module>> modules) {
+    for (const auto& transform : modules) {
+        auto result = transform->compute();
+        if (result != Result::SUCCESS) {
+            return result;
+        }
+    }
+    return Result::SUCCESS;
+}
 
 inline Result Barrier(const std::vector<std::shared_ptr<Module>> modules) {
     for (const auto& transform : modules) {

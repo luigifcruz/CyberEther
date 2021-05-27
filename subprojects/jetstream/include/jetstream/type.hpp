@@ -23,6 +23,7 @@ namespace Jetstream {
 enum Result {
     SUCCESS = 0,
     ERROR = 1,
+    UNKNOWN = 2,
     ERROR_FUTURE_INVALID,
 };
 
