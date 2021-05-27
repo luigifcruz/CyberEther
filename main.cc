@@ -10,8 +10,6 @@
 #include "jetstream/fft/base.hpp"
 #include "jetstream/lineplot/base.hpp"
 
-namespace T = Jetstream::DF::CPU;
-
 struct State {
     bool streaming = false;
 
@@ -19,10 +17,8 @@ struct State {
     std::shared_ptr<Render::Instance> render;
     std::shared_ptr<Samurai::Airspy::Device> device;
 
-    T::CF32V fftDf;
+    Jetstream::cpu::arr::c32 input;
     std::shared_ptr<Jetstream::FFT::Generic> fft;
-
-    T::CF32V lptDf;
     std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
 };
 
@@ -30,7 +26,7 @@ auto state = std::make_shared<State>();
 
 void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
-        state->device->ReadStream(state->rx, state->fftDf.input->data(), state->fftDf.input->size(), 1000);
+        state->device->ReadStream(state->rx, state->input.data->data(), state->input.data->size(), 1000);
         JETSTREAM_ASSERT_SUCCESS(state->fft->compute());
         JETSTREAM_ASSERT_SUCCESS(state->lpt->compute(state->fft));
         JETSTREAM_ASSERT_SUCCESS(state->lpt->barrier())
@@ -86,12 +82,12 @@ int main() {
     state->device->UpdateChannel(state->rx, channelState);
 
     Jetstream::FFT::Config fftCfg;
-    state->fftDf.input = std::make_shared<std::vector<std::complex<float>>>(8192*8);
-    state->fft = Jetstream::FFT::Instantiate(fftCfg, state->fftDf);
+    state->input.data->resize(8192*8);
+    auto a = Jetstream::FFT::Instantiate(fftCfg, state->input);
+    state->fft = a;
 
     Jetstream::Lineplot::Config lptCfg{state->render};
-    state->lptDf.input = state->fftDf.output;
-    state->lpt = Jetstream::Lineplot::Instantiate(lptCfg, state->lptDf);
+    state->lpt = Jetstream::Lineplot::Instantiate(lptCfg, a->out());
 
     state->render->create();
     state->device->StartStream();

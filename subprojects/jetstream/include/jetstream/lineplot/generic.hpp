@@ -12,7 +12,7 @@ struct Config {
     int height = 1000;
 };
 
-class Generic : public Transform {
+class Generic : public Module {
 public:
     explicit Generic(Config& c) : cfg(c) {};
     virtual ~Generic() = default;

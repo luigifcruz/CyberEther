@@ -9,8 +9,8 @@
 namespace Jetstream::FFT {
 
 #ifdef JETSTREAM_FFT_FFTW_AVAILABLE
-inline std::shared_ptr<CPU> Instantiate(Config& c, DF::CPU::CF32V& d) {
-    return std::make_shared<CPU>(c, d);
+inline std::shared_ptr<CPU> Instantiate(Config& config, I& input) {
+    return std::make_shared<CPU>(config, input);
 }
 #endif
 

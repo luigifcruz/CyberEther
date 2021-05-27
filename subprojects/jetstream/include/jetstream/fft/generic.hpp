@@ -8,7 +8,7 @@ namespace Jetstream::FFT {
 struct Config {
 };
 
-class Generic : public Transform {
+class Generic : public Module {
 public:
     explicit Generic(Config& c) : cfg(c) {};
     virtual ~Generic() = default;
