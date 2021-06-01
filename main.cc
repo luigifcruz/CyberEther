@@ -17,7 +17,7 @@ struct State {
     std::shared_ptr<Samurai::Airspy::Device> device;
 
     // Jetstream
-    Jetstream::cpu::arr::c32 input;
+    std::shared_ptr<std::vector<std::complex<float>>> stream;
     std::vector<std::shared_ptr<Jetstream::Module>> modules;
 };
 
@@ -25,7 +25,7 @@ auto state = std::make_shared<State>();
 
 void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
-        state->device->ReadStream(state->rx, state->input.data.data(), state->input.data.size(), 1000);
+        state->device->ReadStream(state->rx, state->stream->data(), state->stream->size(), 1000);
         JETSTREAM_ASSERT_SUCCESS(Jetstream::Compute(state->modules));
         JETSTREAM_ASSERT_SUCCESS(Jetstream::Barrier(state->modules));
     }
@@ -63,14 +63,19 @@ int main() {
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
-    state->input.data.resize(8192*8);
+    auto device = Jetstream::Locale::CPU;
+    state->stream = std::make_shared<std::vector<std::complex<float>>>(8192*8);
 
     Jetstream::FFT::Config fftCfg;
-    auto fft = Jetstream::FFT::Instantiate(fftCfg, state->input);
+    fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
+    fftCfg.policy = {Jetstream::Policy::ASYNC, {}};
+    auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
 
     Jetstream::Lineplot::Config lptCfg;
     lptCfg.render = state->render;
-    auto lpt = Jetstream::Lineplot::Instantiate(lptCfg, fft, fft->out());
+    lptCfg.input0 = fft->output();
+    lptCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
+    auto lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
 
     // Add Jetstream modules to the execution pipeline.
     state->modules.push_back(fft);

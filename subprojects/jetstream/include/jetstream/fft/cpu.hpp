@@ -9,20 +9,10 @@ namespace Jetstream::FFT {
 
 class CPU : public Generic {
 public:
-    using I = cpu::arr::c32;
-    using O = cpu::arr::c32;
-
-    explicit CPU(Config&, I&);
+    explicit CPU(Config&);
     ~CPU();
 
-    constexpr O& out() {
-        return output;
-    };
-
 protected:
-    I& input;
-    O output;
-
     Result underlyingCompute();
     Result underlyingPresent();
 

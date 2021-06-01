@@ -2,13 +2,13 @@
 
 namespace Jetstream::FFT {
 
-CPU::CPU(Config& c, I& i) : Generic(c), input(i) {
-    output.data.resize(input.data.size());
+CPU::CPU(Config& c) : Generic(c) {
+    out.buf = std::make_shared<T>(in.buf->size());
 
     std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
 
-    cf_plan = fftwf_plan_dft_1d(input.data.size(), reinterpret_cast<fftwf_complex*>(input.data.data()),
-            reinterpret_cast<fftwf_complex*>(output.data.data()), FFTW_FORWARD, FFTW_MEASURE);
+    cf_plan = fftwf_plan_dft_1d(in.buf->size(), reinterpret_cast<fftwf_complex*>(in.buf->data()),
+            reinterpret_cast<fftwf_complex*>(out.buf->data()), FFTW_FORWARD, FFTW_MEASURE);
 }
 
 CPU::~CPU() {
@@ -20,7 +20,7 @@ Result CPU::underlyingCompute() {
     return Result::SUCCESS;
 }
 
-Result CPU::underlyingPresent() {
+ Result CPU::underlyingPresent() {
     return Result::SUCCESS;
 }
 

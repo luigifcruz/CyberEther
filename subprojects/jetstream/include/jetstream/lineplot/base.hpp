@@ -6,8 +6,13 @@
 
 namespace Jetstream::Lineplot {
 
-inline std::shared_ptr<CPU> Instantiate(Config& config, std::shared_ptr<Module> producer, CPU::I& input) {
-    return std::make_shared<CPU>(config, producer, input);
+inline std::shared_ptr<Generic> Instantiate(Locale L, Config& config) {
+    switch (L) {
+        case Jetstream::Locale::CPU:
+            return std::make_shared<CPU>(config);
+        default:
+            JETSTREAM_ASSERT_SUCCESS(Result::ERROR);
+    }
 }
 
 } // namespace Jetstream::Lineplot

@@ -7,14 +7,10 @@ namespace Jetstream::Lineplot {
 
 class CPU : public Generic  {
 public:
-    using I = cpu::arr::c32;
-
-    explicit CPU(Config&, std::shared_ptr<Module>, I&);
+    explicit CPU(Config&);
     ~CPU();
 
 protected:
-    I& input;
-
     Result underlyingCompute();
     Result underlyingPresent();
 };

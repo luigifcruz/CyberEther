@@ -27,17 +27,23 @@ enum Result {
     ERROR_FUTURE_INVALID,
 };
 
-namespace cpu {
-    namespace arr {
-        struct c32 {
-            std::vector<std::complex<float>> data;
-        };
+enum class Policy : uint8_t {
+    HYBRID  = 0,
+    ASYNC   = 1,
+    SYNC    = 2,
+};
 
-        struct c64 {
-            std::vector<std::complex<double>> data;
-        };
-    }
-}
+enum class Locale : uint8_t {
+    NONE    = 0 << 0,
+    CPU     = 1 << 0,
+    CUDA    = 1 << 1,
+};
+
+template<typename T>
+struct Data {
+    Locale location;
+    std::shared_ptr<T> buf;
+};
 
 } // namespace Jetstream
 

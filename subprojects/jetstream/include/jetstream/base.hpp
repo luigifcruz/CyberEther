@@ -7,13 +7,27 @@ namespace Jetstream {
 
 class Module {
 public:
-    explicit Module(std::shared_ptr<Module> producer = nullptr) : producer(producer) {};
+    typedef struct {
+        Policy policy;
+        std::vector<std::shared_ptr<Module>> producers;
+    } Execution;
+
+    explicit Module(Execution& c) : cfg(c) {
+        switch (cfg.policy) {
+            case Jetstream::Policy::ASYNC:
+                policy = std::launch::async;
+            case Jetstream::Policy::SYNC:
+                policy = std::launch::deferred;
+            case Jetstream::Policy::HYBRID:
+                // TODO: implement load balancer
+                policy = std::launch::deferred;
+        }
+    }
     virtual ~Module() = default;
 
-    Result compute(bool async = true) {
-        auto mode = (async) ? std::launch::async : std::launch::deferred;
-        future = std::async(mode, [&](){
-            if (producer) {
+    Result compute() {
+        future = std::async(policy, [&](){
+            for (auto& producer : cfg.producers) {
                 auto result = producer->barrier();
                 if (result != Result::SUCCESS) {
                     return result;
@@ -28,6 +42,7 @@ public:
     }
 
     Result barrier() {
+        // TODO: this is garbage, fix error handling
         if (future.valid()) {
             future.wait();
         }
@@ -40,9 +55,11 @@ public:
     }
 
 protected:
+    Execution& cfg;
+
     std::mutex mutex;
+    std::launch policy;
     std::future<Result> future;
-    std::shared_ptr<Module> producer;
 
     virtual Result underlyingCompute() = 0;
     virtual Result underlyingPresent() = 0;

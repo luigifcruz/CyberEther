@@ -8,11 +8,14 @@
 
 namespace Jetstream::FFT {
 
-#ifdef JETSTREAM_FFT_FFTW_AVAILABLE
-inline std::shared_ptr<CPU> Instantiate(Config& config, CPU::I& input) {
-    return std::make_shared<CPU>(config, input);
+inline std::shared_ptr<Generic> Instantiate(Locale L, Config& config) {
+    switch (L) {
+        case Jetstream::Locale::CPU:
+            return std::make_shared<CPU>(config);
+        default:
+            JETSTREAM_ASSERT_SUCCESS(Result::ERROR);
+    }
 }
-#endif
 
 } // namespace Jetstream::FFT
 

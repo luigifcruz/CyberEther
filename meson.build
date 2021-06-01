@@ -7,7 +7,6 @@ project(
 dep_lst = [
     dependency('threads'),
     subproject('samurai').get_variable('libsamurai_dep'),
-    #subproject('spectrum').get_variable('libspectrum_dep'),
     subproject('render').get_variable('librender_dep'),
     subproject('jetstream').get_variable('libjetstream_dep'),
 ]

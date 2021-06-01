@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-CPU::CPU(Config& c, std::shared_ptr<Module> m, I& i) : Generic(c, m), input(i) {
+CPU::CPU(Config& c) : Generic(c) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         a.push_back(-1.0f);
         a.push_back(i);
@@ -18,7 +18,7 @@ CPU::CPU(Config& c, std::shared_ptr<Module> m, I& i) : Generic(c, m), input(i) {
         a.push_back(+0.0f);
     }
 
-    for (float i = -1.0f; i < +1.0f; i += 1.0f/((float)input.data.size()/2)) {
+    for (float i = -1.0f; i < +1.0f; i += 1.0f/((float)in.buf->size()/2)) {
         l.push_back(i);
         l.push_back(+0.0f);
         l.push_back(+0.0f);
@@ -76,16 +76,16 @@ float abs(std::complex<float> n) {
 }
 
 Result CPU::underlyingCompute() {
-    for (int i = 0; i < input.data.size(); i++) {
+    for (int i = 0; i < in.buf->size(); i++) {
         int ix;
 
-        if (i < input.data.size() / 2) {
-            ix = (input.data.size() / 2) + i;
+        if (i < in.buf->size() / 2) {
+            ix = (in.buf->size() / 2) + i;
         } else {
-            ix = i - (input.data.size() / 2);
+            ix = i - (in.buf->size() / 2);
         }
 
-        l[(i*3)+1] = ((20 * log10(abs(input.data.at(ix)) / input.data.size())) / (200.0 / 2)) + 1;
+        l[(i*3)+1] = ((20 * log10(abs(in.buf->at(ix)) / in.buf->size())) / (200.0 / 2)) + 1;
     }
     return Result::SUCCESS;
 }

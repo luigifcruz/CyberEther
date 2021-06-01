@@ -6,15 +6,24 @@
 
 namespace Jetstream::Lineplot {
 
+using T = std::vector<std::complex<float>>;
+
 struct Config {
-    std::shared_ptr<Render::Instance> render;
     int width = 5000;
     int height = 1000;
+    Data<T> input0;
+
+    Module::Execution policy;
+    std::shared_ptr<Render::Instance> render;
 };
 
 class Generic : public Module {
 public:
-    explicit Generic(Config& c, std::shared_ptr<Module> m) : Module(m), cfg(c) {};
+    explicit Generic(Config& c)
+        : Module(c.policy),
+          cfg(c),
+          in(c.input0) {
+    };
     virtual ~Generic() = default;
 
     std::shared_ptr<Render::Texture> tex() const {
@@ -27,6 +36,7 @@ public:
 
 protected:
     Config& cfg;
+    Data<T> in;
 
     std::vector<float> a;
     std::vector<float> l;
