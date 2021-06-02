@@ -5,10 +5,12 @@
 
 namespace Jetstream::FFT {
 
-using T = tcb::span<std::complex<float>>;
+using TI = tcb::span<std::complex<float>>;
+using TO = tcb::span<float>;
 
 struct Config {
-    Data<T> input0;
+    float min_db = 200.0;
+    Data<TI> input0;
     Module::Execution policy;
 };
 
@@ -25,14 +27,14 @@ public:
         return cfg;
     }
 
-    Data<T> output() const {
+    Data<TO> output() const {
         return out;
     }
 
 protected:
     Config& cfg;
-    Data<T> in;
-    Data<T> out;
+    Data<TI> in;
+    Data<TO> out;
 };
 
 } // namespace Jetstream::FFT

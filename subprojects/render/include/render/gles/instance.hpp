@@ -46,6 +46,7 @@ protected:
     GLFWwindow* window;
     std::vector<std::shared_ptr<GLES::Surface>> surfaces;
 
+    static GLenum getPixelFormat(PixelFormat);
     static Result getError(std::string, std::string, int);
 
     Result createImgui();

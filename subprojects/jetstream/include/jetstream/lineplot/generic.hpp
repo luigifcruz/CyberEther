@@ -6,12 +6,12 @@
 
 namespace Jetstream::Lineplot {
 
-using T = tcb::span<std::complex<float>>;
+using TI = tcb::span<float>;
 
 struct Config {
     int width = 5000;
     int height = 1000;
-    Data<T> input0;
+    Data<TI> input0;
     Module::Execution policy;
     std::shared_ptr<Render::Instance> render;
 };
@@ -35,7 +35,7 @@ public:
 
 protected:
     Config& cfg;
-    Data<T> in;
+    Data<TI> in;
 
     std::vector<float> a;
     std::vector<float> l;

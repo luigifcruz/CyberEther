@@ -4,6 +4,7 @@
 #include "samurai/samurai.hpp"
 #include "jetstream/fft/base.hpp"
 #include "jetstream/lineplot/base.hpp"
+#include "jetstream/waterfall/base.hpp"
 
 struct State {
     bool streaming = false;
@@ -14,7 +15,7 @@ struct State {
 
     // Samurai
     Samurai::ChannelId rx;
-    std::shared_ptr<Samurai::Airspy::Device> device;
+    std::shared_ptr<Samurai::LimeSDR::Device> device;
 
     // Jetstream
     std::vector<std::complex<float>> stream;
@@ -46,10 +47,10 @@ int main() {
     state->render = Render::Instantiate(Render::API::GLES, renderCfg);
 
     // Configure Samurai Radio
-    state->device = std::make_shared<Samurai::Airspy::Device>();
+    state->device = std::make_shared<Samurai::LimeSDR::Device>();
 
     Samurai::Device::Config deviceConfig;
-    deviceConfig.sampleRate = 10e6;
+    deviceConfig.sampleRate = 62e6;
     state->device->Enable(deviceConfig);
 
     Samurai::Channel::Config channelConfig;
@@ -59,14 +60,15 @@ int main() {
 
     Samurai::Channel::State channelState;
     channelState.enableAGC = true;
-    channelState.frequency = 545.5e6;
+    channelState.frequency = 1800e6;
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
     auto device = Jetstream::Locale::CPU;
-    state->stream = std::vector<std::complex<float>>(8192*8);
+    state->stream = std::vector<std::complex<float>>(8192*4);
 
     Jetstream::FFT::Config fftCfg;
+    fftCfg.min_db = 150.0;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
     fftCfg.policy = {Jetstream::Policy::ASYNC, {}};
     auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
@@ -77,9 +79,16 @@ int main() {
     lptCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
     auto lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
 
+    Jetstream::Waterfall::Config wtfCfg;
+    wtfCfg.render = state->render;
+    wtfCfg.input0 = fft->output();
+    wtfCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
+    auto wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
+
     // Add Jetstream modules to the execution pipeline.
     state->modules.push_back(fft);
     state->modules.push_back(lpt);
+    state->modules.push_back(wtf);
 
     // Start Components
     state->streaming = true;
@@ -97,6 +106,13 @@ int main() {
             (void*)lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
             ImVec2(ImGui::GetCursorScreenPos().x + lpt->conf().width/2.0,
             ImGui::GetCursorScreenPos().y + lpt->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::End();
+
+        ImGui::Begin("Waterfall");
+        ImGui::GetWindowDrawList()->AddImage(
+            (void*)wtf->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
+            ImVec2(ImGui::GetCursorScreenPos().x + wtf->conf().width/2.0,
+            ImGui::GetCursorScreenPos().y + wtf->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
         ImGui::End();
 
         ImGui::Begin("Samurai Info");

@@ -39,6 +39,12 @@ enum struct API {
 	WEBGPU,
 };
 
+enum class PixelFormat : uint {
+    RGB,
+    RED,
+    UINT8,
+};
+
 } // namespace Render
 
 #endif

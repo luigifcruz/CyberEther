@@ -78,7 +78,7 @@ Result GLES::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(cfg.scale);
-    //io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * cfg.scale, NULL, NULL);
+    io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * cfg.scale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
@@ -167,6 +167,17 @@ std::string GLES::glsl_str() {
 
 std::string GLES::vendor_str() {
     return cached_vendor_str;
+}
+
+GLenum GLES::getPixelFormat(PixelFormat pfmt) {
+    switch (pfmt) {
+        case PixelFormat::RGB:
+            return GL_RGB;
+        case PixelFormat::RED:
+            return GL_RED;
+        case PixelFormat::UINT8:
+            return GL_R8;
+    }
 }
 
 Result GLES::getError(std::string func, std::string file, int line) {
