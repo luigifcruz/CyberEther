@@ -5,7 +5,7 @@
 
 namespace Jetstream::FFT {
 
-using T = std::vector<std::complex<float>>;
+using T = tcb::span<std::complex<float>>;
 
 struct Config {
     Data<T> input0;

@@ -17,7 +17,7 @@ struct State {
     std::shared_ptr<Samurai::Airspy::Device> device;
 
     // Jetstream
-    std::shared_ptr<std::vector<std::complex<float>>> stream;
+    std::vector<std::complex<float>> stream;
     std::vector<std::shared_ptr<Jetstream::Module>> modules;
 };
 
@@ -25,7 +25,7 @@ auto state = std::make_shared<State>();
 
 void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
-        state->device->ReadStream(state->rx, state->stream->data(), state->stream->size(), 1000);
+        state->device->ReadStream(state->rx, state->stream.data(), state->stream.size(), 1000);
         JETSTREAM_ASSERT_SUCCESS(Jetstream::Compute(state->modules));
         JETSTREAM_ASSERT_SUCCESS(Jetstream::Barrier(state->modules));
     }
@@ -64,7 +64,7 @@ int main() {
 
     // Configure Jetstream Modules
     auto device = Jetstream::Locale::CPU;
-    state->stream = std::make_shared<std::vector<std::complex<float>>>(8192*8);
+    state->stream = std::vector<std::complex<float>>(8192*8);
 
     Jetstream::FFT::Config fftCfg;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "jetstream_config.hpp"
+#include "tools/span.hpp"
 
 #ifndef JETSTREAM_ASSERT_SUCCESS
 #define JETSTREAM_ASSERT_SUCCESS(result) { \
@@ -42,7 +43,7 @@ enum class Locale : uint8_t {
 template<typename T>
 struct Data {
     Locale location;
-    std::shared_ptr<T> buf;
+    T buf;
 };
 
 } // namespace Jetstream

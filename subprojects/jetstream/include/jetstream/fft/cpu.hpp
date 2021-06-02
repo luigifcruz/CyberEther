@@ -18,6 +18,7 @@ protected:
 
     // Complex Float
     fftwf_plan cf_plan;
+    std::vector<std::complex<float>> buf;
 };
 
 } // namespace Jetstream::FFT

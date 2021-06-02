@@ -78,7 +78,7 @@ Result GLES::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(cfg.scale);
-    io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * cfg.scale, NULL, NULL);
+    //io->Fonts->AddFontFromFileTTF("roboto.ttf", 12.0f * cfg.scale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
