@@ -9,7 +9,8 @@ using TI = tcb::span<std::complex<float>>;
 using TO = tcb::span<float>;
 
 struct Config {
-    float min_db = 200.0;
+    float max_db = 0.0;
+    float min_db = -200.0;
     Data<TI> input0;
     Module::Execution policy;
 };

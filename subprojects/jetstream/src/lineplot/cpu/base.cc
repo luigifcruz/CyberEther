@@ -76,8 +76,8 @@ float abs(std::complex<float> n) {
 }
 
 Result CPU::underlyingCompute() {
-    float min_x = -1.0;
-    float max_x = +0.0;
+    float min_x = 0.0;
+    float max_x = 1.0;
 
     for (int i = 0; i < in.buf.size(); i++) {
         l[(i*3)+1] = 2 * ((in.buf[i] - min_x)/(max_x - min_x)) - 1;

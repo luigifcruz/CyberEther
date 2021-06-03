@@ -15,7 +15,7 @@ struct State {
 
     // Samurai
     Samurai::ChannelId rx;
-    std::shared_ptr<Samurai::LimeSDR::Device> device;
+    std::shared_ptr<Samurai::Device> device;
 
     // Jetstream
     std::vector<std::complex<float>> stream;
@@ -47,10 +47,10 @@ int main() {
     state->render = Render::Instantiate(Render::API::GLES, renderCfg);
 
     // Configure Samurai Radio
-    state->device = std::make_shared<Samurai::LimeSDR::Device>();
+    state->device = std::make_shared<Samurai::Airspy::Device>();
 
     Samurai::Device::Config deviceConfig;
-    deviceConfig.sampleRate = 62e6;
+    deviceConfig.sampleRate = 10e6;
     state->device->Enable(deviceConfig);
 
     Samurai::Channel::Config channelConfig;
@@ -60,15 +60,14 @@ int main() {
 
     Samurai::Channel::State channelState;
     channelState.enableAGC = true;
-    channelState.frequency = 1800e6;
+    channelState.frequency = 96.9e6;
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
     auto device = Jetstream::Locale::CPU;
-    state->stream = std::vector<std::complex<float>>(8192*4);
+    state->stream = std::vector<std::complex<float>>(8192);
 
     Jetstream::FFT::Config fftCfg;
-    fftCfg.min_db = 150.0;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
     fftCfg.policy = {Jetstream::Policy::ASYNC, {}};
     auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
@@ -115,7 +114,11 @@ int main() {
             ImGui::GetCursorScreenPos().y + wtf->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
         ImGui::End();
 
-        ImGui::Begin("Samurai Info");
+        ImGui::Begin("Control");
+        ImGui::DragFloatRange2("dB Range", &fftCfg.min_db, &fftCfg.max_db, 5, -300, 0, "Min: %.0f units", "Max: %.0f units");
+        ImGui::End();
+
+        ImGui::Begin("Info");
         ImGui::Text("Buffer Fill: %ld", state->device->BufferOccupancy(state->rx));
         ImGui::End();
 

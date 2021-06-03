@@ -31,14 +31,15 @@ Result CPU::underlyingCompute() {
             ix = i - stride;
         }
 
-        buf_out[i] = 20 * log10(abs(buf_fft[ix]) / buf_fft.size()) / cfg.min_db;
+        buf_out[i] = 20 * log10(abs(buf_fft[ix]) / buf_fft.size());
+        buf_out[i] = (buf_out[i] - cfg.min_db)/(cfg.max_db - cfg.min_db);
 
-        if (buf_out[i] < -1.0) {
-            buf_out[i] = -1.0;
+        if (buf_out[i] < 0.0) {
+            buf_out[i] = 0.0;
         }
 
-        if (buf_out[i] > 0.0) {
-            buf_out[i] = 0.0;
+        if (buf_out[i] > 1.0) {
+            buf_out[i] = 1.0;
         }
     }
 
