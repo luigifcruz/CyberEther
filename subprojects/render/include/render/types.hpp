@@ -43,6 +43,7 @@ enum class PixelFormat : uint {
     RGB,
     RED,
     UINT8,
+    F32,
 };
 
 } // namespace Render

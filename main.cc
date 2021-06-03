@@ -115,7 +115,8 @@ int main() {
         ImGui::End();
 
         ImGui::Begin("Control");
-        ImGui::DragFloatRange2("dB Range", &fftCfg.min_db, &fftCfg.max_db, 5, -300, 0, "Min: %.0f units", "Max: %.0f units");
+        ImGui::DragFloatRange2("dBFS Range", &fftCfg.min_db, &fftCfg.max_db,
+             5, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
         ImGui::End();
 
         ImGui::Begin("Info");

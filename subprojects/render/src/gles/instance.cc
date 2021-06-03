@@ -177,6 +177,8 @@ GLenum GLES::getPixelFormat(PixelFormat pfmt) {
             return GL_RED;
         case PixelFormat::UINT8:
             return GL_R8;
+        case PixelFormat::F32:
+            return GL_R32F;
     }
 }
 

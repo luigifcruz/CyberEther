@@ -20,6 +20,8 @@ protected:
     fftwf_plan cf_plan;
     std::vector<std::complex<float>> buf_fft;
     std::vector<float> buf_out;
+
+    static inline float log10f_fast(float);
 };
 
 } // namespace Jetstream::FFT
