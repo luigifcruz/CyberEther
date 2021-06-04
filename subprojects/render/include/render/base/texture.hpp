@@ -12,8 +12,9 @@ public:
         int height = 0;
         std::string key;
         uint8_t* buffer = nullptr;
+        DataFormat dfmt = DataFormat::RGB;
         PixelFormat pfmt = PixelFormat::RGB;
-        PixelFormat bfmt = PixelFormat::RGB;
+        PixelType ptype = PixelType::UI8;
     };
 
     Config& cfg;

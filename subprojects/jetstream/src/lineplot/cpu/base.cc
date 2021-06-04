@@ -54,9 +54,16 @@ CPU::CPU(Config& c) : Generic(c) {
     drawLineVertexCfg.mode = Render::Draw::LineStrip;
     drawLineVertex = render->create(drawLineVertexCfg);
 
+    lutTextureCfg.height = 1;
+    lutTextureCfg.width = 256;
+    lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
+    lutTextureCfg.key = "LutTexture";
+    lutTexture = render->create(lutTextureCfg);
+
     programCfg.vertexSource = &vertexSource;
     programCfg.fragmentSource = &fragmentSource;
     programCfg.draws = {drawGridVertex, drawLineVertex};
+    programCfg.textures = {lutTexture};
     program = render->create(programCfg);
 
     textureCfg.width = cfg.width;

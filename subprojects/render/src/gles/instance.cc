@@ -114,7 +114,7 @@ Result GLES::endImgui() {
 Result GLES::start() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glLineWidth(2.0 * cfg.scale);
+    glLineWidth(cfg.scale);
 
     if (cfg.enableImgui) {
         this->startImgui();
@@ -169,15 +169,31 @@ std::string GLES::vendor_str() {
     return cached_vendor_str;
 }
 
-GLenum GLES::getPixelFormat(PixelFormat pfmt) {
+uint GLES::convertPixelFormat(PixelFormat pfmt) {
     switch (pfmt) {
         case PixelFormat::RGB:
             return GL_RGB;
         case PixelFormat::RED:
             return GL_RED;
-        case PixelFormat::UINT8:
+    }
+}
+
+uint GLES::convertPixelType(PixelType ptype) {
+    switch (ptype) {
+        case PixelType::UI8:
+            return GL_UNSIGNED_BYTE;
+        case PixelType::F32:
+            return GL_FLOAT;
+    }
+}
+
+uint GLES::convertDataFormat(DataFormat dfmt) {
+    switch (dfmt) {
+        case DataFormat::UI8:
             return GL_R8;
-        case PixelFormat::F32:
+        case DataFormat::RGB:
+            return GL_RGB;
+        case DataFormat::F32:
             return GL_R32F;
     }
 }

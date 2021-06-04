@@ -37,8 +37,8 @@ int main() {
 
     // Configure Render
     Render::Instance::Config renderCfg;
-    renderCfg.width = 3000;
-    renderCfg.height = 1080;
+    renderCfg.width = 1280*2.5;
+    renderCfg.height = 480*2.5;
     renderCfg.resizable = true;
     renderCfg.enableImgui = true;
     renderCfg.enableDebug = true;
@@ -60,12 +60,12 @@ int main() {
 
     Samurai::Channel::State channelState;
     channelState.enableAGC = true;
-    channelState.frequency = 96.9e6;
+    channelState.frequency = 545.5e6;
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
     auto device = Jetstream::Locale::CPU;
-    state->stream = std::vector<std::complex<float>>(8192);
+    state->stream = std::vector<std::complex<float>>(8192*2);
 
     Jetstream::FFT::Config fftCfg;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
@@ -103,20 +103,20 @@ int main() {
         ImGui::Begin("Lineplot");
         ImGui::GetWindowDrawList()->AddImage(
             (void*)lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-            ImVec2(ImGui::GetCursorScreenPos().x + lpt->conf().width/2.0,
-            ImGui::GetCursorScreenPos().y + lpt->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+            ImVec2(ImGui::GetCursorScreenPos().x + lpt->conf().width,
+            ImGui::GetCursorScreenPos().y + lpt->conf().height), ImVec2(0, 1), ImVec2(1, 0));
         ImGui::End();
 
         ImGui::Begin("Waterfall");
         ImGui::GetWindowDrawList()->AddImage(
             (void*)wtf->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-            ImVec2(ImGui::GetCursorScreenPos().x + wtf->conf().width/2.0,
-            ImGui::GetCursorScreenPos().y + wtf->conf().height/2.0), ImVec2(0, 1), ImVec2(1, 0));
+            ImVec2(ImGui::GetCursorScreenPos().x + wtf->conf().width,
+            ImGui::GetCursorScreenPos().y + wtf->conf().height), ImVec2(0, 1), ImVec2(1, 0));
         ImGui::End();
 
         ImGui::Begin("Control");
         ImGui::DragFloatRange2("dBFS Range", &fftCfg.min_db, &fftCfg.max_db,
-             5, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
+             1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
         ImGui::End();
 
         ImGui::Begin("Info");

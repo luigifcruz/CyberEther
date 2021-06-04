@@ -17,7 +17,7 @@ public:
 protected:
     GLES& inst;
 
-    uint tex;
+    uint tex, pfmt, dfmt, ptype;
 
     Result create();
     Result destroy();

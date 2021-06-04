@@ -17,10 +17,11 @@ CPU::CPU(Config& c) : Generic(c) {
 
     binTextureCfg.height = cfg.height;
     binTextureCfg.width = in.buf.size();
-    binTextureCfg.buffer = buf.data();
+    binTextureCfg.buffer = (uint8_t*)buf.data();
     binTextureCfg.key = "BinTexture";
     binTextureCfg.pfmt = Render::PixelFormat::RED;
-    binTextureCfg.bfmt = Render::PixelFormat::UINT8;
+    binTextureCfg.ptype = Render::PixelType::F32;
+    binTextureCfg.dfmt = Render::DataFormat::F32;
     binTexture = render->create(binTextureCfg);
 
     lutTextureCfg.height = 1;
@@ -52,9 +53,7 @@ float abs(std::complex<float> n) {
 }
 
 Result CPU::underlyingCompute() {
-    for (int i = 0; i < in.buf.size(); i++) {
-        buf[i+(inc*in.buf.size())] = in.buf[i] * 255.0;
-    }
+    std::copy(in.buf.begin(), in.buf.end(), buf.begin()+(inc * in.buf.size()));
 
     inc += 1;
     if (inc >= cfg.height) {

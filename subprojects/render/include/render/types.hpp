@@ -42,7 +42,16 @@ enum struct API {
 enum class PixelFormat : uint {
     RGB,
     RED,
-    UINT8,
+};
+
+enum class DataFormat : uint {
+    RGB,
+    UI8,
+    F32,
+};
+
+enum class PixelType : uint {
+    UI8,
     F32,
 };
 

@@ -10,8 +10,8 @@ namespace Jetstream::Waterfall {
 using T = tcb::span<float>;
 
 struct Config {
-    int width = 5000;
-    int height = 1000;
+    int width = 2500;
+    int height = 500;
     Data<T> input0;
     Module::Execution policy;
     std::shared_ptr<Render::Instance> render;
@@ -40,7 +40,7 @@ protected:
 
     int inc = 0;
     int last = 0;
-    std::vector<uint8_t> buf;
+    std::vector<float> buf;
 
     Render::Texture::Config textureCfg;
     Render::Texture::Config binTextureCfg;
@@ -70,7 +70,8 @@ protected:
 
         void main() {
             gl_Position = vec4(aPos, 1.0);
-            TexCoord = vec2(-aTexCoord.x, Index-aTexCoord.y);
+            float coord = (Index-aTexCoord.y);
+            TexCoord = vec2(aTexCoord.x, coord);
         }
     )END";
 
