@@ -5,6 +5,7 @@
 #include "jetstream/fft/base.hpp"
 #include "jetstream/lineplot/base.hpp"
 #include "jetstream/waterfall/base.hpp"
+#include "jetstream/histogram/base.hpp"
 
 struct State {
     bool streaming = false;
@@ -37,11 +38,10 @@ int main() {
 
     // Configure Render
     Render::Instance::Config renderCfg;
-    renderCfg.width = 1280*2.5;
-    renderCfg.height = 480*2.5;
-    renderCfg.resizable = true;
+    renderCfg.width = 3130;
+    renderCfg.height = 1140;
+    renderCfg.resizable = false;
     renderCfg.enableImgui = true;
-    renderCfg.enableDebug = true;
     renderCfg.enableVsync = true;
     renderCfg.title = "CyberEther";
     state->render = Render::Instantiate(Render::API::GLES, renderCfg);
@@ -60,7 +60,7 @@ int main() {
 
     Samurai::Channel::State channelState;
     channelState.enableAGC = true;
-    channelState.frequency = 545.5e6;
+    channelState.frequency = 96.9e6;
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
@@ -98,20 +98,16 @@ int main() {
     while(state->render->keepRunning()) {
         state->render->start();
 
+        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+
         JETSTREAM_ASSERT_SUCCESS(Jetstream::Present(state->modules));
 
-        ImGui::Begin("Lineplot");
-        ImGui::GetWindowDrawList()->AddImage(
-            (void*)lpt->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-            ImVec2(ImGui::GetCursorScreenPos().x + lpt->conf().width,
-            ImGui::GetCursorScreenPos().y + lpt->conf().height), ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::Begin("Lineplot", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Image((void*)(intptr_t)lpt->tex()->raw(), ImVec2(lpt->conf().width, lpt->conf().height));
         ImGui::End();
 
-        ImGui::Begin("Waterfall");
-        ImGui::GetWindowDrawList()->AddImage(
-            (void*)wtf->tex()->raw(), ImVec2(ImGui::GetCursorScreenPos()),
-            ImVec2(ImGui::GetCursorScreenPos().x + wtf->conf().width,
-            ImGui::GetCursorScreenPos().y + wtf->conf().height), ImVec2(0, 1), ImVec2(1, 0));
+        ImGui::Begin("Waterfall", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Image((void*)(intptr_t)wtf->tex()->raw(), ImVec2(wtf->conf().width, wtf->conf().height));
         ImGui::End();
 
         ImGui::Begin("Control");
@@ -119,7 +115,7 @@ int main() {
              1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
         ImGui::End();
 
-        ImGui::Begin("Info");
+        ImGui::Begin("Samurai Info");
         ImGui::Text("Buffer Fill: %ld", state->device->BufferOccupancy(state->rx));
         ImGui::End();
 

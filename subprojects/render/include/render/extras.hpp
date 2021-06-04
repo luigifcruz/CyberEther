@@ -14,10 +14,10 @@ static float a[] = {
 };
 
 static float b[] = {
-    +1.0f, +0.0f,
     +1.0f, +1.0f,
-    +0.0f, +1.0f,
+    +1.0f, +0.0f,
     +0.0f, +0.0f,
+    +0.0f, +1.0f,
 };
 
 static std::vector<Render::Vertex::Buffer> FillScreenVertices = {

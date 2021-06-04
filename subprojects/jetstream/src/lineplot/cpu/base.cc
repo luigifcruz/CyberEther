@@ -87,7 +87,7 @@ Result CPU::underlyingCompute() {
     float max_x = 1.0;
 
     for (int i = 0; i < in.buf.size(); i++) {
-        l[(i*3)+1] = 2 * ((in.buf[i] - min_x)/(max_x - min_x)) - 1;
+        l[(i*3)+1] = -(2 * ((in.buf[i] - min_x)/(max_x - min_x)) - 1);
     }
     return Result::SUCCESS;
 }
