@@ -115,12 +115,19 @@ int main() {
         ImGui::End();
 
         ImGui::Begin("Control");
+        ImGui::InputFloat("Frequency (Hz)", &channelState.frequency);
+        if (ImGui::Button("Tune")) {
+            state->device->UpdateChannel(state->rx, channelState);
+        }
         ImGui::DragFloatRange2("dBFS Range", &fftCfg.min_db, &fftCfg.max_db,
              1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
         ImGui::End();
 
         ImGui::Begin("Samurai Info");
-        ImGui::Text("Buffer Fill: %ld", state->device->BufferOccupancy(state->rx));
+        float bufferUsageRatio = (float)state->device->BufferOccupancy(state->rx)/(float)channelConfig.bufferSize;
+        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::Text("Buffer Usage");
         ImGui::End();
 
         state->render->end();
