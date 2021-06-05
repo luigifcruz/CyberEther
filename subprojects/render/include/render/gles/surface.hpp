@@ -9,6 +9,8 @@ class GLES::Surface : public Render::Surface {
 public:
     Surface(Config& cfg, GLES& i) : Render::Surface(cfg), inst(i) {};
 
+    Result resize(int, int);
+
 protected:
     GLES& inst;
 
@@ -19,6 +21,9 @@ protected:
     Result create();
     Result destroy();
     Result draw();
+
+    void _createFramebuffer();
+    void _destroyFramebuffer();
 
     friend class GLES;
 };

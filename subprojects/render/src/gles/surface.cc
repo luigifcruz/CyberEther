@@ -15,13 +15,7 @@ Result GLES::Surface::create() {
         RENDER_ASSERT_SUCCESS(program->create());
     }
 
-    if (framebuffer) {
-        glGenFramebuffers(1, &fbo);
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        RENDER_ASSERT_SUCCESS(framebuffer->create());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->raw(), 0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
+    _createFramebuffer();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -31,10 +25,21 @@ Result GLES::Surface::destroy() {
         RENDER_ASSERT_SUCCESS(program->destroy());
     }
 
-    if (framebuffer) {
-        RENDER_ASSERT_SUCCESS(framebuffer->destroy());
-        glDeleteFramebuffers(1, &fbo);
+    _destroyFramebuffer();
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Surface::resize(int w, int h) {
+    if (w <= 1 || h <= 1) {
+        return Result::ERROR;
     }
+
+    framebuffer->cfg.width = w;
+    framebuffer->cfg.height = h;
+
+    _destroyFramebuffer();
+    _createFramebuffer();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -52,6 +57,23 @@ Result GLES::Surface::draw() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+void GLES::Surface::_createFramebuffer() {
+    if (framebuffer) {
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        RENDER_ASSERT_SUCCESS(framebuffer->create());
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->raw(), 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+}
+
+void GLES::Surface::_destroyFramebuffer() {
+    if (framebuffer) {
+        RENDER_ASSERT_SUCCESS(framebuffer->destroy());
+        glDeleteFramebuffers(1, &fbo);
+    }
 }
 
 } // namespace Render

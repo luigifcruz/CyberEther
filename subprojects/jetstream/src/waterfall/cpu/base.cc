@@ -5,7 +5,8 @@ namespace Jetstream::Waterfall {
 CPU::CPU(Config& c) : Generic(c) {
     auto render = cfg.render;
 
-    buf.resize(in.buf.size() * cfg.height);
+    ymax = cfg.height;
+    buf.resize(in.buf.size() * ymax);
 
     vertexCfg.buffers = Render::Extras::FillScreenVertices;
     vertexCfg.indices = Render::Extras::FillScreenIndices;
@@ -15,7 +16,7 @@ CPU::CPU(Config& c) : Generic(c) {
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = render->create(drawVertexCfg);
 
-    binTextureCfg.height = cfg.height;
+    binTextureCfg.height = ymax;
     binTextureCfg.width = in.buf.size();
     binTextureCfg.buffer = (uint8_t*)buf.data();
     binTextureCfg.key = "BinTexture";
@@ -56,7 +57,7 @@ Result CPU::underlyingCompute() {
     std::copy(in.buf.begin(), in.buf.end(), buf.begin()+(inc * in.buf.size()));
 
     inc += 1;
-    if (inc >= cfg.height) {
+    if (inc >= ymax) {
         inc = 0;
     }
 
@@ -64,12 +65,19 @@ Result CPU::underlyingCompute() {
 }
 
 Result CPU::underlyingPresent() {
+    if (textureCfg.width != cfg.width || textureCfg.height != cfg.height) {
+        if (surface->resize(cfg.width, cfg.height) != Render::Result::SUCCESS) {
+            cfg.width = textureCfg.width;
+            cfg.height = textureCfg.height;
+        }
+    }
+
     // TODO: hot garbage, fix
     int start = last;
     int blocks = (inc - last);
 
     if (blocks < 0) {
-        blocks = cfg.height - last;
+        blocks = ymax - last;
         binTexture->fill(start, 0, in.buf.size(), blocks);
         start = 0;
         blocks = inc;
@@ -77,7 +85,7 @@ Result CPU::underlyingPresent() {
 
     binTexture->fill(start, 0, in.buf.size(), blocks);
     last = inc;
-    program->setUniform("Index", std::vector<float>{inc/(float)cfg.height});
+    program->setUniform("Index", std::vector<float>{inc/(float)ymax});
     vertex->update();
     return Result::SUCCESS;
 }

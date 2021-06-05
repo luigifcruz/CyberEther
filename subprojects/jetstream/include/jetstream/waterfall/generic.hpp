@@ -40,6 +40,7 @@ protected:
 
     int inc = 0;
     int last = 0;
+    int ymax = 0;
     std::vector<float> buf;
 
     Render::Texture::Config textureCfg;

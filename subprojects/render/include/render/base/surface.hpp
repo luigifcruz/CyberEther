@@ -18,6 +18,8 @@ public:
     Surface(Config& c) : cfg(c) {};
     virtual ~Surface() = default;
 
+    virtual Result resize(int, int) = 0;
+
 protected:
     virtual Result create() = 0;
     virtual Result destroy() = 0;

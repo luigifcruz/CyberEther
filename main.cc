@@ -40,7 +40,7 @@ int main() {
     Render::Instance::Config renderCfg;
     renderCfg.width = 3130;
     renderCfg.height = 1140;
-    renderCfg.resizable = false;
+    renderCfg.resizable = true;
     renderCfg.enableImgui = true;
     renderCfg.enableVsync = true;
     renderCfg.title = "CyberEther";
@@ -102,11 +102,15 @@ int main() {
 
         JETSTREAM_ASSERT_SUCCESS(Jetstream::Present(state->modules));
 
-        ImGui::Begin("Lineplot", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Begin("Lineplot");
+        lptCfg.width = ImGui::GetContentRegionAvail().x;
+        lptCfg.height = ImGui::GetContentRegionAvail().y;
         ImGui::Image((void*)(intptr_t)lpt->tex()->raw(), ImVec2(lpt->conf().width, lpt->conf().height));
         ImGui::End();
 
-        ImGui::Begin("Waterfall", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Begin("Waterfall");
+        wtfCfg.width = ImGui::GetContentRegionAvail().x;
+        wtfCfg.height = ImGui::GetContentRegionAvail().y;
         ImGui::Image((void*)(intptr_t)wtf->tex()->raw(), ImVec2(wtf->conf().width, wtf->conf().height));
         ImGui::End();
 

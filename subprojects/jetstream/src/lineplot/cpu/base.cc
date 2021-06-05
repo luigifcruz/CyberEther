@@ -93,6 +93,13 @@ Result CPU::underlyingCompute() {
 }
 
 Result CPU::underlyingPresent() {
+    if (textureCfg.width != cfg.width || textureCfg.height != cfg.height) {
+        if (surface->resize(cfg.width, cfg.height) != Render::Result::SUCCESS) {
+            cfg.width = textureCfg.width;
+            cfg.height = textureCfg.height;
+        }
+    }
+
     lineVertex->update();
     return Result::SUCCESS;
 }
