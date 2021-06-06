@@ -13,7 +13,6 @@ struct State {
     // Render
     std::shared_ptr<Render::Instance> render;
 
-
     // Samurai
     Samurai::ChannelId rx;
     std::shared_ptr<Samurai::Device> device;
@@ -124,7 +123,8 @@ int main() {
         ImGui::End();
 
         ImGui::Begin("Samurai Info");
-        float bufferUsageRatio = (float)state->device->BufferOccupancy(state->rx)/(float)channelConfig.bufferSize;
+        float bufferUsageRatio = (float)state->device->BufferOccupancy(state->rx) /
+            (float)state->device->BufferCapacity(state->rx);
         ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::Text("Buffer Usage");
