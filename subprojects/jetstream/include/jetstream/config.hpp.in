@@ -1,3 +1,4 @@
 #define JETSTREAM_VERSION_STR "@version@"
 
 #mesondefine JETSTREAM_FFT_FFTW_AVAILABLE
+#mesondefine JETSTREAM_FFT_CUDA_AVAILABLE

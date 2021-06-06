@@ -7,7 +7,7 @@ project(
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
-    dependency('threads'),
+  dependency('threads'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
@@ -28,6 +28,6 @@ libjetstream = library(
 
 libjetstream_dep = declare_dependency(
     include_directories: inc_lst,
+    dependencies: dep_lst,
     link_with: libjetstream
 )
-

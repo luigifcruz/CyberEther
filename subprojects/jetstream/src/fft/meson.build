@@ -1,1 +1,2 @@
 subdir('cpu')
+subdir('cuda')

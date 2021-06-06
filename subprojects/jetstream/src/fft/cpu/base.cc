@@ -46,7 +46,7 @@ Result CPU::underlyingCompute() {
     return Result::SUCCESS;
 }
 
- Result CPU::underlyingPresent() {
+Result CPU::underlyingPresent() {
     return Result::SUCCESS;
 }
 

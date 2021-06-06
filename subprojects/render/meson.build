@@ -27,5 +27,6 @@ librender = library(
 
 librender_dep = declare_dependency(
     include_directories: inc_lst,
+    dependencies: dep_lst,
     link_with: librender
 )
