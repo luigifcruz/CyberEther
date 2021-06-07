@@ -19,10 +19,10 @@ if all_gl_deps_found
     'vertex.cc',
     'draw.cc',
   ])
-  message('OpenGL Backend Available: YES')
 else
   if get_option('OpenGL')
     error('OpenGL dependencies were not found.')
   endif
-  message('OpenGL Backend Available: NO')
 endif
+
+sum_lst += {'OpenGL ES 3.0': all_gl_deps_found}

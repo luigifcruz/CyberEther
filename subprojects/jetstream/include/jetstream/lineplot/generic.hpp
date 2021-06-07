@@ -6,7 +6,7 @@
 
 namespace Jetstream::Lineplot {
 
-using TI = tcb::span<float>;
+using TI = nonstd::span<float>;
 
 struct Config {
     int width = 2500;

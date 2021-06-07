@@ -2,14 +2,20 @@
 
 namespace Jetstream::FFT {
 
+__global__ void cuda_hello(){
+    printf("Hello World from GPU!\n");
+}
+
 CUDA::CUDA(Config& c) : Generic(c) {
   size_t men_len = in.buf.size() * sizeof(float) * 2;
   cudaMallocManaged(&fft_dptr, men_len);
   cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1);
 
-  fft = tcb::span{(std::complex<float>*)fft_dptr, in.buf.size()};
+  fft = nonstd::span<std::complex<float>>{(std::complex<float>*)fft_dptr, in.buf.size()};
   buf_out.resize(in.buf.size());
   out.buf = buf_out;
+
+  cuda_hello<<<1,1>>>();
 }
 
 CUDA::~CUDA() {

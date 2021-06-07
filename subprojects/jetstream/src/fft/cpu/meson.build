@@ -13,10 +13,10 @@ if all_fftw_deps_found
   src_lst += files([
     'base.cc',
   ])
-  message('FFTW Backend Available: YES')
 else
   if get_option('FFTW')
     error('FFTW dependencies were not found.')
   endif
-  message('FFTW Backend Available: NO')
 endif
+
+sum_lst += {'CPU (FFTW)': all_fftw_deps_found}

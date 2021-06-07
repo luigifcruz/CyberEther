@@ -9,15 +9,16 @@ foreach x_dep : cuda_deps
 endforeach
 
 if all_cuda_deps_found
+  add_languages('cuda')
   cfg_lst.set('JETSTREAM_FFT_CUDA_AVAILABLE', true)
   dep_lst += cuda_deps
   src_lst += files([
-    'base.cc',
+    'base.cu',
   ])
-  message('CUDA Backend Available: YES')
 else
   if get_option('CUDA')
     error('CUDA dependencies were not found.')
   endif
-  message('CUDA Backend Available: NO')
 endif
+
+sum_lst += {'GPU (CUDA)': all_cuda_deps_found}

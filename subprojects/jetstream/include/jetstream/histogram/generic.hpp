@@ -7,7 +7,7 @@
 
 namespace Jetstream::Histogram {
 
-using T = tcb::span<float>;
+using T = nonstd::span<float>;
 
 struct Config {
     int width = 2500;

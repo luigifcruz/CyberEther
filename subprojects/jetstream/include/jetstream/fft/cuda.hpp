@@ -20,7 +20,7 @@ protected:
     cufftHandle plan;
     cufftComplex* fft_dptr;
 
-    tcb::span<std::complex<float>> fft;
+    nonstd::span<std::complex<float>> fft;
     std::vector<float> buf_out;
 };
 

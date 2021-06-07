@@ -1,8 +1,16 @@
 project(
     'cyberether', 'cpp',
     version: '0.0.0',
-    default_options: ['cpp_std=c++17', 'prefix=/usr', 'optimization=3']
+    default_options: [
+        'cpp_std=c++17',
+        'cuda_std=c++17',
+    ]
 )
+
+summary({'cpp_std': get_option('cpp_std'),
+         'prefix': get_option('prefix'),
+         'buildtype': get_option('buildtype'),
+        }, section: 'General')
 
 dep_lst = [
     dependency('threads'),

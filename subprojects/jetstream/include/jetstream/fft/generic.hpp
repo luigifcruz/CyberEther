@@ -5,8 +5,8 @@
 
 namespace Jetstream::FFT {
 
-using TI = tcb::span<std::complex<float>>;
-using TO = tcb::span<float>;
+using TI = nonstd::span<std::complex<float>>;
+using TO = nonstd::span<float>;
 
 struct Config {
     float max_db = 0.0;
