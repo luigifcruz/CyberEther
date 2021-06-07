@@ -1,6 +1,5 @@
 cuda_deps = [
-  dependency('cuda', required: false),
-  dependency('cufft', required: false),
+  dependency('cuda', version : '>=10', modules : ['cublas', 'cufft'])
 ]
 
 all_cuda_deps_found = true

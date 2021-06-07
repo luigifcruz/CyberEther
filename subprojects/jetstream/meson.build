@@ -1,7 +1,6 @@
 project(
     'jetstream', 'cpp',
     version: '0.0.0',
-    yielding: false,
     default_options: [
         'cpp_std=c++17',
         'cuda_std=c++17',
