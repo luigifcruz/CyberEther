@@ -34,7 +34,7 @@ public:
                 }
             }
 
-            std::lock_guard<std::mutex> guard(mutex);
+            std::scoped_lock<std::mutex> guard(mutex);
             return this->underlyingCompute();
         });
 
@@ -50,7 +50,7 @@ public:
     }
 
     Result present() {
-        std::lock_guard<std::mutex> guard(mutex);
+        std::scoped_lock<std::mutex> guard(mutex);
         return this->underlyingPresent();
     }
 
