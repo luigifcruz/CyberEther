@@ -21,6 +21,7 @@ static __device__ inline int shift(int i, uint n) {
 static __global__ void pre(cufftComplex* c, const cufftComplex* win, const uint n){
     const int numThreads = blockDim.x * gridDim.x;
     const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+
     for (int i = threadID; i < n; i += numThreads) {
         c[i] = cuCmulf(c[i], win[i]);
     }
@@ -30,10 +31,15 @@ static __global__ void post(const cufftComplex* c, float* r,
       const float min, const float max, const uint n){
     const int numThreads = blockDim.x * gridDim.x;
     const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+
     for (int i = threadID; i < n; i += numThreads) {
-        r[i] = amplt(c[shift(i, n)], n);
-        r[i] = scale(r[i], min, max);
-        r[i] = clamp(r[i], 0.0, 1.0);
+        float tmp;
+
+        tmp = amplt(c[shift(i, n)], n);
+        tmp = scale(tmp, min, max);
+        tmp = clamp(tmp, 0.0, 1.0);
+
+        r[i] = tmp;
     }
 }
 
@@ -49,9 +55,6 @@ CUDA::CUDA(Config& c) : Generic(c) {
     cudaMallocManaged(&out_dptr, out_len);
     out.buf = nonstd::span<float>{out_dptr, in.buf.size()};
 
-    cudaMemAdvise(out_dptr, out_len, cudaMemAdviseSetPreferredLocation, 0);
-    cudaMemAdvise(out_dptr, out_len, cudaMemAdviseSetReadMostly, cudaCpuDeviceId);
-
     cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1);
 }
 
@@ -62,12 +65,15 @@ CUDA::~CUDA() {
 }
 
 Result CUDA::underlyingCompute() {
+    int N = in.buf.size();
+    int threads = 32;
+    int blocks = (N + threads - 1) / threads;
+
     cudaMemcpy(fft_dptr, in.buf.data(), fft_len, cudaMemcpyHostToDevice);
-    pre<<<4, 512>>>(fft_dptr, win_dptr, in.buf.size());
+    pre<<<blocks, threads>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
-    post<<<4, 512>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, in.buf.size());
+    post<<<blocks, threads>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, N);
     cudaDeviceSynchronize();
-    cudaMemPrefetchAsync(out_dptr, out_len, cudaCpuDeviceId);
 
     return Result::SUCCESS;
 }

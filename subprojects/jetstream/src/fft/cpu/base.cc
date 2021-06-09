@@ -59,9 +59,13 @@ Result CPU::underlyingCompute() {
     fftwf_execute(cf_plan);
 
     for (int i = 0; i < n; i++) {
-        amp_out[i] = amplt(fft_out[shift(i, n)], n);
-        amp_out[i] = scale(amp_out[i], cfg.min_db, cfg.max_db);
-        amp_out[i] = clamp(amp_out[i], 0.0, 1.0);
+        float tmp;
+
+        tmp = amplt(fft_out[shift(i, n)], n);
+        tmp = scale(tmp, cfg.min_db, cfg.max_db);
+        tmp = clamp(tmp, 0.0, 1.0);
+
+        amp_out[i] = tmp;
     }
 
     return Result::SUCCESS;
