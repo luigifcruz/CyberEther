@@ -130,15 +130,17 @@ protected:
         }
 
         void main() {
+            float mag;
+
             if (Interpolate == 1) {
-                float mag = textureBicubic(BinTexture, TexCoord).r;
-                FragColor = textureBicubic(LutTexture, vec2(mag, 0));
+                mag = textureBicubic(BinTexture, TexCoord).r;
             }
 
             if (Interpolate == 0) {
-                float mag = texture(BinTexture, TexCoord).r;
-                FragColor = texture(LutTexture, vec2(mag, 0));
+                mag = texture(BinTexture, TexCoord).r;
             }
+
+            FragColor = texture(LutTexture, vec2(mag, 0));
         }
     )END";
 };

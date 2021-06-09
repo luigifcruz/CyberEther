@@ -66,8 +66,11 @@ protected:
         out vec2 A;
 
         void main() {
-            gl_Position = vec4(aPos, 1.0);
-            float pos = (aPos.y + 1.0)/2.0;
+            float min_x = 0.0;
+            float max_x = 1.0;
+            float y = -(2.0 * ((aPos.y - min_x)/(max_x - min_x)) - 1.0);
+            gl_Position = vec4(aPos.x, y, aPos.z, 1.0);
+            float pos = (y + 1.0)/2.0;
             A = vec2(-pos, 0.0);
         }
     )END";
