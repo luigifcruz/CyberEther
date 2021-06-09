@@ -2,55 +2,59 @@
 
 namespace Jetstream::FFT {
 
-__global__ void cuda_hello(){
-    printf("Hello World from GPU!\n");
+__device__ inline float clamp(float x, float a, float b) {
+  return max(a, min(b, x));
+}
+
+__device__ inline float scale(float x, float min, float max) {
+  return (x - min) / (max - min);
+}
+
+__device__ inline float amplt(cuFloatComplex x, int n) {
+  return 20 * log10(cuCabsf(x) / n);
+}
+
+__device__ inline int shift(int i, uint n) {
+  return (i + (n / 2) - 1) % n;
+}
+
+__global__ void post_process(const cufftComplex* c, float* r,
+    const float min, const float max, const uint n){
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n;
+      i += blockDim.x * gridDim.x) {
+    r[i] = amplt(c[shift(i, n)], n);
+    r[i] = scale(r[i], min, max);
+    r[i] = clamp(r[i], 0.0, 1.0);
+  }
 }
 
 CUDA::CUDA(Config& c) : Generic(c) {
-  size_t men_len = in.buf.size() * sizeof(float) * 2;
-  cudaMallocManaged(&fft_dptr, men_len);
+  fft_len = in.buf.size() * sizeof(float) * 2;
+  cudaMalloc(&fft_dptr, fft_len);
+
+  out_len = in.buf.size() * sizeof(float);
+  cudaMallocManaged(&out_dptr, out_len);
+  out.buf = nonstd::span<float>{out_dptr, in.buf.size()};
+
+  cudaMemAdvise(out_dptr, out_len, cudaMemAdviseSetPreferredLocation, 0);
+  cudaMemAdvise(out_dptr, out_len, cudaMemAdviseSetReadMostly, cudaCpuDeviceId);
+
   cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1);
-
-  fft = nonstd::span<std::complex<float>>{(std::complex<float>*)fft_dptr, in.buf.size()};
-  buf_out.resize(in.buf.size());
-  out.buf = buf_out;
-
-  cuda_hello<<<1,1>>>();
 }
 
 CUDA::~CUDA() {
   cufftDestroy(plan);
   cudaFree(fft_dptr);
+  cudaFree(out_dptr);
 }
 
 Result CUDA::underlyingCompute() {
-  std::copy(in.buf.begin(), in.buf.end(), fft.begin());
-  cudaDeviceSynchronize();
-
+  cudaMemcpy(fft_dptr, in.buf.data(), fft_len, cudaMemcpyHostToDevice);
   cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
+  post_process<<<CB(in.buf.size()), kNumBlockThreads>>>
+    (fft_dptr, out_dptr, cfg.min_db, cfg.max_db, in.buf.size());
   cudaDeviceSynchronize();
-
-  for (int i = 0; i < fft.size(); i++) {
-      int ix;
-      int stride = fft.size() / 2;
-
-      if (i < stride) {
-          ix = stride + i;
-      } else {
-          ix = i - stride;
-      }
-
-      buf_out[i] = 20 * log10(abs(fft[ix]) / fft.size());
-      buf_out[i] = (buf_out[i] - cfg.min_db)/(cfg.max_db - cfg.min_db);
-
-      if (buf_out[i] < 0.0) {
-          buf_out[i] = 0.0;
-      }
-
-      if (buf_out[i] > 1.0) {
-          buf_out[i] = 1.0;
-      }
-  }
+  cudaMemPrefetchAsync(out_dptr, out_len, cudaCpuDeviceId);
 
   return Result::SUCCESS;
 }

@@ -55,11 +55,7 @@ float abs(std::complex<float> n) {
 
 Result CPU::underlyingCompute() {
     std::copy(in.buf.begin(), in.buf.end(), buf.begin()+(inc * in.buf.size()));
-
-    inc += 1;
-    if (inc >= ymax) {
-        inc = 0;
-    }
+    inc = (inc + 1) % ymax;
 
     return Result::SUCCESS;
 }
@@ -85,8 +81,11 @@ Result CPU::underlyingPresent() {
 
     binTexture->fill(start, 0, in.buf.size(), blocks);
     last = inc;
+
     program->setUniform("Index", std::vector<float>{inc/(float)ymax});
+    program->setUniform("Interpolate", std::vector<int>{(int)cfg.interpolate});
     vertex->update();
+
     return Result::SUCCESS;
 }
 

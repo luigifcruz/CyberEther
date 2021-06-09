@@ -64,7 +64,7 @@ int main() {
 
     // Configure Jetstream Modules
     auto device = Jetstream::Locale::CPU;
-    state->stream = std::vector<std::complex<float>>(8192*2);
+    state->stream = std::vector<std::complex<float>>(2048);
 
     Jetstream::FFT::Config fftCfg;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
@@ -120,6 +120,7 @@ int main() {
         }
         ImGui::DragFloatRange2("dBFS Range", &fftCfg.min_db, &fftCfg.max_db,
              1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
+        ImGui::Checkbox("Interpolate Waterfall", &wtfCfg.interpolate);
         ImGui::End();
 
         ImGui::Begin("Samurai Info");
