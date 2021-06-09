@@ -16,12 +16,11 @@ protected:
     Result underlyingCompute();
     Result underlyingPresent();
 
-    // Complex Float
     fftwf_plan cf_plan;
-    std::vector<std::complex<float>> buf_fft;
-    std::vector<float> buf_out;
 
-    static inline float log10f_fast(float);
+    std::vector<std::complex<float>> fft_in;
+    std::vector<std::complex<float>> fft_out;
+    std::vector<float> amp_out;
 };
 
 } // namespace Jetstream::FFT

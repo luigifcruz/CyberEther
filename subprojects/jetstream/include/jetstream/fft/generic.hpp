@@ -17,11 +17,7 @@ struct Config {
 
 class Generic : public Module {
 public:
-    explicit Generic(Config& c)
-        : Module(c.policy),
-          cfg(c),
-          in(c.input0) {
-    }
+    explicit Generic(Config&);
     virtual ~Generic() = default;
 
     Config conf() const {
@@ -36,6 +32,8 @@ protected:
     Config& cfg;
     Data<TI> in;
     Data<TO> out;
+
+    std::vector<std::complex<float>> window;
 };
 
 } // namespace Jetstream::FFT

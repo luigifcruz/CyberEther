@@ -17,8 +17,6 @@ protected:
     Result underlyingCompute();
     Result underlyingPresent();
 
-    int kNumBlockThreads = 512;
-
     cufftHandle plan;
 
     size_t fft_len;
@@ -27,9 +25,8 @@ protected:
     size_t out_len;
     float* out_dptr;
 
-    int CB(int n_threads) {
-        return (n_threads + kNumBlockThreads - 1) / kNumBlockThreads;
-    }
+    size_t win_len;
+    cufftComplex* win_dptr;
 };
 
 } // namespace Jetstream::FFT
