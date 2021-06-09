@@ -2,26 +2,36 @@
 
 namespace Jetstream::FFT {
 
-__device__ inline float clamp(float x, float a, float b) {
+static __device__ inline float clamp(float x, float a, float b) {
   return max(a, min(b, x));
 }
 
-__device__ inline float scale(float x, float min, float max) {
+static __device__ inline float scale(float x, float min, float max) {
   return (x - min) / (max - min);
 }
 
-__device__ inline float amplt(cuFloatComplex x, int n) {
+static __device__ inline float amplt(cuFloatComplex x, int n) {
   return 20 * log10(cuCabsf(x) / n);
 }
 
-__device__ inline int shift(int i, uint n) {
+static __device__ inline int shift(int i, uint n) {
   return (i + (n / 2) - 1) % n;
 }
 
-__global__ void post_process(const cufftComplex* c, float* r,
+static __global__ void pre(cufftComplex* c, const uint n){
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < n; i += numThreads) {
+    float win = 0.5 * (1 - cos(2 * M_PI * i / n));
+    c[i] = cuCmulf(c[i], cufftComplex{win, 0.0});
+  }
+}
+
+static __global__ void post(const cufftComplex* c, float* r,
     const float min, const float max, const uint n){
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n;
-      i += blockDim.x * gridDim.x) {
+  const int numThreads = blockDim.x * gridDim.x;
+  const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int i = threadID; i < n; i += numThreads) {
     r[i] = amplt(c[shift(i, n)], n);
     r[i] = scale(r[i], min, max);
     r[i] = clamp(r[i], 0.0, 1.0);
@@ -50,9 +60,9 @@ CUDA::~CUDA() {
 
 Result CUDA::underlyingCompute() {
   cudaMemcpy(fft_dptr, in.buf.data(), fft_len, cudaMemcpyHostToDevice);
+  pre<<<4, 512>>>(fft_dptr, in.buf.size());
   cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
-  post_process<<<CB(in.buf.size()), kNumBlockThreads>>>
-    (fft_dptr, out_dptr, cfg.min_db, cfg.max_db, in.buf.size());
+  post<<<4, 512>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, in.buf.size());
   cudaDeviceSynchronize();
   cudaMemPrefetchAsync(out_dptr, out_len, cudaCpuDeviceId);
 

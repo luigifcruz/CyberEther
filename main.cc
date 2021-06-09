@@ -69,7 +69,7 @@ int main() {
     Jetstream::FFT::Config fftCfg;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
     fftCfg.policy = {Jetstream::Policy::ASYNC, {}};
-    auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
+    auto fft = Jetstream::FFT::Instantiate(Jetstream::Locale::CUDA, fftCfg);
 
     Jetstream::Lineplot::Config lptCfg;
     lptCfg.render = state->render;
