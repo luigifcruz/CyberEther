@@ -47,6 +47,14 @@ public:
     virtual std::shared_ptr<Vertex> create(Vertex::Config&) = 0;
     virtual std::shared_ptr<Draw> create(Draw::Config&) = 0;
 
+    static bool cudaInteropSupported() {
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+        return true;
+#else
+        return false;
+#endif
+    };
+
 protected:
     static Result getError(std::string func, std::string file, int line);
 

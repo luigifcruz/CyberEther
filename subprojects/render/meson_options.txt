@@ -1,1 +1,2 @@
 option('OpenGL', type : 'boolean', value : false, description: 'Force OpenGL Support.')
+option('CUDA', type : 'boolean', value : false, description: 'Force CUDA Interop Support.')

@@ -15,6 +15,7 @@ public:
         DataFormat dfmt = DataFormat::RGB;
         PixelFormat pfmt = PixelFormat::RGB;
         PixelType ptype = PixelType::UI8;
+        bool cudaInterop = false;
     };
 
     Config& cfg;

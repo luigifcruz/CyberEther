@@ -49,10 +49,6 @@ CPU::CPU(Config& c) : Generic(c) {
 CPU::~CPU() {
 }
 
-float abs(std::complex<float> n) {
-    return n.real() * n.real() + n.imag() * n.imag();
-}
-
 Result CPU::underlyingCompute() {
     std::copy(in.buf.begin(), in.buf.end(), buf.begin()+(inc * in.buf.size()));
     inc = (inc + 1) % ymax;

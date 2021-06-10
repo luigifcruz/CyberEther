@@ -8,12 +8,18 @@
 #include <unistd.h>
 
 #include "magic_enum.hpp"
+#include "render_config.hpp"
+
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#include <cuda_runtime.h>
+#include <cuda_gl_interop.h>
+#endif
 
 typedef unsigned int uint;
 
 #ifndef RENDER_ASSERT_SUCCESS
 #define RENDER_ASSERT_SUCCESS(result) { \
-    if (result != Result::SUCCESS) { \
+    if (result != Render::Result::SUCCESS) { \
         std::cerr << "Render encountered an exception (" <<  magic_enum::enum_name(result) << ") in " \
             << __PRETTY_FUNCTION__ << " in line " << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
         throw result; \

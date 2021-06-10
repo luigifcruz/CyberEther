@@ -3,15 +3,30 @@
 namespace Render {
 
 Result GLES::Texture::create() {
+    if (!GLES::cudaInteropSupported() && cfg.cudaInterop) {
+        cfg.cudaInterop = false;
+        return Result::ERROR;
+    }
+
     pfmt = convertPixelFormat(cfg.pfmt);
     ptype = convertPixelType(cfg.ptype);
     dfmt = convertDataFormat(cfg.dfmt);
 
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, cfg.buffer);
+    auto ptr = (cfg.cudaInterop) ? nullptr : cfg.buffer;
+    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, ptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    if (cfg.cudaInterop) {
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+        cudaGraphicsGLRegisterImage(&cuda_tex_resource, tex, GL_TEXTURE_2D,
+                cudaGraphicsRegisterFlagsWriteDiscard);
+        cudaGraphicsMapResources(1, &cuda_tex_resource, 0);
+        cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0);
+#endif
+    }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -40,7 +55,19 @@ uint GLES::Texture::raw() {
 
 Result GLES::Texture::fill() {
     RENDER_ASSERT_SUCCESS(this->start());
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, cfg.buffer);
+
+    if (cfg.cudaInterop) {
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+        size_t i = (cfg.pfmt == PixelFormat::RED) ? 1 : 3;
+        size_t n = cfg.width * cfg.height * i * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
+        // this is undefined behavior, but mapping the resouce every loop is too slow
+        cudaMemcpyToArray(texture_ptr, 0, 0, cfg.buffer, n, cudaMemcpyDeviceToDevice);
+        cudaGraphicsUnmapResources(1, &cuda_tex_resource, 0);
+#endif
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, cfg.buffer);
+    }
+
     RENDER_ASSERT_SUCCESS(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

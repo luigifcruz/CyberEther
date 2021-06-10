@@ -24,6 +24,11 @@ protected:
     Result start();
     Result end();
 
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+    cudaArray *texture_ptr;
+    struct cudaGraphicsResource* cuda_tex_resource;
+#endif
+
     friend class GLES::Surface;
     friend class GLES::Program;
 };
