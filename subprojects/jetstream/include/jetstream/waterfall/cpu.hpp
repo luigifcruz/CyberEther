@@ -11,8 +11,10 @@ public:
     ~CPU();
 
 protected:
-    Result underlyingCompute();
-    Result underlyingPresent();
+    Result _compute();
+    Result _present();
+
+    std::vector<float> bin;
 };
 
 } // namespace Jetstream::Waterfall

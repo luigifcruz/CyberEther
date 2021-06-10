@@ -1,0 +1,25 @@
+#ifndef JETSTREAM_WTF_CUDA_H
+#define JETSTREAM_WTF_CUDA_H
+
+#include "jetstream/waterfall/generic.hpp"
+
+#include <cuda_runtime.h>
+#include <cufft.h>
+
+namespace Jetstream::Waterfall {
+
+class CUDA : public Generic  {
+public:
+    explicit CUDA(Config&);
+    ~CUDA();
+
+protected:
+    Result _compute();
+    Result _present();
+
+    float* out_dptr;
+};
+
+} // namespace Jetstream::Waterfall
+
+#endif

@@ -27,6 +27,8 @@ protected:
 
     size_t win_len;
     cufftComplex* win_dptr;
+
+    cudaStream_t stream;
 };
 
 } // namespace Jetstream::FFT

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 
+#include "tools/magic_enum.hpp"
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"
 
