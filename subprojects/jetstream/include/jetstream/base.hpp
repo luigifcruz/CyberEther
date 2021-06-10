@@ -34,7 +34,6 @@ public:
                 }
             }
 
-            std::scoped_lock<std::mutex> guard(mutex);
             return this->underlyingCompute();
         });
 
@@ -50,14 +49,12 @@ public:
     }
 
     Result present() {
-        std::scoped_lock<std::mutex> guard(mutex);
         return this->underlyingPresent();
     }
 
 protected:
     Execution& cfg;
 
-    std::mutex mutex;
     std::launch policy;
     std::future<Result> future;
 
@@ -65,35 +62,52 @@ protected:
     virtual Result underlyingPresent() = 0;
 };
 
-inline Result Compute(const std::vector<std::shared_ptr<Module>> modules) {
-    for (const auto& transform : modules) {
-        auto result = transform->compute();
-        if (result != Result::SUCCESS) {
-            return result;
-        }
-    }
-    return Result::SUCCESS;
-}
+class Engine : public std::vector<std::shared_ptr<Module>> {
+public:
+    Result compute() {
+        {
+            const std::lock_guard<std::mutex> lock(i);
+            for (const auto& transform : *this) {
+                auto result = transform->compute();
+                if (result != Result::SUCCESS) {
+                    return result;
+                }
+            }
 
-inline Result Barrier(const std::vector<std::shared_ptr<Module>> modules) {
-    for (const auto& transform : modules) {
-        auto result = transform->barrier();
-        if (result != Result::SUCCESS) {
-            return result;
+            for (const auto& transform : *this) {
+                auto result = transform->barrier();
+                if (result != Result::SUCCESS) {
+                    return result;
+                }
+            }
         }
-    }
-    return Result::SUCCESS;
-}
 
-inline Result Present(const std::vector<std::shared_ptr<Module>> modules) {
-    for (const auto& transform : modules) {
-        auto result = transform->present();
-        if (result != Result::SUCCESS) {
-            return result;
-        }
+        access.notify_all();
+        return Result::SUCCESS;
     }
-    return Result::SUCCESS;
-}
+
+    Result present() {
+        std::unique_lock<std::mutex> sync(s);
+        access.wait(sync);
+
+        {
+            const std::lock_guard<std::mutex> lock(i);
+
+            for (const auto& transform : *this) {
+                auto result = transform->present();
+                if (result != Result::SUCCESS) {
+                    return result;
+                }
+            }
+        }
+
+        return Result::SUCCESS;
+    }
+
+private:
+    std::mutex s, i;
+    std::condition_variable access;
+};
 
 } // namespace Jetstream
 

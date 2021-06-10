@@ -8,18 +8,12 @@
 #include "jetstream/histogram/base.hpp"
 
 struct State {
-    bool streaming = false;
-
-    // Render
-    std::shared_ptr<Render::Instance> render;
-
-    // Samurai
     Samurai::ChannelId rx;
+    bool streaming = false;
     std::shared_ptr<Samurai::Device> device;
-
-    // Jetstream
+    std::shared_ptr<Render::Instance> render;
     std::vector<std::complex<float>> stream;
-    std::vector<std::shared_ptr<Jetstream::Module>> modules;
+    std::shared_ptr<Jetstream::Engine> engine;
 };
 
 auto state = std::make_shared<State>();
@@ -27,8 +21,7 @@ auto state = std::make_shared<State>();
 void dsp_loop(std::shared_ptr<State> state) {
     while (state->streaming) {
         state->device->ReadStream(state->rx, state->stream.data(), state->stream.size(), 1000);
-        JETSTREAM_ASSERT_SUCCESS(Jetstream::Compute(state->modules));
-        JETSTREAM_ASSERT_SUCCESS(Jetstream::Barrier(state->modules));
+        JETSTREAM_ASSERT_SUCCESS(state->engine->compute());
     }
 }
 
@@ -64,6 +57,7 @@ int main() {
 
     // Configure Jetstream Modules
     auto device = Jetstream::Locale::CPU;
+    state->engine = std::make_shared<Jetstream::Engine>();
     state->stream = std::vector<std::complex<float>>(2048);
 
     Jetstream::FFT::Config fftCfg;
@@ -84,9 +78,9 @@ int main() {
     auto wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
 
     // Add Jetstream modules to the execution pipeline.
-    state->modules.push_back(fft);
-    state->modules.push_back(lpt);
-    state->modules.push_back(wtf);
+    state->engine->push_back(fft);
+    state->engine->push_back(lpt);
+    state->engine->push_back(wtf);
 
     // Start Components
     state->streaming = true;
@@ -99,7 +93,7 @@ int main() {
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
-        JETSTREAM_ASSERT_SUCCESS(Jetstream::Present(state->modules));
+        JETSTREAM_ASSERT_SUCCESS(state->engine->present());
 
         ImGui::Begin("Lineplot");
         lptCfg.width = ImGui::GetContentRegionAvail().x;
