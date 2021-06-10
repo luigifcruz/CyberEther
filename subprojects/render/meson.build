@@ -16,7 +16,7 @@ inc_lst = [
     include_directories('.'),
 ]
 
-cuda_dep = dependency('cuda', version : '>=11', modules : ['cublas'])
+cuda_dep = dependency('cuda', version : '>=11', modules : ['cublas'], required: false)
 if cuda_dep.found()
   cfg_lst.set('RENDER_CUDA_INTEROP_AVAILABLE', true)
   dep_lst += cuda_dep
