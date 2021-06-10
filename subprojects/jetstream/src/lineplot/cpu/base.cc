@@ -78,10 +78,6 @@ CPU::CPU(Config& c) : Generic(c) {
 CPU::~CPU() {
 }
 
-float abs(std::complex<float> n) {
-    return n.real() * n.real() + n.imag() * n.imag();
-}
-
 Result CPU::underlyingCompute() {
     for (int i = 0; i < in.buf.size(); i++) {
         l[(i*3)+1] = in.buf[i];
