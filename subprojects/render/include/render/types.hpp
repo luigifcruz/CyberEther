@@ -13,6 +13,16 @@
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
+
+#ifndef CUDA_ASSERT_SUCCESS
+#define CUDA_ASSERT_SUCCESS(result) { \
+    if (result != cudaSuccess) { \
+        std::cerr << "CUDA encountered an exception (" <<  magic_enum::enum_name(result) << ") in " \
+            << __PRETTY_FUNCTION__ << " in line " << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
+        throw result; \
+    } \
+}
+#endif
 #endif
 
 typedef unsigned int uint;
@@ -32,6 +42,7 @@ namespace Render {
 enum struct Result {
     SUCCESS = 0,
     ERROR,
+    CUDA_ERROR,
     RENDER_BACKEND_ERROR,
     NO_RENDER_BACKEND_FOUND,
     FAILED_TO_OPEN_SCREEN,

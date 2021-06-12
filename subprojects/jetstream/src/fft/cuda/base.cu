@@ -28,7 +28,7 @@ static __global__ void pre(cufftComplex* c, const cufftComplex* win, const uint 
 }
 
 static __global__ void post(const cufftComplex* c, float* r,
-      const float min, const float max, const uint n){
+    const float min, const float max, const uint n){
     const int numThreads = blockDim.x * gridDim.x;
     const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -45,6 +45,8 @@ static __global__ void post(const cufftComplex* c, float* r,
 
 CUDA::CUDA(Config& c) : Generic(c) {
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+
+    cudaHostRegister(in.buf.data(), in.buf.size() * 8, cudaHostRegisterDefault);
 
     fft_len = in.buf.size() * sizeof(float) * 2;
     cudaMalloc(&fft_dptr, fft_len);
@@ -77,7 +79,6 @@ Result CUDA::underlyingCompute() {
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
     post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, N);
-    cudaStreamSynchronize(stream);
 
     return Result::SUCCESS;
 }

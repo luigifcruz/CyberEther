@@ -56,7 +56,7 @@ int main() {
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
-    auto device = Jetstream::Locale::CPU;
+    auto device = Jetstream::Locale::CUDA;
     state->engine = std::make_shared<Jetstream::Engine>();
     state->stream = std::vector<std::complex<float>>(2048);
 

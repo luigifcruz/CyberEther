@@ -19,6 +19,11 @@ public:
         size_t stride = 0;
         Usage usage = Static;
         uint index;
+        bool cudaInterop = false;
+
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+        cudaGraphicsResource* _cuda_res;
+#endif
     };
 
     struct Config {

@@ -386,6 +386,7 @@ constexpr int reflected_min() noexcept {
       return lhs;
     }
   }
+  return 0;
 }
 
 template <typename E, bool IsFlags, typename U = std::underlying_type_t<E>>

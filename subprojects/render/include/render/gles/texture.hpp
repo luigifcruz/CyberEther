@@ -25,7 +25,6 @@ protected:
     Result end();
 
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
-    cudaArray *texture_ptr;
     cudaGraphicsResource* cuda_tex_resource;
     cudaStream_t stream;
 #endif

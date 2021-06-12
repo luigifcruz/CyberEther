@@ -1,8 +1,13 @@
-#include "jetstream/lineplot/cpu.hpp"
+#include "jetstream/lineplot/cuda.hpp"
 
 namespace Jetstream::Lineplot {
 
-CPU::CPU(Config& c) : Generic(c) {
+float map(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+
+CUDA::CUDA(Config& c) : Generic(c) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         grid.push_back(-1.0f);
         grid.push_back(i);
@@ -18,13 +23,20 @@ CPU::CPU(Config& c) : Generic(c) {
         grid.push_back(+0.0f);
     }
 
-    for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)in.buf.size())) {
-        plot.push_back(i);
-        plot.push_back(+0.0f);
-        plot.push_back(+0.0f);
+    auto render = cfg.render;
+
+    out_len = in.buf.size() * 3 ;
+    cudaMallocManaged(&out_dptr, out_len * sizeof(float));
+
+    for (int i = 0; i < out_len; i += 3) {
+        out_dptr[(int)i*1] = (float)map((float)i / out_len, 0.0, 1.0, -1.0, +1.0);
+        out_dptr[i*2] = 0.0;
+        out_dptr[i*3] = 0.0;
     }
 
-    auto render = cfg.render;
+    std::cout << out_dptr[0] << std::endl;
+    out_dptr[0] = -1.0;
+    std::cout << out_dptr[0] << std::endl;
 
     Render::Vertex::Buffer gridVbo;
     gridVbo.data = grid.data();
@@ -39,10 +51,11 @@ CPU::CPU(Config& c) : Generic(c) {
     drawGridVertex = render->create(drawGridVertexCfg);
 
     Render::Vertex::Buffer plotVbo;
-    plotVbo.data = plot.data();
-    plotVbo.size = plot.size();
+    plotVbo.data = out_dptr;
+    plotVbo.size = out_len;
     plotVbo.stride = 3;
     plotVbo.usage = Render::Vertex::Buffer::Dynamic;
+    plotVbo.cudaInterop = true;
     lineVertexCfg.buffers = {plotVbo};
     lineVertex = render->create(lineVertexCfg);
 
@@ -71,18 +84,31 @@ CPU::CPU(Config& c) : Generic(c) {
     surface = render->createAndBind(surfaceCfg);
 }
 
-CPU::~CPU() {
+CUDA::~CUDA() {
 }
 
-Result CPU::_compute() {
-    for (int i = 0; i < in.buf.size(); i++) {
-        plot[(i*3)+1] = in.buf[i];
-    }
+void cudaMemcpyStrided(
+        void *dst, int dstStride,
+        void *src, int srcStride,
+        int numElements, int elementSize, enum cudaMemcpyKind kind) {
+    size_t srcPitchInBytes = srcStride * elementSize;
+    size_t dstPitchInBytes = dstStride * elementSize;
+    size_t width = 1 * elementSize;
+    size_t height = numElements;
+    cudaMemcpy2D(
+        dst, dstPitchInBytes,
+        src, srcPitchInBytes,
+        width, height,
+        kind);
+}
+
+Result CUDA::_compute() {
+    cudaMemcpyStrided(out_dptr+1, 3, in.buf.data(), 1, in.buf.size(), sizeof(float), cudaMemcpyDeviceToDevice);
 
     return Result::SUCCESS;
 }
 
-Result CPU::_present() {
+Result CUDA::_present() {
     lineVertex->update();
 
     return Result::SUCCESS;

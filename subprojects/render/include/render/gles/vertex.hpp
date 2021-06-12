@@ -25,6 +25,10 @@ protected:
     uint count();
     uint buffered();
 
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+    cudaStream_t stream;
+#endif
+
     friend class GLES::Draw;
 };
 

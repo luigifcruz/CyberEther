@@ -23,10 +23,19 @@ Result GLES::Vertex::create() {
 
         glGenBuffers(1, &buffer.index);
         glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
-        glBufferData(GL_ARRAY_BUFFER, buffer.size * sizeof(float), buffer.data, usage);
+        auto ptr = (buffer.cudaInterop) ? buffer.data : buffer.data;
+        glBufferData(GL_ARRAY_BUFFER, buffer.size * sizeof(float), ptr, usage);
         glVertexAttribPointer(i, buffer.stride, GL_FLOAT, GL_FALSE, buffer.stride * sizeof(float), 0);
         glEnableVertexAttribArray(i++);
         vertex_count = buffer.size / buffer.stride;
+
+        if (buffer.cudaInterop) {
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+            CUDA_ASSERT_SUCCESS(cudaGraphicsGLRegisterBuffer(&buffer._cuda_res, buffer.index,
+                    cudaGraphicsMapFlagsWriteDiscard));
+            CUDA_ASSERT_SUCCESS(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+#endif
+        }
     }
 
     if (cfg.indices.size() != 0) {
@@ -65,6 +74,18 @@ Result GLES::Vertex::end() {
 Result GLES::Vertex::update() {
     this->start();
     for (auto& buffer : cfg.buffers) {
+        if (buffer.cudaInterop) {
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+            float *buffer_ptr;
+            size_t buffer_len;
+            CUDA_ASSERT_SUCCESS(cudaGraphicsMapResources(1, &buffer._cuda_res, stream));
+            CUDA_ASSERT_SUCCESS(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));
+            cudaMemcpy(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice);
+            CUDA_ASSERT_SUCCESS(cudaGraphicsUnmapResources(1, &buffer._cuda_res, stream));
+#endif
+            break;
+        }
+
         glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
         glBufferSubData(GL_ARRAY_BUFFER, 0, buffer.size * sizeof(float), buffer.data);
     }

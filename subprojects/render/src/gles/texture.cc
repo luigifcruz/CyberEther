@@ -34,6 +34,10 @@ Result GLES::Texture::destroy() {
     glDeleteTextures(1, &tex);
 
     if (cfg.cudaInterop) {
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+        cudaGraphicsUnregisterResource(cuda_tex_resource);
+        cudaStreamDestroy(stream);
+#endif
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -59,9 +63,11 @@ Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
     size_t i = (cfg.pfmt == PixelFormat::RED) ? 1 : 3;
     size_t m = i * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
+
+    cudaArray *texture_ptr;
     cudaGraphicsMapResources(1, &cuda_tex_resource, stream);
     cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0);
-    cudaMemcpy2DToArray(texture_ptr, xo*m, yo, cfg.buffer, w*m, w*m, h, cudaMemcpyDeviceToDevice);
+    cudaMemcpy2DToArrayAsync(texture_ptr, xo*m, yo, cfg.buffer, w*m, w*m, h, cudaMemcpyDeviceToDevice, stream);
     cudaGraphicsUnmapResources(1, &cuda_tex_resource, stream);
 
     return Result::SUCCESS;

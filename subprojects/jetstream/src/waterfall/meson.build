@@ -1,3 +1,7 @@
+src_lst += files([
+  'generic.cc',
+])
+
 sum_lst = {}
 
 subdir('cpu')
