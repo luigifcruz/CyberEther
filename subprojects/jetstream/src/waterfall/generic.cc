@@ -48,7 +48,7 @@ Result Generic::_initRender() {
 }
 
 Result Generic::underlyingCompute() {
-    DEBUG_PUSH("present_waterfall");
+    DEBUG_PUSH("compute_waterfall");
     auto res = this->_compute();
 
     inc = (inc + 1) % ymax;

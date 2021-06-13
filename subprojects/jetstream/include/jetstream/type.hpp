@@ -14,17 +14,23 @@
 
 #ifdef CUDA_DEBUG
 #include <nvtx3/nvToolsExt.h>
-#endif
 
 #ifndef DEBUG_PUSH
 #define DEBUG_PUSH(name) { nvtxRangePushA(name); }
-#else
-#define cuda_debug_push(name)
 #endif
 #ifndef DEBUG_POP
 #define DEBUG_POP() { nvtxRangePop(); }
+#endif
+
 #else
+
+#ifndef DEBUG_PUSH
+#define DEBUG_PUSH(name)
+#endif
+#ifndef DEBUG_POP
 #define DEBUG_POP()
+#endif
+
 #endif
 
 #ifndef JETSTREAM_ASSERT_SUCCESS
