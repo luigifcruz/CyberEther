@@ -112,8 +112,6 @@ Result GLES::endImgui() {
 }
 
 Result GLES::start() {
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
     glLineWidth(cfg.scale);
 
     if (cfg.enableImgui) {
