@@ -48,14 +48,17 @@ Result Generic::_initRender() {
 }
 
 Result Generic::underlyingCompute() {
+    DEBUG_PUSH("present_waterfall");
     auto res = this->_compute();
 
     inc = (inc + 1) % ymax;
 
+    DEBUG_POP();
     return res;
 }
 
 Result Generic::underlyingPresent() {
+    DEBUG_PUSH("present_waterfall");
     if (textureCfg.width != cfg.width || textureCfg.height != cfg.height) {
         if (surface->resize(cfg.width, cfg.height) != Render::Result::SUCCESS) {
             cfg.width = textureCfg.width;
@@ -69,6 +72,7 @@ Result Generic::underlyingPresent() {
     program->setUniform("Interpolate", std::vector<int>{(int)cfg.interpolate});
     vertex->update();
 
+    DEBUG_POP();
     return res;
 }
 

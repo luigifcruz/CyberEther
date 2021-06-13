@@ -23,7 +23,7 @@ Result GLES::Vertex::create() {
 
         glGenBuffers(1, &buffer.index);
         glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
-        auto ptr = (buffer.cudaInterop) ? buffer.data : buffer.data;
+        auto ptr = (buffer.cudaInterop) ? nullptr : buffer.data;
         glBufferData(GL_ARRAY_BUFFER, buffer.size * sizeof(float), ptr, usage);
         glVertexAttribPointer(i, buffer.stride, GL_FLOAT, GL_FALSE, buffer.stride * sizeof(float), 0);
         glEnableVertexAttribArray(i++);

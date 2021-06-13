@@ -33,6 +33,7 @@ protected:
     Config& cfg;
     Data<TI> in;
 
+    std::vector<float> plot;
     std::vector<float> grid;
 
     Render::Texture::Config textureCfg;
@@ -40,6 +41,8 @@ protected:
     Render::Program::Config programCfg;
     Render::Surface::Config surfaceCfg;
     Render::Vertex::Config gridVertexCfg;
+    Render::Vertex::Buffer plotVbo;
+    Render::Vertex::Buffer gridVbo;
     Render::Vertex::Config lineVertexCfg;
     Render::Draw::Config drawGridVertexCfg;
     Render::Draw::Config drawLineVertexCfg;

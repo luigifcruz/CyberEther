@@ -10,6 +10,23 @@
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"
 
+#define CUDA_DEBUG
+
+#ifdef CUDA_DEBUG
+#include <nvtx3/nvToolsExt.h>
+#endif
+
+#ifndef DEBUG_PUSH
+#define DEBUG_PUSH(name) { nvtxRangePushA(name); }
+#else
+#define cuda_debug_push(name)
+#endif
+#ifndef DEBUG_POP
+#define DEBUG_POP() { nvtxRangePop(); }
+#else
+#define DEBUG_POP()
+#endif
+
 #ifndef JETSTREAM_ASSERT_SUCCESS
 #define JETSTREAM_ASSERT_SUCCESS(result) { \
     if (result != Jetstream::Result::SUCCESS) { \

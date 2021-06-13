@@ -3,6 +3,8 @@
 namespace Jetstream::Waterfall {
 
 CUDA::CUDA(Config& c) : Generic(c) {
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+
     auto render = cfg.render;
 
     ymax = cfg.height;
@@ -15,10 +17,13 @@ CUDA::CUDA(Config& c) : Generic(c) {
 
 CUDA::~CUDA() {
     cudaFree(out_dptr);
+    cudaStreamDestroy(stream);
 }
 
 Result CUDA::_compute() {
-    cudaMemcpy(out_dptr+(inc*in.buf.size()), in.buf.data(), sizeof(float)*in.buf.size(), cudaMemcpyDeviceToDevice);
+    cudaMemcpyAsync(out_dptr+(inc*in.buf.size()), in.buf.data(), sizeof(float)*in.buf.size(),
+            cudaMemcpyDeviceToDevice, stream);
+    cudaStreamSynchronize(stream);
 
     return Result::SUCCESS;
 }

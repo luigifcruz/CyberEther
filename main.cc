@@ -56,7 +56,7 @@ int main() {
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
-    auto device = Jetstream::Locale::CUDA;
+    auto device = Jetstream::Locale::CPU;
     state->engine = std::make_shared<Jetstream::Engine>();
     state->stream = std::vector<std::complex<float>>(2048);
 
@@ -68,13 +68,13 @@ int main() {
     Jetstream::Lineplot::Config lptCfg;
     lptCfg.render = state->render;
     lptCfg.input0 = fft->output();
-    lptCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
+    lptCfg.policy = {Jetstream::Policy::SYNC, {fft}};
     auto lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
 
     Jetstream::Waterfall::Config wtfCfg;
     wtfCfg.render = state->render;
     wtfCfg.input0 = fft->output();
-    wtfCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
+    wtfCfg.policy = {Jetstream::Policy::SYNC, {fft}};
     auto wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
 
     // Add Jetstream modules to the execution pipeline.
@@ -91,9 +91,9 @@ int main() {
     while(state->render->keepRunning()) {
         state->render->start();
 
-        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-
         JETSTREAM_ASSERT_SUCCESS(state->engine->present());
+
+        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
         ImGui::Begin("Lineplot");
         lptCfg.width = ImGui::GetContentRegionAvail().x;

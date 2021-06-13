@@ -16,8 +16,10 @@ public:
         switch (cfg.policy) {
             case Jetstream::Policy::ASYNC:
                 policy = std::launch::async;
+                break;
             case Jetstream::Policy::SYNC:
                 policy = std::launch::deferred;
+                break;
             case Jetstream::Policy::HYBRID:
                 // TODO: implement load balancer
                 policy = std::launch::deferred;
@@ -65,8 +67,17 @@ protected:
 class Engine : public std::vector<std::shared_ptr<Module>> {
 public:
     Result compute() {
+        if (waiting) {
+            DEBUG_PUSH("compute_wait");
+            std::unique_lock<std::mutex> sync(s);
+            access.wait(sync);
+            DEBUG_POP();
+        }
+
         {
             const std::lock_guard<std::mutex> lock(i);
+            DEBUG_PUSH("compute");
+
             for (const auto& transform : *this) {
                 auto result = transform->compute();
                 if (result != Result::SUCCESS) {
@@ -80,18 +91,17 @@ public:
                     return result;
                 }
             }
-        }
 
-        access.notify_all();
+            DEBUG_POP();
+        }
         return Result::SUCCESS;
     }
 
     Result present() {
-        std::unique_lock<std::mutex> sync(s);
-        access.wait(sync);
-
+        waiting = true;
         {
             const std::lock_guard<std::mutex> lock(i);
+            DEBUG_PUSH("present");
 
             for (const auto& transform : *this) {
                 auto result = transform->present();
@@ -99,14 +109,18 @@ public:
                     return result;
                 }
             }
+            DEBUG_POP();
         }
+        waiting = false;
 
+        access.notify_one();
         return Result::SUCCESS;
     }
 
 private:
     std::mutex s, i;
     std::condition_variable access;
+    std::atomic<bool> waiting = false;
 };
 
 } // namespace Jetstream

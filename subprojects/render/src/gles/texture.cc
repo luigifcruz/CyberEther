@@ -67,7 +67,7 @@ Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
     cudaArray *texture_ptr;
     cudaGraphicsMapResources(1, &cuda_tex_resource, stream);
     cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0);
-    cudaMemcpy2DToArrayAsync(texture_ptr, xo*m, yo, cfg.buffer, w*m, w*m, h, cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpy2DToArray(texture_ptr, xo*m, yo, cfg.buffer, w*m, w*m, h, cudaMemcpyDeviceToDevice);
     cudaGraphicsUnmapResources(1, &cuda_tex_resource, stream);
 
     return Result::SUCCESS;

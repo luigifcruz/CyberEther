@@ -17,8 +17,10 @@ protected:
     Result _compute();
     Result _present();
 
-    size_t out_len;
-    float* out_dptr;
+    size_t plot_len;
+    float* plot_dptr;
+
+    cudaStream_t stream;
 };
 
 } // namespace Jetstream::Lineplot

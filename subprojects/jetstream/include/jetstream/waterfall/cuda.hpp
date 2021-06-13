@@ -18,6 +18,8 @@ protected:
     Result _present();
 
     float* out_dptr;
+
+    cudaStream_t stream;
 };
 
 } // namespace Jetstream::Waterfall

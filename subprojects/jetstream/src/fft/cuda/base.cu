@@ -45,13 +45,13 @@ static __global__ void post(const cufftComplex* c, float* r,
 
 CUDA::CUDA(Config& c) : Generic(c) {
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    cudaHostRegister(in.buf.data(), in.buf.size() * sizeof(in.buf[0]),
+            cudaHostRegisterReadOnly);
 
-    cudaHostRegister(in.buf.data(), in.buf.size() * 8, cudaHostRegisterDefault);
-
-    fft_len = in.buf.size() * sizeof(float) * 2;
+    fft_len = in.buf.size() * sizeof(in.buf[0]);
     cudaMalloc(&fft_dptr, fft_len);
 
-    win_len = in.buf.size() * sizeof(float) * 2;
+    win_len = in.buf.size() * sizeof(in.buf[0]);
     cudaMalloc(&win_dptr, win_len);
     cudaMemcpy(win_dptr, window.data(), win_len, cudaMemcpyHostToDevice);
 
@@ -64,6 +64,7 @@ CUDA::CUDA(Config& c) : Generic(c) {
 }
 
 CUDA::~CUDA() {
+    cudaHostUnregister(in.buf.data());
     cufftDestroy(plan);
     cudaFree(fft_dptr);
     cudaFree(out_dptr);
@@ -79,6 +80,7 @@ Result CUDA::underlyingCompute() {
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
     post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, N);
+    cudaStreamSynchronize(stream);
 
     return Result::SUCCESS;
 }
