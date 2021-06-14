@@ -11,7 +11,7 @@ using T = nonstd::span<float>;
 
 struct Config {
     bool interpolate = true; int width = 2500; int height = 500; Data<T> input0;
-    Module::Execution policy;
+    Jetstream::Policy policy;
     std::shared_ptr<Render::Instance> render;
 };
 
@@ -53,7 +53,6 @@ protected:
     Result _initRender();
 
     virtual Result _compute() = 0;
-    virtual Result _present() = 0;
 
     Result underlyingPresent();
     Result underlyingCompute();

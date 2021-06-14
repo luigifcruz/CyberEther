@@ -62,19 +62,19 @@ int main() {
 
     Jetstream::FFT::Config fftCfg;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
-    fftCfg.policy = {Jetstream::Policy::ASYNC, {}};
+    fftCfg.policy = {Jetstream::Launch::ASYNC, {}};
     auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
 
     Jetstream::Lineplot::Config lptCfg;
     lptCfg.render = state->render;
     lptCfg.input0 = fft->output();
-    lptCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
+    lptCfg.policy = {Jetstream::Launch::SYNC, {fft}};
     auto lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
 
     Jetstream::Waterfall::Config wtfCfg;
     wtfCfg.render = state->render;
     wtfCfg.input0 = fft->output();
-    wtfCfg.policy = {Jetstream::Policy::ASYNC, {fft}};
+    wtfCfg.policy = {Jetstream::Launch::SYNC, {fft}};
     auto wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
 
     // Add Jetstream modules to the execution pipeline.

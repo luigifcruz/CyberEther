@@ -12,7 +12,6 @@ public:
 
 protected:
     Result _compute();
-    Result _present();
 
     std::vector<float> bin;
 };

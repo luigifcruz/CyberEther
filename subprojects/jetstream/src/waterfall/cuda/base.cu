@@ -28,10 +28,4 @@ Result CUDA::_compute() {
     return Result::SUCCESS;
 }
 
-Result CUDA::_present() {
-    binTexture->fill();
-
-    return Result::SUCCESS;
-}
-
 } // namespace Jetstream::Waterfall

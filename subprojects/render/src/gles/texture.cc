@@ -22,8 +22,7 @@ Result GLES::Texture::create() {
     if (cfg.cudaInterop) {
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
         cudaGraphicsGLRegisterImage(&cuda_tex_resource, tex, GL_TEXTURE_2D,
-                cudaGraphicsMapFlagsWriteDiscard);
-        cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+                cudaGraphicsMapFlagsNone);
 #endif
     }
 
@@ -36,7 +35,6 @@ Result GLES::Texture::destroy() {
     if (cfg.cudaInterop) {
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
         cudaGraphicsUnregisterResource(cuda_tex_resource);
-        cudaStreamDestroy(stream);
 #endif
     }
 
@@ -63,12 +61,14 @@ Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
     size_t i = (cfg.pfmt == PixelFormat::RED) ? 1 : 3;
     size_t m = i * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
+    size_t o = (yo * w * m) + (xo * m);
 
     cudaArray *texture_ptr;
-    cudaGraphicsMapResources(1, &cuda_tex_resource, stream);
+    cudaGraphicsMapResources(1, &cuda_tex_resource);
     cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0);
-    cudaMemcpy2DToArray(texture_ptr, xo*m, yo, cfg.buffer, w*m, w*m, h, cudaMemcpyDeviceToDevice);
-    cudaGraphicsUnmapResources(1, &cuda_tex_resource, stream);
+    cudaMemcpy2DToArrayAsync(texture_ptr, xo*m, yo, cfg.buffer+o, w*m, w*m, h,
+            cudaMemcpyDeviceToDevice);
+    cudaGraphicsUnmapResources(1, &cuda_tex_resource);
 
     return Result::SUCCESS;
 #endif

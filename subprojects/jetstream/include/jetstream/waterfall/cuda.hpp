@@ -15,7 +15,6 @@ public:
 
 protected:
     Result _compute();
-    Result _present();
 
     float* out_dptr;
 

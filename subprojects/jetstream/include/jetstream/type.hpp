@@ -49,11 +49,12 @@ enum Result {
     SUCCESS = 0,
     ERROR = 1,
     UNKNOWN = 2,
+    TIMEOUT,
+    ERROR_DATA_DEPENDECY,
     ERROR_FUTURE_INVALID,
 };
 
-enum class Policy : uint8_t {
-    HYBRID  = 0,
+enum class Launch : uint8_t {
     ASYNC   = 1,
     SYNC    = 2,
 };

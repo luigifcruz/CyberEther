@@ -26,6 +26,11 @@ Generic::Generic(Config& c) : Module(c.policy), cfg(c), in(c.input0) {
 }
 
 Result Generic::_initRender() {
+    if (!cfg.render) {
+        std::cerr << "[JETSTREAM:LINEPLOT] Invalid Render pointer" << std::endl;
+        JETSTREAM_ASSERT_SUCCESS(Result::ERROR);
+    }
+
     auto render = cfg.render;
 
     gridVbo.data = grid.data();

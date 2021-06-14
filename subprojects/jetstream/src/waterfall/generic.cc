@@ -6,6 +6,11 @@ Generic::Generic(Config& c) : Module(c.policy), cfg(c), in(c.input0) {
 }
 
 Result Generic::_initRender() {
+    if (!cfg.render) {
+        std::cerr << "[JETSTREAM:WATERFALL] Invalid Render pointer" << std::endl;
+        JETSTREAM_ASSERT_SUCCESS(Result::ERROR);
+    }
+
     auto render = cfg.render;
 
     vertexCfg.buffers = Render::Extras::FillScreenVertices;
@@ -66,14 +71,26 @@ Result Generic::underlyingPresent() {
         }
     }
 
-    auto res = this->_present();
+    int start = last;
+    int blocks = (inc - last);
+
+    // TODO: Fix this horrible thing.
+    if (blocks < 0) {
+        blocks = ymax - last;
+        binTexture->fill(start, 0, in.buf.size(), blocks);
+        start = 0;
+        blocks = inc;
+    }
+
+    binTexture->fill(start, 0, in.buf.size(), blocks);
+    last = inc;
 
     program->setUniform("Index", std::vector<float>{inc/(float)ymax});
     program->setUniform("Interpolate", std::vector<int>{(int)cfg.interpolate});
     vertex->update();
 
     DEBUG_POP();
-    return res;
+    return Result::SUCCESS;
 }
 
 } // namespace Jetstream::Waterfall

@@ -33,7 +33,6 @@ Result GLES::Vertex::create() {
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
             CUDA_ASSERT_SUCCESS(cudaGraphicsGLRegisterBuffer(&buffer._cuda_res, buffer.index,
                     cudaGraphicsMapFlagsWriteDiscard));
-            CUDA_ASSERT_SUCCESS(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 #endif
         }
     }
@@ -52,6 +51,11 @@ Result GLES::Vertex::create() {
 Result GLES::Vertex::destroy() {
     for (auto& buffer : cfg.buffers) {
         glDeleteBuffers(1, &buffer.index);
+#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+        if (buffer._cuda_res == nullptr) {
+            cudaGraphicsUnregisterResource(buffer._cuda_res);
+        }
+#endif
     }
     glDeleteBuffers(1, &ebo);
     glDeleteVertexArrays(1, &vao);
@@ -78,10 +82,10 @@ Result GLES::Vertex::update() {
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
             float *buffer_ptr;
             size_t buffer_len;
-            CUDA_ASSERT_SUCCESS(cudaGraphicsMapResources(1, &buffer._cuda_res, stream));
+            CUDA_ASSERT_SUCCESS(cudaGraphicsMapResources(1, &buffer._cuda_res));
             CUDA_ASSERT_SUCCESS(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));
-            cudaMemcpy(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice);
-            CUDA_ASSERT_SUCCESS(cudaGraphicsUnmapResources(1, &buffer._cuda_res, stream));
+            cudaMemcpyAsync(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice);
+            CUDA_ASSERT_SUCCESS(cudaGraphicsUnmapResources(1, &buffer._cuda_res));
 #endif
             break;
         }

@@ -22,7 +22,7 @@ public:
         bool cudaInterop = false;
 
 #ifdef RENDER_CUDA_INTEROP_AVAILABLE
-        cudaGraphicsResource* _cuda_res;
+        cudaGraphicsResource* _cuda_res = nullptr;
 #endif
     };
 

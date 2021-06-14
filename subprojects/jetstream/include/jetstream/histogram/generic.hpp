@@ -13,7 +13,7 @@ struct Config {
     int width = 2500;
     int height = 500;
     Data<T> input0;
-    Module::Execution policy;
+    Jetstream::Policy policy;
     std::shared_ptr<Render::Instance> render;
 };
 
