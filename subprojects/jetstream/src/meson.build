@@ -1,6 +1,5 @@
+subdir('scheduler')
 src_lst += files([
-  'async.cc',
-  'sync.cc',
   'module.cc',
   'engine.cc',
 ])

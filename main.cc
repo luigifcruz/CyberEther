@@ -56,13 +56,13 @@ int main() {
     state->device->UpdateChannel(state->rx, channelState);
 
     // Configure Jetstream Modules
-    auto device = Jetstream::Locale::CUDA;
+    auto device = Jetstream::Locale::CPU;
     state->engine = std::make_shared<Jetstream::Engine>();
     state->stream = std::vector<std::complex<float>>(2048);
 
     Jetstream::FFT::Config fftCfg;
     fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
-    fftCfg.policy = {Jetstream::Launch::ASYNC, {}};
+    fftCfg.policy = {Jetstream::Launch::SYNC, {}};
     auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
 
     Jetstream::Lineplot::Config lptCfg;

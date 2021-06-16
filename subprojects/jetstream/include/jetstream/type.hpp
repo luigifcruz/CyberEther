@@ -71,6 +71,10 @@ struct Data {
     T buf;
 };
 
+class Module;
+typedef std::vector<std::shared_ptr<Module>> Graph;
+typedef struct { Launch launch; Graph deps; } Policy;
+
 } // namespace Jetstream
 
 #endif
