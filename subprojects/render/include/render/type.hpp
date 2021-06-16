@@ -12,7 +12,6 @@
 
 #ifdef RENDER_CUDA_AVAILABLE
 #include <cuda_runtime.h>
-#include <cuda_gl_interop.h>
 #endif
 
 typedef unsigned int uint;
