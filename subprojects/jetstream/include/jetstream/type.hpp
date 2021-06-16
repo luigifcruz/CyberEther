@@ -10,8 +10,6 @@
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"
 
-#define CUDA_DEBUG
-
 #ifdef CUDA_DEBUG
 #include <nvtx3/nvToolsExt.h>
 

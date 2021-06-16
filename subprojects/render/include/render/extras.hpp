@@ -20,15 +20,19 @@ static float b[] = {
     +0.0f, +1.0f,
 };
 
-static std::vector<Render::Vertex::Buffer> FillScreenVertices = {
-    {(float*)&a, 12, 3},
-    {(float*)&b, 8, 2},
-};
+inline std::vector<Render::Vertex::Buffer> FillScreenVertices() {
+    return {
+        {(float*)&a, 12, 3},
+        {(float*)&b, 8, 2},
+    };
+}
 
-static std::vector<uint> FillScreenIndices = {
-    0, 1, 2,
-    2, 3, 0,
-};
+inline std::vector<uint> FillScreenIndices() {
+    return {
+        0, 1, 2,
+        2, 3, 0,
+    };
+}
 
 } // namespace Render::Extras
 

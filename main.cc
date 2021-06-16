@@ -1,4 +1,6 @@
-#define RENDER_DEBUG
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
@@ -7,91 +9,87 @@
 #include "jetstream/waterfall/base.hpp"
 #include "jetstream/histogram/base.hpp"
 
-struct State {
-    Samurai::ChannelId rx;
-    bool streaming = false;
-    std::shared_ptr<Samurai::Device> device;
-    std::shared_ptr<Render::Instance> render;
-    std::vector<std::complex<float>> stream;
-    std::shared_ptr<Jetstream::Engine> engine;
-};
+class UI {
+public:
+    explicit UI() {
+        // Configure Render
+        renderCfg.width = 3130;
+        renderCfg.height = 1140;
+        renderCfg.resizable = true;
+        renderCfg.enableImgui = true;
+        renderCfg.enableVsync = true;
+        renderCfg.title = "CyberEther";
+        render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-auto state = std::make_shared<State>();
+        // Configure Jetstream Modules
+        auto device = Jetstream::Locale::CPU;
+        engine = std::make_shared<Jetstream::Engine>();
+        stream = std::vector<std::complex<float>>(2048);
 
-void dsp_loop(std::shared_ptr<State> state) {
-    while (state->streaming) {
-        state->device->ReadStream(state->rx, state->stream.data(), state->stream.size(), 1000);
-        JETSTREAM_ASSERT_SUCCESS(state->engine->compute());
+        fftCfg.input0 = {Jetstream::Locale::CPU, stream};
+        fftCfg.policy = {Jetstream::Launch::ASYNC, {}};
+        fft = Jetstream::FFT::Instantiate(device, fftCfg);
+
+        lptCfg.render = render;
+        lptCfg.input0 = fft->output();
+        lptCfg.policy = {Jetstream::Launch::ASYNC, {fft}};
+        lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
+
+        wtfCfg.render = render;
+        wtfCfg.input0 = fft->output();
+        wtfCfg.policy = {Jetstream::Launch::ASYNC, {fft}};
+        wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
+
+        // Add Jetstream modules to the execution pipeline.
+        engine->push_back(fft);
+        engine->push_back(lpt);
+        engine->push_back(wtf);
     }
-}
 
-int main() {
-    std::cout << "Welcome to CyberEther!" << std::endl;
+    void start() {
+        render->create();
 
-    // Configure Render
-    Render::Instance::Config renderCfg;
-    renderCfg.width = 3130;
-    renderCfg.height = 1140;
-    renderCfg.resizable = true;
-    renderCfg.enableImgui = true;
-    renderCfg.enableVsync = true;
-    renderCfg.title = "CyberEther";
-    state->render = Render::Instantiate(Render::API::GLES, renderCfg);
+        dsp = std::thread([&]{
+            device = std::make_shared<Samurai::Airspy::Device>();
 
-    // Configure Samurai Radio
-    state->device = std::make_shared<Samurai::Airspy::Device>();
+            deviceConfig.sampleRate = 10e6;
+            device->Enable(deviceConfig);
 
-    Samurai::Device::Config deviceConfig;
-    deviceConfig.sampleRate = 10e6;
-    state->device->Enable(deviceConfig);
+            channelConfig.mode = Samurai::Mode::RX;
+            channelConfig.dataFmt = Samurai::Format::F32;
+            device->EnableChannel(channelConfig, &rx);
 
-    Samurai::Channel::Config channelConfig;
-    channelConfig.mode = Samurai::Mode::RX;
-    channelConfig.dataFmt = Samurai::Format::F32;
-    state->device->EnableChannel(channelConfig, &state->rx);
+            channelState.enableAGC = true;
+            channelState.frequency = 96.9e6;
+            device->UpdateChannel(rx, channelState);
 
-    Samurai::Channel::State channelState;
-    channelState.enableAGC = true;
-    channelState.frequency = 96.9e6;
-    state->device->UpdateChannel(state->rx, channelState);
+            device->StartStream();
 
-    // Configure Jetstream Modules
-    auto device = Jetstream::Locale::CPU;
-    state->engine = std::make_shared<Jetstream::Engine>();
-    state->stream = std::vector<std::complex<float>>(2048);
+            streaming = true;
+            while (streaming) {
+                device->ReadStream(rx, stream.data(), stream.size(), 1000);
+                JETSTREAM_ASSERT_SUCCESS(engine->compute());
+            }
 
-    Jetstream::FFT::Config fftCfg;
-    fftCfg.input0 = {Jetstream::Locale::CPU, state->stream};
-    fftCfg.policy = {Jetstream::Launch::SYNC, {}};
-    auto fft = Jetstream::FFT::Instantiate(device, fftCfg);
+            device->StopStream();
+        });
+    }
 
-    Jetstream::Lineplot::Config lptCfg;
-    lptCfg.render = state->render;
-    lptCfg.input0 = fft->output();
-    lptCfg.policy = {Jetstream::Launch::SYNC, {fft}};
-    auto lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
+    void stop() {
+        streaming = false;
+        dsp.join();
 
-    Jetstream::Waterfall::Config wtfCfg;
-    wtfCfg.render = state->render;
-    wtfCfg.input0 = fft->output();
-    wtfCfg.policy = {Jetstream::Launch::SYNC, {fft}};
-    auto wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
+        render->destroy();
+    }
 
-    // Add Jetstream modules to the execution pipeline.
-    state->engine->push_back(fft);
-    state->engine->push_back(lpt);
-    state->engine->push_back(wtf);
+    bool keep_running() {
+        return render->keepRunning();
+    }
 
-    // Start Components
-    state->streaming = true;
-    state->render->create();
-    state->device->StartStream();
-    std::thread dsp(dsp_loop, state);
+    void render_step() {
+        render->start();
 
-    while(state->render->keepRunning()) {
-        state->render->start();
-
-        JETSTREAM_ASSERT_SUCCESS(state->engine->present());
+        JETSTREAM_ASSERT_SUCCESS(engine->present());
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
@@ -110,7 +108,7 @@ int main() {
         ImGui::Begin("Control");
         ImGui::InputFloat("Frequency (Hz)", &channelState.frequency);
         if (ImGui::Button("Tune")) {
-            state->device->UpdateChannel(state->rx, channelState);
+            device->UpdateChannel(rx, channelState);
         }
         ImGui::DragFloatRange2("dBFS Range", &fftCfg.min_db, &fftCfg.max_db,
              1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
@@ -118,21 +116,64 @@ int main() {
         ImGui::End();
 
         ImGui::Begin("Samurai Info");
-        float bufferUsageRatio = (float)state->device->BufferOccupancy(state->rx) /
-            (float)state->device->BufferCapacity(state->rx);
-        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
-        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::Text("Buffer Usage");
+        if (streaming) {
+            float bufferUsageRatio = (float)device->BufferOccupancy(rx) /
+                (float)device->BufferCapacity(rx);
+            ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+            ImGui::Text("Buffer Usage");
+        }
         ImGui::End();
 
-        state->render->end();
+        render->end();
     }
 
-    state->streaming = false;
-    dsp.join();
+private:
+    std::thread dsp;
+    std::atomic<bool> streaming{false};
 
-    state->device->StopStream();
-    state->render->destroy();
+    // Render
+    Render::Instance::Config renderCfg;
+    std::shared_ptr<Render::Instance> render;
+
+    // Jetstream
+    Jetstream::FFT::Config fftCfg;
+    Jetstream::Lineplot::Config lptCfg;
+    Jetstream::Waterfall::Config wtfCfg;
+    std::shared_ptr<Jetstream::Engine> engine;
+    std::shared_ptr<Jetstream::FFT::Generic> fft;
+    std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
+    std::shared_ptr<Jetstream::Waterfall::Generic> wtf;
+
+    // Samurai
+    Samurai::ChannelId rx;
+    Samurai::Channel::Config channelConfig;
+    Samurai::Device::Config deviceConfig;
+    Samurai::Channel::State channelState;
+    std::shared_ptr<Samurai::Device> device;
+    std::vector<std::complex<float>> stream;
+};
+
+auto ui = UI();
+
+void main_loop() {
+    ui.render_step();
+}
+
+int main() {
+    std::cout << "Welcome to CyberEther!" << std::endl;
+
+    ui.start();
+
+    #ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop(main_loop, 0, 1);
+    #else
+    while (ui.keep_running()) {
+        ui.render_step();
+    }
+    #endif
+
+    ui.stop();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

@@ -8,8 +8,8 @@ CPU::CPU(Config& c) : Generic(c) {
     buf.resize(in.buf.size() * 256);
     buf2.resize(in.buf.size() * 256);
 
-    vertexCfg.buffers = Render::Extras::FillScreenVertices;
-    vertexCfg.indices = Render::Extras::FillScreenIndices;
+    vertexCfg.buffers = Render::Extras::FillScreenVertices();
+    vertexCfg.indices = Render::Extras::FillScreenIndices();
     vertex = render->create(vertexCfg);
 
     drawVertexCfg.buffer = vertex;

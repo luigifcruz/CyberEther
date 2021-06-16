@@ -13,8 +13,8 @@ Result Generic::_initRender() {
 
     auto render = cfg.render;
 
-    vertexCfg.buffers = Render::Extras::FillScreenVertices;
-    vertexCfg.indices = Render::Extras::FillScreenIndices;
+    vertexCfg.buffers = Render::Extras::FillScreenVertices();
+    vertexCfg.indices = Render::Extras::FillScreenIndices();
     vertex = render->create(vertexCfg);
 
     drawVertexCfg.buffer = vertex;

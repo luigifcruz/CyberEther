@@ -31,7 +31,7 @@ static inline float amplt(std::complex<float> x, int n) {
     return 20 * log10(abs(x) / n);
 }
 
-static inline int shift(int i, uint n) {
+static inline int shift(int i, unsigned int n) {
     return (i + (n / 2) - 1) % n;
 }
 
@@ -43,7 +43,7 @@ CPU::CPU(Config& c) : Generic(c) {
     out.buf = amp_out;
 
     cf_plan = fftwf_plan_dft_1d(in.buf.size(), reinterpret_cast<fftwf_complex*>(fft_in.data()),
-            reinterpret_cast<fftwf_complex*>(fft_out.data()), FFTW_FORWARD, FFTW_MEASURE);
+            reinterpret_cast<fftwf_complex*>(fft_out.data()), FFTW_FORWARD, FFTW_ESTIMATE);
 }
 
 CPU::~CPU() {

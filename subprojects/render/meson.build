@@ -17,7 +17,7 @@ inc_lst = [
 ]
 
 cuda_dep = dependency('cuda', version : '>=11', modules : ['cublas'], required: false)
-if cuda_dep.found()
+if cuda_dep.found() and not meson.is_cross_build()
   cfg_lst.set('RENDER_CUDA_INTEROP_AVAILABLE', true)
   dep_lst += cuda_dep
 else
@@ -29,7 +29,8 @@ endif
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
          'buildtype': get_option('buildtype'),
-         'CUDA interop': cuda_dep.found(),
+         'CUDA interop': cuda_dep.found() and not meson.is_cross_build(),
+         'crossbuild': meson.is_cross_build(),
         }, section: 'General', bool_yn: true)
 
 subdir('src')
