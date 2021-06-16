@@ -1,10 +1,10 @@
 #ifndef RENDER_BASE_PROGRAM_H
 #define RENDER_BASE_PROGRAM_H
 
-#include "render/types.hpp"
-#include "texture.hpp"
-#include "vertex.hpp"
-#include "draw.hpp"
+#include "render/type.hpp"
+#include "render/base/texture.hpp"
+#include "render/base/vertex.hpp"
+#include "render/base/draw.hpp"
 
 namespace Render {
 

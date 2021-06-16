@@ -22,8 +22,8 @@ protected:
     Result destroy();
     Result draw();
 
-    void _createFramebuffer();
-    void _destroyFramebuffer();
+    Result _createFramebuffer();
+    Result _destroyFramebuffer();
 
     friend class GLES;
 };

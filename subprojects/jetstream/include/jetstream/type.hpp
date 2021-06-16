@@ -5,12 +5,64 @@
 #include <future>
 #include <iostream>
 #include <vector>
+#include <cstring>
 
-#include "tools/magic_enum.hpp"
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"
 
-#ifdef CUDA_DEBUG
+namespace Jetstream {
+
+enum Result {
+    SUCCESS = 0,
+    ERROR = 1,
+    UNKNOWN = 2,
+    TIMEOUT,
+    CUDA_ERROR,
+    ERROR_DATA_DEPENDECY,
+    ERROR_FUTURE_INVALID,
+};
+
+void print_error(Result, const char*, int, const char*);
+
+#ifndef JETSTREAM_CHECK_THROW
+#define JETSTREAM_CHECK_THROW(result) { \
+    if (result != Jetstream::Result::SUCCESS) { \
+        print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
+        throw result; \
+    } \
+}
+#endif
+
+#ifndef CHECK
+#define CHECK(result) { \
+    if (result != Jetstream::Result::SUCCESS) { \
+        print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
+        return result; \
+    } \
+}
+#endif
+
+#ifdef JETSTREAM_CUDA_AVAILABLE
+#ifndef CUDA_CHECK_THROW
+#define CUDA_CHECK_THROW(result) { \
+    if (result != cudaSuccess) { \
+        std::cout << "CUDA error thrown: " << result << std::endl; \
+        throw result; \
+    } \
+}
+#endif
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(result) { \
+    if (result != cudaSuccess) { \
+        std::cout << "CUDA error thrown: " << result << std::endl; \
+        return Jetstream::Result::CUDA_ERROR; \
+    } \
+}
+#endif
+#endif
+
+#if defined JETSTREAM_CUDA_AVAILABLE && defined JETSTREAM_DEBUG
 #include <nvtx3/nvToolsExt.h>
 
 #ifndef DEBUG_PUSH
@@ -30,27 +82,6 @@
 #endif
 
 #endif
-
-#ifndef JETSTREAM_ASSERT_SUCCESS
-#define JETSTREAM_ASSERT_SUCCESS(result) { \
-    if (result != Jetstream::Result::SUCCESS) { \
-        std::cerr << "Jetstream encountered an exception (" <<  magic_enum::enum_name(result) << ") in " \
-            << __PRETTY_FUNCTION__ << " in line " << __LINE__ << " of file " << __FILE__ << "." << std::endl; \
-        throw result; \
-    } \
-}
-#endif
-
-namespace Jetstream {
-
-enum Result {
-    SUCCESS = 0,
-    ERROR = 1,
-    UNKNOWN = 2,
-    TIMEOUT,
-    ERROR_DATA_DEPENDECY,
-    ERROR_FUTURE_INVALID,
-};
 
 enum class Launch : uint8_t {
     ASYNC   = 1,

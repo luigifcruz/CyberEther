@@ -7,12 +7,6 @@ project(
     ]
 )
 
-summary({'cpp_std': get_option('cpp_std'),
-         'prefix': get_option('prefix'),
-         'buildtype': get_option('buildtype'),
-         'crossbuild': meson.is_cross_build(),
-        }, section: 'General', bool_yn: true)
-
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
@@ -24,8 +18,15 @@ inc_lst = [
     include_directories('.'),
 ]
 
+subdir('meson')
 subdir('src')
 subdir('include')
+
+summary({'cpp_std': get_option('cpp_std'),
+         'prefix': get_option('prefix'),
+         'buildtype': get_option('buildtype'),
+         'crossbuild': meson.is_cross_build(),
+        }, section: 'General', bool_yn: true)
 
 libjetstream = library(
     'jetstream',
@@ -39,4 +40,10 @@ libjetstream_dep = declare_dependency(
     include_directories: inc_lst,
     dependencies: dep_lst,
     link_with: libjetstream
+)
+
+pkg = import('pkgconfig')
+pkg.generate(
+  libjetstream,
+  libraries: dep_lst,
 )

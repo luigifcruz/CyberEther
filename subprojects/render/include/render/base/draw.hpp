@@ -1,8 +1,8 @@
 #ifndef RENDER_BASE_DRAW_H
 #define RENDER_BASE_DRAW_H
 
-#include "render/types.hpp"
-#include "vertex.hpp"
+#include "render/type.hpp"
+#include "render/base/vertex.hpp"
 
 namespace Render {
 

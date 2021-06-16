@@ -4,7 +4,7 @@ namespace Jetstream::Lineplot {
 
 CPU::CPU(Config& c) : Generic(c) {
     plotVbo.data = plot.data();
-    JETSTREAM_ASSERT_SUCCESS(this->_initRender());
+    JETSTREAM_CHECK_THROW(this->_initRender());
 }
 
 CPU::~CPU() {

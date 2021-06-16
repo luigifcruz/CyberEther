@@ -1,7 +1,7 @@
 #ifndef RENDER_BASE_VERTEX_H
 #define RENDER_BASE_VERTEX_H
 
-#include "render/types.hpp"
+#include "render/type.hpp"
 
 namespace Render {
 
@@ -21,7 +21,7 @@ public:
         uint index;
         bool cudaInterop = false;
 
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
         cudaGraphicsResource* _cuda_res = nullptr;
 #endif
     };

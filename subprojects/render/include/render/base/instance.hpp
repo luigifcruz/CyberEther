@@ -1,12 +1,12 @@
 #ifndef RENDER_BASE_INSTANCE_H
 #define RENDER_BASE_INSTANCE_H
 
-#include "render/types.hpp"
-#include "program.hpp"
-#include "surface.hpp"
-#include "texture.hpp"
-#include "vertex.hpp"
-#include "draw.hpp"
+#include "render/type.hpp"
+#include "render/base/program.hpp"
+#include "render/base/surface.hpp"
+#include "render/base/texture.hpp"
+#include "render/base/vertex.hpp"
+#include "render/base/draw.hpp"
 
 namespace Render {
 
@@ -48,7 +48,7 @@ public:
     virtual std::shared_ptr<Draw> create(Draw::Config&) = 0;
 
     static bool cudaInteropSupported() {
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
         return true;
 #else
         return false;

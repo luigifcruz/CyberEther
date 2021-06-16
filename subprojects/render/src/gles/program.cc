@@ -17,13 +17,13 @@ Result GLES::Program::create() {
     glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
     glCompileShader(vertexShader);
 
-    RENDER_ASSERT_SUCCESS(checkShaderCompilation(vertexShader));
+    CHECK(checkShaderCompilation(vertexShader));
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
     glCompileShader(fragmentShader);
 
-    RENDER_ASSERT_SUCCESS(checkShaderCompilation(fragmentShader));
+    CHECK(checkShaderCompilation(fragmentShader));
 
     shader = glCreateProgram();
     glAttachShader(shader, vertexShader);
@@ -38,13 +38,13 @@ Result GLES::Program::create() {
 
     i = 0;
     for (const auto& texture : textures) {
-        RENDER_ASSERT_SUCCESS(texture->create());
-        RENDER_ASSERT_SUCCESS(this->setUniform(texture->cfg.key,
+        CHECK(texture->create());
+        CHECK(this->setUniform(texture->cfg.key,
                     std::vector<int>{i++}));
     }
 
     for (const auto& draw : draws) {
-        RENDER_ASSERT_SUCCESS(draw->create());
+        CHECK(draw->create());
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -52,11 +52,11 @@ Result GLES::Program::create() {
 
 Result GLES::Program::destroy() {
     for (const auto& draw : draws) {
-        RENDER_ASSERT_SUCCESS(draw->destroy());
+        CHECK(draw->destroy());
     }
 
     for (const auto& texture : textures) {
-        RENDER_ASSERT_SUCCESS(texture->destroy());
+        CHECK(texture->destroy());
     }
 
     glDeleteProgram(shader);
@@ -68,21 +68,21 @@ Result GLES::Program::draw() {
     i = 0;
     for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
-        RENDER_ASSERT_SUCCESS(texture->start());
+        CHECK(texture->start());
     }
 
     glUseProgram(shader);
 
     i = 0;
     for (const auto& draw : draws) {
-        RENDER_ASSERT_SUCCESS(this->setUniform("drawIndex", std::vector<int>{i++}));
-        RENDER_ASSERT_SUCCESS(draw->draw());
+        CHECK(this->setUniform("drawIndex", std::vector<int>{i++}));
+        CHECK(draw->draw());
     }
 
     i = 0;
     for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
-        RENDER_ASSERT_SUCCESS(texture->end());
+        CHECK(texture->end());
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

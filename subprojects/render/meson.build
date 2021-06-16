@@ -16,15 +16,9 @@ inc_lst = [
     include_directories('.'),
 ]
 
-cuda_dep = dependency('cuda', version : '>=11', modules : ['cublas'], required: false)
-if cuda_dep.found() and not meson.is_cross_build()
-  cfg_lst.set('RENDER_CUDA_INTEROP_AVAILABLE', true)
-  dep_lst += cuda_dep
-else
-  if get_option('CUDA')
-    error('CUDA dependencies were not found.')
-  endif
-endif
+subdir('meson')
+subdir('src')
+subdir('include')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
@@ -32,9 +26,6 @@ summary({'cpp_std': get_option('cpp_std'),
          'CUDA interop': cuda_dep.found() and not meson.is_cross_build(),
          'crossbuild': meson.is_cross_build(),
         }, section: 'General', bool_yn: true)
-
-subdir('src')
-subdir('include')
 
 librender = library(
     'render',
@@ -48,4 +39,10 @@ librender_dep = declare_dependency(
     include_directories: inc_lst,
     dependencies: dep_lst,
     link_with: librender
+)
+
+pkg = import('pkgconfig')
+pkg.generate(
+  librender,
+  libraries: dep_lst,
 )

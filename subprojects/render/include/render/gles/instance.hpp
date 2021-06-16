@@ -3,9 +3,8 @@
 
 #define GLFW_INCLUDE_ES3
 #include <GLFW/glfw3.h>
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-
+#include "render/tools/imgui_impl_glfw.h"
+#include "render/tools/imgui_impl_opengl3.h"
 #include "render/base/instance.hpp"
 
 namespace Render {

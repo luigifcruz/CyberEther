@@ -3,27 +3,27 @@
 namespace Jetstream::Waterfall {
 
 CUDA::CUDA(Config& c) : Generic(c) {
-    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     auto render = cfg.render;
 
     ymax = cfg.height;
-    cudaMalloc(&out_dptr, in.buf.size() * ymax * sizeof(float));
+    CUDA_CHECK_THROW(cudaMalloc(&out_dptr, in.buf.size() * ymax * sizeof(float)));
 
     binTextureCfg.buffer = (uint8_t*)out_dptr;
     binTextureCfg.cudaInterop = true;
-    JETSTREAM_ASSERT_SUCCESS(this->_initRender());
+    JETSTREAM_CHECK_THROW(this->_initRender());
 }
 
 CUDA::~CUDA() {
-    cudaFree(out_dptr);
-    cudaStreamDestroy(stream);
+    CUDA_CHECK_THROW(cudaFree(out_dptr));
+    CUDA_CHECK_THROW(cudaStreamDestroy(stream));
 }
 
 Result CUDA::_compute() {
-    cudaMemcpyAsync(out_dptr+(inc*in.buf.size()), in.buf.data(), sizeof(float)*in.buf.size(),
-            cudaMemcpyDeviceToDevice, stream);
-    cudaStreamSynchronize(stream);
+    CUDA_CHECK(cudaMemcpyAsync(out_dptr+(inc*in.buf.size()), in.buf.data(), sizeof(float)*in.buf.size(),
+            cudaMemcpyDeviceToDevice, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     return Result::SUCCESS;
 }

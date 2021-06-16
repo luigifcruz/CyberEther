@@ -30,8 +30,8 @@ Result GLES::Vertex::create() {
         vertex_count = buffer.size / buffer.stride;
 
         if (buffer.cudaInterop) {
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
-            CUDA_ASSERT_SUCCESS(cudaGraphicsGLRegisterBuffer(&buffer._cuda_res, buffer.index,
+#ifdef RENDER_CUDA_AVAILABLE
+            CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&buffer._cuda_res, buffer.index,
                     cudaGraphicsMapFlagsWriteDiscard));
 #endif
         }
@@ -40,7 +40,8 @@ Result GLES::Vertex::create() {
     if (cfg.indices.size() != 0) {
         glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint), cfg.indices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint),
+                cfg.indices.data(), GL_STATIC_DRAW);
         vertex_count = cfg.indices.size();
     }
     this->end();
@@ -51,7 +52,7 @@ Result GLES::Vertex::create() {
 Result GLES::Vertex::destroy() {
     for (auto& buffer : cfg.buffers) {
         glDeleteBuffers(1, &buffer.index);
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
         if (buffer._cuda_res == nullptr) {
             cudaGraphicsUnregisterResource(buffer._cuda_res);
         }
@@ -79,13 +80,13 @@ Result GLES::Vertex::update() {
     this->start();
     for (auto& buffer : cfg.buffers) {
         if (buffer.cudaInterop) {
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
             float *buffer_ptr;
             size_t buffer_len;
-            CUDA_ASSERT_SUCCESS(cudaGraphicsMapResources(1, &buffer._cuda_res));
-            CUDA_ASSERT_SUCCESS(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));
-            cudaMemcpyAsync(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice);
-            CUDA_ASSERT_SUCCESS(cudaGraphicsUnmapResources(1, &buffer._cuda_res));
+            CUDA_CHECK(cudaGraphicsMapResources(1, &buffer._cuda_res));
+            CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));
+            CUDA_CHECK(cudaMemcpyAsync(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaGraphicsUnmapResources(1, &buffer._cuda_res));
 #endif
             break;
         }

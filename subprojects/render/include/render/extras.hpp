@@ -2,7 +2,7 @@
 #define RENDER_EXTRAS_H
 
 #include "render/base.hpp"
-#include "render/types.hpp"
+#include "render/type.hpp"
 
 namespace Render::Extras {
 

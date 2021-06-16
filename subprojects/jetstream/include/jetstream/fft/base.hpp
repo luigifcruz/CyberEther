@@ -22,7 +22,7 @@ inline std::shared_ptr<Generic> Instantiate(Locale L, Config& config) {
             return std::make_shared<CUDA>(config);
 #endif
         default:
-            JETSTREAM_ASSERT_SUCCESS(Result::ERROR);
+            JETSTREAM_CHECK_THROW(Jetstream::Result::ERROR);
     }
 }
 

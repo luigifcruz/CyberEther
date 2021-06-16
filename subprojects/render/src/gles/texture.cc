@@ -20,9 +20,9 @@ Result GLES::Texture::create() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     if (cfg.cudaInterop) {
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
-        cudaGraphicsGLRegisterImage(&cuda_tex_resource, tex, GL_TEXTURE_2D,
-                cudaGraphicsMapFlagsNone);
+#ifdef RENDER_CUDA_AVAILABLE
+        CUDA_CHECK(cudaGraphicsGLRegisterImage(&cuda_tex_resource, tex, GL_TEXTURE_2D,
+                cudaGraphicsMapFlagsNone));
 #endif
     }
 
@@ -33,7 +33,7 @@ Result GLES::Texture::destroy() {
     glDeleteTextures(1, &tex);
 
     if (cfg.cudaInterop) {
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
         cudaGraphicsUnregisterResource(cuda_tex_resource);
 #endif
     }
@@ -58,17 +58,17 @@ uint GLES::Texture::raw() {
 }
 
 Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
     size_t i = (cfg.pfmt == PixelFormat::RED) ? 1 : 3;
     size_t m = i * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
     size_t o = (yo * w * m) + (xo * m);
 
     cudaArray *texture_ptr;
-    cudaGraphicsMapResources(1, &cuda_tex_resource);
-    cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0);
-    cudaMemcpy2DToArrayAsync(texture_ptr, xo*m, yo, cfg.buffer+o, w*m, w*m, h,
-            cudaMemcpyDeviceToDevice);
-    cudaGraphicsUnmapResources(1, &cuda_tex_resource);
+    CUDA_CHECK(cudaGraphicsMapResources(1, &cuda_tex_resource));
+    CUDA_CHECK(cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0));
+    CUDA_CHECK(cudaMemcpy2DToArrayAsync(texture_ptr, xo*m, yo, cfg.buffer+o, w*m, w*m, h,
+            cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaGraphicsUnmapResources(1, &cuda_tex_resource));
 
     return Result::SUCCESS;
 #endif
@@ -81,9 +81,9 @@ Result GLES::Texture::fill() {
         return this->_cudaCopyToTexture(0, 0, cfg.width, cfg.height);
     }
 
-    RENDER_ASSERT_SUCCESS(this->start());
+    CHECK(this->start());
     glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, cfg.buffer);
-    RENDER_ASSERT_SUCCESS(this->end());
+    CHECK(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -93,10 +93,10 @@ Result GLES::Texture::fill(int yo, int xo, int w, int h) {
         return this->_cudaCopyToTexture(yo, xo, w, h);
     }
 
-    RENDER_ASSERT_SUCCESS(this->start());
+    CHECK(this->start());
     size_t offset = yo * w * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
     glTexSubImage2D(GL_TEXTURE_2D, 0, xo, yo, w, h, pfmt, ptype, cfg.buffer + offset);
-    RENDER_ASSERT_SUCCESS(this->end());
+    CHECK(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }

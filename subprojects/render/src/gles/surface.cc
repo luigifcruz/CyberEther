@@ -12,20 +12,20 @@ Result GLES::Surface::create() {
     }
 
     for (auto &program : programs) {
-        RENDER_ASSERT_SUCCESS(program->create());
+        CHECK(program->create());
     }
 
-    _createFramebuffer();
+    CHECK(_createFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Surface::destroy() {
     for (auto &program : programs) {
-        RENDER_ASSERT_SUCCESS(program->destroy());
+        CHECK(program->destroy());
     }
 
-    _destroyFramebuffer();
+    CHECK(_destroyFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -38,8 +38,8 @@ Result GLES::Surface::resize(int w, int h) {
     framebuffer->cfg.width = w;
     framebuffer->cfg.height = h;
 
-    _destroyFramebuffer();
-    _createFramebuffer();
+    CHECK(_destroyFramebuffer());
+    CHECK(_createFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -51,7 +51,7 @@ Result GLES::Surface::draw() {
     glClear(GL_COLOR_BUFFER_BIT);
 
     for (auto &program : programs) {
-        RENDER_ASSERT_SUCCESS(program->draw());
+        CHECK(program->draw());
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -59,21 +59,23 @@ Result GLES::Surface::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-void GLES::Surface::_createFramebuffer() {
+Result GLES::Surface::_createFramebuffer() {
     if (framebuffer) {
         glGenFramebuffers(1, &fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        RENDER_ASSERT_SUCCESS(framebuffer->create());
+        CHECK(framebuffer->create());
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->raw(), 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+    return Result::SUCCESS;
 }
 
-void GLES::Surface::_destroyFramebuffer() {
+Result GLES::Surface::_destroyFramebuffer() {
     if (framebuffer) {
-        RENDER_ASSERT_SUCCESS(framebuffer->destroy());
+        CHECK(framebuffer->destroy());
         glDeleteFramebuffers(1, &fbo);
     }
+    return Result::SUCCESS;
 }
 
 } // namespace Render

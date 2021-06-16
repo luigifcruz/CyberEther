@@ -1,3 +1,8 @@
+src_lst += files([
+  'base.cc',
+  'type.cc',
+])
+
 sum_lst = {}
 
 subdir('gles')

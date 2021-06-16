@@ -1,9 +1,9 @@
-  src_lst += files([
-    'imgui.cpp',
-    'imgui_draw.cpp',
-    'imgui_tables.cpp',
-    'imgui_widgets.cpp',
-    'imgui_impl_glfw.cpp',
-    'imgui_impl_opengl3.cpp',
-    'imgui_demo.cpp',
-  ])
+src_lst += files([
+  'imgui.cpp',
+  'imgui_draw.cpp',
+  'imgui_tables.cpp',
+  'imgui_widgets.cpp',
+  'imgui_impl_glfw.cpp',
+  'imgui_impl_opengl3.cpp',
+  'imgui_demo.cpp',
+])

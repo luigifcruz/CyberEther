@@ -5,10 +5,10 @@ namespace Jetstream {
 Module::Module(Policy& p) : Async(p.deps), Sync(p.deps), launch(p.launch) {
     switch (launch) {
         case Launch::ASYNC:
-            JETSTREAM_ASSERT_SUCCESS(Async::start());
+            JETSTREAM_CHECK_THROW(Async::start());
             break;
         case Launch::SYNC:
-            JETSTREAM_ASSERT_SUCCESS(Sync::start());
+            JETSTREAM_CHECK_THROW(Sync::start());
             break;
     }
 }

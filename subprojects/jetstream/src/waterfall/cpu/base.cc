@@ -9,7 +9,7 @@ CPU::CPU(Config& c) : Generic(c) {
     bin.resize(in.buf.size() * ymax);
 
     binTextureCfg.buffer = (uint8_t*)bin.data();
-    JETSTREAM_ASSERT_SUCCESS(this->_initRender());
+    JETSTREAM_CHECK_THROW(this->_initRender());
 }
 
 CPU::~CPU() {

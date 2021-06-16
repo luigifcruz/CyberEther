@@ -24,7 +24,7 @@ protected:
     Result start();
     Result end();
 
-#ifdef RENDER_CUDA_INTEROP_AVAILABLE
+#ifdef RENDER_CUDA_AVAILABLE
     cudaGraphicsResource* cuda_tex_resource = nullptr;
 #endif
     Result _cudaCopyToTexture(int, int, int, int);

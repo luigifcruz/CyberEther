@@ -44,6 +44,10 @@ CPU::CPU(Config& c) : Generic(c) {
 
     cf_plan = fftwf_plan_dft_1d(in.buf.size(), reinterpret_cast<fftwf_complex*>(fft_in.data()),
             reinterpret_cast<fftwf_complex*>(fft_out.data()), FFTW_FORWARD, FFTW_ESTIMATE);
+
+#ifdef JETSTREAM_DEBUG
+    std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
+#endif
 }
 
 CPU::~CPU() {

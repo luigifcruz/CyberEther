@@ -68,7 +68,7 @@ public:
             streaming = true;
             while (streaming) {
                 device->ReadStream(rx, stream.data(), stream.size(), 1000);
-                JETSTREAM_ASSERT_SUCCESS(engine->compute());
+                JETSTREAM_CHECK_THROW(engine->compute());
             }
 
             device->StopStream();
@@ -89,7 +89,7 @@ public:
     void render_step() {
         render->start();
 
-        JETSTREAM_ASSERT_SUCCESS(engine->present());
+        JETSTREAM_CHECK_THROW(engine->present());
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 

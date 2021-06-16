@@ -11,7 +11,7 @@ inline std::shared_ptr<Generic> Instantiate(Locale L, Config& config) {
         case Jetstream::Locale::CPU:
             return std::make_shared<CPU>(config);
         default:
-            JETSTREAM_ASSERT_SUCCESS(Result::ERROR);
+            JETSTREAM_CHECK_THROW(Jetstream::Result::ERROR);
     }
 }
 

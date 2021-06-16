@@ -16,7 +16,6 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
-    glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.enableVsync);
 
     window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
@@ -42,7 +41,7 @@ Result GLES::create() {
     cached_glsl_str = (const char*)glGetString(GL_VERSION);
 
     for (auto &surface : surfaces) {
-        RENDER_ASSERT_SUCCESS(surface->create());
+        CHECK(surface->create());
     }
 
     if (cfg.enableImgui) {
@@ -54,7 +53,7 @@ Result GLES::create() {
 
 Result GLES::destroy() {
     for (auto &surface : surfaces) {
-        RENDER_ASSERT_SUCCESS(surface->destroy());
+        CHECK(surface->destroy());
     }
 
     if (cfg.enableImgui) {
@@ -133,7 +132,7 @@ Result GLES::start() {
 
 Result GLES::end() {
     for (auto &surface : surfaces) {
-        RENDER_ASSERT_SUCCESS(surface->draw());
+        CHECK(surface->draw());
     }
 
     if (cfg.enableImgui) {
@@ -197,6 +196,7 @@ uint GLES::convertDataFormat(DataFormat dfmt) {
 }
 
 Result GLES::getError(std::string func, std::string file, int line) {
+#ifdef RENDER_DEBUG
     int error = glGetError();
     if (error != GL_NO_ERROR) {
         std::cout << "[OPENGL] GL returned an error #" << error
@@ -204,6 +204,7 @@ Result GLES::getError(std::string func, std::string file, int line) {
                   << file << ":" << line << std::endl;
         return Result::RENDER_BACKEND_ERROR;
     }
+#endif
     return Result::SUCCESS;
 }
 
