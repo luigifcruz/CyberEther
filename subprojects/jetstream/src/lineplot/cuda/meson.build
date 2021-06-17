@@ -1,5 +1,5 @@
 cuda_deps = [
-  dependency('cuda', version : '>=11', modules : ['cublas'], required: false)
+  dependency('cuda', version : '>=11', modules : ['cublas'], required: get_option('CUDA'))
 ]
 
 all_cuda_deps_found = true
@@ -15,10 +15,6 @@ if all_cuda_deps_found
   src_lst += files([
     'base.cu',
   ])
-else
-  if get_option('CUDA')
-    error('CUDA dependencies were not found.')
-  endif
 endif
 
 sum_lst += {'GPU (CUDA)': all_cuda_deps_found}
