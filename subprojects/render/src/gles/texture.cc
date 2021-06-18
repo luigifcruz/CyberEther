@@ -21,8 +21,11 @@ Result GLES::Texture::create() {
 
     if (cfg.cudaInterop) {
 #ifdef RENDER_CUDA_AVAILABLE
+        int leastPriority = -1, greatestPriority = -1;
+        CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPriority, &greatestPriority));
         CUDA_CHECK(cudaGraphicsGLRegisterImage(&cuda_tex_resource, tex, GL_TEXTURE_2D,
                 cudaGraphicsMapFlagsNone));
+        CUDA_CHECK(cudaStreamCreateWithPriority(&stream, cudaStreamNonBlocking, greatestPriority));
 #endif
     }
 
@@ -35,6 +38,7 @@ Result GLES::Texture::destroy() {
     if (cfg.cudaInterop) {
 #ifdef RENDER_CUDA_AVAILABLE
         cudaGraphicsUnregisterResource(cuda_tex_resource);
+        cudaStreamDestroy(stream);
 #endif
     }
 
@@ -64,11 +68,12 @@ Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
     size_t o = (yo * w * m) + (xo * m);
 
     cudaArray *texture_ptr;
-    CUDA_CHECK(cudaGraphicsMapResources(1, &cuda_tex_resource));
+    CUDA_CHECK(cudaGraphicsMapResources(1, &cuda_tex_resource, stream));
     CUDA_CHECK(cudaGraphicsSubResourceGetMappedArray(&texture_ptr, cuda_tex_resource, 0, 0));
     CUDA_CHECK(cudaMemcpy2DToArrayAsync(texture_ptr, xo*m, yo, cfg.buffer+o, w*m, w*m, h,
-            cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaGraphicsUnmapResources(1, &cuda_tex_resource));
+            cudaMemcpyDeviceToDevice, stream));
+    CUDA_CHECK(cudaGraphicsUnmapResources(1, &cuda_tex_resource, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     return Result::SUCCESS;
 #endif

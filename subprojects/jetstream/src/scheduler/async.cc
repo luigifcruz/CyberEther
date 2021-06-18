@@ -3,10 +3,16 @@
 namespace Jetstream {
 
 Result Async::start() {
+    {
+        std::scoped_lock<std::mutex> sync(m);
+        discard = false;
+        mailbox = false;
+    }
+
     worker = std::thread([&]{
         while (!discard) {
             std::unique_lock<std::mutex> sync(m);
-            access.wait(sync, [=]{ return mailbox || discard; });
+            access.wait(sync, [&]{ return mailbox; });
 
             if (!discard) {
                 for (auto& dep : deps) {
@@ -31,6 +37,7 @@ Result Async::end() {
         {
             std::scoped_lock<std::mutex> sync(m);
             discard = true;
+            mailbox = true;
         }
         access.notify_all();
         worker.join();
@@ -41,10 +48,11 @@ Result Async::end() {
 
 Result Async::compute() {
     std::unique_lock<std::mutex> sync(m);
-    access.wait(sync, [=]{ return !mailbox || discard; });
+    access.wait(sync, [&]{ return !mailbox; });
 
     if (!discard) {
         mailbox = true;
+        sync.unlock();
         access.notify_all();
     }
 
@@ -53,7 +61,7 @@ Result Async::compute() {
 
 Result Async::barrier() {
     std::unique_lock<std::mutex> sync(m);
-    access.wait(sync, [=]{ return !mailbox || discard; });
+    access.wait(sync, [&]{ return !mailbox; });
     return result;
 }
 

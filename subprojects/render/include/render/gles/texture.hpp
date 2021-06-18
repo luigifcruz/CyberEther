@@ -30,6 +30,7 @@ protected:
 
 #ifdef RENDER_CUDA_AVAILABLE
     cudaGraphicsResource* cuda_tex_resource = nullptr;
+    cudaStream_t stream;
 #endif
     Result _cudaCopyToTexture(int, int, int, int);
 

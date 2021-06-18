@@ -23,6 +23,7 @@ public:
     Result destroy();
     Result start();
     Result end();
+    Result synchronize();
 
     bool keepRunning();
 

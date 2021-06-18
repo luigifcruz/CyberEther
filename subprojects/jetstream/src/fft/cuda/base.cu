@@ -59,29 +59,32 @@ CUDA::CUDA(Config& c) : Generic(c) {
     CUDA_CHECK_THROW(cudaMallocManaged(&out_dptr, out_len));
     out.buf = nonstd::span<float>{out_dptr, in.buf.size()};
 
-    CUDA_CHECK_THROW(cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1));
-    CUDA_CHECK_THROW(cufftSetStream(plan, stream));
+    cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1);
+    cufftSetStream(plan, stream);
 }
 
 CUDA::~CUDA() {
-    CUDA_CHECK_THROW(cudaHostUnregister(in.buf.data()));
-    CUDA_CHECK_THROW(cufftDestroy(plan));
-    CUDA_CHECK_THROW(cudaFree(fft_dptr));
-    CUDA_CHECK_THROW(cudaFree(out_dptr));
-    CUDA_CHECK_THROW(cudaStreamDestroy(stream));
+    cudaHostUnregister(in.buf.data());
+    cufftDestroy(plan);
+    cudaFree(fft_dptr);
+    cudaFree(out_dptr);
+    cudaStreamDestroy(stream);
 }
 
 Result CUDA::underlyingCompute() {
+    DEBUG_PUSH("fft_compute");
+
     int N = in.buf.size();
     int threads = 32;
     int blocks = (N + threads - 1) / threads;
 
     CUDA_CHECK(cudaMemcpyAsync(fft_dptr, in.buf.data(), fft_len, cudaMemcpyHostToDevice, stream));
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
-    CUDA_CHECK(cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD));
+    cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
     post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, N);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
+    DEBUG_POP();
     return Result::SUCCESS;
 }
 

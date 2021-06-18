@@ -32,6 +32,8 @@ public:
     virtual Result start() = 0;
     virtual Result end() = 0;
 
+    virtual Result synchronize() = 0;
+
     virtual bool keepRunning() = 0;
 
     virtual std::string renderer_str() = 0;

@@ -46,7 +46,9 @@ Result GLES::Surface::resize(int w, int h) {
 
 Result GLES::Surface::draw() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glViewport(0, 0, framebuffer->cfg.width, framebuffer->cfg.height);
+    if (framebuffer) {
+        glViewport(0, 0, framebuffer->cfg.width, framebuffer->cfg.height);
+    }
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 

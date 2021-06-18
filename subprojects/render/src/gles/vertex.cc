@@ -7,6 +7,7 @@ Result GLES::Vertex::create() {
 
     this->start();
     int i = 0;
+    bool cudaEnabled = true;
     for (auto& buffer : cfg.buffers) {
         uint usage = GL_STATIC_DRAW;
         switch (buffer.usage) {
@@ -33,8 +34,17 @@ Result GLES::Vertex::create() {
 #ifdef RENDER_CUDA_AVAILABLE
             CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&buffer._cuda_res, buffer.index,
                     cudaGraphicsMapFlagsWriteDiscard));
+            cudaEnabled = true;
 #endif
         }
+    }
+
+    if (cudaEnabled) {
+#ifdef RENDER_CUDA_AVAILABLE
+        int leastPriority = -1, greatestPriority = -1;
+        CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPriority, &greatestPriority));
+        CUDA_CHECK(cudaStreamCreateWithPriority(&stream, cudaStreamNonBlocking, greatestPriority));
+#endif
     }
 
     if (cfg.indices.size() != 0) {
@@ -50,14 +60,24 @@ Result GLES::Vertex::create() {
 }
 
 Result GLES::Vertex::destroy() {
+    bool cudaEnabled = false;
+
     for (auto& buffer : cfg.buffers) {
         glDeleteBuffers(1, &buffer.index);
 #ifdef RENDER_CUDA_AVAILABLE
         if (buffer._cuda_res == nullptr) {
             cudaGraphicsUnregisterResource(buffer._cuda_res);
+            cudaEnabled = true;
         }
 #endif
     }
+
+    if (cudaEnabled) {
+#ifdef RENDER_CUDA_AVAILABLE
+        cudaStreamDestroy(stream);
+#endif
+    }
+
     glDeleteBuffers(1, &ebo);
     glDeleteVertexArrays(1, &vao);
 
@@ -83,10 +103,11 @@ Result GLES::Vertex::update() {
 #ifdef RENDER_CUDA_AVAILABLE
             float *buffer_ptr;
             size_t buffer_len;
-            CUDA_CHECK(cudaGraphicsMapResources(1, &buffer._cuda_res));
+            CUDA_CHECK(cudaGraphicsMapResources(1, &buffer._cuda_res, stream));
             CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));
-            CUDA_CHECK(cudaMemcpyAsync(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice));
-            CUDA_CHECK(cudaGraphicsUnmapResources(1, &buffer._cuda_res));
+            CUDA_CHECK(cudaMemcpyAsync(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice, stream));
+            CUDA_CHECK(cudaGraphicsUnmapResources(1, &buffer._cuda_res, stream));
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 #endif
             break;
         }

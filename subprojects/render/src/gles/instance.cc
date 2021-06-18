@@ -146,6 +146,11 @@ Result GLES::end() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
+Result GLES::synchronize() {
+    glFinish();
+    return Result::SUCCESS;
+}
+
 bool GLES::keepRunning() {
     return !glfwWindowShouldClose(window);
 }

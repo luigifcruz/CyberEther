@@ -10,6 +10,10 @@
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"
 
+#ifdef JETSTREAM_CUDA_AVAILABLE
+#include <cuda_runtime.h>
+#endif
+
 namespace Jetstream {
 
 enum Result {
@@ -43,10 +47,11 @@ void print_error(Result, const char*, int, const char*);
 #endif
 
 #ifdef JETSTREAM_CUDA_AVAILABLE
+void cuda_print_error(cudaError_t, const char*, int, const char*);
 #ifndef CUDA_CHECK_THROW
 #define CUDA_CHECK_THROW(result) { \
     if (result != cudaSuccess) { \
-        std::cout << "CUDA error thrown: " << result << std::endl; \
+        cuda_print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
         throw result; \
     } \
 }
@@ -55,7 +60,7 @@ void print_error(Result, const char*, int, const char*);
 #ifndef CUDA_CHECK
 #define CUDA_CHECK(result) { \
     if (result != cudaSuccess) { \
-        std::cout << "CUDA error thrown: " << result << std::endl; \
+        cuda_print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
         return Jetstream::Result::CUDA_ERROR; \
     } \
 }

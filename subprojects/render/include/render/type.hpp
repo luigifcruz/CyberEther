@@ -48,19 +48,21 @@ void print_error(Result, const char*, int, const char*);
 #endif
 
 #ifdef RENDER_CUDA_AVAILABLE
-#ifndef CUDA_CHECK
-#define CUDA_CHECK(result) { \
-    if (result != cudaSuccess) { \
-        std::cout << "CUDA error thrown: " << result << std::endl; \
-        return Render::Result::CUDA_ERROR; \
-    } \
-}
-#endif
+void cuda_print_error(cudaError_t, const char*, int, const char*);
 #ifndef CUDA_CHECK_THROW
 #define CUDA_CHECK_THROW(result) { \
     if (result != cudaSuccess) { \
-        std::cout << "CUDA error thrown: " << result << std::endl; \
+        cuda_print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
         throw result; \
+    } \
+}
+#endif
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(result) { \
+    if (result != cudaSuccess) { \
+        cuda_print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
+        return Render::Result::CUDA_ERROR; \
     } \
 }
 #endif

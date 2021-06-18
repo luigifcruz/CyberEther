@@ -16,8 +16,8 @@ CUDA::CUDA(Config& c) : Generic(c) {
 }
 
 CUDA::~CUDA() {
-    CUDA_CHECK_THROW(cudaFree(out_dptr));
-    CUDA_CHECK_THROW(cudaStreamDestroy(stream));
+    cudaFree(out_dptr);
+    cudaStreamDestroy(stream);
 }
 
 Result CUDA::_compute() {

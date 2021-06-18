@@ -22,7 +22,7 @@ public:
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
         // Configure Jetstream Modules
-        auto device = Jetstream::Locale::CPU;
+        auto device = Jetstream::Locale::CUDA;
         engine = std::make_shared<Jetstream::Engine>();
         stream = std::vector<std::complex<float>>(2048);
 
@@ -89,8 +89,6 @@ public:
     void render_step() {
         render->start();
 
-        JETSTREAM_CHECK_THROW(engine->present());
-
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
         ImGui::Begin("Lineplot");
@@ -125,6 +123,8 @@ public:
         }
         ImGui::End();
 
+        render->synchronize();
+        JETSTREAM_CHECK_THROW(engine->present());
         render->end();
     }
 
