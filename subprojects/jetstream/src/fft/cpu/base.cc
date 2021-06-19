@@ -27,10 +27,6 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-static inline int shift(const int i, const unsigned int n) {
-    return (i + (n / 2) - 1) % n;
-}
-
 CPU::CPU(Config& c) : Generic(c) {
     auto n = in.buf.size();
     fft_in.resize(n);
@@ -39,7 +35,7 @@ CPU::CPU(Config& c) : Generic(c) {
     out.buf = amp_out;
 
     cf_plan = fftwf_plan_dft_1d(in.buf.size(), reinterpret_cast<fftwf_complex*>(fft_in.data()),
-            reinterpret_cast<fftwf_complex*>(fft_out.data()), FFTW_FORWARD, FFTW_ESTIMATE);
+            reinterpret_cast<fftwf_complex*>(fft_out.data()), FFTW_FORWARD, FFTW_MEASURE);
 
 #ifdef JETSTREAM_DEBUG
     std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
@@ -53,15 +49,14 @@ CPU::~CPU() {
 Result CPU::underlyingCompute() {
     auto n = fft_in.size();
     for (int i = 0; i < n; i++) {
-        fft_in[i] = in.buf[i];
+        fft_in[i] = in.buf[i] * window[i];
     }
 
     fftwf_execute(cf_plan);
 
+    float tmp;
     for (int i = 0; i < n; i++) {
-        float tmp;
-
-        tmp = amplt(fft_out[shift(i, n)], n);
+        tmp = amplt(fft_out[i], n);
         tmp = scale(tmp, cfg.min_db, cfg.max_db);
         tmp = std::clamp(tmp, 0.0f, 1.0f);
 

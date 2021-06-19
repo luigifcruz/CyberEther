@@ -14,10 +14,6 @@ static __device__ inline float amplt(const cuFloatComplex x, const int n) {
     return 20 * log10(cuCabsf(x) / n);
 }
 
-static __device__ inline int shift(const int i, const uint n) {
-    return (i + (n / 2) - 1) % n;
-}
-
 static __global__ void pre(cufftComplex* c, const cufftComplex* win, const uint n){
     const int numThreads = blockDim.x * gridDim.x;
     const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
@@ -34,7 +30,7 @@ static __global__ void post(const cufftComplex* c, float* r,
 
     float tmp;
     for (int i = threadID; i < n; i += numThreads) {
-        tmp = amplt(c[shift(i, n)], n);
+        tmp = amplt(c[i], n);
         tmp = scale(tmp, min, max);
         tmp = clamp(tmp, 0.0f, 1.0f);
 

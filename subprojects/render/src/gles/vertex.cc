@@ -7,7 +7,7 @@ Result GLES::Vertex::create() {
 
     this->start();
     int i = 0;
-    bool cudaEnabled = true;
+    bool cudaEnabled = false;
     for (auto& buffer : cfg.buffers) {
         uint usage = GL_STATIC_DRAW;
         switch (buffer.usage) {
@@ -65,7 +65,7 @@ Result GLES::Vertex::destroy() {
     for (auto& buffer : cfg.buffers) {
         glDeleteBuffers(1, &buffer.index);
 #ifdef RENDER_CUDA_AVAILABLE
-        if (buffer._cuda_res == nullptr) {
+        if (buffer._cuda_res) {
             cudaGraphicsUnregisterResource(buffer._cuda_res);
             cudaEnabled = true;
         }
