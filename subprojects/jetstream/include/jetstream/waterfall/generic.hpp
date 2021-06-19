@@ -11,7 +11,10 @@ namespace Jetstream::Waterfall {
 using T = nonstd::span<float>;
 
 struct Config {
-    bool interpolate = true; int width = 2500; int height = 500; Data<T> input0;
+    bool interpolate = true;
+    int width = 2500;
+    int height = 500;
+    Data<T> input0;
     Jetstream::Policy policy;
     std::shared_ptr<Render::Instance> render;
 };
@@ -55,8 +58,8 @@ protected:
 
     virtual Result _compute() = 0;
 
-    Result underlyingPresent();
-    Result underlyingCompute();
+    Result underlyingPresent() final;
+    Result underlyingCompute() final;
 
     const GLchar* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;

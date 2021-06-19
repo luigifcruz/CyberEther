@@ -8,7 +8,7 @@ namespace Jetstream {
 
 class Module : public Async, public Sync {
 public:
-    explicit Module(Policy&);
+    explicit Module(const Policy&);
     virtual ~Module();
 
     Result compute();
@@ -16,7 +16,7 @@ public:
     Result present();
 
 protected:
-    Launch launch;
+    const Launch launch;
 
     virtual Result underlyingPresent() = 0;
 };

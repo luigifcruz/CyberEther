@@ -14,10 +14,11 @@ public:
     ~CUDA();
 
 protected:
-    Result underlyingCompute();
-    Result underlyingPresent();
+    Result underlyingCompute() final;
+    Result underlyingPresent() final;
 
     cufftHandle plan;
+    cudaStream_t stream;
 
     size_t fft_len;
     cufftComplex* fft_dptr;
@@ -27,8 +28,6 @@ protected:
 
     size_t win_len;
     cufftComplex* win_dptr;
-
-    cudaStream_t stream;
 };
 
 } // namespace Jetstream::FFT

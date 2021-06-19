@@ -66,6 +66,13 @@ void cuda_print_error(cudaError_t, const char*, int, const char*);
     } \
 }
 #endif
+#else
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(result)
+#endif
+#ifndef CUDA_CHECK_THROW
+#define CUDA_CHECK_THROW(result)
+#endif
 #endif
 
 #if defined JETSTREAM_CUDA_AVAILABLE && defined JETSTREAM_DEBUG

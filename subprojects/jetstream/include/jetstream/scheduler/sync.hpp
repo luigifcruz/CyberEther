@@ -7,7 +7,7 @@ namespace Jetstream {
 
 class Sync : public Scheduler {
 public:
-    explicit Sync(Graph& d) : Scheduler(d) {};
+    explicit Sync(const Graph& d) : Scheduler(d) {};
 
 protected:
     Result start();

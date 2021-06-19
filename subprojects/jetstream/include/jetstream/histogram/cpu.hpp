@@ -11,8 +11,8 @@ public:
     ~CPU();
 
 protected:
-    Result underlyingCompute();
-    Result underlyingPresent();
+    Result underlyingCompute() final;
+    Result underlyingPresent() final;
 };
 
 } // namespace Jetstream::Histogram

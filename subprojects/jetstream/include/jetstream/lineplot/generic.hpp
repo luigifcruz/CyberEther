@@ -62,8 +62,8 @@ protected:
     virtual Result _compute() = 0;
     virtual Result _present() = 0;
 
-    Result underlyingPresent();
-    Result underlyingCompute();
+    Result underlyingPresent() final;
+    Result underlyingCompute() final;
 
     const GLchar* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;

@@ -7,7 +7,7 @@ namespace Jetstream {
 
 class Scheduler {
 public:
-    explicit Scheduler(Graph& d) : deps(d) {};
+    explicit Scheduler(const Graph& d) : deps(d) {};
     virtual ~Scheduler() = default;
 
 protected:
@@ -19,7 +19,7 @@ protected:
 
     virtual Result underlyingCompute() = 0;
 
-    Graph& deps;
+    const Graph& deps;
 
     std::atomic<Result> result{SUCCESS};
 };

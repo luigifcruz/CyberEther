@@ -22,22 +22,22 @@ public:
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
         // Configure Jetstream Modules
-        auto device = Jetstream::Locale::CUDA;
+        auto device = Jetstream::Locale::CPU;
         engine = std::make_shared<Jetstream::Engine>();
         stream = std::vector<std::complex<float>>(2048);
 
         fftCfg.input0 = {Jetstream::Locale::CPU, stream};
-        fftCfg.policy = {Jetstream::Launch::ASYNC, {}};
+        fftCfg.policy = {Jetstream::Launch::SYNC, {}};
         fft = Jetstream::FFT::Instantiate(device, fftCfg);
 
         lptCfg.render = render;
         lptCfg.input0 = fft->output();
-        lptCfg.policy = {Jetstream::Launch::ASYNC, {fft}};
+        lptCfg.policy = {Jetstream::Launch::SYNC, {fft}};
         lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
 
         wtfCfg.render = render;
         wtfCfg.input0 = fft->output();
-        wtfCfg.policy = {Jetstream::Launch::ASYNC, {fft}};
+        wtfCfg.policy = {Jetstream::Launch::SYNC, {fft}};
         wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
 
         // Add Jetstream modules to the execution pipeline.
@@ -94,13 +94,13 @@ public:
         ImGui::Begin("Lineplot");
         lptCfg.width = ImGui::GetContentRegionAvail().x;
         lptCfg.height = ImGui::GetContentRegionAvail().y;
-        ImGui::Image((void*)(intptr_t)lpt->tex()->raw(), ImVec2(lpt->conf().width, lpt->conf().height));
+        ImGui::Image((void*)(intptr_t)lpt->tex()->raw(), ImVec2(lptCfg.width, lptCfg.height));
         ImGui::End();
 
         ImGui::Begin("Waterfall");
         wtfCfg.width = ImGui::GetContentRegionAvail().x;
         wtfCfg.height = ImGui::GetContentRegionAvail().y;
-        ImGui::Image((void*)(intptr_t)wtf->tex()->raw(), ImVec2(wtf->conf().width, wtf->conf().height));
+        ImGui::Image((void*)(intptr_t)wtf->tex()->raw(), ImVec2(wtfCfg.width, wtfCfg.height));
         ImGui::End();
 
         ImGui::Begin("Control");

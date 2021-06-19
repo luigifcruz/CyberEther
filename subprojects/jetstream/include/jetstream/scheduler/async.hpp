@@ -7,7 +7,7 @@ namespace Jetstream {
 
 class Async : public Scheduler {
 public:
-    explicit Async(Graph& d) : Scheduler(d) {};
+    explicit Async(const Graph& d) : Scheduler(d) {};
 
 protected:
     Result start();

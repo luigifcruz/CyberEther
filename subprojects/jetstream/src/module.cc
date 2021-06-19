@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Module::Module(Policy& p) : Async(p.deps), Sync(p.deps), launch(p.launch) {
+Module::Module(const Policy& p) : Async(p.deps), Sync(p.deps), launch(p.launch) {
     switch (launch) {
         case Launch::ASYNC:
             JETSTREAM_CHECK_THROW(Async::start());
