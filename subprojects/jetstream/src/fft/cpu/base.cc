@@ -19,19 +19,15 @@ static inline float log10(float X) {
     return Y * 0.3010299956639812f;
 }
 
-static inline float clamp(float x, float a, float b) {
-    return fmax(a, fmin(b, x));
-}
-
-static inline float scale(float x, float min, float max) {
+static inline float scale(const float x, const float min, const float max) {
     return (x - min) / (max - min);
 }
 
-static inline float amplt(std::complex<float> x, int n) {
+static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-static inline int shift(int i, unsigned int n) {
+static inline int shift(const int i, const unsigned int n) {
     return (i + (n / 2) - 1) % n;
 }
 
@@ -67,7 +63,7 @@ Result CPU::underlyingCompute() {
 
         tmp = amplt(fft_out[shift(i, n)], n);
         tmp = scale(tmp, cfg.min_db, cfg.max_db);
-        tmp = clamp(tmp, 0.0, 1.0);
+        tmp = std::clamp(tmp, 0.0f, 1.0f);
 
         amp_out[i] = tmp;
     }

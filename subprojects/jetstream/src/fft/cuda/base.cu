@@ -2,19 +2,19 @@
 
 namespace Jetstream::FFT {
 
-static __device__ inline float clamp(float x, float a, float b) {
-    return max(a, min(b, x));
+static __device__ inline float clamp(const float x, const float a, float b) {
+    return (x < a) ? a : (b < x) ? b : x;
 }
 
-static __device__ inline float scale(float x, float min, float max) {
+static __device__ inline float scale(const float x, const float min, const float max) {
     return (x - min) / (max - min);
 }
 
-static __device__ inline float amplt(cuFloatComplex x, int n) {
+static __device__ inline float amplt(const cuFloatComplex x, const int n) {
     return 20 * log10(cuCabsf(x) / n);
 }
 
-static __device__ inline int shift(int i, uint n) {
+static __device__ inline int shift(const int i, const uint n) {
     return (i + (n / 2) - 1) % n;
 }
 
@@ -32,12 +32,11 @@ static __global__ void post(const cufftComplex* c, float* r,
     const int numThreads = blockDim.x * gridDim.x;
     const int threadID = blockIdx.x * blockDim.x + threadIdx.x;
 
+    float tmp;
     for (int i = threadID; i < n; i += numThreads) {
-        float tmp;
-
         tmp = amplt(c[shift(i, n)], n);
         tmp = scale(tmp, min, max);
-        tmp = clamp(tmp, 0.0, 1.0);
+        tmp = clamp(tmp, 0.0f, 1.0f);
 
         r[i] = tmp;
     }
@@ -72,7 +71,7 @@ CUDA::~CUDA() {
 }
 
 Result CUDA::underlyingCompute() {
-    DEBUG_PUSH("fft_compute");
+    DEBUG_PUSH("compute_fft");
 
     int N = in.buf.size();
     int threads = 32;

@@ -8,7 +8,6 @@ namespace Jetstream {
 class Async : public Scheduler {
 public:
     explicit Async(Graph& d) : Scheduler(d) {};
-    ~Async() = default;
 
 protected:
     Result start();

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include <algorithm>
 
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"
