@@ -56,8 +56,8 @@ public:
     constexpr bool debug() const {
         return cfg.debug;
     }
-    constexpr const char* title() const {
-        return cfg.title.c_str();
+    std::string title() const {
+        return cfg.title;
     }
 
     virtual std::shared_ptr<Surface> createAndBind(Surface::Config&) = 0;

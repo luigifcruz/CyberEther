@@ -19,7 +19,7 @@ Result GLES::create() {
     glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.vsync);
 
     auto [width, height] = cfg.size;
-    window = glfwCreateWindow(width, height, title(), NULL, NULL);
+    window = glfwCreateWindow(width, height, cfg.title.c_str(), NULL, NULL);
     if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;

@@ -17,7 +17,7 @@ public:
     Surface(const Config & c) : cfg(c) {};
     virtual ~Surface() = default;
 
-    constexpr const Size2D<int> size() const {
+    const Size2D<int> size() const {
         if (cfg.framebuffer) {
             return cfg.framebuffer->size();
         }
