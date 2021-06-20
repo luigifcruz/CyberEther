@@ -1,6 +1,7 @@
 #include "jetstream/fft/cuda.hpp"
 
-namespace Jetstream::FFT {
+namespace Jetstream {
+namespace FFT {
 
 static __device__ inline float clamp(const float x, const float a, float b) {
     return (x < a) ? a : (b < x) ? b : x;
@@ -88,4 +89,5 @@ Result CUDA::underlyingPresent() {
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::FFT
+} // namespace FFT
+} // namespace Jetstream

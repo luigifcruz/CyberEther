@@ -117,5 +117,5 @@ std::weak_ptr<Render::Texture> Generic::tex() const {
     return texture;
 };
 
-} // namespace Jetstream::Waterfall
-
+} // namespace Lineplot
+} // namespace Jetstream

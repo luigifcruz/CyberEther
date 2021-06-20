@@ -3,7 +3,8 @@
 
 #include "jetstream/base.hpp"
 
-namespace Jetstream::FFT {
+namespace Jetstream {
+namespace FFT {
 
 using TI = nonstd::span<std::complex<float>>;
 using TO = nonstd::span<float>;
@@ -37,6 +38,7 @@ protected:
     std::vector<std::complex<float>> window;
 };
 
-} // namespace Jetstream::FFT
+} // namespace FFT
+} // namespace Jetstream
 
 #endif

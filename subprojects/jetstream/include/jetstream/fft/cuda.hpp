@@ -30,6 +30,7 @@ protected:
     cufftComplex* win_dptr;
 };
 
-} // namespace Jetstream::FFT
+} // namespace FFT
+} // namespace Jetstream
 
 #endif

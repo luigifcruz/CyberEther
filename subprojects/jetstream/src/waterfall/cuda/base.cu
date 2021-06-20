@@ -1,7 +1,8 @@
 #include "jetstream/waterfall/cuda.hpp"
 
-namespace Jetstream::Waterfall {
-
+namespace Jetstream {
+namespace Waterfall {
+    
 CUDA::CUDA(const Config& c) : Generic(c) {
     ymax = cfg.size.height;
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
@@ -22,4 +23,5 @@ Result CUDA::_compute() {
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::Waterfall
+} // namespace Waterfall
+} // namespace Jetstream
