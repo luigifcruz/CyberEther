@@ -1,7 +1,6 @@
 #include "jetstream/lineplot/generic.hpp"
 
-namespace Jetstream {
-namespace Lineplot {
+namespace Jetstream::Lineplot {
 
 Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
@@ -118,5 +117,5 @@ std::weak_ptr<Render::Texture> Generic::tex() const {
     return texture;
 };
 
-} // namespace Lineplot
-} // namespace Jetstream
+} // namespace Jetstream::Waterfall
+

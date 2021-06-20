@@ -1,5 +1,5 @@
 gl_deps = [
-  dependency('glfw3', required: false, fallback: ['glfw-meson-shim', 'glfw_dep']),
+  dependency('glfw3', required: false),
   dependency('glesv2', required: false),
 ]
 

@@ -1,7 +1,6 @@
 #include "jetstream/waterfall/generic.hpp"
 
-namespace Jetstream {
-namespace Waterfall {
+namespace Jetstream::Waterfall {
 
 Generic::Generic(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
 }
@@ -112,5 +111,4 @@ std::weak_ptr<Render::Texture> Generic::tex() const {
     return texture;
 };
 
-} // namespace Waterfall
-} // namespace Jetstream
+} // namespace Jetstream::Waterfall

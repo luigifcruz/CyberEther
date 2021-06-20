@@ -6,8 +6,7 @@
 #include "render/base.hpp"
 #include "render/extras.hpp"
 
-namespace Jetstream {
-namespace Waterfall {
+namespace Jetstream::Waterfall {
 
 using T = nonstd::span<float>;
 
@@ -141,7 +140,6 @@ protected:
     )END";
 };
 
-} // namespace Waterfall
-} // namespace Jetstream
+} // namespace Jetstream::Waterfall
 
 #endif

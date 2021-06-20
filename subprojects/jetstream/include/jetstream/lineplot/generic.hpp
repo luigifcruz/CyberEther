@@ -5,8 +5,7 @@
 #include "jetstream/tools/lut.hpp"
 #include "render/base.hpp"
 
-namespace Jetstream {
-namespace Lineplot {
+namespace Jetstream::Lineplot {
 
 using TI = nonstd::span<float>;
 
@@ -91,7 +90,6 @@ protected:
     )END";
 };
 
-} // namespace Lineplot
-} // namespace Jetstream
+} // namespace Jetstream::Lineplot
 
 #endif

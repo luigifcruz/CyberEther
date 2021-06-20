@@ -6,8 +6,7 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-namespace Jetstream {
-namespace FFT {
+namespace Jetstream::FFT {
 
 class CUDA : public Generic {
 public:
@@ -31,7 +30,6 @@ protected:
     cufftComplex* win_dptr;
 };
 
-} // namespace FFT
-} // namespace Jetstream
+} // namespace Jetstream::FFT
 
 #endif

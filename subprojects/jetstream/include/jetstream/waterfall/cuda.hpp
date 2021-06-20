@@ -6,8 +6,7 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-namespace Jetstream {
-namespace Waterfall {
+namespace Jetstream::Waterfall {
 
 class CUDA : public Generic  {
 public:
@@ -22,7 +21,6 @@ protected:
     cudaStream_t stream;
 };
 
-} // namespace Waterfall
-} // namespace Jetstream
+} // namespace Jetstream::Waterfall
 
 #endif

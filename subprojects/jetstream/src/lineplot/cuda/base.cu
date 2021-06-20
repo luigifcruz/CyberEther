@@ -1,7 +1,6 @@
 #include "jetstream/lineplot/cuda.hpp"
 
-namespace Jetstream {
-namespace Lineplot {
+namespace Jetstream::Lineplot {
 
 CUDA::CUDA(const Config & c) : Generic(c) {
     plot_len = plot.size() * sizeof(plot[0]);
@@ -36,5 +35,4 @@ Result CUDA::_present() {
     return Result::SUCCESS;
 }
 
-} // namespace Lineplot
-} // namespace Jetstream
+} // namespace Jetstream::Lineplot

@@ -1,7 +1,6 @@
 #include "jetstream/fft/cuda.hpp"
 
-namespace Jetstream {
-namespace FFT {
+namespace Jetstream::FFT {
 
 static __device__ inline float clamp(const float x, const float a, float b) {
     return (x < a) ? a : (b < x) ? b : x;
@@ -73,12 +72,12 @@ Result CUDA::underlyingCompute() {
     int N = in.buf.size();
     int threads = 32;
     int blocks = (N + threads - 1) / threads;
-    auto amp = cfg.amplitude;
+    auto [min, max] = cfg.amplitude;
 
     CUDA_CHECK(cudaMemcpyAsync(fft_dptr, in.buf.data(), fft_len, cudaMemcpyHostToDevice, stream));
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
-    post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, amp.min, amp.max, N);
+    post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, min, max, N);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     DEBUG_POP();
@@ -89,5 +88,4 @@ Result CUDA::underlyingPresent() {
     return Result::SUCCESS;
 }
 
-} // namespace FFT
-} // namespace Jetstream
+} // namespace Jetstream::FFT
