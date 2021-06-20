@@ -1,6 +1,7 @@
 #include "jetstream/lineplot/generic.hpp"
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
+namespace Lineplot {
 
 Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {

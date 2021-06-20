@@ -6,7 +6,8 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-namespace Jetstream::FFT {
+namespace Jetstream {
+namespace FFT {
 
 class CUDA : public Generic {
 public:
