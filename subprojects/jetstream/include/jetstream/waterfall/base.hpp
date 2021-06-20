@@ -9,7 +9,7 @@
 
 namespace Jetstream::Waterfall {
 
-inline std::shared_ptr<Generic> Instantiate(Locale L, Config& config) {
+inline std::shared_ptr<Generic> Instantiate(Locale L, const Config& config) {
     switch (L) {
         case Jetstream::Locale::CPU:
             return std::make_shared<CPU>(config);

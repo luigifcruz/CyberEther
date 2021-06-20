@@ -26,15 +26,18 @@ public:
         engine = std::make_shared<Jetstream::Engine>();
         stream = std::vector<std::complex<float>>(2048);
 
+        Jetstream::FFT::Config fftCfg;
         fftCfg.input0 = {Jetstream::Locale::CPU, stream};
         fftCfg.policy = {Jetstream::Launch::SYNC, {}};
         fft = Jetstream::FFT::Instantiate(device, fftCfg);
 
+        Jetstream::Lineplot::Config lptCfg;
         lptCfg.render = render;
         lptCfg.input0 = fft->output();
         lptCfg.policy = {Jetstream::Launch::SYNC, {fft}};
         lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
 
+        Jetstream::Waterfall::Config wtfCfg;
         wtfCfg.render = render;
         wtfCfg.input0 = fft->output();
         wtfCfg.policy = {Jetstream::Launch::SYNC, {fft}};
@@ -91,27 +94,43 @@ public:
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
-        ImGui::Begin("Lineplot");
-        lptCfg.width = ImGui::GetContentRegionAvail().x;
-        lptCfg.height = ImGui::GetContentRegionAvail().y;
-        ImGui::Image((void*)(intptr_t)lpt->tex()->raw(), ImVec2(lptCfg.width, lptCfg.height));
-        ImGui::End();
-
-        ImGui::Begin("Waterfall");
-        wtfCfg.width = ImGui::GetContentRegionAvail().x;
-        wtfCfg.height = ImGui::GetContentRegionAvail().y;
-        ImGui::Image((void*)(intptr_t)wtf->tex()->raw(), ImVec2(wtfCfg.width, wtfCfg.height));
-        ImGui::End();
-
-        ImGui::Begin("Control");
-        ImGui::InputFloat("Frequency (Hz)", &channelState.frequency);
-        if (ImGui::Button("Tune")) {
-            device->UpdateChannel(rx, channelState);
+        {
+            ImGui::Begin("Lineplot");
+            auto regionSize = ImGui::GetContentRegionAvail();
+            auto [width, height] = lpt->size({(int)regionSize.x, (int)regionSize.y});
+            ImGui::Image((void*)(intptr_t)lpt->tex().lock()->raw(), ImVec2(width, height));
+            ImGui::End();
         }
-        ImGui::DragFloatRange2("dBFS Range", &fftCfg.min_db, &fftCfg.max_db,
-             1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS");
-        ImGui::Checkbox("Interpolate Waterfall", &wtfCfg.interpolate);
-        ImGui::End();
+
+        {
+            ImGui::Begin("Waterfall");
+            auto regionSize = ImGui::GetContentRegionAvail();
+            auto [width, height] = wtf->size({(int)regionSize.x, (int)regionSize.y});
+            ImGui::Image((void*)(intptr_t)wtf->tex().lock()->raw(), ImVec2(width, height));
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Control");
+
+            ImGui::InputFloat("Frequency (Hz)", &channelState.frequency);
+            if (ImGui::Button("Tune")) {
+                device->UpdateChannel(rx, channelState);
+            }
+
+            auto [min, max] = fft->amplitude();
+            if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
+                        1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
+                fft->amplitude({min, max});
+            }
+
+            auto interpolate = wtf->interpolate();
+            if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
+                wtf->interpolate(interpolate);
+            }
+
+            ImGui::End();
+        }
 
         ImGui::Begin("Samurai Info");
         if (streaming) {
@@ -137,9 +156,6 @@ private:
     std::shared_ptr<Render::Instance> render;
 
     // Jetstream
-    Jetstream::FFT::Config fftCfg;
-    Jetstream::Lineplot::Config lptCfg;
-    Jetstream::Waterfall::Config wtfCfg;
     std::shared_ptr<Jetstream::Engine> engine;
     std::shared_ptr<Jetstream::FFT::Generic> fft;
     std::shared_ptr<Jetstream::Lineplot::Generic> lpt;

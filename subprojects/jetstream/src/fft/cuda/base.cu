@@ -38,7 +38,7 @@ static __global__ void post(const cufftComplex* c, float* r,
     }
 }
 
-CUDA::CUDA(Config& c) : Generic(c) {
+CUDA::CUDA(const Config & c) : Generic(c) {
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaHostRegister(in.buf.data(), in.buf.size() * sizeof(in.buf[0]),
             cudaHostRegisterReadOnly));
@@ -72,11 +72,12 @@ Result CUDA::underlyingCompute() {
     int N = in.buf.size();
     int threads = 32;
     int blocks = (N + threads - 1) / threads;
+    auto [min, max] = cfg.amplitude;
 
     CUDA_CHECK(cudaMemcpyAsync(fft_dptr, in.buf.data(), fft_len, cudaMemcpyHostToDevice, stream));
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
-    post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, cfg.min_db, cfg.max_db, N);
+    post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, min, max, N);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     DEBUG_POP();

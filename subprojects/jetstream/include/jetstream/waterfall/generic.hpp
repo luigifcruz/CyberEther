@@ -12,8 +12,8 @@ using T = nonstd::span<float>;
 
 struct Config {
     bool interpolate = true;
-    int width = 2500;
-    int height = 500;
+    Size2D<int> size = {2500, 500};
+
     Data<T> input0;
     Jetstream::Policy policy;
     std::shared_ptr<Render::Instance> render;
@@ -21,19 +21,23 @@ struct Config {
 
 class Generic : public Module {
 public:
-    explicit Generic(Config&);
+    explicit Generic(const Config &);
     virtual ~Generic() = default;
 
-    std::shared_ptr<Render::Texture> tex() const {
-        return texture;
-    };
-
-    Config conf() const {
-        return cfg;
+    constexpr bool interpolate() const {
+        return cfg.interpolate;
     }
+    bool interpolate(bool);
+
+    constexpr Size2D<int> size() const {
+        return cfg.size;
+    }
+    Size2D<int> size(const Size2D<int> &);
+
+    std::weak_ptr<Render::Texture> tex() const;
 
 protected:
-    Config& cfg;
+    Config cfg;
     Data<T> in;
 
     int inc = 0, last = 0, ymax = 0;

@@ -2,7 +2,7 @@
 
 namespace Jetstream::Histogram {
 
-CPU::CPU(Config& c) : Generic(c) {
+CPU::CPU(const Config & c) : Generic(c) {
     auto render = cfg.render;
 
     buf.resize(in.buf.size() * 256);
@@ -16,8 +16,7 @@ CPU::CPU(Config& c) : Generic(c) {
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = render->create(drawVertexCfg);
 
-    binTextureCfg.height = 256;
-    binTextureCfg.width = in.buf.size();
+    binTextureCfg.size = {static_cast<int>(in.buf.size()), 256};
     binTextureCfg.buffer = (uint8_t*)buf2.data();
     binTextureCfg.key = "BinTexture";
     binTextureCfg.pfmt = Render::PixelFormat::RED;
@@ -25,8 +24,7 @@ CPU::CPU(Config& c) : Generic(c) {
     binTextureCfg.dfmt = Render::DataFormat::F32;
     binTexture = render->create(binTextureCfg);
 
-    lutTextureCfg.height = 1;
-    lutTextureCfg.width = 256;
+    lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = render->create(lutTextureCfg);
@@ -37,8 +35,7 @@ CPU::CPU(Config& c) : Generic(c) {
     programCfg.textures = {binTexture, lutTexture};
     program = render->create(programCfg);
 
-    textureCfg.width = cfg.width;
-    textureCfg.height = cfg.height;
+    textureCfg.size = cfg.size;
     texture = render->create(textureCfg);
 
     surfaceCfg.framebuffer = texture;
@@ -74,7 +71,7 @@ Result CPU::underlyingCompute() {
 
 Result CPU::underlyingPresent() {
     binTexture->fill();
-    program->setUniform("Index", std::vector<float>{inc/(float)cfg.height});
+    program->setUniform("Index", std::vector<float>{inc/(float)cfg.size.height});
     vertex->update();
     return Result::SUCCESS;
 }

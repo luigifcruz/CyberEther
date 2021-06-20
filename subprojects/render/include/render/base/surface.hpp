@@ -14,13 +14,20 @@ public:
         std::vector<std::shared_ptr<Program>> programs;
     };
 
-    Config& cfg;
     Surface(Config& c) : cfg(c) {};
     virtual ~Surface() = default;
 
-    virtual Result resize(int, int) = 0;
+    constexpr const Size2D<int> size() const {
+        if (cfg.framebuffer) {
+            return cfg.framebuffer->size();
+        }
+        return {-1, -1};
+    }
+    virtual Size2D<int> size(const Size2D<int> &) = 0;
 
 protected:
+    Config& cfg;
+
     virtual Result create() = 0;
     virtual Result destroy() = 0;
     virtual Result draw() = 0;

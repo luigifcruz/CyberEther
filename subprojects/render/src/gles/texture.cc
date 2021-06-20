@@ -15,7 +15,7 @@ Result GLES::Texture::create() {
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
     auto ptr = (cfg.cudaInterop) ? nullptr : cfg.buffer;
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, ptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.size.width, cfg.size.height, 0, pfmt, ptype, ptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -57,6 +57,15 @@ Result GLES::Texture::end() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
+// After this method, user needs to recreate the texture
+Size2D<int> GLES::Texture::size(const Size2D<int> & size) {
+    if (cfg.size != size) {
+        cfg.size = size;
+    }
+
+    return this->size();
+}
+
 uint GLES::Texture::raw() {
     return tex;
 }
@@ -83,11 +92,11 @@ Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
 
 Result GLES::Texture::fill() {
     if (cfg.cudaInterop) {
-        return this->_cudaCopyToTexture(0, 0, cfg.width, cfg.height);
+        return this->_cudaCopyToTexture(0, 0, cfg.size.width, cfg.size.height);
     }
 
     CHECK(this->start());
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.width, cfg.height, 0, pfmt, ptype, cfg.buffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.size.width, cfg.size.height, 0, pfmt, ptype, cfg.buffer);
     CHECK(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

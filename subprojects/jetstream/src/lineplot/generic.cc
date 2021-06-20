@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-Generic::Generic(Config& c) : Module(c.policy), cfg(c), in(c.input0) {
+Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         grid.push_back(-1.0f);
         grid.push_back(i);
@@ -54,8 +54,7 @@ Result Generic::_initRender() {
     drawLineVertexCfg.mode = Render::Draw::LineStrip;
     drawLineVertex = render->create(drawLineVertexCfg);
 
-    lutTextureCfg.height = 1;
-    lutTextureCfg.width = 256;
+    lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = render->create(lutTextureCfg);
@@ -66,8 +65,7 @@ Result Generic::_initRender() {
     programCfg.textures = {lutTexture};
     program = render->create(programCfg);
 
-    textureCfg.width = cfg.width;
-    textureCfg.height = cfg.height;
+    textureCfg.size = cfg.size;
     texture = render->create(textureCfg);
 
     surfaceCfg.framebuffer = texture;
@@ -79,24 +77,33 @@ Result Generic::_initRender() {
 
 Result Generic::underlyingCompute() {
     DEBUG_PUSH("compute_lineplot");
+
     auto res = this->_compute();
+
     DEBUG_POP();
     return res;
 }
 
 Result Generic::underlyingPresent() {
     DEBUG_PUSH("present_lineplot");
-    if (textureCfg.width != cfg.width || textureCfg.height != cfg.height) {
-        if (surface->resize(cfg.width, cfg.height) != Render::Result::SUCCESS) {
-            cfg.width = textureCfg.width;
-            cfg.height = textureCfg.height;
-        }
-    }
 
     auto res = this->_present();
+
     DEBUG_POP();
     return res;
 }
+
+Size2D<int> Generic::size(const Size2D<int> & size) {
+    if (surface->size(size) != cfg.size) {
+        cfg.size = surface->size();
+    }
+
+    return this->size();
+}
+
+std::weak_ptr<Render::Texture> Generic::tex() const {
+    return texture;
+};
 
 } // namespace Jetstream::Waterfall
 

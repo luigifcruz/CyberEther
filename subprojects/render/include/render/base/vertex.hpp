@@ -31,13 +31,14 @@ public:
         std::vector<uint> indices;
     };
 
-    Config& cfg;
     Vertex(Config& c) : cfg(c) {};
     virtual ~Vertex() = default;
 
     virtual Result update() = 0;
 
 protected:
+    Config& cfg;
+
     virtual Result create() = 0;
     virtual Result destroy() = 0;
     virtual Result start() = 0;

@@ -2,7 +2,7 @@
 
 namespace Jetstream::Waterfall {
 
-Generic::Generic(Config& c) : Module(c.policy), cfg(c), in(c.input0) {
+Generic::Generic(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
 }
 
 Result Generic::_initRender() {
@@ -21,16 +21,14 @@ Result Generic::_initRender() {
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = render->create(drawVertexCfg);
 
-    binTextureCfg.height = ymax;
-    binTextureCfg.width = in.buf.size();
+    binTextureCfg.size = {static_cast<int>(in.buf.size()), ymax};
     binTextureCfg.key = "BinTexture";
     binTextureCfg.pfmt = Render::PixelFormat::RED;
     binTextureCfg.ptype = Render::PixelType::F32;
     binTextureCfg.dfmt = Render::DataFormat::F32;
     binTexture = render->create(binTextureCfg);
 
-    lutTextureCfg.height = 1;
-    lutTextureCfg.width = 256;
+    lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = render->create(lutTextureCfg);
@@ -41,8 +39,7 @@ Result Generic::_initRender() {
     programCfg.textures = {binTexture, lutTexture};
     program = render->create(programCfg);
 
-    textureCfg.width = cfg.width;
-    textureCfg.height = cfg.height;
+    textureCfg.size = cfg.size;
     texture = render->create(textureCfg);
 
     surfaceCfg.framebuffer = texture;
@@ -64,12 +61,6 @@ Result Generic::underlyingCompute() {
 
 Result Generic::underlyingPresent() {
     DEBUG_PUSH("present_waterfall");
-    if (textureCfg.width != cfg.width || textureCfg.height != cfg.height) {
-        if (surface->resize(cfg.width, cfg.height) != Render::Result::SUCCESS) {
-            cfg.width = textureCfg.width;
-            cfg.height = textureCfg.height;
-        }
-    }
 
     int start = last;
     int blocks = (inc - last);
@@ -92,5 +83,23 @@ Result Generic::underlyingPresent() {
     DEBUG_POP();
     return Result::SUCCESS;
 }
+
+bool Generic::interpolate(bool val) {
+    cfg.interpolate = val;
+
+    return this->interpolate();
+}
+
+Size2D<int> Generic::size(const Size2D<int> & size) {
+    if (surface->size(size) != cfg.size) {
+        cfg.size = surface->size();
+    }
+
+    return this->size();
+}
+
+std::weak_ptr<Render::Texture> Generic::tex() const {
+    return texture;
+};
 
 } // namespace Jetstream::Waterfall

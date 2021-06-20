@@ -10,8 +10,8 @@ namespace Jetstream::Lineplot {
 using TI = nonstd::span<float>;
 
 struct Config {
-    int width = 2500;
-    int height = 500;
+    Size2D<int> size {2500, 500};
+
     Data<TI> input0;
     Jetstream::Policy policy;
     std::shared_ptr<Render::Instance> render;
@@ -19,19 +19,18 @@ struct Config {
 
 class Generic : public Module {
 public:
-    explicit Generic(Config&);
+    explicit Generic(const Config &);
     virtual ~Generic() = default;
 
-    std::shared_ptr<Render::Texture> tex() const {
-        return texture;
-    };
-
-    Config conf() const {
-        return cfg;
+    constexpr Size2D<int> size() const {
+        return cfg.size;
     }
+    Size2D<int> size(const Size2D<int> &);
+
+    std::weak_ptr<Render::Texture> tex() const;
 
 protected:
-    Config& cfg;
+    Config cfg;
     Data<TI> in;
 
     std::vector<float> plot;

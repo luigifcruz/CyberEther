@@ -11,7 +11,7 @@
 
 namespace Jetstream::FFT {
 
-inline std::shared_ptr<Generic> Instantiate(Locale L, Config& config) {
+inline std::shared_ptr<Generic> Instantiate(Locale L, const Config & config) {
     switch (L) {
 #ifdef JETSTREAM_FFT_FFTW_AVAILABLE
         case Jetstream::Locale::CPU:

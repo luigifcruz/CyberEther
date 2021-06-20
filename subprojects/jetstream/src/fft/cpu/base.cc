@@ -27,7 +27,7 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-CPU::CPU(Config& c) : Generic(c) {
+CPU::CPU(const Config & c) : Generic(c) {
     auto n = in.buf.size();
     fft_in.resize(n);
     fft_out.resize(n);
@@ -47,17 +47,19 @@ CPU::~CPU() {
 }
 
 Result CPU::underlyingCompute() {
+    float tmp;
     auto n = fft_in.size();
+    auto [min, max] = cfg.amplitude;
+
     for (int i = 0; i < n; i++) {
         fft_in[i] = in.buf[i] * window[i];
     }
 
     fftwf_execute(cf_plan);
 
-    float tmp;
     for (int i = 0; i < n; i++) {
         tmp = amplt(fft_out[i], n);
-        tmp = scale(tmp, cfg.min_db, cfg.max_db);
+        tmp = scale(tmp, min, max);
         tmp = std::clamp(tmp, 0.0f, 1.0f);
 
         amp_out[i] = tmp;

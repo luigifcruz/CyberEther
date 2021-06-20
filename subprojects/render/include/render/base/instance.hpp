@@ -23,7 +23,6 @@ public:
         std::string title = "Render";
     };
 
-    Config& cfg;
     Instance(Config& c) : cfg(c) {};
     virtual ~Instance() = default;
 
@@ -58,7 +57,7 @@ public:
     };
 
 protected:
-    static Result getError(std::string func, std::string file, int line);
+    Config& cfg;
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
@@ -69,6 +68,8 @@ protected:
     std::string cached_version_str;
     std::string cached_vendor_str;
     std::string cached_glsl_str;
+
+    static Result getError(std::string func, std::string file, int line);
 };
 
 } // namespace Render

@@ -9,7 +9,7 @@ namespace Jetstream::FFT {
 
 class CPU : public Generic {
 public:
-    explicit CPU(Config&);
+    explicit CPU(const Config &);
     ~CPU();
 
 protected:

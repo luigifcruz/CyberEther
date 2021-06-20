@@ -13,6 +13,9 @@ class GLES::Texture : public Render::Texture {
 public:
     Texture(Config& cfg, GLES& i) : Render::Texture(cfg), inst(i) {};
 
+    using Render::Texture::size;
+    Size2D<int> size(const Size2D<int> &) final;
+
     uint raw();
     Result pour();
     Result fill();

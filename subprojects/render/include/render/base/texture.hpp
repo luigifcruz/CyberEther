@@ -8,8 +8,7 @@ namespace Render {
 class Texture {
 public:
     struct Config {
-        int width = 0;
-        int height = 0;
+        Size2D<int> size;
         std::string key;
         uint8_t* buffer = nullptr;
         DataFormat dfmt = DataFormat::RGB;
@@ -18,9 +17,13 @@ public:
         bool cudaInterop = false;
     };
 
-    Config& cfg;
     Texture(Config& c) : cfg(c) {};
     virtual ~Texture() = default;
+
+    constexpr const Size2D<int> size() const {
+        return cfg.size;
+    }
+    virtual Size2D<int> size(const Size2D<int> &) = 0;
 
     virtual uint raw() = 0;
     virtual Result pour() = 0;
@@ -28,6 +31,8 @@ public:
     virtual Result fill(int, int, int, int) = 0;
 
 protected:
+    Config& cfg;
+
     virtual Result create() = 0;
     virtual Result destroy() = 0;
     virtual Result start() = 0;

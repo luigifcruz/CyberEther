@@ -9,7 +9,7 @@ class GLES::Surface : public Render::Surface {
 public:
     Surface(Config& cfg, GLES& i) : Render::Surface(cfg), inst(i) {};
 
-    Result resize(int, int);
+    Size2D<int> size(const Size2D<int> &);
 
 protected:
     GLES& inst;

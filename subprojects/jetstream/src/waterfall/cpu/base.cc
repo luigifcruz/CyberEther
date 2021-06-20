@@ -2,10 +2,10 @@
 
 namespace Jetstream::Waterfall {
 
-CPU::CPU(Config& c) : Generic(c) {
+CPU::CPU(const Config& c) : Generic(c) {
     auto render = cfg.render;
 
-    ymax = cfg.height;
+    ymax = cfg.size.height;
     bin.resize(in.buf.size() * ymax);
 
     binTextureCfg.buffer = (uint8_t*)bin.data();

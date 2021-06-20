@@ -30,24 +30,29 @@ Result GLES::Surface::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Surface::resize(int w, int h) {
-    if (w <= 1 || h <= 1) {
-        return Result::ERROR;
+Size2D<int> GLES::Surface::size(const Size2D<int> & size) {
+    if (!framebuffer) {
+        return {-1, -1};
     }
 
-    framebuffer->cfg.width = w;
-    framebuffer->cfg.height = h;
+    if (size <= Size2D<int>{1, 1}) {
+        return framebuffer->size();
+    }
 
-    CHECK(_destroyFramebuffer());
-    CHECK(_createFramebuffer());
+    if (framebuffer->size() != framebuffer->size(size)) {
+        RENDER_CHECK_THROW(_destroyFramebuffer());
+        RENDER_CHECK_THROW(_createFramebuffer());
+    }
 
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+    return framebuffer->size();
 }
 
 Result GLES::Surface::draw() {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
     if (framebuffer) {
-        glViewport(0, 0, framebuffer->cfg.width, framebuffer->cfg.height);
+        auto [width, height] = framebuffer->size();
+        glViewport(0, 0, width, height);
     }
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);

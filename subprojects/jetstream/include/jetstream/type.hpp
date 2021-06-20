@@ -113,10 +113,58 @@ struct Data {
     T buf;
 };
 
+
 class Module;
 typedef std::vector<std::shared_ptr<Module>> Graph;
 typedef struct { Launch launch; Graph deps; } Policy;
 
 } // namespace Jetstream
+
+#ifndef GADGET_TYPE_H
+#define GADGET_TYPE_H
+
+namespace Gadget {
+
+template<typename T>
+struct Size2D {
+    T width;
+    T height;
+
+    bool operator==(const Size2D<T>& a) const {
+        return (width == a.width && height == a.height);
+    }
+
+    bool operator!=(const Size2D<T>& a) const {
+        return (width != a.width || height != a.height);
+    }
+
+    bool operator<=(const Size2D<T>& a) const {
+        return (width <= a.width || height <= a.height);
+    }
+};
+
+template<typename T>
+struct Range {
+    T min;
+    T max;
+
+    bool operator==(const Size2D<T>& a) const {
+        return (min == a.min && max == a.max);
+    }
+
+    bool operator!=(const Size2D<T>& a) const {
+        return (min != a.min || max != a.max);
+    }
+
+    bool operator<=(const Size2D<T>& a) const {
+        return (min <= a.min || max <= a.max);
+    }
+};
+
+} // namspace Gadget
+
+using namespace Gadget;
+
+#endif
 
 #endif

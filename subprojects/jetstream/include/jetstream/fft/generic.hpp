@@ -9,27 +9,28 @@ using TI = nonstd::span<std::complex<float>>;
 using TO = nonstd::span<float>;
 
 struct Config {
-    float max_db = 0.0;
-    float min_db = -200.0;
+    Range<float> amplitude = {-200.0f, 0.0f};
+
     Data<TI> input0;
     Jetstream::Policy policy;
 };
 
 class Generic : public Module {
 public:
-    explicit Generic(Config&);
+    explicit Generic(const Config &);
     virtual ~Generic() = default;
 
-    Config conf() const {
-        return cfg;
+    constexpr Range<float> amplitude() const {
+        return cfg.amplitude;
     }
+    Range<float> amplitude(const Range<float> &);
 
-    Data<TO> output() const {
+    constexpr Data<TO> output() const {
         return out;
     }
 
 protected:
-    Config& cfg;
+    Config cfg;
     Data<TI> in;
     Data<TO> out;
 

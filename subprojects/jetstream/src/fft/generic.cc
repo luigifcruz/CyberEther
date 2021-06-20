@@ -2,7 +2,7 @@
 
 namespace Jetstream::FFT {
 
-Generic::Generic(Config& c) : Module(c.policy), cfg(c), in(c.input0) {
+Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
     auto n = in.buf.size();
     window.resize(in.buf.size());
 
@@ -12,6 +12,12 @@ Generic::Generic(Config& c) : Module(c.policy), cfg(c), in(c.input0) {
         tap = (i % 2) == 0 ? tap : -tap;
         window[i] = std::complex<float>(tap, 0.0);
     }
+}
+
+Range<float> Generic::amplitude(const Range<float> & ampl) {
+    cfg.amplitude = ampl;
+
+    return this->amplitude();
 }
 
 } // namespace Jetstream::FFT

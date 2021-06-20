@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-CPU::CPU(Config& c) : Generic(c) {
+CPU::CPU(const Config & c) : Generic(c) {
     plotVbo.data = plot.data();
     JETSTREAM_CHECK_THROW(this->_initRender());
 }

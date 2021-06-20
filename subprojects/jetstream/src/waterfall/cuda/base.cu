@@ -2,12 +2,12 @@
 
 namespace Jetstream::Waterfall {
 
-CUDA::CUDA(Config& c) : Generic(c) {
+CUDA::CUDA(const Config& c) : Generic(c) {
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     auto render = cfg.render;
 
-    ymax = cfg.height;
+    ymax = cfg.size.height;
     CUDA_CHECK_THROW(cudaMalloc(&out_dptr, in.buf.size() * ymax * sizeof(float)));
 
     binTextureCfg.buffer = (uint8_t*)out_dptr;
