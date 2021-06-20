@@ -7,16 +7,16 @@ namespace Render {
 
 class GLES::Draw : public Render::Draw {
 public:
-    Draw(Config& cfg, GLES& i) : Render::Draw(cfg), inst(i) {};
+    Draw(const Config & cfg, const GLES & i) : Render::Draw(cfg), inst(i) {};
 
 protected:
-    GLES& inst;
+    const GLES& inst;
 
     std::shared_ptr<GLES::Vertex> buffer;
 
-    Result create();
-    Result destroy();
-    Result draw();
+    Result create() final;
+    Result destroy() final;
+    Result draw() final;
 
     friend class GLES::Program;
 };

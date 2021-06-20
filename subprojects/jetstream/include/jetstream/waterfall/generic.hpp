@@ -42,14 +42,6 @@ protected:
 
     int inc = 0, last = 0, ymax = 0;
 
-    Render::Texture::Config textureCfg;
-    Render::Texture::Config binTextureCfg;
-    Render::Texture::Config lutTextureCfg;
-    Render::Program::Config programCfg;
-    Render::Surface::Config surfaceCfg;
-    Render::Vertex::Config vertexCfg;
-    Render::Draw::Config drawVertexCfg;
-
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> binTexture;
     std::shared_ptr<Render::Texture> lutTexture;
@@ -58,7 +50,7 @@ protected:
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    Result _initRender();
+    Result _initRender(uint8_t*, bool cudaInterop = false);
 
     virtual Result _compute() = 0;
 

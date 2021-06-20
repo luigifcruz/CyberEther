@@ -13,17 +13,16 @@ namespace Render {
 class Instance {
 public:
     struct Config {
-        int width = 1280;
-        int height = 720;
+        Size2D<int> size = {1280, 720};
         float scale = -1.0;
         bool resizable = false;
-        bool enableImgui = false;
-        bool enableDebug = false;
-        bool enableVsync = true;
+        bool imgui = false;
+        bool vsync = true;
+        bool debug = false;
         std::string title = "Render";
     };
 
-    Instance(Config& c) : cfg(c) {};
+    Instance(const Config & c) : cfg(c) {};
     virtual ~Instance() = default;
 
     virtual Result create() = 0;
@@ -32,13 +31,34 @@ public:
     virtual Result end() = 0;
 
     virtual Result synchronize() = 0;
-
     virtual bool keepRunning() = 0;
 
     virtual std::string renderer_str() = 0;
     virtual std::string version_str() = 0;
     virtual std::string vendor_str() = 0;
     virtual std::string glsl_str() = 0;
+
+    constexpr Size2D<int> size() const {
+        return cfg.size;
+    }
+    constexpr float scale() const {
+        return cfg.scale;
+    }
+    constexpr bool resizable() const {
+        return cfg.resizable;
+    }
+    constexpr bool imgui() const {
+        return cfg.imgui;
+    }
+    constexpr bool vsync() const {
+        return cfg.vsync;
+    }
+    constexpr bool debug() const {
+        return cfg.debug;
+    }
+    constexpr const char* title() const {
+        return cfg.title.c_str();
+    }
 
     virtual std::shared_ptr<Surface> createAndBind(Surface::Config&) = 0;
     virtual Result unbind(std::shared_ptr<Surface>) = 0;
@@ -57,7 +77,7 @@ public:
     };
 
 protected:
-    Config& cfg;
+    Config cfg;
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;

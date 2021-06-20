@@ -36,17 +36,6 @@ protected:
     std::vector<float> plot;
     std::vector<float> grid;
 
-    Render::Texture::Config textureCfg;
-    Render::Texture::Config lutTextureCfg;
-    Render::Program::Config programCfg;
-    Render::Surface::Config surfaceCfg;
-    Render::Vertex::Config gridVertexCfg;
-    Render::Vertex::Buffer plotVbo;
-    Render::Vertex::Buffer gridVbo;
-    Render::Vertex::Config lineVertexCfg;
-    Render::Draw::Config drawGridVertexCfg;
-    Render::Draw::Config drawLineVertexCfg;
-
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;
@@ -56,7 +45,7 @@ protected:
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
 
-    Result _initRender();
+    Result _initRender(float*, bool cudaInterop = false);
 
     virtual Result _compute() = 0;
     virtual Result _present() = 0;

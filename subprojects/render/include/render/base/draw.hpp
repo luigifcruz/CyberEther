@@ -22,11 +22,11 @@ public:
         Mode mode = Triangles;
     };
 
-    Draw(Config& c) : cfg(c) {};
+    Draw(const Config & c) : cfg(c) {};
     virtual ~Draw() = default;
 
 protected:
-    Config& cfg;
+    Config cfg;
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;

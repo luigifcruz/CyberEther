@@ -25,7 +25,7 @@ Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) 
     }
 }
 
-Result Generic::_initRender() {
+Result Generic::_initRender(float* ptr, bool cudaInterop) {
     if (!cfg.render) {
         std::cerr << "[JETSTREAM:LINEPLOT] Invalid Render pointer" << std::endl;
         CHECK(Result::ERROR);
@@ -33,6 +33,8 @@ Result Generic::_initRender() {
 
     auto render = cfg.render;
 
+    Render::Vertex::Config gridVertexCfg;
+    Render::Vertex::Buffer gridVbo;
     gridVbo.data = grid.data();
     gridVbo.size = grid.size();
     gridVbo.stride = 3;
@@ -40,34 +42,44 @@ Result Generic::_initRender() {
     gridVertexCfg.buffers = {gridVbo};
     gridVertex = render->create(gridVertexCfg);
 
+    Render::Draw::Config drawGridVertexCfg;
     drawGridVertexCfg.buffer = gridVertex;
     drawGridVertexCfg.mode = Render::Draw::Lines;
     drawGridVertex = render->create(drawGridVertexCfg);
 
+    Render::Vertex::Config lineVertexCfg;
+    Render::Vertex::Buffer plotVbo;
     plotVbo.size = plot.size();
     plotVbo.stride = 3;
+    plotVbo.cudaInterop = cudaInterop;
+    plotVbo.data = ptr;
     plotVbo.usage = Render::Vertex::Buffer::Dynamic;
     lineVertexCfg.buffers = {plotVbo};
     lineVertex = render->create(lineVertexCfg);
 
+    Render::Draw::Config drawLineVertexCfg;
     drawLineVertexCfg.buffer = lineVertex;
     drawLineVertexCfg.mode = Render::Draw::LineStrip;
     drawLineVertex = render->create(drawLineVertexCfg);
 
+    Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = render->create(lutTextureCfg);
 
+    Render::Program::Config programCfg;
     programCfg.vertexSource = &vertexSource;
     programCfg.fragmentSource = &fragmentSource;
     programCfg.draws = {drawGridVertex, drawLineVertex};
     programCfg.textures = {lutTexture};
     program = render->create(programCfg);
 
+    Render::Texture::Config textureCfg;
     textureCfg.size = cfg.size;
     texture = render->create(textureCfg);
 
+    Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
     surface = render->createAndBind(surfaceCfg);

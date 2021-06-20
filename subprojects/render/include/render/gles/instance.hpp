@@ -17,28 +17,28 @@ public:
     class Vertex;
     class Draw;
 
-    GLES(Config& c) : Render::Instance(c) {};
+    GLES(const Config & c) : Render::Instance(c) {};
 
-    Result create();
-    Result destroy();
-    Result start();
-    Result end();
-    Result synchronize();
+    Result create() final;
+    Result destroy() final;
+    Result start() final;
+    Result end() final;
+    Result synchronize() final;
 
-    bool keepRunning();
+    bool keepRunning() final;
 
-    std::string renderer_str();
-    std::string version_str();
-    std::string vendor_str();
-    std::string glsl_str();
+    std::string renderer_str() final;
+    std::string version_str() final;
+    std::string vendor_str() final;
+    std::string glsl_str() final;
 
-    std::shared_ptr<Render::Surface> createAndBind(Render::Surface::Config&);
-    Result unbind(std::shared_ptr<Render::Surface>);
+    std::shared_ptr<Render::Surface> createAndBind(Render::Surface::Config&) final;
+    Result unbind(std::shared_ptr<Render::Surface>) final;
 
-    std::shared_ptr<Render::Program> create(Render::Program::Config&);
-    std::shared_ptr<Render::Texture> create(Render::Texture::Config&);
-    std::shared_ptr<Render::Vertex> create(Render::Vertex::Config&);
-    std::shared_ptr<Render::Draw> create(Render::Draw::Config&);
+    std::shared_ptr<Render::Program> create(Render::Program::Config&) final;
+    std::shared_ptr<Render::Texture> create(Render::Texture::Config&) final;
+    std::shared_ptr<Render::Vertex> create(Render::Vertex::Config&) final;
+    std::shared_ptr<Render::Draw> create(Render::Draw::Config&) final;
 
 protected:
     ImGuiIO* io;

@@ -5,7 +5,7 @@ namespace Jetstream::Waterfall {
 Generic::Generic(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
 }
 
-Result Generic::_initRender() {
+Result Generic::_initRender(uint8_t* ptr, bool cudaInterop) {
     if (!cfg.render) {
         std::cerr << "[JETSTREAM:WATERFALL] Invalid Render pointer" << std::endl;
         CHECK(Result::ERROR);
@@ -13,35 +13,44 @@ Result Generic::_initRender() {
 
     auto render = cfg.render;
 
+    Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = Render::Extras::FillScreenVertices();
     vertexCfg.indices = Render::Extras::FillScreenIndices();
     vertex = render->create(vertexCfg);
 
+    Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = render->create(drawVertexCfg);
 
+    Render::Texture::Config binTextureCfg;
     binTextureCfg.size = {static_cast<int>(in.buf.size()), ymax};
+    binTextureCfg.buffer = ptr;
+    binTextureCfg.cudaInterop = cudaInterop;
     binTextureCfg.key = "BinTexture";
     binTextureCfg.pfmt = Render::PixelFormat::RED;
     binTextureCfg.ptype = Render::PixelType::F32;
     binTextureCfg.dfmt = Render::DataFormat::F32;
     binTexture = render->create(binTextureCfg);
 
+    Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = render->create(lutTextureCfg);
 
+    Render::Program::Config programCfg;
     programCfg.vertexSource = &vertexSource;
     programCfg.fragmentSource = &fragmentSource;
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
     program = render->create(programCfg);
 
+    Render::Texture::Config textureCfg;
     textureCfg.size = cfg.size;
     texture = render->create(textureCfg);
 
+    Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
     surface = render->createAndBind(surfaceCfg);

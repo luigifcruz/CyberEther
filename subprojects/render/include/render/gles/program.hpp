@@ -7,13 +7,13 @@ namespace Render {
 
 class GLES::Program : public Render::Program {
 public:
-    Program(Config& c, GLES& i) : Render::Program(c), inst(i) {};
+    Program(const Config & c, const GLES & i) : Render::Program(c), inst(i) {};
 
-    Result setUniform(std::string, const std::vector<int>&);
-    Result setUniform(std::string, const std::vector<float>&);
+    Result setUniform(std::string, const std::vector<int>&) final;
+    Result setUniform(std::string, const std::vector<float>&) final;
 
 protected:
-    GLES& inst;
+    const GLES& inst;
 
     int i;
     uint shader;
@@ -21,9 +21,9 @@ protected:
     std::vector<std::shared_ptr<GLES::Draw>> draws;
     std::vector<std::shared_ptr<GLES::Texture>> textures;
 
-    Result create();
-    Result destroy();
-    Result draw();
+    Result create() final;
+    Result destroy() final;
+    Result draw() final;
 
 private:
     static Result checkShaderCompilation(uint);

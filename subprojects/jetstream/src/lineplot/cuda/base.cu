@@ -3,15 +3,11 @@
 namespace Jetstream::Lineplot {
 
 CUDA::CUDA(const Config & c) : Generic(c) {
-    CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-
     plot_len = plot.size() * sizeof(plot[0]);
+    CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaMalloc(&plot_dptr, plot_len));
     CUDA_CHECK_THROW(cudaMemcpy(plot_dptr, plot.data(), plot_len, cudaMemcpyHostToDevice));
-
-    plotVbo.data = plot_dptr;
-    plotVbo.cudaInterop = true;
-    JETSTREAM_CHECK_THROW(this->_initRender());
+    JETSTREAM_CHECK_THROW(this->_initRender(plot_dptr, cfg.render->cudaInteropSupported()));
 }
 
 CUDA::~CUDA() {

@@ -16,9 +16,10 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.enableVsync);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.vsync);
 
-    window = glfwCreateWindow(cfg.width, cfg.height, cfg.title.c_str(), NULL, NULL);
+    auto [width, height] = cfg.size;
+    window = glfwCreateWindow(width, height, title(), NULL, NULL);
     if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -44,7 +45,7 @@ Result GLES::create() {
         CHECK(surface->create());
     }
 
-    if (cfg.enableImgui) {
+    if (cfg.imgui) {
         this->createImgui();
     }
 
@@ -56,7 +57,7 @@ Result GLES::destroy() {
         CHECK(surface->destroy());
     }
 
-    if (cfg.enableImgui) {
+    if (cfg.imgui) {
         this->destroyImgui();
     }
 
@@ -113,10 +114,10 @@ Result GLES::endImgui() {
 Result GLES::start() {
     glLineWidth(cfg.scale);
 
-    if (cfg.enableImgui) {
+    if (cfg.imgui) {
         this->startImgui();
 
-        if (cfg.enableDebug) {
+        if (cfg.debug) {
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
             ImGui::Text("Renderer Name: %s", this->renderer_str().c_str());
@@ -135,11 +136,11 @@ Result GLES::end() {
         CHECK(surface->draw());
     }
 
-    if (cfg.enableImgui) {
+    if (cfg.imgui) {
         this->endImgui();
     }
 
-    glfwGetFramebufferSize(window, &cfg.width, &cfg.height);
+    glfwGetFramebufferSize(window, &cfg.size.width, &cfg.size.height);
     glfwSwapBuffers(window);
     glfwPollEvents();
 

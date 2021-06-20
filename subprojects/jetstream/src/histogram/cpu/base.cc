@@ -8,14 +8,17 @@ CPU::CPU(const Config & c) : Generic(c) {
     buf.resize(in.buf.size() * 256);
     buf2.resize(in.buf.size() * 256);
 
+    Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = Render::Extras::FillScreenVertices();
     vertexCfg.indices = Render::Extras::FillScreenIndices();
     vertex = render->create(vertexCfg);
 
+    Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = render->create(drawVertexCfg);
 
+    Render::Texture::Config binTextureCfg;
     binTextureCfg.size = {static_cast<int>(in.buf.size()), 256};
     binTextureCfg.buffer = (uint8_t*)buf2.data();
     binTextureCfg.key = "BinTexture";
@@ -24,20 +27,24 @@ CPU::CPU(const Config & c) : Generic(c) {
     binTextureCfg.dfmt = Render::DataFormat::F32;
     binTexture = render->create(binTextureCfg);
 
+    Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = render->create(lutTextureCfg);
 
+    Render::Program::Config programCfg;
     programCfg.vertexSource = &vertexSource;
     programCfg.fragmentSource = &fragmentSource;
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
     program = render->create(programCfg);
 
+    Render::Texture::Config textureCfg;
     textureCfg.size = cfg.size;
     texture = render->create(textureCfg);
 
+    Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
     surface = render->createAndBind(surfaceCfg);

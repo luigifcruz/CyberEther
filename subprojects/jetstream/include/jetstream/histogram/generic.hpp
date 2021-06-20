@@ -40,14 +40,6 @@ protected:
     std::vector<float> buf2;
     std::vector<float> buf3;
 
-    Render::Texture::Config textureCfg;
-    Render::Texture::Config binTextureCfg;
-    Render::Texture::Config lutTextureCfg;
-    Render::Program::Config programCfg;
-    Render::Surface::Config surfaceCfg;
-    Render::Vertex::Config vertexCfg;
-    Render::Draw::Config drawVertexCfg;
-
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> binTexture;
     std::shared_ptr<Render::Texture> lutTexture;

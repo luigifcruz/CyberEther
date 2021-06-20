@@ -11,20 +11,20 @@ namespace Render {
 
 class GLES::Vertex : public Render::Vertex {
 public:
-    Vertex(Config& cfg, GLES& i) : Render::Vertex(cfg), inst(i) {};
+    Vertex(const Config & cfg, const GLES & i) : Render::Vertex(cfg), inst(i) {};
 
-    Result update();
+    Result update() final;
 
 protected:
-    GLES& inst;
+    const GLES& inst;
 
     uint vao, ebo;
     uint vertex_count;
 
-    Result create();
-    Result destroy();
-    Result start();
-    Result end();
+    Result create() final;
+    Result destroy() final;
+    Result start() final;
+    Result end() final;
 
     uint count();
     uint buffered();

@@ -7,20 +7,20 @@ namespace Render {
 
 class GLES::Surface : public Render::Surface {
 public:
-    Surface(Config& cfg, GLES& i) : Render::Surface(cfg), inst(i) {};
+    Surface(const Config & cfg, const GLES & i) : Render::Surface(cfg), inst(i) {};
 
-    Size2D<int> size(const Size2D<int> &);
+    Size2D<int> size(const Size2D<int> &) final;
 
 protected:
-    GLES& inst;
+    const GLES& inst;
 
     uint fbo = 0;
     std::shared_ptr<GLES::Texture> framebuffer;
     std::vector<std::shared_ptr<GLES::Program>> programs;
 
-    Result create();
-    Result destroy();
-    Result draw();
+    Result create() final;
+    Result destroy() final;
+    Result draw() final;
 
     Result _createFramebuffer();
     Result _destroyFramebuffer();

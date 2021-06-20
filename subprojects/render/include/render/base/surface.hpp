@@ -14,7 +14,7 @@ public:
         std::vector<std::shared_ptr<Program>> programs;
     };
 
-    Surface(Config& c) : cfg(c) {};
+    Surface(const Config & c) : cfg(c) {};
     virtual ~Surface() = default;
 
     constexpr const Size2D<int> size() const {
@@ -26,7 +26,7 @@ public:
     virtual Size2D<int> size(const Size2D<int> &) = 0;
 
 protected:
-    Config& cfg;
+    Config cfg;
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;

@@ -13,16 +13,16 @@ class UI {
 public:
     explicit UI() {
         // Configure Render
-        renderCfg.width = 3130;
-        renderCfg.height = 1140;
+        Render::Instance::Config renderCfg;
+        renderCfg.size = {3130, 1140};
         renderCfg.resizable = true;
-        renderCfg.enableImgui = true;
-        renderCfg.enableVsync = true;
+        renderCfg.imgui = true;
+        renderCfg.vsync = true;
         renderCfg.title = "CyberEther";
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
         // Configure Jetstream Modules
-        auto device = Jetstream::Locale::CPU;
+        auto device = Jetstream::Locale::CUDA;
         engine = std::make_shared<Jetstream::Engine>();
         stream = std::vector<std::complex<float>>(2048);
 
@@ -152,7 +152,6 @@ private:
     std::atomic<bool> streaming{false};
 
     // Render
-    Render::Instance::Config renderCfg;
     std::shared_ptr<Render::Instance> render;
 
     // Jetstream

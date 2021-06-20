@@ -11,25 +11,25 @@ namespace Render {
 
 class GLES::Texture : public Render::Texture {
 public:
-    Texture(Config& cfg, GLES& i) : Render::Texture(cfg), inst(i) {};
+    Texture(const Config & cfg, const GLES & i) : Render::Texture(cfg), inst(i) {};
 
     using Render::Texture::size;
     Size2D<int> size(const Size2D<int> &) final;
 
-    uint raw();
-    Result pour();
-    Result fill();
-    Result fill(int, int, int, int);
+    uint raw() final;
+    Result pour() final;
+    Result fill() final;
+    Result fill(int, int, int, int) final;
 
 protected:
-    GLES& inst;
+    const GLES& inst;
 
     uint tex, pfmt, dfmt, ptype;
 
-    Result create();
-    Result destroy();
-    Result start();
-    Result end();
+    Result create() final;
+    Result destroy() final;
+    Result start() final;
+    Result end() final;
 
 #ifdef RENDER_CUDA_AVAILABLE
     cudaGraphicsResource* cuda_tex_resource = nullptr;
