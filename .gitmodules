@@ -1,3 +1,6 @@
 [submodule "subprojects/samurai"]
 	path = subprojects/samurai
 	url = https://github.com/luigifcruz/samurai.git
+[submodule "subprojects/render/submodules/glfw/submodules/glfw"]
+	path = subprojects/render/submodules/glfw/submodules/glfw
+	url = https://github.com/glfw/glfw.git
