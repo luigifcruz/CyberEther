@@ -5,22 +5,27 @@
 #include "jetstream/tools/lut.hpp"
 #include "render/base.hpp"
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-using TI = nonstd::span<float>;
-
-struct Config {
-    Size2D<int> size {2500, 500};
-
-    Data<TI> input0;
-    Jetstream::Policy policy;
-    std::shared_ptr<Render::Instance> render;
-};
-
-class Generic : public Module {
+class Lineplot : public Module {
 public:
-    explicit Generic(const Config &);
-    virtual ~Generic() = default;
+    using TI = nonstd::span<float>;
+
+    class CPU;
+#ifdef JETSTREAM_LPT_CUDA_AVAILABLE
+    class CUDA;
+#endif
+
+    struct Config {
+        Size2D<int> size {2500, 500};
+
+        Data<TI> input0;
+        Jetstream::Policy policy;
+        std::shared_ptr<Render::Instance> render;
+    };
+
+    explicit Lineplot(const Config &);
+    virtual ~Lineplot() = default;
 
     constexpr Size2D<int> size() const {
         return cfg.size;
@@ -90,6 +95,6 @@ protected:
     )END";
 };
 
-} // namespace Jetstream::Lineplot
+} // namespace Jetstream
 
 #endif

@@ -6,22 +6,24 @@
 #include "render/base.hpp"
 #include "render/extras.hpp"
 
-namespace Jetstream::Histogram {
+namespace Jetstream {
 
-using T = nonstd::span<float>;
-
-struct Config {
-    Size2D<int> size = {2500, 500};
-
-    Data<T> input0;
-    Jetstream::Policy policy;
-    std::shared_ptr<Render::Instance> render;
-};
-
-class Generic : public Module {
+class Histogram : public Module {
 public:
-    explicit Generic(const Config &);
-    virtual ~Generic() = default;
+    class CPU;
+
+    using T = nonstd::span<float>;
+
+    struct Config {
+        Size2D<int> size = {2500, 500};
+
+        Data<T> input0;
+        Jetstream::Policy policy;
+        std::shared_ptr<Render::Instance> render;
+    };
+
+    explicit Histogram(const Config &);
+    virtual ~Histogram() = default;
 
     constexpr Size2D<int> size() const {
         return cfg.size;
@@ -120,6 +122,6 @@ protected:
     )END";
 };
 
-} // namespace Jetstream::Histogram
+} // namespace Jetstream
 
 #endif

@@ -1,11 +1,11 @@
 #include "jetstream/waterfall/generic.hpp"
 
-namespace Jetstream::Waterfall {
+namespace Jetstream {
 
-Generic::Generic(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
+Waterfall::Waterfall(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
 }
 
-Result Generic::_initRender(uint8_t* ptr, bool cudaInterop) {
+Result Waterfall::_initRender(uint8_t* ptr, bool cudaInterop) {
     if (!cfg.render) {
         std::cerr << "[JETSTREAM:WATERFALL] Invalid Render pointer" << std::endl;
         CHECK(Result::ERROR);
@@ -58,7 +58,7 @@ Result Generic::_initRender(uint8_t* ptr, bool cudaInterop) {
     return Result::SUCCESS;
 }
 
-Result Generic::underlyingCompute() {
+Result Waterfall::underlyingCompute() {
     DEBUG_PUSH("compute_waterfall");
     auto res = this->_compute();
 
@@ -68,7 +68,7 @@ Result Generic::underlyingCompute() {
     return res;
 }
 
-Result Generic::underlyingPresent() {
+Result Waterfall::underlyingPresent() {
     DEBUG_PUSH("present_waterfall");
 
     int start = last;
@@ -93,13 +93,13 @@ Result Generic::underlyingPresent() {
     return Result::SUCCESS;
 }
 
-bool Generic::interpolate(bool val) {
+bool Waterfall::interpolate(bool val) {
     cfg.interpolate = val;
 
     return this->interpolate();
 }
 
-Size2D<int> Generic::size(const Size2D<int> & size) {
+Size2D<int> Waterfall::size(const Size2D<int> & size) {
     if (surface->size(size) != cfg.size) {
         cfg.size = surface->size();
     }
@@ -107,8 +107,8 @@ Size2D<int> Generic::size(const Size2D<int> & size) {
     return this->size();
 }
 
-std::weak_ptr<Render::Texture> Generic::tex() const {
+std::weak_ptr<Render::Texture> Waterfall::tex() const {
     return texture;
 };
 
-} // namespace Jetstream::Waterfall
+} // namespace Jetstream

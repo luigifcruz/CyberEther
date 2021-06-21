@@ -19,6 +19,16 @@ private:
     std::atomic<bool> waiting{false};
 };
 
+template<typename T>
+inline std::shared_ptr<T> Factory(Locale L, const typename T::Config & config) {
+    switch (L) {
+        case Jetstream::Locale::CPU:
+            return std::make_shared<typename T::CPU>(config);
+        case Jetstream::Locale::CUDA:
+            return std::make_shared<typename T::CUDA>(config);
+    }
+}
+
 } // namespace Jetstream
 
 #endif

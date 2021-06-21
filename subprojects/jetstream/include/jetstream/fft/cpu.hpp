@@ -5,9 +5,9 @@
 
 #include <fftw3.h>
 
-namespace Jetstream::FFT {
+namespace Jetstream {
 
-class CPU : public Generic {
+class FFT::CPU : public FFT {
 public:
     explicit CPU(const Config &);
     ~CPU();
@@ -23,6 +23,6 @@ protected:
     std::vector<float> amp_out;
 };
 
-} // namespace Jetstream::FFT
+} // namespace Jetstream
 
 #endif

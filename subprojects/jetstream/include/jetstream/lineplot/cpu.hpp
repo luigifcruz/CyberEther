@@ -3,9 +3,9 @@
 
 #include "jetstream/lineplot/generic.hpp"
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-class CPU : public Generic  {
+class Lineplot::CPU : public Lineplot  {
 public:
     explicit CPU(const Config &);
     ~CPU();
@@ -15,6 +15,6 @@ protected:
     Result _present();
 };
 
-} // namespace Jetstream::Lineplot
+} // namespace Jetstream
 
 #endif

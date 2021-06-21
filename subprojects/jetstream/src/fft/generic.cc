@@ -1,8 +1,8 @@
 #include "jetstream/fft/generic.hpp"
 
-namespace Jetstream::FFT {
+namespace Jetstream {
 
-Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
+FFT::FFT(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
     auto n = in.buf.size();
     window.resize(in.buf.size());
 
@@ -14,10 +14,10 @@ Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) 
     }
 }
 
-Range<float> Generic::amplitude(const Range<float> & ampl) {
+Range<float> FFT::amplitude(const Range<float> & ampl) {
     cfg.amplitude = ampl;
 
     return this->amplitude();
 }
 
-} // namespace Jetstream::FFT
+} // namespace Jetstream

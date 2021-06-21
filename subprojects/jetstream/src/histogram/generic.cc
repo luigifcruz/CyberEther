@@ -1,12 +1,11 @@
 #include "jetstream/histogram/generic.hpp"
 
-namespace Jetstream::Histogram {
+namespace Jetstream {
 
-Generic::Generic(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {}
+Histogram::Histogram(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {}
 
-std::weak_ptr<Render::Texture> Generic::tex() const {
+std::weak_ptr<Render::Texture> Histogram::tex() const {
     return texture;
 }
 
-} // namespace Jetstream::FFT
-
+} // namespace Jetstream

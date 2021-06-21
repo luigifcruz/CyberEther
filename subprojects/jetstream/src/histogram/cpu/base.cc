@@ -1,8 +1,8 @@
 #include "jetstream/histogram/cpu.hpp"
 
-namespace Jetstream::Histogram {
+namespace Jetstream {
 
-CPU::CPU(const Config & c) : Generic(c) {
+Histogram::CPU::CPU(const Config & c) : Histogram(c) {
     auto render = cfg.render;
 
     buf.resize(in.buf.size() * 256);
@@ -50,14 +50,14 @@ CPU::CPU(const Config & c) : Generic(c) {
     surface = render->createAndBind(surfaceCfg);
 }
 
-CPU::~CPU() {
+Histogram::CPU::~CPU() {
 }
 
 float abs(std::complex<float> n) {
     return n.real() * n.real() + n.imag() * n.imag();
 }
 
-Result CPU::underlyingCompute() {
+Result Histogram::CPU::underlyingCompute() {
     std::copy(in.buf.begin(), in.buf.end(), buf.begin()+(inc * in.buf.size()));
 
     for (int i = 0; i < in.buf.size(); i++) {
@@ -76,11 +76,11 @@ Result CPU::underlyingCompute() {
     return Result::SUCCESS;
 }
 
-Result CPU::underlyingPresent() {
+Result Histogram::CPU::underlyingPresent() {
     binTexture->fill();
     program->setUniform("Index", std::vector<float>{inc/(float)cfg.size.height});
     vertex->update();
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::Histogram
+} // namespace Jetstream

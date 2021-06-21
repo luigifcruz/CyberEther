@@ -1,20 +1,20 @@
 #include "jetstream/waterfall/cpu.hpp"
 
-namespace Jetstream::Waterfall {
+namespace Jetstream {
 
-CPU::CPU(const Config& c) : Generic(c) {
+Waterfall::CPU::CPU(const Config& c) : Waterfall(c) {
     ymax = cfg.size.height;
     bin.resize(in.buf.size() * ymax);
     JETSTREAM_CHECK_THROW(this->_initRender((uint8_t*)bin.data()));
 }
 
-CPU::~CPU() {
+Waterfall::CPU::~CPU() {
 }
 
-Result CPU::_compute() {
+Result Waterfall::CPU::_compute() {
     std::copy(in.buf.begin(), in.buf.end(), bin.begin()+(inc * in.buf.size()));
 
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::Waterfall
+} // namespace Jetstream

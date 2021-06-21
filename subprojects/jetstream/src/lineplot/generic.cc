@@ -1,8 +1,8 @@
 #include "jetstream/lineplot/generic.hpp"
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
+Lineplot::Lineplot(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         grid.push_back(-1.0f);
         grid.push_back(i);
@@ -25,7 +25,7 @@ Generic::Generic(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) 
     }
 }
 
-Result Generic::_initRender(float* ptr, bool cudaInterop) {
+Result Lineplot::_initRender(float* ptr, bool cudaInterop) {
     if (!cfg.render) {
         std::cerr << "[JETSTREAM:LINEPLOT] Invalid Render pointer" << std::endl;
         CHECK(Result::ERROR);
@@ -87,7 +87,7 @@ Result Generic::_initRender(float* ptr, bool cudaInterop) {
     return Result::SUCCESS;
 }
 
-Result Generic::underlyingCompute() {
+Result Lineplot::underlyingCompute() {
     DEBUG_PUSH("compute_lineplot");
 
     auto res = this->_compute();
@@ -96,7 +96,7 @@ Result Generic::underlyingCompute() {
     return res;
 }
 
-Result Generic::underlyingPresent() {
+Result Lineplot::underlyingPresent() {
     DEBUG_PUSH("present_lineplot");
 
     auto res = this->_present();
@@ -105,7 +105,7 @@ Result Generic::underlyingPresent() {
     return res;
 }
 
-Size2D<int> Generic::size(const Size2D<int> & size) {
+Size2D<int> Lineplot::size(const Size2D<int> & size) {
     if (surface->size(size) != cfg.size) {
         cfg.size = surface->size();
     }
@@ -113,9 +113,8 @@ Size2D<int> Generic::size(const Size2D<int> & size) {
     return this->size();
 }
 
-std::weak_ptr<Render::Texture> Generic::tex() const {
+std::weak_ptr<Render::Texture> Lineplot::tex() const {
     return texture;
 };
 
-} // namespace Jetstream::Waterfall
-
+} // namespace Jetstream

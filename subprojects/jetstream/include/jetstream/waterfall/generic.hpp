@@ -6,23 +6,28 @@
 #include "render/base.hpp"
 #include "render/extras.hpp"
 
-namespace Jetstream::Waterfall {
+namespace Jetstream {
 
-using T = nonstd::span<float>;
-
-struct Config {
-    bool interpolate = true;
-    Size2D<int> size = {2500, 500};
-
-    Data<T> input0;
-    Jetstream::Policy policy;
-    std::shared_ptr<Render::Instance> render;
-};
-
-class Generic : public Module {
+class Waterfall : public Module {
 public:
-    explicit Generic(const Config &);
-    virtual ~Generic() = default;
+    using T = nonstd::span<float>;
+
+    class CPU;
+#ifdef JETSTREAM_WTF_CUDA_AVAILABLE
+    class CUDA;
+#endif
+
+    struct Config {
+        bool interpolate = true;
+        Size2D<int> size = {2500, 500};
+
+        Data<T> input0;
+        Jetstream::Policy policy;
+        std::shared_ptr<Render::Instance> render;
+    };
+
+    explicit Waterfall(const Config &);
+    virtual ~Waterfall() = default;
 
     constexpr bool interpolate() const {
         return cfg.interpolate;
@@ -140,6 +145,6 @@ protected:
     )END";
 };
 
-} // namespace Jetstream::Waterfall
+} // namespace Jetstream
 
 #endif

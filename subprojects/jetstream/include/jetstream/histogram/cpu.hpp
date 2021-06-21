@@ -3,9 +3,9 @@
 
 #include "jetstream/histogram/generic.hpp"
 
-namespace Jetstream::Histogram {
+namespace Jetstream {
 
-class CPU : public Generic  {
+class Histogram::CPU : public Histogram  {
 public:
     explicit CPU(const Config &);
     ~CPU();
@@ -15,6 +15,6 @@ protected:
     Result underlyingPresent() final;
 };
 
-} // namespace Jetstream::Histogram
+} // namespace Jetstream
 
 #endif

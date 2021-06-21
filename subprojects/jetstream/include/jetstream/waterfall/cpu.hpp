@@ -3,9 +3,9 @@
 
 #include "jetstream/waterfall/generic.hpp"
 
-namespace Jetstream::Waterfall {
+namespace Jetstream {
 
-class CPU : public Generic  {
+class Waterfall::CPU : public Waterfall  {
 public:
     explicit CPU(const Config &);
     ~CPU();
@@ -16,6 +16,6 @@ protected:
     std::vector<float> bin;
 };
 
-} // namespace Jetstream::Waterfall
+} // namespace Jetstream
 
 #endif

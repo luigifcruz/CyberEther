@@ -104,7 +104,6 @@ enum class Launch : uint8_t {
 };
 
 enum class Locale : uint8_t {
-    NONE    = 0 << 0,
     CPU     = 1 << 0,
     CUDA    = 1 << 1,
 };

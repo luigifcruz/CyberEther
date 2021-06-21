@@ -6,9 +6,9 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-class CUDA : public Generic  {
+class Lineplot::CUDA : public Lineplot  {
 public:
     explicit CUDA(const Config &);
     ~CUDA();
@@ -23,6 +23,6 @@ protected:
     cudaStream_t stream;
 };
 
-} // namespace Jetstream::Lineplot
+} // namespace Jetstream
 
 #endif

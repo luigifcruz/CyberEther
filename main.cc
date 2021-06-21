@@ -6,6 +6,8 @@
 #include "samurai/samurai.hpp"
 #include "jetstream/base.hpp"
 
+using namespace Jetstream;
+
 class UI {
 public:
     explicit UI() {
@@ -26,19 +28,19 @@ public:
         Jetstream::FFT::Config fftCfg;
         fftCfg.input0 = {Jetstream::Locale::CPU, stream};
         fftCfg.policy = {Jetstream::Launch::SYNC, {}};
-        fft = Jetstream::FFT::Instantiate(device, fftCfg);
+        fft = Jetstream::Factory<FFT>(device, fftCfg);
 
         Jetstream::Lineplot::Config lptCfg;
         lptCfg.render = render;
         lptCfg.input0 = fft->output();
         lptCfg.policy = {Jetstream::Launch::SYNC, {fft}};
-        lpt = Jetstream::Lineplot::Instantiate(device, lptCfg);
+        lpt = Jetstream::Factory<Lineplot>(device, lptCfg);
 
         Jetstream::Waterfall::Config wtfCfg;
         wtfCfg.render = render;
         wtfCfg.input0 = fft->output();
         wtfCfg.policy = {Jetstream::Launch::SYNC, {fft}};
-        wtf = Jetstream::Waterfall::Instantiate(device, wtfCfg);
+        wtf = Jetstream::Factory<Waterfall>(device, wtfCfg);
 
         // Add Jetstream modules to the execution pipeline.
         engine->push_back(fft);
@@ -153,9 +155,9 @@ private:
 
     // Jetstream
     std::shared_ptr<Jetstream::Engine> engine;
-    std::shared_ptr<Jetstream::FFT::Generic> fft;
-    std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
-    std::shared_ptr<Jetstream::Waterfall::Generic> wtf;
+    std::shared_ptr<Jetstream::FFT> fft;
+    std::shared_ptr<Jetstream::Lineplot> lpt;
+    std::shared_ptr<Jetstream::Waterfall> wtf;
 
     // Samurai
     Samurai::ChannelId rx;

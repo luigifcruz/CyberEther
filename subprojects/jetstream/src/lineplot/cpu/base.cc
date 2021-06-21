@@ -1,15 +1,15 @@
 #include "jetstream/lineplot/cpu.hpp"
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-CPU::CPU(const Config & c) : Generic(c) {
+Lineplot::CPU::CPU(const Config & c) : Lineplot(c) {
     JETSTREAM_CHECK_THROW(this->_initRender(plot.data()));
 }
 
-CPU::~CPU() {
+Lineplot::CPU::~CPU() {
 }
 
-Result CPU::_compute() {
+Result Lineplot::CPU::_compute() {
     for (int i = 0; i < in.buf.size(); i++) {
         plot[(i*3)+1] = in.buf[i];
     }
@@ -17,10 +17,10 @@ Result CPU::_compute() {
     return Result::SUCCESS;
 }
 
-Result CPU::_present() {
+Result Lineplot::CPU::_present() {
     lineVertex->update();
 
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::Lineplot
+} // namespace Jetstream

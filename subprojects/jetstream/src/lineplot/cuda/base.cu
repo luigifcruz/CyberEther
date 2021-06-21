@@ -1,8 +1,8 @@
 #include "jetstream/lineplot/cuda.hpp"
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-CUDA::CUDA(const Config & c) : Generic(c) {
+Lineplot::CUDA::CUDA(const Config & c) : Lineplot(c) {
     plot_len = plot.size() * sizeof(plot[0]);
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaMalloc(&plot_dptr, plot_len));
@@ -10,12 +10,12 @@ CUDA::CUDA(const Config & c) : Generic(c) {
     JETSTREAM_CHECK_THROW(this->_initRender(plot_dptr, cfg.render->cudaInteropSupported()));
 }
 
-CUDA::~CUDA() {
+Lineplot::CUDA::~CUDA() {
     cudaFree(plot_dptr);
     cudaStreamDestroy(stream);
 }
 
-Result CUDA::_compute() {
+Result Lineplot::CUDA::_compute() {
     size_t elementSize = sizeof(float);
     size_t srcPitchInBytes = 1 * elementSize;
     size_t dstPitchInBytes = 3 * elementSize;
@@ -29,10 +29,10 @@ Result CUDA::_compute() {
     return Result::SUCCESS;
 }
 
-Result CUDA::_present() {
+Result Lineplot::CUDA::_present() {
     lineVertex->update();
 
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::Lineplot
+} // namespace Jetstream

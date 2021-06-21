@@ -3,22 +3,29 @@
 
 #include "jetstream/module.hpp"
 
-namespace Jetstream::FFT {
+namespace Jetstream {
 
-using TI = nonstd::span<std::complex<float>>;
-using TO = nonstd::span<float>;
-
-struct Config {
-    Range<float> amplitude = {-200.0f, 0.0f};
-
-    Data<TI> input0;
-    Jetstream::Policy policy;
-};
-
-class Generic : public Module {
+class FFT : public Module {
 public:
-    explicit Generic(const Config &);
-    virtual ~Generic() = default;
+    using TI = nonstd::span<std::complex<float>>;
+    using TO = nonstd::span<float>;
+
+#ifdef JETSTREAM_FFT_FFTW_AVAILABLE
+    class CPU;
+#endif
+#ifdef JETSTREAM_FFT_CUDA_AVAILABLE
+    class CUDA;
+#endif
+
+    struct Config {
+        Range<float> amplitude = {-200.0f, 0.0f};
+
+        Data<TI> input0;
+        Jetstream::Policy policy;
+    };
+
+    explicit FFT(const Config &);
+    virtual ~FFT() = default;
 
     constexpr Range<float> amplitude() const {
         return cfg.amplitude;
@@ -37,6 +44,6 @@ protected:
     std::vector<std::complex<float>> window;
 };
 
-} // namespace Jetstream::FFT
+} // namespace Jetstream
 
 #endif

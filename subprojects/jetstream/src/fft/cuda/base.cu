@@ -1,6 +1,6 @@
 #include "jetstream/fft/cuda.hpp"
 
-namespace Jetstream::FFT {
+namespace Jetstream {
 
 static __device__ inline float clamp(const float x, const float a, float b) {
     return (x < a) ? a : (b < x) ? b : x;
@@ -38,7 +38,7 @@ static __global__ void post(const cufftComplex* c, float* r,
     }
 }
 
-CUDA::CUDA(const Config & c) : Generic(c) {
+FFT::CUDA::CUDA(const Config & c) : FFT(c) {
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaHostRegister(in.buf.data(), in.buf.size() * sizeof(in.buf[0]),
             cudaHostRegisterReadOnly));
@@ -58,7 +58,7 @@ CUDA::CUDA(const Config & c) : Generic(c) {
     cufftSetStream(plan, stream);
 }
 
-CUDA::~CUDA() {
+FFT::CUDA::~CUDA() {
     cudaHostUnregister(in.buf.data());
     cufftDestroy(plan);
     cudaFree(fft_dptr);
@@ -66,7 +66,7 @@ CUDA::~CUDA() {
     cudaStreamDestroy(stream);
 }
 
-Result CUDA::underlyingCompute() {
+Result FFT::CUDA::underlyingCompute() {
     DEBUG_PUSH("compute_fft");
 
     int N = in.buf.size();
@@ -84,8 +84,8 @@ Result CUDA::underlyingCompute() {
     return Result::SUCCESS;
 }
 
-Result CUDA::underlyingPresent() {
+Result FFT::CUDA::underlyingPresent() {
     return Result::SUCCESS;
 }
 
-} // namespace Jetstream::FFT
+} // namespace Jetstream

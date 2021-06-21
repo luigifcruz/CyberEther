@@ -1,7 +1,6 @@
 #include "jetstream/fft/cpu.hpp"
-#include <algorithm>
 
-namespace Jetstream::FFT {
+namespace Jetstream {
 
 // Faster Log10 by http://openaudio.blogspot.com/2017/02/faster-log10-and-pow.html
 static inline float log10(float X) {
@@ -27,7 +26,7 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-CPU::CPU(const Config & c) : Generic(c) {
+FFT::CPU::CPU(const Config & c) : FFT(c) {
     auto n = in.buf.size();
     fft_in.resize(n);
     fft_out.resize(n);
@@ -42,11 +41,11 @@ CPU::CPU(const Config & c) : Generic(c) {
 #endif
 }
 
-CPU::~CPU() {
+FFT::CPU::~CPU() {
     fftwf_destroy_plan(cf_plan);
 }
 
-Result CPU::underlyingCompute() {
+Result FFT::CPU::underlyingCompute() {
     float tmp;
     auto n = fft_in.size();
     auto [min, max] = cfg.amplitude;
@@ -68,9 +67,8 @@ Result CPU::underlyingCompute() {
     return Result::SUCCESS;
 }
 
-Result CPU::underlyingPresent() {
+Result FFT::CPU::underlyingPresent() {
     return Result::SUCCESS;
 }
 
-
-} // namespace Jetstream::FFT
+} // namespace Jetstream
