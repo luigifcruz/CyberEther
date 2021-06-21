@@ -1,25 +1,12 @@
 #ifndef JETSTREAM_BASE_H
 #define JETSTREAM_BASE_H
 
-#include "scheduler/sync.hpp"
-#include "scheduler/async.hpp"
+#include "jetstream/fft/base.hpp"
+#include "jetstream/histogram/base.hpp"
+#include "jetstream/lineplot/base.hpp"
+#include "jetstream/waterfall/base.hpp"
 
 namespace Jetstream {
-
-class Module : public Async, public Sync {
-public:
-    explicit Module(const Policy&);
-    virtual ~Module();
-
-    Result compute();
-    Result barrier();
-    Result present();
-
-protected:
-    const Launch launch;
-
-    virtual Result underlyingPresent() = 0;
-};
 
 class Engine : public Graph {
 public:

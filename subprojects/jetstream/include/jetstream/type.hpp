@@ -7,6 +7,8 @@
 #include <vector>
 #include <cstring>
 #include <algorithm>
+#include <map>
+#include <variant>
 
 #include "jetstream_config.hpp"
 #include "tools/span.hpp"

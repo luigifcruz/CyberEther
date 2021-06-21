@@ -4,10 +4,7 @@
 
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
-#include "jetstream/fft/base.hpp"
-#include "jetstream/lineplot/base.hpp"
-#include "jetstream/waterfall/base.hpp"
-#include "jetstream/histogram/base.hpp"
+#include "jetstream/base.hpp"
 
 class UI {
 public:

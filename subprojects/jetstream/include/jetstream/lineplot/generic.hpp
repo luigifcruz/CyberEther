@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_LPT_GENERIC_H
 #define JETSTREAM_LPT_GENERIC_H
 
-#include "jetstream/base.hpp"
+#include "jetstream/module.hpp"
 #include "jetstream/tools/lut.hpp"
 #include "render/base.hpp"
 

@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_FFT_GENERIC_H
 #define JETSTREAM_FFT_GENERIC_H
 
-#include "jetstream/base.hpp"
+#include "jetstream/module.hpp"
 
 namespace Jetstream::FFT {
 
