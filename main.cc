@@ -21,31 +21,22 @@ public:
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
         // Configure Jetstream Modules
-        auto device = Jetstream::Locale::CUDA;
         engine = std::make_shared<Jetstream::Engine>();
         stream = std::vector<std::complex<float>>(2048);
 
         Jetstream::FFT::Config fftCfg;
         fftCfg.input0 = {Jetstream::Locale::CPU, stream};
-        fftCfg.policy = {Jetstream::Launch::SYNC, {}};
-        fft = Jetstream::Factory<FFT>(device, fftCfg);
+        engine->add("fft0", Factory<FFT>(device, fftCfg));
 
         Jetstream::Lineplot::Config lptCfg;
         lptCfg.render = render;
         lptCfg.input0 = fft->output();
-        lptCfg.policy = {Jetstream::Launch::SYNC, {fft}};
-        lpt = Jetstream::Factory<Lineplot>(device, lptCfg);
+        engine->add("lpt0", Factory<Lineplot>(device, lptCfg));
 
         Jetstream::Waterfall::Config wtfCfg;
         wtfCfg.render = render;
         wtfCfg.input0 = fft->output();
-        wtfCfg.policy = {Jetstream::Launch::SYNC, {fft}};
-        wtf = Jetstream::Factory<Waterfall>(device, wtfCfg);
-
-        // Add Jetstream modules to the execution pipeline.
-        engine->push_back(fft);
-        engine->push_back(lpt);
-        engine->push_back(wtf);
+        engine->add("wtf0", Factory<Waterfall>(device, wtfCfg));
     }
 
     void start() {
@@ -155,9 +146,6 @@ private:
 
     // Jetstream
     std::shared_ptr<Jetstream::Engine> engine;
-    std::shared_ptr<Jetstream::FFT> fft;
-    std::shared_ptr<Jetstream::Lineplot> lpt;
-    std::shared_ptr<Jetstream::Waterfall> wtf;
 
     // Samurai
     Samurai::ChannelId rx;

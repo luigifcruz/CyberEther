@@ -1,17 +1,13 @@
 #ifndef JETSTREAM_SCHED_ASYNC_H
 #define JETSTREAM_SCHED_ASYNC_H
 
-#include "jetstream/scheduler/base.hpp"
+#include "jetstream/scheduler/generic.hpp"
 
 namespace Jetstream {
 
 class Async : public Scheduler {
 public:
-    explicit Async(const Graph& d) : Scheduler(d) {};
-
-protected:
-    Result start();
-    Result end();
+    explicit Async(const Module & m) : Scheduler(m) {};
 
     Result compute();
     Result barrier();
@@ -22,8 +18,6 @@ private:
     bool mailbox{false};
     bool discard{false};
     std::condition_variable access;
-
-    friend class Module;
 };
 
 } // namespace Jetstream

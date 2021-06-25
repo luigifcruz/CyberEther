@@ -14,8 +14,8 @@ public:
     ~CUDA();
 
 protected:
-    Result underlyingCompute() final;
-    Result underlyingPresent() final;
+    Result compute() final;
+    Result present() final;
 
     cufftHandle plan;
     cudaStream_t stream;

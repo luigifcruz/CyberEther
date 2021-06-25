@@ -19,9 +19,7 @@ public:
 
     struct Config {
         Range<float> amplitude = {-200.0f, 0.0f};
-
         Data<TI> input0;
-        Jetstream::Policy policy;
     };
 
     explicit FFT(const Config &);

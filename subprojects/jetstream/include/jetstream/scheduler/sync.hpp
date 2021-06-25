@@ -1,17 +1,13 @@
 #ifndef JETSTREAM_SCHED_SYNC_H
 #define JETSTREAM_SCHED_SYNC_H
 
-#include "jetstream/scheduler/base.hpp"
+#include "jetstream/scheduler/generic.hpp"
 
 namespace Jetstream {
 
 class Sync : public Scheduler {
 public:
-    explicit Sync(const Graph& d) : Scheduler(d) {};
-
-protected:
-    Result start();
-    Result end();
+    explicit Sync(const Module & m) : Scheduler(m) {};
 
     Result compute();
     Result barrier();
@@ -19,8 +15,6 @@ protected:
 private:
     std::mutex m;
     std::atomic<bool> mailbox{false};
-
-    friend class Module;
 };
 
 } // namespace Jetstream
