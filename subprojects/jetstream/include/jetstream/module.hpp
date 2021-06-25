@@ -1,24 +1,15 @@
 #ifndef JETSTREAM_MODULE_H
 #define JETSTREAM_MODULE_H
 
-#include "scheduler/sync.hpp"
-#include "scheduler/async.hpp"
+#include "jetstream/type.hpp"
 
 namespace Jetstream {
 
-class Module : public Async, public Sync {
+class Module {
 public:
-    explicit Module(const Policy&);
-    virtual ~Module();
-
-    Result compute();
-    Result barrier();
-    Result present();
-
-protected:
-    const Launch launch;
-
-    virtual Result underlyingPresent() = 0;
+    virtual ~Module() = default;
+    virtual Result compute() = 0;
+    virtual Result present() = 0;
 };
 
 } // namespace Jetstream

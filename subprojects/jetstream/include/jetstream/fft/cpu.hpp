@@ -13,8 +13,8 @@ public:
     ~CPU();
 
 protected:
-    Result underlyingCompute() final;
-    Result underlyingPresent() final;
+    Result compute() final;
+    Result present() final;
 
     fftwf_plan cf_plan;
 

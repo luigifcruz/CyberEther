@@ -116,8 +116,7 @@ struct Data {
 
 
 class Module;
-typedef std::vector<std::shared_ptr<Module>> Graph;
-typedef struct { Launch launch; Graph deps; } Policy;
+typedef struct { Locale device; Launch mode; } Policy;
 
 } // namespace Jetstream
 
