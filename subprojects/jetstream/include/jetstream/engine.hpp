@@ -11,12 +11,12 @@ public:
     explicit Engine(const Policy & defaultPolicy = {Locale::CPU, Launch::SYNC});
     ~Engine();
 
-    Result add(const std::string name, const std::unique_ptr<Module> & mod);
-    Result add(const std::string name, const std::unique_ptr<Module> & mod, const Policy policy);
-    Result remove(const std::string name);
+    Result add(const std::string & name, const std::unique_ptr<Module> & mod);
+    Result add(const std::string & name, const std::unique_ptr<Module> & mod, const Policy & policy);
+    Result remove(const std::string & name);
 
     template<typename T>
-    std::weak_ptr<T> get(const std::string name);
+    std::weak_ptr<T> get(const std::string & name);
 
     Result begin();
     Result end();
@@ -26,13 +26,14 @@ public:
 
 private:
     typedef struct {
-        Policy policy;
-        std::unique_ptr<Module> mod;
-        std::unique_ptr<Scheduler> scheduler;
-    } worker;
+        Policy pol;
+        std::string key;
+        std::shared_ptr<Module> mod;
+        std::unique_ptr<Scheduler> run;
+    } Worker;
 
     const Policy defaultPolicy;
-    std::map<std::string, worker> stream;
+    std::map<std::string, Worker> stream;
 
     std::mutex m;
     std::condition_variable access;
