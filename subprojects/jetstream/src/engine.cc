@@ -23,25 +23,25 @@ Result Engine::end() {
     return Result::SUCCESS;
 }
 
-Result Engine::add(const std::string name, const std::unique_ptr<Module> & mod) {
+Result Engine::add(const std::string & name, const std::unique_ptr<Module> & mod) {
     return this->add(name, mod, defaultPolicy);
 }
 
-Result Engine::add(const std::string name, const std::unique_ptr<Module> & mod, const Policy pol) {
+Result Engine::add(const std::string & name, const std::unique_ptr<Module> & mod, const Policy & pol) {
     // code
 
     return Result::SUCCESS;
 }
 
-Result Engine::remove(const std::string name) {
+Result Engine::remove(const std::string & name) {
     // code
 
     return Result::SUCCESS;
 }
 
 template<typename T>
-std::weak_ptr<T> Engine::get(const std::string name) {
-    return static_cast<T>(stream[name].mod);
+std::weak_ptr<T> Engine::get(const std::string & name) {
+    return static_cast<std::unique_ptr<T>>(stream[name].mod);
 }
 
 Result Engine::compute() {
@@ -53,18 +53,12 @@ Result Engine::compute() {
     DEBUG_POP();
     DEBUG_PUSH("compute");
 
-    for (const auto& transform : stream) {
-        auto result = transform->compute();
-        if (result != Result::SUCCESS) {
-            return result;
-        }
+    for (const auto& [key, worker] : stream) {
+        CHECK(worker.run->compute());
     }
 
-    for (const auto& transform : *this) {
-        auto result = transform->barrier();
-        if (result != Result::SUCCESS) {
-            return result;
-        }
+    for (const auto& [key, worker] : stream) {
+        CHECK(worker.run->barrier());
     }
 
     DEBUG_POP();
@@ -82,11 +76,8 @@ Result Engine::present() {
         DEBUG_POP();
         DEBUG_PUSH("present");
 
-        for (const auto& transform : *this) {
-            auto result = transform->present();
-            if (result != Result::SUCCESS) {
-                return result;
-            }
+        for (const auto& [key, worker] : stream) {
+            CHECK(worker.mod->present());
         }
     }
     waiting = false;

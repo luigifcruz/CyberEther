@@ -7,7 +7,7 @@
 namespace Jetstream {
 
 template<typename T>
-inline std::shared_ptr<T> Factory(Locale L, const typename T::Config & config) {
+inline std::shared_ptr<T> Factory(const Locale & L, const typename T::Config & config) {
     switch (L) {
         case Jetstream::Locale::CPU:
             return std::make_shared<typename T::CPU>(config);
