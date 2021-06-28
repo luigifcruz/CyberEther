@@ -7,7 +7,7 @@ namespace Jetstream {
 
 class Lineplot::CPU : public Lineplot  {
 public:
-    explicit CPU(const Config &);
+    explicit CPU(const Config &, Manifest &);
     ~CPU();
 
 protected:

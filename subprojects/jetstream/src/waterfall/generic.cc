@@ -2,7 +2,8 @@
 
 namespace Jetstream {
 
-Waterfall::Waterfall(const Config& c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
+Waterfall::Waterfall(const Config& c, Manifest & i) : cfg(c) {
+    in = std::get<Data<T>>(i["input0"]);
 }
 
 Result Waterfall::_initRender(uint8_t* ptr, bool cudaInterop) {
@@ -58,7 +59,7 @@ Result Waterfall::_initRender(uint8_t* ptr, bool cudaInterop) {
     return Result::SUCCESS;
 }
 
-Result Waterfall::underlyingCompute() {
+Result Waterfall::compute() {
     DEBUG_PUSH("compute_waterfall");
     auto res = this->_compute();
 
@@ -68,7 +69,7 @@ Result Waterfall::underlyingCompute() {
     return res;
 }
 
-Result Waterfall::underlyingPresent() {
+Result Waterfall::present() {
     DEBUG_PUSH("present_waterfall");
 
     int start = last;

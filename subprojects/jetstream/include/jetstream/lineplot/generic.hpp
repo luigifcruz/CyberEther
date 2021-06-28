@@ -17,14 +17,11 @@ public:
 #endif
 
     struct Config {
-        Size2D<int> size {2500, 500};
-
-        Data<TI> input0;
-        Jetstream::Policy policy;
         std::shared_ptr<Render::Instance> render;
+        Size2D<int> size {2500, 500};
     };
 
-    explicit Lineplot(const Config &);
+    explicit Lineplot(const Config &, Manifest &);
     virtual ~Lineplot() = default;
 
     constexpr Size2D<int> size() const {
@@ -51,12 +48,11 @@ protected:
     std::shared_ptr<Render::Draw> drawLineVertex;
 
     Result _initRender(float*, bool cudaInterop = false);
-
     virtual Result _compute() = 0;
     virtual Result _present() = 0;
 
-    Result underlyingPresent() final;
-    Result underlyingCompute() final;
+    Result compute() final;
+    Result present() final;
 
     const GLchar* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;

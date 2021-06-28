@@ -2,25 +2,23 @@
 
 namespace Jetstream {
 
-Result Sync::start() {
+Sync::Sync(const std::shared_ptr<Module> & m, const Dependencies & d) : Scheduler(m, d) {
     mailbox = true;
-    return Result::SUCCESS;
 }
 
-Result Sync::end() {
+Sync::~Sync() {
     mailbox = false;
-    return Result::SUCCESS;
 };
 
 Result Sync::compute() {
-    std::scoped_lock<std::mutex> lock(m);
+    std::scoped_lock<std::mutex> lock(mtx);
     mailbox = true;
 
     return Result::SUCCESS;
 }
 
 Result Sync::barrier() {
-    std::scoped_lock<std::mutex> lock(m);
+    std::scoped_lock<std::mutex> lock(mtx);
 
     if (mailbox) {
         for (auto& dep : deps) {
@@ -28,7 +26,7 @@ Result Sync::barrier() {
                 goto end;
             }
         }
-        result = this->underlyingCompute();
+        result = mod->compute();
     }
 
 end:

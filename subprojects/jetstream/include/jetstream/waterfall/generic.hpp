@@ -10,7 +10,7 @@ namespace Jetstream {
 
 class Waterfall : public Module {
 public:
-    using T = nonstd::span<float>;
+    using T = VF32;
 
     class CPU;
 #ifdef JETSTREAM_WTF_CUDA_AVAILABLE
@@ -18,15 +18,12 @@ public:
 #endif
 
     struct Config {
+        std::shared_ptr<Render::Instance> render;
         bool interpolate = true;
         Size2D<int> size = {2500, 500};
-
-        Data<T> input0;
-        Jetstream::Policy policy;
-        std::shared_ptr<Render::Instance> render;
     };
 
-    explicit Waterfall(const Config &);
+    explicit Waterfall(const Config &, Manifest &);
     virtual ~Waterfall() = default;
 
     constexpr bool interpolate() const {
@@ -59,8 +56,8 @@ protected:
 
     virtual Result _compute() = 0;
 
-    Result underlyingPresent() final;
-    Result underlyingCompute() final;
+    Result present() final;
+    Result compute() final;
 
     const GLchar* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;

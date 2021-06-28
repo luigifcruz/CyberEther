@@ -2,7 +2,9 @@
 
 namespace Jetstream {
 
-Lineplot::Lineplot(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
+Lineplot::Lineplot(const Config & c, Manifest & i) : cfg(c) {
+    in = std::get<Data<TI>>(i["input0"]);
+
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         grid.push_back(-1.0f);
         grid.push_back(i);
@@ -87,7 +89,7 @@ Result Lineplot::_initRender(float* ptr, bool cudaInterop) {
     return Result::SUCCESS;
 }
 
-Result Lineplot::underlyingCompute() {
+Result Lineplot::compute() {
     DEBUG_PUSH("compute_lineplot");
 
     auto res = this->_compute();
@@ -96,7 +98,7 @@ Result Lineplot::underlyingCompute() {
     return res;
 }
 
-Result Lineplot::underlyingPresent() {
+Result Lineplot::present() {
     DEBUG_PUSH("present_lineplot");
 
     auto res = this->_present();

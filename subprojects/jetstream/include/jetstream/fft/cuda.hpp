@@ -10,7 +10,7 @@ namespace Jetstream {
 
 class FFT::CUDA : public FFT {
 public:
-    explicit CUDA(const Config &);
+    explicit CUDA(const Config &, Manifest &);
     ~CUDA();
 
 protected:

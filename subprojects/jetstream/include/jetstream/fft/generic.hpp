@@ -7,8 +7,8 @@ namespace Jetstream {
 
 class FFT : public Module {
 public:
-    using TI = nonstd::span<std::complex<float>>;
-    using TO = nonstd::span<float>;
+    using TI = VCF32;
+    using TO = VF32;
 
 #ifdef JETSTREAM_FFT_FFTW_AVAILABLE
     class CPU;
@@ -19,20 +19,15 @@ public:
 
     struct Config {
         Range<float> amplitude = {-200.0f, 0.0f};
-        Data<TI> input0;
     };
 
-    explicit FFT(const Config &);
+    explicit FFT(const Config &, Manifest &);
     virtual ~FFT() = default;
 
     constexpr Range<float> amplitude() const {
         return cfg.amplitude;
     }
     Range<float> amplitude(const Range<float> &);
-
-    constexpr Data<TO> output() const {
-        return out;
-    }
 
 protected:
     Config cfg;

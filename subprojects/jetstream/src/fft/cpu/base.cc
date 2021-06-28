@@ -26,7 +26,7 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-FFT::CPU::CPU(const Config & c) : FFT(c) {
+FFT::CPU::CPU(const Config & c, Manifest & i) : FFT(c, i) {
     auto n = in.buf.size();
     fft_in.resize(n);
     fft_out.resize(n);
@@ -39,13 +39,15 @@ FFT::CPU::CPU(const Config & c) : FFT(c) {
 #ifdef JETSTREAM_DEBUG
     std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
 #endif
+
+    out_manifest["output0"] = out;
 }
 
 FFT::CPU::~CPU() {
     fftwf_destroy_plan(cf_plan);
 }
 
-Result FFT::CPU::underlyingCompute() {
+Result FFT::CPU::compute() {
     float tmp;
     auto n = fft_in.size();
     auto [min, max] = cfg.amplitude;
@@ -67,7 +69,7 @@ Result FFT::CPU::underlyingCompute() {
     return Result::SUCCESS;
 }
 
-Result FFT::CPU::underlyingPresent() {
+Result FFT::CPU::present() {
     return Result::SUCCESS;
 }
 
