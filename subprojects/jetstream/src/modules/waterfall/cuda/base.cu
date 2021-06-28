@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Waterfall::CUDA::CUDA(const Config& c, Manifest & i) : Waterfall(c, i) {
+Waterfall::CUDA::CUDA(const Config& cfg, IO & input) : Waterfall(cfg, input) {
     ymax = cfg.size.height;
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaMalloc(&out_dptr, in.buf.size() * ymax * sizeof(float)));

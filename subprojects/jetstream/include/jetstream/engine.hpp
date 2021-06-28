@@ -14,13 +14,13 @@ public:
 
     template<typename T>
     std::shared_ptr<T> add(const std::string & name, const typename T::Config & cfg,
-            const VirtualManifest & manifest) {
+            const DraftIO & manifest) {
         return this->add<T>(name, cfg, manifest, defaultPolicy);
     }
 
     template<typename T>
     std::shared_ptr<T> add(const std::string & name, const typename T::Config & cfg,
-            const VirtualManifest & manifest, const Policy & policy) {
+            const DraftIO & manifest, const Policy & policy) {
         auto& worker = stream[name];
 
         for (const auto& [key, var] : manifest) {
@@ -57,8 +57,8 @@ public:
 
 private:
     typedef struct {
+        IO inputs;
         Policy pol;
-        Manifest inputs;
         Dependencies deps;
         std::shared_ptr<Module> mod;
         std::shared_ptr<Scheduler> run;

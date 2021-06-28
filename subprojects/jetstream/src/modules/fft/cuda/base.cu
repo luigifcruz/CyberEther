@@ -38,7 +38,7 @@ static __global__ void post(const cufftComplex* c, float* r,
     }
 }
 
-FFT::CUDA::CUDA(const Config & c, Manifest & i) : FFT(c, i) {
+FFT::CUDA::CUDA(const Config & cfg, IO & input) : FFT(cfg, input) {
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaHostRegister(in.buf.data(), in.buf.size() * sizeof(in.buf[0]),
             cudaHostRegisterReadOnly));
@@ -57,7 +57,7 @@ FFT::CUDA::CUDA(const Config & c, Manifest & i) : FFT(c, i) {
     cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1);
     cufftSetStream(plan, stream);
 
-    out_manifest["output0"] = out;
+    setOutput("output0", out);
 }
 
 FFT::CUDA::~CUDA() {

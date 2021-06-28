@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Lineplot::CPU::CPU(const Config & c, Manifest & i) : Lineplot(c, i) {
+Lineplot::CPU::CPU(const Config & cfg, IO & input) : Lineplot(cfg, input) {
     JETSTREAM_CHECK_THROW(this->_initRender(plot.data()));
 }
 

@@ -120,8 +120,8 @@ typedef nonstd::span<float> VF32;
 typedef std::variant<Data<VCF32>, Data<VF32>> Variant;
 typedef struct { std::string module; std::string port; } Tap;
 
-typedef std::map<std::string, Variant> Manifest;
-typedef std::map<std::string, std::variant<std::monostate, Variant, Tap>> VirtualManifest;
+typedef std::map<std::string, Variant> IO;
+typedef std::map<std::string, std::variant<std::monostate, Variant, Tap>> DraftIO;
 
 class Module;
 class Scheduler;

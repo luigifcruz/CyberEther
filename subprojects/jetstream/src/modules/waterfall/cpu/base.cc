@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Waterfall::CPU::CPU(const Config& c, Manifest & i) : Waterfall(c, i) {
+Waterfall::CPU::CPU(const Config& cfg, IO & input) : Waterfall(cfg, input) {
     ymax = cfg.size.height;
     bin.resize(in.buf.size() * ymax);
     JETSTREAM_CHECK_THROW(this->_initRender((uint8_t*)bin.data()));

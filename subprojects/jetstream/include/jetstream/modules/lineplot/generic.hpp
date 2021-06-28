@@ -9,7 +9,7 @@ namespace Jetstream {
 
 class Lineplot : public Module {
 public:
-    using TI = nonstd::span<float>;
+    using TI = VF32;
 
     class CPU;
 #ifdef JETSTREAM_LPT_CUDA_AVAILABLE
@@ -21,7 +21,7 @@ public:
         Size2D<int> size {2500, 500};
     };
 
-    explicit Lineplot(const Config &, Manifest &);
+    explicit Lineplot(const Config & cfg, IO & input);
     virtual ~Lineplot() = default;
 
     constexpr Size2D<int> size() const {

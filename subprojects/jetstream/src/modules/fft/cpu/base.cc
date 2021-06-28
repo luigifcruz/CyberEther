@@ -26,7 +26,7 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-FFT::CPU::CPU(const Config & c, Manifest & i) : FFT(c, i) {
+FFT::CPU::CPU(const Config & cfg, IO & input) : FFT(cfg, input) {
     auto n = in.buf.size();
     fft_in.resize(n);
     fft_out.resize(n);
@@ -40,7 +40,7 @@ FFT::CPU::CPU(const Config & c, Manifest & i) : FFT(c, i) {
     std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
 #endif
 
-    out_manifest["output0"] = out;
+    setOutput("output0", out);
 }
 
 FFT::CPU::~CPU() {
