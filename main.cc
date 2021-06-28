@@ -24,19 +24,17 @@ public:
         engine = std::make_shared<Jetstream::Engine>();
         stream = std::vector<std::complex<float>>(2048);
 
-        Jetstream::FFT::Config fftCfg;
-        fftCfg.input0 = {Jetstream::Locale::CPU, stream};
-        engine->add("fft0", Factory<FFT>(device, fftCfg));
+        engine->add<FFT>("fft0", {}, {
+            {"input0", Data<VCF32>({Locale::CPU, stream})}
+        });
 
-        Jetstream::Lineplot::Config lptCfg;
-        lptCfg.render = render;
-        lptCfg.input0 = fft->output();
-        engine->add("lpt0", Factory<Lineplot>(device, lptCfg));
+        engine->add<Lineplot>("lpt0", {render}, {
+            {"input0", Tap{"fft0", "output0"}},
+        });
 
-        Jetstream::Waterfall::Config wtfCfg;
-        wtfCfg.render = render;
-        wtfCfg.input0 = fft->output();
-        engine->add("wtf0", Factory<Waterfall>(device, wtfCfg));
+        engine->add<Waterfall>("wtf0", {render}, {
+            {"input0", Tap{"fft0", "output0"}},
+        });
     }
 
     void start() {
@@ -83,6 +81,10 @@ public:
         render->start();
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+
+        auto lpt = engine->get<Lineplot>("lpt0");
+        auto wtf = engine->get<Waterfall>("wtf0");
+        auto fft = engine->get<FFT>("fft0");
 
         {
             ImGui::Begin("Lineplot");

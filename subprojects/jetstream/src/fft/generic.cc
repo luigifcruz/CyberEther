@@ -2,7 +2,9 @@
 
 namespace Jetstream {
 
-FFT::FFT(const Config & c) : Module(cfg.policy), cfg(c), in(cfg.input0) {
+FFT::FFT(const Config & c, Manifest & m) : cfg(c)  {
+    in = std::get<Data<TI>>(m["input0"]);
+
     auto n = in.buf.size();
     window.resize(in.buf.size());
 

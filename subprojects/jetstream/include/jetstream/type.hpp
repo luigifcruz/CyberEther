@@ -114,9 +114,20 @@ struct Data {
     T buf;
 };
 
+typedef nonstd::span<std::complex<float>> VCF32;
+typedef nonstd::span<float> VF32;
+
+typedef std::variant<Data<VCF32>, Data<VF32>> Variant;
+typedef struct { std::string module; std::string port; } Tap;
+
+typedef std::map<std::string, Variant> Manifest;
+typedef std::map<std::string, std::variant<std::monostate, Variant, Tap>> VirtualManifest;
 
 class Module;
+class Scheduler;
+
 typedef struct { Locale device; Launch mode; } Policy;
+typedef std::vector<std::shared_ptr<Scheduler>> Dependencies;
 
 } // namespace Jetstream
 

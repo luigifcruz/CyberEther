@@ -7,13 +7,14 @@ namespace Jetstream {
 
 class Sync : public Scheduler {
 public:
-    explicit Sync(const Module & m) : Scheduler(m) {};
+    explicit Sync(const std::shared_ptr<Module> &, const Dependencies &);
+    ~Sync();
 
     Result compute();
     Result barrier();
 
 private:
-    std::mutex m;
+    std::mutex mtx;
     std::atomic<bool> mailbox{false};
 };
 

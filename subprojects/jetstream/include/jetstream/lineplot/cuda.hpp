@@ -10,7 +10,7 @@ namespace Jetstream {
 
 class Lineplot::CUDA : public Lineplot  {
 public:
-    explicit CUDA(const Config &);
+    explicit CUDA(const Config &, Manifest &);
     ~CUDA();
 
 protected:

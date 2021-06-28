@@ -7,13 +7,14 @@ namespace Jetstream {
 
 class Async : public Scheduler {
 public:
-    explicit Async(const Module & m) : Scheduler(m) {};
+    explicit Async(const std::shared_ptr<Module> &, const Dependencies &);
+    ~Async();
 
     Result compute();
     Result barrier();
 
 private:
-    std::mutex m;
+    std::mutex mtx;
     std::thread worker;
     bool mailbox{false};
     bool discard{false};

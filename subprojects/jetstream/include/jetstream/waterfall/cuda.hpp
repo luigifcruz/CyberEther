@@ -10,7 +10,7 @@ namespace Jetstream {
 
 class Waterfall::CUDA : public Waterfall  {
 public:
-    explicit CUDA(const Config &);
+    explicit CUDA(const Config &, Manifest &);
     ~CUDA();
 
 protected:

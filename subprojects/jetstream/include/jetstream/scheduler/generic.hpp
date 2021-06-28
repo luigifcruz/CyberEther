@@ -8,14 +8,15 @@ namespace Jetstream {
 
 class Scheduler {
 public:
-    explicit Scheduler(const Module & m) : module(m) {};
+    explicit Scheduler(const std::shared_ptr<Module> & m, const Dependencies & d) : mod(m), deps(d) {};
     virtual ~Scheduler() = default;
 
     virtual Result compute() = 0;
     virtual Result barrier() = 0;
 
-private:
-    const Module& module;
+protected:
+    const std::shared_ptr<Module> & mod;
+    const std::vector<std::shared_ptr<Scheduler>> & deps;
 
     std::atomic<Result> result{SUCCESS};
 };

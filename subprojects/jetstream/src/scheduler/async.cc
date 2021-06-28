@@ -2,16 +2,16 @@
 
 namespace Jetstream {
 
-Result Async::start() {
+Async::Async(const std::shared_ptr<Module> & m, const Dependencies & d) : Scheduler(m, d) {
     {
-        std::scoped_lock<std::mutex> sync(m);
+        std::scoped_lock<std::mutex> sync(mtx);
         discard = false;
         mailbox = false;
     }
 
     worker = std::thread([&]{
         while (!discard) {
-            std::unique_lock<std::mutex> sync(m);
+            std::unique_lock<std::mutex> sync(mtx);
             access.wait(sync, [&]{ return mailbox; });
 
             if (!discard) {
@@ -20,7 +20,7 @@ Result Async::start() {
                         goto end;
                     }
                 }
-                result = this->underlyingCompute();
+                result = mod->compute();
             }
     end:
             mailbox = false;
@@ -28,26 +28,22 @@ Result Async::start() {
             access.notify_all();
         }
     });
-
-    return Result::SUCCESS;
 }
 
-Result Async::end() {
+Async::~Async() {
     if (worker.joinable()) {
         {
-            std::scoped_lock<std::mutex> sync(m);
+            std::scoped_lock<std::mutex> sync(mtx);
             discard = true;
             mailbox = true;
         }
         access.notify_all();
         worker.join();
     }
-
-    return Result::SUCCESS;
 };
 
 Result Async::compute() {
-    std::unique_lock<std::mutex> sync(m);
+    std::unique_lock<std::mutex> sync(mtx);
     access.wait(sync, [&]{ return !mailbox; });
 
     if (!discard) {
@@ -60,7 +56,7 @@ Result Async::compute() {
 }
 
 Result Async::barrier() {
-    std::unique_lock<std::mutex> sync(m);
+    std::unique_lock<std::mutex> sync(mtx);
     access.wait(sync, [&]{ return !mailbox; });
     return result;
 }
