@@ -21,7 +21,7 @@ public:
         Range<float> amplitude = {-200.0f, 0.0f};
     };
 
-    explicit FFT(const Config &, Manifest &);
+    explicit FFT(const Config & cfg, IO & input);
     virtual ~FFT() = default;
 
     constexpr Range<float> amplitude() const {

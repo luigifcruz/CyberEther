@@ -2,8 +2,8 @@
 
 namespace Jetstream {
 
-Waterfall::Waterfall(const Config& c, Manifest & i) : cfg(c) {
-    in = std::get<Data<T>>(i["input0"]);
+Waterfall::Waterfall(const Config& cfg, IO & input) : Module(input), cfg(cfg) {
+    in = getInput<Data<TI>>("input0");
 }
 
 Result Waterfall::_initRender(uint8_t* ptr, bool cudaInterop) {

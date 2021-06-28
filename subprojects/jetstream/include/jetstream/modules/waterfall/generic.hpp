@@ -10,7 +10,7 @@ namespace Jetstream {
 
 class Waterfall : public Module {
 public:
-    using T = VF32;
+    using TI = VF32;
 
     class CPU;
 #ifdef JETSTREAM_WTF_CUDA_AVAILABLE
@@ -23,7 +23,7 @@ public:
         Size2D<int> size = {2500, 500};
     };
 
-    explicit Waterfall(const Config &, Manifest &);
+    explicit Waterfall(const Config & cfg, IO & input);
     virtual ~Waterfall() = default;
 
     constexpr bool interpolate() const {
@@ -40,7 +40,7 @@ public:
 
 protected:
     Config cfg;
-    Data<T> in;
+    Data<TI> in;
 
     int inc = 0, last = 0, ymax = 0;
 
