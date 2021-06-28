@@ -21,18 +21,20 @@ public:
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
         // Configure Jetstream Modules
-        engine = std::make_shared<Jetstream::Engine>();
+        Policy policy = {Locale::CUDA, Launch::SYNC};
+        engine = std::make_unique<Engine>(policy);
+
         stream = std::vector<std::complex<float>>(2048);
 
-        engine->add<FFT>("fft0", {}, {
-            {"input0", Data<VCF32>({Locale::CPU, stream})}
+        fft = engine->add<FFT>("fft0", {}, {
+            {"input0", Data<VCF32>{Locale::CPU, stream}}
         });
 
-        engine->add<Lineplot>("lpt0", {render}, {
+        lpt = engine->add<Lineplot>("lpt0", {render}, {
             {"input0", Tap{"fft0", "output0"}},
         });
 
-        engine->add<Waterfall>("wtf0", {render}, {
+        wtf = engine->add<Waterfall>("wtf0", {render}, {
             {"input0", Tap{"fft0", "output0"}},
         });
     }
@@ -81,10 +83,6 @@ public:
         render->start();
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-
-        auto lpt = engine->get<Lineplot>("lpt0");
-        auto wtf = engine->get<Waterfall>("wtf0");
-        auto fft = engine->get<FFT>("fft0");
 
         {
             ImGui::Begin("Lineplot");
@@ -147,7 +145,10 @@ private:
     std::shared_ptr<Render::Instance> render;
 
     // Jetstream
-    std::shared_ptr<Jetstream::Engine> engine;
+    std::unique_ptr<Jetstream::Engine> engine;
+    std::shared_ptr<Jetstream::FFT> fft;
+    std::shared_ptr<Jetstream::Lineplot> lpt;
+    std::shared_ptr<Jetstream::Waterfall> wtf;
 
     // Samurai
     Samurai::ChannelId rx;
