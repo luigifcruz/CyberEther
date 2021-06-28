@@ -2,7 +2,7 @@
 #define JETSTREAM_SCHED_GENERIC_H
 
 #include "jetstream/type.hpp"
-#include "jetstream/module.hpp"
+#include "jetstream/modules/base.hpp"
 
 namespace Jetstream {
 

@@ -2,24 +2,24 @@
 #define JETSTREAM_ENGINE_H
 
 #include "jetstream/type.hpp"
-#include "jetstream/factory.hpp"
+#include "jetstream/modules/base.hpp"
 #include "jetstream/scheduler/base.hpp"
 
 namespace Jetstream {
 
 class Engine {
 public:
-    explicit Engine(const Policy & defaultPolicy = {Locale::CUDA, Launch::ASYNC}) :
+    explicit Engine(const Policy & defaultPolicy = {Locale::CPU, Launch::SYNC}) :
         defaultPolicy(defaultPolicy) {};
 
     template<typename T>
-    Result add(const std::string & name, const typename T::Config & cfg,
+    std::shared_ptr<T> add(const std::string & name, const typename T::Config & cfg,
             const VirtualManifest & manifest) {
         return this->add<T>(name, cfg, manifest, defaultPolicy);
     }
 
     template<typename T>
-    Result add(const std::string & name, const typename T::Config & cfg,
+    std::shared_ptr<T> add(const std::string & name, const typename T::Config & cfg,
             const VirtualManifest & manifest, const Policy & policy) {
         auto& worker = stream[name];
 
@@ -44,7 +44,7 @@ public:
         worker.mod = Factory<T>(worker.pol.device, cfg, worker.inputs);
         worker.run = Factory(worker.pol.mode, worker.mod, worker.deps);
 
-        return Result::SUCCESS;
+        return this->get<T>(name);
     }
 
     template<typename T>
