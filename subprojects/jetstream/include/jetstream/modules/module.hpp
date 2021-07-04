@@ -7,26 +7,26 @@ namespace Jetstream {
 
 class Module {
 public:
-    explicit Module(IO & input) : io_input(input) {};
+    explicit Module(Connections & input) : connections(input) {};
     virtual ~Module() = default;
+
     virtual Result compute() = 0;
     virtual Result present() = 0;
 
-    Variant output(const std::string & name) {
-        return io_output[name];
+    DataContainer output(const std::string & name) {
+        return connections[name];
     }
 
 protected:
-    IO& io_input;
-    IO io_output;
+    Connections& connections;
 
     template<typename T>
     T getInput(const std::string & name) {
-        return std::get<T>(io_input[name]);
+        return std::get<T>(connections[name]);
     }
 
-    void setOutput(const std::string & name, const Variant & var) {
-        io_output[name] = var;
+    void setOutput(const std::string & name, const DataContainer & var) {
+        connections[name] = var;
     }
 };
 

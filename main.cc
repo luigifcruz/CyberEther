@@ -20,8 +20,8 @@ public:
         renderCfg.title = "CyberEther";
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-        // Configure Jetstream Modules
-        Policy policy = {Locale::CUDA, Launch::SYNC};
+        // Configure Jetstream
+        Policy policy = {Locale::CPU, Launch::SYNC};
         engine = std::make_unique<Engine>(policy);
 
         stream = std::vector<std::complex<float>>(2048);

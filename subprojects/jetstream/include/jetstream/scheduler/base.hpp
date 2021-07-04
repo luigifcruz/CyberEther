@@ -6,7 +6,7 @@
 
 namespace Jetstream {
 
-inline std::shared_ptr<Scheduler> Factory(const Launch & L, const std::shared_ptr<Module> & m,
+inline std::shared_ptr<Scheduler> SchedulerFactory(const Launch & L, const std::shared_ptr<Module> & m,
         const Dependencies & d) {
     switch (L) {
         case Jetstream::Launch::ASYNC:

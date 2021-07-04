@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Lineplot::CPU::CPU(const Config & cfg, IO & input) : Lineplot(cfg, input) {
+Lineplot::CPU::CPU(const Config & cfg, Connections& input) : Lineplot(cfg, input) {
     JETSTREAM_CHECK_THROW(this->_initRender(plot.data()));
 }
 
@@ -10,7 +10,7 @@ Lineplot::CPU::~CPU() {
 }
 
 Result Lineplot::CPU::_compute() {
-    for (int i = 0; i < in.buf.size(); i++) {
+    for (size_t i = 0; i < in.buf.size(); i++) {
         plot[(i*3)+1] = in.buf[i];
     }
 

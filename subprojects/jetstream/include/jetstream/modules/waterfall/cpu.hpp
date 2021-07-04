@@ -7,7 +7,7 @@ namespace Jetstream {
 
 class Waterfall::CPU : public Waterfall  {
 public:
-    explicit CPU(const Config & cfg, IO & input);
+    explicit CPU(const Config & cfg, Connections& input);
     ~CPU();
 
 protected:

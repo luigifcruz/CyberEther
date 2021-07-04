@@ -108,25 +108,54 @@ enum class Locale : uint8_t {
     CUDA    = 1 << 1,
 };
 
+inline Locale operator|(Locale lhs, Locale rhs) {
+    return static_cast<Locale>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+}
+
+inline uint8_t operator&(Locale lhs, Locale rhs) {
+    return static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs);
+}
+
 template<typename T>
 struct Data {
     Locale location;
     T buf;
 };
 
-typedef nonstd::span<std::complex<float>> VCF32;
+struct Tap {
+    std::string module;
+    std::string port;
+};
+
+struct Policy {
+    Locale device;
+    Launch mode;
+};
+
 typedef nonstd::span<float> VF32;
+typedef nonstd::span<std::complex<float>> VCF32;
 
-typedef std::variant<Data<VCF32>, Data<VF32>> Variant;
-typedef struct { std::string module; std::string port; } Tap;
+typedef std::variant<
+    Data<VF32>,
+    Data<VCF32>
+> DataContainer;
 
-typedef std::map<std::string, Variant> IO;
-typedef std::map<std::string, std::variant<std::monostate, Variant, Tap>> DraftIO;
+inline bool operator==(const DataContainer & a, const DataContainer & b) {
+    bool res = false;
+    std::visit([&](auto&& va, auto&& vb) {
+        res = (a.index() == b.index()) && (va.location & vb.location) != 0;
+    }, a, b);
+    return res;
+}
 
-class Module;
+inline bool operator!=(const DataContainer & a, const DataContainer & b) {
+    return !(a == b);
+}
+
+typedef std::map<std::string, DataContainer> Connections;
+typedef std::map<std::string, std::variant<std::monostate, DataContainer, Tap>> Draft;
+
 class Scheduler;
-
-typedef struct { Locale device; Launch mode; } Policy;
 typedef std::vector<std::shared_ptr<Scheduler>> Dependencies;
 
 } // namespace Jetstream

@@ -10,6 +10,24 @@ public:
     using TI = VCF32;
     using TO = VF32;
 
+    struct Config {
+        Range<float> amplitude = {-200.0f, 0.0f};
+    };
+
+    static Connections inputBlueprint(const Locale & device) {
+        switch (device) {
+            case Locale::CPU:
+            return {
+                {"input0", Data<TI>{Locale::CPU, {}}},
+            };
+            case Locale::CUDA:
+            return {
+                {"input0", Data<TI>{Locale::CUDA, {}}},
+            };
+        }
+        return {};
+    }
+
 #ifdef JETSTREAM_FFT_FFTW_AVAILABLE
     class CPU;
 #endif
@@ -17,11 +35,7 @@ public:
     class CUDA;
 #endif
 
-    struct Config {
-        Range<float> amplitude = {-200.0f, 0.0f};
-    };
-
-    explicit FFT(const Config & cfg, IO & input);
+    explicit FFT(const Config & cfg, Connections& input);
     virtual ~FFT() = default;
 
     constexpr Range<float> amplitude() const {

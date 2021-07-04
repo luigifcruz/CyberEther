@@ -26,7 +26,7 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-FFT::CPU::CPU(const Config & cfg, IO & input) : FFT(cfg, input) {
+FFT::CPU::CPU(const Config & cfg, Connections& input) : FFT(cfg, input) {
     auto n = in.buf.size();
     fft_in.resize(n);
     fft_out.resize(n);
@@ -40,6 +40,7 @@ FFT::CPU::CPU(const Config & cfg, IO & input) : FFT(cfg, input) {
     std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
 #endif
 
+    out.location = Locale::CPU;
     setOutput("output0", out);
 }
 
@@ -52,13 +53,13 @@ Result FFT::CPU::compute() {
     auto n = fft_in.size();
     auto [min, max] = cfg.amplitude;
 
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
         fft_in[i] = in.buf[i] * window[i];
     }
 
     fftwf_execute(cf_plan);
 
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
         tmp = amplt(fft_out[i], n);
         tmp = scale(tmp, min, max);
         tmp = std::clamp(tmp, 0.0f, 1.0f);

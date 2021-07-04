@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Lineplot::CUDA::CUDA(const Config & cfg, IO & input) : Lineplot(cfg, input) {
+Lineplot::CUDA::CUDA(const Config & cfg, Connections& input) : Lineplot(cfg, input) {
     plot_len = plot.size() * sizeof(plot[0]);
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaMalloc(&plot_dptr, plot_len));

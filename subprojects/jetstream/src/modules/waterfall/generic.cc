@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Waterfall::Waterfall(const Config& cfg, IO & input) : Module(input), cfg(cfg) {
+Waterfall::Waterfall(const Config& cfg, Connections& input) : Module(input), cfg(cfg) {
     in = getInput<Data<TI>>("input0");
 }
 

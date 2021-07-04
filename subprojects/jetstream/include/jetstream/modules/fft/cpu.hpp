@@ -9,7 +9,7 @@ namespace Jetstream {
 
 class FFT::CPU : public FFT {
 public:
-    explicit CPU(const Config & cfg, IO & input);
+    explicit CPU(const Config & cfg, Connections& input);
     ~CPU();
 
 protected:

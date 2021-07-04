@@ -11,17 +11,31 @@ class Lineplot : public Module {
 public:
     using TI = VF32;
 
-    class CPU;
-#ifdef JETSTREAM_LPT_CUDA_AVAILABLE
-    class CUDA;
-#endif
-
     struct Config {
         std::shared_ptr<Render::Instance> render;
         Size2D<int> size {2500, 500};
     };
 
-    explicit Lineplot(const Config & cfg, IO & input);
+    static Connections inputBlueprint(const Locale & device) {
+        switch (device) {
+            case Locale::CPU:
+            return {
+                {"input0", Data<TI>{Locale::CPU, {}}},
+            };
+            case Locale::CUDA:
+            return {
+                {"input0", Data<TI>{Locale::CUDA, {}}},
+            };
+        }
+        return {};
+    }
+
+    class CPU;
+#ifdef JETSTREAM_LPT_CUDA_AVAILABLE
+    class CUDA;
+#endif
+
+    explicit Lineplot(const Config & cfg, Connections& input);
     virtual ~Lineplot() = default;
 
     constexpr Size2D<int> size() const {

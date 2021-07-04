@@ -16,7 +16,7 @@ public:
 
 protected:
     const std::shared_ptr<Module> & mod;
-    const std::vector<std::shared_ptr<Scheduler>> & deps;
+    const Dependencies & deps;
 
     std::atomic<Result> result{SUCCESS};
 };

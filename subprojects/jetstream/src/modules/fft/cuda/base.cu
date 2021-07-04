@@ -38,7 +38,7 @@ static __global__ void post(const cufftComplex* c, float* r,
     }
 }
 
-FFT::CUDA::CUDA(const Config & cfg, IO & input) : FFT(cfg, input) {
+FFT::CUDA::CUDA(const Config & cfg, Connections& input) : FFT(cfg, input) {
     CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     CUDA_CHECK_THROW(cudaHostRegister(in.buf.data(), in.buf.size() * sizeof(in.buf[0]),
             cudaHostRegisterReadOnly));
@@ -52,6 +52,7 @@ FFT::CUDA::CUDA(const Config & cfg, IO & input) : FFT(cfg, input) {
 
     out_len = in.buf.size() * sizeof(float);
     CUDA_CHECK_THROW(cudaMallocManaged(&out_dptr, out_len));
+    out.location = Locale::CUDA | Locale::CPU;
     out.buf = nonstd::span<float>{out_dptr, in.buf.size()};
 
     cufftPlan1d(&plan, in.buf.size(), CUFFT_C2C, 1);

@@ -14,42 +14,64 @@ public:
 
     template<typename T>
     std::shared_ptr<T> add(const std::string & name, const typename T::Config & cfg,
-            const DraftIO & manifest) {
-        return this->add<T>(name, cfg, manifest, defaultPolicy);
+            const Draft & draft) {
+        return this->add<T>(name, cfg, draft, defaultPolicy);
     }
 
     template<typename T>
     std::shared_ptr<T> add(const std::string & name, const typename T::Config & cfg,
-            const DraftIO & manifest, const Policy & policy) {
-        auto& worker = stream[name];
+            const Draft & draft, const Policy & policy) {
+        auto& input = instances[name];
 
-        for (const auto& [key, var] : manifest) {
+        for (const auto& [key, var] : draft) {
             switch (var.index()) {
                 case 0: break;
-                case 1: { // Variant
-                    worker.inputs[key] = std::get<Variant>(var);
+                case 1: { // DataContainer
+                    auto& container = std::get<DataContainer>(var);
+
+                    if (T::inputBlueprint(policy.device)[key] != container) {
+                        std::cerr << "[JETSTREAM] Mismatched input and output!" << std::endl;
+                        std::cerr << "            "
+                                  << "Input{" << name << ", " << key << "} << "
+                                  << "Output{Inline}"
+                                  << std::endl;
+                        JETSTREAM_CHECK_THROW(Result::ERROR);
+                    }
+
+                    input.inputs[key] = container;
                     break;
                 }
                 case 2: { // Tap
-                    auto tap = std::get<Tap>(var);
-                    auto& wrk = stream[tap.module];
-                    worker.inputs[key] = wrk.mod->output(tap.port);
-                    worker.deps.push_back(wrk.run);
+                    auto& [out_name, out_port] = std::get<Tap>(var);
+                    auto& output = instances[out_name];
+                    const auto& container = output.mod->output(out_port);
+
+                    if (T::inputBlueprint(policy.device)[key] != container) {
+                        std::cerr << "[JETSTREAM] Mismatched input and output!" << std::endl;
+                        std::cerr << "            "
+                                  << "Input{" << name << ", " << key << "} << "
+                                  << "Output{" << out_name << ", " << out_port << "}"
+                                  << std::endl;
+                        JETSTREAM_CHECK_THROW(Result::ERROR);
+                    }
+
+                    input.inputs[key] = container;
+                    input.deps.push_back(output.run);
                     break;
                 }
             }
         }
 
-        worker.pol = policy;
-        worker.mod = Factory<T>(worker.pol.device, cfg, worker.inputs);
-        worker.run = Factory(worker.pol.mode, worker.mod, worker.deps);
+        input.pol = policy;
+        input.mod = ModuleFactory<T>(input.pol.device, cfg, input.inputs);
+        input.run = SchedulerFactory(input.pol.mode, input.mod, input.deps);
 
         return this->get<T>(name);
     }
 
     template<typename T>
     std::shared_ptr<T> get(const std::string & name) {
-        return std::static_pointer_cast<T>(stream[name].mod);
+        return std::static_pointer_cast<T>(instances[name].mod);
     }
 
     Result compute();
@@ -57,15 +79,15 @@ public:
 
 private:
     typedef struct {
-        IO inputs;
         Policy pol;
         Dependencies deps;
+        Connections inputs;
         std::shared_ptr<Module> mod;
         std::shared_ptr<Scheduler> run;
-    } Worker;
+    } Instance;
 
     const Policy defaultPolicy;
-    std::map<std::string, Worker> stream;
+    std::map<std::string, Instance> instances;
 
     std::mutex m;
     std::condition_variable access;

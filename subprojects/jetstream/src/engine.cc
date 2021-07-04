@@ -11,12 +11,12 @@ Result Engine::compute() {
     DEBUG_POP();
     DEBUG_PUSH("compute");
 
-    for (const auto& [key, worker] : stream) {
-        CHECK(worker.run->compute());
+    for (const auto& [key, instance] : instances) {
+        CHECK(instance.run->compute());
     }
 
-    for (const auto& [key, worker] : stream) {
-        CHECK(worker.run->barrier());
+    for (const auto& [key, instance] : instances) {
+        CHECK(instance.run->barrier());
     }
 
     DEBUG_POP();
@@ -34,8 +34,8 @@ Result Engine::present() {
         DEBUG_POP();
         DEBUG_PUSH("present");
 
-        for (const auto& [key, worker] : stream) {
-            CHECK(worker.mod->present());
+        for (const auto& [key, instance] : instances) {
+            CHECK(instance.mod->present());
         }
     }
     waiting = false;

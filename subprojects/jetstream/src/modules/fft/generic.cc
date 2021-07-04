@@ -2,14 +2,14 @@
 
 namespace Jetstream {
 
-FFT::FFT(const Config & cfg, IO & input) : Module(input), cfg(cfg) {
+FFT::FFT(const Config & cfg, Connections& input) : Module(input), cfg(cfg) {
     in = getInput<Data<TI>>("input0");
 
     auto n = in.buf.size();
     window.resize(in.buf.size());
 
     float tap;
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
         tap = 0.5 * (1 - cos(2 * M_PI * i / n));
         tap = (i % 2) == 0 ? tap : -tap;
         window[i] = std::complex<float>(tap, 0.0);

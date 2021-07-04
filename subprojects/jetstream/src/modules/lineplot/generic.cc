@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-Lineplot::Lineplot(const Config & cfg, IO & input) : Module(input), cfg(cfg) {
+Lineplot::Lineplot(const Config & cfg, Connections& input) : Module(input), cfg(cfg) {
     in = getInput<Data<TI>>("input0");
 
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
