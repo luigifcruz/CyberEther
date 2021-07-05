@@ -23,7 +23,7 @@ public:
     constexpr const Size2D<int> size() const {
         return cfg.size;
     }
-    virtual Size2D<int> size(const Size2D<int> &) = 0;
+    virtual bool size(const Size2D<int> &) = 0;
 
     virtual uint raw() = 0;
     virtual Result pour() = 0;

@@ -86,16 +86,16 @@ public:
 
         {
             ImGui::Begin("Lineplot");
-            auto regionSize = ImGui::GetContentRegionAvail();
-            auto [width, height] = lpt->size({(int)regionSize.x, (int)regionSize.y});
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto [width, height] = lpt->size({(int)x, (int)y});
             ImGui::Image((void*)(intptr_t)lpt->tex().lock()->raw(), ImVec2(width, height));
             ImGui::End();
         }
 
         {
             ImGui::Begin("Waterfall");
-            auto regionSize = ImGui::GetContentRegionAvail();
-            auto [width, height] = wtf->size({(int)regionSize.x, (int)regionSize.y});
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto [width, height] = wtf->size({(int)x, (int)y});
             ImGui::Image((void*)(intptr_t)wtf->tex().lock()->raw(), ImVec2(width, height));
             ImGui::End();
         }

@@ -101,7 +101,7 @@ bool Waterfall::interpolate(bool val) {
 }
 
 Size2D<int> Waterfall::size(const Size2D<int> & size) {
-    if (surface->size(size) != cfg.size) {
+    if (surface->size(size) != this->size()) {
         cfg.size = surface->size();
     }
 

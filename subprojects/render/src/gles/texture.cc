@@ -58,12 +58,17 @@ Result GLES::Texture::end() {
 }
 
 // After this method, user needs to recreate the texture
-Size2D<int> GLES::Texture::size(const Size2D<int> & size) {
-    if (cfg.size != size) {
-        cfg.size = size;
+bool GLES::Texture::size(const Size2D<int> & size) {
+    if (size <= Size2D<int>{1, 1}) {
+        return false;
     }
 
-    return this->size();
+    if (cfg.size != size) {
+        cfg.size = size;
+        return true;
+    }
+
+    return false;
 }
 
 uint GLES::Texture::raw() {

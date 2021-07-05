@@ -35,11 +35,7 @@ Size2D<int> GLES::Surface::size(const Size2D<int> & size) {
         return {-1, -1};
     }
 
-    if (size <= Size2D<int>{1, 1}) {
-        return framebuffer->size();
-    }
-
-    if (framebuffer->size() != framebuffer->size(size)) {
+    if (framebuffer->size(size)) {
         RENDER_CHECK_THROW(_destroyFramebuffer());
         RENDER_CHECK_THROW(_createFramebuffer());
     }

@@ -108,7 +108,7 @@ Result Lineplot::present() {
 }
 
 Size2D<int> Lineplot::size(const Size2D<int> & size) {
-    if (surface->size(size) != cfg.size) {
+    if (surface->size(size) != this->size()) {
         cfg.size = surface->size();
     }
 

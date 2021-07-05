@@ -14,7 +14,7 @@ public:
     Texture(const Config & cfg, const GLES & i) : Render::Texture(cfg), inst(i) {};
 
     using Render::Texture::size;
-    Size2D<int> size(const Size2D<int> &) final;
+    bool size(const Size2D<int> &) final;
 
     uint raw() final;
     Result pour() final;
