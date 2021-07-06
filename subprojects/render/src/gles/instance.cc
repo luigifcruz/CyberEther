@@ -28,7 +28,7 @@ Result GLES::create() {
     glfwMakeContextCurrent(window);
 
     if (cfg.scale == -1.0) {
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && GLFW_VERSION_MINOR >= 3
         GLFWmonitor *monitor = glfwGetPrimaryMonitor();
         glfwGetMonitorContentScale(monitor, &cfg.scale, nullptr);
 #else
