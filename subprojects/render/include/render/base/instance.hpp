@@ -60,13 +60,11 @@ public:
         return cfg.title;
     }
 
-    virtual std::shared_ptr<Surface> createAndBind(Surface::Config&) = 0;
-    virtual Result unbind(std::shared_ptr<Surface>) = 0;
-
-    virtual std::shared_ptr<Program> create(Program::Config&) = 0;
-    virtual std::shared_ptr<Texture> create(Texture::Config&) = 0;
-    virtual std::shared_ptr<Vertex> create(Vertex::Config&) = 0;
-    virtual std::shared_ptr<Draw> create(Draw::Config&) = 0;
+    virtual std::shared_ptr<Surface> createAndBind(const Surface::Config &) = 0;
+    virtual std::shared_ptr<Program> create(const Program::Config &) = 0;
+    virtual std::shared_ptr<Texture> create(const Texture::Config &) = 0;
+    virtual std::shared_ptr<Vertex> create(const Vertex::Config &) = 0;
+    virtual std::shared_ptr<Draw> create(const Draw::Config &) = 0;
 
     static bool cudaInteropSupported() {
 #ifdef RENDER_CUDA_AVAILABLE

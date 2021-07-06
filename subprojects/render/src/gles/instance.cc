@@ -214,32 +214,25 @@ Result GLES::getError(std::string func, std::string file, int line) {
     return Result::SUCCESS;
 }
 
-std::shared_ptr<Render::Surface> GLES::createAndBind(Render::Surface::Config& cfg) {
+std::shared_ptr<Render::Surface> GLES::createAndBind(const Render::Surface::Config & cfg) {
     auto surface = std::make_shared<Surface>(cfg, *this);
     surfaces.push_back(surface);
     return surface;
 }
 
-Result GLES::unbind(std::shared_ptr<Render::Surface> surface) {
-    if (std::remove(surfaces.begin(), surfaces.end(), surface) != surfaces.end()) {
-        return Result::SUCCESS;
-    }
-    return Result::ERROR;
-}
-
-std::shared_ptr<Render::Program> GLES::create(Render::Program::Config& cfg) {
+std::shared_ptr<Render::Program> GLES::create(const Render::Program::Config & cfg) {
     return std::make_shared<Program>(cfg, *this);
 }
 
-std::shared_ptr<Render::Texture> GLES::create(Render::Texture::Config& cfg) {
+std::shared_ptr<Render::Texture> GLES::create(const Render::Texture::Config & cfg) {
     return std::make_shared<Texture>(cfg, *this);
 }
 
-std::shared_ptr<Render::Vertex> GLES::create(Render::Vertex::Config& cfg) {
+std::shared_ptr<Render::Vertex> GLES::create(const Render::Vertex::Config & cfg) {
     return std::make_shared<Vertex>(cfg, *this);
 }
 
-std::shared_ptr<Render::Draw> GLES::create(Render::Draw::Config& cfg) {
+std::shared_ptr<Render::Draw> GLES::create(const Render::Draw::Config & cfg) {
     return std::make_shared<Draw>(cfg, *this);
 }
 
