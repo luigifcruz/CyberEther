@@ -3,7 +3,6 @@ project(
     version: '0.0.0',
     default_options: [
         'cpp_std=c++17',
-        'cuda_std=c++17',
     ]
 )
 
@@ -11,7 +10,6 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
   dependency('threads'),
-  subproject('gadget').get_variable('libgadget_dep'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),

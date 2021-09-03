@@ -2,19 +2,33 @@
 #define JETSTREAM_TYPE_H
 
 #include <iostream>
-#include <complex>
-#include <vector>
 #include <memory>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <span>
-#include <chrono>
 #include <atomic>
+#include <vector>
 
-#include <gadget/base.hpp>
-#include <gadget/tools/span.hpp>
-using namespace Gadget;
+#if __has_include("nvtx3/nvToolsExt.h") && defined JETSTREAM_DEBUG
+#include <nvtx3/nvToolsExt.h>
+
+#ifndef DEBUG_PUSH
+#define DEBUG_PUSH(name) { nvtxRangePushA(name); }
+#endif
+#ifndef DEBUG_POP
+#define DEBUG_POP() { nvtxRangePop(); }
+#endif
+
+#else
+
+#ifndef DEBUG_PUSH
+#define DEBUG_PUSH(name)
+#endif
+#ifndef DEBUG_POP
+#define DEBUG_POP()
+#endif
+
+#endif
 
 namespace Jetstream {
 
