@@ -2,48 +2,62 @@
 
 namespace Jetstream {
 
-Result Engine::compute() {
-    DEBUG_PUSH("compute_wait");
+Result Loop::compute() {
+    GT_DEBUG_PUSH("compute_wait");
 
     std::unique_lock<std::mutex> sync(m);
     access.wait(sync, [=]{ return !waiting; });
 
-    DEBUG_POP();
-    DEBUG_PUSH("compute");
+    GT_DEBUG_POP();
+    GT_DEBUG_PUSH("compute");
 
-    for (const auto& [key, instance] : instances) {
-        CHECK(instance.run->compute());
+    Result err = Result::SUCCESS;
+    for (const auto & [name, mod] : blocks) {
+        GT_DEBUG_PUSH(name + "_compute");
+        if ((err = mod->compute()) != Result::SUCCESS) {
+            return err;
+        }
+        GT_DEBUG_POP();
     }
 
-    for (const auto& [key, instance] : instances) {
-        CHECK(instance.run->barrier());
+    for (const auto & [name, mod] : blocks) {
+        GT_DEBUG_PUSH(name + "_barrier");
+        if ((err = mod->barrier()) != Result::SUCCESS) {
+            return err;
+        }
+        GT_DEBUG_POP();
     }
 
-    DEBUG_POP();
+    GT_DEBUG_POP();
 
-    return Result::SUCCESS;
+    return err;
 }
 
-Result Engine::present() {
-    DEBUG_PUSH("present_wait");
+Result Loop::present() {
+    GT_DEBUG_PUSH("present_wait");
 
     waiting = true;
+    Result err = Result::SUCCESS;
     {
-        const std::scoped_lock<std::mutex> lock(m);
+        const std::unique_lock<std::mutex> lock(m);
 
-        DEBUG_POP();
-        DEBUG_PUSH("present");
+        GT_DEBUG_POP();
+        GT_DEBUG_PUSH("present");
 
-        for (const auto& [key, instance] : instances) {
-            CHECK(instance.mod->present());
+        for (const auto & [name, mod] : blocks) {
+            GT_DEBUG_PUSH(name);
+            if ((err = mod->present()) != Result::SUCCESS) {
+                return err;
+            }
+            GT_DEBUG_POP();
         }
     }
     waiting = false;
     access.notify_one();
 
-    DEBUG_POP();
+    GT_DEBUG_POP();
 
-    return Result::SUCCESS;
+    return err;
 }
 
-} // namespace Jetstream
+} // namespace Jetstream::Loop
