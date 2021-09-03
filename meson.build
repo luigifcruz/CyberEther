@@ -18,6 +18,7 @@ dep_lst = [
     subproject('samurai').get_variable('libsamurai_dep'),
     subproject('render').get_variable('librender_dep'),
     subproject('jetstream').get_variable('libjetstream_dep'),
+    subproject('jstcore').get_variable('libjstcore_dep'),
 ]
 
 executable(

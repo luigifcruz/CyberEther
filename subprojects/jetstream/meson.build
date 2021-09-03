@@ -11,6 +11,7 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
   dependency('threads'),
+  subproject('gadget').get_variable('libgadget_dep'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
@@ -18,7 +19,12 @@ inc_lst = [
     include_directories('.'),
 ]
 
-subdir('meson')
+is_release = false
+if get_option('buildtype') == 'release'
+  is_release = true
+endif
+cfg_lst.set('JETSTREAM_DEBUG', not is_release)
+
 subdir('src')
 subdir('include')
 

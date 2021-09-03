@@ -1,2 +1,0 @@
-option('FFTW', type : 'boolean', value : false, description: 'Force FFTW Support.')
-option('CUDA', type : 'boolean', value : false, description: 'Force CUDA Support.')

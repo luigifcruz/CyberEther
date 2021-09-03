@@ -5,6 +5,7 @@
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
 #include "jetstream/base.hpp"
+#include "jstcore/fft/cpu.hpp"
 
 using namespace Jetstream;
 
@@ -20,22 +21,14 @@ public:
         renderCfg.title = "CyberEther";
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
-        // Configure Jetstream
-        Policy policy = {Locale::CPU, Launch::SYNC};
-        engine = std::make_unique<Engine>(policy);
-
+        // Allocate Radio Buffer
         stream = std::vector<std::complex<float>>(2048);
 
-        fft = engine->add<FFT>("fft0", {}, {
-            {"input0", Data<VCF32>{Locale::CPU, stream}}
-        });
+        // Configure Jetstream
+        loop = Loop::Sync();
 
-        lpt = engine->add<Lineplot>("lpt0", {render}, {
-            {"input0", Tap{"fft0", "output0"}},
-        });
-
-        wtf = engine->add<Waterfall>("wtf0", {render}, {
-            {"input0", Tap{"fft0", "output0"}},
+        fft = loop->add<FFT::CPU>("fft0", {}, {
+            Data<VCF32>{Locale::CPU, stream},
         });
     }
 
@@ -61,7 +54,7 @@ public:
             streaming = true;
             while (streaming) {
                 device->ReadStream(rx, stream.data(), stream.size(), 1000);
-                JETSTREAM_CHECK_THROW(engine->compute());
+                loop->compute();
             }
 
             device->StopStream();
@@ -83,7 +76,7 @@ public:
         render->start();
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-
+/*
         {
             ImGui::Begin("Lineplot");
             auto [x, y] = ImGui::GetContentRegionAvail();
@@ -121,7 +114,7 @@ public:
 
             ImGui::End();
         }
-
+*/
         ImGui::Begin("Samurai Info");
         if (streaming) {
             float bufferUsageRatio = (float)device->BufferOccupancy(rx) /
@@ -133,7 +126,7 @@ public:
         ImGui::End();
 
         render->synchronize();
-        JETSTREAM_CHECK_THROW(engine->present());
+        loop->present();
         render->end();
     }
 
@@ -145,10 +138,11 @@ private:
     std::shared_ptr<Render::Instance> render;
 
     // Jetstream
-    std::unique_ptr<Jetstream::Engine> engine;
-    std::shared_ptr<Jetstream::FFT> fft;
-    std::shared_ptr<Jetstream::Lineplot> lpt;
-    std::shared_ptr<Jetstream::Waterfall> wtf;
+    std::shared_ptr<Jetstream::Loop> loop;
+    std::shared_ptr<Jetstream::FFT::Generic> fft;
+ //   std::shared_ptr<Jetstream::Accumulator> acc;
+ //   std::shared_ptr<Jetstream::Lineplot> lpt;
+ //   std::shared_ptr<Jetstream::Waterfall> wtf;
 
     // Samurai
     Samurai::ChannelId rx;

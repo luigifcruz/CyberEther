@@ -14,6 +14,9 @@
 #include <cuda_runtime.h>
 #endif
 
+#include <gadget/base.hpp>
+using namespace Gadget;
+
 typedef unsigned int uint;
 
 namespace Render {
@@ -100,52 +103,5 @@ enum class PixelType : uint {
 };
 
 } // namespace Render
-
-#ifndef GADGET_TYPE_H
-#define GADGET_TYPE_H
-
-namespace Gadget {
-
-template<typename T>
-struct Size2D {
-    T width;
-    T height;
-
-    bool operator==(const Size2D<T>& a) const {
-        return (width == a.width && height == a.height);
-    }
-
-    bool operator!=(const Size2D<T>& a) const {
-        return (width != a.width || height != a.height);
-    }
-
-    bool operator<=(const Size2D<T>& a) const {
-        return (width <= a.width || height <= a.height);
-    }
-};
-
-template<typename T>
-struct Range {
-    T min;
-    T max;
-
-    bool operator==(const Size2D<T>& a) const {
-        return (min == a.min && max == a.max);
-    }
-
-    bool operator!=(const Size2D<T>& a) const {
-        return (min != a.min || max != a.max);
-    }
-
-    bool operator<=(const Size2D<T>& a) const {
-        return (min <= a.min || max <= a.max);
-    }
-};
-
-} // namspace Gadget
-
-using namespace Gadget;
-
-#endif
 
 #endif
