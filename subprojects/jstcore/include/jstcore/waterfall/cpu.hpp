@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_WATERFALL_CPU_H
-#define JETSTREAM_WATERFALL_CPU_H
+#ifndef JSTCORE_WATERFALL_CPU_H
+#define JSTCORE_WATERFALL_CPU_H
 
 #include "jstcore/waterfall/generic.hpp"
 

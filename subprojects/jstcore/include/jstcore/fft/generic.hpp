@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_FFT_GENERIC_H
-#define JETSTREAM_FFT_GENERIC_H
+#ifndef JSTCORE_FFT_GENERIC_H
+#define JSTCORE_FFT_GENERIC_H
 
 #include "jetstream/base.hpp"
 

@@ -5,9 +5,7 @@
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
 #include "jetstream/base.hpp"
-#include "jstcore/fft/cpu.hpp"
-#include "jstcore/lineplot/cpu.hpp"
-#include "jstcore/waterfall/cpu.hpp"
+#include "jstcore/base.hpp"
 
 using namespace Jetstream;
 
@@ -29,17 +27,17 @@ public:
         // Configure Jetstream
         loop = Loop<Sync>::New();
 
-        fft = loop->add<FFT::CPU>("fft0", {}, {
+        fft = loop->add<FFT::CUDA>("fft0", {}, {
             Data<VCF32>{Locale::CPU, stream},
         });
 
         auto gui = Loop<Sync>::New(loop);
 
-        lpt = gui->add<Lineplot::CPU>("lpt0", {render}, {
+        lpt = gui->add<Lineplot::CUDA>("lpt0", {render}, {
             fft->output(),
         });
 
-        wtf = gui->add<Waterfall::CPU>("wtf0", {render}, {
+        wtf = gui->add<Waterfall::CUDA>("wtf0", {render}, {
             fft->output(),
         });
     }

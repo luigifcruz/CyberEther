@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_LINEPLOT_GENERIC_H
-#define JETSTREAM_LINEPLOT_GENERIC_H
+#ifndef JSTCORE_LINEPLOT_GENERIC_H
+#define JSTCORE_LINEPLOT_GENERIC_H
 
 #include "jetstream/base.hpp"
 #include "render/tools/lut.hpp"

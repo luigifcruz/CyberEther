@@ -92,7 +92,8 @@ Result Generic::compute() {
 }
 
 Result Generic::present() {
-    return this->underlyingPresent();
+    lineVertex->update();
+    return Result::SUCCESS;
 }
 
 Size2D<int> Generic::size(const Size2D<int> & size) {
