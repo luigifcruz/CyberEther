@@ -21,7 +21,7 @@ cpp_link_args = [
     '-lairspy',
     '-lusb-1.0',
     '-o', 'cyberether.html',
-    '--preload-file', './roboto.ttf',
+    '--preload-file', './JetBrainsMono-Regular.ttf',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
     '-s', 'INITIAL_MEMORY=128MB']
 c_args = cpp_link_args

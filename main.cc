@@ -6,6 +6,8 @@
 #include "samurai/samurai.hpp"
 #include "jetstream/base.hpp"
 #include "jstcore/fft/cpu.hpp"
+#include "jstcore/lineplot/cpu.hpp"
+#include "jstcore/waterfall/cpu.hpp"
 
 using namespace Jetstream;
 
@@ -31,7 +33,15 @@ public:
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        auto gui = Loop<Async>::New(loop);
+        auto gui = Loop<Sync>::New(loop);
+
+        lpt = gui->add<Lineplot::CPU>("lpt0", {render}, {
+            fft->output(),
+        });
+
+        wtf = gui->add<Waterfall::CPU>("wtf0", {render}, {
+            fft->output(),
+        });
     }
 
     void start() {
@@ -78,7 +88,7 @@ public:
         render->start();
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-/*
+
         {
             ImGui::Begin("Lineplot");
             auto [x, y] = ImGui::GetContentRegionAvail();
@@ -116,7 +126,7 @@ public:
 
             ImGui::End();
         }
-*/
+
         ImGui::Begin("Samurai Info");
         if (streaming) {
             float bufferUsageRatio = (float)device->BufferOccupancy(rx) /
@@ -142,9 +152,8 @@ private:
     // Jetstream
     std::shared_ptr<Jetstream::Loop<Sync>> loop;
     std::shared_ptr<Jetstream::FFT::Generic> fft;
- //   std::shared_ptr<Jetstream::Accumulator> acc;
- //   std::shared_ptr<Jetstream::Lineplot> lpt;
- //   std::shared_ptr<Jetstream::Waterfall> wtf;
+    std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
+    std::shared_ptr<Jetstream::Waterfall::Generic> wtf;
 
     // Samurai
     Samurai::ChannelId rx;

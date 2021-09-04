@@ -22,6 +22,6 @@ protected:
     std::vector<float> amp_out;
 };
 
-} // namespace Jetstream
+} // namespace Jetstream::FFT
 
 #endif
