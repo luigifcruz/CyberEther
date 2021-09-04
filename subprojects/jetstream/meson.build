@@ -23,7 +23,6 @@ if get_option('buildtype') == 'release'
 endif
 cfg_lst.set('JETSTREAM_DEBUG', not is_release)
 
-subdir('src')
 subdir('include')
 
 summary({'cpp_std': get_option('cpp_std'),

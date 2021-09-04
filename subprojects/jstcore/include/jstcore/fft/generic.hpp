@@ -22,7 +22,7 @@ public:
     explicit Generic(const Config &, const Input &);
     virtual ~Generic() = default;
 
-    Result compute() final;
+    Result compute();
 
     constexpr Range<float> amplitude() const {
         return config.amplitude;
