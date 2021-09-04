@@ -14,8 +14,8 @@
 #include <cuda_runtime.h>
 #endif
 
-#include <gadget/base.hpp>
-using namespace Gadget;
+#include <jetstream/type.hpp>
+using namespace Jetstream;
 
 typedef unsigned int uint;
 

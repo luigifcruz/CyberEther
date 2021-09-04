@@ -12,7 +12,7 @@ public:
     };
 
     struct Input {
-        Data<nonstd::span<std::complex<float>>> in;
+        Data<VCF32> in;
     };
 
     constexpr Data<nonstd::span<float>>& output() {
@@ -32,7 +32,7 @@ public:
 protected:
     Config config;
     const Input input;
-    Data<nonstd::span<float>> out;
+    Data<VF32> out;
 
     std::vector<std::complex<float>> window;
 };
