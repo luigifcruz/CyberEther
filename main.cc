@@ -25,11 +25,13 @@ public:
         stream = std::vector<std::complex<float>>(2048);
 
         // Configure Jetstream
-        loop = Loop::Sync();
+        loop = Loop<Sync>::New();
 
         fft = loop->add<FFT::CPU>("fft0", {}, {
             Data<VCF32>{Locale::CPU, stream},
         });
+
+        auto gui = Loop<Async>::New(loop);
     }
 
     void start() {
@@ -138,7 +140,7 @@ private:
     std::shared_ptr<Render::Instance> render;
 
     // Jetstream
-    std::shared_ptr<Jetstream::Loop> loop;
+    std::shared_ptr<Jetstream::Loop<Sync>> loop;
     std::shared_ptr<Jetstream::FFT::Generic> fft;
  //   std::shared_ptr<Jetstream::Accumulator> acc;
  //   std::shared_ptr<Jetstream::Lineplot> lpt;
