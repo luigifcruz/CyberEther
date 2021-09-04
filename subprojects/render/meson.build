@@ -9,7 +9,6 @@ project(
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
-    subproject('gadget').get_variable('libgadget_dep'),
     subproject('jetstream').get_variable('libjetstream_dep'),
 ]
 inc_lst = [

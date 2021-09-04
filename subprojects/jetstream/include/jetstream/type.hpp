@@ -11,27 +11,7 @@
 #include <complex>
 
 #include "jetstream/tools/span.hpp"
-
-#if __has_include("nvtx3/nvToolsExt.h") && defined JETSTREAM_DEBUG
-#include <nvtx3/nvToolsExt.h>
-
-#ifndef DEBUG_PUSH
-#define DEBUG_PUSH(name) { nvtxRangePushA(name); }
-#endif
-#ifndef DEBUG_POP
-#define DEBUG_POP() { nvtxRangePop(); }
-#endif
-
-#else
-
-#ifndef DEBUG_PUSH
-#define DEBUG_PUSH(name)
-#endif
-#ifndef DEBUG_POP
-#define DEBUG_POP()
-#endif
-
-#endif
+#include "jetstream/helpers.hpp"
 
 namespace Jetstream {
 

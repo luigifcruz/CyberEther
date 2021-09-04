@@ -8,7 +8,7 @@ foreach x_dep : fftw_deps
 endforeach
 
 if all_fftw_deps_found
-  cfg_lst.set('JETSTREAM_FFT_FFTW_AVAILABLE', true)
+  cfg_lst.set('JSTCORE_FFT_FFTW_AVAILABLE', true)
   dep_lst += fftw_deps
   src_lst += files([
     'base.cc',

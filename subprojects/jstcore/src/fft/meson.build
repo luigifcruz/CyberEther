@@ -5,6 +5,6 @@ src_lst += files([
 sum_lst = {}
 
 subdir('cpu')
-#subdir('cuda')
+subdir('cuda')
 
 summary(sum_lst, section: 'FFT Module', bool_yn: true)

@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_FFT_CPU_H
-#define JETSTREAM_FFT_CPU_H
+#ifndef JSTCORE_FFT_CPU_H
+#define JSTCORE_FFT_CPU_H
 
 #include "jstcore/fft/generic.hpp"
 

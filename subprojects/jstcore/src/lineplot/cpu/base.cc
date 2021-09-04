@@ -13,9 +13,4 @@ Result CPU::underlyingCompute() {
     return Result::SUCCESS;
 }
 
-Result CPU::underlyingPresent() {
-    lineVertex->update();
-    return Result::SUCCESS;
-}
-
 } // namespace Jetstream::Lineplot

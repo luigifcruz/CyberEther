@@ -23,6 +23,11 @@ if get_option('buildtype') == 'release'
 endif
 cfg_lst.set('JETSTREAM_DEBUG', not is_release)
 
+cuda_dep = dependency('cuda', version : '>=11', required: false)
+if cuda_dep.found() and not meson.is_cross_build()
+  cfg_lst.set('JETSTREAM_CUDA_AVAILABLE', true)
+endif
+
 subdir('include')
 
 summary({'cpp_std': get_option('cpp_std'),

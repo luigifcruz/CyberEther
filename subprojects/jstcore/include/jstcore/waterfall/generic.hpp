@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_WATERFALL_GENERIC_H
-#define JETSTREAM_WATERFALL_GENERIC_H
+#ifndef JSTCORE_WATERFALL_GENERIC_H
+#define JSTCORE_WATERFALL_GENERIC_H
 
 #include "jetstream/base.hpp"
 #include "render/tools/lut.hpp"
