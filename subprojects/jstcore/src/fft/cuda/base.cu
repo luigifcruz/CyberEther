@@ -40,8 +40,12 @@ static __global__ void post(const cufftComplex* c, float* r,
 
 CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) {
     JST_CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-    JST_CUDA_CHECK_THROW(cudaHostRegister(input.in.buf.data(), input.in.buf.size() * sizeof(input.in.buf[0]),
-            cudaHostRegisterReadOnly));
+
+    if ((input.in.location & Locale::CPU) == Locale::CPU &&
+        (input.in.location & Locale::CUDA) != Locale::CUDA) {
+        JST_CUDA_CHECK_THROW(cudaHostRegister(input.in.buf.data(), input.in.buf.size() * sizeof(input.in.buf[0]),
+                cudaHostRegisterReadOnly));
+    }
 
     fft_len = input.in.buf.size() * sizeof(input.in.buf[0]);
     JST_CUDA_CHECK_THROW(cudaMalloc(&fft_dptr, fft_len));
@@ -52,7 +56,7 @@ CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) 
 
     out_len = input.in.buf.size() * sizeof(float);
     JST_CUDA_CHECK_THROW(cudaMallocManaged(&out_dptr, out_len));
-    out.location = Locale::CUDA; // | Locale::CPU;
+    out.location = Locale::CUDA | Locale::CPU;
     out.buf = VF32{out_dptr, input.in.buf.size()};
 
     cufftPlan1d(&plan, input.in.buf.size(), CUFFT_C2C, 1);
@@ -73,7 +77,12 @@ Result CUDA::underlyingCompute() {
     int blocks = (N + threads - 1) / threads;
     auto [min, max] = config.amplitude;
 
-    JST_CUDA_CHECK(cudaMemcpyAsync(fft_dptr, input.in.buf.data(), fft_len, cudaMemcpyHostToDevice, stream));
+    auto direction = cudaMemcpyHostToDevice;
+    if ((input.in.location & Locale::CUDA) == Locale::CUDA) {
+        direction = cudaMemcpyDeviceToDevice;
+    }
+
+    JST_CUDA_CHECK(cudaMemcpyAsync(fft_dptr, input.in.buf.data(), fft_len, direction, stream));
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
     post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, min, max, N);

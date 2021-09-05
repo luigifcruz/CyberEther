@@ -3,6 +3,11 @@
 namespace Jetstream::Lineplot {
 
 CPU::CPU(const Config & config, const Input & input) : Generic(config, input) {
+    if ((input.in.location & Locale::CPU) != Locale::CPU) {
+        std::cerr << "[LINEPLOT::CPU] This implementation expects a Locale::CPU input." << std::endl;
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
     this->initRender(plot.data());
 }
 

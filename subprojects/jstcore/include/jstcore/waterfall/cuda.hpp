@@ -7,6 +7,12 @@
 
 namespace Jetstream::Waterfall {
 
+/**
+ * This is the implementation of the Waterfall using CUDA.
+ * It will make use of graphics interopability with CUDA.
+ * The choosen render backend has to be compatible with it.
+ * Otherwise, just use the CPU implementation of Waterfall.
+ */
 class CUDA : public Generic  {
 public:
     explicit CUDA(const Config &, const Input &);

@@ -15,7 +15,7 @@ public:
         const Data<VCF32> in;
     };
 
-    constexpr const Data<VF32> output() {
+    constexpr const Data<VF32>& output() {
         return out;
     };
 

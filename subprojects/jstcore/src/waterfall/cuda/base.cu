@@ -3,10 +3,21 @@
 namespace Jetstream::Waterfall {
 
 CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) {
+    if (!config.render->cudaInteropSupported()) {
+        std::cerr << "[WATERFALL::CUDA] This implementation expects the choosen render to be \
+            compatible with CUDA interopability. Please use the standard CPU implementation." << std::endl;
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
+    if ((input.in.location & Locale::CUDA) != Locale::CUDA) {
+        std::cerr << "[WATERFALL::CUDA] This implementation expects a Locale::CUDA input." << std::endl;
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
     ymax = config.size.height;
     JST_CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
     JST_CUDA_CHECK_THROW(cudaMalloc(&out_dptr, input.in.buf.size() * ymax * sizeof(float)));
-    JST_CHECK_THROW(this->initRender((uint8_t*)out_dptr, config.render->cudaInteropSupported()));
+    JST_CHECK_THROW(this->initRender((uint8_t*)out_dptr, true));
 }
 
 CUDA::~CUDA() {

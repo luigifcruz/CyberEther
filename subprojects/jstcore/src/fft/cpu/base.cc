@@ -27,6 +27,11 @@ static inline float amplt(const std::complex<float> x, const int n) {
 }
 
 CPU::CPU(const Config & config, const Input & input) : Generic(config, input) {
+    if ((input.in.location & Locale::CPU) != Locale::CPU) {
+        std::cerr << "[FFT::CPU] This implementation expects a Locale::CPU input." << std::endl;
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
     auto n = input.in.buf.size();
     fft_in.resize(n);
     fft_out.resize(n);
