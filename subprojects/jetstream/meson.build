@@ -23,12 +23,14 @@ if get_option('buildtype') == 'release'
 endif
 cfg_lst.set('JETSTREAM_DEBUG', not is_release)
 
-cuda_dep = dependency('cuda', version : '>=11', required: false)
+cuda_dep = dependency('cuda', version : '>=11', modules: ['dl'],  required: false)
 if cuda_dep.found() and not meson.is_cross_build()
   cfg_lst.set('JETSTREAM_CUDA_AVAILABLE', true)
+  dep_lst += cuda_dep
 endif
 
 subdir('include')
+subdir('src')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),

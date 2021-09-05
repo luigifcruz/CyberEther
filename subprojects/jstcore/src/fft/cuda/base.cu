@@ -39,19 +39,19 @@ static __global__ void post(const cufftComplex* c, float* r,
 }
 
 CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) {
-    CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-    CUDA_CHECK_THROW(cudaHostRegister(input.in.buf.data(), input.in.buf.size() * sizeof(input.in.buf[0]),
+    JST_CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    JST_CUDA_CHECK_THROW(cudaHostRegister(input.in.buf.data(), input.in.buf.size() * sizeof(input.in.buf[0]),
             cudaHostRegisterReadOnly));
 
     fft_len = input.in.buf.size() * sizeof(input.in.buf[0]);
-    CUDA_CHECK_THROW(cudaMalloc(&fft_dptr, fft_len));
+    JST_CUDA_CHECK_THROW(cudaMalloc(&fft_dptr, fft_len));
 
     win_len = input.in.buf.size() * sizeof(input.in.buf[0]);
-    CUDA_CHECK_THROW(cudaMalloc(&win_dptr, win_len));
-    CUDA_CHECK_THROW(cudaMemcpy(win_dptr, window.data(), win_len, cudaMemcpyHostToDevice));
+    JST_CUDA_CHECK_THROW(cudaMalloc(&win_dptr, win_len));
+    JST_CUDA_CHECK_THROW(cudaMemcpy(win_dptr, window.data(), win_len, cudaMemcpyHostToDevice));
 
     out_len = input.in.buf.size() * sizeof(float);
-    CUDA_CHECK_THROW(cudaMallocManaged(&out_dptr, out_len));
+    JST_CUDA_CHECK_THROW(cudaMallocManaged(&out_dptr, out_len));
     out.location = Locale::CUDA; // | Locale::CPU;
     out.buf = VF32{out_dptr, input.in.buf.size()};
 
@@ -73,11 +73,11 @@ Result CUDA::underlyingCompute() {
     int blocks = (N + threads - 1) / threads;
     auto [min, max] = config.amplitude;
 
-    CUDA_CHECK(cudaMemcpyAsync(fft_dptr, input.in.buf.data(), fft_len, cudaMemcpyHostToDevice, stream));
+    JST_CUDA_CHECK(cudaMemcpyAsync(fft_dptr, input.in.buf.data(), fft_len, cudaMemcpyHostToDevice, stream));
     pre<<<blocks, threads, 0, stream>>>(fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
     post<<<blocks, threads, 0, stream>>>(fft_dptr, out_dptr, min, max, N);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+    JST_CUDA_CHECK(cudaStreamSynchronize(stream));
 
     return Result::SUCCESS;
 }

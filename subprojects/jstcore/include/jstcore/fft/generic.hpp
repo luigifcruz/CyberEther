@@ -12,10 +12,10 @@ public:
     };
 
     struct Input {
-        Data<VCF32> in;
+        const Data<VCF32> in;
     };
 
-    constexpr Data<nonstd::span<float>>& output() {
+    constexpr const Data<VF32> output() {
         return out;
     };
 

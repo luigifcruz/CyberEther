@@ -15,7 +15,7 @@ public:
     };
 
     struct Input {
-        Data<VF32> in;
+        const Data<VF32> in;
     };
 
     explicit Generic(const Config &, const Input &);

@@ -31,7 +31,7 @@ public:
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        auto gui = Loop<Sync>::New(loop);
+        auto gui = Loop<Async>::New(loop);
 
         lpt = gui->add<Lineplot::CUDA>("lpt0", {render}, {
             fft->output(),
