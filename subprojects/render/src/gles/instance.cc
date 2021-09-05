@@ -179,6 +179,7 @@ uint GLES::convertPixelFormat(PixelFormat pfmt) {
         case PixelFormat::RED:
             return GL_RED;
     }
+    throw Result::ERROR;
 }
 
 uint GLES::convertPixelType(PixelType ptype) {
@@ -188,6 +189,7 @@ uint GLES::convertPixelType(PixelType ptype) {
         case PixelType::F32:
             return GL_FLOAT;
     }
+    throw Result::ERROR;
 }
 
 uint GLES::convertDataFormat(DataFormat dfmt) {
@@ -199,6 +201,7 @@ uint GLES::convertDataFormat(DataFormat dfmt) {
         case DataFormat::F32:
             return GL_R32F;
     }
+    throw Result::ERROR;
 }
 
 Result GLES::getError(std::string func, std::string file, int line) {

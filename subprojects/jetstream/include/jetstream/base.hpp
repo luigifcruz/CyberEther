@@ -22,7 +22,7 @@ public:
 
     template<template<class> class Y>
     static std::shared_ptr<Loop<X>> New(const std::shared_ptr<Loop<Y>> & node) {
-        return node->template add<Loop<X>>("sync", {}, {});
+        return node->template add<Loop<X>>("modifier", {}, {});
     }
 
     template<typename T>
@@ -76,7 +76,7 @@ public:
             DEBUG_PUSH("present");
 
             for (const auto & [name, mod] : blocks) {
-                DEBUG_PUSH(name);
+                DEBUG_PUSH(name + "_present");
                 if ((err = mod->present()) != Result::SUCCESS) {
                     return err;
                 }
