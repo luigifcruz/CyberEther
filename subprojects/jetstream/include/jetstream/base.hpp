@@ -20,6 +20,11 @@ public:
         return std::make_shared<Loop<X>>();
     }
 
+    template<template<class> class Y>
+    static std::shared_ptr<Loop<X>> New(const std::shared_ptr<Loop<Y>> & node) {
+        return node->template add<Loop<X>>("modifier", {}, {});
+    }
+
     template<typename T>
     std::shared_ptr<T> add(const std::string & name, const typename T::Config & config,
             const typename T::Input & input) {
@@ -95,78 +100,6 @@ protected:
     std::condition_variable access;
     bool waiting = false;
     std::mutex m;
-};
-
-template<template<class> class X>
-class Subloop : public Module {
-public:
-    struct Config {};
-    struct Input {};
-
-    Subloop() {};
-    Subloop(const Config &, const Input &) {};
-
-    template<template<class> class Y>
-    static std::shared_ptr<Subloop<X>> New(const std::shared_ptr<Loop<Y>> & node) {
-        return node->template add<Subloop<X>>("modifier", {}, {});
-    }
-
-    template<typename T>
-    std::shared_ptr<T> add(const std::string & name, const typename T::Config & config,
-            const typename T::Input & input) {
-        auto mod = std::make_shared<X<T>>(config, input);
-        blocks.push_back({ name, mod });
-        return mod;
-    }
-
-    Result compute() {
-        DEBUG_PUSH("sub_compute");
-
-        Result err = Result::SUCCESS;
-        for (const auto & [name, mod] : blocks) {
-            DEBUG_PUSH(name + "_compute");
-            if ((err = mod->compute()) != Result::SUCCESS) {
-                return err;
-            }
-            DEBUG_POP();
-        }
-
-        for (const auto & [name, mod] : blocks) {
-            DEBUG_PUSH(name + "_barrier");
-            if ((err = mod->barrier()) != Result::SUCCESS) {
-                return err;
-            }
-            DEBUG_POP();
-        }
-
-        DEBUG_POP();
-
-        return err;
-    }
-
-    Result present() {
-        DEBUG_PUSH("sub_present");
-
-        Result err = Result::SUCCESS;
-        for (const auto & [name, mod] : blocks) {
-            DEBUG_PUSH(name + "_present");
-            if ((err = mod->present()) != Result::SUCCESS) {
-                return err;
-            }
-            DEBUG_POP();
-        }
-
-        DEBUG_POP();
-
-        return err;
-    }
-
-protected:
-    struct Block {
-        std::string name;
-        std::shared_ptr<Module> mod;
-    };
-    std::vector<Block> blocks;
 };
 
 } // namespace Jetstream
