@@ -32,7 +32,7 @@ BENCHMARK(BM_AsyncLoop);
 static void BM_SyncSyncLoop(benchmark::State& state) {
   auto loop = Loop<Sync>::New();
   loop->add<Dummy>("dummy0", {}, {});
-  auto sync = Loop<Sync>::New(loop);
+  auto sync = Subloop<Sync>::New(loop);
   sync->add<Dummy>("dummy1", {}, {});
   for (auto _ : state) {
     loop->compute();
@@ -43,7 +43,7 @@ BENCHMARK(BM_SyncSyncLoop);
 static void BM_SyncAsyncLoop(benchmark::State& state) {
   auto loop = Loop<Sync>::New();
   loop->add<Dummy>("dummy0", {}, {});
-  auto async = Loop<Async>::New(loop);
+  auto async = Subloop<Async>::New(loop);
   async->add<Dummy>("dummy1", {}, {});
   for (auto _ : state) {
     loop->compute();
