@@ -8,7 +8,7 @@ CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) 
     if ((input.in.location & Locale::CPU) == Locale::CPU &&
         (input.in.location & Locale::CUDA) != Locale::CUDA) {
         JST_CUDA_CHECK_THROW(cudaHostRegister(input.in.buf.data(), input.in.buf.size() * sizeof(input.in.buf[0]),
-                cudaHostRegisterReadOnly));
+                cudaHostRegisterDefault));
     }
 
     fft_len = input.in.buf.size() * sizeof(input.in.buf[0]);
