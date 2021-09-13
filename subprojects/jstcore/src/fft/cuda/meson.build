@@ -1,5 +1,5 @@
 cuda_deps = [
-  dependency('cuda', version : '>=11', modules : ['cufft'], required: get_option('CUDA'))
+  dependency('cuda', version : '>=10', modules : ['cufft'], required: get_option('CUDA'))
 ]
 
 all_cuda_deps_found = true
@@ -13,7 +13,8 @@ if all_cuda_deps_found
   cfg_lst.set('JSTCORE_FFT_CUDA_AVAILABLE', true)
   dep_lst += cuda_deps
   src_lst += files([
-    'base.cu',
+    'base.cc',
+    'kernel.cu',
   ])
 endif
 
