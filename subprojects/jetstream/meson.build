@@ -10,6 +10,7 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
   dependency('threads'),
+  dependency('benchmark'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
