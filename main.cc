@@ -142,7 +142,7 @@ public:
 
 private:
     std::thread dsp;
-    std::atomic<bool> streaming{false};
+    bool streaming = false;
 
     // Render
     std::shared_ptr<Render::Instance> render;

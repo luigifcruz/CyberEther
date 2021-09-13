@@ -8,7 +8,7 @@ CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) 
     if ((input.in.location & Locale::CPU) == Locale::CPU &&
         (input.in.location & Locale::CUDA) != Locale::CUDA) {
         JST_CUDA_CHECK_THROW(cudaHostRegister(input.in.buf.data(), input.in.buf.size() * sizeof(input.in.buf[0]),
-                cudaHostRegisterDefault));
+                cudaHostRegisterReadOnly));
     }
 
     fft_len = input.in.buf.size() * sizeof(input.in.buf[0]);
@@ -41,12 +41,7 @@ Result CUDA::underlyingCompute() {
     int blocks = (N + threads - 1) / threads;
     auto [min, max] = config.amplitude;
 
-    auto direction = cudaMemcpyHostToDevice;
-    if ((input.in.location & Locale::CUDA) == Locale::CUDA) {
-        direction = cudaMemcpyDeviceToDevice;
-    }
-    JST_CUDA_CHECK(cudaMemcpyAsync(fft_dptr, input.in.buf.data(), fft_len, direction, stream));
-
+    JST_CUDA_CHECK(cudaMemcpyAsync(fft_dptr, input.in.buf.data(), fft_len, cudaMemcpyDeviceToDevice, stream));
     Kernel::PreFFT(blocks, threads, stream, fft_dptr, win_dptr, N);
     cufftExecC2C(plan, fft_dptr, fft_dptr, CUFFT_FORWARD);
     Kernel::PostFFT(blocks, threads, stream, fft_dptr, out_dptr, min, max, N);

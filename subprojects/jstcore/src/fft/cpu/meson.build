@@ -13,6 +13,12 @@ if all_fftw_deps_found
   src_lst += files([
     'base.cc',
   ])
+  executable(
+    'bench',
+    src_lst + ['benchmark.cc'],
+    include_directories: inc_lst,
+    dependencies: dep_lst,
+  )
 else
   if get_option('FFTW')
     error('FFTW dependencies were not found.')

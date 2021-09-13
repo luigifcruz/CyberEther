@@ -16,6 +16,12 @@ if all_cuda_deps_found
     'base.cc',
     'kernel.cu',
   ])
+  executable(
+    'bench',
+    src_lst + ['benchmark.cc'],
+    include_directories: inc_lst,
+    dependencies: dep_lst,
+  )
 endif
 
 sum_lst += {'GPU (CUDA)': all_cuda_deps_found}
