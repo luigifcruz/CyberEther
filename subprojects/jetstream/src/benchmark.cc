@@ -1,5 +1,4 @@
 #include <benchmark/benchmark.h>
-
 #include "jetstream/base.hpp"
 
 using namespace Jetstream;
@@ -33,7 +32,7 @@ BENCHMARK(BM_AsyncLoop);
 static void BM_SyncSyncLoop(benchmark::State& state) {
   auto loop = Loop<Sync>::New();
   loop->add<Dummy>("dummy0", {}, {});
-  auto sync = Subloop<Sync>::New(loop);
+  auto sync = Loop<Sync>::New(loop);
   sync->add<Dummy>("dummy1", {}, {});
   for (auto _ : state) {
     loop->compute();
@@ -44,7 +43,7 @@ BENCHMARK(BM_SyncSyncLoop);
 static void BM_SyncAsyncLoop(benchmark::State& state) {
   auto loop = Loop<Sync>::New();
   loop->add<Dummy>("dummy0", {}, {});
-  auto async = Subloop<Async>::New(loop);
+  auto async = Loop<Async>::New(loop);
   async->add<Dummy>("dummy1", {}, {});
   for (auto _ : state) {
     loop->compute();

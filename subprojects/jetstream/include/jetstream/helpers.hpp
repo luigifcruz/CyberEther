@@ -57,7 +57,7 @@ void jst_cuda_print_error(cudaError_t, const char*, int, const char*);
 #endif
 #endif
 
-#if __has_include("nvtx3/nvToolsExt.h") && defined JETSTREAM_CUDA_AVAILABLE && defined JETSTREAM_DEBUG
+#if __has_include("nvtx3/nvToolsExt.h") && defined JETSTREAM_CUDA_AVAILABLE && defined ENABLE_NVTX
 #include <nvtx3/nvToolsExt.h>
 
 #ifndef DEBUG_PUSH
