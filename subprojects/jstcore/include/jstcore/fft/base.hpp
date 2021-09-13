@@ -6,7 +6,7 @@
 #include "jstcore/fft/cpu.hpp"
 #endif
 #ifdef JSTCORE_FFT_CUDA_AVAILABLE
-#include "jstcore/fft/cuda.hpp"
+#include "jstcore/fft/cuda/base.hpp"
 #endif
 
 #endif

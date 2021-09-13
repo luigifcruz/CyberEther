@@ -1,7 +1,8 @@
-#ifndef JSTCORE_FFT_CUDA_H
-#define JSTCORE_FFT_CUDA_H
+#ifndef JSTCORE_FFT_CUDA_BASE_H
+#define JSTCORE_FFT_CUDA_BASE_H
 
 #include "jstcore/fft/generic.hpp"
+#include "jstcore/fft/cuda/kernel.hpp"
 
 #include <cuda_runtime.h>
 #include <cufft.h>
@@ -32,3 +33,4 @@ protected:
 } // namespace Jetstream::FFT
 
 #endif
+
