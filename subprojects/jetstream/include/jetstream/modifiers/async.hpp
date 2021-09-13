@@ -55,6 +55,7 @@ public:
 
     Result barrier() {
         std::unique_lock<std::mutex> sync(mtx);
+        access.wait(sync, [&]{ return !mailbox; });
         return result;
     }
 
