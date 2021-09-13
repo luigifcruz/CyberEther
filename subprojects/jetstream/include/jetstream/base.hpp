@@ -32,22 +32,25 @@ public:
         DEBUG_PUSH("compute_wait");
 
         std::unique_lock<std::mutex> sync(m);
-        access.wait(sync, [=]{ return !waiting; });
+        access.wait(sync, [&]{ return !waiting; });
 
         DEBUG_POP();
         DEBUG_PUSH("compute");
 
         Result err = Result::SUCCESS;
         for (const auto & [name, mod] : blocks) {
-            DEBUG_PUSH(name + "_compute");
+            DEBUG_PUSH(name);
             if ((err = mod->compute()) != Result::SUCCESS) {
                 return err;
             }
             DEBUG_POP();
         }
 
+        DEBUG_POP();
+        DEBUG_PUSH("barrier");
+
         for (const auto & [name, mod] : blocks) {
-            DEBUG_PUSH(name + "_barrier");
+            DEBUG_PUSH(name);
             if ((err = mod->barrier()) != Result::SUCCESS) {
                 return err;
             }
@@ -71,7 +74,7 @@ public:
             DEBUG_PUSH("present");
 
             for (const auto & [name, mod] : blocks) {
-                DEBUG_PUSH(name + "_present");
+                DEBUG_PUSH(name);
                 if ((err = mod->present()) != Result::SUCCESS) {
                     return err;
                 }

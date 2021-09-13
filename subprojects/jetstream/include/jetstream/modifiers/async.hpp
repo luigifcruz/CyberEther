@@ -13,15 +13,16 @@ public:
     {
         worker = std::thread([&]{
             while (!discard) {
-                std::unique_lock<std::mutex> sync(mtx);
-                access.wait(sync, [&]{ return mailbox; });
+                {
+                    std::unique_lock<std::mutex> sync(mtx);
+                    access.wait(sync, [&]{ return mailbox; });
 
-                if (!discard) {
-                    result = T::compute();
+                    if (!discard) {
+                        result = T::compute();
+                    }
+
+                    mailbox = false;
                 }
-
-                mailbox = false;
-                sync.unlock();
                 access.notify_all();
             }
         });
@@ -40,15 +41,11 @@ public:
     }
 
     Result compute() {
-        std::unique_lock<std::mutex> sync(mtx);
-        access.wait(sync, [&]{ return !mailbox; });
-
-        if (!discard) {
+        {
+            std::unique_lock<std::mutex> sync(mtx);
             mailbox = true;
-            sync.unlock();
-            access.notify_all();
         }
-
+        access.notify_all();
         return Result::SUCCESS;
     }
 
@@ -58,7 +55,6 @@ public:
 
     Result barrier() {
         std::unique_lock<std::mutex> sync(mtx);
-        access.wait(sync, [&]{ return !mailbox; });
         return result;
     }
 
