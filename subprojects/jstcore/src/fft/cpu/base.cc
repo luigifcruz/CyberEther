@@ -40,10 +40,6 @@ CPU::CPU(const Config & config, const Input & input) : Generic(config, input) {
     cf_plan = fftwf_plan_dft_1d(input.in.buf.size(), reinterpret_cast<fftwf_complex*>(fft_in.data()),
             reinterpret_cast<fftwf_complex*>(fft_out.data()), FFTW_FORWARD, FFTW_MEASURE);
 
-#ifdef JETSTREAM_DEBUG
-    std::cout << "[JST:FFT:CPU]: FFTW Version: " << fftwf_version << std::endl;
-#endif
-
     out.buf = amp_out;
     out.location = Locale::CPU;
 }

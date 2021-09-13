@@ -100,7 +100,7 @@ protected:
     std::mutex m;
     std::vector<Block> blocks;
     std::condition_variable access;
-    std::atomic<bool> waiting{false};
+    bool waiting = false;
 };
 
 } // namespace Jetstream
