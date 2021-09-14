@@ -17,17 +17,21 @@ public:
 #if __cpp_lib_atomic_wait
                 lock.wait(false, std::memory_order_acquire);
 #else
-                while (!lock.load(std::memory_order_relaxed)) {
-                    __builtin_ia32_pause();
-                }
+                std::unique_lock<std::mutex> sync(mtx);
+                access.wait(sync, [&]{ return mailbox; });
 #endif
+
                 if (!discard) {
                     result = T::compute();
                 }
 
-                lock.store(false, std::memory_order_release);
 #if __cpp_lib_atomic_wait
+                lock.store(false, std::memory_order_release);
                 lock.notify_all();
+#else
+                mailbox = false;
+                sync.unlock();
+                access.notify_all();
 #endif
             }
         });
@@ -36,18 +40,21 @@ public:
     ~Async() {
         if (worker.joinable()) {
             discard = true;
-            lock.store(true, std::memory_order_release);
-#if __cpp_lib_atomic_wait
-            lock.notify_all();
-#endif
+            this->compute();
             worker.join();
         }
     }
 
     Result compute() {
-        lock.store(true, std::memory_order_release);
 #if __cpp_lib_atomic_wait
+        lock.store(true, std::memory_order_release);
         lock.notify_all();
+#else
+        {
+            std::unique_lock<std::mutex> sync(mtx);
+            mailbox = true;
+        }
+        access.notify_all();
 #endif
         return Result::SUCCESS;
     }
@@ -60,9 +67,8 @@ public:
 #if __cpp_lib_atomic_wait
         lock.wait(true, std::memory_order_acquire);
 #else
-        while (lock.load(std::memory_order_relaxed)) {
-            __builtin_ia32_pause();
-        }
+        std::unique_lock<std::mutex> sync(mtx);
+        access.wait(sync, [&]{ return !mailbox; });
 #endif
         return result;
     }
@@ -71,7 +77,14 @@ private:
     Result result;
     std::thread worker;
     bool discard{false};
+
+#if __cpp_lib_atomic_wait
     alignas(4) std::atomic<bool> lock{false};
+#else
+    std::mutex mtx;
+    std::condition_variable access;
+    bool mailbox = false;
+#endif
 };
 
 } // namespace Jetstream
