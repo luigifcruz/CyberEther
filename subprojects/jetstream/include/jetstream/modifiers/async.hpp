@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_ASYNC_H
 #define JETSTREAM_ASYNC_H
 
+#include <atomic>
 #include "jetstream/module.hpp"
 
 namespace Jetstream {
@@ -22,8 +23,8 @@ public:
                     }
 
                     mailbox = false;
+                    lock = false;
                 }
-                access.notify_all();
             }
         });
     }
@@ -44,6 +45,7 @@ public:
         {
             std::unique_lock<std::mutex> sync(mtx);
             mailbox = true;
+            lock = true;
         }
         access.notify_all();
         return Result::SUCCESS;
@@ -54,14 +56,14 @@ public:
     }
 
     Result barrier() {
-        std::unique_lock<std::mutex> sync(mtx);
-        access.wait(sync, [&]{ return !mailbox; });
+        while (lock);
         return result;
     }
 
 private:
     std::thread worker;
     std::mutex mtx;
+    std::atomic<bool> lock{false};
     std::condition_variable access;
     bool discard{false};
     bool mailbox{false};
