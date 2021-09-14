@@ -14,14 +14,21 @@ public:
     {
         worker = std::thread([&]{
             while (!discard) {
+#if __cpp_lib_atomic_wait
                 lock.wait(false, std::memory_order_acquire);
-
+#else
+                while (!lock.load(std::memory_order_relaxed)) {
+                    __builtin_ia32_pause();
+                }
+#endif
                 if (!discard) {
                     result = T::compute();
                 }
 
-                lock.store(false);
+                lock.store(false, std::memory_order_release);
+#if __cpp_lib_atomic_wait
                 lock.notify_all();
+#endif
             }
         });
     }
@@ -29,15 +36,19 @@ public:
     ~Async() {
         if (worker.joinable()) {
             discard = true;
-            lock.store(true);
+            lock.store(true, std::memory_order_release);
+#if __cpp_lib_atomic_wait
             lock.notify_all();
+#endif
             worker.join();
         }
     }
 
     Result compute() {
-        lock.store(true);
+        lock.store(true, std::memory_order_release);
+#if __cpp_lib_atomic_wait
         lock.notify_all();
+#endif
         return Result::SUCCESS;
     }
 
@@ -46,7 +57,13 @@ public:
     }
 
     Result barrier() {
+#if __cpp_lib_atomic_wait
         lock.wait(true, std::memory_order_acquire);
+#else
+        while (lock.load(std::memory_order_relaxed)) {
+            __builtin_ia32_pause();
+        }
+#endif
         return result;
     }
 

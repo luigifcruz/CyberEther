@@ -2,6 +2,7 @@
 #include <emscripten.h>
 #endif
 
+#define ENABLE_NVTX
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
 #include "jetstream/base.hpp"
