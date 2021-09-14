@@ -56,6 +56,7 @@ public:
     }
 
     Result barrier() {
+        // This is preposterous, but std::condition_variable is slower than grandma with GCC & Clang.
         while (lock);
         return result;
     }
