@@ -2,6 +2,7 @@
 #define JETSTREAM_ASYNC_H
 
 #include <atomic>
+#include "jetstream/tools/atomic.hpp"
 #include "jetstream/module.hpp"
 
 namespace Jetstream {
@@ -14,40 +15,30 @@ public:
     {
         worker = std::thread([&]{
             while (!discard) {
-                {
-                    std::unique_lock<std::mutex> sync(mtx);
-                    access.wait(sync, [&]{ return mailbox; });
+                lock.wait(false, std::memory_order_acquire);
 
-                    if (!discard) {
-                        result = T::compute();
-                    }
-
-                    mailbox = false;
-                    lock = false;
+                if (!discard) {
+                    result = T::compute();
                 }
+
+                lock.store(false);
+                lock.notify_all();
             }
         });
     }
 
     ~Async() {
         if (worker.joinable()) {
-            {
-                std::unique_lock<std::mutex> sync(mtx);
-                discard = true;
-                mailbox = true;
-            }
-            access.notify_all();
+            discard = true;
+            lock.store(true);
+            lock.notify_all();
             worker.join();
         }
     }
 
     Result compute() {
-        {
-            std::unique_lock<std::mutex> sync(mtx);
-            mailbox = true;
-            lock = true;
-        }
-        access.notify_all();
+        lock.store(true);
+        lock.notify_all();
         return Result::SUCCESS;
     }
 
@@ -56,19 +47,15 @@ public:
     }
 
     Result barrier() {
-        // This is preposterous, but std::condition_variable is slower than grandma with GCC & Clang.
-        while (lock);
+        lock.wait(true, std::memory_order_acquire);
         return result;
     }
 
 private:
-    std::thread worker;
-    std::mutex mtx;
-    std::atomic<bool> lock{false};
-    std::condition_variable access;
-    bool discard{false};
-    bool mailbox{false};
     Result result;
+    std::thread worker;
+    bool discard{false};
+    alignas(4) std::atomic<bool> lock{false};
 };
 
 } // namespace Jetstream
