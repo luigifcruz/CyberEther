@@ -2,7 +2,6 @@
 #define JETSTREAM_ASYNC_H
 
 #include <atomic>
-#include "jetstream/tools/atomic.hpp"
 #include "jetstream/module.hpp"
 
 namespace Jetstream {
