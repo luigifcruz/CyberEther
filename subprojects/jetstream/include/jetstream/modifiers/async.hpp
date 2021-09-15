@@ -19,19 +19,16 @@ public:
 #else
                 std::unique_lock<std::mutex> sync(mtx);
                 access.wait(sync, [&]{ return mailbox; });
+                mailbox = false;
 #endif
 
                 if (!discard) {
                     result = T::compute();
                 }
 
-#if __cpp_lib_atomic_wait
                 lock.store(false, std::memory_order_release);
+#if __cpp_lib_atomic_wait
                 lock.notify_all();
-#else
-                mailbox = false;
-                sync.unlock();
-                access.notify_all();
 #endif
             }
         });
@@ -46,8 +43,8 @@ public:
     }
 
     Result compute() {
-#if __cpp_lib_atomic_wait
         lock.store(true, std::memory_order_release);
+#if __cpp_lib_atomic_wait
         lock.notify_all();
 #else
         {
@@ -67,8 +64,9 @@ public:
 #if __cpp_lib_atomic_wait
         lock.wait(true, std::memory_order_acquire);
 #else
-        std::unique_lock<std::mutex> sync(mtx);
-        access.wait(sync, [&]{ return !mailbox; });
+        while (lock.load(std::memory_order_relaxed)) {
+            __builtin_ia32_pause();
+        }
 #endif
         return result;
     }
@@ -77,10 +75,8 @@ private:
     Result result;
     std::thread worker;
     bool discard{false};
-
-#if __cpp_lib_atomic_wait
     alignas(4) std::atomic<bool> lock{false};
-#else
+#if not __cpp_lib_atomic_wait
     std::mutex mtx;
     std::condition_variable access;
     bool mailbox = false;
