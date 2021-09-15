@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_TYPE_H
 #define JETSTREAM_TYPE_H
 
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include <condition_variable>
