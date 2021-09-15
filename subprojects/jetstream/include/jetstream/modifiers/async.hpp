@@ -64,9 +64,7 @@ public:
 #if __cpp_lib_atomic_wait
         lock.wait(true, std::memory_order_acquire);
 #else
-        while (lock.load(std::memory_order_relaxed)) {
-            __builtin_ia32_pause();
-        }
+        while (lock.load(std::memory_order_relaxed));
 #endif
         return result;
     }
