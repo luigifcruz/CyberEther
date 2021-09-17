@@ -13,46 +13,35 @@ public:
         T(config, input)
     {
         worker = std::thread([&]{
-            while (!discard) {
-#if __cpp_lib_atomic_wait
-                lock.wait(false, std::memory_order_acquire);
-#else
-                std::unique_lock<std::mutex> sync(mtx);
-                access.wait(sync, [&]{ return mailbox; });
-                mailbox = false;
-#endif
+            while (!discard.load()) {
+                std::unique_lock<std::mutex> lock(mtx);
+                while (!mailbox.load(std::memory_order_relaxed)) {
+                    access.wait(lock);
+                }
 
-                if (!discard) {
+                if (!discard.load()) {
                     result = T::compute();
                 }
 
-                lock.store(false, std::memory_order_release);
-#if __cpp_lib_atomic_wait
-                lock.notify_all();
-#endif
+                mailbox.store(false, std::memory_order_release);
             }
         });
     }
 
     ~Async() {
         if (worker.joinable()) {
-            discard = true;
+            discard.store(true);
             this->compute();
             worker.join();
         }
     }
 
     Result compute() {
-        lock.store(true, std::memory_order_release);
-#if __cpp_lib_atomic_wait
-        lock.notify_all();
-#else
         {
-            std::unique_lock<std::mutex> sync(mtx);
-            mailbox = true;
+            std::unique_lock<std::mutex> lock(mtx);
+            mailbox.store(true, std::memory_order_release);
         }
         access.notify_all();
-#endif
         return Result::SUCCESS;
     }
 
@@ -61,24 +50,21 @@ public:
     }
 
     Result barrier() {
-#if __cpp_lib_atomic_wait
-        lock.wait(true, std::memory_order_acquire);
-#else
-        while (lock.load(std::memory_order_relaxed));
+        while (mailbox.load(std::memory_order_relaxed)) {
+#if defined __i386__ || defined __x86_64__
+            __builtin_ia32_pause();
 #endif
+        }
         return result;
     }
 
 private:
     Result result;
-    std::thread worker;
-    bool discard{false};
-    alignas(4) std::atomic<bool> lock{false};
-#if not __cpp_lib_atomic_wait
     std::mutex mtx;
+    std::thread worker;
     std::condition_variable access;
-    bool mailbox = false;
-#endif
+    std::atomic<bool> mailbox{false};
+    std::atomic<bool> discard{false};
 };
 
 } // namespace Jetstream
