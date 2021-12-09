@@ -28,17 +28,17 @@ public:
         // Configure Jetstream
         loop = Loop<Sync>::New();
 
-        fft = loop->add<FFT::CUDA>("fft0", {}, {
+        fft = loop->add<FFT::CPU>("fft0", {}, {
             Data<VCF32>{Locale::CPU, stream},
         });
 
         auto gui = Subloop<Async>::New(loop);
 
-        lpt = gui->add<Lineplot::CUDA>("lpt0", {render}, {
+        lpt = gui->add<Lineplot::CPU>("lpt0", {render}, {
             fft->output(),
         });
 
-        wtf = gui->add<Waterfall::CUDA>("wtf0", {render}, {
+        wtf = gui->add<Waterfall::CPU>("wtf0", {render}, {
             fft->output(),
         });
     }
@@ -47,7 +47,7 @@ public:
         render->create();
 
         dsp = std::thread([&]{
-            device = std::make_shared<Samurai::Airspy::Device>();
+            device = std::make_shared<Samurai::AirspyHF::Device>();
 
             deviceConfig.sampleRate = 10e6;
             device->Enable(deviceConfig);

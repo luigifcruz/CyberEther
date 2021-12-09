@@ -1,4 +1,5 @@
 .cache
+.DS_Store
 build/*
 builddir/*
 __pycache__

@@ -54,7 +54,7 @@ protected:
 
     Result initRender(uint8_t*, bool cudaInterop = false);
 
-    const GLchar* vertexSource = R"END(#version 300 es
+    const char* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec2 aTexCoord;
         out vec2 TexCoord;
@@ -66,7 +66,7 @@ protected:
         }
     )END";
 
-    const GLchar* fragmentSource = R"END(#version 300 es
+    const char* fragmentSource = R"END(#version 300 es
         precision highp float;
         out vec4 FragColor;
         in vec2 TexCoord;
