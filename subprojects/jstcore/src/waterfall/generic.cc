@@ -2,7 +2,7 @@
 
 namespace Jetstream::Waterfall {
 
-Generic::Generic(const Config & config, const Input & input) : config(config), input(input) {}
+Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {}
 
 Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     if (!config.render) {
@@ -90,7 +90,7 @@ bool Generic::interpolate(bool val) {
     return this->interpolate();
 }
 
-Size2D<int> Generic::size(const Size2D<int> & size) {
+Size2D<int> Generic::size(const Size2D<int>& size) {
     if (surface->size(size) != this->size()) {
         config.size = surface->size();
     }

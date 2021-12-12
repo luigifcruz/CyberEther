@@ -236,7 +236,7 @@ bool    ImGui_ImplOpenGL3_Init(const char* glsl_version)
     GLint current_texture;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &current_texture);
 
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    if (io.ConfigFlags& ImGuiConfigFlags_ViewportsEnable)
         ImGui_ImplOpenGL3_InitPlatformInterface();
 
     return true;
@@ -738,7 +738,7 @@ void    ImGui_ImplOpenGL3_DestroyDeviceObjects()
 
 static void ImGui_ImplOpenGL3_RenderWindow(ImGuiViewport* viewport, void*)
 {
-    if (!(viewport->Flags & ImGuiViewportFlags_NoRendererClear))
+    if (!(viewport->Flags& ImGuiViewportFlags_NoRendererClear))
     {
         ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
         glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);

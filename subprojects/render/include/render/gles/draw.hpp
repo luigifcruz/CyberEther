@@ -7,7 +7,7 @@ namespace Render {
 
 class GLES::Draw : public Render::Draw {
 public:
-    Draw(const Config & cfg, const GLES & i) : Render::Draw(cfg), inst(i) {};
+    Draw(const Config& cfg, const GLES& i) : Render::Draw(cfg), inst(i) {};
 
 protected:
     const GLES& inst;

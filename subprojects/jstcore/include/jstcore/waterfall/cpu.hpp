@@ -7,7 +7,7 @@ namespace Jetstream::Waterfall {
 
 class CPU : public Generic  {
 public:
-    explicit CPU(const Config &, const Input &);
+    explicit CPU(const Config&, const Input&);
 
 protected:
     Result underlyingCompute() final;

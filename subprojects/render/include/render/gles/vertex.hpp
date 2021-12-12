@@ -11,7 +11,7 @@ namespace Render {
 
 class GLES::Vertex : public Render::Vertex {
 public:
-    Vertex(const Config & cfg, const GLES & i) : Render::Vertex(cfg), inst(i) {};
+    Vertex(const Config& cfg, const GLES& i) : Render::Vertex(cfg), inst(i) {};
 
     Result update() final;
 

@@ -20,7 +20,7 @@ public:
         const Data<VF32> in;
     };
 
-    explicit Generic(const Config &, const Input &);
+    explicit Generic(const Config&, const Input&);
     virtual ~Generic() = default;
 
     Result compute();
@@ -34,7 +34,7 @@ public:
     constexpr Size2D<int> size() const {
         return config.size;
     }
-    Size2D<int> size(const Size2D<int> &);
+    Size2D<int> size(const Size2D<int>&);
 
     std::weak_ptr<Render::Texture> tex() const;
 

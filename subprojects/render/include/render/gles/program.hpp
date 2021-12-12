@@ -7,7 +7,7 @@ namespace Render {
 
 class GLES::Program : public Render::Program {
 public:
-    Program(const Config & c, const GLES & i) : Render::Program(c), inst(i) {};
+    Program(const Config& c, const GLES& i) : Render::Program(c), inst(i) {};
 
     Result setUniform(std::string, const std::vector<int>&) final;
     Result setUniform(std::string, const std::vector<float>&) final;

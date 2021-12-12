@@ -23,7 +23,7 @@ public:
         std::string title = "Render";
     };
 
-    Instance(const Config & c) : cfg(c) {};
+    Instance(const Config& c) : cfg(c) {};
     virtual ~Instance() = default;
 
     virtual Result create() = 0;
@@ -61,11 +61,11 @@ public:
         return cfg.title;
     }
 
-    virtual std::shared_ptr<Surface> createAndBind(const Surface::Config &) = 0;
-    virtual std::shared_ptr<Program> create(const Program::Config &) = 0;
-    virtual std::shared_ptr<Texture> create(const Texture::Config &) = 0;
-    virtual std::shared_ptr<Vertex> create(const Vertex::Config &) = 0;
-    virtual std::shared_ptr<Draw> create(const Draw::Config &) = 0;
+    virtual std::shared_ptr<Surface> createAndBind(const Surface::Config&) = 0;
+    virtual std::shared_ptr<Program> create(const Program::Config&) = 0;
+    virtual std::shared_ptr<Texture> create(const Texture::Config&) = 0;
+    virtual std::shared_ptr<Vertex> create(const Vertex::Config&) = 0;
+    virtual std::shared_ptr<Draw> create(const Draw::Config&) = 0;
 
     static bool cudaInteropSupported() {
 #ifdef RENDER_CUDA_AVAILABLE

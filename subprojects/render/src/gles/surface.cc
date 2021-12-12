@@ -30,7 +30,7 @@ Result GLES::Surface::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Size2D<int> GLES::Surface::size(const Size2D<int> & size) {
+Size2D<int> GLES::Surface::size(const Size2D<int>& size) {
     if (!framebuffer) {
         return {-1, -1};
     }

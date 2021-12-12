@@ -2,7 +2,7 @@
 
 namespace Jetstream::Lineplot {
 
-Generic::Generic(const Config & config, const Input & input) : config(config), input(input) {
+Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {
     for (float i = -1.0f; i < +1.0f; i += 0.10f) {
         grid.push_back(-1.0f);
         grid.push_back(i);
@@ -96,7 +96,7 @@ Result Generic::present() {
     return Result::SUCCESS;
 }
 
-Size2D<int> Generic::size(const Size2D<int> & size) {
+Size2D<int> Generic::size(const Size2D<int>& size) {
     if (surface->size(size) != this->size()) {
         config.size = surface->size();
     }

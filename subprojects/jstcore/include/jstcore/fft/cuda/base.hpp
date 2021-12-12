@@ -11,7 +11,7 @@ namespace Jetstream::FFT {
 
 class CUDA : public Generic  {
 public:
-    explicit CUDA(const Config &, const Input &);
+    explicit CUDA(const Config&, const Input&);
     ~CUDA();
 
 protected:

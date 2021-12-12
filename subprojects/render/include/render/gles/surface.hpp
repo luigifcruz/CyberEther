@@ -7,9 +7,9 @@ namespace Render {
 
 class GLES::Surface : public Render::Surface {
 public:
-    Surface(const Config & cfg, const GLES & i) : Render::Surface(cfg), inst(i) {};
+    Surface(const Config& cfg, const GLES& i) : Render::Surface(cfg), inst(i) {};
 
-    Size2D<int> size(const Size2D<int> &) final;
+    Size2D<int> size(const Size2D<int>&) final;
 
 protected:
     const GLES& inst;

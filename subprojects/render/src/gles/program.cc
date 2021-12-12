@@ -88,7 +88,7 @@ Result GLES::Program::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars) {
+Result GLES::Program::setUniform(std::string name, const std::vector<int>& vars) {
     // optimize: this can be cached
     // optimize: are std::vector performant?
     glUseProgram(shader);
@@ -114,7 +114,7 @@ Result GLES::Program::setUniform(std::string name, const std::vector<int> & vars
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::setUniform(std::string name, const std::vector<float> & vars) {
+Result GLES::Program::setUniform(std::string name, const std::vector<float>& vars) {
     // optimize: this can be cached
     // optimize: are std::vector performant?
     glUseProgram(shader);

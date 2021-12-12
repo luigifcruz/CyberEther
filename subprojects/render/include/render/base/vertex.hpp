@@ -31,7 +31,7 @@ public:
         std::vector<uint> indices;
     };
 
-    Vertex(const Config & c) : cfg(c) {};
+    Vertex(const Config& c) : cfg(c) {};
     virtual ~Vertex() = default;
 
     virtual Result update() = 0;

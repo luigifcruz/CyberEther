@@ -8,7 +8,7 @@ public:
   class Config {};
   class Input {};
 
-  Dummy(const Config & config, const Input & input) {}
+  Dummy(const Config& config, const Input& input) {}
 };
 
 static void BM_SyncLoop(benchmark::State& state) {

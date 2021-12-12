@@ -22,7 +22,7 @@ public:
         Mode mode = Triangles;
     };
 
-    Draw(const Config & c) : cfg(c) {};
+    Draw(const Config& c) : cfg(c) {};
     virtual ~Draw() = default;
 
 protected:

@@ -263,7 +263,7 @@ static bool ImGui_ImplGlfw_Init(GLFWwindow* window, bool install_callbacks, Glfw
 #ifdef _WIN32
     main_viewport->PlatformHandleRaw = glfwGetWin32Window(g_Window);
 #endif
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    if (io.ConfigFlags& ImGuiConfigFlags_ViewportsEnable)
         ImGui_ImplGlfw_InitPlatformInterface();
 
     g_ClientApi = client_api;
@@ -343,7 +343,7 @@ static void ImGui_ImplGlfw_UpdateMousePosAndButtons()
             {
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
-                if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+                if (io.ConfigFlags& ImGuiConfigFlags_ViewportsEnable)
                 {
                     // Multi-viewport mode: mouse position in OS absolute coordinates (io.MousePos is (0,0) when the mouse is on the upper-left of the primary monitor)
                     int window_x, window_y;
@@ -369,7 +369,7 @@ static void ImGui_ImplGlfw_UpdateMousePosAndButtons()
         // [GLFW] FIXME: This is currently only correct on Win32. See what we do below with the WM_NCHITTEST, missing an equivalent for other systems.
         // See https://github.com/glfw/glfw/issues/1236 if you want to help in making this a GLFW feature.
 #if GLFW_HAS_MOUSE_PASSTHROUGH || (GLFW_HAS_WINDOW_HOVERED && defined(_WIN32))
-        const bool window_no_input = (viewport->Flags & ImGuiViewportFlags_NoInputs) != 0;
+        const bool window_no_input = (viewport->Flags& ImGuiViewportFlags_NoInputs) != 0;
 #if GLFW_HAS_MOUSE_PASSTHROUGH
         glfwSetWindowAttrib(window, GLFW_MOUSE_PASSTHROUGH, window_no_input);
 #endif
@@ -382,7 +382,7 @@ static void ImGui_ImplGlfw_UpdateMousePosAndButtons()
 static void ImGui_ImplGlfw_UpdateMouseCursor()
 {
     ImGuiIO& io = ImGui::GetIO();
-    if ((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) || glfwGetInputMode(g_Window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
+    if ((io.ConfigFlags& ImGuiConfigFlags_NoMouseCursorChange) || glfwGetInputMode(g_Window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
         return;
 
     ImGuiMouseCursor imgui_cursor = ImGui::GetMouseCursor();
@@ -409,7 +409,7 @@ static void ImGui_ImplGlfw_UpdateGamepads()
 {
     ImGuiIO& io = ImGui::GetIO();
     memset(io.NavInputs, 0, sizeof(io.NavInputs));
-    if ((io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) == 0)
+    if ((io.ConfigFlags& ImGuiConfigFlags_NavEnableGamepad) == 0)
         return;
 
     // Update gamepad inputs
@@ -576,9 +576,9 @@ static void ImGui_ImplGlfw_CreateWindow(ImGuiViewport* viewport)
 #if GLFW_HAS_FOCUS_ON_SHOW
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, false);
  #endif
-    glfwWindowHint(GLFW_DECORATED, (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? false : true);
+    glfwWindowHint(GLFW_DECORATED, (viewport->Flags& ImGuiViewportFlags_NoDecoration) ? false : true);
 #if GLFW_HAS_WINDOW_TOPMOST
-    glfwWindowHint(GLFW_FLOATING, (viewport->Flags & ImGuiViewportFlags_TopMost) ? true : false);
+    glfwWindowHint(GLFW_FLOATING, (viewport->Flags& ImGuiViewportFlags_TopMost) ? true : false);
 #endif
     GLFWwindow* share_window = (g_ClientApi == GlfwClientApi_OpenGL) ? g_Window : NULL;
     data->Window = glfwCreateWindow((int)viewport->Size.x, (int)viewport->Size.y, "No Title Yet", NULL, share_window);
@@ -642,7 +642,7 @@ static LRESULT CALLBACK WndProcNoInputs(HWND hWnd, UINT msg, WPARAM wParam, LPAR
         // If you cannot easily access those viewport flags from your windowing/event code: you may manually synchronize its state e.g. in
         // your main loop after calling UpdatePlatformWindows(). Iterate all viewports/platform windows and pass the flag to your windowing system.
         ImGuiViewport* viewport = (ImGuiViewport*)::GetPropA(hWnd, "IMGUI_VIEWPORT");
-        if (viewport->Flags & ImGuiViewportFlags_NoInputs)
+        if (viewport->Flags& ImGuiViewportFlags_NoInputs)
             return HTTRANSPARENT;
     }
     return ::CallWindowProc(g_GlfwWndProc, hWnd, msg, wParam, lParam);
@@ -656,7 +656,7 @@ static void ImGui_ImplGlfw_ShowWindow(ImGuiViewport* viewport)
 #if defined(_WIN32)
     // GLFW hack: Hide icon from task bar
     HWND hwnd = (HWND)viewport->PlatformHandleRaw;
-    if (viewport->Flags & ImGuiViewportFlags_NoTaskBarIcon)
+    if (viewport->Flags& ImGuiViewportFlags_NoTaskBarIcon)
     {
         LONG ex_style = ::GetWindowLong(hwnd, GWL_EXSTYLE);
         ex_style &= ~WS_EX_APPWINDOW;
@@ -677,7 +677,7 @@ static void ImGui_ImplGlfw_ShowWindow(ImGuiViewport* viewport)
     // The fix was pushed to GLFW repository on 2018/01/09 and should be included in GLFW 3.3 via a GLFW_FOCUS_ON_SHOW window attribute.
     // See https://github.com/glfw/glfw/issues/1189
     // FIXME-VIEWPORT: Implement same work-around for Linux/OSX in the meanwhile.
-    if (viewport->Flags & ImGuiViewportFlags_NoFocusOnAppearing)
+    if (viewport->Flags& ImGuiViewportFlags_NoFocusOnAppearing)
     {
         ::ShowWindow(hwnd, SW_SHOWNA);
         return;

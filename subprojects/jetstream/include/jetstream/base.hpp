@@ -14,15 +14,15 @@ public:
     struct Input {};
 
     Loop() {};
-    Loop(const Config &, const Input &) {};
+    Loop(const Config&, const Input&) {};
 
     static std::shared_ptr<Loop<X>> New() {
         return std::make_shared<Loop<X>>();
     }
 
     template<typename T>
-    std::shared_ptr<T> add(const std::string & name, const typename T::Config & config,
-            const typename T::Input & input) {
+    std::shared_ptr<T> add(const std::string& name, const typename T::Config& config,
+            const typename T::Input& input) {
         auto mod = std::make_shared<X<T>>(config, input);
         blocks.push_back({ name, mod });
         return mod;
@@ -38,7 +38,7 @@ public:
         DEBUG_PUSH("compute");
 
         Result err = Result::SUCCESS;
-        for (const auto & [name, mod] : blocks) {
+        for (const auto& [name, mod] : blocks) {
             DEBUG_PUSH(name);
             if ((err = mod->compute()) != Result::SUCCESS) {
                 return err;
@@ -49,7 +49,7 @@ public:
         DEBUG_POP();
         DEBUG_PUSH("barrier");
 
-        for (const auto & [name, mod] : blocks) {
+        for (const auto& [name, mod] : blocks) {
             DEBUG_PUSH(name);
             if ((err = mod->barrier()) != Result::SUCCESS) {
                 return err;
@@ -73,7 +73,7 @@ public:
             DEBUG_POP();
             DEBUG_PUSH("present");
 
-            for (const auto & [name, mod] : blocks) {
+            for (const auto& [name, mod] : blocks) {
                 DEBUG_PUSH(name);
                 if ((err = mod->present()) != Result::SUCCESS) {
                     return err;
@@ -106,16 +106,16 @@ public:
     struct Config {};
     struct Input {};
 
-    Subloop(const Config &, const Input &) {};
+    Subloop(const Config&, const Input&) {};
 
     template<template<class> class Y>
-    static std::shared_ptr<Subloop<X>> New(const std::shared_ptr<Loop<Y>> & node) {
+    static std::shared_ptr<Subloop<X>> New(const std::shared_ptr<Loop<Y>>& node) {
         return node->template add<Subloop<X>>("modifier", {}, {});
     }
 
     template<typename T>
-    std::shared_ptr<T> add(const std::string & name, const typename T::Config & config,
-            const typename T::Input & input) {
+    std::shared_ptr<T> add(const std::string& name, const typename T::Config& config,
+            const typename T::Input& input) {
         auto mod = std::make_shared<X<T>>(config, input);
         blocks.push_back({ name, mod });
         return mod;
@@ -125,7 +125,7 @@ public:
         DEBUG_PUSH("subcompute");
 
         Result err = Result::SUCCESS;
-        for (const auto & [name, mod] : blocks) {
+        for (const auto& [name, mod] : blocks) {
             DEBUG_PUSH(name);
             if ((err = mod->compute()) != Result::SUCCESS) {
                 return err;
@@ -136,7 +136,7 @@ public:
         DEBUG_POP();
         DEBUG_PUSH("subbarrier");
 
-        for (const auto & [name, mod] : blocks) {
+        for (const auto& [name, mod] : blocks) {
             DEBUG_PUSH(name);
             if ((err = mod->barrier()) != Result::SUCCESS) {
                 return err;
@@ -153,7 +153,7 @@ public:
         DEBUG_PUSH("subpresent");
 
         Result err = Result::SUCCESS;
-        for (const auto & [name, mod] : blocks) {
+        for (const auto& [name, mod] : blocks) {
             DEBUG_PUSH(name);
             if ((err = mod->present()) != Result::SUCCESS) {
                 return err;

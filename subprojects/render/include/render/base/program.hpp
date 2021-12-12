@@ -17,7 +17,7 @@ public:
         std::vector<std::shared_ptr<Texture>> textures;
     };
 
-    Program(const Config & c) : cfg(c) {};
+    Program(const Config& c) : cfg(c) {};
     virtual ~Program() = default;
 
     virtual Result setUniform(std::string, const std::vector<int>&) = 0;

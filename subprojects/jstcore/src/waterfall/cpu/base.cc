@@ -2,7 +2,7 @@
 
 namespace Jetstream::Waterfall {
 
-CPU::CPU(const Config & config, const Input & input) : Generic(config, input) {
+CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
     if ((input.in.location & Locale::CPU) != Locale::CPU) {
         std::cerr << "[WATERFALL::CPU] This implementation expects a Locale::CPU input." << std::endl;
         JST_CHECK_THROW(Result::ERROR);

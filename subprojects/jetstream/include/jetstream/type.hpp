@@ -21,7 +21,7 @@ enum class Locale : uint8_t {
 };
 
 inline Locale operator&(Locale lhs, Locale rhs) {
-    return static_cast<Locale>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+    return static_cast<Locale>(static_cast<uint8_t>(lhs)& static_cast<uint8_t>(rhs));
 }
 
 inline Locale operator|(Locale lhs, Locale rhs) {

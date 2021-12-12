@@ -101,7 +101,7 @@ Result GLES::Vertex::update() {
     for (auto& buffer : cfg.buffers) {
         if (buffer.cudaInterop) {
 #ifdef RENDER_CUDA_AVAILABLE
-            float *buffer_ptr;
+            float* buffer_ptr;
             size_t buffer_len;
             CUDA_CHECK(cudaGraphicsMapResources(1, &buffer._cuda_res, stream));
             CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));

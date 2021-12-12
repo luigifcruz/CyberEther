@@ -17,7 +17,7 @@ public:
     class Vertex;
     class Draw;
 
-    GLES(const Config & c) : Render::Instance(c) {};
+    GLES(const Config& c) : Render::Instance(c) {};
 
     Result create() final;
     Result destroy() final;
@@ -32,11 +32,11 @@ public:
     std::string vendor_str() final;
     std::string glsl_str() final;
 
-    std::shared_ptr<Render::Surface> createAndBind(const Render::Surface::Config &) final;
-    std::shared_ptr<Render::Program> create(const Render::Program::Config &) final;
-    std::shared_ptr<Render::Texture> create(const Render::Texture::Config &) final;
-    std::shared_ptr<Render::Vertex> create(const Render::Vertex::Config &) final;
-    std::shared_ptr<Render::Draw> create(const Render::Draw::Config &) final;
+    std::shared_ptr<Render::Surface> createAndBind(const Render::Surface::Config&) final;
+    std::shared_ptr<Render::Program> create(const Render::Program::Config&) final;
+    std::shared_ptr<Render::Texture> create(const Render::Texture::Config&) final;
+    std::shared_ptr<Render::Vertex> create(const Render::Vertex::Config&) final;
+    std::shared_ptr<Render::Draw> create(const Render::Draw::Config&) final;
 
 protected:
     ImGuiIO* io;

@@ -19,7 +19,7 @@ public:
         return out;
     };
 
-    explicit Generic(const Config &, const Input &);
+    explicit Generic(const Config&, const Input&);
     virtual ~Generic() = default;
 
     Result compute();
@@ -27,7 +27,7 @@ public:
     constexpr Range<float> amplitude() const {
         return config.amplitude;
     }
-    Range<float> amplitude(const Range<float> &);
+    Range<float> amplitude(const Range<float>&);
 
 protected:
     Config config;

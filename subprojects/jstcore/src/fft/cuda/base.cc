@@ -2,7 +2,7 @@
 
 namespace Jetstream::FFT {
 
-CUDA::CUDA(const Config & config, const Input & input) : Generic(config, input) {
+CUDA::CUDA(const Config& config, const Input& input) : Generic(config, input) {
     JST_CUDA_CHECK_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     if ((input.in.location & Locale::CPU) == Locale::CPU &&

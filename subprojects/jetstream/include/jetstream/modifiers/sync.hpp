@@ -8,7 +8,7 @@ namespace Jetstream {
 template<typename T>
 class Sync : public T {
 public:
-    Sync(const typename T::Config & config, const typename T::Input & input) :
+    Sync(const typename T::Config& config, const typename T::Input& input) :
         T(config, input)
     {}
 };

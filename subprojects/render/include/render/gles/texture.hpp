@@ -11,10 +11,10 @@ namespace Render {
 
 class GLES::Texture : public Render::Texture {
 public:
-    Texture(const Config & cfg, const GLES & i) : Render::Texture(cfg), inst(i) {};
+    Texture(const Config& cfg, const GLES& i) : Render::Texture(cfg), inst(i) {};
 
     using Render::Texture::size;
-    bool size(const Size2D<int> &) final;
+    bool size(const Size2D<int>&) final;
 
     uint raw() final;
     Result pour() final;

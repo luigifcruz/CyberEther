@@ -2,7 +2,7 @@
 
 namespace Jetstream::FFT {
 
-Generic::Generic(const Config & config, const Input & input) : config(config), input(input) {
+Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {
     if (input.in.location != Locale::CPU) {
         throw Result::ERROR;
     }
@@ -22,7 +22,7 @@ Result Generic::compute() {
     return this->underlyingCompute();
 }
 
-Range<float> Generic::amplitude(const Range<float> & ampl) {
+Range<float> Generic::amplitude(const Range<float>& ampl) {
     config.amplitude = ampl;
     return this->amplitude();
 }

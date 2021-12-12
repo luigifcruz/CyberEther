@@ -9,7 +9,7 @@ namespace Jetstream {
 template<typename T>
 class Async : public T {
 public:
-    Async(const typename T::Config & config, const typename T::Input & input) :
+    Async(const typename T::Config& config, const typename T::Input& input) :
         T(config, input)
     {
         worker = std::thread([&]{
