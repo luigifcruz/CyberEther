@@ -45,7 +45,7 @@ Result GLES::Texture::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Texture::start() {
+Result GLES::Texture::begin() {
     glBindTexture(GL_TEXTURE_2D, tex);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -100,7 +100,7 @@ Result GLES::Texture::fill() {
         return this->_cudaCopyToTexture(0, 0, cfg.size.width, cfg.size.height);
     }
 
-    CHECK(this->start());
+    CHECK(this->begin());
     glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.size.width, cfg.size.height, 0, pfmt, ptype, cfg.buffer);
     CHECK(this->end());
 
@@ -112,7 +112,7 @@ Result GLES::Texture::fill(int yo, int xo, int w, int h) {
         return this->_cudaCopyToTexture(yo, xo, w, h);
     }
 
-    CHECK(this->start());
+    CHECK(this->begin());
     size_t offset = yo * w * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
     glTexSubImage2D(GL_TEXTURE_2D, 0, xo, yo, w, h, pfmt, ptype, cfg.buffer + offset);
     CHECK(this->end());

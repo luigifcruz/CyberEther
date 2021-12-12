@@ -68,7 +68,7 @@ Result GLES::Program::draw() {
     i = 0;
     for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
-        CHECK(texture->start());
+        CHECK(texture->begin());
     }
 
     glUseProgram(shader);

@@ -23,7 +23,7 @@ protected:
 
     Result create() final;
     Result destroy() final;
-    Result start() final;
+    Result begin() final;
     Result end() final;
 
     uint count();

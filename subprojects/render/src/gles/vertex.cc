@@ -5,7 +5,7 @@ namespace Render {
 Result GLES::Vertex::create() {
     glGenVertexArrays(1, &vao);
 
-    this->start();
+    this->begin();
     int i = 0;
     bool cudaEnabled = false;
     for (auto& buffer : cfg.buffers) {
@@ -84,7 +84,7 @@ Result GLES::Vertex::destroy() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Vertex::start() {
+Result GLES::Vertex::begin() {
     glBindVertexArray(vao);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -97,7 +97,7 @@ Result GLES::Vertex::end() {
 }
 
 Result GLES::Vertex::update() {
-    this->start();
+    this->begin();
     for (auto& buffer : cfg.buffers) {
         if (buffer.cudaInterop) {
 #ifdef RENDER_CUDA_AVAILABLE

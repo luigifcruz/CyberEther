@@ -43,7 +43,7 @@ public:
         });
     }
 
-    void start() {
+    void begin() {
         render->create();
 
         dsp = std::thread([&]{
@@ -84,7 +84,7 @@ public:
     }
 
     void render_step() {
-        render->start();
+        render->begin();
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
@@ -172,7 +172,7 @@ void main_loop() {
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
-    ui.start();
+    ui.begin();
 
     #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(main_loop, 0, 1);

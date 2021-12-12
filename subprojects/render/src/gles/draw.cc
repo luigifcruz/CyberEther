@@ -17,7 +17,7 @@ Result GLES::Draw::destroy() {
 }
 
 Result GLES::Draw::draw() {
-    buffer->start();
+    buffer->begin();
 
     uint mode = GL_TRIANGLES;
     switch (cfg.mode) {

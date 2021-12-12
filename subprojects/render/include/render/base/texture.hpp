@@ -35,7 +35,7 @@ protected:
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
-    virtual Result start() = 0;
+    virtual Result begin() = 0;
     virtual Result end() = 0;
 };
 

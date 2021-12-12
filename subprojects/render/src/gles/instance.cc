@@ -111,7 +111,7 @@ Result GLES::endImgui() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::start() {
+Result GLES::begin() {
     glLineWidth(cfg.scale);
 
     if (cfg.imgui) {
