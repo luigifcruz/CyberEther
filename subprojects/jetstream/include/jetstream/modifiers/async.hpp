@@ -1,7 +1,6 @@
 #ifndef JETSTREAM_ASYNC_H
 #define JETSTREAM_ASYNC_H
 
-#include <atomic>
 #include "jetstream/module.hpp"
 
 namespace Jetstream {
@@ -13,33 +12,38 @@ public:
         T(config, input)
     {
         worker = std::thread([&]{
-            while (!discard.load()) {
-                std::unique_lock<std::mutex> lock(mtx);
-                while (!mailbox.load(std::memory_order_relaxed)) {
-                    access.wait(lock);
-                }
+            while (!discard) {
+                {
+                    std::unique_lock<std::mutex> sync(mtx);
+                    access.wait(sync, [&]{ return mailbox; });
 
-                if (!discard.load()) {
-                    result = T::compute();
-                }
+                    if (!discard) {
+                        result = T::compute();
+                    }
 
-                mailbox.store(false, std::memory_order_release);
+                    mailbox = false;
+                }
+                access.notify_all();
             }
         });
     }
 
     ~Async() {
         if (worker.joinable()) {
-            discard.store(true);
-            this->compute();
+            {
+                std::unique_lock<std::mutex> sync(mtx);
+                discard = true;
+                mailbox = true;
+            }
+            access.notify_all();
             worker.join();
         }
     }
 
     Result compute() {
         {
-            std::unique_lock<std::mutex> lock(mtx);
-            mailbox.store(true, std::memory_order_release);
+            std::unique_lock<std::mutex> sync(mtx);
+            mailbox = true;
         }
         access.notify_all();
         return Result::SUCCESS;
@@ -50,21 +54,18 @@ public:
     }
 
     Result barrier() {
-        while (mailbox.load(std::memory_order_relaxed)) {
-#if defined __i386__ || defined __x86_64__
-            __builtin_ia32_pause();
-#endif
-        }
+        std::unique_lock<std::mutex> sync(mtx);
+        access.wait(sync, [&]{ return !mailbox; });
         return result;
     }
 
 private:
-    Result result;
-    std::mutex mtx;
     std::thread worker;
+    std::mutex mtx;
     std::condition_variable access;
-    std::atomic<bool> mailbox{false};
-    std::atomic<bool> discard{false};
+    bool discard{false};
+    bool mailbox{false};
+    Result result;
 };
 
 } // namespace Jetstream
