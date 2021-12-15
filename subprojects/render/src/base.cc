@@ -29,6 +29,10 @@ std::shared_ptr<Instance> Instantiate(API api_hint, Instance::Config& cfg, bool 
         case API::GLES:
             return std::make_shared<GLES>(cfg);
 #endif
+#ifdef RENDER_METAL_AVAILABLE
+        case API::METAL:
+            return std::make_shared<Metal>(cfg);
+#endif
         default:
 #ifdef RENDER_DEBUG
             std::cerr << "[RENDER] No API available." << std::endl;

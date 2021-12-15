@@ -10,6 +10,7 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
     subproject('jetstream').get_variable('libjetstream_dep'),
+    dependency('fmt'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
@@ -42,6 +43,8 @@ librender_dep = declare_dependency(
     dependencies: dep_lst,
     link_with: librender
 )
+
+subdir('examples')
 
 pkg = import('pkgconfig')
 pkg.generate(

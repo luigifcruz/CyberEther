@@ -18,11 +18,22 @@
 #include "render/gles/vertex.hpp"
 #endif
 
+#ifdef RENDER_METAL_AVAILABLE
+#include "render/metal/instance.hpp"
+#include "render/metal/program.hpp"
+#include "render/metal/surface.hpp"
+#include "render/metal/texture.hpp"
+#include "render/metal/vertex.hpp"
+#endif
+
 namespace Render {
 
 inline std::vector<API> AvailableAPIs = {
 #ifdef RENDER_GLES_AVAILABLE
     API::GLES,
+#endif
+#ifdef RENDER_METAL_AVAILABLE
+    API::METAL,
 #endif
 };
 

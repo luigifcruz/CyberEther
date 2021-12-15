@@ -1,6 +1,8 @@
 #ifndef RENDER_TYPE_H
 #define RENDER_TYPE_H
 
+#include <fmt/core.h>
+
 #include <vector>
 #include <memory>
 #include <iostream>
