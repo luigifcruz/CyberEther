@@ -96,7 +96,7 @@ Result GLES::destroyImgui() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::startImgui() {
+Result GLES::beginImgui() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -115,7 +115,7 @@ Result GLES::begin() {
     glLineWidth(cfg.scale);
 
     if (cfg.imgui) {
-        this->startImgui();
+        this->beginImgui();
 
         if (cfg.debug) {
             ImGui::ShowMetricsWindow();

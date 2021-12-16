@@ -53,7 +53,7 @@ protected:
 
     Result createImgui();
     Result destroyImgui();
-    Result startImgui();
+    Result beginImgui();
     Result endImgui();
 };
 

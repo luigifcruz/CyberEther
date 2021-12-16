@@ -80,7 +80,7 @@ protected:
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
-    virtual Result startImgui() = 0;
+    virtual Result beginImgui() = 0;
     virtual Result endImgui() = 0;
 
     std::string cached_renderer_str;

@@ -23,7 +23,7 @@ Result Metal::create() {
     glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.vsync);
 
     auto [width, height] = cfg.size;
-    GLFWwindow *window = glfwCreateWindow(width, height, cfg.title.c_str(), nullptr, nullptr);
+    window = glfwCreateWindow(width, height, cfg.title.c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -103,6 +103,10 @@ Result Metal::create() {
     auto renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
     assert(renderPassDesc);
 
+    this->createImgui();
+
+    bool show_demo_window = true;
+
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -116,11 +120,20 @@ Result Metal::create() {
             colorAttachDesc->setStoreAction(MTL::StoreActionStore);
             colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 0));
 
+            ImGui_ImplMetal_NewFrame(renderPassDesc);
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            ImGui::ShowDemoWindow(&show_demo_window);
+
             auto renderCmdEncoder = cmdBuffer->renderCommandEncoder(renderPassDesc);
             renderCmdEncoder->setRenderPipelineState(renderPipelineState);
             renderCmdEncoder->setVertexBuffer(vertexBuffer, 0, 0);
             renderCmdEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, 3);
             renderCmdEncoder->endEncoding();
+
+            ImGui::Render();
+            ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cmdBuffer, renderCmdEncoder);
 
             cmdBuffer->presentDrawable(drawable);
             cmdBuffer->commit();
@@ -176,7 +189,7 @@ Result Metal::destroyImgui() {
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result Metal::startImgui() {
+Result Metal::beginImgui() {
    // ImGui_ImplMetal_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -196,7 +209,7 @@ Result Metal::begin() {
     glLineWidth(cfg.scale);
 
     if (cfg.imgui) {
-        this->startImgui();
+        this->beginImgui();
 
         if (cfg.debug) {
             ImGui::ShowMetricsWindow();
