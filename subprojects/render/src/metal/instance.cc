@@ -87,6 +87,12 @@ Result Metal::create() {
     renderPipelineDesc->setFragmentFunction(fragFunc);
     renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
 
+    auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatBGRA8Unorm, 720, 480, false);
+    assert(textureDesc);
+    textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
+    auto texture = device->newTexture(textureDesc);
+    assert(texture);
+
     auto renderPipelineState = device->newRenderPipelineState(renderPipelineDesc, &err);
     assert(renderPipelineState);
 
@@ -120,6 +126,9 @@ Result Metal::create() {
     auto cmdQueue = device->newCommandQueue();
     assert(cmdQueue);
 
+    auto renderPassDescOff = MTL::RenderPassDescriptor::alloc()->init();
+    assert(renderPassDescOff);
+
     auto renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
     assert(renderPassDesc);
 
@@ -134,6 +143,29 @@ Result Metal::create() {
             auto cmdBuffer = cmdQueue->commandBuffer();
             assert(cmdBuffer);
 
+            auto colorAttachDescOff = renderPassDescOff->colorAttachments()->object(0);
+            colorAttachDescOff->setTexture(texture);
+            colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
+            colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
+            colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
+
+            auto renderCmdEncoderOff = cmdBuffer->renderCommandEncoder(renderPassDescOff);
+
+            renderCmdEncoderOff->setRenderPipelineState(renderPipelineState);
+            renderCmdEncoderOff->setVertexBuffer(vertexBuffer, 0, 0);
+            renderCmdEncoderOff->setFragmentBuffer(colorBuffer, 0, 0);
+            renderCmdEncoderOff->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle,
+                                                    (NS::UInteger)6,
+                                                    MTL::IndexType::IndexTypeUInt16,
+                                                    indexBuffer, 0);
+
+            renderCmdEncoderOff->setRenderPipelineState(renderPipelineState);
+            renderCmdEncoderOff->setVertexBuffer(vertexBufferTri, 0, 0);
+            renderCmdEncoderOff->setFragmentBuffer(colorBufferTri, 0, 0);
+            renderCmdEncoderOff->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, 3);
+
+            renderCmdEncoderOff->endEncoding();
+
             auto colorAttachDesc = renderPassDesc->colorAttachments()->object(0);
             colorAttachDesc->setTexture(drawable->texture());
             colorAttachDesc->setLoadAction(MTL::LoadActionClear);
@@ -146,20 +178,12 @@ Result Metal::create() {
 
             ImGui::ShowDemoWindow(&show_demo_window);
 
+            ImGui::Begin("Lineplot");
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            ImGui::Image((void *)texture, ImVec2(720, 480));
+            ImGui::End();
+
             auto renderCmdEncoder = cmdBuffer->renderCommandEncoder(renderPassDesc);
-
-            renderCmdEncoder->setRenderPipelineState(renderPipelineState);
-            renderCmdEncoder->setVertexBuffer(vertexBuffer, 0, 0);
-            renderCmdEncoder->setFragmentBuffer(colorBuffer, 0, 0);
-            renderCmdEncoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle,
-                                                    (NS::UInteger)6,
-                                                    MTL::IndexType::IndexTypeUInt16,
-                                                    indexBuffer, 0);
-
-            renderCmdEncoder->setRenderPipelineState(renderPipelineState);
-            renderCmdEncoder->setVertexBuffer(vertexBufferTri, 0, 0);
-            renderCmdEncoder->setFragmentBuffer(colorBufferTri, 0, 0);
-            renderCmdEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, 3);
 
             ImGui::Render();
             ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cmdBuffer, renderCmdEncoder);
