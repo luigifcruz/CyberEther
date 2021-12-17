@@ -59,9 +59,11 @@ Result Metal::create() {
         {
             return float4(vertexArray[vID], 1.0);
         }
-        fragment half4 fragFunc()
+        fragment half4 fragFunc(
+            constant float* color [[buffer(0)]]
+        )
         {
-            return half4(1.0, 0.0, 0.0, 1.0);
+            return half4(color[0], color[1], color[2], 1.0);
         }
     )""", NS::ASCIIStringEncoding);
 
@@ -94,8 +96,26 @@ Result Metal::create() {
          1.0f, -1.0f, 0.0f,
     };
 
-    auto vertexBuffer = device->newBuffer(vertexData, sizeof(vertexData), MTL::ResourceOptionCPUCacheModeDefault);
-    assert(vertexBuffer);
+    static float a[] = {
+        +1.0f, +1.0f, 0.0f,
+        +1.0f, -1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f,
+        -1.0f, +1.0f, 0.0f,
+    };
+
+    static uint16_t b[] = {
+        0, 1, 2,
+        2, 3, 0,
+    };
+
+    static float c[] = {1.0, 1.0, 1.0};
+    static float d[] = {0.0, 1.0, 0.0};
+
+    auto vertexBufferTri = device->newBuffer(vertexData, sizeof(vertexData), MTL::ResourceOptionCPUCacheModeDefault);
+    auto vertexBuffer = device->newBuffer(a, sizeof(a), MTL::ResourceOptionCPUCacheModeDefault);
+    auto indexBuffer = device->newBuffer(b, sizeof(b), MTL::ResourceOptionCPUCacheModeDefault);
+    auto colorBuffer = device->newBuffer(c, sizeof(c), MTL::ResourceOptionCPUCacheModeDefault);
+    auto colorBufferTri = device->newBuffer(d, sizeof(d), MTL::ResourceOptionCPUCacheModeDefault);
 
     auto cmdQueue = device->newCommandQueue();
     assert(cmdQueue);
@@ -127,13 +147,24 @@ Result Metal::create() {
             ImGui::ShowDemoWindow(&show_demo_window);
 
             auto renderCmdEncoder = cmdBuffer->renderCommandEncoder(renderPassDesc);
+
             renderCmdEncoder->setRenderPipelineState(renderPipelineState);
             renderCmdEncoder->setVertexBuffer(vertexBuffer, 0, 0);
+            renderCmdEncoder->setFragmentBuffer(colorBuffer, 0, 0);
+            renderCmdEncoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle,
+                                                    (NS::UInteger)6,
+                                                    MTL::IndexType::IndexTypeUInt16,
+                                                    indexBuffer, 0);
+
+            renderCmdEncoder->setRenderPipelineState(renderPipelineState);
+            renderCmdEncoder->setVertexBuffer(vertexBufferTri, 0, 0);
+            renderCmdEncoder->setFragmentBuffer(colorBufferTri, 0, 0);
             renderCmdEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, 3);
-            renderCmdEncoder->endEncoding();
 
             ImGui::Render();
             ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cmdBuffer, renderCmdEncoder);
+
+            renderCmdEncoder->endEncoding();
 
             cmdBuffer->presentDrawable(drawable);
             cmdBuffer->commit();
@@ -205,9 +236,6 @@ Result Metal::endImgui() {
 }
 
 Result Metal::begin() {
-    /*
-    glLineWidth(cfg.scale);
-
     if (cfg.imgui) {
         this->beginImgui();
 
@@ -221,13 +249,11 @@ Result Metal::begin() {
             ImGui::End();
         }
     }
-    */
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result Metal::end() {
-    /*
     for (auto &surface : surfaces) {
         CHECK(surface->draw());
     }
@@ -236,6 +262,7 @@ Result Metal::end() {
         this->endImgui();
     }
 
+    /*
     glfwGetFramebufferSize(window, &cfg.size.width, &cfg.size.height);
     glfwSwapBuffers(window);
     glfwPollEvents();
