@@ -15,7 +15,18 @@ Result Metal::Surface::create() {
         CHECK(program->create());
     }
 
-    CHECK(_createFramebuffer());
+    renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
+    assert(renderPassDesc);
+
+    framebuffer->create();
+
+    auto colorAttachDescOff = renderPassDesc->colorAttachments()->object(0);
+    colorAttachDescOff->setTexture(framebuffer->getTexture());
+    colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
+    colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
+    colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
+
+    fmt::print("surface ok!\n");
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -25,7 +36,7 @@ Result Metal::Surface::destroy() {
         CHECK(program->destroy());
     }
 
-    CHECK(_destroyFramebuffer());
+    framebuffer->destroy();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -36,55 +47,18 @@ Size2D<int> Metal::Surface::size(const Size2D<int>& size) {
     }
 
     if (framebuffer->size(size)) {
-        RENDER_CHECK_THROW(_destroyFramebuffer());
-        RENDER_CHECK_THROW(_createFramebuffer());
+        // TODO: Implement resize.
     }
 
     return framebuffer->size();
 }
 
-Result Metal::Surface::draw() {
-    /*
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-    if (framebuffer) {
-        auto [width, height] = framebuffer->size();
-        glViewport(0, 0, width, height);
-    }
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
+Result Metal::Surface::draw(MTL::CommandBuffer* commandBuffer) {
     for (auto &program : programs) {
-        CHECK(program->draw());
+        CHECK(program->draw(commandBuffer, renderPassDesc));
     }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    */
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result Metal::Surface::_createFramebuffer() {
-    /*
-    if (framebuffer) {
-        glGenFramebuffers(1, &fbo);
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        CHECK(framebuffer->create());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->raw(), 0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-    */
-    return Result::SUCCESS;
-}
-
-Result Metal::Surface::_destroyFramebuffer() {
-    /*
-    if (framebuffer) {
-        CHECK(framebuffer->destroy());
-        glDeleteFramebuffers(1, &fbo);
-    }
-    */
-    return Result::SUCCESS;
 }
 
 } // namespace Render

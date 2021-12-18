@@ -14,15 +14,14 @@ public:
 protected:
     const Metal& inst;
 
+    MTL::RenderPassDescriptor* renderPassDesc;
+
     std::shared_ptr<Metal::Texture> framebuffer;
     std::vector<std::shared_ptr<Metal::Program>> programs;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
-
-    Result _createFramebuffer();
-    Result _destroyFramebuffer();
+    Result create();
+    Result destroy();
+    Result draw(MTL::CommandBuffer* commandBuffer);
 
     friend class Metal;
 };

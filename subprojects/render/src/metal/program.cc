@@ -5,7 +5,6 @@
 namespace Render {
 
 Result Metal::Program::create() {
-    /*
     for (const auto& draw : cfg.draws) {
         draws.push_back(std::dynamic_pointer_cast<Metal::Draw>(draw));
     }
@@ -14,40 +13,37 @@ Result Metal::Program::create() {
         textures.push_back(std::dynamic_pointer_cast<Metal::Texture>(texture));
     }
 
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
-    glCompileShader(vertexShader);
+    NS::Error* err;
+    MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
+    NS::String* source = NS::String::string(*cfg.vertexSource, NS::ASCIIStringEncoding);
+    auto library = inst.device->newLibrary(source, opts, &err);
 
-    CHECK(checkShaderCompilation(vertexShader));
-
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
-    glCompileShader(fragmentShader);
-
-    CHECK(checkShaderCompilation(fragmentShader));
-
-    shader = glCreateProgram();
-    glAttachShader(shader, vertexShader);
-    glAttachShader(shader, fragmentShader);
-    glLinkProgram(shader);
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    if (checkProgramCompilation(shader) != Result::SUCCESS) {
-        return Result::RENDER_BACKEND_ERROR;
+    if (!library) {
+        fmt::print("Library error:\n{}\n", err->description()->utf8String());
+        return Result::ERROR;
     }
 
-    i = 0;
-    for (const auto& texture : textures) {
-        CHECK(texture->create());
-        CHECK(this->setUniform(texture->cfg.key,
-                    std::vector<int>{i++}));
-    }
+    MTL::Function* vertFunc = library->newFunction(NS::String::string("vertFunc", NS::ASCIIStringEncoding));
+    assert(vertFunc);
+
+    MTL::Function* fragFunc = library->newFunction(NS::String::string("fragFunc", NS::ASCIIStringEncoding));
+    assert(fragFunc);
+
+    auto renderPipelineDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    assert(renderPipelineDesc);
+    renderPipelineDesc->setVertexFunction(vertFunc);
+    renderPipelineDesc->setFragmentFunction(fragFunc);
+    renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+
+    renderPipelineState = inst.device->newRenderPipelineState(renderPipelineDesc, &err);
+    assert(renderPipelineState);
+
 
     for (const auto& draw : draws) {
         CHECK(draw->create());
     }
-    */
+
+    fmt::print("program ok!\n");
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -61,33 +57,20 @@ Result Metal::Program::destroy() {
         CHECK(texture->destroy());
     }
 
-    //glDeleteProgram(shader);
-
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result Metal::Program::draw() {
-    /*
-    i = 0;
-    for (const auto& texture : textures) {
-        glActiveTexture(GL_TEXTURE0 + i++);
-        CHECK(texture->begin());
+Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
+                            MTL::RenderPassDescriptor* renderPassDesc) {
+    auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDesc);
+
+    renderCmdEncoder->setRenderPipelineState(renderPipelineState);
+
+    for (auto& draw : draws) {
+        draw->encode(renderCmdEncoder);
     }
 
-    glUseProgram(shader);
-
-    i = 0;
-    for (const auto& draw : draws) {
-        CHECK(this->setUniform("drawIndex", std::vector<int>{i++}));
-        CHECK(draw->draw());
-    }
-
-    i = 0;
-    for (const auto& texture : textures) {
-        glActiveTexture(GL_TEXTURE0 + i++);
-        CHECK(texture->end());
-    }
-    */
+    renderCmdEncoder->endEncoding();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -149,38 +132,6 @@ Result Metal::Program::setUniform(std::string name, const std::vector<float>& va
     */
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result Metal::Program::checkShaderCompilation(uint shader) {
-    /*
-    int success;
-    char infoLog[512];
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        glGetShaderInfoLog(shader, 512, NULL, infoLog);
-        std::cout << "[OPENGL] Shader #" << shader << " compilation error:\n"
-                  << infoLog << std::endl;
-        return Result::RENDER_BACKEND_ERROR;
-    }
-    */
-
-    return Result::SUCCESS;
-}
-
-Result Metal::Program::checkProgramCompilation(uint program) {
-    /*
-    int success;
-    char infoLog[512];
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(program, 512, NULL, infoLog);
-        std::cout << "[OPENGL] Program #" << program << " compilation error:\n"
-                  << infoLog << std::endl;
-        return Result::RENDER_BACKEND_ERROR;
-    }
-    */
-
-    return Result::SUCCESS;
 }
 
 } // namespace Render

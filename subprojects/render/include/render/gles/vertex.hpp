@@ -21,10 +21,10 @@ protected:
     uint vao, ebo;
     uint vertex_count;
 
-    Result create() final;
-    Result destroy() final;
-    Result begin() final;
-    Result end() final;
+    Result create();
+    Result destroy();
+    Result begin();
+    Result end();
 
     uint count();
     uint buffered();

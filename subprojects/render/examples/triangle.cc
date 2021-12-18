@@ -3,7 +3,7 @@
 
 #include "render/base.hpp"
 
-const auto shaders = R"END(
+const char* shaders = R"END(
     #include <metal_stdlib>
 
     using namespace metal;
@@ -55,6 +55,7 @@ void render_loop() {
     ImGui::EndChild();
     ImGui::End();
 
+    texture->raw();
 
     render->end();
 }
@@ -81,7 +82,7 @@ int main() {
     draw = render->create(drawVertexCfg);
 
     Render::Program::Config programCfg;
-    programCfg.fragmentSource = &shaders;
+    programCfg.vertexSource = &shaders;
     programCfg.draws = {draw};
     program = render->create(programCfg);
 
@@ -91,6 +92,7 @@ int main() {
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
+    surfaceCfg.programs = {program};
     surface = render->createAndBind(surfaceCfg);
 
     render->create();

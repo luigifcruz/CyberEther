@@ -3,50 +3,26 @@
 namespace Render {
 
 Result Metal::Texture::create() {
-    /*
     if (!Metal::cudaInteropSupported() && cfg.cudaInterop) {
         cfg.cudaInterop = false;
         return Result::ERROR;
     }
 
-    pfmt = convertPixelFormat(cfg.pfmt);
-    ptype = convertPixelType(cfg.ptype);
-    dfmt = convertDataFormat(cfg.dfmt);
+    // TODO: Change Pixel
+    auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
+            MTL::PixelFormatBGRA8Unorm, cfg.size.width, cfg.size.height, false);
+    assert(textureDesc);
+    textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
+    texture = inst.device->newTexture(textureDesc);
+    assert(texture);
 
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    auto ptr = (cfg.cudaInterop) ? nullptr : cfg.buffer;
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.size.width, cfg.size.height, 0, pfmt, ptype, ptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    */
+    fmt::print("Tex ok!\n");
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result Metal::Texture::destroy() {
-    /*
-    glDeleteTextures(1, &tex);
-
-    if (cfg.cudaInterop) {
-#ifdef RENDER_CUDA_AVAILABLE
-        cudaGraphicsUnregisterResource(cuda_tex_resource);
-        cudaStreamDestroy(stream);
-#endif
-    }
-    */
-
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result Metal::Texture::begin() {
-    //glBindTexture(GL_TEXTURE_2D, tex);
-
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result Metal::Texture::end() {
-    //glBindTexture(GL_TEXTURE_2D, 0);
+    texture->release();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -66,7 +42,11 @@ bool Metal::Texture::size(const Size2D<int>& size) {
 }
 
 uint Metal::Texture::raw() {
-    return tex;
+    ImGui::Begin("Lineplot");
+    ImGui::Image((void*)texture, ImVec2(720, 480));
+    ImGui::End();
+
+    return (uintptr_t)texture;
 }
 
 Result Metal::Texture::fill() {

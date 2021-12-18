@@ -26,10 +26,10 @@ protected:
 
     uint tex, pfmt, dfmt, ptype;
 
-    Result create() final;
-    Result destroy() final;
-    Result begin() final;
-    Result end() final;
+    Result create();
+    Result destroy();
+    Result begin();
+    Result end();
 
 #ifdef RENDER_CUDA_AVAILABLE
     cudaGraphicsResource* cuda_tex_resource = nullptr;

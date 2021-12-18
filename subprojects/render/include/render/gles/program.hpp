@@ -21,9 +21,9 @@ protected:
     std::vector<std::shared_ptr<GLES::Draw>> draws;
     std::vector<std::shared_ptr<GLES::Texture>> textures;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
+    Result create();
+    Result destroy();
+    Result draw();
 
 private:
     static Result checkShaderCompilation(uint);

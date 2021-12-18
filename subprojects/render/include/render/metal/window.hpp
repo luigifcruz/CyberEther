@@ -16,7 +16,7 @@ class MetalWindow {
    explicit MetalWindow(MTL::Device* device, GLFWwindow* glfwWindow);
    ~MetalWindow();
 
-    void draw(const std::function<void(CA::MetalDrawable*)>&);
+   CA::MetalDrawable* draw();
 
  private:
     void* swapchainHolder;

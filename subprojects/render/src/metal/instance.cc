@@ -50,152 +50,19 @@ Result Metal::create() {
     cached_version_str = "2.0+";
     cached_glsl_str = "Metal Shading Language";
 
-    const auto shaders = NS::String::string(R"""(
-        #include <metal_stdlib>
-        using namespace metal;
-        vertex float4 vertFunc(
-            const device packed_float3* vertexArray [[buffer(0)]],
-            unsigned int vID[[vertex_id]])
-        {
-            return float4(vertexArray[vID], 1.0);
-        }
-        fragment half4 fragFunc(
-            constant float* color [[buffer(0)]]
-        )
-        {
-            return half4(color[0], color[1], color[2], 1.0);
-        }
-    )""", NS::ASCIIStringEncoding);
+    commandQueue = device->newCommandQueue();
+    assert(commandQueue);
 
-    NS::Error* err;
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
-    auto library = device->newLibrary(shaders, opts, &err);
-    if (!library) {
-        fmt::print("Library error:\n{}\n", err->description()->utf8String());
-        return Result::ERROR;
-    }
-
-    MTL::Function* vertFunc = library->newFunction(NS::String::string("vertFunc", NS::ASCIIStringEncoding));
-    assert(vertFunc);
-
-    MTL::Function* fragFunc = library->newFunction(NS::String::string("fragFunc", NS::ASCIIStringEncoding));
-    assert(fragFunc);
-
-    auto renderPipelineDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    assert(renderPipelineDesc);
-    renderPipelineDesc->setVertexFunction(vertFunc);
-    renderPipelineDesc->setFragmentFunction(fragFunc);
-    renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
-
-    auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatBGRA8Unorm, 720, 480, false);
-    assert(textureDesc);
-    textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
-    auto texture = device->newTexture(textureDesc);
-    assert(texture);
-
-    auto renderPipelineState = device->newRenderPipelineState(renderPipelineDesc, &err);
-    assert(renderPipelineState);
-
-    const float vertexData[] = {
-         0.0f,  1.0f, 0.0f,
-        -1.0f, -1.0f, 0.0f,
-         1.0f, -1.0f, 0.0f,
-    };
-
-    static float a[] = {
-        +1.0f, +1.0f, 0.0f,
-        +1.0f, -1.0f, 0.0f,
-        -1.0f, -1.0f, 0.0f,
-        -1.0f, +1.0f, 0.0f,
-    };
-
-    static uint16_t b[] = {
-        0, 1, 2,
-        2, 3, 0,
-    };
-
-    static float c[] = {1.0, 1.0, 1.0};
-    static float d[] = {0.0, 1.0, 0.0};
-
-    auto vertexBufferTri = device->newBuffer(vertexData, sizeof(vertexData), MTL::ResourceOptionCPUCacheModeDefault);
-    auto vertexBuffer = device->newBuffer(a, sizeof(a), MTL::ResourceOptionCPUCacheModeDefault);
-    auto indexBuffer = device->newBuffer(b, sizeof(b), MTL::ResourceOptionCPUCacheModeDefault);
-    auto colorBuffer = device->newBuffer(c, sizeof(c), MTL::ResourceOptionCPUCacheModeDefault);
-    auto colorBufferTri = device->newBuffer(d, sizeof(d), MTL::ResourceOptionCPUCacheModeDefault);
-
-    auto cmdQueue = device->newCommandQueue();
-    assert(cmdQueue);
-
-    auto renderPassDescOff = MTL::RenderPassDescriptor::alloc()->init();
-    assert(renderPassDescOff);
-
-    auto renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
+    renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
     assert(renderPassDesc);
 
-    this->createImgui();
-
-    bool show_demo_window = true;
-
-    while(!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-
-        metalWindow->draw([&](CA::MetalDrawable* drawable) {
-            auto cmdBuffer = cmdQueue->commandBuffer();
-            assert(cmdBuffer);
-
-            auto colorAttachDescOff = renderPassDescOff->colorAttachments()->object(0);
-            colorAttachDescOff->setTexture(texture);
-            colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
-            colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
-            colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
-
-            auto renderCmdEncoderOff = cmdBuffer->renderCommandEncoder(renderPassDescOff);
-
-            renderCmdEncoderOff->setRenderPipelineState(renderPipelineState);
-            renderCmdEncoderOff->setVertexBuffer(vertexBuffer, 0, 0);
-            renderCmdEncoderOff->setFragmentBuffer(colorBuffer, 0, 0);
-            renderCmdEncoderOff->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle,
-                                                    (NS::UInteger)6,
-                                                    MTL::IndexType::IndexTypeUInt16,
-                                                    indexBuffer, 0);
-
-            renderCmdEncoderOff->setRenderPipelineState(renderPipelineState);
-            renderCmdEncoderOff->setVertexBuffer(vertexBufferTri, 0, 0);
-            renderCmdEncoderOff->setFragmentBuffer(colorBufferTri, 0, 0);
-            renderCmdEncoderOff->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, 3);
-
-            renderCmdEncoderOff->endEncoding();
-
-            auto colorAttachDesc = renderPassDesc->colorAttachments()->object(0);
-            colorAttachDesc->setTexture(drawable->texture());
-            colorAttachDesc->setLoadAction(MTL::LoadActionClear);
-            colorAttachDesc->setStoreAction(MTL::StoreActionStore);
-            colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 0));
-
-            ImGui_ImplMetal_NewFrame(renderPassDesc);
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-
-            ImGui::ShowDemoWindow(&show_demo_window);
-
-            ImGui::Begin("Lineplot");
-            auto [x, y] = ImGui::GetContentRegionAvail();
-            ImGui::Image((void *)texture, ImVec2(720, 480));
-            ImGui::End();
-
-            auto renderCmdEncoder = cmdBuffer->renderCommandEncoder(renderPassDesc);
-
-            ImGui::Render();
-            ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cmdBuffer, renderCmdEncoder);
-
-            renderCmdEncoder->endEncoding();
-
-            cmdBuffer->presentDrawable(drawable);
-            cmdBuffer->commit();
-        });
+    for (auto &surface : surfaces) {
+        CHECK(surface->create());
     }
 
-    pool->release();
+    if (cfg.imgui) {
+        this->createImgui();
+    }
 
     return Result::SUCCESS;
 }
@@ -245,7 +112,7 @@ Result Metal::destroyImgui() {
 }
 
 Result Metal::beginImgui() {
-   // ImGui_ImplMetal_NewFrame();
+    ImGui_ImplMetal_NewFrame(renderPassDesc);
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
@@ -253,13 +120,27 @@ Result Metal::beginImgui() {
 }
 
 Result Metal::endImgui() {
+    auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDesc);
+
     ImGui::Render();
-    //ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData());
+    ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), commandBuffer, renderCmdEncoder);
+
+    renderCmdEncoder->endEncoding();
+    renderCmdEncoder->release();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result Metal::begin() {
+    commandBuffer = commandQueue->commandBuffer();
+    drawable = metalWindow->draw();
+
+    auto colorAttachDesc = renderPassDesc->colorAttachments()->object(0);
+    colorAttachDesc->setTexture(drawable->texture());
+    colorAttachDesc->setLoadAction(MTL::LoadActionClear);
+    colorAttachDesc->setStoreAction(MTL::StoreActionStore);
+    colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 0));
+
     if (cfg.imgui) {
         this->beginImgui();
 
@@ -279,18 +160,19 @@ Result Metal::begin() {
 
 Result Metal::end() {
     for (auto &surface : surfaces) {
-        CHECK(surface->draw());
+        CHECK(surface->draw(commandBuffer));
     }
 
     if (cfg.imgui) {
         this->endImgui();
     }
 
-    /*
-    glfwGetFramebufferSize(window, &cfg.size.width, &cfg.size.height);
-    glfwSwapBuffers(window);
     glfwPollEvents();
-    */
+
+    commandBuffer->presentDrawable(drawable);
+    commandBuffer->commit();
+
+    drawable->release();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }

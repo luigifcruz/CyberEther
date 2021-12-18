@@ -18,13 +18,17 @@ public:
 protected:
     const Metal& inst;
 
-    uint vao, ebo;
+    std::vector<MTL::Buffer*> vertexBuffers;
+    MTL::Buffer* indexBuffer = nullptr;
     uint vertex_count;
 
-    Result create() final;
-    Result destroy() final;
-    Result begin() final;
-    Result end() final;
+    Result create();
+    Result destroy();
+    Result encode(MTL::RenderCommandEncoder* encoder);
+
+    constexpr const MTL::Buffer* getIndexBuffer() {
+        return indexBuffer;
+    }
 
     uint count();
     uint buffered();

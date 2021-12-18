@@ -18,7 +18,6 @@ public:
         size_t size = 0;
         size_t stride = 0;
         Usage usage = Static;
-        uint index;
         bool cudaInterop = false;
 
 #ifdef RENDER_CUDA_AVAILABLE
@@ -28,7 +27,7 @@ public:
 
     struct Config {
         std::vector<Buffer> buffers;
-        std::vector<uint> indices;
+        std::vector<uint16_t> indices;
     };
 
     Vertex(const Config& c) : cfg(c) {};
@@ -38,11 +37,6 @@ public:
 
 protected:
     Config cfg;
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
-    virtual Result begin() = 0;
-    virtual Result end() = 0;
 };
 
 } // namespace Render

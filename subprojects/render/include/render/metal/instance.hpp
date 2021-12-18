@@ -43,6 +43,10 @@ protected:
     ImGuiStyle* style;
     GLFWwindow* window;
     MTL::Device* device;
+    CA::MetalDrawable* drawable;
+    MTL::CommandQueue* commandQueue;
+    MTL::CommandBuffer* commandBuffer;
+    MTL::RenderPassDescriptor* renderPassDesc;
     std::unique_ptr<MetalWindow> metalWindow;
     std::vector<std::shared_ptr<Metal::Surface>> surfaces;
 

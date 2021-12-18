@@ -14,9 +14,9 @@ protected:
 
     std::shared_ptr<Metal::Vertex> buffer;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
+    Result create();
+    Result destroy();
+    Result encode(MTL::RenderCommandEncoder* encode);
 
     friend class Metal::Program;
 };

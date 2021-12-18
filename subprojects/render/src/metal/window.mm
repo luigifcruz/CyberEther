@@ -27,17 +27,15 @@ MetalWindow::~MetalWindow() {
     [static_cast<CAMetalLayer*>(swapchainHolder) release];
 }
 
-void MetalWindow::draw(const std::function<void(CA::MetalDrawable*)>& render) {
+CA::MetalDrawable* MetalWindow::draw() {
     auto swapchain = static_cast<CAMetalLayer*>(swapchainHolder);
 
-    @autoreleasepool {
-        int width, height;
-        glfwGetFramebufferSize(glfwWindow, &width, &height);
-        swapchain.drawableSize = CGSizeMake(width, height);
-        id<CAMetalDrawable> drawable = [swapchain nextDrawable];
+    int width, height;
+    glfwGetFramebufferSize(glfwWindow, &width, &height);
+    swapchain.drawableSize = CGSizeMake(width, height);
+    id<CAMetalDrawable> drawable = [swapchain nextDrawable];
 
-        render((__bridge CA::MetalDrawable*)drawable);
-    }
+    return (CA::MetalDrawable*)(__bridge CA::MetalDrawable*)drawable;
 }
 
 }  // namespace Render

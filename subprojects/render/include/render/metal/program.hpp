@@ -15,15 +15,15 @@ public:
 protected:
     const Metal& inst;
 
-    int i;
-    uint shader;
+    MTL::RenderPipelineState* renderPipelineState;
 
     std::vector<std::shared_ptr<Metal::Draw>> draws;
     std::vector<std::shared_ptr<Metal::Texture>> textures;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
+    Result create();
+    Result destroy();
+    Result draw(MTL::CommandBuffer* commandBuffer,
+                MTL::RenderPassDescriptor* renderPassDesc);
 
 private:
     static Result checkShaderCompilation(uint);

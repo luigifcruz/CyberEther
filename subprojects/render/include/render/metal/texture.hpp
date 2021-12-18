@@ -20,12 +20,14 @@ public:
 protected:
     const Metal& inst;
 
-    uint tex, pfmt, dfmt, ptype;
+    MTL::Texture* texture;
 
-    Result create() final;
-    Result destroy() final;
-    Result begin() final;
-    Result end() final;
+    constexpr const MTL::Texture* getTexture() {
+        return texture;
+    }
+
+    Result create();
+    Result destroy();
 
     friend class Metal::Surface;
     friend class Metal::Program;

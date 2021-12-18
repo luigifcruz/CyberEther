@@ -14,9 +14,9 @@ protected:
 
     std::shared_ptr<GLES::Vertex> buffer;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
+    Result create();
+    Result destroy();
+    Result draw();
 
     friend class GLES::Program;
 };

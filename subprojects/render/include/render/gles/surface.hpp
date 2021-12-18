@@ -18,9 +18,9 @@ protected:
     std::shared_ptr<GLES::Texture> framebuffer;
     std::vector<std::shared_ptr<GLES::Program>> programs;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
+    Result create();
+    Result destroy();
+    Result draw();
 
     Result _createFramebuffer();
     Result _destroyFramebuffer();

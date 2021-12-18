@@ -3,71 +3,46 @@
 namespace Render {
 
 Result Metal::Vertex::create() {
-    /*
-    glGenVertexArrays(1, &vao);
-
-    this->begin();
-    int i = 0;
-    bool cudaEnabled = false;
     for (auto& buffer : cfg.buffers) {
-        uint usage = GL_STATIC_DRAW;
-        switch (buffer.usage) {
-            case Vertex::Buffer::Usage::Dynamic:
-                usage = GL_DYNAMIC_DRAW;
-                break;
-            case Vertex::Buffer::Usage::Stream:
-                usage = GL_STREAM_DRAW;
-                break;
-            case Vertex::Buffer::Usage::Static:
-                usage = GL_STATIC_DRAW;
-                break;
-        }
-
-        glGenBuffers(1, &buffer.index);
-        glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
-        auto ptr = (buffer.cudaInterop) ? nullptr : buffer.data;
-        glBufferData(GL_ARRAY_BUFFER, buffer.size * sizeof(float), ptr, usage);
-        glVertexAttribPointer(i, buffer.stride, GL_FLOAT, GL_FALSE, buffer.stride * sizeof(float), 0);
-        glEnableVertexAttribArray(i++);
+        // TODO: implement modes
+        auto tmp = inst.device->newBuffer(buffer.data, buffer.size * sizeof(float),
+                MTL::ResourceOptionCPUCacheModeDefault);
+        vertexBuffers.push_back(tmp);
         vertex_count = buffer.size / buffer.stride;
     }
 
-    if (cfg.indices.size() != 0) {
-        glGenBuffers(1, &ebo);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint),
-                cfg.indices.data(), GL_STATIC_DRAW);
+    if (cfg.indices.size() > 0) {
+        // TODO: implement modes
+        indexBuffer = inst.device->newBuffer(cfg.indices.data(),
+                cfg.indices.size() * sizeof(uint),
+                MTL::ResourceOptionCPUCacheModeDefault);
         vertex_count = cfg.indices.size();
     }
-    this->end();
-    */
+
+    fmt::print("vertex ok!\n");
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result Metal::Vertex::destroy() {
-    /*
-    bool cudaEnabled = false;
-
-    for (auto& buffer : cfg.buffers) {
-        glDeleteBuffers(1, &buffer.index);
+    for (auto& buffer : vertexBuffers) {
+        buffer->release();
     }
 
-    glDeleteBuffers(1, &ebo);
-    glDeleteVertexArrays(1, &vao);
-    */
+    if (indexBuffer) {
+        indexBuffer->release();
+    }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result Metal::Vertex::begin() {
-    //glBindVertexArray(vao);
+Result Metal::Vertex::encode(MTL::RenderCommandEncoder* encoder) {
+    std::size_t index = 0;
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result Metal::Vertex::end() {
-    //glBindVertexArray(0);
+    for (auto& buffer : vertexBuffers) {
+        encoder->setVertexBuffer(buffer, 0, index);
+        index += 1;
+    }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }

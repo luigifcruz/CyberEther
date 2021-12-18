@@ -27,7 +27,7 @@ inline std::vector<Render::Vertex::Buffer> FillScreenVertices() {
     };
 }
 
-inline std::vector<uint> FillScreenIndices() {
+inline std::vector<uint16_t> FillScreenIndices() {
     return {
         0, 1, 2,
         2, 3, 0,
