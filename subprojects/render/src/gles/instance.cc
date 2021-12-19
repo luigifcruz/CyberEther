@@ -36,10 +36,10 @@ Result GLES::create() {
 #endif
     }
 
-    cached_renderer_str = (const char*)glGetString(GL_RENDERER);
-    cached_version_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
-    cached_vendor_str = (const char*)glGetString(GL_VENDOR);
-    cached_glsl_str = (const char*)glGetString(GL_VERSION);
+    rendererString  = glGetString(GL_RENDERER);
+    versionString   = glGetString(GL_SHADING_LANGUAGE_VERSION);
+    vendorString    = glGetString(GL_VENDOR);
+    shaderString    = glGetString(GL_VERSION);
 
     for (auto &surface : surfaces) {
         CHECK(surface->create());
@@ -120,10 +120,10 @@ Result GLES::begin() {
         if (cfg.debug) {
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
-            ImGui::Text("Renderer Name: %s", this->renderer_str().c_str());
-            ImGui::Text("Renderer Vendor: %s", this->vendor_str().c_str());
-            ImGui::Text("Renderer Version: %s", this->version_str().c_str());
-            ImGui::Text("Renderer GLSL Version: %s", this->glsl_str().c_str());
+            ImGui::Text("Renderer Name: %s", rendererString);
+            ImGui::Text("Renderer Vendor: %s", vendorString);
+            ImGui::Text("Renderer Version: %s", versionString);
+            ImGui::Text("Shader Version: %s", shaderString);
             ImGui::End();
         }
     }
@@ -156,26 +156,10 @@ bool GLES::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 
-std::string GLES::renderer_str() {
-    return cached_renderer_str;
-}
-
-std::string GLES::version_str() {
-    return cached_version_str;
-}
-
-std::string GLES::glsl_str() {
-    return cached_glsl_str;
-}
-
-std::string GLES::vendor_str() {
-    return cached_vendor_str;
-}
-
 uint GLES::convertPixelFormat(PixelFormat pfmt) {
     switch (pfmt) {
-        case PixelFormat::RGB:
-            return GL_RGB;
+        case PixelFormat::RGBA:
+            return GL_RGBA;
         case PixelFormat::RED:
             return GL_RED;
     }
@@ -196,8 +180,8 @@ uint GLES::convertDataFormat(DataFormat dfmt) {
     switch (dfmt) {
         case DataFormat::UI8:
             return GL_R8;
-        case DataFormat::RGB:
-            return GL_RGB;
+        case DataFormat::RGBA:
+            return GL_RGBA;
         case DataFormat::F32:
             return GL_R32F;
     }

@@ -11,8 +11,8 @@ public:
         std::string key;
         Size2D<int> size;
         uint8_t* buffer = nullptr;
-        DataFormat dfmt = DataFormat::RGB;
-        PixelFormat pfmt = PixelFormat::RGB;
+        DataFormat dfmt = DataFormat::RGBA;
+        PixelFormat pfmt = PixelFormat::RGBA;
         PixelType ptype = PixelType::UI8;
         bool cudaInterop = false;
     };
@@ -25,7 +25,7 @@ public:
     }
     virtual bool size(const Size2D<int>&) = 0;
 
-    virtual uint raw() = 0;
+    virtual void* raw() = 0;
     virtual Result pour() = 0;
     virtual Result fill() = 0;
     virtual Result fill(int, int, int, int) = 0;

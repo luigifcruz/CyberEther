@@ -27,11 +27,6 @@ public:
 
     bool keepRunning() final;
 
-    std::string renderer_str() final;
-    std::string version_str() final;
-    std::string vendor_str() final;
-    std::string glsl_str() final;
-
     std::shared_ptr<Render::Surface> createAndBind(const Render::Surface::Config&) final;
     std::shared_ptr<Render::Program> create(const Render::Program::Config&) final;
     std::shared_ptr<Render::Texture> create(const Render::Texture::Config&) final;
@@ -53,6 +48,12 @@ protected:
     Result destroyImgui();
     Result beginImgui();
     Result endImgui();
+
+private:
+    const char* rendererString;
+    const char* versionString;
+    const char* vendorString;
+    const char* shaderString;
 };
 
 } // namespace Render

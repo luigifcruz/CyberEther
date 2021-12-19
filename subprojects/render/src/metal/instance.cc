@@ -29,8 +29,6 @@ Result Metal::create() {
         return Result::FAILED_TO_OPEN_SCREEN;
     }
 
-    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-
     device = MTL::CreateSystemDefaultDevice();
     if (!device) {
         return Result::RENDER_BACKEND_ERROR;
@@ -41,14 +39,15 @@ Result Metal::create() {
     glfwMakeContextCurrent(window);
 
     if (cfg.scale == -1.0) {
-        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-        glfwGetMonitorContentScale(monitor, &cfg.scale, nullptr);
+        // The macOS usually handles HiDPI well. Let's leave as is.
+        cfg.scale = 1.0;
     }
 
-    cached_vendor_str = device->name()->utf8String();
-    cached_renderer_str = "Apple Metal";
-    cached_version_str = "2.0+";
-    cached_glsl_str = "Metal Shading Language";
+    rendererString = "Apple Metal";
+    versionString  = "2.0+";
+    vendorString   = device->name()->utf8String();
+    unifiedString  = device->hasUnifiedMemory() ? "YES" : "NO";
+    shaderString   = "Metal Shading Language";
 
     commandQueue = device->newCommandQueue();
     assert(commandQueue);
@@ -61,7 +60,7 @@ Result Metal::create() {
     }
 
     if (cfg.imgui) {
-        this->createImgui();
+        CHECK(this->createImgui());
     }
 
     return Result::SUCCESS;
@@ -73,7 +72,7 @@ Result Metal::destroy() {
     }
 
     if (cfg.imgui) {
-        this->destroyImgui();
+        CHECK(this->destroyImgui());
     }
 
     glfwDestroyWindow(window);
@@ -93,7 +92,6 @@ Result Metal::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(cfg.scale);
-    //io->Fonts->AddFontFromFileTTF("JetBrainsMono-Regular.ttf", 12.0f * cfg.scale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
@@ -142,15 +140,16 @@ Result Metal::begin() {
     colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 0));
 
     if (cfg.imgui) {
-        this->beginImgui();
+        CHECK(this->beginImgui());
 
         if (cfg.debug) {
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
-            ImGui::Text("Renderer Name: %s", this->renderer_str().c_str());
-            ImGui::Text("Renderer Vendor: %s", this->vendor_str().c_str());
-            ImGui::Text("Renderer Version: %s", this->version_str().c_str());
-            ImGui::Text("Renderer GLSL Version: %s", this->glsl_str().c_str());
+            ImGui::Text("Renderer Name: %s", rendererString);
+            ImGui::Text("Renderer Vendor: %s", vendorString);
+            ImGui::Text("Renderer Version: %s", versionString);
+            ImGui::Text("Unified Memory: %s", unifiedString);
+            ImGui::Text("Shader Version: %s", shaderString);
             ImGui::End();
         }
     }
@@ -164,21 +163,19 @@ Result Metal::end() {
     }
 
     if (cfg.imgui) {
-        this->endImgui();
+        CHECK(this->endImgui());
     }
 
     glfwPollEvents();
 
     commandBuffer->presentDrawable(drawable);
     commandBuffer->commit();
-
     drawable->release();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result Metal::synchronize() {
-    //glFinish();
     return Result::SUCCESS;
 }
 
@@ -186,61 +183,28 @@ bool Metal::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 
-std::string Metal::renderer_str() {
-    return cached_renderer_str;
-}
-
-std::string Metal::version_str() {
-    return cached_version_str;
-}
-
-std::string Metal::glsl_str() {
-    return cached_glsl_str;
-}
-
-std::string Metal::vendor_str() {
-    return cached_vendor_str;
-}
-
-uint Metal::convertPixelFormat(PixelFormat pfmt) {
-    /*
-    switch (pfmt) {
-        case PixelFormat::RGB:
-            return GL_RGB;
-        case PixelFormat::RED:
-            return GL_RED;
+MTL::PixelFormat Metal::convertPixelFormat(const PixelFormat& pfmt, const PixelType& ptype) {
+    if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
+        return MTL::PixelFormatR32Float;
     }
-    */
-    throw Result::ERROR;
-}
 
-uint Metal::convertPixelType(PixelType ptype) {
-    /*
-    switch (ptype) {
-        case PixelType::UI8:
-            return GL_UNSIGNED_BYTE;
-        case PixelType::F32:
-            return GL_FLOAT;
+    if (pfmt == PixelFormat::RED && ptype == PixelType::UI8) {
+        return MTL::PixelFormatR8Unorm;
     }
-    */
-    throw Result::ERROR;
-}
 
-uint Metal::convertDataFormat(DataFormat dfmt) {
-    /*
-    switch (dfmt) {
-        case DataFormat::UI8:
-            return GL_R8;
-        case DataFormat::RGB:
-            return GL_RGB;
-        case DataFormat::F32:
-            return GL_R32F;
+    if (pfmt == PixelFormat::RGBA && ptype == PixelType::F32) {
+        return MTL::PixelFormatRGBA32Float;
     }
-    */
+
+    if (pfmt == PixelFormat::RGBA && ptype == PixelType::UI8) {
+        return MTL::PixelFormatRGBA8Unorm;
+    }
+
     throw Result::ERROR;
 }
 
 Result Metal::getError(std::string func, std::string file, int line) {
+    // TODO: Implement this.
     /*
     int error = glGetError();
     if (error != GL_NO_ERROR) {

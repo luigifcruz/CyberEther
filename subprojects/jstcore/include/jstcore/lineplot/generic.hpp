@@ -49,6 +49,7 @@ protected:
 
     Result initRender(float*, bool cudaInterop = false);
 
+    /*
     const char* vertexSource = R"END(#version 300 es
         layout (location = 0) in vec3 aPos;
         out vec2 A;
@@ -59,6 +60,37 @@ protected:
             gl_Position = vec4(aPos.x, y, aPos.z, 1.0);
             float pos = (y + 1.0)/2.0;
             A = vec2(-pos, 0.0);
+        }
+    )END";
+    */
+
+    const char* vertexSource = R"END(
+        #include <metal_stdlib>
+
+        using namespace metal;
+
+        struct TexturePipelineRasterizerData {
+            float4 position [[position]];
+            float2 texcoord;
+        };
+
+        vertex TexturePipelineRasterizerData vertFunc(
+            const device packed_float3* vertexArray [[buffer(0)]],
+            const device packed_float2* texcoord [[buffer(1)]],
+            unsigned int vID[[vertex_id]]) {
+            TexturePipelineRasterizerData out;
+
+            out.position = vector_float4(vertexArray[vID], 1.0);
+            out.texcoord = texcoord[vID];
+
+            return out;
+        }
+
+        fragment float4 fragFunc(
+            TexturePipelineRasterizerData in [[stage_in]],
+            texture2d<float> lut [[texture(0)]]
+        ) {
+            return vector_float4(0.27, 0.27, 0.27, 1.0);
         }
     )END";
 

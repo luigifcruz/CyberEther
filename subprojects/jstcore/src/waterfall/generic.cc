@@ -40,7 +40,6 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
 
     Render::Program::Config programCfg;
     programCfg.vertexSource = &vertexSource;
-    programCfg.fragmentSource = &fragmentSource;
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
     program = render->create(programCfg);
@@ -70,16 +69,24 @@ Result Generic::present() {
     // TODO: Fix this horrible thing.
     if (blocks < 0) {
         blocks = ymax - last;
-        binTexture->fill(start, 0, input.in.buf.size(), blocks);
+
+        if (blocks > 0) {
+            binTexture->fill(start, 0, input.in.buf.size(), blocks);
+        }
+
         start = 0;
         blocks = inc;
     }
 
-    binTexture->fill(start, 0, input.in.buf.size(), blocks);
+    if (blocks > 0) {
+        binTexture->fill(start, 0, input.in.buf.size(), blocks);
+    }
+
     last = inc;
 
-    program->setUniform("Index", std::vector<float>{inc/(float)ymax});
-    program->setUniform("Interpolate", std::vector<int>{(int)config.interpolate});
+    // TODO: implement this
+    //program->setUniform("Index", std::vector<float>{inc/(float)ymax});
+    //program->setUniform("Interpolate", std::vector<int>{(int)config.interpolate});
     vertex->update();
 
     return Result::SUCCESS;

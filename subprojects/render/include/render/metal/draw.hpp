@@ -10,13 +10,14 @@ public:
     Draw(const Config& cfg, const Metal& i) : Render::Draw(cfg), inst(i) {};
 
 protected:
-    const Metal& inst;
-
-    std::shared_ptr<Metal::Vertex> buffer;
-
     Result create();
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode);
+
+private:
+    const Metal& inst;
+
+    std::shared_ptr<Metal::Vertex> buffer;
 
     friend class Metal::Program;
 };

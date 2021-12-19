@@ -49,7 +49,7 @@ public:
         dsp = std::thread([&]{
             device = std::make_shared<Samurai::AirspyHF::Device>();
 
-            deviceConfig.sampleRate = 10e6;
+            deviceConfig.sampleRate = 256e3;
             device->Enable(deviceConfig);
 
             channelConfig.mode = Samurai::Mode::RX;

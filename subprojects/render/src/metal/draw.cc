@@ -6,7 +6,6 @@ namespace Render {
 Result Metal::Draw::create() {
     buffer = std::dynamic_pointer_cast<Metal::Vertex>(cfg.buffer);
     buffer->create();
-    fmt::print("draw ok!\n");
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -42,13 +41,13 @@ Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
             break;
     }
 
-    buffer->encode(encoder);
+    CHECK(buffer->encode(encoder));
 
-    if (buffer->buffered()) {
-        encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->count(),
+    if (buffer->isBuffered()) {
+        encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->getVertexCount(),
                 MTL::IndexTypeUInt16, buffer->getIndexBuffer(), 0);
     } else {
-        encoder->drawPrimitives(mode, (NS::UInteger)0, buffer->count());
+        encoder->drawPrimitives(mode, (NS::UInteger)0, buffer->getVertexCount());
     }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);

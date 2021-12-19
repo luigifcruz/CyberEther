@@ -4,7 +4,7 @@
 
 namespace Render {
 
-Result Metal::Program::create() {
+Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     for (const auto& draw : cfg.draws) {
         draws.push_back(std::dynamic_pointer_cast<Metal::Draw>(draw));
     }
@@ -33,17 +33,18 @@ Result Metal::Program::create() {
     assert(renderPipelineDesc);
     renderPipelineDesc->setVertexFunction(vertFunc);
     renderPipelineDesc->setFragmentFunction(fragFunc);
-    renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
 
     renderPipelineState = inst.device->newRenderPipelineState(renderPipelineDesc, &err);
     assert(renderPipelineState);
-
 
     for (const auto& draw : draws) {
         CHECK(draw->create());
     }
 
-    fmt::print("program ok!\n");
+    for (const auto& texture : textures) {
+        CHECK(texture->create());
+    }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -66,8 +67,14 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
 
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
+    std::size_t index = 0;
+    for (const auto& texture : textures) {
+        renderCmdEncoder->setFragmentTexture((MTL::Texture*)texture->raw(), index);
+        index += 1;
+    }
+
     for (auto& draw : draws) {
-        draw->encode(renderCmdEncoder);
+        CHECK(draw->encode(renderCmdEncoder));
     }
 
     renderCmdEncoder->endEncoding();

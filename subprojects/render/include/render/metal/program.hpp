@@ -13,6 +13,12 @@ public:
     Result setUniform(std::string, const std::vector<float>&) final;
 
 protected:
+    Result create(const MTL::PixelFormat& pixelFormat);
+    Result destroy();
+    Result draw(MTL::CommandBuffer* commandBuffer,
+                MTL::RenderPassDescriptor* renderPassDesc);
+
+private:
     const Metal& inst;
 
     MTL::RenderPipelineState* renderPipelineState;
@@ -20,12 +26,6 @@ protected:
     std::vector<std::shared_ptr<Metal::Draw>> draws;
     std::vector<std::shared_ptr<Metal::Texture>> textures;
 
-    Result create();
-    Result destroy();
-    Result draw(MTL::CommandBuffer* commandBuffer,
-                MTL::RenderPassDescriptor* renderPassDesc);
-
-private:
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);
 

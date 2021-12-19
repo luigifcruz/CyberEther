@@ -6,7 +6,7 @@ Result Metal::Vertex::create() {
     for (auto& buffer : cfg.buffers) {
         // TODO: implement modes
         auto tmp = inst.device->newBuffer(buffer.data, buffer.size * sizeof(float),
-                MTL::ResourceOptionCPUCacheModeDefault);
+                MTL::ResourceStorageModeManaged);
         vertexBuffers.push_back(tmp);
         vertex_count = buffer.size / buffer.stride;
     }
@@ -18,8 +18,6 @@ Result Metal::Vertex::create() {
                 MTL::ResourceOptionCPUCacheModeDefault);
         vertex_count = cfg.indices.size();
     }
-
-    fmt::print("vertex ok!\n");
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -48,24 +46,11 @@ Result Metal::Vertex::encode(MTL::RenderCommandEncoder* encoder) {
 }
 
 Result Metal::Vertex::update() {
-    /*
-    this->begin();
-    for (auto& buffer : cfg.buffers) {
-        glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, buffer.size * sizeof(float), buffer.data);
+    for (auto& buffer : vertexBuffers) {
+        buffer->didModifyRange(NS::Range(0, buffer->length()));
     }
-    this->end();
-    */
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-uint Metal::Vertex::buffered() {
-    return cfg.indices.size() != 0;
-}
-
-uint Metal::Vertex::count() {
-    return vertex_count;
 }
 
 } // namespace Render

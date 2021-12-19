@@ -12,6 +12,11 @@ public:
     Size2D<int> size(const Size2D<int>&) final;
 
 protected:
+    Result create();
+    Result destroy();
+    Result draw(MTL::CommandBuffer* commandBuffer);
+
+private:
     const Metal& inst;
 
     MTL::RenderPassDescriptor* renderPassDesc;
@@ -19,9 +24,8 @@ protected:
     std::shared_ptr<Metal::Texture> framebuffer;
     std::vector<std::shared_ptr<Metal::Program>> programs;
 
-    Result create();
-    Result destroy();
-    Result draw(MTL::CommandBuffer* commandBuffer);
+    Result createFramebuffer();
+    Result destroyFramebuffer();
 
     friend class Metal;
 };

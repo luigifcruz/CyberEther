@@ -34,11 +34,6 @@ public:
     virtual Result synchronize() = 0;
     virtual bool keepRunning() = 0;
 
-    virtual std::string renderer_str() = 0;
-    virtual std::string version_str() = 0;
-    virtual std::string vendor_str() = 0;
-    virtual std::string glsl_str() = 0;
-
     constexpr Size2D<int> size() const {
         return cfg.size;
     }
@@ -82,11 +77,6 @@ protected:
     virtual Result destroyImgui() = 0;
     virtual Result beginImgui() = 0;
     virtual Result endImgui() = 0;
-
-    std::string cached_renderer_str;
-    std::string cached_version_str;
-    std::string cached_vendor_str;
-    std::string cached_glsl_str;
 
     static Result getError(std::string func, std::string file, int line);
 };

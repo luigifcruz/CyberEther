@@ -8,15 +8,18 @@ Result Metal::Texture::create() {
         return Result::ERROR;
     }
 
-    // TODO: Change Pixel
+    pixelFormat = Metal::convertPixelFormat(cfg.pfmt, cfg.ptype);
+
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
-            MTL::PixelFormatBGRA8Unorm, cfg.size.width, cfg.size.height, false);
+            pixelFormat, cfg.size.width, cfg.size.height, false);
     assert(textureDesc);
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
     texture = inst.device->newTexture(textureDesc);
     assert(texture);
 
-    fmt::print("Tex ok!\n");
+    if (cfg.buffer) {
+        CHECK(this->fill());
+    }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -41,45 +44,24 @@ bool Metal::Texture::size(const Size2D<int>& size) {
     return false;
 }
 
-uint Metal::Texture::raw() {
-    ImGui::Begin("Lineplot");
-    ImGui::Image((void*)texture, ImVec2(720, 480));
-    ImGui::End();
-
-    return (uintptr_t)texture;
+void* Metal::Texture::raw() {
+    return texture;
 }
 
 Result Metal::Texture::fill() {
-    /*
-    if (cfg.cudaInterop) {
-        return this->_cudaCopyToTexture(0, 0, cfg.size.width, cfg.size.height);
-    }
-
-    CHECK(this->begin());
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, cfg.size.width, cfg.size.height, 0, pfmt, ptype, cfg.buffer);
-    CHECK(this->end());
-    */
-
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return this->fill(0, 0, cfg.size.width, cfg.size.height);
 }
 
 Result Metal::Texture::fill(int yo, int xo, int w, int h) {
-    /*
-    if (cfg.cudaInterop) {
-        return this->_cudaCopyToTexture(yo, xo, w, h);
-    }
-
-    CHECK(this->begin());
-    size_t offset = yo * w * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
-    glTexSubImage2D(GL_TEXTURE_2D, 0, xo, yo, w, h, pfmt, ptype, cfg.buffer + offset);
-    CHECK(this->end());
-    */
+    //fmt::print("{} {} {} {}\n", xo, yo, w, h);
+    auto region = MTL::Region::Make2D(xo, yo, w, h);
+    texture->replaceRegion(region, 0, cfg.buffer, 4 * w);
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result Metal::Texture::pour() {
-    // TBD
+    // TODO: Implement it.
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 

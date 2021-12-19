@@ -121,7 +121,7 @@ Result GLES::Texture::fill(int yo, int xo, int w, int h) {
 }
 
 Result GLES::Texture::pour() {
-    // TBD
+    // TODO: Implement it.
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 

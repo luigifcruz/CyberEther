@@ -35,7 +35,7 @@ CA::MetalDrawable* MetalWindow::draw() {
     swapchain.drawableSize = CGSizeMake(width, height);
     id<CAMetalDrawable> drawable = [swapchain nextDrawable];
 
-    return (CA::MetalDrawable*)(__bridge CA::MetalDrawable*)drawable;
+    return (__bridge CA::MetalDrawable*)drawable;
 }
 
 }  // namespace Render

@@ -27,11 +27,6 @@ public:
 
     bool keepRunning() final;
 
-    std::string renderer_str() final;
-    std::string version_str() final;
-    std::string vendor_str() final;
-    std::string glsl_str() final;
-
     std::shared_ptr<Render::Surface> createAndBind(const Render::Surface::Config&) final;
     std::shared_ptr<Render::Program> create(const Render::Program::Config&) final;
     std::shared_ptr<Render::Texture> create(const Render::Texture::Config&) final;
@@ -39,21 +34,30 @@ public:
     std::shared_ptr<Render::Draw> create(const Render::Draw::Config&) final;
 
 protected:
+    MTL::Device* device;
+
+    static MTL::PixelFormat convertPixelFormat(const PixelFormat&, const PixelType&);
+    static Result getError(std::string, std::string, int);
+
+private:
     ImGuiIO* io;
     ImGuiStyle* style;
+
     GLFWwindow* window;
-    MTL::Device* device;
+    std::unique_ptr<MetalWindow> metalWindow;
+
     CA::MetalDrawable* drawable;
     MTL::CommandQueue* commandQueue;
     MTL::CommandBuffer* commandBuffer;
     MTL::RenderPassDescriptor* renderPassDesc;
-    std::unique_ptr<MetalWindow> metalWindow;
+
     std::vector<std::shared_ptr<Metal::Surface>> surfaces;
 
-    static uint convertPixelFormat(PixelFormat);
-    static uint convertPixelType(PixelType);
-    static uint convertDataFormat(DataFormat);
-    static Result getError(std::string, std::string, int);
+    const char* vendorString;
+    const char* rendererString;
+    const char* versionString;
+    const char* unifiedString;
+    const char* shaderString;
 
     Result createImgui();
     Result destroyImgui();

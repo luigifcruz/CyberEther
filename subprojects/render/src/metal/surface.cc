@@ -11,22 +11,14 @@ Result Metal::Surface::create() {
         programs.push_back(std::dynamic_pointer_cast<Metal::Program>(program));
     }
 
-    for (auto &program : programs) {
-        CHECK(program->create());
-    }
-
     renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
     assert(renderPassDesc);
 
-    framebuffer->create();
+    CHECK(this->createFramebuffer());
 
-    auto colorAttachDescOff = renderPassDesc->colorAttachments()->object(0);
-    colorAttachDescOff->setTexture(framebuffer->getTexture());
-    colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
-    colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
-    colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
-
-    fmt::print("surface ok!\n");
+    for (auto &program : programs) {
+        CHECK(program->create(framebuffer->getPixelFormat()));
+    }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -36,7 +28,7 @@ Result Metal::Surface::destroy() {
         CHECK(program->destroy());
     }
 
-    framebuffer->destroy();
+    CHECK(this->destroyFramebuffer());
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -47,7 +39,8 @@ Size2D<int> Metal::Surface::size(const Size2D<int>& size) {
     }
 
     if (framebuffer->size(size)) {
-        // TODO: Implement resize.
+        this->destroyFramebuffer();
+        this->createFramebuffer();
     }
 
     return framebuffer->size();
@@ -59,6 +52,22 @@ Result Metal::Surface::draw(MTL::CommandBuffer* commandBuffer) {
     }
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result Metal::Surface::createFramebuffer() {
+    CHECK(framebuffer->create());
+
+    auto colorAttachDescOff = renderPassDesc->colorAttachments()->object(0);
+    colorAttachDescOff->setTexture((MTL::Texture*)framebuffer->raw());
+    colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
+    colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
+    colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
+
+    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result Metal::Surface::destroyFramebuffer() {
+    return framebuffer->destroy();
 }
 
 } // namespace Render

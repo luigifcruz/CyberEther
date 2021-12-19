@@ -12,22 +12,24 @@ public:
     using Render::Texture::size;
     bool size(const Size2D<int>&) final;
 
-    uint raw() final;
+    void* raw() final;
     Result pour() final;
     Result fill() final;
     Result fill(int, int, int, int) final;
 
 protected:
+    Result create();
+    Result destroy();
+
+    constexpr const MTL::PixelFormat getPixelFormat() {
+        return pixelFormat;
+    }
+
+private:
     const Metal& inst;
 
     MTL::Texture* texture;
-
-    constexpr const MTL::Texture* getTexture() {
-        return texture;
-    }
-
-    Result create();
-    Result destroy();
+    MTL::PixelFormat pixelFormat;
 
     friend class Metal::Surface;
     friend class Metal::Program;

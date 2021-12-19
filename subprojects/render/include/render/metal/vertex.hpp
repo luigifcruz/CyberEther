@@ -16,12 +16,6 @@ public:
     Result update() final;
 
 protected:
-    const Metal& inst;
-
-    std::vector<MTL::Buffer*> vertexBuffers;
-    MTL::Buffer* indexBuffer = nullptr;
-    uint vertex_count;
-
     Result create();
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encoder);
@@ -30,8 +24,20 @@ protected:
         return indexBuffer;
     }
 
-    uint count();
-    uint buffered();
+    constexpr const std::size_t getVertexCount() {
+        return vertex_count;
+    }
+
+    constexpr const bool isBuffered() {
+        return indexBuffer != nullptr;
+    }
+
+private:
+    const Metal& inst;
+
+    std::size_t vertex_count;
+    MTL::Buffer* indexBuffer = nullptr;
+    std::vector<MTL::Buffer*> vertexBuffers;
 
     friend class Metal::Draw;
 };

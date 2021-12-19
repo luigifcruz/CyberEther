@@ -89,12 +89,12 @@ enum struct API {
 };
 
 enum class PixelFormat : uint {
-    RGB,
+    RGBA,
     RED,
 };
 
 enum class DataFormat : uint {
-    RGB,
+    RGBA,
     UI8,
     F32,
 };
