@@ -30,17 +30,14 @@ Result Metal::create() {
     }
 
     device = MTL::CreateSystemDefaultDevice();
-    if (!device) {
-        return Result::RENDER_BACKEND_ERROR;
-    }
+    RENDER_ASSERT(device);
 
     metalWindow = std::make_unique<MetalWindow>(device, window);
 
     glfwMakeContextCurrent(window);
 
     if (cfg.scale == -1.0) {
-        // The macOS usually handles HiDPI well. Let's leave it as is.
-        cfg.scale = 1.0;
+        cfg.scale = 1.0;  // Let's leave it as is for macOS.
     }
 
     rendererString = "Apple Metal";
@@ -50,10 +47,10 @@ Result Metal::create() {
     shaderString   = "Metal Shading Language";
 
     commandQueue = device->newCommandQueue();
-    assert(commandQueue);
+    RENDER_ASSERT(commandQueue);
 
     renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
-    assert(renderPassDesc);
+    RENDER_ASSERT(renderPassDesc);
 
     for (auto &surface : surfaces) {
         CHECK(surface->create());
@@ -78,6 +75,10 @@ Result Metal::destroy() {
     glfwDestroyWindow(window);
     glfwTerminate();
 
+    renderPassDesc->release();
+    commandQueue->release();
+    device->release();
+
     return Result::SUCCESS;
 }
 
@@ -98,7 +99,7 @@ Result Metal::createImgui() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplMetal_Init(device);
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::destroyImgui() {
@@ -106,7 +107,7 @@ Result Metal::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::beginImgui() {
@@ -114,7 +115,7 @@ Result Metal::beginImgui() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::endImgui() {
@@ -126,7 +127,7 @@ Result Metal::endImgui() {
     renderCmdEncoder->endEncoding();
     renderCmdEncoder->release();
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::begin() {
@@ -154,7 +155,7 @@ Result Metal::begin() {
         }
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::end() {
@@ -171,9 +172,11 @@ Result Metal::end() {
     commandBuffer->presentDrawable(drawable);
     commandBuffer->commit();
     commandBuffer->waitUntilCompleted();
+    
+    commandBuffer->release();
     drawable->release();
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::synchronize() {
@@ -204,18 +207,19 @@ MTL::PixelFormat Metal::convertPixelFormat(const PixelFormat& pfmt, const PixelT
     throw Result::ERROR;
 }
 
-Result Metal::getError(std::string func, std::string file, int line) {
-    // TODO: Implement this.
-    /*
-    int error = glGetError();
-    if (error != GL_NO_ERROR) {
-        std::cout << "[OPENGL] GL returned an error #" << error
-                  << " inside function " << func << " @ "
-                  << file << ":" << line << std::endl;
-        return Result::RENDER_BACKEND_ERROR;
+std::size_t Metal::getPixelByteSize(const MTL::PixelFormat& pfmt) {
+    switch (pfmt) {
+        case MTL::PixelFormatR32Float:
+            return 4;
+        case MTL::PixelFormatR8Unorm:
+            return 1;
+        case MTL::PixelFormatRGBA32Float:
+            return 16;
+        case MTL::PixelFormatRGBA8Unorm:
+            return 4;
+        default:
+            throw "pixel format not implemented yet";
     }
-    */
-    return Result::SUCCESS;
 }
 
 std::shared_ptr<Render::Surface> Metal::createAndBind(const Render::Surface::Config& cfg) {

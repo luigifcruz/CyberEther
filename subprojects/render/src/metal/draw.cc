@@ -5,15 +5,15 @@ namespace Render {
 
 Result Metal::Draw::create() {
     buffer = std::dynamic_pointer_cast<Metal::Vertex>(cfg.buffer);
-    buffer->create();
+    CHECK(buffer->create());
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Draw::destroy() {
-    buffer->destroy();
+    CHECK(buffer->destroy());
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
@@ -35,10 +35,6 @@ Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
         case Draw::Mode::Points:
             mode = MTL::PrimitiveTypePoint;
             break;
-        case Draw::Mode::LineLoop:
-            std::cerr << "Not implemented" << std::endl;
-            mode = MTL::PrimitiveTypeLine;
-            break;
     }
 
     CHECK(buffer->encode(encoder));
@@ -50,7 +46,7 @@ Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
         encoder->drawPrimitives(mode, (NS::UInteger)0, buffer->getVertexCount());
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 } // namespace Render

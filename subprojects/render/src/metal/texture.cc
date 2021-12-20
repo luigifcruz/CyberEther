@@ -12,22 +12,25 @@ Result Metal::Texture::create() {
 
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
             pixelFormat, cfg.size.width, cfg.size.height, false);
-    assert(textureDesc);
+    RENDER_ASSERT(textureDesc);
+
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
     texture = inst.device->newTexture(textureDesc);
-    assert(texture);
+    RENDER_ASSERT(texture);
+
+    textureDesc->release();
 
     if (cfg.buffer) {
         CHECK(this->fill());
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Texture::destroy() {
     texture->release();
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 // After this method, user needs to recreate the texture
@@ -53,16 +56,16 @@ Result Metal::Texture::fill() {
 }
 
 Result Metal::Texture::fill(int yo, int xo, int w, int h) {
-    // TODO: Implement right line size.
     auto region = MTL::Region::Make2D(xo, yo, w, h);
-    texture->replaceRegion(region, 0, cfg.buffer, sizeof(float) * w);
+    auto rowByteSize = (w - xo) * getPixelByteSize(texture->pixelFormat());
+    texture->replaceRegion(region, 0, cfg.buffer, rowByteSize);
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Texture::pour() {
     // TODO: Implement it.
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 } // namespace Render

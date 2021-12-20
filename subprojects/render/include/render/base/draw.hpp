@@ -12,9 +12,8 @@ public:
         TriangleFan,
         Triangles,
         LineStrip,
-        LineLoop,
-        Points,
         Lines,
+        Points,
     };
 
     struct Config {

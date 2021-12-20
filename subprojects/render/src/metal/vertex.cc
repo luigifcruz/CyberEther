@@ -31,7 +31,7 @@ Result Metal::Vertex::create() {
         vertex_count = cfg.indices.size();
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Vertex::destroy() {
@@ -43,7 +43,7 @@ Result Metal::Vertex::destroy() {
         indexBuffer->release();
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Vertex::encode(MTL::RenderCommandEncoder* encoder) {
@@ -54,7 +54,7 @@ Result Metal::Vertex::encode(MTL::RenderCommandEncoder* encoder) {
         index += 1;
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Vertex::update() {
@@ -65,7 +65,7 @@ Result Metal::Vertex::update() {
         buffer->didModifyRange(NS::Range(0, buffer->length()));
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 } // namespace Render

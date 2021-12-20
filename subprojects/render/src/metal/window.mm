@@ -30,9 +30,12 @@ MetalWindow::~MetalWindow() {
 CA::MetalDrawable* MetalWindow::draw() {
     auto swapchain = static_cast<CAMetalLayer*>(swapchainHolder);
 
-    int width, height;
-    glfwGetFramebufferSize(glfwWindow, &width, &height);
-    swapchain.drawableSize = CGSizeMake(width, height);
+    @autoreleasepool {
+        int width, height;
+        glfwGetFramebufferSize(glfwWindow, &width, &height);
+        swapchain.drawableSize = CGSizeMake(width, height);
+    }
+
     id<CAMetalDrawable> drawable = [swapchain nextDrawable];
 
     return (__bridge CA::MetalDrawable*)drawable;

@@ -24,19 +24,21 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     }
 
     MTL::Function* vertFunc = library->newFunction(NS::String::string("vertFunc", NS::ASCIIStringEncoding));
-    assert(vertFunc);
+    RENDER_ASSERT(vertFunc);
 
     MTL::Function* fragFunc = library->newFunction(NS::String::string("fragFunc", NS::ASCIIStringEncoding));
-    assert(fragFunc);
+    RENDER_ASSERT(fragFunc);
 
     auto renderPipelineDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    assert(renderPipelineDesc);
+    RENDER_ASSERT(renderPipelineDesc);
     renderPipelineDesc->setVertexFunction(vertFunc);
     renderPipelineDesc->setFragmentFunction(fragFunc);
     renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
 
     renderPipelineState = inst.device->newRenderPipelineState(renderPipelineDesc, &err);
-    assert(renderPipelineState);
+    RENDER_ASSERT(renderPipelineState);
+
+    renderPipelineDesc->release();
 
     for (const auto& draw : draws) {
         CHECK(draw->create());
@@ -46,7 +48,7 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
         CHECK(texture->create());
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Program::destroy() {
@@ -58,7 +60,9 @@ Result Metal::Program::destroy() {
         CHECK(texture->destroy());
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    renderPipelineState->release();
+
+    return Result::SUCCESS;
 }
 
 Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
@@ -90,8 +94,9 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
     }
 
     renderCmdEncoder->endEncoding();
+    renderCmdEncoder->release();
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 } // namespace Render

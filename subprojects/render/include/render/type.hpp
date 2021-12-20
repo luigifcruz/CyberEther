@@ -43,6 +43,15 @@ void print_error(Result, const char*, int, const char*);
 }
 #endif
 
+#ifndef RENDER_ASSERT
+#define RENDER_ASSERT(result) { \
+    if (result == nullptr) { \
+        print_error(Result::ERROR, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
+        return Result::ERROR; \
+    } \
+}
+#endif
+
 #ifndef CHECK
 #define CHECK(result) { \
     if (result != Render::Result::SUCCESS) { \

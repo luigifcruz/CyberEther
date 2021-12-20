@@ -37,7 +37,7 @@ protected:
     MTL::Device* device;
 
     static MTL::PixelFormat convertPixelFormat(const PixelFormat&, const PixelType&);
-    static Result getError(std::string, std::string, int);
+    static std::size_t getPixelByteSize(const MTL::PixelFormat&);
 
 private:
     ImGuiIO* io;

@@ -77,8 +77,6 @@ protected:
     virtual Result destroyImgui() = 0;
     virtual Result beginImgui() = 0;
     virtual Result endImgui() = 0;
-
-    static Result getError(std::string func, std::string file, int line);
 };
 
 } // namespace Render

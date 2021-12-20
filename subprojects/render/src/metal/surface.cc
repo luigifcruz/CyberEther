@@ -12,7 +12,7 @@ Result Metal::Surface::create() {
     }
 
     renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
-    assert(renderPassDesc);
+    RENDER_ASSERT(renderPassDesc);
 
     CHECK(this->createFramebuffer());
 
@@ -20,7 +20,7 @@ Result Metal::Surface::create() {
         CHECK(program->create(framebuffer->getPixelFormat()));
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Surface::destroy() {
@@ -30,7 +30,9 @@ Result Metal::Surface::destroy() {
 
     CHECK(this->destroyFramebuffer());
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    renderPassDesc->release();
+
+    return Result::SUCCESS;
 }
 
 Size2D<int> Metal::Surface::size(const Size2D<int>& size) {
@@ -51,7 +53,7 @@ Result Metal::Surface::draw(MTL::CommandBuffer* commandBuffer) {
         CHECK(program->draw(commandBuffer, renderPassDesc));
     }
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Surface::createFramebuffer() {
@@ -63,7 +65,7 @@ Result Metal::Surface::createFramebuffer() {
     colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
     colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
 
-    return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
+    return Result::SUCCESS;
 }
 
 Result Metal::Surface::destroyFramebuffer() {
