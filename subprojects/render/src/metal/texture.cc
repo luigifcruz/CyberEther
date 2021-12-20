@@ -53,9 +53,9 @@ Result Metal::Texture::fill() {
 }
 
 Result Metal::Texture::fill(int yo, int xo, int w, int h) {
-    //fmt::print("{} {} {} {}\n", xo, yo, w, h);
+    // TODO: Implement right line size.
     auto region = MTL::Region::Make2D(xo, yo, w, h);
-    texture->replaceRegion(region, 0, cfg.buffer, 4 * w);
+    texture->replaceRegion(region, 0, cfg.buffer, sizeof(float) * w);
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);
 }

@@ -42,6 +42,10 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     programCfg.vertexSource = &vertexSource;
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
+    programCfg.vertexUniforms = &vertexUniforms;
+    programCfg.vertexUniformsSize = sizeof(vertexUniforms);
+    programCfg.fragmentUniforms = &fragmentUniforms;
+    programCfg.fragmentUniformsSize = sizeof(fragmentUniforms);
     program = render->create(programCfg);
 
     Render::Texture::Config textureCfg;
@@ -63,31 +67,9 @@ Result Generic::compute() {
 }
 
 Result Generic::present() {
-    int start = last;
-    int blocks = (inc - last);
-
-    // TODO: Fix this horrible thing.
-    if (blocks < 0) {
-        blocks = ymax - last;
-
-        if (blocks > 0) {
-            binTexture->fill(start, 0, input.in.buf.size(), blocks);
-        }
-
-        start = 0;
-        blocks = inc;
-    }
-
-    if (blocks > 0) {
-        binTexture->fill(start, 0, input.in.buf.size(), blocks);
-    }
-
-    last = inc;
-
-    // TODO: implement this
-    //program->setUniform("Index", std::vector<float>{inc/(float)ymax});
-    //program->setUniform("Interpolate", std::vector<int>{(int)config.interpolate});
-    vertex->update();
+    binTexture->fill();
+    vertexUniforms.index = inc / (float)ymax;
+    fragmentUniforms.interpolate = config.interpolate;
 
     return Result::SUCCESS;
 }

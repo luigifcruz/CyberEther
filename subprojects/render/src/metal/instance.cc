@@ -39,7 +39,7 @@ Result Metal::create() {
     glfwMakeContextCurrent(window);
 
     if (cfg.scale == -1.0) {
-        // The macOS usually handles HiDPI well. Let's leave as is.
+        // The macOS usually handles HiDPI well. Let's leave it as is.
         cfg.scale = 1.0;
     }
 
@@ -170,6 +170,7 @@ Result Metal::end() {
 
     commandBuffer->presentDrawable(drawable);
     commandBuffer->commit();
+    commandBuffer->waitUntilCompleted();
     drawable->release();
 
     return Metal::getError(__FUNCTION__, __FILE__, __LINE__);

@@ -74,23 +74,41 @@ protected:
             float2 texcoord;
         };
 
+        struct RenderUniforms {
+            uint32_t drawIndex;
+        };
+
         vertex TexturePipelineRasterizerData vertFunc(
-            const device packed_float3* vertexArray [[buffer(0)]],
-            const device packed_float2* texcoord [[buffer(1)]],
-            unsigned int vID[[vertex_id]]) {
+                const device packed_float3* vertexArray [[buffer(0)]],
+                unsigned int vID[[vertex_id]]) {
+            float3 vert = vertexArray[vID];
             TexturePipelineRasterizerData out;
 
-            out.position = vector_float4(vertexArray[vID], 1.0);
-            out.texcoord = texcoord[vID];
+            float min_x = 0.0;
+            float max_x = 1.0;
+            float y = (2.0 * ((vert.y - min_x)/(max_x - min_x)) - 1.0);
+            out.position = vector_float4(vert.x, y, vert.z, 1.0);
+
+            float pos = (y + 1.0)/2.0;
+            out.texcoord = vector_float2(pos, 0.0);
 
             return out;
         }
 
         fragment float4 fragFunc(
-            TexturePipelineRasterizerData in [[stage_in]],
-            texture2d<float> lut [[texture(0)]]
-        ) {
-            return vector_float4(0.27, 0.27, 0.27, 1.0);
+                TexturePipelineRasterizerData in [[stage_in]],
+                constant RenderUniforms& renderUniforms [[buffer(28)]],
+                texture2d<float> lut [[texture(0)]]) {
+            if (renderUniforms.drawIndex == 0) {
+                return vector_float4(0.27, 0.27, 0.27, 1.0);
+            }
+
+            if (renderUniforms.drawIndex == 1) {
+                sampler lutSampler(filter::linear);
+                return lut.sample(lutSampler, in.texcoord);
+            }
+
+            return vector_float4(0.0, 1.0, 0.0, 1.0);
         }
     )END";
 

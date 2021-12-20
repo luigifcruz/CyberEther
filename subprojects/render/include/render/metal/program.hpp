@@ -9,9 +9,6 @@ class Metal::Program : public Render::Program {
 public:
     Program(const Config& c, const Metal& i) : Render::Program(c), inst(i) {};
 
-    Result setUniform(std::string, const std::vector<int>&) final;
-    Result setUniform(std::string, const std::vector<float>&) final;
-
 protected:
     Result create(const MTL::PixelFormat& pixelFormat);
     Result destroy();

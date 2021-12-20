@@ -19,6 +19,7 @@ public:
         renderCfg.resizable = true;
         renderCfg.imgui = true;
         renderCfg.vsync = true;
+        renderCfg.debug = true;
         renderCfg.title = "CyberEther";
         render = Render::Instantiate(Render::API::GLES, renderCfg);
 
@@ -32,7 +33,7 @@ public:
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        auto gui = Subloop<Async>::New(loop);
+        auto gui = Subloop<Sync>::New(loop);
 
         lpt = gui->add<Lineplot::CPU>("lpt0", {render}, {
             fft->output(),
@@ -47,9 +48,9 @@ public:
         render->create();
 
         dsp = std::thread([&]{
-            device = std::make_shared<Samurai::AirspyHF::Device>();
+            device = std::make_shared<Samurai::Airspy::Device>();
 
-            deviceConfig.sampleRate = 256e3;
+            deviceConfig.sampleRate = 10e6;
             device->Enable(deviceConfig);
 
             channelConfig.mode = Samurai::Mode::RX;

@@ -68,6 +68,15 @@ protected:
     )END";
     */
 
+    struct {
+        float index;
+    } vertexUniforms;
+
+    struct {
+        uint8_t interpolate;
+        uint8_t drawIndex;
+    } fragmentUniforms;
+
     const char* vertexSource = R"END(
         #include <metal_stdlib>
 
@@ -78,26 +87,89 @@ protected:
             float2 texcoord;
         };
 
+        struct VertexUniforms {
+            float index;
+        };
+
+        struct FragmentUniforms {
+            uint8_t interpolate;
+            uint8_t drawIndex;
+        };
+
         vertex TexturePipelineRasterizerData vertFunc(
-            const device packed_float3* vertexArray [[buffer(0)]],
-            const device packed_float2* texcoord [[buffer(1)]],
-            unsigned int vID[[vertex_id]]) {
+                const device packed_float3* vertexArray [[buffer(0)]],
+                const device packed_float2* texcoord [[buffer(1)]],
+                constant VertexUniforms& uniforms [[buffer(29)]],
+                unsigned int vID[[vertex_id]]) {
             TexturePipelineRasterizerData out;
 
             out.position = vector_float4(vertexArray[vID], 1.0);
-            out.texcoord = texcoord[vID];
+            float vertical = (uniforms.index + texcoord[vID].y);
+            out.texcoord = vector_float2(texcoord[vID].x, vertical);
 
             return out;
         }
 
         fragment float4 fragFunc(
-            TexturePipelineRasterizerData in [[stage_in]],
-            texture2d<float> data [[texture(0)]],
-            texture2d<float> bin [[texture(1)]]
-        ) {
-            sampler imgSampler;
-            float4 colorSample = data.sample(imgSampler, in.texcoord);
-            return colorSample;
+                TexturePipelineRasterizerData in [[stage_in]],
+                texture2d<float> data [[texture(0)]],
+                texture2d<float> lut [[texture(1)]],
+                constant FragmentUniforms& uniforms [[buffer(30)]]) {
+            sampler lutSampler(filter::linear);
+            constexpr sampler dataSampler(address::repeat);
+
+            float mag = data.sample(dataSampler, in.texcoord).r;
+
+            return lut.sample(lutSampler, vector_float2(mag, 0.0));
+        }
+    )END";
+
+    const char* fragmentSource = R"END(#version 300 es
+        precision highp float;
+        out vec4 FragColor;
+        in vec2 TexCoord;
+        uniform int Interpolate;
+        uniform int drawIndex;
+        uniform sampler2D BinTexture;
+        uniform sampler2D LutTexture;
+        vec4 cubic(float v){
+            vec4 n = vec4(1.0, 2.0, 3.0, 4.0) - v;
+            vec4 s = n * n * n;
+            float x = s.x;
+            float y = s.y - 4.0 * s.x;
+            float z = s.z - 4.0 * s.y + 6.0 * s.x;
+            float w = 6.0 - x - y - z;
+            return vec4(x, y, z, w) * (1.0/6.0);
+        }
+        vec4 textureBicubic(sampler2D sampler, vec2 texCoords){
+            vec2 texSize = vec2(textureSize(sampler, 0));
+            vec2 invTexSize = 1.0 / texSize;
+            texCoords = texCoords * texSize - 0.5;
+            vec2 fxy = fract(texCoords);
+            texCoords -= fxy;
+            vec4 xcubic = cubic(fxy.x);
+            vec4 ycubic = cubic(fxy.y);
+            vec4 c = texCoords.xxyy + vec2 (-0.5, +1.5).xyxy;
+            vec4 s = vec4(xcubic.xz + xcubic.yw, ycubic.xz + ycubic.yw);
+            vec4 offset = c + vec4 (xcubic.yw, ycubic.yw) / s;
+            offset *= invTexSize.xxyy;
+            vec4 sample0 = texture(sampler, offset.xz);
+            vec4 sample1 = texture(sampler, offset.yz);
+            vec4 sample2 = texture(sampler, offset.xw);
+            vec4 sample3 = texture(sampler, offset.yw);
+            float sx = s.x / (s.x + s.y);
+            float sy = s.z / (s.z + s.w);
+            return mix(mix(sample3, sample2, sx), mix(sample1, sample0, sx), sy);
+        }
+        void main() {
+            float mag;
+            if (Interpolate == 1) {
+                mag = textureBicubic(BinTexture, TexCoord).r;
+            }
+            if (Interpolate == 0) {
+                mag = texture(BinTexture, TexCoord).r;
+            }
+            FragColor = texture(LutTexture, vec2(mag, 0));
         }
     )END";
 };
