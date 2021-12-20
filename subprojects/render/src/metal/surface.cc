@@ -53,6 +53,10 @@ Result Metal::Surface::draw(MTL::CommandBuffer* commandBuffer) {
         CHECK(program->draw(commandBuffer, renderPassDesc));
     }
 
+    auto blitCommandEncoder = commandBuffer->blitCommandEncoder();
+    blitCommandEncoder->synchronizeResource((MTL::Texture*)framebuffer->raw());
+    blitCommandEncoder->endEncoding();
+
     return Result::SUCCESS;
 }
 

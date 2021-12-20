@@ -172,7 +172,7 @@ Result Metal::end() {
     commandBuffer->presentDrawable(drawable);
     commandBuffer->commit();
     commandBuffer->waitUntilCompleted();
-    
+
     commandBuffer->release();
     drawable->release();
 

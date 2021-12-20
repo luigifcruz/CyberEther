@@ -58,10 +58,11 @@ Result Metal::Vertex::encode(MTL::RenderCommandEncoder* encoder) {
 }
 
 Result Metal::Vertex::update() {
+    // TODO: Writing to an intermediary buffer is bad. This should be better.
+    std::size_t index = 0;
     for (auto& buffer : vertexBuffers) {
-        // TODO: This is bad.
         auto gpuBuff = buffer->contents();
-        memcpy(gpuBuff, cfg.buffers[0].data, buffer->length());
+        memcpy(gpuBuff, cfg.buffers[index++].data, buffer->length());
         buffer->didModifyRange(NS::Range(0, buffer->length()));
     }
 
