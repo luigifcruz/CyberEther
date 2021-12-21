@@ -74,26 +74,26 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
 
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
-    std::size_t index = 0;
-    for (const auto& texture : textures) {
-        renderCmdEncoder->setFragmentTexture((MTL::Texture*)texture->raw(), index);
-        index += 1;
+    for (std::size_t i = 0; i < textures.size(); i++) {
+        renderCmdEncoder->setFragmentTexture((MTL::Texture*)textures[i]->raw(), i);
     }
 
-    if (config.vertexUniforms) {
-        renderCmdEncoder->setVertexBytes(config.vertexUniforms, config.vertexUniformsSize, 29);
+    std::size_t index = 29;
+    for (auto const& [key, data] : config.uniforms) {
+        std::visit([&](auto buffer){
+            const auto& bufferSize = buffer->size() * sizeof(buffer[0]);
+            renderCmdEncoder->setVertexBytes(buffer->data(), bufferSize, index);
+            renderCmdEncoder->setFragmentBytes(buffer->data(), bufferSize, index);
+        }, data);
+        index -= 1;
     }
 
-    if (config.fragmentUniforms) {
-        renderCmdEncoder->setFragmentBytes(config.fragmentUniforms, config.fragmentUniformsSize, 30);
-    }
-
-    renderUniforms.drawIndex = 0;
+    drawIndex = 0;
     for (auto& draw : draws) {
-        renderCmdEncoder->setVertexBytes(&renderUniforms, sizeof(renderUniforms), 28);
-        renderCmdEncoder->setFragmentBytes(&renderUniforms, sizeof(renderUniforms), 28);
+        renderCmdEncoder->setVertexBytes(&drawIndex, sizeof(drawIndex), 30);
+        renderCmdEncoder->setFragmentBytes(&drawIndex, sizeof(drawIndex), 30);
         CHECK(draw->encode(renderCmdEncoder));
-        renderUniforms.drawIndex += 1;
+        drawIndex += 1;
     }
 
     renderCmdEncoder->endEncoding();

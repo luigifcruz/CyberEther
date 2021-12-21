@@ -35,10 +35,10 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     programCfg.vertexSource = &vertexSource;
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
-    programCfg.vertexUniforms = &vertexUniforms;
-    programCfg.vertexUniformsSize = sizeof(vertexUniforms);
-    programCfg.fragmentUniforms = &fragmentUniforms;
-    programCfg.fragmentUniformsSize = sizeof(fragmentUniforms);
+    programCfg.uniforms = {
+        {"index", &indexUniform},
+        {"interpolate", &interpolateUniform},
+    };
     program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
@@ -61,8 +61,9 @@ Result Generic::compute() {
 
 Result Generic::present() {
     binTexture->fill();
-    vertexUniforms.index = inc / (float)ymax;
-    fragmentUniforms.interpolate = config.interpolate;
+
+    indexUniform[0] = inc / (float)ymax;
+    interpolateUniform[0] = config.interpolate;
 
     return Result::SUCCESS;
 }

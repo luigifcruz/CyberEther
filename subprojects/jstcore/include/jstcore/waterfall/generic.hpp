@@ -43,6 +43,9 @@ protected:
 
     int inc = 0, last = 0, ymax = 0;
 
+    std::vector<float> indexUniform = {0.0};
+    std::vector<uint32_t> interpolateUniform = {0};
+
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> binTexture;
     std::shared_ptr<Render::Texture> lutTexture;
@@ -67,15 +70,6 @@ protected:
     )END";
     */
 
-    struct {
-        float index;
-    } vertexUniforms;
-
-    struct {
-        uint8_t interpolate;
-        uint8_t drawIndex;
-    } fragmentUniforms;
-
     const char* vertexSource = R"END(
         #include <metal_stdlib>
 
@@ -86,24 +80,15 @@ protected:
             float2 texcoord;
         };
 
-        struct VertexUniforms {
-            float index;
-        };
-
-        struct FragmentUniforms {
-            uint8_t interpolate;
-            uint8_t drawIndex;
-        };
-
         vertex TexturePipelineRasterizerData vertFunc(
                 const device packed_float3* vertexArray [[buffer(0)]],
                 const device packed_float2* texcoord [[buffer(1)]],
-                constant VertexUniforms& uniforms [[buffer(29)]],
+                constant float& index [[buffer(29)]],
                 unsigned int vID[[vertex_id]]) {
             TexturePipelineRasterizerData out;
 
             out.position = vector_float4(vertexArray[vID], 1.0);
-            float vertical = (uniforms.index + texcoord[vID].y);
+            float vertical = (index + texcoord[vID].y);
             out.texcoord = vector_float2(texcoord[vID].x, vertical);
 
             return out;
@@ -112,8 +97,7 @@ protected:
         fragment float4 fragFunc(
                 TexturePipelineRasterizerData in [[stage_in]],
                 texture2d<float> data [[texture(0)]],
-                texture2d<float> lut [[texture(1)]],
-                constant FragmentUniforms& uniforms [[buffer(30)]]) {
+                texture2d<float> lut [[texture(1)]]) {
             sampler lutSampler(filter::linear);
             constexpr sampler dataSampler(address::repeat);
 

@@ -96,13 +96,13 @@ protected:
 
         fragment float4 fragFunc(
                 TexturePipelineRasterizerData in [[stage_in]],
-                constant RenderUniforms& renderUniforms [[buffer(28)]],
+                constant uint32_t& drawIndex [[buffer(30)]],
                 texture2d<float> lut [[texture(0)]]) {
-            if (renderUniforms.drawIndex == 0) {
+            if (drawIndex == 0) {
                 return vector_float4(0.27, 0.27, 0.27, 1.0);
             }
 
-            if (renderUniforms.drawIndex == 1) {
+            if (drawIndex == 1) {
                 sampler lutSampler(filter::linear);
                 return lut.sample(lutSampler, in.texcoord);
             }

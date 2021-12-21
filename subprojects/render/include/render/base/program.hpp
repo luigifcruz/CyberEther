@@ -1,6 +1,8 @@
 #ifndef RENDER_BASE_PROGRAM_H
 #define RENDER_BASE_PROGRAM_H
 
+#include <variant>
+
 #include "render/type.hpp"
 #include "render/base/texture.hpp"
 #include "render/base/vertex.hpp"
@@ -13,15 +15,10 @@ public:
     struct Config {
         const char* const* vertexSource = nullptr;
         const char* const* fragmentSource = nullptr;
-
-        const void* fragmentUniforms = nullptr;
-        std::size_t fragmentUniformsSize;
-
-        const void* vertexUniforms = nullptr;
-        std::size_t vertexUniformsSize;
-
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
+        std::vector<std::pair<std::string,
+            std::variant<std::vector<float>*, std::vector<uint32_t>*>>> uniforms;
     };
 
     explicit Program(const Config& config) : config(config) {}
@@ -30,9 +27,7 @@ public:
 protected:
     Config config;
 
-    struct {
-        uint32_t drawIndex;
-    } renderUniforms;
+    uint32_t drawIndex;
 };
 
 } // namespace Render

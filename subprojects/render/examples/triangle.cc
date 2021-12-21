@@ -30,16 +30,19 @@ const char* shaders = R"END(
 
     fragment float4 fragFunc(
         TexturePipelineRasterizerData in [[stage_in]],
-        texture2d<float> texture [[texture(0)]]
+        texture2d<float> texture [[texture(0)]],
+        constant float& index [[buffer(29)]]
     ) {
         sampler imgSampler;
         float4 colorSample = texture.sample(imgSampler, in.texcoord);
-        return colorSample;
+        return colorSample * index;
     }
 )END";
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
+
+    std::vector<float> a = {0.5};
 
     int width, height, nrChannels;
     unsigned char *data = stbi_load("yes.png", &width, &height, &nrChannels, 0);
@@ -72,6 +75,9 @@ int main() {
     programCfg.vertexSource = &shaders;
     programCfg.draws = {draw};
     programCfg.textures = {img};
+    programCfg.uniforms = {
+        {"alpha", &a},
+    };
     auto program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
@@ -115,6 +121,7 @@ int main() {
         ImGui::End();
 
         ImGui::Begin("seY");
+        ImGui::SliderFloat("Image Alpha", &a[0], 0.0, 1.0);
         auto [x, y] = ImGui::GetContentRegionAvail();
         auto [width, height] = surface->size({(int)x, (int)y});
         ImGui::Image(texture->raw(), ImVec2(width, height));
