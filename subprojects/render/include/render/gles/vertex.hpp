@@ -16,11 +16,6 @@ public:
     Result update() final;
 
 protected:
-    const GLES& inst;
-
-    uint vao, ebo;
-    uint vertex_count;
-
     Result create();
     Result destroy();
     Result begin();
@@ -28,6 +23,12 @@ protected:
 
     uint count();
     uint buffered();
+
+private:
+    const GLES& inst;
+
+    uint vao, ebo;
+    uint vertex_count;
 
 #ifdef RENDER_CUDA_AVAILABLE
     cudaStream_t stream;

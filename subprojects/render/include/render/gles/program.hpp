@@ -13,6 +13,11 @@ public:
     Result setUniform(std::string, const std::vector<float>&);
 
 protected:
+    Result create();
+    Result destroy();
+    Result draw();
+
+private:
     const GLES& inst;
 
     int i;
@@ -21,11 +26,6 @@ protected:
     std::vector<std::shared_ptr<GLES::Draw>> draws;
     std::vector<std::shared_ptr<GLES::Texture>> textures;
 
-    Result create();
-    Result destroy();
-    Result draw();
-
-private:
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);
 

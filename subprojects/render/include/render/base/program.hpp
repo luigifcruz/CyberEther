@@ -24,11 +24,11 @@ public:
         std::vector<std::shared_ptr<Texture>> textures;
     };
 
-    Program(const Config& c) : cfg(c) {};
+    explicit Program(const Config& config) : config(config) {}
     virtual ~Program() = default;
 
 protected:
-    Config cfg;
+    Config config;
 
     struct {
         uint32_t drawIndex;

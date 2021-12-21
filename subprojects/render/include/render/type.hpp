@@ -89,12 +89,12 @@ void cuda_print_error(cudaError_t, const char*, int, const char*);
 #endif
 #endif
 
-enum struct API {
+enum struct Backend {
 	GLES,
-	VULKAN,
-	D3D12,
-	METAL,
-	WEBGPU,
+	Vulkan,
+	DX12,
+	Metal,
+	WebGPU,
 };
 
 enum class PixelFormat : uint {

@@ -17,24 +17,19 @@ public:
     class Vertex;
     class Draw;
 
-    Metal(const Config& c) : Render::Instance(c) {};
+    explicit Metal(const Config& config);
 
     Result create() final;
     Result destroy() final;
     Result begin() final;
     Result end() final;
     Result synchronize() final;
-
     bool keepRunning() final;
-
-    std::shared_ptr<Render::Surface> createAndBind(const Render::Surface::Config&) final;
-    std::shared_ptr<Render::Program> create(const Render::Program::Config&) final;
-    std::shared_ptr<Render::Texture> create(const Render::Texture::Config&) final;
-    std::shared_ptr<Render::Vertex> create(const Render::Vertex::Config&) final;
-    std::shared_ptr<Render::Draw> create(const Render::Draw::Config&) final;
 
 protected:
     MTL::Device* device;
+
+    std::vector<std::shared_ptr<Metal::Surface>> surfaces;
 
     static MTL::PixelFormat convertPixelFormat(const PixelFormat&, const PixelType&);
     static std::size_t getPixelByteSize(const MTL::PixelFormat&);
@@ -50,8 +45,6 @@ private:
     MTL::CommandQueue* commandQueue;
     MTL::CommandBuffer* commandBuffer;
     MTL::RenderPassDescriptor* renderPassDesc;
-
-    std::vector<std::shared_ptr<Metal::Surface>> surfaces;
 
     const char* vendorString;
     const char* rendererString;

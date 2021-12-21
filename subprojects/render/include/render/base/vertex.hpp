@@ -30,13 +30,13 @@ public:
         std::vector<uint16_t> indices;
     };
 
-    Vertex(const Config& c) : cfg(c) {};
+    explicit Vertex(const Config& config) : config(config) {}
     virtual ~Vertex() = default;
 
     virtual Result update() = 0;
 
 protected:
-    Config cfg;
+    Config config;
 };
 
 } // namespace Render

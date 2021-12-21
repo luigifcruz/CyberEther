@@ -10,13 +10,14 @@ public:
     Draw(const Config& cfg, const GLES& i) : Render::Draw(cfg), inst(i) {};
 
 protected:
-    const GLES& inst;
-
-    std::shared_ptr<GLES::Vertex> buffer;
-
     Result create();
     Result destroy();
     Result draw();
+
+private:
+    const GLES& inst;
+
+    std::shared_ptr<GLES::Vertex> buffer;
 
     friend class GLES::Program;
 };

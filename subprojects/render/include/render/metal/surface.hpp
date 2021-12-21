@@ -7,7 +7,7 @@ namespace Render {
 
 class Metal::Surface : public Render::Surface {
 public:
-    Surface(const Config& cfg, const Metal& i) : Render::Surface(cfg), inst(i) {};
+    explicit Surface(const Config& config, const Metal& instance);
 
     Size2D<int> size(const Size2D<int>&) final;
 
@@ -17,7 +17,7 @@ protected:
     Result draw(MTL::CommandBuffer* commandBuffer);
 
 private:
-    const Metal& inst;
+    const Metal& instance;
 
     MTL::RenderPassDescriptor* renderPassDesc;
 

@@ -21,11 +21,11 @@ public:
         Mode mode = Triangles;
     };
 
-    Draw(const Config& c) : cfg(c) {};
+    explicit Draw(const Config& config) : config(config) {}
     virtual ~Draw() = default;
 
 protected:
-    Config cfg;
+    Config config;
 };
 
 } // namespace Render

@@ -7,7 +7,7 @@ namespace Render {
 
 class Metal::Draw : public Render::Draw {
 public:
-    Draw(const Config& cfg, const Metal& i) : Render::Draw(cfg), inst(i) {};
+    explicit Draw(const Config& config, const Metal& instance);
 
 protected:
     Result create();
@@ -15,7 +15,7 @@ protected:
     Result encode(MTL::RenderCommandEncoder* encode);
 
 private:
-    const Metal& inst;
+    const Metal& instance;
 
     std::shared_ptr<Metal::Vertex> buffer;
 

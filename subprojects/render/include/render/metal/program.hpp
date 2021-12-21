@@ -7,7 +7,7 @@ namespace Render {
 
 class Metal::Program : public Render::Program {
 public:
-    Program(const Config& c, const Metal& i) : Render::Program(c), inst(i) {};
+    explicit Program(const Config& config, const Metal& instance);
 
 protected:
     Result create(const MTL::PixelFormat& pixelFormat);
@@ -16,7 +16,7 @@ protected:
                 MTL::RenderPassDescriptor* renderPassDesc);
 
 private:
-    const Metal& inst;
+    const Metal& instance;
 
     MTL::RenderPipelineState* renderPipelineState;
 

@@ -3,15 +3,11 @@
 
 #include "render/metal/instance.hpp"
 
-#ifdef RENDER_CUDA_AVAILABLE
-#include <cuda_gl_interop.h>
-#endif
-
 namespace Render {
 
 class Metal::Vertex : public Render::Vertex {
 public:
-    Vertex(const Config& cfg, const Metal& i) : Render::Vertex(cfg), inst(i) {};
+    explicit Vertex(const Config& config, const Metal& instance);
 
     Result update() final;
 
@@ -33,7 +29,7 @@ protected:
     }
 
 private:
-    const Metal& inst;
+    const Metal& instance;
 
     std::size_t vertex_count;
     MTL::Buffer* indexBuffer = nullptr;

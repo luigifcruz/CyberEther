@@ -16,26 +16,27 @@ public:
     using Render::Texture::size;
     bool size(const Size2D<int>&) final;
 
-    uint raw() final;
+    void* raw() final;
     Result pour() final;
     Result fill() final;
     Result fill(int, int, int, int) final;
 
 protected:
-    const GLES& inst;
-
-    uint tex, pfmt, dfmt, ptype;
-
     Result create();
     Result destroy();
     Result begin();
     Result end();
 
+private:
+    const GLES& inst;
+
+    uint tex, pfmt, dfmt, ptype;
+
 #ifdef RENDER_CUDA_AVAILABLE
     cudaGraphicsResource* cuda_tex_resource = nullptr;
     cudaStream_t stream;
 #endif
-    Result _cudaCopyToTexture(int, int, int, int);
+    Result cudaCopyToTexture(int, int, int, int);
 
     friend class GLES::Surface;
     friend class GLES::Program;

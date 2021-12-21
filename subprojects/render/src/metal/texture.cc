@@ -2,25 +2,24 @@
 
 namespace Render {
 
-Result Metal::Texture::create() {
-    if (!Metal::cudaInteropSupported() && cfg.cudaInterop) {
-        cfg.cudaInterop = false;
-        return Result::ERROR;
-    }
+Metal::Texture::Texture(const Config& config, const Metal& instance)
+         : Render::Texture(config), instance(instance) {
+}
 
-    pixelFormat = Metal::convertPixelFormat(cfg.pfmt, cfg.ptype);
+Result Metal::Texture::create() {
+    pixelFormat = Metal::convertPixelFormat(config.pfmt, config.ptype);
 
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
-            pixelFormat, cfg.size.width, cfg.size.height, false);
+            pixelFormat, config.size.width, config.size.height, false);
     RENDER_ASSERT(textureDesc);
 
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
-    texture = inst.device->newTexture(textureDesc);
+    texture = instance.device->newTexture(textureDesc);
     RENDER_ASSERT(texture);
 
     textureDesc->release();
 
-    if (cfg.buffer) {
+    if (config.buffer) {
         CHECK(this->fill());
     }
 
@@ -39,8 +38,8 @@ bool Metal::Texture::size(const Size2D<int>& size) {
         return false;
     }
 
-    if (cfg.size != size) {
-        cfg.size = size;
+    if (config.size != size) {
+        config.size = size;
         return true;
     }
 
@@ -52,13 +51,13 @@ void* Metal::Texture::raw() {
 }
 
 Result Metal::Texture::fill() {
-    return this->fill(0, 0, cfg.size.width, cfg.size.height);
+    return this->fill(0, 0, config.size.width, config.size.height);
 }
 
 Result Metal::Texture::fill(int yo, int xo, int w, int h) {
     auto region = MTL::Region::Make2D(xo, yo, w, h);
     auto rowByteSize = (w - xo) * getPixelByteSize(texture->pixelFormat());
-    texture->replaceRegion(region, 0, cfg.buffer, rowByteSize);
+    texture->replaceRegion(region, 0, config.buffer, rowByteSize);
 
     return Result::SUCCESS;
 }

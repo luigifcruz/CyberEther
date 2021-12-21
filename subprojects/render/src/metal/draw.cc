@@ -3,8 +3,12 @@
 
 namespace Render {
 
+Metal::Draw::Draw(const Config& config, const Metal& instance)
+         : Render::Draw(config), instance(instance) {
+    buffer = std::dynamic_pointer_cast<Metal::Vertex>(config.buffer);
+}
+
 Result Metal::Draw::create() {
-    buffer = std::dynamic_pointer_cast<Metal::Vertex>(cfg.buffer);
     CHECK(buffer->create());
 
     return Result::SUCCESS;
@@ -19,7 +23,7 @@ Result Metal::Draw::destroy() {
 Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
     MTL::PrimitiveType mode;
 
-    switch (cfg.mode) {
+    switch (config.mode) {
         case Draw::Mode::TriangleFan:
             mode = MTL::PrimitiveTypeTriangleStrip;
             break;

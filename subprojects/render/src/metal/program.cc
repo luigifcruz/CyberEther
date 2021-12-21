@@ -4,19 +4,22 @@
 
 namespace Render {
 
-Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
-    for (const auto& draw : cfg.draws) {
+Metal::Program::Program(const Config& config, const Metal& instance)
+         : Render::Program(config), instance(instance) {
+    for (const auto& draw : config.draws) {
         draws.push_back(std::dynamic_pointer_cast<Metal::Draw>(draw));
     }
 
-    for (const auto& texture : cfg.textures) {
+    for (const auto& texture : config.textures) {
         textures.push_back(std::dynamic_pointer_cast<Metal::Texture>(texture));
     }
+}
 
+Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     NS::Error* err;
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
-    NS::String* source = NS::String::string(*cfg.vertexSource, NS::ASCIIStringEncoding);
-    auto library = inst.device->newLibrary(source, opts, &err);
+    NS::String* source = NS::String::string(*config.vertexSource, NS::ASCIIStringEncoding);
+    auto library = instance.device->newLibrary(source, opts, &err);
 
     if (!library) {
         fmt::print("Library error:\n{}\n", err->description()->utf8String());
@@ -35,7 +38,7 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     renderPipelineDesc->setFragmentFunction(fragFunc);
     renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
 
-    renderPipelineState = inst.device->newRenderPipelineState(renderPipelineDesc, &err);
+    renderPipelineState = instance.device->newRenderPipelineState(renderPipelineDesc, &err);
     RENDER_ASSERT(renderPipelineState);
 
     renderPipelineDesc->release();
@@ -77,12 +80,12 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
         index += 1;
     }
 
-    if (cfg.vertexUniforms) {
-        renderCmdEncoder->setVertexBytes(cfg.vertexUniforms, cfg.vertexUniformsSize, 29);
+    if (config.vertexUniforms) {
+        renderCmdEncoder->setVertexBytes(config.vertexUniforms, config.vertexUniformsSize, 29);
     }
 
-    if (cfg.fragmentUniforms) {
-        renderCmdEncoder->setFragmentBytes(cfg.fragmentUniforms, cfg.fragmentUniformsSize, 30);
+    if (config.fragmentUniforms) {
+        renderCmdEncoder->setFragmentBytes(config.fragmentUniforms, config.fragmentUniformsSize, 30);
     }
 
     renderUniforms.drawIndex = 0;

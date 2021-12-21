@@ -4,13 +4,16 @@
 
 namespace Render {
 
-Result Metal::Surface::create() {
-    framebuffer = std::dynamic_pointer_cast<Metal::Texture>(cfg.framebuffer);
+Metal::Surface::Surface(const Config& config, const Metal& instance)
+         : Render::Surface(config), instance(instance) {
+    framebuffer = std::dynamic_pointer_cast<Metal::Texture>(config.framebuffer);
 
-    for (const auto& program : cfg.programs) {
+    for (const auto& program : config.programs) {
         programs.push_back(std::dynamic_pointer_cast<Metal::Program>(program));
     }
+}
 
+Result Metal::Surface::create() {
     renderPassDesc = MTL::RenderPassDescriptor::alloc()->init();
     RENDER_ASSERT(renderPassDesc);
 

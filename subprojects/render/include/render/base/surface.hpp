@@ -14,19 +14,19 @@ public:
         std::vector<std::shared_ptr<Program>> programs;
     };
 
-    Surface(const Config& c) : cfg(c) {};
+    explicit Surface(const Config& config) : config(config) {}
     virtual ~Surface() = default;
 
     const Size2D<int> size() const {
-        if (cfg.framebuffer) {
-            return cfg.framebuffer->size();
+        if (config.framebuffer) {
+            return config.framebuffer->size();
         }
         return {-1, -1};
     }
     virtual Size2D<int> size(const Size2D<int>&) = 0;
 
 protected:
-    Config cfg;
+    Config config;
 };
 
 } // namespace Render

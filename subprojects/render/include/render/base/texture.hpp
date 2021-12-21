@@ -17,11 +17,11 @@ public:
         bool cudaInterop = false;
     };
 
-    Texture(const Config& c) : cfg(c) {};
+    explicit Texture(const Config& config) : config(config) {}
     virtual ~Texture() = default;
 
     constexpr const Size2D<int> size() const {
-        return cfg.size;
+        return config.size;
     }
     virtual bool size(const Size2D<int>&) = 0;
 
@@ -31,7 +31,7 @@ public:
     virtual Result fill(int, int, int, int) = 0;
 
 protected:
-    Config cfg;
+    Config config;
 };
 
 } // namespace Render

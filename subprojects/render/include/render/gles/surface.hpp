@@ -12,18 +12,19 @@ public:
     Size2D<int> size(const Size2D<int>&) final;
 
 protected:
+    Result create();
+    Result destroy();
+    Result draw();
+
+private
     const GLES& inst;
 
     uint fbo = 0;
     std::shared_ptr<GLES::Texture> framebuffer;
     std::vector<std::shared_ptr<GLES::Program>> programs;
 
-    Result create();
-    Result destroy();
-    Result draw();
-
-    Result _createFramebuffer();
-    Result _destroyFramebuffer();
+    Result createFramebuffer();
+    Result destroyFramebuffer();
 
     friend class GLES;
 };

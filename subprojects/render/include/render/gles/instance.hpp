@@ -44,16 +44,16 @@ protected:
     static uint convertDataFormat(DataFormat);
     static Result getError(std::string, std::string, int);
 
-    Result createImgui();
-    Result destroyImgui();
-    Result beginImgui();
-    Result endImgui();
-
 private:
     const char* rendererString;
     const char* versionString;
     const char* vendorString;
     const char* shaderString;
+
+    Result createImgui();
+    Result destroyImgui();
+    Result beginImgui();
+    Result endImgui();
 };
 
 } // namespace Render

@@ -75,7 +75,7 @@ uint GLES::Texture::raw() {
     return tex;
 }
 
-Result GLES::Texture::_cudaCopyToTexture(int yo, int xo, int w, int h) {
+Result GLES::Texture::cudaCopyToTexture(int yo, int xo, int w, int h) {
 #ifdef RENDER_CUDA_AVAILABLE
     size_t i = (cfg.pfmt == PixelFormat::RED) ? 1 : 3;
     size_t m = i * ((cfg.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));

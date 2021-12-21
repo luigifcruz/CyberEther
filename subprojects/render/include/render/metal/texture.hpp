@@ -7,7 +7,7 @@ namespace Render {
 
 class Metal::Texture : public Render::Texture {
 public:
-    Texture(const Config& cfg, const Metal& i) : Render::Texture(cfg), inst(i) {};
+    explicit Texture(const Config& config, const Metal& instance);
 
     using Render::Texture::size;
     bool size(const Size2D<int>&) final;
@@ -26,7 +26,7 @@ protected:
     }
 
 private:
-    const Metal& inst;
+    const Metal& instance;
 
     MTL::Texture* texture;
     MTL::PixelFormat pixelFormat;

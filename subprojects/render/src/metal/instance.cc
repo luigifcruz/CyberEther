@@ -14,16 +14,19 @@
 
 namespace Render {
 
+Metal::Metal::Metal(const Config& config) : Render::Instance(config) {
+}
+
 Result Metal::create() {
     if (!glfwInit()) {
         return Result::FAILED_TO_OPEN_SCREEN;
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.vsync);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
 
-    auto [width, height] = cfg.size;
-    window = glfwCreateWindow(width, height, cfg.title.c_str(), nullptr, nullptr);
+    auto [width, height] = config.size;
+    window = glfwCreateWindow(width, height, config.title.c_str(), nullptr, nullptr);
     if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -36,8 +39,8 @@ Result Metal::create() {
 
     glfwMakeContextCurrent(window);
 
-    if (cfg.scale == -1.0) {
-        cfg.scale = 1.0;  // Let's leave it as is for macOS.
+    if (config.scale == -1.0) {
+        config.scale = 1.0;  // Let's leave it as is for macOS.
     }
 
     rendererString = "Apple Metal";
@@ -56,7 +59,7 @@ Result Metal::create() {
         CHECK(surface->create());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         CHECK(this->createImgui());
     }
 
@@ -68,7 +71,7 @@ Result Metal::destroy() {
         CHECK(surface->destroy());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         CHECK(this->destroyImgui());
     }
 
@@ -92,7 +95,7 @@ Result Metal::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    style->ScaleAllSizes(cfg.scale);
+    style->ScaleAllSizes(config.scale);
 
     ImGui::StyleColorsDark();
 
@@ -140,10 +143,10 @@ Result Metal::begin() {
     colorAttachDesc->setStoreAction(MTL::StoreActionStore);
     colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 0));
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         CHECK(this->beginImgui());
 
-        if (cfg.debug) {
+        if (config.debug) {
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
             ImGui::Text("Renderer Name: %s", rendererString);
@@ -163,7 +166,7 @@ Result Metal::end() {
         CHECK(surface->draw(commandBuffer));
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         CHECK(this->endImgui());
     }
 
@@ -220,28 +223,6 @@ std::size_t Metal::getPixelByteSize(const MTL::PixelFormat& pfmt) {
         default:
             throw "pixel format not implemented yet";
     }
-}
-
-std::shared_ptr<Render::Surface> Metal::createAndBind(const Render::Surface::Config& cfg) {
-    auto surface = std::make_shared<Surface>(cfg, *this);
-    surfaces.push_back(surface);
-    return surface;
-}
-
-std::shared_ptr<Render::Program> Metal::create(const Render::Program::Config& cfg) {
-    return std::make_shared<Program>(cfg, *this);
-}
-
-std::shared_ptr<Render::Texture> Metal::create(const Render::Texture::Config& cfg) {
-    return std::make_shared<Texture>(cfg, *this);
-}
-
-std::shared_ptr<Render::Vertex> Metal::create(const Render::Vertex::Config& cfg) {
-    return std::make_shared<Vertex>(cfg, *this);
-}
-
-std::shared_ptr<Render::Draw> Metal::create(const Render::Draw::Config& cfg) {
-    return std::make_shared<Draw>(cfg, *this);
 }
 
 } // namespace Render

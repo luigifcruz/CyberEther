@@ -2,10 +2,14 @@
 
 namespace Render {
 
+Metal::Vertex::Vertex(const Config& config, const Metal& instance)
+         : Render::Vertex(config), instance(instance) {
+}
+
 Result Metal::Vertex::create() {
     MTL::ResourceOptions usage;
 
-    switch (cfg.buffers[0].usage) {
+    switch (config.buffers[0].usage) {
         case Vertex::Buffer::Usage::Dynamic:
             usage = MTL::ResourceStorageModeManaged;
             break;
@@ -17,18 +21,18 @@ Result Metal::Vertex::create() {
             break;
     }
 
-    for (auto& buffer : cfg.buffers) {
+    for (auto& buffer : config.buffers) {
         auto size = buffer.size * sizeof(float);
-        auto tmp = inst.device->newBuffer(buffer.data, size, usage);
+        auto tmp = instance.device->newBuffer(buffer.data, size, usage);
         vertexBuffers.push_back(tmp);
         vertex_count = buffer.size / buffer.stride;
     }
 
-    if (cfg.indices.size() > 0) {
-        indexBuffer = inst.device->newBuffer(cfg.indices.data(),
-                cfg.indices.size() * sizeof(uint),
+    if (config.indices.size() > 0) {
+        indexBuffer = instance.device->newBuffer(config.indices.data(),
+                config.indices.size() * sizeof(uint),
                 MTL::ResourceOptionCPUCacheModeDefault);
-        vertex_count = cfg.indices.size();
+        vertex_count = config.indices.size();
     }
 
     return Result::SUCCESS;
@@ -62,7 +66,7 @@ Result Metal::Vertex::update() {
     std::size_t index = 0;
     for (auto& buffer : vertexBuffers) {
         auto gpuBuff = buffer->contents();
-        memcpy(gpuBuff, cfg.buffers[index++].data, buffer->length());
+        memcpy(gpuBuff, config.buffers[index++].data, buffer->length());
         buffer->didModifyRange(NS::Range(0, buffer->length()));
     }
 

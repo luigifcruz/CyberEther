@@ -38,108 +38,92 @@ const char* shaders = R"END(
     }
 )END";
 
-int width, height, nrChannels;
-
-std::shared_ptr<Render::Instance> render;
-std::shared_ptr<Render::Texture> texture;
-std::shared_ptr<Render::Texture> img;
-std::shared_ptr<Render::Surface> surface;
-std::shared_ptr<Render::Program> program;
-std::shared_ptr<Render::Vertex> vertex;
-std::shared_ptr<Render::Draw> draw;
-
-void render_loop() {
-    render->begin();
-
-    // Create a window called "My First Tool", with a menu bar.
-    ImGui::Begin("My First Tool", NULL, ImGuiWindowFlags_MenuBar);
-    if (ImGui::BeginMenuBar())
-    {
-        if (ImGui::BeginMenu("File"))
-        {
-            if (ImGui::MenuItem("Open..", "Ctrl+O")) { /* Do stuff */ }
-            if (ImGui::MenuItem("Save", "Ctrl+S"))   {
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::EndMenuBar();
-    }
-
-    // Plot some values
-    const float my_values[] = { 0.2f, 0.1f, 1.0f, 0.5f, 0.9f, 2.2f };
-    ImGui::PlotLines("Frame Times", my_values, IM_ARRAYSIZE(my_values));
-
-    // Display contents in a scrolling region
-    ImGui::TextColored(ImVec4(1,1,0,1), "Important Stuff");
-    ImGui::BeginChild("Scrolling");
-    for (int n = 0; n < 50; n++)
-        ImGui::Text("%04d: Some text", n);
-    ImGui::EndChild();
-    ImGui::End();
-
-    ImGui::Begin("Waterfall");
-    auto [x, y] = ImGui::GetContentRegionAvail();
-    auto [width, height] = surface->size({(int)x, (int)y});
-    ImGui::Image(texture->raw(), ImVec2(width, height));
-    ImGui::End();
-
-    render->end();
-}
-
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
+    int width, height, nrChannels;
     unsigned char *data = stbi_load("yes.png", &width, &height, &nrChannels, 0);
 
     Render::Instance::Config renderCfg;
+    renderCfg.title = "DankDemo!";
     renderCfg.size = {1920, 1080};
     renderCfg.resizable = true;
     renderCfg.imgui = true;
     renderCfg.debug = true;
     renderCfg.vsync = true;
-    renderCfg.title = "DankDemo!";
-    render = Render::Instantiate(Render::API::METAL, renderCfg);
+    Render::Init(Render::Backend::Metal, renderCfg);
 
     Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = Render::Extras::FillScreenVertices();
     vertexCfg.indices = Render::Extras::FillScreenIndices();
-    vertex = render->create(vertexCfg);
+    auto vertex = Render::Create(vertexCfg);
 
     Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Triangles;
-    draw = render->create(drawVertexCfg);
+    auto draw = Render::Create(drawVertexCfg);
 
     Render::Texture::Config imgCfg;
     imgCfg.size = {width, height};
     imgCfg.buffer = data;
-    img = render->create(imgCfg);
+    auto img = Render::Create(imgCfg);
 
     Render::Program::Config programCfg;
     programCfg.vertexSource = &shaders;
     programCfg.draws = {draw};
     programCfg.textures = {img};
-    program = render->create(programCfg);
+    auto program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
     textureCfg.size = {width, height};
-    texture = render->create(textureCfg);
+    auto texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    surface = render->createAndBind(surfaceCfg);
+    auto surface = Render::CreateAndBind(surfaceCfg);
 
-    render->create();
+    Render::Create();
 
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop(render_loop, 0, 1);
-#else
-    while(render->keepRunning())
-        render_loop();
-#endif
+    while(Render::KeepRunning()) {
+        Render::Begin();
 
-    render->destroy();
+        // Create a window called "My First Tool", with a menu bar.
+        ImGui::Begin("My First Tool", NULL, ImGuiWindowFlags_MenuBar);
+        if (ImGui::BeginMenuBar())
+        {
+            if (ImGui::BeginMenu("File"))
+            {
+                if (ImGui::MenuItem("Open..", "Ctrl+O")) { /* Do stuff */ }
+                if (ImGui::MenuItem("Save", "Ctrl+S"))   {
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenuBar();
+        }
+
+        // Plot some values
+        const float my_values[] = { 0.2f, 0.1f, 1.0f, 0.5f, 0.9f, 2.2f };
+        ImGui::PlotLines("Frame Times", my_values, IM_ARRAYSIZE(my_values));
+
+        // Display contents in a scrolling region
+        ImGui::TextColored(ImVec4(1,1,0,1), "Important Stuff");
+        ImGui::BeginChild("Scrolling");
+        for (int n = 0; n < 50; n++)
+            ImGui::Text("%04d: Some text", n);
+        ImGui::EndChild();
+        ImGui::End();
+
+        ImGui::Begin("seY");
+        auto [x, y] = ImGui::GetContentRegionAvail();
+        auto [width, height] = surface->size({(int)x, (int)y});
+        ImGui::Image(texture->raw(), ImVec2(width, height));
+        ImGui::End();
+
+        Render::End();
+    }
+
+    Render::Destroy();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

@@ -62,7 +62,7 @@ Result GLES::Surface::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Surface::_createFramebuffer() {
+Result GLES::Surface::createFramebuffer() {
     if (framebuffer) {
         glGenFramebuffers(1, &fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -73,7 +73,7 @@ Result GLES::Surface::_createFramebuffer() {
     return Result::SUCCESS;
 }
 
-Result GLES::Surface::_destroyFramebuffer() {
+Result GLES::Surface::destroyFramebuffer() {
     if (framebuffer) {
         CHECK(framebuffer->destroy());
         glDeleteFramebuffers(1, &fbo);

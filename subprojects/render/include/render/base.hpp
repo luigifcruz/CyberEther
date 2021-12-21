@@ -9,6 +9,7 @@
 #include "render/base/surface.hpp"
 #include "render/base/texture.hpp"
 #include "render/base/vertex.hpp"
+#include "render/base/draw.hpp"
 
 #ifdef RENDER_GLES_AVAILABLE
 #include "render/gles/instance.hpp"
@@ -16,6 +17,7 @@
 #include "render/gles/surface.hpp"
 #include "render/gles/texture.hpp"
 #include "render/gles/vertex.hpp"
+#include "render/gles/draw.hpp"
 #endif
 
 #ifdef RENDER_METAL_AVAILABLE
@@ -24,20 +26,87 @@
 #include "render/metal/surface.hpp"
 #include "render/metal/texture.hpp"
 #include "render/metal/vertex.hpp"
+#include "render/metal/draw.hpp"
 #endif
 
 namespace Render {
 
-inline std::vector<API> AvailableAPIs = {
+static void* __InstanceStorage__;
+static Backend __BackendStorage__;
+
+inline std::vector<Backend> AvailableBackends = {
 #ifdef RENDER_GLES_AVAILABLE
-    API::GLES,
+    Backend::GLES,
 #endif
 #ifdef RENDER_METAL_AVAILABLE
-    API::METAL,
+    Backend::Metal,
 #endif
 };
 
-std::shared_ptr<Instance> Instantiate(API api_hint, Instance::Config& cfg, bool force = false);
+template<typename T>
+class Broker : public T {
+ public:
+    using T::T;
+
+    std::shared_ptr<Vertex> newMember(const Render::Vertex::Config& config) {
+        return std::make_shared<typename T::Vertex>(config, *this);
+    }
+
+    std::shared_ptr<Draw> newMember(const Render::Draw::Config& config) {
+        return std::make_shared<typename T::Draw>(config, *this);
+    }
+
+    std::shared_ptr<Program> newMember(const Render::Program::Config& config) {
+        return std::make_shared<typename T::Program>(config, *this);
+    }
+
+    std::shared_ptr<Surface> newMember(const Render::Surface::Config& config) {
+        auto surface = std::make_shared<typename T::Surface>(config, *this);
+        this->surfaces.push_back(surface);
+        return surface;
+    }
+
+    std::shared_ptr<Texture> newMember(const Render::Texture::Config& config) {
+        return std::make_shared<typename T::Texture>(config, *this);
+    }
+};
+
+inline auto* Get() {
+    switch(__BackendStorage__) {
+#ifdef RENDER_GLES_AVAILABLE
+        case Backend::GLES:
+            return static_cast<Broker<GLES>*>(__InstanceStorage__);
+#endif
+#ifdef RENDER_METAL_AVAILABLE
+        case Backend::Metal:
+            return static_cast<Broker<Metal>*>(__InstanceStorage__);
+#endif
+        default:
+#ifdef RENDER_DEBUG
+            std::cerr << "[RENDER] No Backend available." << std::endl;
+#endif
+            RENDER_CHECK_THROW(Result::NO_RENDER_BACKEND_FOUND);
+    }
+}
+
+Result Init(const Backend& backend,
+        const Instance::Config& config, bool forceApi = false);
+
+template<typename T>
+inline auto Create(const T& config) {
+    return Get()->newMember(config);
+}
+
+inline auto CreateAndBind(const Surface::Config& config) {
+    return Create(config);
+}
+
+Result Create();
+Result Destroy();
+Result Begin();
+Result End();
+Result Synchronize();
+bool KeepRunning();
 
 } // namespace Render
 

@@ -5,22 +5,15 @@ namespace Jetstream::Waterfall {
 Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {}
 
 Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
-    if (!config.render) {
-        std::cerr << "[JETSTREAM:WATERFALL] Invalid Render pointer" << std::endl;
-        return Result::ERROR;
-    }
-
-    auto render = config.render;
-
     Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = Render::Extras::FillScreenVertices();
     vertexCfg.indices = Render::Extras::FillScreenIndices();
-    vertex = render->create(vertexCfg);
+    vertex = Render::Create(vertexCfg);
 
     Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Triangles;
-    drawVertex = render->create(drawVertexCfg);
+    drawVertex = Render::Create(drawVertexCfg);
 
     Render::Texture::Config binTextureCfg;
     binTextureCfg.size = {static_cast<int>(input.in.buf.size()), ymax};
@@ -30,13 +23,13 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     binTextureCfg.pfmt = Render::PixelFormat::RED;
     binTextureCfg.ptype = Render::PixelType::F32;
     binTextureCfg.dfmt = Render::DataFormat::F32;
-    binTexture = render->create(binTextureCfg);
+    binTexture = Render::Create(binTextureCfg);
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
-    lutTexture = render->create(lutTextureCfg);
+    lutTexture = Render::Create(lutTextureCfg);
 
     Render::Program::Config programCfg;
     programCfg.vertexSource = &vertexSource;
@@ -46,16 +39,16 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     programCfg.vertexUniformsSize = sizeof(vertexUniforms);
     programCfg.fragmentUniforms = &fragmentUniforms;
     programCfg.fragmentUniformsSize = sizeof(fragmentUniforms);
-    program = render->create(programCfg);
+    program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
     textureCfg.size = config.size;
-    texture = render->create(textureCfg);
+    texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    surface = render->createAndBind(surfaceCfg);
+    surface = Render::CreateAndBind(surfaceCfg);
 
     return Result::SUCCESS;
 }

@@ -11,7 +11,6 @@ namespace Jetstream::Waterfall {
 class Generic : public Module {
 public:
     struct Config {
-        std::shared_ptr<Render::Instance> render;
         bool interpolate = true;
         Size2D<int> size = {2500, 500};
     };

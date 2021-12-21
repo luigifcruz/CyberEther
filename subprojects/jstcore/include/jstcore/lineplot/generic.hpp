@@ -10,7 +10,6 @@ namespace Jetstream::Lineplot {
 class Generic : public Module {
 public:
     struct Config {
-        std::shared_ptr<Render::Instance> render;
         Size2D<int> size {2500, 500};
     };
 
