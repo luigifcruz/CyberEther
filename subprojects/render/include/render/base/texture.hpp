@@ -28,7 +28,7 @@ public:
     virtual void* raw() = 0;
     virtual Result pour() = 0;
     virtual Result fill() = 0;
-    virtual Result fill(int, int, int, int) = 0;
+    virtual Result fillRow(const std::size_t& y, const std::size_t& height) = 0;
 
 protected:
     Config config;

@@ -51,13 +51,14 @@ void* Metal::Texture::raw() {
 }
 
 Result Metal::Texture::fill() {
-    return this->fill(0, 0, config.size.width, config.size.height);
+    return this->fillRow(0, config.size.height);
 }
 
-Result Metal::Texture::fill(int yo, int xo, int w, int h) {
-    auto region = MTL::Region::Make2D(xo, yo, w, h);
-    auto rowByteSize = (w - xo) * getPixelByteSize(texture->pixelFormat());
-    texture->replaceRegion(region, 0, config.buffer, rowByteSize);
+Result Metal::Texture::fillRow(const std::size_t& y, const std::size_t& height) {
+    auto region = MTL::Region::Make2D(0, y, config.size.width, height);
+    auto rowByteSize = config.size.width * getPixelByteSize(texture->pixelFormat());
+    auto bufferByteOffset = rowByteSize * y;
+    texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
 
     return Result::SUCCESS;
 }

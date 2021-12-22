@@ -15,7 +15,7 @@ public:
     void* raw() final;
     Result pour() final;
     Result fill() final;
-    Result fill(int, int, int, int) final;
+    Result fillRow(const std::size_t& y, const std::size_t& height) final;
 
 protected:
     Result create();

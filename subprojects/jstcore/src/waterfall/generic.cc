@@ -60,7 +60,26 @@ Result Generic::compute() {
 }
 
 Result Generic::present() {
-    binTexture->fill();
+    int start = last;
+    int blocks = (inc - last);
+
+    // TODO: Fix this horrible thing.
+    if (blocks < 0) {
+        blocks = ymax - last;
+
+        if (blocks > 0) {
+            binTexture->fillRow(start, blocks);
+        }
+
+        start = 0;
+        blocks = inc;
+    }
+
+    if (blocks > 0) {
+        binTexture->fillRow(start, blocks);
+    }
+
+    last = inc;
 
     indexUniform[0] = inc / (float)ymax;
     interpolateUniform[0] = config.interpolate;
