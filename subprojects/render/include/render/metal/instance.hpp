@@ -33,6 +33,10 @@ class Metal : public Render::Instance {
         return Backend::Metal;
     }
 
+    const bool hasCudaInterop() const {
+        return false;
+    }
+
  protected:
     std::vector<std::shared_ptr<Metal::Surface>> surfaces;
 

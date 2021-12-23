@@ -1,6 +1,5 @@
-#include "render/extras.hpp"
 #define RENDER_DEBUG
-
+#include "render/extras.hpp"
 #include "render/base.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -38,6 +37,33 @@ const char* MetalShader = R"END(
     }
 )END";
 
+const char* GlesVertexShader = R"END(#version 300 es
+    layout (location = 0) in vec3 aPos;
+    layout (location = 1) in vec2 aTexCoord;
+
+    out vec2 TexCoord;
+
+    void main() {
+        gl_Position = vec4(aPos, 1.0);
+        TexCoord = aTexCoord;
+    }
+)END";
+
+const char* GlesFragmentShader = R"END(#version 300 es
+    precision highp float;
+
+    out vec4 FragColor;
+    in vec2 TexCoord;
+
+    uniform sampler2D imgtex;
+    uniform float alpha;
+
+    void main() {
+        vec4 color = texture(imgtex, TexCoord);
+        FragColor = vec4(color.r, color.g, color.b, alpha);
+    }
+)END";
+
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
@@ -68,11 +94,13 @@ int main() {
     Render::Texture::Config imgCfg;
     imgCfg.size = {width, height};
     imgCfg.buffer = data;
+    imgCfg.key = "imgtex";
     auto img = Render::Create(imgCfg);
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
         {Render::Backend::Metal, {MetalShader}},
+        {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
     };
     programCfg.draws = {draw};
     programCfg.textures = {img};

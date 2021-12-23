@@ -7,7 +7,7 @@ GLES::Texture::Texture(const Config& config, const GLES& instance)
 }
 
 Result GLES::Texture::create() {
-    if (!GLES::cudaInteropSupported() && config.cudaInterop) {
+    if (!instance.hasCudaInterop() && config.cudaInterop) {
         config.cudaInterop = false;
         return Result::ERROR;
     }
@@ -76,7 +76,7 @@ bool GLES::Texture::size(const Size2D<int>& size) {
 }
 
 void* GLES::Texture::raw() {
-    return reinterpret_cast<void*>(tex);
+    return reinterpret_cast<void*>(&tex);
 }
 
 Result GLES::Texture::cudaCopyToTexture(int yo, int xo, int w, int h) {

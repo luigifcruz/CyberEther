@@ -39,10 +39,11 @@ Result GLES::create() {
 #endif
     }
 
-    rendererString  = glGetString(GL_RENDERER);
-    versionString   = glGetString(GL_SHADING_LANGUAGE_VERSION);
-    vendorString    = glGetString(GL_VENDOR);
-    shaderString    = glGetString(GL_VERSION);
+    rendererString  = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    versionString   = reinterpret_cast<const char*>
+        (glGetString(GL_SHADING_LANGUAGE_VERSION));
+    vendorString    = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+    shaderString    = reinterpret_cast<const char*>(glGetString(GL_VERSION));
 
     for (auto &surface : surfaces) {
         CHECK(surface->create());

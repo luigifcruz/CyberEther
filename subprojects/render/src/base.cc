@@ -17,7 +17,7 @@ Result Init(const Backend& hint,
 #ifdef RENDER_DEBUG
             std::cout << "[RENDER] Selected "
                       << magic_enum::enum_name(hint)
-                      << " Backend not available, switching to "
+                      << " backend not available, switching to "
                       << magic_enum::enum_name(a)
                       << "." << std::endl;
 #endif
@@ -38,7 +38,7 @@ Result Init(const Backend& hint,
 #endif
         default:
 #ifdef RENDER_DEBUG
-            std::cerr << "[RENDER] No Backend available." << std::endl;
+            std::cerr << "[RENDER] No backend available." << std::endl;
 #endif
             return Result::NO_RENDER_BACKEND_FOUND;
     }
@@ -70,6 +70,10 @@ Result Synchronize() {
 
 bool KeepRunning() {
     return Get()->keepRunning();
+}
+
+bool HasCudaInterop() {
+    return Get()->hasCudaInterop();
 }
 
 }  // namespace Render

@@ -37,14 +37,7 @@ class Instance {
     virtual bool keepRunning() = 0;
 
     virtual const Backend getBackendId() const = 0;
-
-    constexpr static bool cudaInteropSupported() {
-#ifdef RENDER_CUDA_AVAILABLE
-        return true;
-#else
-        return false;
-#endif
-    }
+    virtual const bool hasCudaInterop() const = 0;
 
  protected:
     Config config;

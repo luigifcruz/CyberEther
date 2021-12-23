@@ -110,6 +110,7 @@ Result Begin();
 Result End();
 Result Synchronize();
 bool KeepRunning();
+bool HasCudaInterop();
 
 }  // namespace Render
 

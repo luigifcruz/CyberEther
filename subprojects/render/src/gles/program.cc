@@ -16,14 +16,16 @@ GLES::Program::Program(const Config& config, const GLES& instance)
 }
 
 Result GLES::Program::create() {
+    const auto& vertexShaderSrc = config.shaders[instance.getBackendId()][0];
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, config.vertexSource, NULL);
+    glShaderSource(vertexShader, 1, &vertexShaderSrc, NULL);
     glCompileShader(vertexShader);
 
     CHECK(checkShaderCompilation(vertexShader));
 
+    const auto& fragmentShaderSrc = config.shaders[instance.getBackendId()][1];
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, config.fragmentSource, NULL);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSrc, NULL);
     glCompileShader(fragmentShader);
 
     CHECK(checkShaderCompilation(fragmentShader));
@@ -42,8 +44,8 @@ Result GLES::Program::create() {
     i = 0;
     for (const auto& texture : textures) {
         CHECK(texture->create());
-        CHECK(this->setUniform(texture->config.key,
-                    std::vector<int>{i++}));
+        const auto& loc = glGetUniformLocation(shader, texture->config.key.c_str());
+        glUniform1i(loc, i++);
     }
 
     for (const auto& draw : draws) {
@@ -78,7 +80,7 @@ Result GLES::Program::draw() {
 
     i = 0;
     for (const auto& draw : draws) {
-        CHECK(this->setUniform("drawIndex", std::vector<int>{i++}));
+        //CHECK(this->setUniform("drawIndex", std::vector<int>{i++}));
         CHECK(draw->draw());
     }
 

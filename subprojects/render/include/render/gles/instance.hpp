@@ -31,7 +31,15 @@ class GLES : public Render::Instance {
     bool keepRunning() final;
 
     const Backend getBackendId() const {
-        return Backend::Metal;
+        return Backend::GLES;
+    }
+
+    const bool hasCudaInterop() const {
+#ifdef RENDER_CUDA_AVAILABLE
+        return true;
+#else
+        return false;
+#endif
     }
 
  protected:
