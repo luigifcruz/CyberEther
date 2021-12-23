@@ -18,18 +18,21 @@ Metal::Program::Program(const Config& config, const Metal& instance)
 Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     NS::Error* err;
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
-    NS::String* source = NS::String::string(*config.vertexSource, NS::ASCIIStringEncoding);
-    auto library = instance.device->newLibrary(source, opts, &err);
+    NS::String* source = NS::String::string(*config.vertexSource,
+        NS::ASCIIStringEncoding);
+    auto library = instance.getDevice()->newLibrary(source, opts, &err);
 
     if (!library) {
         fmt::print("Library error:\n{}\n", err->description()->utf8String());
         return Result::ERROR;
     }
 
-    MTL::Function* vertFunc = library->newFunction(NS::String::string("vertFunc", NS::ASCIIStringEncoding));
+    MTL::Function* vertFunc = library->newFunction(NS::String::string("vertFunc",
+        NS::ASCIIStringEncoding));
     RENDER_ASSERT(vertFunc);
 
-    MTL::Function* fragFunc = library->newFunction(NS::String::string("fragFunc", NS::ASCIIStringEncoding));
+    MTL::Function* fragFunc = library->newFunction(NS::String::string("fragFunc",
+        NS::ASCIIStringEncoding));
     RENDER_ASSERT(fragFunc);
 
     auto renderPipelineDesc = MTL::RenderPipelineDescriptor::alloc()->init();
@@ -38,7 +41,8 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     renderPipelineDesc->setFragmentFunction(fragFunc);
     renderPipelineDesc->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
 
-    renderPipelineState = instance.device->newRenderPipelineState(renderPipelineDesc, &err);
+    renderPipelineState = instance.getDevice()->
+        newRenderPipelineState(renderPipelineDesc, &err);
     RENDER_ASSERT(renderPipelineState);
 
     renderPipelineDesc->release();
@@ -102,4 +106,4 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
     return Result::SUCCESS;
 }
 
-} // namespace Render
+}  // namespace Render

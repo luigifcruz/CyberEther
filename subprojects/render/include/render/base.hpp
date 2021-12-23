@@ -1,6 +1,9 @@
 #ifndef RENDER_H
 #define RENDER_H
 
+#include <vector>
+#include <memory>
+
 #include "render/type.hpp"
 #include "render_config.hpp"
 
@@ -72,7 +75,7 @@ class Broker : public T {
 };
 
 inline auto* Get() {
-    switch(__BackendStorage__) {
+    switch (__BackendStorage__) {
 #ifdef RENDER_GLES_AVAILABLE
         case Backend::GLES:
             return static_cast<Broker<GLES>*>(__InstanceStorage__);
@@ -108,6 +111,6 @@ Result End();
 Result Synchronize();
 bool KeepRunning();
 
-} // namespace Render
+}  // namespace Render
 
 #endif

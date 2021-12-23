@@ -4,23 +4,26 @@
 
 namespace Render {
 
-Result GLES::Program::create() {
-    for (const auto& draw : cfg.draws) {
+GLES::Program::Program(const Config& config, const GLES& instance)
+         : Render::Program(config), instance(instance) {
+    for (const auto& draw : config.draws) {
         draws.push_back(std::dynamic_pointer_cast<GLES::Draw>(draw));
     }
 
-    for (const auto& texture : cfg.textures) {
+    for (const auto& texture : config.textures) {
         textures.push_back(std::dynamic_pointer_cast<GLES::Texture>(texture));
     }
+}
 
+Result GLES::Program::create() {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, cfg.vertexSource, NULL);
+    glShaderSource(vertexShader, 1, config.vertexSource, NULL);
     glCompileShader(vertexShader);
 
     CHECK(checkShaderCompilation(vertexShader));
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, cfg.fragmentSource, NULL);
+    glShaderSource(fragmentShader, 1, config.fragmentSource, NULL);
     glCompileShader(fragmentShader);
 
     CHECK(checkShaderCompilation(fragmentShader));
@@ -39,7 +42,7 @@ Result GLES::Program::create() {
     i = 0;
     for (const auto& texture : textures) {
         CHECK(texture->create());
-        CHECK(this->setUniform(texture->cfg.key,
+        CHECK(this->setUniform(texture->config.key,
                     std::vector<int>{i++}));
     }
 
@@ -88,61 +91,6 @@ Result GLES::Program::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::setUniform(std::string name, const std::vector<int>& vars) {
-    // optimize: this can be cached
-    // optimize: are std::vector performant?
-    glUseProgram(shader);
-    int loc = glGetUniformLocation(shader, name.c_str());
-
-    switch(vars.size()) {
-        case 1: glUniform1i(loc, vars.at(0)); break; case 2:
-            glUniform2i(loc, vars.at(0), vars.at(1));
-            break;
-        case 3:
-            glUniform3i(loc, vars.at(0), vars.at(1), vars.at(2));
-            break;
-        case 4:
-            glUniform4i(loc, vars.at(0), vars.at(1), vars.at(2), vars.at(3));
-            break;
-        default:
-#ifdef RENDER_DEBUG
-        std::cerr << "[RENDER:PROGRAM] Invalid number of uniforms (vars.size() > 4)." << std::endl;
-#endif
-            return Result::RENDER_BACKEND_ERROR;
-    }
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result GLES::Program::setUniform(std::string name, const std::vector<float>& vars) {
-    // optimize: this can be cached
-    // optimize: are std::vector performant?
-    glUseProgram(shader);
-    int loc = glGetUniformLocation(shader, name.c_str());
-
-    switch(vars.size()) {
-        case 1:
-            glUniform1f(loc, vars.at(0));
-            break;
-        case 2:
-            glUniform2f(loc, vars.at(0), vars.at(1));
-            break;
-        case 3:
-            glUniform3f(loc, vars.at(0), vars.at(1), vars.at(2));
-            break;
-        case 4:
-            glUniform4f(loc, vars.at(0), vars.at(1), vars.at(2), vars.at(3));
-            break;
-        default:
-#ifdef RENDER_DEBUG
-        std::cerr << "[RENDER:PROGRAM] Invalid number of uniforms (vars.size() > 4)." << std::endl;
-#endif
-            return Result::RENDER_BACKEND_ERROR;
-    }
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
 Result GLES::Program::checkShaderCompilation(uint shader) {
     int success;
     char infoLog[512];
@@ -169,4 +117,4 @@ Result GLES::Program::checkProgramCompilation(uint program) {
     return Result::SUCCESS;
 }
 
-} // namespace Render
+}  // namespace Render

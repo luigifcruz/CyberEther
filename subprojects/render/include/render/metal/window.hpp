@@ -1,28 +1,28 @@
 #ifndef RENDER_METALWINDOW_H
 #define RENDER_METALWINDOW_H
 
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
-#include <Foundation/Foundation.hpp>
-
 #define GLFW_INCLUDE_NONE
 #define GLFW_EXPOSE_NATIVE_COCOA
 #include <GLFW/glfw3.h>
+
+#include <Metal/Metal.hpp>
+#include <QuartzCore/QuartzCore.hpp>
+#include <Foundation/Foundation.hpp>
 
 namespace Render {
 
 class MetalWindow {
  public:
-   explicit MetalWindow(MTL::Device* device, GLFWwindow* glfwWindow);
-   ~MetalWindow();
+    explicit MetalWindow(MTL::Device* device, GLFWwindow* glfwWindow);
+    ~MetalWindow();
 
-   CA::MetalDrawable* draw();
+    CA::MetalDrawable* draw();
 
  private:
-    void* swapchainHolder;
-    void* nativeWindowHolder;
+    void* swapchainHolder = nullptr;
+    void* nativeWindowHolder = nullptr;
 
-    GLFWwindow* glfwWindow;
+    GLFWwindow* glfwWindow = nullptr;
 };
 
 }  // namespace Render

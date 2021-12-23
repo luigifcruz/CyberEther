@@ -7,6 +7,9 @@
 
 namespace Render {
 
+GLES::GLES(const Config& config) : Render::Instance(config) {
+}
+
 Result GLES::create() {
     if (!glfwInit()) {
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -15,11 +18,11 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.vsync);
+    glfwWindowHint(GLFW_RESIZABLE, config.resizable);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
 
-    auto [width, height] = cfg.size;
-    window = glfwCreateWindow(width, height, cfg.title.c_str(), NULL, NULL);
+    auto [width, height] = config.size;
+    window = glfwCreateWindow(width, height, config.title.c_str(), NULL, NULL);
     if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -27,10 +30,10 @@ Result GLES::create() {
 
     glfwMakeContextCurrent(window);
 
-    if (cfg.scale == -1.0) {
+    if (config.scale == -1.0) {
 #if !defined(__EMSCRIPTEN__) && GLFW_VERSION_MINOR >= 3
         GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-        glfwGetMonitorContentScale(monitor, &cfg.scale, nullptr);
+        glfwGetMonitorContentScale(monitor, &config.scale, nullptr);
 #else
         cfg.scale = 1.0;
 #endif
@@ -45,7 +48,7 @@ Result GLES::create() {
         CHECK(surface->create());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->createImgui();
     }
 
@@ -57,7 +60,7 @@ Result GLES::destroy() {
         CHECK(surface->destroy());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->destroyImgui();
     }
 
@@ -77,8 +80,7 @@ Result GLES::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    style->ScaleAllSizes(cfg.scale);
-    io->Fonts->AddFontFromFileTTF("JetBrainsMono-Regular.ttf", 12.0f * cfg.scale, NULL, NULL);
+    style->ScaleAllSizes(config.scale);
 
     ImGui::StyleColorsDark();
 
@@ -112,12 +114,12 @@ Result GLES::endImgui() {
 }
 
 Result GLES::begin() {
-    glLineWidth(cfg.scale);
+    glLineWidth(config.scale);
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->beginImgui();
 
-        if (cfg.debug) {
+        if (config.debug) {
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
             ImGui::Text("Renderer Name: %s", rendererString);
@@ -136,11 +138,11 @@ Result GLES::end() {
         CHECK(surface->draw());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->endImgui();
     }
 
-    glfwGetFramebufferSize(window, &cfg.size.width, &cfg.size.height);
+    glfwGetFramebufferSize(window, &config.size.width, &config.size.height);
     glfwSwapBuffers(window);
     glfwPollEvents();
 
@@ -201,26 +203,4 @@ Result GLES::getError(std::string func, std::string file, int line) {
     return Result::SUCCESS;
 }
 
-std::shared_ptr<Render::Surface> GLES::createAndBind(const Render::Surface::Config& cfg) {
-    auto surface = std::make_shared<Surface>(cfg, *this);
-    surfaces.push_back(surface);
-    return surface;
-}
-
-std::shared_ptr<Render::Program> GLES::create(const Render::Program::Config& cfg) {
-    return std::make_shared<Program>(cfg, *this);
-}
-
-std::shared_ptr<Render::Texture> GLES::create(const Render::Texture::Config& cfg) {
-    return std::make_shared<Texture>(cfg, *this);
-}
-
-std::shared_ptr<Render::Vertex> GLES::create(const Render::Vertex::Config& cfg) {
-    return std::make_shared<Vertex>(cfg, *this);
-}
-
-std::shared_ptr<Render::Draw> GLES::create(const Render::Draw::Config& cfg) {
-    return std::make_shared<Draw>(cfg, *this);
-}
-
-} // namespace Render
+}  // namespace Render

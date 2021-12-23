@@ -10,12 +10,12 @@
 namespace Render {
 
 class GLES::Vertex : public Render::Vertex {
-public:
-    Vertex(const Config& cfg, const GLES& i) : Render::Vertex(cfg), inst(i) {};
+ public:
+    explicit Vertex(const Config& config, const GLES& instance);
 
     Result update() final;
 
-protected:
+ protected:
     Result create();
     Result destroy();
     Result begin();
@@ -24,8 +24,8 @@ protected:
     uint count();
     uint buffered();
 
-private:
-    const GLES& inst;
+ private:
+    const GLES& instance;
 
     uint vao, ebo;
     uint vertex_count;
@@ -37,6 +37,6 @@ private:
     friend class GLES::Draw;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

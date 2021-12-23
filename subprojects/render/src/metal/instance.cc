@@ -125,7 +125,8 @@ Result Metal::endImgui() {
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDesc);
 
     ImGui::Render();
-    ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), commandBuffer, renderCmdEncoder);
+    ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(),
+        commandBuffer, renderCmdEncoder);
 
     renderCmdEncoder->endEncoding();
     renderCmdEncoder->release();
@@ -190,7 +191,8 @@ bool Metal::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 
-MTL::PixelFormat Metal::convertPixelFormat(const PixelFormat& pfmt, const PixelType& ptype) {
+MTL::PixelFormat Metal::convertPixelFormat(const PixelFormat& pfmt,
+                                           const PixelType& ptype) {
     if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
         return MTL::PixelFormatR32Float;
     }
@@ -225,4 +227,4 @@ std::size_t Metal::getPixelByteSize(const MTL::PixelFormat& pfmt) {
     }
 }
 
-} // namespace Render
+}  // namespace Render

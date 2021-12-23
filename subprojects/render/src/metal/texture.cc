@@ -14,7 +14,7 @@ Result Metal::Texture::create() {
     RENDER_ASSERT(textureDesc);
 
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
-    texture = instance.device->newTexture(textureDesc);
+    texture = instance.getDevice()->newTexture(textureDesc);
     RENDER_ASSERT(texture);
 
     textureDesc->release();
@@ -68,4 +68,4 @@ Result Metal::Texture::pour() {
     return Result::SUCCESS;
 }
 
-} // namespace Render
+}  // namespace Render

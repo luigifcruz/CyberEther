@@ -1,12 +1,14 @@
 #ifndef RENDER_BASE_TEXTURE_H
 #define RENDER_BASE_TEXTURE_H
 
+#include <string>
+
 #include "render/type.hpp"
 
 namespace Render {
 
 class Texture {
-public:
+ public:
     struct Config {
         std::string key;
         Size2D<int> size;
@@ -30,10 +32,10 @@ public:
     virtual Result fill() = 0;
     virtual Result fillRow(const std::size_t& y, const std::size_t& height) = 0;
 
-protected:
+ protected:
     Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

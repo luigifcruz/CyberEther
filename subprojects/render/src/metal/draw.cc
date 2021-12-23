@@ -53,4 +53,4 @@ Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
     return Result::SUCCESS;
 }
 
-} // namespace Render
+}  // namespace Render

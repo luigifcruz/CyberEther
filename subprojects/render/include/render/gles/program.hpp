@@ -1,24 +1,24 @@
 #ifndef RENDER_GLES_PROGRAM_H
 #define RENDER_GLES_PROGRAM_H
 
+#include <vector>
+#include <memory>
+
 #include "render/gles/surface.hpp"
 
 namespace Render {
 
 class GLES::Program : public Render::Program {
-public:
-    Program(const Config& c, const GLES& i) : Render::Program(c), inst(i) {};
+ public:
+    explicit Program(const Config& config, const GLES& instance);
 
-    Result setUniform(std::string, const std::vector<int>&);
-    Result setUniform(std::string, const std::vector<float>&);
-
-protected:
+ protected:
     Result create();
     Result destroy();
     Result draw();
 
-private:
-    const GLES& inst;
+ private:
+    const GLES& instance;
 
     int i;
     uint shader;
@@ -32,6 +32,6 @@ private:
     friend class GLES::Surface;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

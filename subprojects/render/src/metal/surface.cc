@@ -79,4 +79,4 @@ Result Metal::Surface::destroyFramebuffer() {
     return framebuffer->destroy();
 }
 
-} // namespace Render
+}  // namespace Render

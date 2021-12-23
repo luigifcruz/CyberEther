@@ -91,18 +91,15 @@ int main() {
 
     Render::Create();
 
-    while(Render::KeepRunning()) {
+    while (Render::KeepRunning()) {
         Render::Begin();
 
         // Create a window called "My First Tool", with a menu bar.
         ImGui::Begin("My First Tool", NULL, ImGuiWindowFlags_MenuBar);
-        if (ImGui::BeginMenuBar())
-        {
-            if (ImGui::BeginMenu("File"))
-            {
-                if (ImGui::MenuItem("Open..", "Ctrl+O")) { /* Do stuff */ }
-                if (ImGui::MenuItem("Save", "Ctrl+S"))   {
-                }
+        if (ImGui::BeginMenuBar()) {
+            if (ImGui::BeginMenu("File")) {
+                ImGui::MenuItem("Open..", "Ctrl+O");
+                ImGui::MenuItem("Save", "Ctrl+S");
                 ImGui::EndMenu();
             }
             ImGui::EndMenuBar();
@@ -113,7 +110,7 @@ int main() {
         ImGui::PlotLines("Frame Times", my_values, IM_ARRAYSIZE(my_values));
 
         // Display contents in a scrolling region
-        ImGui::TextColored(ImVec4(1,1,0,1), "Important Stuff");
+        ImGui::TextColored(ImVec4(1, 1, 0, 1), "Important Stuff");
         ImGui::BeginChild("Scrolling");
         for (int n = 0; n < 50; n++)
             ImGui::Text("%04d: Some text", n);
@@ -123,8 +120,8 @@ int main() {
         ImGui::Begin("seY");
         ImGui::SliderFloat("Image Alpha", &a[0], 0.0, 1.0);
         auto [x, y] = ImGui::GetContentRegionAvail();
-        auto [width, height] = surface->size({(int)x, (int)y});
-        ImGui::Image(texture->raw(), ImVec2(width, height));
+        auto [w, h] = surface->size({static_cast<int>(x), static_cast<int>(y)});
+        ImGui::Image(texture->raw(), ImVec2(w, h));
         ImGui::End();
 
         Render::End();

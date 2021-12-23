@@ -1,13 +1,15 @@
 #ifndef RENDER_BASE_DRAW_H
 #define RENDER_BASE_DRAW_H
 
+#include <memory>
+
 #include "render/type.hpp"
 #include "render/base/vertex.hpp"
 
 namespace Render {
 
 class Draw {
-public:
+ public:
     enum Mode {
         TriangleFan,
         Triangles,
@@ -24,10 +26,10 @@ public:
     explicit Draw(const Config& config) : config(config) {}
     virtual ~Draw() = default;
 
-protected:
+ protected:
     Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

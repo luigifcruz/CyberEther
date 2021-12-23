@@ -72,4 +72,4 @@ bool KeepRunning() {
     return Get()->keepRunning();
 }
 
-} // namespace Render
+}  // namespace Render

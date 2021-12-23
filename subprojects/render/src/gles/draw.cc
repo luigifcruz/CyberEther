@@ -3,8 +3,12 @@
 
 namespace Render {
 
+GLES::Draw::Draw(const Config& config, const GLES& instance)
+         : Render::Draw(config), instance(instance) {
+    buffer = std::dynamic_pointer_cast<GLES::Vertex>(config.buffer);
+}
+
 Result GLES::Draw::create() {
-    buffer = std::dynamic_pointer_cast<GLES::Vertex>(cfg.buffer);
     buffer->create();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -20,7 +24,7 @@ Result GLES::Draw::draw() {
     buffer->begin();
 
     uint mode = GL_TRIANGLES;
-    switch (cfg.mode) {
+    switch (config.mode) {
         case Draw::Mode::TriangleFan:
             mode = GL_TRIANGLE_FAN;
             break;
@@ -36,9 +40,6 @@ Result GLES::Draw::draw() {
         case Draw::Mode::Points:
             mode = GL_POINTS;
             break;
-        case Draw::Mode::LineLoop:
-            mode = GL_LINE_LOOP;
-            break;
     }
 
     if (buffer->buffered()) {
@@ -52,4 +53,4 @@ Result GLES::Draw::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-} // namespace Render
+}  // namespace Render

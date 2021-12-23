@@ -1,17 +1,19 @@
 #ifndef RENDER_METAL_VERTEX_H
 #define RENDER_METAL_VERTEX_H
 
+#include <vector>
+
 #include "render/metal/instance.hpp"
 
 namespace Render {
 
 class Metal::Vertex : public Render::Vertex {
-public:
+ public:
     explicit Vertex(const Config& config, const Metal& instance);
 
     Result update() final;
 
-protected:
+ protected:
     Result create();
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encoder);
@@ -28,7 +30,7 @@ protected:
         return indexBuffer != nullptr;
     }
 
-private:
+ private:
     const Metal& instance;
 
     std::size_t vertex_count;
@@ -38,6 +40,6 @@ private:
     friend class Metal::Draw;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

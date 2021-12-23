@@ -1,6 +1,8 @@
 #ifndef RENDER_BASE_INSTANCE_H
 #define RENDER_BASE_INSTANCE_H
 
+#include <string>
+
 #include "render/type.hpp"
 #include "render/base/program.hpp"
 #include "render/base/surface.hpp"
@@ -12,7 +14,7 @@
 namespace Render {
 
 class Instance {
-public:
+ public:
     struct Config {
         Size2D<int> size = {1280, 720};
         std::string title = "Render";
@@ -40,12 +42,12 @@ public:
 #else
         return false;
 #endif
-    };
+    }
 
-protected:
+ protected:
     Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

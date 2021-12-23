@@ -1,6 +1,9 @@
 #ifndef RENDER_BASE_SURFACE_H
 #define RENDER_BASE_SURFACE_H
 
+#include <vector>
+#include <memory>
+
 #include "render/type.hpp"
 #include "render/base/texture.hpp"
 #include "render/base/program.hpp"
@@ -8,7 +11,7 @@
 namespace Render {
 
 class Surface {
-public:
+ public:
     struct Config {
         std::shared_ptr<Texture> framebuffer;
         std::vector<std::shared_ptr<Program>> programs;
@@ -25,10 +28,10 @@ public:
     }
     virtual Size2D<int> size(const Size2D<int>&) = 0;
 
-protected:
+ protected:
     Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

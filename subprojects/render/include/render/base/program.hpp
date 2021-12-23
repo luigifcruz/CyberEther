@@ -2,6 +2,10 @@
 #define RENDER_BASE_PROGRAM_H
 
 #include <variant>
+#include <vector>
+#include <memory>
+#include <utility>
+#include <string>
 
 #include "render/type.hpp"
 #include "render/base/texture.hpp"
@@ -11,7 +15,7 @@
 namespace Render {
 
 class Program {
-public:
+ public:
     struct Config {
         const char* const* vertexSource = nullptr;
         const char* const* fragmentSource = nullptr;
@@ -24,12 +28,12 @@ public:
     explicit Program(const Config& config) : config(config) {}
     virtual ~Program() = default;
 
-protected:
+ protected:
     Config config;
 
-    uint32_t drawIndex;
+    uint32_t drawIndex = 0;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

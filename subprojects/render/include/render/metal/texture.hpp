@@ -6,7 +6,7 @@
 namespace Render {
 
 class Metal::Texture : public Render::Texture {
-public:
+ public:
     explicit Texture(const Config& config, const Metal& instance);
 
     using Render::Texture::size;
@@ -17,7 +17,7 @@ public:
     Result fill() final;
     Result fillRow(const std::size_t& y, const std::size_t& height) final;
 
-protected:
+ protected:
     Result create();
     Result destroy();
 
@@ -25,16 +25,16 @@ protected:
         return pixelFormat;
     }
 
-private:
+ private:
     const Metal& instance;
 
-    MTL::Texture* texture;
+    MTL::Texture* texture = nullptr;
     MTL::PixelFormat pixelFormat;
 
     friend class Metal::Surface;
     friend class Metal::Program;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

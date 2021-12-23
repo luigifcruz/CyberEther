@@ -4,18 +4,21 @@
 
 namespace Render {
 
-Result GLES::Surface::create() {
-    framebuffer = std::dynamic_pointer_cast<GLES::Texture>(cfg.framebuffer);
+GLES::Surface::Surface(const Config& config, const GLES& instance)
+         : Render::Surface(config), instance(instance) {
+    framebuffer = std::dynamic_pointer_cast<GLES::Texture>(config.framebuffer);
 
-    for (const auto& program : cfg.programs) {
+    for (const auto& program : config.programs) {
         programs.push_back(std::dynamic_pointer_cast<GLES::Program>(program));
     }
+}
 
+Result GLES::Surface::create() {
     for (auto &program : programs) {
         CHECK(program->create());
     }
 
-    CHECK(_createFramebuffer());
+    CHECK(createFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -25,7 +28,7 @@ Result GLES::Surface::destroy() {
         CHECK(program->destroy());
     }
 
-    CHECK(_destroyFramebuffer());
+    CHECK(destroyFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -36,8 +39,8 @@ Size2D<int> GLES::Surface::size(const Size2D<int>& size) {
     }
 
     if (framebuffer->size(size)) {
-        RENDER_CHECK_THROW(_destroyFramebuffer());
-        RENDER_CHECK_THROW(_createFramebuffer());
+        RENDER_CHECK_THROW(destroyFramebuffer());
+        RENDER_CHECK_THROW(createFramebuffer());
     }
 
     return framebuffer->size();
@@ -81,4 +84,4 @@ Result GLES::Surface::destroyFramebuffer() {
     return Result::SUCCESS;
 }
 
-} // namespace Render
+}  // namespace Render

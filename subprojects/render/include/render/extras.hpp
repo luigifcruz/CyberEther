@@ -1,6 +1,8 @@
 #ifndef RENDER_EXTRAS_H
 #define RENDER_EXTRAS_H
 
+#include <vector>
+
 #include "render/base.hpp"
 #include "render/type.hpp"
 
@@ -22,8 +24,8 @@ static float b[] = {
 
 inline std::vector<Render::Vertex::Buffer> FillScreenVertices() {
     return {
-        {(float*)&a, 12, 3},
-        {(float*)&b, 8, 2},
+        {reinterpret_cast<float*>(&a), 12, 3},
+        {reinterpret_cast<float*>(&b), 8, 2},
     };
 }
 
@@ -34,6 +36,6 @@ inline std::vector<uint16_t> FillScreenIndices() {
     };
 }
 
-} // namespace Render::Extras
+}  // namespace Render::Extras
 
 #endif
