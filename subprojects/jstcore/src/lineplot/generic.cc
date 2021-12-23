@@ -1,3 +1,4 @@
+#include "jstcore/lineplot/shaders.hpp"
 #include "jstcore/lineplot/generic.hpp"
 
 namespace Jetstream::Lineplot {
@@ -62,8 +63,10 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     lutTexture = Render::Create(lutTextureCfg);
 
     Render::Program::Config programCfg;
-    programCfg.vertexSource = &vertexSource;
-    programCfg.fragmentSource = &fragmentSource;
+    programCfg.shaders = {
+        {Render::Backend::Metal, {MetalShader}},
+        {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
+    };
     programCfg.draws = {drawGridVertex, drawLineVertex};
     programCfg.textures = {lutTexture};
     program = Render::Create(programCfg);

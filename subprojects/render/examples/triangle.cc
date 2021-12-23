@@ -6,7 +6,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-const char* shaders = R"END(
+const char* MetalShader = R"END(
     #include <metal_stdlib>
 
     using namespace metal;
@@ -17,9 +17,9 @@ const char* shaders = R"END(
     };
 
     vertex TexturePipelineRasterizerData vertFunc(
-        const device packed_float3* vertexArray [[buffer(0)]],
-        const device packed_float2* texcoord [[buffer(1)]],
-        unsigned int vID[[vertex_id]]) {
+            const device packed_float3* vertexArray [[buffer(0)]],
+            const device packed_float2* texcoord [[buffer(1)]],
+            unsigned int vID[[vertex_id]]) {
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
@@ -29,10 +29,9 @@ const char* shaders = R"END(
     }
 
     fragment float4 fragFunc(
-        TexturePipelineRasterizerData in [[stage_in]],
-        texture2d<float> texture [[texture(0)]],
-        constant float& index [[buffer(29)]]
-    ) {
+            TexturePipelineRasterizerData in [[stage_in]],
+            texture2d<float> texture [[texture(0)]],
+            constant float& index [[buffer(29)]]) {
         sampler imgSampler;
         float4 colorSample = texture.sample(imgSampler, in.texcoord);
         return colorSample * index;
@@ -72,7 +71,9 @@ int main() {
     auto img = Render::Create(imgCfg);
 
     Render::Program::Config programCfg;
-    programCfg.vertexSource = &shaders;
+    programCfg.shaders = {
+        {Render::Backend::Metal, {MetalShader}},
+    };
     programCfg.draws = {draw};
     programCfg.textures = {img};
     programCfg.uniforms = {

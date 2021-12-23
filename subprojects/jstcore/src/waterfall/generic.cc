@@ -1,3 +1,4 @@
+#include "jstcore/waterfall/shaders.hpp"
 #include "jstcore/waterfall/generic.hpp"
 
 namespace Jetstream::Waterfall {
@@ -32,7 +33,10 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     lutTexture = Render::Create(lutTextureCfg);
 
     Render::Program::Config programCfg;
-    programCfg.vertexSource = &vertexSource;
+    programCfg.shaders = {
+        {Render::Backend::Metal, {MetalShader}},
+        {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
+    };
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
     programCfg.uniforms = {
@@ -67,18 +71,13 @@ Result Generic::present() {
     if (blocks < 0) {
         blocks = ymax - last;
 
-        if (blocks > 0) {
-            binTexture->fillRow(start, blocks);
-        }
+        binTexture->fillRow(start, blocks);
 
         start = 0;
         blocks = inc;
     }
 
-    if (blocks > 0) {
-        binTexture->fillRow(start, blocks);
-    }
-
+    binTexture->fillRow(start, blocks);
     last = inc;
 
     indexUniform[0] = inc / (float)ymax;

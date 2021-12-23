@@ -28,8 +28,11 @@ class GLES : public Render::Instance {
     Result begin() final;
     Result end() final;
     Result synchronize() final;
-
     bool keepRunning() final;
+
+    const Backend getBackendId() const {
+        return Backend::Metal;
+    }
 
  protected:
     std::vector<std::shared_ptr<GLES::Surface>> surfaces;

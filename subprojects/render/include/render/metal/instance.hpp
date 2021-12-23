@@ -29,6 +29,10 @@ class Metal : public Render::Instance {
     Result synchronize() final;
     bool keepRunning() final;
 
+    const Backend getBackendId() const {
+        return Backend::Metal;
+    }
+
  protected:
     std::vector<std::shared_ptr<Metal::Surface>> surfaces;
 

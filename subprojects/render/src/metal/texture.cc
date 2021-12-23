@@ -55,6 +55,10 @@ Result Metal::Texture::fill() {
 }
 
 Result Metal::Texture::fillRow(const std::size_t& y, const std::size_t& height) {
+    if (height < 1) {
+        return Result::SUCCESS;
+    }
+
     auto region = MTL::Region::Make2D(0, y, config.size.width, height);
     auto rowByteSize = config.size.width * getPixelByteSize(texture->pixelFormat());
     auto bufferByteOffset = rowByteSize * y;

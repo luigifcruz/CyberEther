@@ -36,6 +36,8 @@ class Instance {
     virtual Result synchronize() = 0;
     virtual bool keepRunning() = 0;
 
+    virtual const Backend getBackendId() const = 0;
+
     constexpr static bool cudaInteropSupported() {
 #ifdef RENDER_CUDA_AVAILABLE
         return true;

@@ -1,6 +1,7 @@
 #ifndef RENDER_BASE_PROGRAM_H
 #define RENDER_BASE_PROGRAM_H
 
+#include <map>
 #include <variant>
 #include <vector>
 #include <memory>
@@ -17,12 +18,11 @@ namespace Render {
 class Program {
  public:
     struct Config {
-        const char* const* vertexSource = nullptr;
-        const char* const* fragmentSource = nullptr;
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::pair<std::string,
             std::variant<std::vector<float>*, std::vector<uint32_t>*>>> uniforms;
+        std::map<Backend, std::vector<const char*>> shaders;
     };
 
     explicit Program(const Config& config) : config(config) {}

@@ -16,10 +16,11 @@ Metal::Program::Program(const Config& config, const Metal& instance)
 }
 
 Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
+    const auto& shader = config.shaders[instance.getBackendId()][0];
+
     NS::Error* err;
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
-    NS::String* source = NS::String::string(*config.vertexSource,
-        NS::ASCIIStringEncoding);
+    NS::String* source = NS::String::string(shader, NS::ASCIIStringEncoding);
     auto library = instance.getDevice()->newLibrary(source, opts, &err);
 
     if (!library) {

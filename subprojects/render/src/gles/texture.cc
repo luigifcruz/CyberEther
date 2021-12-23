@@ -112,6 +112,10 @@ Result GLES::Texture::fill() {
 }
 
 Result GLES::Texture::fillRow(const std::size_t& y, const std::size_t& height) {
+    if (height < 1) {
+        return Result::SUCCESS;
+    }
+
     if (config.cudaInterop) {
         return this->cudaCopyToTexture(y, 0, config.size.width, config.size.height);
     }
