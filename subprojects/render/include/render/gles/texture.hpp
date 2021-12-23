@@ -26,11 +26,11 @@ class GLES::Texture : public Render::Texture {
     Result destroy();
     Result begin();
     Result end();
-    uint tex, pfmt, dfmt, ptype;
 
  private:
     const GLES& instance;
 
+    uint tex, pfmt, dfmt, ptype;
 
 #ifdef RENDER_CUDA_AVAILABLE
     cudaGraphicsResource* cuda_tex_resource = nullptr;

@@ -99,8 +99,8 @@ Size2D<int> Generic::size(const Size2D<int>& size) {
     return this->size();
 }
 
-std::weak_ptr<Render::Texture> Generic::tex() const {
-    return texture;
+Render::Texture& Generic::tex() const {
+    return *texture;
 };
 
 } // namespace Jetstream::Lineplot

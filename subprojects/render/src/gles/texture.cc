@@ -76,7 +76,7 @@ bool GLES::Texture::size(const Size2D<int>& size) {
 }
 
 void* GLES::Texture::raw() {
-    return reinterpret_cast<void*>(&tex);
+    return reinterpret_cast<void*>(tex);
 }
 
 Result GLES::Texture::cudaCopyToTexture(int yo, int xo, int w, int h) {
@@ -120,9 +120,9 @@ Result GLES::Texture::fillRow(const std::size_t& y, const std::size_t& height) {
         return this->cudaCopyToTexture(y, 0, config.size.width, config.size.height);
     }
 
+    // TODO: Fix this.
     CHECK(this->begin());
-    size_t offset = y * config.size.width * ((config.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint));
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, config.size.width, config.size.height, pfmt, ptype, config.buffer + offset);
+    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, config.size.width, config.size.height, 0, pfmt, ptype, config.buffer);
     CHECK(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

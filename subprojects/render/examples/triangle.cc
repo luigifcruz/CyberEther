@@ -65,7 +65,7 @@ const char* GlesFragmentShader = R"END(#version 300 es
 )END";
 
 int main() {
-    std::cout << "Welcome to CyberEther!" << std::endl;
+    std::cout << "Welcome to Render test!" << std::endl;
 
     std::vector<float> a = {0.5};
 
@@ -158,5 +158,5 @@ int main() {
 
     Render::Destroy();
 
-    std::cout << "Goodbye from CyberEther!" << std::endl;
+    std::cout << "Goodbye from Render test!" << std::endl;
 }
