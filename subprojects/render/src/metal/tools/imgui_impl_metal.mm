@@ -27,7 +27,6 @@
 #include "imgui.h"
 #include "imgui_impl_metal.h"
 
-
 #import <Metal/Metal.h>
 // #import <QuartzCore/CAMetalLayer.h> // Not supported in XCode 9.2. Maybe a macro to detect the SDK version can be used (something like #if MACOS_SDK >= 10.13 ...)
 #import <simd/simd.h>
@@ -80,6 +79,8 @@
 
 static MetalContext *g_sharedMetalContext = nil;
 
+#ifdef IMGUI_IMPL_METAL_CPP
+
 #pragma mark - ImGui Metal C++ Bindings
 
 bool ImGui_ImplMetal_Init(MTL::Device* device) {
@@ -106,6 +107,8 @@ bool ImGui_ImplMetal_CreateFontsTexture(MTL::Device* device) {
 bool ImGui_ImplMetal_CreateDeviceObjects(MTL::Device* device) {
     return ImGui_ImplMetal_CreateDeviceObjects(static_cast<id<MTLDevice>>(device));
 }
+
+#endif
 
 #pragma mark - ImGui API implementation
 
