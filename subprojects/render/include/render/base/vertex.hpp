@@ -21,7 +21,7 @@ class Vertex {
         size_t stride = 0;
         Usage usage = Static;
         bool cudaInterop = false;
-        uint index = 0;
+        uint index;
 
 #ifdef RENDER_CUDA_AVAILABLE
         cudaGraphicsResource* _cuda_res = nullptr;
@@ -30,7 +30,7 @@ class Vertex {
 
     struct Config {
         std::vector<Buffer> buffers;
-        std::vector<uint16_t> indices;
+        std::vector<uint32_t> indices;
     };
 
     explicit Vertex(const Config& config) : config(config) {}

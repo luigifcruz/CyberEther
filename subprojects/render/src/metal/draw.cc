@@ -45,7 +45,7 @@ Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
 
     if (buffer->isBuffered()) {
         encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->getVertexCount(),
-                MTL::IndexTypeUInt16, buffer->getIndexBuffer(), 0);
+                MTL::IndexTypeUInt32, buffer->getIndexBuffer(), 0);
     } else {
         encoder->drawPrimitives(mode, (NS::UInteger)0, buffer->getVertexCount());
     }

@@ -22,7 +22,7 @@ Result Metal::Vertex::create() {
     }
 
     for (auto& buffer : config.buffers) {
-        auto size = buffer.size * sizeof(float);
+        auto size = buffer.size * sizeof(buffer.data[0]);
         auto tmp = instance.getDevice()->newBuffer(buffer.data, size, usage);
         vertexBuffers.push_back(tmp);
         vertex_count = buffer.size / buffer.stride;
@@ -30,7 +30,7 @@ Result Metal::Vertex::create() {
 
     if (config.indices.size() > 0) {
         indexBuffer = instance.getDevice()->newBuffer(config.indices.data(),
-                config.indices.size() * sizeof(uint),
+                config.indices.size() * sizeof(config.indices.data()[0]),
                 MTL::ResourceOptionCPUCacheModeDefault);
         vertex_count = config.indices.size();
     }

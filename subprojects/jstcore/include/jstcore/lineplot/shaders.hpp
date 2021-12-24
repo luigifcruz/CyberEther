@@ -46,7 +46,7 @@ inline const char* MetalShader = R"END(
             constant uint32_t& drawIndex [[buffer(30)]],
             texture2d<float> lut [[texture(0)]]) {
         if (drawIndex == 0) {
-            return vector_float4(0.27, 0.27, 0.27, 1.0);
+            return vector_float4(0.2, 0.2, 0.2, 1.0);
         }
 
         if (drawIndex == 1) {
