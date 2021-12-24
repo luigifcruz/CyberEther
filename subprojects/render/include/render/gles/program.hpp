@@ -1,6 +1,7 @@
 #ifndef RENDER_GLES_PROGRAM_H
 #define RENDER_GLES_PROGRAM_H
 
+#include <string>
 #include <vector>
 #include <memory>
 
@@ -17,10 +18,13 @@ class GLES::Program : public Render::Program {
     Result destroy();
     Result draw();
 
+    Result setUniform(const std::string name, const std::variant<std::vector<float>,
+            std::vector<uint32_t>>& vars);
+
  private:
     const GLES& instance;
 
-    int i;
+    uint32_t i;
     uint shader;
 
     std::vector<std::shared_ptr<GLES::Draw>> draws;

@@ -44,10 +44,7 @@ Result GLES::Program::create() {
     i = 0;
     for (const auto& texture : textures) {
         CHECK(texture->create());
-
-        glUseProgram(shader);
-        const auto& loc = glGetUniformLocation(shader, texture->config.key.c_str());
-        glUniform1i(loc, i++);
+        CHECK(this->setUniform(texture->config.key, std::vector{i++}));
     }
 
     for (const auto& draw : draws) {
@@ -80,11 +77,15 @@ Result GLES::Program::draw() {
 
     glUseProgram(shader);
 
+    for (auto const& [key, data] : config.uniforms) {
+        std::visit([&](auto& buffer){
+            this->setUniform(key, *buffer);
+        }, data);
+    }
+
     i = 0;
     for (const auto& draw : draws) {
-        const auto& loc = glGetUniformLocation(shader, "drawIndex");
-        glUniform1i(loc, i++);
-
+        CHECK(this->setUniform("drawIndex", std::vector{i++}));
         CHECK(draw->draw());
     }
 
@@ -93,6 +94,55 @@ Result GLES::Program::draw() {
         glActiveTexture(GL_TEXTURE0 + i++);
         CHECK(texture->end());
     }
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Program::setUniform(const std::string key,
+        const std::variant<std::vector<float>, std::vector<uint32_t>>& data) {
+    glUseProgram(shader);
+    int loc = glGetUniformLocation(shader, key.c_str());
+
+    std::visit(overloaded {
+        [&](std::vector<float> data) {
+            switch (data.size()) {
+            case 1:
+                glUniform1f(loc, data[0]);
+                break;
+            case 2:
+                glUniform2f(loc, data[0], data[1]);
+                break;
+            case 3:
+                glUniform3f(loc, data[0], data[1], data[2]);
+                break;
+            case 4:
+                glUniform4f(loc, data[0], data[1], data[2], data[3]);
+                break;
+            default:
+                std::cerr << "[RENDER] Number of uniforms invalid." << std::endl;
+                throw Result::ERROR;
+            }
+        },
+        [&](std::vector<uint32_t> data) {
+            switch (data.size()) {
+            case 1:
+                glUniform1i(loc, data[0]);
+                break;
+            case 2:
+                glUniform2i(loc, data[0], data[1]);
+                break;
+            case 3:
+                glUniform3i(loc, data[0], data[1], data[2]);
+                break;
+            case 4:
+                glUniform4i(loc, data[0], data[1], data[2], data[3]);
+                break;
+            default:
+                std::cerr << "[RENDER] Number of uniforms invalid." << std::endl;
+                throw Result::ERROR;
+            }
+        },
+    }, data);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
