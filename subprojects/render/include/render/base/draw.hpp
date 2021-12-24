@@ -1,20 +1,21 @@
 #ifndef RENDER_BASE_DRAW_H
 #define RENDER_BASE_DRAW_H
 
+#include <memory>
+
 #include "render/type.hpp"
 #include "render/base/vertex.hpp"
 
 namespace Render {
 
 class Draw {
-public:
+ public:
     enum Mode {
         TriangleFan,
         Triangles,
         LineStrip,
-        LineLoop,
-        Points,
         Lines,
+        Points,
     };
 
     struct Config {
@@ -22,17 +23,13 @@ public:
         Mode mode = Triangles;
     };
 
-    Draw(const Config& c) : cfg(c) {};
+    explicit Draw(const Config& config) : config(config) {}
     virtual ~Draw() = default;
 
-protected:
-    Config cfg;
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
-    virtual Result draw() = 0;
+ protected:
+    Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

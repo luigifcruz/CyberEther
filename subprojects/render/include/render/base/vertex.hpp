@@ -1,12 +1,14 @@
 #ifndef RENDER_BASE_VERTEX_H
 #define RENDER_BASE_VERTEX_H
 
+#include <vector>
+
 #include "render/type.hpp"
 
 namespace Render {
 
 class Vertex {
-public:
+ public:
     struct Buffer {
         enum Usage {
             Dynamic,
@@ -18,8 +20,8 @@ public:
         size_t size = 0;
         size_t stride = 0;
         Usage usage = Static;
-        uint index;
         bool cudaInterop = false;
+        uint index;
 
 #ifdef RENDER_CUDA_AVAILABLE
         cudaGraphicsResource* _cuda_res = nullptr;
@@ -28,23 +30,18 @@ public:
 
     struct Config {
         std::vector<Buffer> buffers;
-        std::vector<uint> indices;
+        std::vector<uint32_t> indices;
     };
 
-    Vertex(const Config& c) : cfg(c) {};
+    explicit Vertex(const Config& config) : config(config) {}
     virtual ~Vertex() = default;
 
     virtual Result update() = 0;
 
-protected:
-    Config cfg;
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
-    virtual Result begin() = 0;
-    virtual Result end() = 0;
+ protected:
+    Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

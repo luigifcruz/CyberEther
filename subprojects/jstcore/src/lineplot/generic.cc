@@ -1,3 +1,4 @@
+#include "jstcore/lineplot/shaders.hpp"
 #include "jstcore/lineplot/generic.hpp"
 
 namespace Jetstream::Lineplot {
@@ -26,13 +27,6 @@ Generic::Generic(const Config& config, const Input& input) : config(config), inp
 }
 
 Result Generic::initRender(float* ptr, bool cudaInterop) {
-    if (!config.render) {
-        std::cerr << "[JETSTREAM:LINEPLOT] Invalid Render pointer" << std::endl;
-        return Result::ERROR;
-    }
-
-    auto render = config.render;
-
     Render::Vertex::Config gridVertexCfg;
     Render::Vertex::Buffer gridVbo;
     gridVbo.data = grid.data();
@@ -40,12 +34,12 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     gridVbo.stride = 3;
     gridVbo.usage = Render::Vertex::Buffer::Static;
     gridVertexCfg.buffers = {gridVbo};
-    gridVertex = render->create(gridVertexCfg);
+    gridVertex = Render::Create(gridVertexCfg);
 
     Render::Draw::Config drawGridVertexCfg;
     drawGridVertexCfg.buffer = gridVertex;
     drawGridVertexCfg.mode = Render::Draw::Lines;
-    drawGridVertex = render->create(drawGridVertexCfg);
+    drawGridVertex = Render::Create(drawGridVertexCfg);
 
     Render::Vertex::Config lineVertexCfg;
     Render::Vertex::Buffer plotVbo;
@@ -55,34 +49,36 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     plotVbo.data = ptr;
     plotVbo.usage = Render::Vertex::Buffer::Dynamic;
     lineVertexCfg.buffers = {plotVbo};
-    lineVertex = render->create(lineVertexCfg);
+    lineVertex = Render::Create(lineVertexCfg);
 
     Render::Draw::Config drawLineVertexCfg;
     drawLineVertexCfg.buffer = lineVertex;
     drawLineVertexCfg.mode = Render::Draw::LineStrip;
-    drawLineVertex = render->create(drawLineVertexCfg);
+    drawLineVertex = Render::Create(drawLineVertexCfg);
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
-    lutTexture = render->create(lutTextureCfg);
+    lutTexture = Render::Create(lutTextureCfg);
 
     Render::Program::Config programCfg;
-    programCfg.vertexSource = &vertexSource;
-    programCfg.fragmentSource = &fragmentSource;
+    programCfg.shaders = {
+        {Render::Backend::Metal, {MetalShader}},
+        {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
+    };
     programCfg.draws = {drawGridVertex, drawLineVertex};
     programCfg.textures = {lutTexture};
-    program = render->create(programCfg);
+    program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
     textureCfg.size = config.size;
-    texture = render->create(textureCfg);
+    texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    surface = render->createAndBind(surfaceCfg);
+    surface = Render::CreateAndBind(surfaceCfg);
 
     return Result::SUCCESS;
 }
@@ -103,8 +99,8 @@ Size2D<int> Generic::size(const Size2D<int>& size) {
     return this->size();
 }
 
-std::weak_ptr<Render::Texture> Generic::tex() const {
-    return texture;
+Render::Texture& Generic::tex() const {
+    return *texture;
 };
 
 } // namespace Jetstream::Lineplot

@@ -4,18 +4,21 @@
 
 namespace Render {
 
-Result GLES::Surface::create() {
-    framebuffer = std::dynamic_pointer_cast<GLES::Texture>(cfg.framebuffer);
+GLES::Surface::Surface(const Config& config, const GLES& instance)
+         : Render::Surface(config), instance(instance) {
+    framebuffer = std::dynamic_pointer_cast<GLES::Texture>(config.framebuffer);
 
-    for (const auto& program : cfg.programs) {
+    for (const auto& program : config.programs) {
         programs.push_back(std::dynamic_pointer_cast<GLES::Program>(program));
     }
+}
 
+Result GLES::Surface::create() {
     for (auto &program : programs) {
         CHECK(program->create());
     }
 
-    CHECK(_createFramebuffer());
+    CHECK(createFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -25,7 +28,7 @@ Result GLES::Surface::destroy() {
         CHECK(program->destroy());
     }
 
-    CHECK(_destroyFramebuffer());
+    CHECK(destroyFramebuffer());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
@@ -36,8 +39,8 @@ Size2D<int> GLES::Surface::size(const Size2D<int>& size) {
     }
 
     if (framebuffer->size(size)) {
-        RENDER_CHECK_THROW(_destroyFramebuffer());
-        RENDER_CHECK_THROW(_createFramebuffer());
+        RENDER_CHECK_THROW(destroyFramebuffer());
+        RENDER_CHECK_THROW(createFramebuffer());
     }
 
     return framebuffer->size();
@@ -62,18 +65,19 @@ Result GLES::Surface::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Surface::_createFramebuffer() {
+Result GLES::Surface::createFramebuffer() {
     if (framebuffer) {
         glGenFramebuffers(1, &fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         CHECK(framebuffer->create());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->raw(), 0);
+        const auto& tex = reinterpret_cast<uintptr_t>(framebuffer->raw());
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     return Result::SUCCESS;
 }
 
-Result GLES::Surface::_destroyFramebuffer() {
+Result GLES::Surface::destroyFramebuffer() {
     if (framebuffer) {
         CHECK(framebuffer->destroy());
         glDeleteFramebuffers(1, &fbo);
@@ -81,4 +85,4 @@ Result GLES::Surface::_destroyFramebuffer() {
     return Result::SUCCESS;
 }
 
-} // namespace Render
+}  // namespace Render

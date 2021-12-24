@@ -1,33 +1,37 @@
 #ifndef RENDER_GLES_SURFACE_H
 #define RENDER_GLES_SURFACE_H
 
+#include <vector>
+#include <memory>
+
 #include "render/gles/instance.hpp"
 
 namespace Render {
 
 class GLES::Surface : public Render::Surface {
-public:
-    Surface(const Config& cfg, const GLES& i) : Render::Surface(cfg), inst(i) {};
+ public:
+    explicit Surface(const Config& config, const GLES& instance);
 
     Size2D<int> size(const Size2D<int>&) final;
 
-protected:
-    const GLES& inst;
+ protected:
+    Result create();
+    Result destroy();
+    Result draw();
+
+ private:
+    const GLES& instance;
 
     uint fbo = 0;
     std::shared_ptr<GLES::Texture> framebuffer;
     std::vector<std::shared_ptr<GLES::Program>> programs;
 
-    Result create() final;
-    Result destroy() final;
-    Result draw() final;
-
-    Result _createFramebuffer();
-    Result _destroyFramebuffer();
+    Result createFramebuffer();
+    Result destroyFramebuffer();
 
     friend class GLES;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

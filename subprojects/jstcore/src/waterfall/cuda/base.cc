@@ -3,7 +3,7 @@
 namespace Jetstream::Waterfall {
 
 CUDA::CUDA(const Config& config, const Input& input) : Generic(config, input) {
-    if (!config.render->cudaInteropSupported()) {
+    if (!Render::HasCudaInterop()) {
         std::cerr << "[WATERFALL::CUDA] This implementation expects the choosen render to be \
             compatible with CUDA interopability. Please use the standard CPU implementation." << std::endl;
         JST_CHECK_THROW(Result::ERROR);

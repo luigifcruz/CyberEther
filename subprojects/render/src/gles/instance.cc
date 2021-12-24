@@ -7,6 +7,9 @@
 
 namespace Render {
 
+GLES::GLES(const Config& config) : Render::Instance(config) {
+}
+
 Result GLES::create() {
     if (!glfwInit()) {
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -15,11 +18,11 @@ Result GLES::create() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_RESIZABLE, cfg.resizable);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, cfg.vsync);
+    glfwWindowHint(GLFW_RESIZABLE, config.resizable);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
 
-    auto [width, height] = cfg.size;
-    window = glfwCreateWindow(width, height, cfg.title.c_str(), NULL, NULL);
+    auto [width, height] = config.size;
+    window = glfwCreateWindow(width, height, config.title.c_str(), NULL, NULL);
     if (!window) {
         glfwTerminate();
         return Result::FAILED_TO_OPEN_SCREEN;
@@ -27,25 +30,26 @@ Result GLES::create() {
 
     glfwMakeContextCurrent(window);
 
-    if (cfg.scale == -1.0) {
+    if (config.scale == -1.0) {
 #if !defined(__EMSCRIPTEN__) && GLFW_VERSION_MINOR >= 3
         GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-        glfwGetMonitorContentScale(monitor, &cfg.scale, nullptr);
+        glfwGetMonitorContentScale(monitor, &config.scale, nullptr);
 #else
-        cfg.scale = 1.0;
+        config.scale = 1.0;
 #endif
     }
 
-    cached_renderer_str = (const char*)glGetString(GL_RENDERER);
-    cached_version_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
-    cached_vendor_str = (const char*)glGetString(GL_VENDOR);
-    cached_glsl_str = (const char*)glGetString(GL_VERSION);
+    rendererString  = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    versionString   = reinterpret_cast<const char*>(glGetString(
+        GL_SHADING_LANGUAGE_VERSION));
+    vendorString    = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
+    shaderString    = reinterpret_cast<const char*>(glGetString(GL_VERSION));
 
     for (auto &surface : surfaces) {
         CHECK(surface->create());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->createImgui();
     }
 
@@ -57,7 +61,7 @@ Result GLES::destroy() {
         CHECK(surface->destroy());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->destroyImgui();
     }
 
@@ -77,8 +81,9 @@ Result GLES::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    style->ScaleAllSizes(cfg.scale);
-    io->Fonts->AddFontFromFileTTF("JetBrainsMono-Regular.ttf", 12.0f * cfg.scale, NULL, NULL);
+    style->ScaleAllSizes(config.scale);
+    io->Fonts->AddFontFromFileTTF("B612Mono-Regular.ttf",
+        12.0f * config.scale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
@@ -96,7 +101,7 @@ Result GLES::destroyImgui() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::startImgui() {
+Result GLES::beginImgui() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -112,18 +117,20 @@ Result GLES::endImgui() {
 }
 
 Result GLES::begin() {
-    glLineWidth(cfg.scale);
+    glLineWidth(config.scale);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    if (cfg.imgui) {
-        this->startImgui();
+    if (config.imgui) {
+        this->beginImgui();
 
-        if (cfg.debug) {
+        if (config.debug) {
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
-            ImGui::Text("Renderer Name: %s", this->renderer_str().c_str());
-            ImGui::Text("Renderer Vendor: %s", this->vendor_str().c_str());
-            ImGui::Text("Renderer Version: %s", this->version_str().c_str());
-            ImGui::Text("Renderer GLSL Version: %s", this->glsl_str().c_str());
+            ImGui::Text("Renderer Name: %s", rendererString);
+            ImGui::Text("Renderer Vendor: %s", vendorString);
+            ImGui::Text("Renderer Version: %s", versionString);
+            ImGui::Text("Shader Version: %s", shaderString);
             ImGui::End();
         }
     }
@@ -136,11 +143,11 @@ Result GLES::end() {
         CHECK(surface->draw());
     }
 
-    if (cfg.imgui) {
+    if (config.imgui) {
         this->endImgui();
     }
 
-    glfwGetFramebufferSize(window, &cfg.size.width, &cfg.size.height);
+    glfwGetFramebufferSize(window, &config.size.width, &config.size.height);
     glfwSwapBuffers(window);
     glfwPollEvents();
 
@@ -156,26 +163,10 @@ bool GLES::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 
-std::string GLES::renderer_str() {
-    return cached_renderer_str;
-}
-
-std::string GLES::version_str() {
-    return cached_version_str;
-}
-
-std::string GLES::glsl_str() {
-    return cached_glsl_str;
-}
-
-std::string GLES::vendor_str() {
-    return cached_vendor_str;
-}
-
 uint GLES::convertPixelFormat(PixelFormat pfmt) {
     switch (pfmt) {
-        case PixelFormat::RGB:
-            return GL_RGB;
+        case PixelFormat::RGBA:
+            return GL_RGBA;
         case PixelFormat::RED:
             return GL_RED;
     }
@@ -196,8 +187,8 @@ uint GLES::convertDataFormat(DataFormat dfmt) {
     switch (dfmt) {
         case DataFormat::UI8:
             return GL_R8;
-        case DataFormat::RGB:
-            return GL_RGB;
+        case DataFormat::RGBA:
+            return GL_RGBA;
         case DataFormat::F32:
             return GL_R32F;
     }
@@ -217,26 +208,4 @@ Result GLES::getError(std::string func, std::string file, int line) {
     return Result::SUCCESS;
 }
 
-std::shared_ptr<Render::Surface> GLES::createAndBind(const Render::Surface::Config& cfg) {
-    auto surface = std::make_shared<Surface>(cfg, *this);
-    surfaces.push_back(surface);
-    return surface;
-}
-
-std::shared_ptr<Render::Program> GLES::create(const Render::Program::Config& cfg) {
-    return std::make_shared<Program>(cfg, *this);
-}
-
-std::shared_ptr<Render::Texture> GLES::create(const Render::Texture::Config& cfg) {
-    return std::make_shared<Texture>(cfg, *this);
-}
-
-std::shared_ptr<Render::Vertex> GLES::create(const Render::Vertex::Config& cfg) {
-    return std::make_shared<Vertex>(cfg, *this);
-}
-
-std::shared_ptr<Render::Draw> GLES::create(const Render::Draw::Config& cfg) {
-    return std::make_shared<Draw>(cfg, *this);
-}
-
-} // namespace Render
+}  // namespace Render

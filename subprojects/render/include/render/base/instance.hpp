@@ -1,6 +1,8 @@
 #ifndef RENDER_BASE_INSTANCE_H
 #define RENDER_BASE_INSTANCE_H
 
+#include <string>
+
 #include "render/type.hpp"
 #include "render/base/program.hpp"
 #include "render/base/surface.hpp"
@@ -12,18 +14,18 @@
 namespace Render {
 
 class Instance {
-public:
+ public:
     struct Config {
         Size2D<int> size = {1280, 720};
-        float scale = -1.0;
-        bool resizable = false;
-        bool imgui = false;
-        bool vsync = true;
-        bool debug = false;
         std::string title = "Render";
+        bool resizable = false;
+        float scale = -1.0;
+        bool imgui = false;
+        bool debug = false;
+        bool vsync = true;
     };
 
-    Instance(const Config& c) : cfg(c) {};
+    explicit Instance(const Config& config) : config(config) {}
     virtual ~Instance() = default;
 
     virtual Result create() = 0;
@@ -34,63 +36,13 @@ public:
     virtual Result synchronize() = 0;
     virtual bool keepRunning() = 0;
 
-    virtual std::string renderer_str() = 0;
-    virtual std::string version_str() = 0;
-    virtual std::string vendor_str() = 0;
-    virtual std::string glsl_str() = 0;
+    virtual const Backend getBackendId() const = 0;
+    virtual const bool hasCudaInterop() const = 0;
 
-    constexpr Size2D<int> size() const {
-        return cfg.size;
-    }
-    constexpr float scale() const {
-        return cfg.scale;
-    }
-    constexpr bool resizable() const {
-        return cfg.resizable;
-    }
-    constexpr bool imgui() const {
-        return cfg.imgui;
-    }
-    constexpr bool vsync() const {
-        return cfg.vsync;
-    }
-    constexpr bool debug() const {
-        return cfg.debug;
-    }
-    std::string title() const {
-        return cfg.title;
-    }
-
-    virtual std::shared_ptr<Surface> createAndBind(const Surface::Config&) = 0;
-    virtual std::shared_ptr<Program> create(const Program::Config&) = 0;
-    virtual std::shared_ptr<Texture> create(const Texture::Config&) = 0;
-    virtual std::shared_ptr<Vertex> create(const Vertex::Config&) = 0;
-    virtual std::shared_ptr<Draw> create(const Draw::Config&) = 0;
-
-    static bool cudaInteropSupported() {
-#ifdef RENDER_CUDA_AVAILABLE
-        return true;
-#else
-        return false;
-#endif
-    };
-
-protected:
-    Config cfg;
-
-    virtual Result createImgui() = 0;
-    virtual Result destroyImgui() = 0;
-    virtual Result startImgui() = 0;
-    virtual Result endImgui() = 0;
-
-    std::string cached_renderer_str;
-    std::string cached_version_str;
-    std::string cached_vendor_str;
-    std::string cached_glsl_str;
-
-    static Result getError(std::string func, std::string file, int line);
+ protected:
+    Config config;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

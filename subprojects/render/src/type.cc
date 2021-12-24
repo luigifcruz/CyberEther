@@ -4,8 +4,9 @@
 namespace Render {
 
 void print_error(Result res, const char* func, int line, const char* file) {
-    std::cerr << "Render encountered an exception (" <<  magic_enum::enum_name(res) << ") in " \
-        << func << " in line " << line << " of file " << file << "." << std::endl; \
+    std::cerr << "Render encountered an exception (" <<  magic_enum::enum_name(res) \
+        << ") in " << func << " in line " << line << " of file " << file << "." \
+        << std::endl;
 }
 
 #ifdef RENDER_CUDA_AVAILABLE
@@ -17,4 +18,4 @@ void cuda_print_error(cudaError_t res, const char* func, int line, const char* f
 }
 #endif
 
-} // namespace Render
+}  // namespace Render

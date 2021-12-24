@@ -10,6 +10,7 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
     subproject('jetstream').get_variable('libjetstream_dep'),
+    dependency('fmt'),
 ]
 inc_lst = [
     include_directories(get_option('prefix') + '/include'),
@@ -21,6 +22,7 @@ inc_lst = [
 subdir('meson')
 subdir('src')
 subdir('include')
+subdir('resources')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
@@ -42,6 +44,8 @@ librender_dep = declare_dependency(
     dependencies: dep_lst,
     link_with: librender
 )
+
+subdir('examples')
 
 pkg = import('pkgconfig')
 pkg.generate(

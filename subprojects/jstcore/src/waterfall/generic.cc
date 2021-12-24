@@ -1,3 +1,4 @@
+#include "jstcore/waterfall/shaders.hpp"
 #include "jstcore/waterfall/generic.hpp"
 
 namespace Jetstream::Waterfall {
@@ -5,22 +6,15 @@ namespace Jetstream::Waterfall {
 Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {}
 
 Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
-    if (!config.render) {
-        std::cerr << "[JETSTREAM:WATERFALL] Invalid Render pointer" << std::endl;
-        return Result::ERROR;
-    }
-
-    auto render = config.render;
-
     Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = Render::Extras::FillScreenVertices();
     vertexCfg.indices = Render::Extras::FillScreenIndices();
-    vertex = render->create(vertexCfg);
+    vertex = Render::Create(vertexCfg);
 
     Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Triangles;
-    drawVertex = render->create(drawVertexCfg);
+    drawVertex = Render::Create(drawVertexCfg);
 
     Render::Texture::Config binTextureCfg;
     binTextureCfg.size = {static_cast<int>(input.in.buf.size()), ymax};
@@ -30,29 +24,35 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     binTextureCfg.pfmt = Render::PixelFormat::RED;
     binTextureCfg.ptype = Render::PixelType::F32;
     binTextureCfg.dfmt = Render::DataFormat::F32;
-    binTexture = render->create(binTextureCfg);
+    binTexture = Render::Create(binTextureCfg);
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
-    lutTexture = render->create(lutTextureCfg);
+    lutTexture = Render::Create(lutTextureCfg);
 
     Render::Program::Config programCfg;
-    programCfg.vertexSource = &vertexSource;
-    programCfg.fragmentSource = &fragmentSource;
+    programCfg.shaders = {
+        {Render::Backend::Metal, {MetalShader}},
+        {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
+    };
     programCfg.draws = {drawVertex};
     programCfg.textures = {binTexture, lutTexture};
-    program = render->create(programCfg);
+    programCfg.uniforms = {
+        {"index", &indexUniform},
+        {"interpolate", &interpolateUniform},
+    };
+    program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
     textureCfg.size = config.size;
-    texture = render->create(textureCfg);
+    texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    surface = render->createAndBind(surfaceCfg);
+    surface = Render::CreateAndBind(surfaceCfg);
 
     return Result::SUCCESS;
 }
@@ -70,17 +70,18 @@ Result Generic::present() {
     // TODO: Fix this horrible thing.
     if (blocks < 0) {
         blocks = ymax - last;
-        binTexture->fill(start, 0, input.in.buf.size(), blocks);
+
+        binTexture->fillRow(start, blocks);
+
         start = 0;
         blocks = inc;
     }
 
-    binTexture->fill(start, 0, input.in.buf.size(), blocks);
+    binTexture->fillRow(start, blocks);
     last = inc;
 
-    program->setUniform("Index", std::vector<float>{inc/(float)ymax});
-    program->setUniform("Interpolate", std::vector<int>{(int)config.interpolate});
-    vertex->update();
+    indexUniform[0] = inc / (float)ymax;
+    interpolateUniform[0] = config.interpolate;
 
     return Result::SUCCESS;
 }
@@ -97,8 +98,8 @@ Size2D<int> Generic::size(const Size2D<int>& size) {
     return this->size();
 }
 
-std::weak_ptr<Render::Texture> Generic::tex() const {
-    return texture;
+Render::Texture& Generic::tex() const {
+    return *texture;
 };
 
 } // namespace Jetstream::Waterfall

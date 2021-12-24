@@ -1,11 +1,14 @@
 #ifndef RENDER_TYPE_H
 #define RENDER_TYPE_H
 
+#include <fmt/core.h>
+
+#include <unistd.h>
+
 #include <vector>
 #include <memory>
 #include <iostream>
 #include <algorithm>
-#include <unistd.h>
 #include <cstring>
 
 #include "render_config.hpp"
@@ -37,6 +40,15 @@ void print_error(Result, const char*, int, const char*);
     if (result != Render::Result::SUCCESS) { \
         print_error(result, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
         throw result; \
+    } \
+}
+#endif
+
+#ifndef RENDER_ASSERT
+#define RENDER_ASSERT(result) { \
+    if (result == nullptr) { \
+        print_error(Result::ERROR, __PRETTY_FUNCTION__, __LINE__, __FILE__); \
+        return Result::ERROR; \
     } \
 }
 #endif
@@ -78,21 +90,21 @@ void cuda_print_error(cudaError_t, const char*, int, const char*);
 #endif
 #endif
 
-enum struct API {
-	GLES,
-	VULKAN,
-	D3D12,
-	METAL,
-	WEBGPU,
+enum struct Backend {
+    GLES,
+    Vulkan,
+    DX12,
+    Metal,
+    WebGPU,
 };
 
 enum class PixelFormat : uint {
-    RGB,
+    RGBA,
     RED,
 };
 
 enum class DataFormat : uint {
-    RGB,
+    RGBA,
     UI8,
     F32,
 };
@@ -102,6 +114,9 @@ enum class PixelType : uint {
     F32,
 };
 
-} // namespace Render
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+}  // namespace Render
 
 #endif

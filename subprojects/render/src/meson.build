@@ -6,6 +6,7 @@ src_lst += files([
 sum_lst = {}
 
 subdir('gles')
+subdir('metal')
 
 summary(sum_lst, section: 'Render Backends', bool_yn: true)
 

@@ -1,6 +1,13 @@
 #ifndef RENDER_BASE_PROGRAM_H
 #define RENDER_BASE_PROGRAM_H
 
+#include <map>
+#include <variant>
+#include <vector>
+#include <memory>
+#include <utility>
+#include <string>
+
 #include "render/type.hpp"
 #include "render/base/texture.hpp"
 #include "render/base/vertex.hpp"
@@ -9,28 +16,24 @@
 namespace Render {
 
 class Program {
-public:
+ public:
     struct Config {
-        const char* const* vertexSource = nullptr;
-        const char* const* fragmentSource = nullptr;
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
+        std::vector<std::pair<std::string,
+            std::variant<std::vector<float>*, std::vector<uint32_t>*>>> uniforms;
+        std::map<Backend, std::vector<const char*>> shaders;
     };
 
-    Program(const Config& c) : cfg(c) {};
+    explicit Program(const Config& config) : config(config) {}
     virtual ~Program() = default;
 
-    virtual Result setUniform(std::string, const std::vector<int>&) = 0;
-    virtual Result setUniform(std::string, const std::vector<float>&) = 0;
+ protected:
+    Config config;
 
-protected:
-    Config cfg;
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
-    virtual Result draw() = 0;
+    uint32_t drawIndex = 0;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif

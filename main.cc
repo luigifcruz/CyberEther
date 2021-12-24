@@ -19,8 +19,9 @@ public:
         renderCfg.resizable = true;
         renderCfg.imgui = true;
         renderCfg.vsync = true;
+        renderCfg.debug = true;
         renderCfg.title = "CyberEther";
-        render = Render::Instantiate(Render::API::GLES, renderCfg);
+        Render::Init(Render::Backend::GLES, renderCfg);
 
         // Allocate Radio Buffer
         stream = std::vector<std::complex<float>>(2048);
@@ -32,22 +33,26 @@ public:
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        auto gui = Subloop<Async>::New(loop);
+        auto gui = Subloop<Sync>::New(loop);
 
-        lpt = gui->add<Lineplot::CPU>("lpt0", {render}, {
+        lpt = gui->add<Lineplot::CPU>("lpt0", {}, {
             fft->output(),
         });
 
-        wtf = gui->add<Waterfall::CPU>("wtf0", {render}, {
+        wtf = gui->add<Waterfall::CPU>("wtf0", {}, {
             fft->output(),
         });
     }
 
+    bool keep_running() {
+        return Render::KeepRunning();
+    }
+
     void begin() {
-        render->create();
+        Render::Create();
 
         dsp = std::thread([&]{
-            device = std::make_shared<Samurai::AirspyHF::Device>();
+            device = std::make_shared<Samurai::Airspy::Device>();
 
             deviceConfig.sampleRate = 10e6;
             device->Enable(deviceConfig);
@@ -76,15 +81,11 @@ public:
         streaming = false;
         dsp.join();
 
-        render->destroy();
-    }
-
-    bool keep_running() {
-        return render->keepRunning();
+        Render::Destroy();
     }
 
     void render_step() {
-        render->begin();
+        Render::Begin();
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
@@ -92,7 +93,7 @@ public:
             ImGui::Begin("Lineplot");
             auto [x, y] = ImGui::GetContentRegionAvail();
             auto [width, height] = lpt->size({(int)x, (int)y});
-            ImGui::Image((void*)(intptr_t)lpt->tex().lock()->raw(), ImVec2(width, height));
+            ImGui::Image(lpt->tex().raw(), ImVec2(width, height));
             ImGui::End();
         }
 
@@ -100,7 +101,7 @@ public:
             ImGui::Begin("Waterfall");
             auto [x, y] = ImGui::GetContentRegionAvail();
             auto [width, height] = wtf->size({(int)x, (int)y});
-            ImGui::Image((void*)(intptr_t)wtf->tex().lock()->raw(), ImVec2(width, height));
+            ImGui::Image(wtf->tex().raw(), ImVec2(width, height));
             ImGui::End();
         }
 
@@ -136,17 +137,14 @@ public:
         }
         ImGui::End();
 
-        render->synchronize();
+        Render::Synchronize();
         loop->present();
-        render->end();
+        Render::End();
     }
 
 private:
     std::thread dsp;
     bool streaming = false;
-
-    // Render
-    std::shared_ptr<Render::Instance> render;
 
     // Jetstream
     std::shared_ptr<Jetstream::Loop<Sync>> loop;

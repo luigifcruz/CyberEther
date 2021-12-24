@@ -2,13 +2,17 @@
 
 namespace Render {
 
+GLES::Vertex::Vertex(const Config& config, const GLES& instance)
+         : Render::Vertex(config), instance(instance) {
+}
+
 Result GLES::Vertex::create() {
     glGenVertexArrays(1, &vao);
 
     this->begin();
     int i = 0;
     bool cudaEnabled = false;
-    for (auto& buffer : cfg.buffers) {
+    for (auto& buffer : config.buffers) {
         uint usage = GL_STATIC_DRAW;
         switch (buffer.usage) {
             case Vertex::Buffer::Usage::Dynamic:
@@ -47,12 +51,12 @@ Result GLES::Vertex::create() {
 #endif
     }
 
-    if (cfg.indices.size() != 0) {
+    if (config.indices.size() != 0) {
         glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, cfg.indices.size() * sizeof(uint),
-                cfg.indices.data(), GL_STATIC_DRAW);
-        vertex_count = cfg.indices.size();
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, config.indices.size() * sizeof(uint),
+                config.indices.data(), GL_STATIC_DRAW);
+        vertex_count = config.indices.size();
     }
     this->end();
 
@@ -62,7 +66,7 @@ Result GLES::Vertex::create() {
 Result GLES::Vertex::destroy() {
     bool cudaEnabled = false;
 
-    for (auto& buffer : cfg.buffers) {
+    for (auto& buffer : config.buffers) {
         glDeleteBuffers(1, &buffer.index);
 #ifdef RENDER_CUDA_AVAILABLE
         if (buffer._cuda_res) {
@@ -98,7 +102,7 @@ Result GLES::Vertex::end() {
 
 Result GLES::Vertex::update() {
     this->begin();
-    for (auto& buffer : cfg.buffers) {
+    for (auto& buffer : config.buffers) {
         if (buffer.cudaInterop) {
 #ifdef RENDER_CUDA_AVAILABLE
             float* buffer_ptr;
@@ -121,11 +125,11 @@ Result GLES::Vertex::update() {
 }
 
 uint GLES::Vertex::buffered() {
-    return cfg.indices.size() != 0;
+    return config.indices.size() != 0;
 }
 
 uint GLES::Vertex::count() {
     return vertex_count;
 }
 
-} // namespace Render
+}  // namespace Render

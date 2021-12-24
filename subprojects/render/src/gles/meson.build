@@ -18,9 +18,9 @@ if all_gl_deps_found
     'texture.cc',
     'vertex.cc',
     'draw.cc',
-    'imgui_impl_opengl3.cpp',
-    'imgui_impl_glfw.cpp',
   ])
+
+  subdir('tools')
 else
   if get_option('OpenGL')
     error('OpenGL dependencies were not found.')

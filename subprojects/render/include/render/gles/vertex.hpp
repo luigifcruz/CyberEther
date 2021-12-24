@@ -10,24 +10,25 @@
 namespace Render {
 
 class GLES::Vertex : public Render::Vertex {
-public:
-    Vertex(const Config& cfg, const GLES& i) : Render::Vertex(cfg), inst(i) {};
+ public:
+    explicit Vertex(const Config& config, const GLES& instance);
 
     Result update() final;
 
-protected:
-    const GLES& inst;
-
-    uint vao, ebo;
-    uint vertex_count;
-
-    Result create() final;
-    Result destroy() final;
-    Result begin() final;
-    Result end() final;
+ protected:
+    Result create();
+    Result destroy();
+    Result begin();
+    Result end();
 
     uint count();
     uint buffered();
+
+ private:
+    const GLES& instance;
+
+    uint vao, ebo;
+    uint vertex_count;
 
 #ifdef RENDER_CUDA_AVAILABLE
     cudaStream_t stream;
@@ -36,6 +37,6 @@ protected:
     friend class GLES::Draw;
 };
 
-} // namespace Render
+}  // namespace Render
 
 #endif
