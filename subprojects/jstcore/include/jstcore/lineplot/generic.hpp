@@ -28,7 +28,7 @@ public:
     }
     Size2D<int> size(const Size2D<int>&);
 
-    std::weak_ptr<Render::Texture> tex() const;
+    Render::Texture& tex() const;
 
 protected:
     Config config;

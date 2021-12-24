@@ -40,8 +40,8 @@ Result GLES::create() {
     }
 
     rendererString  = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-    versionString   = reinterpret_cast<const char*>
-        (glGetString(GL_SHADING_LANGUAGE_VERSION));
+    versionString   = reinterpret_cast<const char*>(glGetString(
+        GL_SHADING_LANGUAGE_VERSION));
     vendorString    = reinterpret_cast<const char*>(glGetString(GL_VENDOR));
     shaderString    = reinterpret_cast<const char*>(glGetString(GL_VERSION));
 

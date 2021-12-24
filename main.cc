@@ -93,7 +93,7 @@ public:
             ImGui::Begin("Lineplot");
             auto [x, y] = ImGui::GetContentRegionAvail();
             auto [width, height] = lpt->size({(int)x, (int)y});
-            ImGui::Image((void*)(intptr_t)lpt->tex().lock()->raw(), ImVec2(width, height));
+            ImGui::Image(lpt->tex().raw(), ImVec2(width, height));
             ImGui::End();
         }
 
@@ -101,7 +101,7 @@ public:
             ImGui::Begin("Waterfall");
             auto [x, y] = ImGui::GetContentRegionAvail();
             auto [width, height] = wtf->size({(int)x, (int)y});
-            ImGui::Image((void*)(intptr_t)wtf->tex().lock()->raw(), ImVec2(width, height));
+            ImGui::Image(wtf->tex().raw(), ImVec2(width, height));
             ImGui::End();
         }
 

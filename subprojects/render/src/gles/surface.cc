@@ -70,7 +70,8 @@ Result GLES::Surface::createFramebuffer() {
         glGenFramebuffers(1, &fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         CHECK(framebuffer->create());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->tex, 0);
+        const auto& tex = reinterpret_cast<uintptr_t>(framebuffer->raw());
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     return Result::SUCCESS;

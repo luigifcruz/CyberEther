@@ -44,6 +44,8 @@ Result GLES::Program::create() {
     i = 0;
     for (const auto& texture : textures) {
         CHECK(texture->create());
+
+        glUseProgram(shader);
         const auto& loc = glGetUniformLocation(shader, texture->config.key.c_str());
         glUniform1i(loc, i++);
     }
@@ -80,7 +82,9 @@ Result GLES::Program::draw() {
 
     i = 0;
     for (const auto& draw : draws) {
-        //CHECK(this->setUniform("drawIndex", std::vector<int>{i++}));
+        const auto& loc = glGetUniformLocation(shader, "drawIndex");
+        glUniform1i(loc, i++);
+
         CHECK(draw->draw());
     }
 
