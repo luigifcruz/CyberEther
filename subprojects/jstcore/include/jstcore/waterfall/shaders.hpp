@@ -55,10 +55,10 @@ inline const char* GlesVertexShader = R"END(#version 300 es
     layout (location = 0) in vec3 aPos;
     layout (location = 1) in vec2 aTexCoord;
     out vec2 TexCoord;
-    uniform float Index;
+    uniform float index;
     void main() {
         gl_Position = vec4(aPos, 1.0);
-        float coord = (Index-aTexCoord.y);
+        float coord = (index-aTexCoord.y);
         TexCoord = vec2(aTexCoord.x, coord);
     }
 )END";
@@ -67,7 +67,7 @@ inline const char* GlesFragmentShader = R"END(#version 300 es
     precision highp float;
     out vec4 FragColor;
     in vec2 TexCoord;
-    uniform int Interpolate;
+    uniform int interpolate;
     uniform int drawIndex;
     uniform sampler2D BinTexture;
     uniform sampler2D LutTexture;
@@ -102,10 +102,10 @@ inline const char* GlesFragmentShader = R"END(#version 300 es
     }
     void main() {
         float mag;
-        if (Interpolate == 1) {
+        if (interpolate == 1) {
             mag = textureBicubic(BinTexture, TexCoord).r;
         }
-        if (Interpolate == 0) {
+        if (interpolate == 0) {
             mag = texture(BinTexture, TexCoord).r;
         }
         FragColor = texture(LutTexture, vec2(mag, 0));

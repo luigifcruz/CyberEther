@@ -120,9 +120,9 @@ Result GLES::Texture::fillRow(const std::size_t& y, const std::size_t& height) {
         return this->cudaCopyToTexture(y, 0, config.size.width, config.size.height);
     }
 
-    // TODO: Fix this.
     CHECK(this->begin());
-    glTexImage2D(GL_TEXTURE_2D, 0, dfmt, config.size.width, config.size.height, 0, pfmt, ptype, config.buffer);
+    size_t offset = y * config.size.width * ((config.ptype == PixelType::F32) ? sizeof(float) : sizeof(uint8_t));
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, config.size.width, height, pfmt, ptype, config.buffer + offset);
     CHECK(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
