@@ -22,6 +22,7 @@ inc_lst = [
 subdir('meson')
 subdir('src')
 subdir('include')
+subdir('resources')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
