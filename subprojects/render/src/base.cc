@@ -3,6 +3,17 @@
 
 namespace Render {
 
+static void* __Instance__;
+static Backend __Backend__;
+
+void* __GetInstance() {
+    return __Instance__;
+}
+
+Backend __GetBackend() {
+    return __Backend__;
+}
+
 Result Init(const Backend& hint,
         const Instance::Config& config, bool forceApi) {
     auto backend = hint;
@@ -28,12 +39,12 @@ Result Init(const Backend& hint,
     switch (backend) {
 #ifdef RENDER_GLES_AVAILABLE
         case Backend::GLES:
-            __InstanceStorage__ = new Broker<GLES>(config);
+            __Instance__ = new Broker<GLES>(config);
             break;
 #endif
 #ifdef RENDER_METAL_AVAILABLE
         case Backend::Metal:
-            __InstanceStorage__ = new Broker<Metal>(config);
+            __Instance__ = new Broker<Metal>(config);
             break;
 #endif
         default:
@@ -43,7 +54,7 @@ Result Init(const Backend& hint,
             return Result::NO_RENDER_BACKEND_FOUND;
     }
 
-    __BackendStorage__ = backend;
+    __Backend__ = backend;
 
     return Result::SUCCESS;
 }

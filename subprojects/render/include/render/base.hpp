@@ -34,8 +34,8 @@
 
 namespace Render {
 
-static void* __InstanceStorage__;
-static Backend __BackendStorage__;
+void* __GetInstance();
+Backend __GetBackend();
 
 inline std::vector<Backend> AvailableBackends = {
 #ifdef RENDER_GLES_AVAILABLE
@@ -75,19 +75,22 @@ class Broker : public T {
 };
 
 inline auto* Get() {
-    switch (__BackendStorage__) {
+    if (__GetInstance() == nullptr) {
+        std::cerr << "[RENDER] Error. The backend was not initialized." << std::endl;
+        RENDER_CHECK_THROW(Result::NO_RENDER_BACKEND_FOUND);
+    }
+
+    switch (__GetBackend()) {
 #ifdef RENDER_GLES_AVAILABLE
         case Backend::GLES:
-            return static_cast<Broker<GLES>*>(__InstanceStorage__);
+            return static_cast<Broker<GLES>*>(__GetInstance());
 #endif
 #ifdef RENDER_METAL_AVAILABLE
         case Backend::Metal:
-            return static_cast<Broker<Metal>*>(__InstanceStorage__);
+            return static_cast<Broker<Metal>*>(__GetInstance());
 #endif
         default:
-#ifdef RENDER_DEBUG
             std::cerr << "[RENDER] No Backend available." << std::endl;
-#endif
             RENDER_CHECK_THROW(Result::NO_RENDER_BACKEND_FOUND);
     }
 }
