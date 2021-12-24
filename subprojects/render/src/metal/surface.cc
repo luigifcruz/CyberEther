@@ -70,7 +70,7 @@ Result Metal::Surface::createFramebuffer() {
     colorAttachDescOff->setTexture((MTL::Texture*)framebuffer->raw());
     colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
     colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
-    colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 0));
+    colorAttachDescOff->setClearColor(MTL::ClearColor(0, 0, 0, 1.0));
 
     return Result::SUCCESS;
 }

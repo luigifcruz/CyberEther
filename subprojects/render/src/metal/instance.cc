@@ -144,7 +144,7 @@ Result Metal::begin() {
     colorAttachDesc->setTexture(drawable->texture());
     colorAttachDesc->setLoadAction(MTL::LoadActionClear);
     colorAttachDesc->setStoreAction(MTL::StoreActionStore);
-    colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 0));
+    colorAttachDesc->setClearColor(MTL::ClearColor(0, 0, 0, 1.0));
 
     if (config.imgui) {
         CHECK(this->beginImgui());
