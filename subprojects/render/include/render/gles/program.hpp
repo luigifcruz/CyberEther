@@ -18,7 +18,7 @@ class GLES::Program : public Render::Program {
     Result destroy();
     Result draw();
 
-    Result setUniform(const std::string name, const std::variant<std::vector<float>,
+    Result setUniform(const std::string& name, const std::variant<std::vector<float>,
             std::vector<uint32_t>>& vars);
 
  private:

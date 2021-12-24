@@ -3,11 +3,12 @@
 
 #include <fmt/core.h>
 
+#include <unistd.h>
+
 #include <vector>
 #include <memory>
 #include <iostream>
 #include <algorithm>
-#include <unistd.h>
 #include <cstring>
 
 #include "render_config.hpp"
@@ -90,11 +91,11 @@ void cuda_print_error(cudaError_t, const char*, int, const char*);
 #endif
 
 enum struct Backend {
-	GLES,
-	Vulkan,
-	DX12,
-	Metal,
-	WebGPU,
+    GLES,
+    Vulkan,
+    DX12,
+    Metal,
+    WebGPU,
 };
 
 enum class PixelFormat : uint {
@@ -116,6 +117,6 @@ enum class PixelType : uint {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-} // namespace Render
+}  // namespace Render
 
 #endif

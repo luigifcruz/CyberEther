@@ -98,7 +98,7 @@ Result GLES::Program::draw() {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Program::setUniform(const std::string key,
+Result GLES::Program::setUniform(const std::string& key,
         const std::variant<std::vector<float>, std::vector<uint32_t>>& data) {
     glUseProgram(shader);
     int loc = glGetUniformLocation(shader, key.c_str());

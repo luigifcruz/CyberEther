@@ -15,7 +15,7 @@ namespace Render {
 class Metal : public Render::Instance {
  public:
     class Program;
-	class Surface;
+    class Surface;
     class Texture;
     class Vertex;
     class Draw;

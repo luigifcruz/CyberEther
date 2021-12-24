@@ -96,6 +96,8 @@ Result Metal::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(config.scale);
+    io->Fonts->AddFontFromFileTTF("B612Mono-Regular.ttf",
+        12.0f * config.scale, NULL, NULL);
 
     ImGui::StyleColorsDark();
 
