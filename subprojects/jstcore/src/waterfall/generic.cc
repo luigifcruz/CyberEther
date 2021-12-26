@@ -104,14 +104,13 @@ Size2D<int> Generic::size(const Size2D<int>& size) {
 
 float Generic::zoom(const float& zoom) {
     config.zoom = zoom;
+    this->offset(config.offset);
     return config.zoom;
 }
 
 int Generic::offset(const int& offset) {
-    ImGui::Text("%d < (%d - (%d / %f))", offset, config.size.width, config.size.width, config.zoom);
-    if (offset < (config.size.width - (config.size.width / config.zoom)) && offset > 0) {
-        config.offset = offset;
-    }
+    config.offset = std::clamp(offset, 0,
+            (int)(config.size.width - (config.size.width / config.zoom)));
     return config.offset;
 }
 

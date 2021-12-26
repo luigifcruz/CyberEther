@@ -114,13 +114,10 @@ public:
                 if (position == 0) {
                     position = (GetRelativeMousePos().x / wtf->zoom()) + wtf->offset();
                 }
-
                 wtf->offset(position - (GetRelativeMousePos().x / wtf->zoom()));
             } else {
                 position = 0;
             }
-
-            ImGui::Text("Offset: %d | PosX: %f", wtf->offset(), GetRelativeMousePos().x);
 
             ImGui::End();
         }
