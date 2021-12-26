@@ -103,7 +103,7 @@ inline const char* GlesFragmentShader = R"END(#version 300 es
         float mag = 0.0;
 
         if (interpolate == 1) {
-            const float yBlur = 1.0 / data.get_height();
+            float yBlur = 1.0 / float(textureSize(BinTexture, 0).y);
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 4.0*yBlur)).r * 0.0162162162;
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 3.0*yBlur)).r * 0.0540540541;
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 2.0*yBlur)).r * 0.1216216216;
@@ -119,7 +119,7 @@ inline const char* GlesFragmentShader = R"END(#version 300 es
             mag = texture(BinTexture, TexCoord).r;
         }
 
-        return texture(LutTexture, vec2(mag, 0.0));
+        FragColor = texture(LutTexture, vec2(mag, 0.0));
     }
 )END";
 
