@@ -42,11 +42,13 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     programCfg.uniforms = {
         {"index", &indexUniform},
         {"interpolate", &interpolateUniform},
+        {"zoom", &zoomFactor},
+        {"offset", &offsetFactor},
     };
     program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
-    textureCfg.size = config.size;
+    textureCfg.size = binTextureCfg.size;
     texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
@@ -80,8 +82,10 @@ Result Generic::present() {
     binTexture->fillRow(start, blocks);
     last = inc;
 
+    zoomFactor[0] = config.zoom;
     indexUniform[0] = inc / (float)ymax;
     interpolateUniform[0] = config.interpolate;
+    offsetFactor[0] = config.offset / (float)config.size.width;
 
     return Result::SUCCESS;
 }
@@ -96,6 +100,19 @@ Size2D<int> Generic::size(const Size2D<int>& size) {
         config.size = surface->size();
     }
     return this->size();
+}
+
+float Generic::zoom(const float& zoom) {
+    config.zoom = zoom;
+    return config.zoom;
+}
+
+int Generic::offset(const int& offset) {
+    ImGui::Text("%d < (%d - (%d / %f))", offset, config.size.width, config.size.width, config.zoom);
+    if (offset < (config.size.width - (config.size.width / config.zoom)) && offset > 0) {
+        config.offset = offset;
+    }
+    return config.offset;
 }
 
 Render::Texture& Generic::tex() const {

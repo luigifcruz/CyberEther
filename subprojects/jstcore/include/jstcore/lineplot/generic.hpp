@@ -10,7 +10,7 @@ namespace Jetstream::Lineplot {
 class Generic : public Module {
 public:
     struct Config {
-        Size2D<int> size {2500, 500};
+        Size2D<int> size {3072, 500};
     };
 
     struct Input {

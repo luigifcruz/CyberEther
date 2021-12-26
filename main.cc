@@ -24,7 +24,7 @@ public:
         Render::Init(Render::Backend::GLES, renderCfg);
 
         // Allocate Radio Buffer
-        stream = std::vector<std::complex<float>>(2048);
+        stream = std::vector<std::complex<float>>(2 << 13);
 
         // Configure Jetstream
         loop = Loop<Sync>::New();
@@ -84,6 +84,13 @@ public:
         Render::Destroy();
     }
 
+    ImVec2 GetRelativeMousePos() {
+        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
+        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
+        return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
+                      mousePositionAbsolute.y - screenPositionAbsolute.y);
+    }
+
     void render_step() {
         Render::Begin();
 
@@ -102,6 +109,19 @@ public:
             auto [x, y] = ImGui::GetContentRegionAvail();
             auto [width, height] = wtf->size({(int)x, (int)y});
             ImGui::Image(wtf->tex().raw(), ImVec2(width, height));
+
+            if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
+                if (position == 0) {
+                    position = (GetRelativeMousePos().x / wtf->zoom()) + wtf->offset();
+                }
+
+                wtf->offset(position - (GetRelativeMousePos().x / wtf->zoom()));
+            } else {
+                position = 0;
+            }
+
+            ImGui::Text("Offset: %d | PosX: %f", wtf->offset(), GetRelativeMousePos().x);
+
             ImGui::End();
         }
 
@@ -122,6 +142,11 @@ public:
             auto interpolate = wtf->interpolate();
             if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
                 wtf->interpolate(interpolate);
+            }
+
+            auto zoom = wtf->zoom();
+            if (ImGui::DragFloat("Waterfall Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
+                wtf->zoom(zoom);
             }
 
             ImGui::End();
@@ -145,6 +170,8 @@ public:
 private:
     std::thread dsp;
     bool streaming = false;
+
+    int position;
 
     // Jetstream
     std::shared_ptr<Jetstream::Loop<Sync>> loop;

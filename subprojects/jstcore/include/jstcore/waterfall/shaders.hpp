@@ -24,12 +24,15 @@ inline const char* MetalShader = R"END(
             const device packed_float3* vertexArray [[buffer(0)]],
             const device packed_float2* texcoord [[buffer(1)]],
             constant float& index [[buffer(29)]],
+            constant float& zoom [[buffer(27)]],
+            constant float& offset [[buffer(26)]],
             unsigned int vID[[vertex_id]]) {
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
         float vertical = (index + texcoord[vID].y);
-        out.texcoord = vector_float2(texcoord[vID].x, vertical);
+        float horizontal = (texcoord[vID].x / zoom) + offset;
+        out.texcoord = vector_float2(horizontal, vertical);
 
         return out;
     }
@@ -37,11 +40,28 @@ inline const char* MetalShader = R"END(
     fragment float4 fragFunc(
             TexturePipelineRasterizerData in [[stage_in]],
             texture2d<float> data [[texture(0)]],
-            texture2d<float> lut [[texture(1)]]) {
+            texture2d<float> lut [[texture(1)]],
+            constant uint32_t& interpolate [[buffer(28)]]) {
+        float mag = 0.0;
         sampler lutSampler(filter::linear);
-        constexpr sampler dataSampler(address::repeat);
+        constexpr sampler dataSampler(filter::linear, address::repeat);
 
-        float mag = data.sample(dataSampler, in.texcoord).r;
+        if (interpolate == 1) {
+            const float yBlur = 1.0 / data.get_height();
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 4.0*yBlur)).r * 0.0162162162;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 3.0*yBlur)).r * 0.0540540541;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 2.0*yBlur)).r * 0.1216216216;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 1.0*yBlur)).r * 0.1945945946;
+            mag += data.sample(dataSampler, in.texcoord).r * 0.2270270270;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 1.0*yBlur)).r * 0.1945945946;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 2.0*yBlur)).r * 0.1216216216;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 3.0*yBlur)).r * 0.0540540541;
+            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 4.0*yBlur)).r * 0.0162162162;
+        }
+
+        if (interpolate == 0) {
+            mag = data.sample(dataSampler, in.texcoord).r;
+        }
 
         return lut.sample(lutSampler, vector_float2(mag, 0.0));
     }

@@ -12,7 +12,9 @@ class Generic : public Module {
 public:
     struct Config {
         bool interpolate = true;
-        Size2D<int> size = {2500, 500};
+        Size2D<int> size = {2500, 2000};
+        float zoom = 1.0;
+        int offset = 0.0;
     };
 
     struct Input {
@@ -35,6 +37,16 @@ public:
     }
     Size2D<int> size(const Size2D<int>&);
 
+    constexpr float zoom() const {
+        return config.zoom;
+    }
+    float zoom(const float&);
+
+    constexpr int offset() const {
+        return config.offset;
+    }
+    int offset(const int&);
+
     Render::Texture& tex() const;
 
 protected:
@@ -45,6 +57,8 @@ protected:
 
     std::vector<float> indexUniform = {0.0};
     std::vector<uint32_t> interpolateUniform = {0};
+    std::vector<float> zoomFactor = {1.0};
+    std::vector<float> offsetFactor = {0.0};
 
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> binTexture;
