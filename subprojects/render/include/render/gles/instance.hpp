@@ -20,6 +20,7 @@ class GLES : public Render::Instance {
     class Texture;
     class Vertex;
     class Draw;
+    class Buffer;
 
     explicit GLES(const Config& config);
 

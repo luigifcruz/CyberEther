@@ -30,39 +30,27 @@ inline const char* MetalShader = R"END(
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
-        float vertical = (index + texcoord[vID].y);
-        float horizontal = (texcoord[vID].x / zoom) + offset;
+        float vertical = (texcoord[vID].y * 2000.0);
+        float horizontal = (texcoord[vID].x * 65536.0);
         out.texcoord = vector_float2(horizontal, vertical);
 
         return out;
     }
 
+    struct asd {
+        float color[2000][65536];
+    };
+
     fragment float4 fragFunc(
             TexturePipelineRasterizerData in [[stage_in]],
-            texture2d<float> data [[texture(0)]],
-            texture2d<float> lut [[texture(1)]],
+            const device asd* data [[buffer(0)]],
+            texture2d<float> lut [[texture(0)]],
             constant uint32_t& interpolate [[buffer(28)]]) {
         float mag = 0.0;
-        sampler lutSampler(filter::linear);
-        constexpr sampler dataSampler(filter::linear, address::repeat);
 
-        if (interpolate == 1) {
-            const float yBlur = 1.0 / data.get_height();
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 4.0*yBlur)).r * 0.0162162162;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 3.0*yBlur)).r * 0.0540540541;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 2.0*yBlur)).r * 0.1216216216;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 1.0*yBlur)).r * 0.1945945946;
-            mag += data.sample(dataSampler, in.texcoord).r * 0.2270270270;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 1.0*yBlur)).r * 0.1945945946;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 2.0*yBlur)).r * 0.1216216216;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 3.0*yBlur)).r * 0.0540540541;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 4.0*yBlur)).r * 0.0162162162;
-        }
+        mag = data->color[(int)in.texcoord.y][(int)in.texcoord.x];
 
-        if (interpolate == 0) {
-            mag = data.sample(dataSampler, in.texcoord).r;
-        }
-
+        constexpr sampler lutSampler(filter::linear);
         return lut.sample(lutSampler, vector_float2(mag, 0.0));
     }
 )END";

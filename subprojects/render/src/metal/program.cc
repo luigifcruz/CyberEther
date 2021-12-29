@@ -1,6 +1,7 @@
 #include "render/metal/program.hpp"
 #include "render/metal/texture.hpp"
 #include "render/metal/draw.hpp"
+#include "render/metal/buffer.hpp"
 
 namespace Render {
 
@@ -12,6 +13,10 @@ Metal::Program::Program(const Config& config, const Metal& instance)
 
     for (const auto& texture : config.textures) {
         textures.push_back(std::dynamic_pointer_cast<Metal::Texture>(texture));
+    }
+
+    for (const auto& buffer : config.buffers) {
+        buffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
     }
 }
 
@@ -56,6 +61,10 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
         CHECK(texture->create());
     }
 
+    for (const auto& buffer : buffers) {
+        CHECK(buffer->create());
+    }
+
     return Result::SUCCESS;
 }
 
@@ -81,6 +90,10 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
 
     for (std::size_t i = 0; i < textures.size(); i++) {
         renderCmdEncoder->setFragmentTexture((MTL::Texture*)textures[i]->raw(), i);
+    }
+
+    for (std::size_t i = 0; i < buffers.size(); i++) {
+        renderCmdEncoder->setFragmentBuffer((MTL::Buffer*)buffers[i]->raw(), 0, i);
     }
 
     std::size_t index = 29;

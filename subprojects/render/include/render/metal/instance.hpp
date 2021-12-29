@@ -19,6 +19,7 @@ class Metal : public Render::Instance {
     class Texture;
     class Vertex;
     class Draw;
+    class Buffer;
 
     explicit Metal(const Config& config);
 

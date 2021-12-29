@@ -16,15 +16,11 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = Render::Create(drawVertexCfg);
 
-    Render::Texture::Config binTextureCfg;
-    binTextureCfg.size = {static_cast<int>(input.in.buf.size()), ymax};
-    binTextureCfg.buffer = ptr;
-    binTextureCfg.cudaInterop = cudaInterop;
-    binTextureCfg.key = "BinTexture";
-    binTextureCfg.pfmt = Render::PixelFormat::RED;
-    binTextureCfg.ptype = Render::PixelType::F32;
-    binTextureCfg.dfmt = Render::DataFormat::F32;
-    binTexture = Render::Create(binTextureCfg);
+    fmt::print("{} {}\n", input.in.buf.size(), ymax);
+    Render::Buffer::Config bufferCfg;
+    bufferCfg.size = input.in.buf.size() * ymax * sizeof(float);
+    bufferCfg.buffer = ptr;
+    binTexture = Render::Create(bufferCfg);
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
@@ -38,7 +34,8 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
         {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
     };
     programCfg.draws = {drawVertex};
-    programCfg.textures = {binTexture, lutTexture};
+    programCfg.textures = {lutTexture};
+    programCfg.buffers = {binTexture};
     programCfg.uniforms = {
         {"index", &indexUniform},
         {"interpolate", &interpolateUniform},
@@ -48,7 +45,7 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
-    textureCfg.size = binTextureCfg.size;
+    textureCfg.size = config.size;
     texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
@@ -66,21 +63,7 @@ Result Generic::compute() {
 }
 
 Result Generic::present() {
-    int start = last;
-    int blocks = (inc - last);
-
-    // TODO: Fix this horrible thing.
-    if (blocks < 0) {
-        blocks = ymax - last;
-
-        binTexture->fillRow(start, blocks);
-
-        start = 0;
-        blocks = inc;
-    }
-
-    binTexture->fillRow(start, blocks);
-    last = inc;
+    binTexture->fill();
 
     zoomFactor[0] = config.zoom;
     indexUniform[0] = inc / (float)ymax;

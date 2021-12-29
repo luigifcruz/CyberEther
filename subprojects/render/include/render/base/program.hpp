@@ -12,6 +12,7 @@
 #include "render/base/texture.hpp"
 #include "render/base/vertex.hpp"
 #include "render/base/draw.hpp"
+#include "render/base/buffer.hpp"
 
 namespace Render {
 
@@ -20,6 +21,7 @@ class Program {
     struct Config {
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
+        std::vector<std::shared_ptr<Buffer>> buffers;
         std::vector<std::pair<std::string,
             std::variant<std::vector<float>*, std::vector<uint32_t>*>>> uniforms;
         std::map<Backend, std::vector<const char*>> shaders;

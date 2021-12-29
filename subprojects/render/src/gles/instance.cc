@@ -4,6 +4,7 @@
 #include "render/gles/texture.hpp"
 #include "render/gles/vertex.hpp"
 #include "render/gles/draw.hpp"
+#include "render/gles/buffer.hpp"
 
 namespace Render {
 

@@ -61,7 +61,7 @@ protected:
     std::vector<float> offsetFactor = {0.0};
 
     std::shared_ptr<Render::Texture> texture;
-    std::shared_ptr<Render::Texture> binTexture;
+    std::shared_ptr<Render::Buffer> binTexture;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;
     std::shared_ptr<Render::Surface> surface;
