@@ -10,10 +10,11 @@ namespace Jetstream::Waterfall {
 // Metal
 //
 
+// TODO: Fix macro invalid memory access.
 inline const char* MetalShader = R"END(
     #include <metal_stdlib>
 
-    #define SAMPLER(x, y) ({ int _idx = ((int)y)*width+((int)x); (_idx < size && _idx > 0) ? data[_idx] : 0.0; })
+    #define SAMPLER(x, y) ({ int _idx = ((int)y)*width+((int)x); (_idx < size && _idx > 0) ? data[_idx] : data[_idx + size]; })
 
     using namespace metal;
 
@@ -32,8 +33,8 @@ inline const char* MetalShader = R"END(
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
-        float vertical = ((texcoord[vID].y) * 2000.0);
-        float horizontal = (((texcoord[vID].x / zoom) + offset) * 65536.0);
+        float vertical = ((index - (1 - texcoord[vID].y)) * 2000.0);
+        float horizontal = (((texcoord[vID].x / zoom) + offset) * 16384.0);
         out.texcoord = float2(horizontal, vertical);
 
         return out;
@@ -46,7 +47,7 @@ inline const char* MetalShader = R"END(
             constant uint32_t& interpolate [[buffer(28)]]) {
         float mag = 0.0;
 
-        const int width = 65536;
+        const int width = 16384;
         const int size = (width * 2000);
 
         if (interpolate == 1) {

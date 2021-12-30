@@ -7,7 +7,7 @@ Metal::Buffer::Buffer(const Config& config, const Metal& instance)
 }
 
 Result Metal::Buffer::create() {
-    buffer = instance.getDevice()->newBuffer(config.size, MTL::ResourceStorageModeManaged);
+    buffer = instance.getDevice()->newBuffer(config.size, MTL::ResourceStorageModeShared);
     RENDER_ASSERT(buffer);
 
     return Result::SUCCESS;
