@@ -29,7 +29,7 @@ Result Metal::Buffer::fill() {
 
 Result Metal::Buffer::fill(const std::size_t& offset, const std::size_t& size) {
     memcpy((uint8_t*)buffer->contents() + offset, config.buffer + offset, size);
-    buffer->didModifyRange(NS::Range(0, size));
+    buffer->didModifyRange(NS::Range(offset, offset + size));
 
     return Result::SUCCESS;
 }

@@ -16,7 +16,6 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = Render::Create(drawVertexCfg);
 
-    fmt::print("{} {}\n", input.in.buf.size(), ymax);
     Render::Buffer::Config bufferCfg;
     bufferCfg.size = input.in.buf.size() * ymax * sizeof(float);
     bufferCfg.buffer = ptr;
@@ -63,7 +62,22 @@ Result Generic::compute() {
 }
 
 Result Generic::present() {
-    binTexture->fill();
+    int start = last;
+    int blocks = (inc - last);
+
+    // TODO: Fix this horrible thing.
+    if (blocks < 0) {
+        blocks = ymax - last;
+
+        binTexture->fill(start * input.in.buf.size() * sizeof(float), blocks * input.in.buf.size() * sizeof(float));
+
+        start = 0;
+        blocks = inc;
+    }
+
+    // TODO: Improve this.
+    binTexture->fill(start * input.in.buf.size() * sizeof(float), blocks * input.in.buf.size() * sizeof(float));
+    last = inc;
 
     zoomFactor[0] = config.zoom;
     indexUniform[0] = inc / (float)ymax;
