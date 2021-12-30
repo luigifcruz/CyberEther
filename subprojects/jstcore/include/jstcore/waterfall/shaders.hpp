@@ -14,7 +14,11 @@ namespace Jetstream::Waterfall {
 inline const char* MetalShader = R"END(
     #include <metal_stdlib>
 
-    #define SAMPLER(x, y) ({ int _idx = ((int)y)*width+((int)x); (_idx < size && _idx > 0) ? data[_idx] : data[_idx + size]; })
+    #define SAMPLER(x, y) ({ \
+        int _idx = ((int)y)*uniforms.width+((int)x); \
+        (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : \
+            _idx += uniforms.maxSize; \
+            (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : 1.0; })
 
     using namespace metal;
 
@@ -23,18 +27,26 @@ inline const char* MetalShader = R"END(
         float2 texcoord;
     };
 
+    struct ShaderUniforms {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    };
+
     vertex TexturePipelineRasterizerData vertFunc(
             const device packed_float3* vertexArray [[buffer(0)]],
             const device packed_float2* texcoord [[buffer(1)]],
-            constant float& index [[buffer(29)]],
-            constant float& zoom [[buffer(27)]],
-            constant float& offset [[buffer(26)]],
+            constant ShaderUniforms& uniforms [[buffer(29)]],
             unsigned int vID[[vertex_id]]) {
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
-        float vertical = ((index - (1 - texcoord[vID].y)) * 2000.0);
-        float horizontal = (((texcoord[vID].x / zoom) + offset) * 16384.0);
+        float vertical = ((uniforms.index - (1 - texcoord[vID].y)) * (float)uniforms.height);
+        float horizontal = (((texcoord[vID].x / uniforms.zoom) + uniforms.offset) * (float)uniforms.width);
         out.texcoord = float2(horizontal, vertical);
 
         return out;
@@ -44,13 +56,10 @@ inline const char* MetalShader = R"END(
             TexturePipelineRasterizerData in [[stage_in]],
             const device float* data [[buffer(0)]],
             texture2d<float> lut [[texture(0)]],
-            constant uint32_t& interpolate [[buffer(28)]]) {
+            constant ShaderUniforms& uniforms [[buffer(29)]]) {
         float mag = 0.0;
 
-        const int width = 16384;
-        const int size = (width * 2000);
-
-        if (interpolate == 1) {
+        if (uniforms.interpolate) {
             mag += SAMPLER(in.texcoord.x, in.texcoord.y - 4.0) * 0.0162162162;
             mag += SAMPLER(in.texcoord.x, in.texcoord.y - 3.0) * 0.0540540541;
             mag += SAMPLER(in.texcoord.x, in.texcoord.y - 2.0) * 0.1216216216;
@@ -60,9 +69,7 @@ inline const char* MetalShader = R"END(
             mag += SAMPLER(in.texcoord.x, in.texcoord.y + 2.0) * 0.1216216216;
             mag += SAMPLER(in.texcoord.x, in.texcoord.y + 3.0) * 0.0540540541;
             mag += SAMPLER(in.texcoord.x, in.texcoord.y + 4.0) * 0.0162162162;
-        }
-
-        if (interpolate == 0) {
+        } else {
             mag = SAMPLER(in.texcoord.x, in.texcoord.y);
         }
 
@@ -106,7 +113,7 @@ inline const char* GlesFragmentShader = R"END(#version 300 es
     void main() {
         float mag = 0.0;
 
-        if (interpolate == 1) {
+        if (interpolate) {
             const float yBlur = 1.0 / data.get_height();
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 4.0*yBlur)).r * 0.0162162162;
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 3.0*yBlur)).r * 0.0540540541;
@@ -117,9 +124,7 @@ inline const char* GlesFragmentShader = R"END(#version 300 es
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 2.0*yBlur)).r * 0.1216216216;
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 3.0*yBlur)).r * 0.0540540541;
             mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 4.0*yBlur)).r * 0.0162162162;
-        }
-
-        if (interpolate == 0) {
+        } else {
             mag = texture(BinTexture, TexCoord).r;
         }
 

@@ -7,7 +7,10 @@ Metal::Buffer::Buffer(const Config& config, const Metal& instance)
 }
 
 Result Metal::Buffer::create() {
-    buffer = instance.getDevice()->newBuffer(config.size, MTL::ResourceStorageModeShared);
+    const auto& byteSize = config.size * config.elementByteSize;
+
+    // TODO: Add usage hints.
+    buffer = instance.getDevice()->newBuffer(byteSize, MTL::ResourceStorageModeShared);
     RENDER_ASSERT(buffer);
 
     return Result::SUCCESS;
@@ -28,8 +31,12 @@ Result Metal::Buffer::fill() {
 }
 
 Result Metal::Buffer::fill(const std::size_t& offset, const std::size_t& size) {
-    memcpy((uint8_t*)buffer->contents() + offset, config.buffer + offset, size);
-    buffer->didModifyRange(NS::Range(offset, offset + size));
+    const auto& byteOffset = offset * config.elementByteSize;
+    const auto& byteSize = size * config.elementByteSize;
+
+    uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
+    memcpy(ptr + byteOffset, config.buffer + byteOffset, byteSize);
+    buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
 
     return Result::SUCCESS;
 }

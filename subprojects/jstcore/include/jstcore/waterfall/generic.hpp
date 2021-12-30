@@ -55,10 +55,17 @@ protected:
 
     int inc = 0, last = 0, ymax = 0;
 
-    std::vector<float> indexUniform = {0.0};
-    std::vector<uint32_t> interpolateUniform = {0};
-    std::vector<float> zoomFactor = {1.0};
-    std::vector<float> offsetFactor = {0.0};
+    struct {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    } shaderUniforms;
+
+    nonstd::span<uint8_t> uniformsBuffer;
 
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Buffer> binTexture;

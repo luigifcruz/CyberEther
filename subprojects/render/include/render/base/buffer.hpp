@@ -11,6 +11,7 @@ class Buffer {
  public:
     struct Config {
         std::size_t size;
+        std::size_t elementByteSize;
         uint8_t* buffer = nullptr;
     };
 

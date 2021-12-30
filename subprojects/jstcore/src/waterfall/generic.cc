@@ -17,8 +17,9 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     drawVertex = Render::Create(drawVertexCfg);
 
     Render::Buffer::Config bufferCfg;
-    bufferCfg.size = input.in.buf.size() * ymax * sizeof(float);
     bufferCfg.buffer = ptr;
+    bufferCfg.size = input.in.buf.size() * ymax;
+    bufferCfg.elementByteSize = sizeof(float);
     binTexture = Render::Create(bufferCfg);
 
     Render::Texture::Config lutTextureCfg;
@@ -26,6 +27,8 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     lutTextureCfg.buffer = (uint8_t*)turbo_srgb_bytes;
     lutTextureCfg.key = "LutTexture";
     lutTexture = Render::Create(lutTextureCfg);
+
+    uniformsBuffer = nonstd::span<uint8_t>((uint8_t*)&shaderUniforms, sizeof(shaderUniforms));
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
@@ -36,10 +39,7 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     programCfg.textures = {lutTexture};
     programCfg.buffers = {binTexture};
     programCfg.uniforms = {
-        {"index", &indexUniform},
-        {"interpolate", &interpolateUniform},
-        {"zoom", &zoomFactor},
-        {"offset", &offsetFactor},
+        {"uniforms", &uniformsBuffer},
     };
     program = Render::Create(programCfg);
 
@@ -69,20 +69,22 @@ Result Generic::present() {
     if (blocks < 0) {
         blocks = ymax - last;
 
-        binTexture->fill(start * input.in.buf.size() * sizeof(float), blocks * input.in.buf.size() * sizeof(float));
+        binTexture->fill(start * input.in.buf.size(), blocks * input.in.buf.size());
 
         start = 0;
         blocks = inc;
     }
 
-    // TODO: Improve this.
-    binTexture->fill(start * input.in.buf.size() * sizeof(float), blocks * input.in.buf.size() * sizeof(float));
+    binTexture->fill(start * input.in.buf.size(), blocks * input.in.buf.size());
     last = inc;
 
-    zoomFactor[0] = config.zoom;
-    indexUniform[0] = inc / (float)ymax;
-    interpolateUniform[0] = config.interpolate;
-    offsetFactor[0] = config.offset / (float)config.size.width;
+    shaderUniforms.zoom = config.zoom;
+    shaderUniforms.width = input.in.buf.size();
+    shaderUniforms.height = ymax;
+    shaderUniforms.interpolate = config.interpolate;
+    shaderUniforms.index = inc / (float)shaderUniforms.height;
+    shaderUniforms.offset = config.offset / (float)config.size.width;
+    shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;
 
     return Result::SUCCESS;
 }

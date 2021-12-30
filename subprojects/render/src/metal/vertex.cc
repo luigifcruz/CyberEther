@@ -9,6 +9,7 @@ Metal::Vertex::Vertex(const Config& config, const Metal& instance)
 Result Metal::Vertex::create() {
     MTL::ResourceOptions usage;
 
+    // TODO: Improve usage hints.
     switch (config.buffers[0].usage) {
         case Vertex::Buffer::Usage::Dynamic:
             usage = MTL::ResourceStorageModeManaged;
