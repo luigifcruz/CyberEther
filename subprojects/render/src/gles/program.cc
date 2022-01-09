@@ -77,11 +77,13 @@ Result GLES::Program::draw() {
 
     glUseProgram(shader);
 
+    /*
     for (auto const& [key, data] : config.uniforms) {
         std::visit([&](auto& buffer){
             this->setUniform(key, *buffer);
         }, data);
     }
+    */
 
     i = 0;
     for (const auto& draw : draws) {

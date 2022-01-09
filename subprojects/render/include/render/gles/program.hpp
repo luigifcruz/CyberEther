@@ -18,9 +18,6 @@ class GLES::Program : public Render::Program {
     Result destroy();
     Result draw();
 
-    Result setUniform(const std::string& name, const std::variant<std::vector<float>,
-            std::vector<uint32_t>>& vars);
-
  private:
     const GLES& instance;
 
@@ -29,6 +26,9 @@ class GLES::Program : public Render::Program {
 
     std::vector<std::shared_ptr<GLES::Draw>> draws;
     std::vector<std::shared_ptr<GLES::Texture>> textures;
+
+    Result setUniform(const std::string& name, const std::variant<std::vector<float>,
+            std::vector<uint32_t>>& vars);
 
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);
