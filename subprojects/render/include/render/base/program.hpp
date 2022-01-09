@@ -22,8 +22,7 @@ class Program {
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::shared_ptr<Buffer>> buffers;
-        std::vector<std::pair<std::string, std::variant<std::vector<float>*,
-            std::vector<uint32_t>*, nonstd::span<uint8_t>*>>> uniforms;
+        std::vector<std::pair<std::string, nonstd::span<uint8_t>>> uniforms;
         std::map<Backend, std::vector<const char*>> shaders;
     };
 

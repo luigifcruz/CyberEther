@@ -65,8 +65,6 @@ protected:
         bool interpolate;
     } shaderUniforms;
 
-    nonstd::span<uint8_t> uniformsBuffer;
-
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Buffer> binTexture;
     std::shared_ptr<Render::Texture> lutTexture;

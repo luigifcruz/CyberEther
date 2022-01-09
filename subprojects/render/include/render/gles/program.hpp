@@ -24,6 +24,7 @@ class GLES::Program : public Render::Program {
     uint32_t i;
     uint shader;
 
+    std::vector<uint> uniforms;
     std::vector<std::shared_ptr<GLES::Draw>> draws;
     std::vector<std::shared_ptr<GLES::Texture>> textures;
 

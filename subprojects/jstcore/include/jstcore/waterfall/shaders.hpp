@@ -82,15 +82,21 @@ inline const char* MetalShader = R"END(
 // GLES
 //
 
-inline const char* GlesVertexShader = R"END(#version 300 es
+inline const char* GlesVertexShader = R"END(#version 310 es
     layout (location = 0) in vec3 aPos;
     layout (location = 1) in vec2 aTexCoord;
 
     out vec2 TexCoord;
 
-    uniform float index;
-    uniform float zoom;
-    uniform float offset;
+    layout (std140) uniform ShaderUniforms {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    };
 
     void main() {
         gl_Position = vec4(aPos, 1.0);
@@ -101,34 +107,33 @@ inline const char* GlesVertexShader = R"END(#version 300 es
     }
 )END";
 
-inline const char* GlesFragmentShader = R"END(#version 300 es
+inline const char* GlesFragmentShader = R"END(#version 310 es
     precision highp float;
 
     out vec4 FragColor;
     in vec2 TexCoord;
-    uniform int interpolate;
+
     uniform sampler2D BinTexture;
     uniform sampler2D LutTexture;
+
+    layout (std140) uniform ShaderUniforms {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    };
 
     void main() {
         float mag = 0.0;
 
         if (interpolate) {
-            const float yBlur = 1.0 / data.get_height();
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 4.0*yBlur)).r * 0.0162162162;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 3.0*yBlur)).r * 0.0540540541;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 2.0*yBlur)).r * 0.1216216216;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 1.0*yBlur)).r * 0.1945945946;
-            mag += texture(BinTexture, TexCoord).r * 0.2270270270;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 1.0*yBlur)).r * 0.1945945946;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 2.0*yBlur)).r * 0.1216216216;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 3.0*yBlur)).r * 0.0540540541;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 4.0*yBlur)).r * 0.0162162162;
+            FragColor = vec4(0.0, 1.0, 1.0, 1.0);
         } else {
-            mag = texture(BinTexture, TexCoord).r;
+            FragColor = vec4(1.0, 1.0, 1.0, 1.0);
         }
-
-        return texture(LutTexture, vec2(mag, 0.0));
     }
 )END";
 

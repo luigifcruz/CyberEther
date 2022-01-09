@@ -51,6 +51,22 @@ Result GLES::Program::create() {
         CHECK(draw->create());
     }
 
+    i = 0;
+    for (const auto& [key, buffer] : config.uniforms) {
+        auto blockIndex = glGetUniformBlockIndex(shader, key.c_str());
+        glUniformBlockBinding(shader, blockIndex, i++);
+
+        uint ubo;
+        glGenBuffers(1, &ubo);
+        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+        glBufferData(GL_UNIFORM_BUFFER, buffer.size_bytes(),
+                buffer.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        glBindBufferRange(GL_UNIFORM_BUFFER, 0, ubo, 0, buffer.size_bytes());
+
+        uniforms.push_back(ubo);
+    }
+
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
@@ -76,6 +92,13 @@ Result GLES::Program::draw() {
     }
 
     glUseProgram(shader);
+
+    i = 0;
+    for (auto& [_, buffer] : config.uniforms) {
+        glBindBuffer(GL_UNIFORM_BUFFER, uniforms[i]);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, buffer.size_bytes(), buffer.data());
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    }
 
     /*
     for (auto const& [key, data] : config.uniforms) {

@@ -28,8 +28,6 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     lutTextureCfg.key = "LutTexture";
     lutTexture = Render::Create(lutTextureCfg);
 
-    uniformsBuffer = nonstd::span<uint8_t>((uint8_t*)&shaderUniforms, sizeof(shaderUniforms));
-
     Render::Program::Config programCfg;
     programCfg.shaders = {
         {Render::Backend::Metal, {MetalShader}},
@@ -39,7 +37,8 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     programCfg.textures = {lutTexture};
     programCfg.buffers = {binTexture};
     programCfg.uniforms = {
-        {"uniforms", &uniformsBuffer},
+        {"ShaderUniforms",
+            nonstd::span((uint8_t*)&shaderUniforms, sizeof(shaderUniforms))},
     };
     program = Render::Create(programCfg);
 

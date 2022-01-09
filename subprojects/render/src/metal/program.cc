@@ -98,11 +98,8 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
 
     std::size_t index = 29;
     for (auto const& [key, data] : config.uniforms) {
-        std::visit([&](auto buffer){
-            const auto& bufferSize = buffer->size() * sizeof(buffer[0]);
-            renderCmdEncoder->setVertexBytes(buffer->data(), bufferSize, index);
-            renderCmdEncoder->setFragmentBytes(buffer->data(), bufferSize, index);
-        }, data);
+        renderCmdEncoder->setVertexBytes(data->data(), data->size_bytes(), index);
+        renderCmdEncoder->setFragmentBytes(data->data(), data->size_bytes(), index);
         index -= 1;
     }
 
