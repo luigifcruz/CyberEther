@@ -2,7 +2,6 @@
 #define RENDER_BASE_PROGRAM_H
 
 #include <map>
-#include <variant>
 #include <vector>
 #include <memory>
 #include <utility>
