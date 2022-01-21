@@ -25,7 +25,8 @@ class Metal::Program : public Render::Program {
 
     std::vector<std::shared_ptr<Metal::Draw>> draws;
     std::vector<std::shared_ptr<Metal::Texture>> textures;
-    std::vector<std::shared_ptr<Metal::Buffer>> buffers;
+    std::vector<std::shared_ptr<Metal::Buffer>> vertexBuffers;
+    std::vector<std::shared_ptr<Metal::Buffer>> fragmentBuffers;
 
     static Result checkShaderCompilation(uint);
     static Result checkProgramCompilation(uint);

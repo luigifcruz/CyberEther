@@ -65,8 +65,13 @@ protected:
         bool interpolate;
     } shaderUniforms;
 
+    std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
+
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Buffer> binTexture;
+    std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;
     std::shared_ptr<Render::Surface> surface;

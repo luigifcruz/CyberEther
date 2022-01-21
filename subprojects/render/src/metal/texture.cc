@@ -67,9 +67,4 @@ Result Metal::Texture::fillRow(const std::size_t& y, const std::size_t& height) 
     return Result::SUCCESS;
 }
 
-Result Metal::Texture::pour() {
-    // TODO: Implement it.
-    return Result::SUCCESS;
-}
-
 }  // namespace Render

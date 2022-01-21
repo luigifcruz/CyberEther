@@ -10,39 +10,34 @@ Result Metal::Buffer::create() {
     const auto& byteSize = config.size * config.elementByteSize;
 
     // TODO: Add usage hints.
-    buffer = instance.getDevice()->newBuffer(byteSize, MTL::ResourceStorageModeShared);
+    buffer = instance.getDevice()->newBuffer(config.buffer, byteSize,
+            MTL::ResourceStorageModeShared);
     RENDER_ASSERT(buffer);
 
     return Result::SUCCESS;
 }
 
 Result Metal::Buffer::destroy() {
-    buffer->release();
+    if (buffer) {
+        buffer->release();
+    }
+    buffer = nullptr;
 
     return Result::SUCCESS;
 }
 
-void* Metal::Buffer::raw() {
-    return buffer;
+Result Metal::Buffer::update() {
+    return this->update(0, config.size);
 }
 
-Result Metal::Buffer::fill() {
-    return this->fill(0, config.size);
-}
-
-Result Metal::Buffer::fill(const std::size_t& offset, const std::size_t& size) {
+Result Metal::Buffer::update(const std::size_t& offset, const std::size_t& size) {
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
     uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-    memcpy(ptr + byteOffset, config.buffer + byteOffset, byteSize);
+    memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
     buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
 
-    return Result::SUCCESS;
-}
-
-Result Metal::Buffer::pour() {
-    // TODO: Implement it.
     return Result::SUCCESS;
 }
 

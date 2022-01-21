@@ -24,7 +24,7 @@ public:
         Render::Init(Render::Backend::GLES, renderCfg);
 
         // Allocate Radio Buffer
-        stream = std::vector<std::complex<float>>(2 << 14);
+        stream = std::vector<std::complex<float>>(2 << 13);
 
         // Configure Jetstream
         loop = Loop<Sync>::New();

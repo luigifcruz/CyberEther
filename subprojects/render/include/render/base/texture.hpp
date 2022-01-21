@@ -16,7 +16,6 @@ class Texture {
         DataFormat dfmt = DataFormat::RGBA;
         PixelFormat pfmt = PixelFormat::RGBA;
         PixelType ptype = PixelType::UI8;
-        bool cudaInterop = false;
     };
 
     explicit Texture(const Config& config) : config(config) {}
@@ -28,7 +27,6 @@ class Texture {
     virtual bool size(const Size2D<int>&) = 0;
 
     virtual void* raw() = 0;
-    virtual Result pour() = 0;
     virtual Result fill() = 0;
     virtual Result fillRow(const std::size_t& y, const std::size_t& height) = 0;
 

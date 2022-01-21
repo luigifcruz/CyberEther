@@ -3,10 +3,6 @@
 
 #include "render/gles/instance.hpp"
 
-#ifdef RENDER_CUDA_AVAILABLE
-#include <cuda_gl_interop.h>
-#endif
-
 namespace Render {
 
 class GLES::Vertex : public Render::Vertex {

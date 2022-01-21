@@ -12,7 +12,7 @@ class Buffer {
     struct Config {
         std::size_t size;
         std::size_t elementByteSize;
-        uint8_t* buffer = nullptr;
+        void* buffer = nullptr;
     };
 
     explicit Buffer(const Config& config) : config(config) {}
@@ -22,10 +22,8 @@ class Buffer {
         return config.size;
     }
 
-    virtual void* raw() = 0;
-    virtual Result pour() = 0;
-    virtual Result fill() = 0;
-    virtual Result fill(const std::size_t& offset, const std::size_t& size) = 0;
+    virtual Result update() = 0;
+    virtual Result update(const std::size_t& offset, const std::size_t& size) = 0;
 
  protected:
     Config config;

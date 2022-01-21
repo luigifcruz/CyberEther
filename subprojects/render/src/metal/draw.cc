@@ -20,7 +20,8 @@ Result Metal::Draw::destroy() {
     return Result::SUCCESS;
 }
 
-Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
+Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder,
+                           const std::size_t& offset) {
     MTL::PrimitiveType mode;
 
     switch (config.mode) {
@@ -41,7 +42,7 @@ Result Metal::Draw::encode(MTL::RenderCommandEncoder* encoder) {
             break;
     }
 
-    CHECK(buffer->encode(encoder));
+    CHECK(buffer->encode(encoder, offset));
 
     if (buffer->isBuffered()) {
         encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->getVertexCount(),

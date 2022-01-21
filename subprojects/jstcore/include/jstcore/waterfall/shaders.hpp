@@ -38,9 +38,9 @@ inline const char* MetalShader = R"END(
     };
 
     vertex TexturePipelineRasterizerData vertFunc(
-            const device packed_float3* vertexArray [[buffer(0)]],
-            const device packed_float2* texcoord [[buffer(1)]],
-            constant ShaderUniforms& uniforms [[buffer(29)]],
+            constant ShaderUniforms& uniforms [[buffer(0)]],
+            const device packed_float3* vertexArray [[buffer(1)]],
+            const device packed_float2* texcoord [[buffer(2)]],
             unsigned int vID[[vertex_id]]) {
         TexturePipelineRasterizerData out;
 
@@ -54,9 +54,9 @@ inline const char* MetalShader = R"END(
 
     fragment float4 fragFunc(
             TexturePipelineRasterizerData in [[stage_in]],
-            const device float* data [[buffer(0)]],
-            texture2d<float> lut [[texture(0)]],
-            constant ShaderUniforms& uniforms [[buffer(29)]]) {
+            constant ShaderUniforms& uniforms [[buffer(0)]],
+            const device float* data [[buffer(1)]],
+            texture2d<float> lut [[texture(0)]]) {
         float mag = 0.0;
 
         if (uniforms.interpolate) {

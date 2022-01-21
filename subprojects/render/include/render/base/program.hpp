@@ -20,8 +20,8 @@ class Program {
     struct Config {
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
-        std::vector<std::shared_ptr<Buffer>> buffers;
-        std::vector<std::pair<std::string, nonstd::span<uint8_t>>> uniforms;
+        std::vector<std::shared_ptr<Buffer>> fragmentBuffers;
+        std::vector<std::shared_ptr<Buffer>> vertexBuffers;
         std::map<Backend, std::vector<const char*>> shaders;
     };
 

@@ -15,8 +15,12 @@ Metal::Program::Program(const Config& config, const Metal& instance)
         textures.push_back(std::dynamic_pointer_cast<Metal::Texture>(texture));
     }
 
-    for (const auto& buffer : config.buffers) {
-        buffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
+    for (const auto& buffer : config.fragmentBuffers) {
+        fragmentBuffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
+    }
+
+    for (const auto& buffer : config.vertexBuffers) {
+        vertexBuffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
     }
 }
 
@@ -61,7 +65,11 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
         CHECK(texture->create());
     }
 
-    for (const auto& buffer : buffers) {
+    for (const auto& buffer : fragmentBuffers) {
+        CHECK(buffer->create());
+    }
+
+    for (const auto& buffer : vertexBuffers) {
         CHECK(buffer->create());
     }
 
@@ -77,6 +85,14 @@ Result Metal::Program::destroy() {
         CHECK(texture->destroy());
     }
 
+    for (const auto& buffer : fragmentBuffers) {
+        CHECK(buffer->destroy());
+    }
+
+    for (const auto& buffer : vertexBuffers) {
+        CHECK(buffer->destroy());
+    }
+
     renderPipelineState->release();
 
     return Result::SUCCESS;
@@ -88,27 +104,30 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
 
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
+    // Attach frame textures.
     for (std::size_t i = 0; i < textures.size(); i++) {
-        renderCmdEncoder->setFragmentTexture((MTL::Texture*)textures[i]->raw(), i);
+        renderCmdEncoder->setFragmentTexture(textures[i]->getHandle(), i);
     }
 
-    for (std::size_t i = 0; i < buffers.size(); i++) {
-        renderCmdEncoder->setFragmentBuffer((MTL::Buffer*)buffers[i]->raw(), 0, i);
+    // Attach frame fragment-shader buffers.
+    for (std::size_t i = 0; i < fragmentBuffers.size(); i++) {
+        renderCmdEncoder->setFragmentBuffer(fragmentBuffers[i]->getHandle(), 0, i);
     }
 
-    std::size_t index = 29;
-    for (auto const& [key, data] : config.uniforms) {
-        renderCmdEncoder->setVertexBytes(data.data(), data.size_bytes(), index);
-        renderCmdEncoder->setFragmentBytes(data.data(), data.size_bytes(), index);
-        index -= 1;
+    // Attach frame vertex-shader buffers.
+    for (std::size_t i = 0; i < vertexBuffers.size(); i++) {
+        renderCmdEncoder->setVertexBuffer(vertexBuffers[i]->getHandle(), 0, i);
     }
 
     drawIndex = 0;
     for (auto& draw : draws) {
+        // Attach drawIndex uniforms.
         renderCmdEncoder->setVertexBytes(&drawIndex, sizeof(drawIndex), 30);
         renderCmdEncoder->setFragmentBytes(&drawIndex, sizeof(drawIndex), 30);
-        CHECK(draw->encode(renderCmdEncoder));
         drawIndex += 1;
+
+        // Attach frame encoder.
+        CHECK(draw->encode(renderCmdEncoder, vertexBuffers.size()));
     }
 
     renderCmdEncoder->endEncoding();

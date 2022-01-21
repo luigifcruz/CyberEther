@@ -3,10 +3,6 @@
 
 #include "render/gles/instance.hpp"
 
-#ifdef RENDER_CUDA_AVAILABLE
-#include <cuda_gl_interop.h>
-#endif
-
 namespace Render {
 
 class GLES::Texture : public Render::Texture {
@@ -36,8 +32,6 @@ class GLES::Texture : public Render::Texture {
     cudaGraphicsResource* cuda_tex_resource = nullptr;
     cudaStream_t stream;
 #endif
-    Result cudaCopyToTexture(int, int, int, int);
-
     friend class GLES::Surface;
     friend class GLES::Program;
 };

@@ -11,14 +11,16 @@ class Metal::Buffer : public Render::Buffer {
 
     using Render::Buffer::size;
 
-    void* raw() final;
-    Result pour() final;
-    Result fill() final;
-    Result fill(const std::size_t& offset, const std::size_t& size) final;
+    Result update() final;
+    Result update(const std::size_t& offset, const std::size_t& size) final;
 
  protected:
     Result create();
     Result destroy();
+
+    constexpr const MTL::Buffer* getHandle() const {
+        return buffer;
+    }
 
  private:
     const Metal& instance;
@@ -27,6 +29,7 @@ class Metal::Buffer : public Render::Buffer {
 
     friend class Metal::Surface;
     friend class Metal::Program;
+    friend class Metal::Vertex;
 };
 
 }  // namespace Render

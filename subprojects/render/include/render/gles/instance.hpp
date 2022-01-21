@@ -36,11 +36,7 @@ class GLES : public Render::Instance {
     }
 
     const bool hasCudaInterop() const {
-#ifdef RENDER_CUDA_AVAILABLE
-        return true;
-#else
         return false;
-#endif
     }
 
  protected:

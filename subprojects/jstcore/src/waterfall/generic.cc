@@ -6,9 +6,30 @@ namespace Jetstream::Waterfall {
 Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {}
 
 Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
+    Render::Buffer::Config fillScreenVerticesConf;
+    fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
+    fillScreenVerticesConf.elementByteSize = sizeof(float);
+    fillScreenVerticesConf.size = 12;
+    fillScreenVerticesBuffer = Render::Create(fillScreenVerticesConf);
+
+    Render::Buffer::Config fillScreenTextureVerticesConf;
+    fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
+    fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
+    fillScreenTextureVerticesConf.size = 8;
+    fillScreenTextureVerticesBuffer = Render::Create(fillScreenTextureVerticesConf);
+
+    Render::Buffer::Config fillScreenIndicesConf;
+    fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
+    fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
+    fillScreenIndicesConf.size = 6;
+    fillScreenIndicesBuffer = Render::Create(fillScreenIndicesConf);
+
     Render::Vertex::Config vertexCfg;
-    vertexCfg.buffers = Render::Extras::FillScreenVertices();
-    vertexCfg.indices = Render::Extras::FillScreenIndices();
+    vertexCfg.buffers = {
+        {fillScreenVerticesBuffer, 3},
+        {fillScreenTextureVerticesBuffer, 2},
+    };
+    vertexCfg.indices = fillScreenIndicesBuffer;
     vertex = Render::Create(vertexCfg);
 
     Render::Draw::Config drawVertexCfg;
@@ -28,6 +49,12 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     lutTextureCfg.key = "LutTexture";
     lutTexture = Render::Create(lutTextureCfg);
 
+    Render::Buffer::Config uniformCfg;
+    uniformCfg.buffer = &shaderUniforms;
+    uniformCfg.elementByteSize = sizeof(shaderUniforms);
+    uniformCfg.size = 1;
+    uniformBuffer = Render::Create(uniformCfg);
+
     Render::Program::Config programCfg;
     programCfg.shaders = {
         {Render::Backend::Metal, {MetalShader}},
@@ -35,11 +62,8 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     };
     programCfg.draws = {drawVertex};
     programCfg.textures = {lutTexture};
-    programCfg.buffers = {binTexture};
-    programCfg.uniforms = {
-        {"ShaderUniforms",
-            nonstd::span((uint8_t*)&shaderUniforms, sizeof(shaderUniforms))},
-    };
+    programCfg.vertexBuffers = {uniformBuffer};
+    programCfg.fragmentBuffers = {uniformBuffer, binTexture};
     program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
@@ -68,13 +92,13 @@ Result Generic::present() {
     if (blocks < 0) {
         blocks = ymax - last;
 
-        binTexture->fill(start * input.in.buf.size(), blocks * input.in.buf.size());
+        binTexture->update(start * input.in.buf.size(), blocks * input.in.buf.size());
 
         start = 0;
         blocks = inc;
     }
 
-    binTexture->fill(start * input.in.buf.size(), blocks * input.in.buf.size());
+    binTexture->update(start * input.in.buf.size(), blocks * input.in.buf.size());
     last = inc;
 
     shaderUniforms.zoom = config.zoom;
@@ -84,6 +108,8 @@ Result Generic::present() {
     shaderUniforms.index = inc / (float)shaderUniforms.height;
     shaderUniforms.offset = config.offset / (float)config.size.width;
     shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;
+
+    uniformBuffer->update();
 
     return Result::SUCCESS;
 }
