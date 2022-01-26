@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <variant>
 #include <memory>
 
 #include "render/gles/surface.hpp"

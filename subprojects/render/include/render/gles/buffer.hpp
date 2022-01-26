@@ -11,10 +11,8 @@ class GLES::Buffer : public Render::Buffer {
 
     using Render::Buffer::size;
 
-    void* raw() final;
-    Result pour() final;
-    Result fill() final;
-    Result fill(const std::size_t& offset, const std::size_t& size) final;
+    Result update() final;
+    Result update(const std::size_t& offset, const std::size_t& size) final;
 
  protected:
     Result create();

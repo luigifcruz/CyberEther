@@ -77,9 +77,4 @@ Result GLES::Texture::fillRow(const std::size_t& y, const std::size_t& height) {
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
-Result GLES::Texture::pour() {
-    // TODO: Implement it.
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
 }  // namespace Render

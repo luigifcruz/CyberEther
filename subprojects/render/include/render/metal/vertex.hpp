@@ -1,6 +1,8 @@
 #ifndef RENDER_METAL_VERTEX_H
 #define RENDER_METAL_VERTEX_H
 
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "render/metal/instance.hpp"

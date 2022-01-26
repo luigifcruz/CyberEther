@@ -10,7 +10,6 @@
 #include "render/base/vertex.hpp"
 #include "render/base/buffer.hpp"
 #include "render/base/draw.hpp"
-#include "render/base/draw.hpp"
 #include "render/tools/imgui.h"
 
 namespace Render {

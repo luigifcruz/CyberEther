@@ -24,15 +24,11 @@ Result GLES::Buffer::destroy() {
     return Result::SUCCESS;
 }
 
-void* GLES::Buffer::raw() {
-    //return buffer;
+Result GLES::Buffer::update() {
+    return this->update(0, config.size);
 }
 
-Result GLES::Buffer::fill() {
-    //return this->fill(0, config.size);
-}
-
-Result GLES::Buffer::fill(const std::size_t& offset, const std::size_t& size) {
+Result GLES::Buffer::update(const std::size_t& offset, const std::size_t& size) {
     /*
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
@@ -42,11 +38,6 @@ Result GLES::Buffer::fill(const std::size_t& offset, const std::size_t& size) {
     buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
     */
 
-    return Result::SUCCESS;
-}
-
-Result GLES::Buffer::pour() {
-    // TODO: Implement it.
     return Result::SUCCESS;
 }
 
