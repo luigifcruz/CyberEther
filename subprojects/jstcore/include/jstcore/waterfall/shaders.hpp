@@ -17,7 +17,8 @@ inline const char* MetalShader = R"END(
     #define SAMPLER(x, y) ({ \
         int _idx = ((int)y)*uniforms.width+((int)x); \
         (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : \
-            (_idx < 0) ? data[_idx + uniforms.maxSize] : 1.0; })
+            _idx += uniforms.maxSize; \
+            (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : 1.0; })
 
     using namespace metal;
 
@@ -38,8 +39,8 @@ inline const char* MetalShader = R"END(
 
     vertex TexturePipelineRasterizerData vertFunc(
             constant ShaderUniforms& uniforms [[buffer(0)]],
-            const device packed_float3* vertexArray [[buffer(1)]],
-            const device packed_float2* texcoord [[buffer(2)]],
+            const device packed_float3* vertexArray [[buffer(2)]],
+            const device packed_float2* texcoord [[buffer(3)]],
             unsigned int vID[[vertex_id]]) {
         TexturePipelineRasterizerData out;
 
