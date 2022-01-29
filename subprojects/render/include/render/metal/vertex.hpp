@@ -19,11 +19,11 @@ class Metal::Vertex : public Render::Vertex {
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encoder, const std::size_t& offset);
 
-    constexpr const MTL::Buffer* getIndexBuffer() {
+    constexpr const MTL::Buffer* getIndexBuffer() const {
         return indices->getHandle();
     }
 
-    constexpr const std::size_t getVertexCount() {
+    constexpr const std::size_t getVertexCount() const {
         return vertex_count;
     }
 

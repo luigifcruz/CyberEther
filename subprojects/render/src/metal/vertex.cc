@@ -15,12 +15,12 @@ Metal::Vertex::Vertex(const Config& config, const Metal& instance)
 
 Result Metal::Vertex::create() {
     for (const auto& [buffer, stride] : buffers) {
-        buffer->create();
+        CHECK(buffer->create());
         vertex_count = buffer->size() / stride;
     }
 
     if (indices) {
-        indices->create();
+        CHECK(indices->create());
         vertex_count = indices->size();
     }
 
@@ -29,11 +29,11 @@ Result Metal::Vertex::create() {
 
 Result Metal::Vertex::destroy() {
     for (const auto& [buffer, stride] : buffers) {
-        buffer->destroy();
+        CHECK(buffer->destroy());
     }
 
     if (indices) {
-        indices->destroy();
+        CHECK(indices->destroy());
     }
 
     return Result::SUCCESS;

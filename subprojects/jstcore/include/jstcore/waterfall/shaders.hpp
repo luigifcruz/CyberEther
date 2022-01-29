@@ -17,8 +17,7 @@ inline const char* MetalShader = R"END(
     #define SAMPLER(x, y) ({ \
         int _idx = ((int)y)*uniforms.width+((int)x); \
         (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : \
-            _idx += uniforms.maxSize; \
-            (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : 1.0; })
+            (_idx < 0) ? data[_idx + uniforms.maxSize] : 1.0; })
 
     using namespace metal;
 
@@ -45,7 +44,7 @@ inline const char* MetalShader = R"END(
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
-        float vertical = ((uniforms.index - (1 - texcoord[vID].y)) * (float)uniforms.height);
+        float vertical = ((uniforms.index - (1.0 - texcoord[vID].y)) * (float)uniforms.height);
         float horizontal = (((texcoord[vID].x / uniforms.zoom) + uniforms.offset) * (float)uniforms.width);
         out.texcoord = float2(horizontal, vertical);
 
@@ -88,7 +87,7 @@ inline const char* GlesVertexShader = R"END(#version 310 es
 
     out vec2 TexCoord;
 
-    layout (std140) uniform ShaderUniforms {
+    layout (std140, binding = 0) readonly buffer ShaderUniforms {
         int width;
         int height;
         int maxSize;
@@ -100,9 +99,8 @@ inline const char* GlesVertexShader = R"END(#version 310 es
 
     void main() {
         gl_Position = vec4(aPos, 1.0);
-
-        float vertical = (index - aTexCoord.y);
-        float horizontal = (aTexCoord.x / zoom) + offset;
+        float vertical = (aTexCoord.y) * float(height);
+        float horizontal = aTexCoord.x * float(width);
         TexCoord = vec2(horizontal, vertical);
     }
 )END";
@@ -113,10 +111,9 @@ inline const char* GlesFragmentShader = R"END(#version 310 es
     out vec4 FragColor;
     in vec2 TexCoord;
 
-    uniform sampler2D BinTexture;
     uniform sampler2D LutTexture;
 
-    layout (std140) uniform ShaderUniforms {
+    layout (std140, binding = 0) readonly buffer ShaderUniforms {
         int width;
         int height;
         int maxSize;
@@ -126,14 +123,30 @@ inline const char* GlesFragmentShader = R"END(#version 310 es
         bool interpolate;
     };
 
+    layout (std140, binding = 1) readonly buffer WaterfallData {
+        float data[];
+    };
+
+    float SAMPLER(float x, float y) {
+        int _idx = ((int(y)) * width) + (int(x));
+
+        if (_idx < maxSize && _idx > 0) {
+            return data[_idx];
+        }
+
+        if (_idx < 0) {
+            return data[_idx + maxSize];
+        }
+
+        return 1.0;
+    }
+
     void main() {
         float mag = 0.0;
 
-        if (interpolate) {
-            FragColor = vec4(0.0, 1.0, 1.0, 1.0);
-        } else {
-            FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-        }
+        mag = SAMPLER(TexCoord.x, TexCoord.y);
+
+        FragColor = texture(LutTexture, vec2(mag, 0.0));
     }
 )END";
 

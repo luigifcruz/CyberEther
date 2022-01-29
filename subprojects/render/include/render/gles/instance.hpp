@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#define GLFW_INCLUDE_ES3
+#define GLFW_INCLUDE_ES31
 #include <GLFW/glfw3.h>
 #include "render/tools/imgui_impl_glfw.h"
 #include "render/tools/imgui_impl_opengl3.h"

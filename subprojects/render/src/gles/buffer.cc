@@ -4,22 +4,45 @@ namespace Render {
 
 GLES::Buffer::Buffer(const Config& config, const GLES& instance)
          : Render::Buffer(config), instance(instance) {
+    switch (config.target) {
+        case Target::VERTEX:
+            target = GL_ARRAY_BUFFER;
+            break;
+        case Target::VERTEX_INDICES:
+            target = GL_ELEMENT_ARRAY_BUFFER;
+            break;
+        case Target::STORAGE:
+            target = GL_SHADER_STORAGE_BUFFER;
+            break;
+    }
 }
 
 Result GLES::Buffer::create() {
     const auto& byteSize = config.size * config.elementByteSize;
 
-    /*
-    // TODO: Add usage hints.
-    buffer = instance.getDevice()->newBuffer(byteSize, MTL::ResourceStorageModeShared);
-    RENDER_ASSERT(buffer);
-    */
+    // TODO: Add usage hint.
+    glGenBuffers(1, &id);
+    CHECK(this->begin());
+    glBufferData(target, byteSize, config.buffer, GL_DYNAMIC_DRAW);
+    CHECK(this->end());
+
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
+}
+
+Result GLES::Buffer::destroy() {
+    glDeleteBuffers(1, &id);
 
     return Result::SUCCESS;
 }
 
-Result GLES::Buffer::destroy() {
-    // buffer->release();
+Result GLES::Buffer::begin() {
+    glBindBuffer(target, id);
+
+    return Result::SUCCESS;
+}
+
+Result GLES::Buffer::end() {
+    glBindBuffer(target, 0);
 
     return Result::SUCCESS;
 }
@@ -29,16 +52,14 @@ Result GLES::Buffer::update() {
 }
 
 Result GLES::Buffer::update(const std::size_t& offset, const std::size_t& size) {
-    /*
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
-    uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-    memcpy(ptr + byteOffset, config.buffer + byteOffset, byteSize);
-    buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
-    */
+    CHECK(this->begin());
+    glBufferSubData(target, byteOffset, byteSize, config.buffer);
+    CHECK(this->end());
 
-    return Result::SUCCESS;
+    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 }  // namespace Render

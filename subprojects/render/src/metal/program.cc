@@ -15,12 +15,8 @@ Metal::Program::Program(const Config& config, const Metal& instance)
         textures.push_back(std::dynamic_pointer_cast<Metal::Texture>(texture));
     }
 
-    for (const auto& buffer : config.fragmentBuffers) {
-        fragmentBuffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
-    }
-
-    for (const auto& buffer : config.vertexBuffers) {
-        vertexBuffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
+    for (const auto& buffer : config.buffers) {
+        buffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
     }
 }
 
@@ -65,11 +61,7 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
         CHECK(texture->create());
     }
 
-    for (const auto& buffer : fragmentBuffers) {
-        CHECK(buffer->create());
-    }
-
-    for (const auto& buffer : vertexBuffers) {
+    for (const auto& buffer : buffers) {
         CHECK(buffer->create());
     }
 
@@ -85,11 +77,7 @@ Result Metal::Program::destroy() {
         CHECK(texture->destroy());
     }
 
-    for (const auto& buffer : fragmentBuffers) {
-        CHECK(buffer->destroy());
-    }
-
-    for (const auto& buffer : vertexBuffers) {
+    for (const auto& buffer : buffers) {
         CHECK(buffer->destroy());
     }
 
@@ -110,13 +98,9 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
     }
 
     // Attach frame fragment-shader buffers.
-    for (std::size_t i = 0; i < fragmentBuffers.size(); i++) {
-        renderCmdEncoder->setFragmentBuffer(fragmentBuffers[i]->getHandle(), 0, i);
-    }
-
-    // Attach frame vertex-shader buffers.
-    for (std::size_t i = 0; i < vertexBuffers.size(); i++) {
-        renderCmdEncoder->setVertexBuffer(vertexBuffers[i]->getHandle(), 0, i);
+    for (std::size_t i = 0; i < buffers.size(); i++) {
+        renderCmdEncoder->setFragmentBuffer(buffers[i]->getHandle(), 0, i);
+        renderCmdEncoder->setVertexBuffer(buffers[i]->getHandle(), 0, i);
     }
 
     drawIndex = 0;
@@ -127,7 +111,7 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
         drawIndex += 1;
 
         // Attach frame encoder.
-        CHECK(draw->encode(renderCmdEncoder, vertexBuffers.size()));
+        CHECK(draw->encode(renderCmdEncoder, buffers.size()));
     }
 
     renderCmdEncoder->endEncoding();

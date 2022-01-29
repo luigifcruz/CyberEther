@@ -31,6 +31,7 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     gridVerticesConf.buffer = grid.data();
     gridVerticesConf.elementByteSize = sizeof(grid[0]);
     gridVerticesConf.size = grid.size();
+    gridVerticesConf.target = Render::Buffer::Target::VERTEX;
     gridVerticesBuffer = Render::Create(gridVerticesConf);
 
     Render::Vertex::Config gridVertexCfg;
@@ -48,6 +49,7 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     signalVerticesConf.buffer = ptr;
     signalVerticesConf.elementByteSize = sizeof(ptr[0]);
     signalVerticesConf.size = plot.size();
+    signalVerticesConf.target = Render::Buffer::Target::VERTEX;
     signalVerticesBuffer = Render::Create(signalVerticesConf);
 
     Render::Vertex::Config lineVertexCfg;

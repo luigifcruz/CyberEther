@@ -9,10 +9,17 @@ namespace Render {
 
 class Buffer {
  public:
+    enum class Target : uint {
+        VERTEX,
+        VERTEX_INDICES,
+        STORAGE,
+    };
+
     struct Config {
         std::size_t size;
         std::size_t elementByteSize;
         void* buffer = nullptr;
+        Target target;
     };
 
     explicit Buffer(const Config& config) : config(config) {}

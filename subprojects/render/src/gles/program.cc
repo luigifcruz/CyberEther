@@ -1,6 +1,7 @@
 #include "render/gles/program.hpp"
 #include "render/gles/texture.hpp"
 #include "render/gles/draw.hpp"
+#include "render/gles/buffer.hpp"
 
 namespace Render {
 
@@ -12,6 +13,10 @@ GLES::Program::Program(const Config& config, const GLES& instance)
 
     for (const auto& texture : config.textures) {
         textures.push_back(std::dynamic_pointer_cast<GLES::Texture>(texture));
+    }
+
+    for (const auto& buffer : config.buffers) {
+        buffers.push_back(std::dynamic_pointer_cast<GLES::Buffer>(buffer));
     }
 }
 
@@ -41,30 +46,21 @@ Result GLES::Program::create() {
         return Result::RENDER_BACKEND_ERROR;
     }
 
+    for (const auto& draw : draws) {
+        CHECK(draw->create());
+    }
+
     i = 0;
     for (const auto& texture : textures) {
         CHECK(texture->create());
         CHECK(this->setUniform(texture->config.key, std::vector{i++}));
     }
 
-    for (const auto& draw : draws) {
-        CHECK(draw->create());
-    }
-
-    i = 0;
-    for (const auto& [key, buffer] : config.uniforms) {
-        auto blockIndex = glGetUniformBlockIndex(shader, key.c_str());
-        glUniformBlockBinding(shader, blockIndex, i++);
-
-        uint ubo;
-        glGenBuffers(1, &ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-        glBufferData(GL_UNIFORM_BUFFER, buffer.size_bytes(),
-                buffer.data(), GL_STATIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-        glBindBufferRange(GL_UNIFORM_BUFFER, 0, ubo, 0, buffer.size_bytes());
-
-        uniforms.push_back(ubo);
+    for (std::size_t i = 0; i < buffers.size(); i++) {
+        CHECK(buffers[i]->create());
+        CHECK(buffers[i]->begin());
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, *buffers[i]->getHandle());
+        CHECK(buffers[i]->end());
     }
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -79,12 +75,17 @@ Result GLES::Program::destroy() {
         CHECK(texture->destroy());
     }
 
+    for (const auto& buffer : buffers) {
+        CHECK(buffer->destroy());
+    }
+
     glDeleteProgram(shader);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Program::draw() {
+    // Attach textures.
     i = 0;
     for (const auto& texture : textures) {
         glActiveTexture(GL_TEXTURE0 + i++);
@@ -92,21 +93,6 @@ Result GLES::Program::draw() {
     }
 
     glUseProgram(shader);
-
-    i = 0;
-    for (auto& [_, buffer] : config.uniforms) {
-        glBindBuffer(GL_UNIFORM_BUFFER, uniforms[i]);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, buffer.size_bytes(), buffer.data());
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
-
-    /*
-    for (auto const& [key, data] : config.uniforms) {
-        std::visit([&](auto& buffer){
-            this->setUniform(key, *buffer);
-        }, data);
-    }
-    */
 
     i = 0;
     for (const auto& draw : draws) {

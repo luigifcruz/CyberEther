@@ -10,18 +10,21 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
     fillScreenVerticesConf.size = 12;
+    fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
     fillScreenVerticesBuffer = Render::Create(fillScreenVerticesConf);
 
     Render::Buffer::Config fillScreenTextureVerticesConf;
     fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
     fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
     fillScreenTextureVerticesConf.size = 8;
+    fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
     fillScreenTextureVerticesBuffer = Render::Create(fillScreenTextureVerticesConf);
 
     Render::Buffer::Config fillScreenIndicesConf;
     fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
     fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
     fillScreenIndicesConf.size = 6;
+    fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
     fillScreenIndicesBuffer = Render::Create(fillScreenIndicesConf);
 
     Render::Vertex::Config vertexCfg;
@@ -41,6 +44,7 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     bufferCfg.buffer = ptr;
     bufferCfg.size = input.in.buf.size() * ymax;
     bufferCfg.elementByteSize = sizeof(float);
+    bufferCfg.target = Render::Buffer::Target::STORAGE;
     binTexture = Render::Create(bufferCfg);
 
     Render::Texture::Config lutTextureCfg;
@@ -53,6 +57,7 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
+    uniformCfg.target = Render::Buffer::Target::STORAGE;
     uniformBuffer = Render::Create(uniformCfg);
 
     Render::Program::Config programCfg;
@@ -62,8 +67,7 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     };
     programCfg.draws = {drawVertex};
     programCfg.textures = {lutTexture};
-    programCfg.vertexBuffers = {uniformBuffer};
-    programCfg.fragmentBuffers = {uniformBuffer, binTexture};
+    programCfg.buffers = {uniformBuffer, binTexture};
     program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
