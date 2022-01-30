@@ -56,7 +56,7 @@ Result GLES::Buffer::update(const std::size_t& offset, const std::size_t& size) 
     const auto& byteSize = size * config.elementByteSize;
 
     CHECK(this->begin());
-    glBufferSubData(target, byteOffset, byteSize, config.buffer);
+    glBufferSubData(target, byteOffset, byteSize, (uint8_t*)config.buffer + byteOffset);
     CHECK(this->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);

@@ -100,8 +100,8 @@ inline const char* GlesVertexShader = R"END(#version 310 es
 
     void main() {
         gl_Position = vec4(aPos, 1.0);
-        float vertical = (aTexCoord.y) * float(height);
-        float horizontal = aTexCoord.x * float(width);
+        float vertical = (index - aTexCoord.y) * float(height);
+        float horizontal = ((aTexCoord.x / zoom) + offset) * float(width);
         TexCoord = vec2(horizontal, vertical);
     }
 )END";
@@ -124,12 +124,12 @@ inline const char* GlesFragmentShader = R"END(#version 310 es
         bool interpolate;
     };
 
-    layout (std140, binding = 1) readonly buffer WaterfallData {
+    layout (std430, binding = 1) readonly buffer WaterfallData {
         float data[];
     };
 
     float SAMPLER(float x, float y) {
-        int _idx = ((int(y)) * width) + (int(x));
+        int _idx = (int(y) * width) + int(x);
 
         if (_idx < maxSize && _idx > 0) {
             return data[_idx];
@@ -145,7 +145,19 @@ inline const char* GlesFragmentShader = R"END(#version 310 es
     void main() {
         float mag = 0.0;
 
-        mag = SAMPLER(TexCoord.x, TexCoord.y);
+        if (interpolate) {
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 4.0) * 0.0162162162;
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 3.0) * 0.0540540541;
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 2.0) * 0.1216216216;
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 1.0) * 0.1945945946;
+            mag += SAMPLER(TexCoord.x, TexCoord.y      ) * 0.2270270270;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 1.0) * 0.1945945946;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 2.0) * 0.1216216216;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 3.0) * 0.0540540541;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 4.0) * 0.0162162162;
+        } else {
+            mag = SAMPLER(TexCoord.x, TexCoord.y);
+        }
 
         FragColor = texture(LutTexture, vec2(mag, 0.0));
     }
