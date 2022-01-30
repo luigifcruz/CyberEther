@@ -13,6 +13,7 @@
 #include "render/base/texture.hpp"
 #include "render/base/vertex.hpp"
 #include "render/base/draw.hpp"
+#include "render/base/buffer.hpp"
 
 #ifdef RENDER_GLES_AVAILABLE
 #include "render/gles/instance.hpp"
@@ -21,6 +22,7 @@
 #include "render/gles/texture.hpp"
 #include "render/gles/vertex.hpp"
 #include "render/gles/draw.hpp"
+#include "render/gles/buffer.hpp"
 #endif
 
 #ifdef RENDER_METAL_AVAILABLE
@@ -30,6 +32,7 @@
 #include "render/metal/texture.hpp"
 #include "render/metal/vertex.hpp"
 #include "render/metal/draw.hpp"
+#include "render/metal/buffer.hpp"
 #endif
 
 namespace Render {
@@ -71,6 +74,10 @@ class Broker : public T {
 
     std::shared_ptr<Texture> newMember(const Render::Texture::Config& config) {
         return std::make_shared<typename T::Texture>(config, *this);
+    }
+
+    std::shared_ptr<Buffer> newMember(const Render::Buffer::Config& config) {
+        return std::make_shared<typename T::Buffer>(config, *this);
     }
 };
 

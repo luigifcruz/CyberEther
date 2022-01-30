@@ -8,33 +8,24 @@
 
 namespace Render::Extras {
 
-static float a[] = {
+inline float FillScreenVertices[] = {
     +1.0f, +1.0f, 0.0f,
     +1.0f, -1.0f, 0.0f,
     -1.0f, -1.0f, 0.0f,
     -1.0f, +1.0f, 0.0f,
 };
 
-static float b[] = {
+inline float FillScreenTextureVertices[] = {
     +1.0f, +1.0f,
     +1.0f, +0.0f,
     +0.0f, +0.0f,
     +0.0f, +1.0f,
 };
 
-inline std::vector<Render::Vertex::Buffer> FillScreenVertices() {
-    return {
-        {reinterpret_cast<float*>(&a), 12, 3},
-        {reinterpret_cast<float*>(&b), 8, 2},
-    };
-}
-
-inline std::vector<uint32_t> FillScreenIndices() {
-    return {
-        0, 1, 2,
-        2, 3, 0,
-    };
-}
+inline uint32_t FillScreenIndices[] = {
+    0, 1, 2,
+    2, 3, 0,
+};
 
 }  // namespace Render::Extras
 

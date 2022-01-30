@@ -1,6 +1,7 @@
 #include "render/metal/program.hpp"
 #include "render/metal/texture.hpp"
 #include "render/metal/draw.hpp"
+#include "render/metal/buffer.hpp"
 
 namespace Render {
 
@@ -12,6 +13,10 @@ Metal::Program::Program(const Config& config, const Metal& instance)
 
     for (const auto& texture : config.textures) {
         textures.push_back(std::dynamic_pointer_cast<Metal::Texture>(texture));
+    }
+
+    for (const auto& buffer : config.buffers) {
+        buffers.push_back(std::dynamic_pointer_cast<Metal::Buffer>(buffer));
     }
 }
 
@@ -56,6 +61,10 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
         CHECK(texture->create());
     }
 
+    for (const auto& buffer : buffers) {
+        CHECK(buffer->create());
+    }
+
     return Result::SUCCESS;
 }
 
@@ -66,6 +75,10 @@ Result Metal::Program::destroy() {
 
     for (const auto& texture : textures) {
         CHECK(texture->destroy());
+    }
+
+    for (const auto& buffer : buffers) {
+        CHECK(buffer->destroy());
     }
 
     renderPipelineState->release();
@@ -79,26 +92,26 @@ Result Metal::Program::draw(MTL::CommandBuffer* commandBuffer,
 
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
+    // Attach frame textures.
     for (std::size_t i = 0; i < textures.size(); i++) {
-        renderCmdEncoder->setFragmentTexture((MTL::Texture*)textures[i]->raw(), i);
+        renderCmdEncoder->setFragmentTexture(textures[i]->getHandle(), i);
     }
 
-    std::size_t index = 29;
-    for (auto const& [key, data] : config.uniforms) {
-        std::visit([&](auto buffer){
-            const auto& bufferSize = buffer->size() * sizeof(buffer[0]);
-            renderCmdEncoder->setVertexBytes(buffer->data(), bufferSize, index);
-            renderCmdEncoder->setFragmentBytes(buffer->data(), bufferSize, index);
-        }, data);
-        index -= 1;
+    // Attach frame fragment-shader buffers.
+    for (std::size_t i = 0; i < buffers.size(); i++) {
+        renderCmdEncoder->setFragmentBuffer(buffers[i]->getHandle(), 0, i);
+        renderCmdEncoder->setVertexBuffer(buffers[i]->getHandle(), 0, i);
     }
 
     drawIndex = 0;
     for (auto& draw : draws) {
+        // Attach drawIndex uniforms.
         renderCmdEncoder->setVertexBytes(&drawIndex, sizeof(drawIndex), 30);
         renderCmdEncoder->setFragmentBytes(&drawIndex, sizeof(drawIndex), 30);
-        CHECK(draw->encode(renderCmdEncoder));
         drawIndex += 1;
+
+        // Attach frame encoder.
+        CHECK(draw->encode(renderCmdEncoder, buffers.size()));
     }
 
     renderCmdEncoder->endEncoding();

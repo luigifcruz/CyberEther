@@ -37,6 +37,9 @@ protected:
     std::vector<float> plot;
     std::vector<float> grid;
 
+    std::shared_ptr<Render::Buffer> gridVerticesBuffer;
+    std::shared_ptr<Render::Buffer> signalVerticesBuffer;
+
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;

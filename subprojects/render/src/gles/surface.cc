@@ -14,7 +14,7 @@ GLES::Surface::Surface(const Config& config, const GLES& instance)
 }
 
 Result GLES::Surface::create() {
-    for (auto &program : programs) {
+    for (auto& program : programs) {
         CHECK(program->create());
     }
 
@@ -24,7 +24,7 @@ Result GLES::Surface::create() {
 }
 
 Result GLES::Surface::destroy() {
-    for (auto &program : programs) {
+    for (auto& program : programs) {
         CHECK(program->destroy());
     }
 
@@ -56,7 +56,7 @@ Result GLES::Surface::draw() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    for (auto &program : programs) {
+    for (auto& program : programs) {
         CHECK(program->draw());
     }
 

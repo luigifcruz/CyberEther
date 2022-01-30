@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#define GLFW_INCLUDE_ES3
+#define GLFW_INCLUDE_ES31
 #include <GLFW/glfw3.h>
 #include "render/tools/imgui_impl_glfw.h"
 #include "render/tools/imgui_impl_opengl3.h"
@@ -20,6 +20,7 @@ class GLES : public Render::Instance {
     class Texture;
     class Vertex;
     class Draw;
+    class Buffer;
 
     explicit GLES(const Config& config);
 
@@ -35,11 +36,7 @@ class GLES : public Render::Instance {
     }
 
     const bool hasCudaInterop() const {
-#ifdef RENDER_CUDA_AVAILABLE
-        return true;
-#else
         return false;
-#endif
     }
 
  protected:

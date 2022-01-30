@@ -9,19 +9,19 @@ GLES::Draw::Draw(const Config& config, const GLES& instance)
 }
 
 Result GLES::Draw::create() {
-    buffer->create();
+    CHECK(buffer->create());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Draw::destroy() {
-    buffer->destroy();
+    CHECK(buffer->destroy());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Draw::draw() {
-    buffer->begin();
+    CHECK(buffer->begin());
 
     uint mode = GL_TRIANGLES;
     switch (config.mode) {
@@ -42,13 +42,13 @@ Result GLES::Draw::draw() {
             break;
     }
 
-    if (buffer->buffered()) {
-        glDrawElements(mode, buffer->count(), GL_UNSIGNED_INT, 0);
+    if (buffer->isBuffered()) {
+        glDrawElements(mode, buffer->getVertexCount(), GL_UNSIGNED_INT, 0);
     } else {
-        glDrawArrays(mode, 0, buffer->count());
+        glDrawArrays(mode, 0, buffer->getVertexCount());
     }
 
-    buffer->end();
+    CHECK(buffer->end());
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }

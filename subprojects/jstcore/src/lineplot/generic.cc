@@ -27,13 +27,17 @@ Generic::Generic(const Config& config, const Input& input) : config(config), inp
 }
 
 Result Generic::initRender(float* ptr, bool cudaInterop) {
+    Render::Buffer::Config gridVerticesConf;
+    gridVerticesConf.buffer = grid.data();
+    gridVerticesConf.elementByteSize = sizeof(grid[0]);
+    gridVerticesConf.size = grid.size();
+    gridVerticesConf.target = Render::Buffer::Target::VERTEX;
+    gridVerticesBuffer = Render::Create(gridVerticesConf);
+
     Render::Vertex::Config gridVertexCfg;
-    Render::Vertex::Buffer gridVbo;
-    gridVbo.data = grid.data();
-    gridVbo.size = grid.size();
-    gridVbo.stride = 3;
-    gridVbo.usage = Render::Vertex::Buffer::Static;
-    gridVertexCfg.buffers = {gridVbo};
+    gridVertexCfg.buffers = {
+        {gridVerticesBuffer, 3},
+    };
     gridVertex = Render::Create(gridVertexCfg);
 
     Render::Draw::Config drawGridVertexCfg;
@@ -41,14 +45,17 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     drawGridVertexCfg.mode = Render::Draw::Lines;
     drawGridVertex = Render::Create(drawGridVertexCfg);
 
+    Render::Buffer::Config signalVerticesConf;
+    signalVerticesConf.buffer = ptr;
+    signalVerticesConf.elementByteSize = sizeof(ptr[0]);
+    signalVerticesConf.size = plot.size();
+    signalVerticesConf.target = Render::Buffer::Target::VERTEX;
+    signalVerticesBuffer = Render::Create(signalVerticesConf);
+
     Render::Vertex::Config lineVertexCfg;
-    Render::Vertex::Buffer plotVbo;
-    plotVbo.size = plot.size();
-    plotVbo.stride = 3;
-    plotVbo.cudaInterop = cudaInterop;
-    plotVbo.data = ptr;
-    plotVbo.usage = Render::Vertex::Buffer::Dynamic;
-    lineVertexCfg.buffers = {plotVbo};
+    lineVertexCfg.buffers = {
+        {signalVerticesBuffer, 3},
+    };
     lineVertex = Render::Create(lineVertexCfg);
 
     Render::Draw::Config drawLineVertexCfg;
@@ -88,7 +95,7 @@ Result Generic::compute() {
 }
 
 Result Generic::present() {
-    lineVertex->update();
+    signalVerticesBuffer->update();
     return Result::SUCCESS;
 }
 

@@ -11,6 +11,7 @@
 #include "render/metal/texture.hpp"
 #include "render/metal/vertex.hpp"
 #include "render/metal/draw.hpp"
+#include "render/metal/buffer.hpp"
 
 namespace Render {
 

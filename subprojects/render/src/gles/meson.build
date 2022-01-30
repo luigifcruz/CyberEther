@@ -18,6 +18,7 @@ if all_gl_deps_found
     'texture.cc',
     'vertex.cc',
     'draw.cc',
+    'buffer.cc',
   ])
 
   subdir('tools')

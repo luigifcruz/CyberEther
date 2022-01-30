@@ -14,7 +14,7 @@ class Metal::Draw : public Render::Draw {
  protected:
     Result create();
     Result destroy();
-    Result encode(MTL::RenderCommandEncoder* encode);
+    Result encode(MTL::RenderCommandEncoder* encode, const std::size_t& offset);
 
  private:
     const Metal& instance;

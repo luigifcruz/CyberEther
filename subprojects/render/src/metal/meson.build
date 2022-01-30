@@ -30,6 +30,7 @@ if all_metal_deps_found
     'vertex.cc',
     'draw.cc',
     'window.mm',
+    'buffer.cc'
   ])
 
   subdir('tools')

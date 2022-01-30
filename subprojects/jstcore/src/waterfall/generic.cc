@@ -6,9 +6,33 @@ namespace Jetstream::Waterfall {
 Generic::Generic(const Config& config, const Input& input) : config(config), input(input) {}
 
 Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
+    Render::Buffer::Config fillScreenVerticesConf;
+    fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
+    fillScreenVerticesConf.elementByteSize = sizeof(float);
+    fillScreenVerticesConf.size = 12;
+    fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
+    fillScreenVerticesBuffer = Render::Create(fillScreenVerticesConf);
+
+    Render::Buffer::Config fillScreenTextureVerticesConf;
+    fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
+    fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
+    fillScreenTextureVerticesConf.size = 8;
+    fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
+    fillScreenTextureVerticesBuffer = Render::Create(fillScreenTextureVerticesConf);
+
+    Render::Buffer::Config fillScreenIndicesConf;
+    fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
+    fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
+    fillScreenIndicesConf.size = 6;
+    fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
+    fillScreenIndicesBuffer = Render::Create(fillScreenIndicesConf);
+
     Render::Vertex::Config vertexCfg;
-    vertexCfg.buffers = Render::Extras::FillScreenVertices();
-    vertexCfg.indices = Render::Extras::FillScreenIndices();
+    vertexCfg.buffers = {
+        {fillScreenVerticesBuffer, 3},
+        {fillScreenTextureVerticesBuffer, 2},
+    };
+    vertexCfg.indices = fillScreenIndicesBuffer;
     vertex = Render::Create(vertexCfg);
 
     Render::Draw::Config drawVertexCfg;
@@ -16,15 +40,12 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     drawVertexCfg.mode = Render::Draw::Triangles;
     drawVertex = Render::Create(drawVertexCfg);
 
-    Render::Texture::Config binTextureCfg;
-    binTextureCfg.size = {static_cast<int>(input.in.buf.size()), ymax};
-    binTextureCfg.buffer = ptr;
-    binTextureCfg.cudaInterop = cudaInterop;
-    binTextureCfg.key = "BinTexture";
-    binTextureCfg.pfmt = Render::PixelFormat::RED;
-    binTextureCfg.ptype = Render::PixelType::F32;
-    binTextureCfg.dfmt = Render::DataFormat::F32;
-    binTexture = Render::Create(binTextureCfg);
+    Render::Buffer::Config bufferCfg;
+    bufferCfg.buffer = ptr;
+    bufferCfg.size = input.in.buf.size() * ymax;
+    bufferCfg.elementByteSize = sizeof(float);
+    bufferCfg.target = Render::Buffer::Target::STORAGE;
+    binTexture = Render::Create(bufferCfg);
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
@@ -32,23 +53,25 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     lutTextureCfg.key = "LutTexture";
     lutTexture = Render::Create(lutTextureCfg);
 
+    Render::Buffer::Config uniformCfg;
+    uniformCfg.buffer = &shaderUniforms;
+    uniformCfg.elementByteSize = sizeof(shaderUniforms);
+    uniformCfg.size = 1;
+    uniformCfg.target = Render::Buffer::Target::STORAGE;
+    uniformBuffer = Render::Create(uniformCfg);
+
     Render::Program::Config programCfg;
     programCfg.shaders = {
         {Render::Backend::Metal, {MetalShader}},
         {Render::Backend::GLES, {GlesVertexShader, GlesFragmentShader}},
     };
     programCfg.draws = {drawVertex};
-    programCfg.textures = {binTexture, lutTexture};
-    programCfg.uniforms = {
-        {"index", &indexUniform},
-        {"interpolate", &interpolateUniform},
-        {"zoom", &zoomFactor},
-        {"offset", &offsetFactor},
-    };
+    programCfg.textures = {lutTexture};
+    programCfg.buffers = {uniformBuffer, binTexture};
     program = Render::Create(programCfg);
 
     Render::Texture::Config textureCfg;
-    textureCfg.size = binTextureCfg.size;
+    textureCfg.size = config.size;
     texture = Render::Create(textureCfg);
 
     Render::Surface::Config surfaceCfg;
@@ -73,19 +96,24 @@ Result Generic::present() {
     if (blocks < 0) {
         blocks = ymax - last;
 
-        binTexture->fillRow(start, blocks);
+        binTexture->update(start * input.in.buf.size(), blocks * input.in.buf.size());
 
         start = 0;
         blocks = inc;
     }
 
-    binTexture->fillRow(start, blocks);
+    binTexture->update(start * input.in.buf.size(), blocks * input.in.buf.size());
     last = inc;
 
-    zoomFactor[0] = config.zoom;
-    indexUniform[0] = inc / (float)ymax;
-    interpolateUniform[0] = config.interpolate;
-    offsetFactor[0] = config.offset / (float)config.size.width;
+    shaderUniforms.zoom = config.zoom;
+    shaderUniforms.width = input.in.buf.size();
+    shaderUniforms.height = ymax;
+    shaderUniforms.interpolate = config.interpolate;
+    shaderUniforms.index = inc / (float)shaderUniforms.height;
+    shaderUniforms.offset = config.offset / (float)config.size.width;
+    shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;
+
+    uniformBuffer->update();
 
     return Result::SUCCESS;
 }

@@ -1,11 +1,12 @@
 #ifndef RENDER_GLES_VERTEX_H
 #define RENDER_GLES_VERTEX_H
 
-#include "render/gles/instance.hpp"
+#include <vector>
+#include <utility>
+#include <memory>
 
-#ifdef RENDER_CUDA_AVAILABLE
-#include <cuda_gl_interop.h>
-#endif
+#include "render/gles/instance.hpp"
+#include "render/gles/buffer.hpp"
 
 namespace Render {
 
@@ -13,26 +14,31 @@ class GLES::Vertex : public Render::Vertex {
  public:
     explicit Vertex(const Config& config, const GLES& instance);
 
-    Result update() final;
-
  protected:
     Result create();
     Result destroy();
     Result begin();
     Result end();
 
-    uint count();
-    uint buffered();
+    const uint* getIndexBuffer() const {
+        return indices->getHandle();
+    }
+
+    constexpr const std::size_t getVertexCount() const {
+        return vertex_count;
+    }
+
+    const bool isBuffered() const {
+        return indices != nullptr;
+    }
 
  private:
     const GLES& instance;
 
-    uint vao, ebo;
-    uint vertex_count;
-
-#ifdef RENDER_CUDA_AVAILABLE
-    cudaStream_t stream;
-#endif
+    uint vao;
+    std::size_t vertex_count;
+    std::vector<std::pair<std::shared_ptr<GLES::Buffer>, uint32_t>> buffers;
+    std::shared_ptr<GLES::Buffer> indices;
 
     friend class GLES::Draw;
 };

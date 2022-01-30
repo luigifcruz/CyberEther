@@ -13,7 +13,6 @@ class Metal::Texture : public Render::Texture {
     bool size(const Size2D<int>&) final;
 
     void* raw() final;
-    Result pour() final;
     Result fill() final;
     Result fillRow(const std::size_t& y, const std::size_t& height) final;
 
@@ -21,8 +20,12 @@ class Metal::Texture : public Render::Texture {
     Result create();
     Result destroy();
 
-    constexpr const MTL::PixelFormat getPixelFormat() {
+    constexpr const MTL::PixelFormat getPixelFormat() const {
         return pixelFormat;
+    }
+
+    constexpr const MTL::Texture* getHandle() const {
+        return texture;
     }
 
  private:

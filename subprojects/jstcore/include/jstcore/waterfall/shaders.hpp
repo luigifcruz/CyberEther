@@ -10,8 +10,15 @@ namespace Jetstream::Waterfall {
 // Metal
 //
 
+// TODO: Fix macro invalid memory access.
 inline const char* MetalShader = R"END(
     #include <metal_stdlib>
+
+    #define SAMPLER(x, y) ({ \
+        int _idx = ((int)y)*uniforms.width+((int)x); \
+        (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : \
+            _idx += uniforms.maxSize; \
+            (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : 1.0; })
 
     using namespace metal;
 
@@ -20,49 +27,53 @@ inline const char* MetalShader = R"END(
         float2 texcoord;
     };
 
+    struct ShaderUniforms {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    };
+
     vertex TexturePipelineRasterizerData vertFunc(
-            const device packed_float3* vertexArray [[buffer(0)]],
-            const device packed_float2* texcoord [[buffer(1)]],
-            constant float& index [[buffer(29)]],
-            constant float& zoom [[buffer(27)]],
-            constant float& offset [[buffer(26)]],
+            constant ShaderUniforms& uniforms [[buffer(0)]],
+            const device packed_float3* vertexArray [[buffer(2)]],
+            const device packed_float2* texcoord [[buffer(3)]],
             unsigned int vID[[vertex_id]]) {
         TexturePipelineRasterizerData out;
 
         out.position = vector_float4(vertexArray[vID], 1.0);
-        float vertical = (index + texcoord[vID].y);
-        float horizontal = (texcoord[vID].x / zoom) + offset;
-        out.texcoord = vector_float2(horizontal, vertical);
+        float vertical = ((uniforms.index - (1.0 - texcoord[vID].y)) * (float)uniforms.height);
+        float horizontal = (((texcoord[vID].x / uniforms.zoom) + uniforms.offset) * (float)uniforms.width);
+        out.texcoord = float2(horizontal, vertical);
 
         return out;
     }
 
     fragment float4 fragFunc(
             TexturePipelineRasterizerData in [[stage_in]],
-            texture2d<float> data [[texture(0)]],
-            texture2d<float> lut [[texture(1)]],
-            constant uint32_t& interpolate [[buffer(28)]]) {
+            constant ShaderUniforms& uniforms [[buffer(0)]],
+            const device float* data [[buffer(1)]],
+            texture2d<float> lut [[texture(0)]]) {
         float mag = 0.0;
-        sampler lutSampler(filter::linear);
-        constexpr sampler dataSampler(filter::linear, address::repeat);
 
-        if (interpolate == 1) {
-            const float yBlur = 1.0 / data.get_height();
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 4.0*yBlur)).r * 0.0162162162;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 3.0*yBlur)).r * 0.0540540541;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 2.0*yBlur)).r * 0.1216216216;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y - 1.0*yBlur)).r * 0.1945945946;
-            mag += data.sample(dataSampler, in.texcoord).r * 0.2270270270;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 1.0*yBlur)).r * 0.1945945946;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 2.0*yBlur)).r * 0.1216216216;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 3.0*yBlur)).r * 0.0540540541;
-            mag += data.sample(dataSampler, float2(in.texcoord.x, in.texcoord.y + 4.0*yBlur)).r * 0.0162162162;
+        if (uniforms.interpolate) {
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y - 4.0) * 0.0162162162;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y - 3.0) * 0.0540540541;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y - 2.0) * 0.1216216216;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y - 1.0) * 0.1945945946;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y      ) * 0.2270270270;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y + 1.0) * 0.1945945946;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y + 2.0) * 0.1216216216;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y + 3.0) * 0.0540540541;
+            mag += SAMPLER(in.texcoord.x, in.texcoord.y + 4.0) * 0.0162162162;
+        } else {
+            mag = SAMPLER(in.texcoord.x, in.texcoord.y);
         }
 
-        if (interpolate == 0) {
-            mag = data.sample(dataSampler, in.texcoord).r;
-        }
-
+        constexpr sampler lutSampler(filter::linear);
         return lut.sample(lutSampler, vector_float2(mag, 0.0));
     }
 )END";
@@ -71,52 +82,81 @@ inline const char* MetalShader = R"END(
 // GLES
 //
 
-inline const char* GlesVertexShader = R"END(#version 300 es
+inline const char* GlesVertexShader = R"END(#version 310 es
     layout (location = 0) in vec3 aPos;
     layout (location = 1) in vec2 aTexCoord;
 
     out vec2 TexCoord;
 
-    uniform float index;
-    uniform float zoom;
-    uniform float offset;
+    layout (std140, binding = 0) readonly buffer ShaderUniforms {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    };
 
     void main() {
         gl_Position = vec4(aPos, 1.0);
-
-        float vertical = (index - aTexCoord.y);
-        float horizontal = (aTexCoord.x / zoom) + offset;
+        float vertical = (index - aTexCoord.y) * float(height);
+        float horizontal = ((aTexCoord.x / zoom) + offset) * float(width);
         TexCoord = vec2(horizontal, vertical);
     }
 )END";
 
-inline const char* GlesFragmentShader = R"END(#version 300 es
+inline const char* GlesFragmentShader = R"END(#version 310 es
     precision highp float;
 
     out vec4 FragColor;
     in vec2 TexCoord;
-    uniform int interpolate;
-    uniform sampler2D BinTexture;
+
     uniform sampler2D LutTexture;
+
+    layout (std140, binding = 0) readonly buffer ShaderUniforms {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    };
+
+    layout (std430, binding = 1) readonly buffer WaterfallData {
+        float data[];
+    };
+
+    float SAMPLER(float x, float y) {
+        int _idx = (int(y) * width) + int(x);
+
+        if (_idx < maxSize && _idx > 0) {
+            return data[_idx];
+        }
+
+        if (_idx < 0) {
+            return data[_idx + maxSize];
+        }
+
+        return 1.0;
+    }
 
     void main() {
         float mag = 0.0;
 
-        if (interpolate == 1) {
-            float yBlur = 1.0 / float(textureSize(BinTexture, 0).y);
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 4.0*yBlur)).r * 0.0162162162;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 3.0*yBlur)).r * 0.0540540541;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 2.0*yBlur)).r * 0.1216216216;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y - 1.0*yBlur)).r * 0.1945945946;
-            mag += texture(BinTexture, TexCoord).r * 0.2270270270;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 1.0*yBlur)).r * 0.1945945946;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 2.0*yBlur)).r * 0.1216216216;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 3.0*yBlur)).r * 0.0540540541;
-            mag += texture(BinTexture, vec2(TexCoord.x, TexCoord.y + 4.0*yBlur)).r * 0.0162162162;
-        }
-
-        if (interpolate == 0) {
-            mag = texture(BinTexture, TexCoord).r;
+        if (interpolate) {
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 4.0) * 0.0162162162;
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 3.0) * 0.0540540541;
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 2.0) * 0.1216216216;
+            mag += SAMPLER(TexCoord.x, TexCoord.y - 1.0) * 0.1945945946;
+            mag += SAMPLER(TexCoord.x, TexCoord.y      ) * 0.2270270270;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 1.0) * 0.1945945946;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 2.0) * 0.1216216216;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 3.0) * 0.0540540541;
+            mag += SAMPLER(TexCoord.x, TexCoord.y + 4.0) * 0.0162162162;
+        } else {
+            mag = SAMPLER(TexCoord.x, TexCoord.y);
         }
 
         FragColor = texture(LutTexture, vec2(mag, 0.0));

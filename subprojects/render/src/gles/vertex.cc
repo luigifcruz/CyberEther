@@ -4,85 +4,54 @@ namespace Render {
 
 GLES::Vertex::Vertex(const Config& config, const GLES& instance)
          : Render::Vertex(config), instance(instance) {
+    for (const auto& [buffer, stride] : config.buffers) {
+        buffers.push_back({std::dynamic_pointer_cast<GLES::Buffer>(buffer), stride});
+    }
+
+    if (config.indices) {
+        indices = std::dynamic_pointer_cast<GLES::Buffer>(config.indices);
+    }
 }
 
 Result GLES::Vertex::create() {
     glGenVertexArrays(1, &vao);
 
-    this->begin();
+    CHECK(this->begin());
+
     int i = 0;
-    bool cudaEnabled = false;
-    for (auto& buffer : config.buffers) {
-        uint usage = GL_STATIC_DRAW;
-        switch (buffer.usage) {
-            case Vertex::Buffer::Usage::Dynamic:
-                usage = GL_DYNAMIC_DRAW;
-                break;
-            case Vertex::Buffer::Usage::Stream:
-                usage = GL_STREAM_DRAW;
-                break;
-            case Vertex::Buffer::Usage::Static:
-                usage = GL_STATIC_DRAW;
-                break;
-        }
-
-        glGenBuffers(1, &buffer.index);
-        glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
-        auto ptr = (buffer.cudaInterop) ? nullptr : buffer.data;
-        glBufferData(GL_ARRAY_BUFFER, buffer.size * sizeof(float), ptr, usage);
-        glVertexAttribPointer(i, buffer.stride, GL_FLOAT, GL_FALSE, buffer.stride * sizeof(float), 0);
+    for (const auto& [buffer, stride] : buffers) {
+        CHECK(buffer->create());
+        CHECK(buffer->begin());
+        glVertexAttribPointer(i, stride, GL_FLOAT, GL_FALSE, stride * sizeof(float), 0);
         glEnableVertexAttribArray(i++);
-        vertex_count = buffer.size / buffer.stride;
-
-        if (buffer.cudaInterop) {
-#ifdef RENDER_CUDA_AVAILABLE
-            CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&buffer._cuda_res, buffer.index,
-                    cudaGraphicsMapFlagsWriteDiscard));
-            cudaEnabled = true;
-#endif
-        }
+        CHECK(buffer->end());
+        vertex_count = buffer->size() / stride;
     }
 
-    if (cudaEnabled) {
-#ifdef RENDER_CUDA_AVAILABLE
-        int leastPriority = -1, greatestPriority = -1;
-        CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPriority, &greatestPriority));
-        CUDA_CHECK(cudaStreamCreateWithPriority(&stream, cudaStreamNonBlocking, greatestPriority));
-#endif
+    if (indices) {
+        CHECK(indices->create());
+        CHECK(indices->begin());
+        vertex_count = indices->size();
     }
 
-    if (config.indices.size() != 0) {
-        glGenBuffers(1, &ebo);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, config.indices.size() * sizeof(uint),
-                config.indices.data(), GL_STATIC_DRAW);
-        vertex_count = config.indices.size();
+    CHECK(this->end());
+
+    if (indices) {
+        CHECK(indices->end());
     }
-    this->end();
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
 }
 
 Result GLES::Vertex::destroy() {
-    bool cudaEnabled = false;
-
-    for (auto& buffer : config.buffers) {
-        glDeleteBuffers(1, &buffer.index);
-#ifdef RENDER_CUDA_AVAILABLE
-        if (buffer._cuda_res) {
-            cudaGraphicsUnregisterResource(buffer._cuda_res);
-            cudaEnabled = true;
-        }
-#endif
+    for (const auto& [buffer, stride] : buffers) {
+        CHECK(buffer->destroy());
     }
 
-    if (cudaEnabled) {
-#ifdef RENDER_CUDA_AVAILABLE
-        cudaStreamDestroy(stream);
-#endif
+    if (indices) {
+        CHECK(indices->destroy());
     }
 
-    glDeleteBuffers(1, &ebo);
     glDeleteVertexArrays(1, &vao);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
@@ -98,38 +67,6 @@ Result GLES::Vertex::end() {
     glBindVertexArray(0);
 
     return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-Result GLES::Vertex::update() {
-    this->begin();
-    for (auto& buffer : config.buffers) {
-        if (buffer.cudaInterop) {
-#ifdef RENDER_CUDA_AVAILABLE
-            float* buffer_ptr;
-            size_t buffer_len;
-            CUDA_CHECK(cudaGraphicsMapResources(1, &buffer._cuda_res, stream));
-            CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&buffer_ptr, &buffer_len, buffer._cuda_res));
-            CUDA_CHECK(cudaMemcpyAsync(buffer_ptr, buffer.data, buffer_len, cudaMemcpyDeviceToDevice, stream));
-            CUDA_CHECK(cudaGraphicsUnmapResources(1, &buffer._cuda_res, stream));
-            CUDA_CHECK(cudaStreamSynchronize(stream));
-#endif
-            break;
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, buffer.index);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, buffer.size * sizeof(float), buffer.data);
-    }
-    this->end();
-
-    return GLES::getError(__FUNCTION__, __FILE__, __LINE__);
-}
-
-uint GLES::Vertex::buffered() {
-    return config.indices.size() != 0;
-}
-
-uint GLES::Vertex::count() {
-    return vertex_count;
 }
 
 }  // namespace Render
