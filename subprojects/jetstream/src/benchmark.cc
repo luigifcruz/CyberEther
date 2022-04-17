@@ -12,43 +12,38 @@ public:
 };
 
 static void BM_SyncLoop(benchmark::State& state) {
-  auto loop = Loop<Sync>::New();
-  loop->add<Dummy>("dummy0", {}, {});
-  for (auto _ : state) {
-    loop->compute();
-  }
+    Jetstream::Stream({
+        Jetstream::Block<Dummy>({}, {}),
+    });
+
+    for (auto _ : state) {
+        Jetstream::Compute();
+    }
 }
 BENCHMARK(BM_SyncLoop);
 
-static void BM_AsyncLoop(benchmark::State& state) {
-  auto loop = Loop<Async>::New();
-  loop->add<Dummy>("dummy0", {}, {});
-  for (auto _ : state) {
-    loop->compute();
-  }
-}
-BENCHMARK(BM_AsyncLoop);
+static void BM_ComputePresentLoop(benchmark::State& state) {
+    Jetstream::Stream({
+        Jetstream::Block<Dummy>({}, {}),
+    });
 
-static void BM_SyncSyncLoop(benchmark::State& state) {
-  auto loop = Loop<Sync>::New();
-  loop->add<Dummy>("dummy0", {}, {});
-  auto sync = Subloop<Sync>::New(loop);
-  sync->add<Dummy>("dummy1", {}, {});
-  for (auto _ : state) {
-    loop->compute();
-  }
-}
-BENCHMARK(BM_SyncSyncLoop);
+    std::size_t ITER = 8;
 
-static void BM_SyncAsyncLoop(benchmark::State& state) {
-  auto loop = Loop<Sync>::New();
-  loop->add<Dummy>("dummy0", {}, {});
-  auto async = Subloop<Async>::New(loop);
-  async->add<Dummy>("dummy1", {}, {});
-  for (auto _ : state) {
-    loop->compute();
-  }
+    for (auto _ : state) {
+        auto thread = std::thread([&]{
+           for (int i = 0; i < ITER; i++) {
+                Jetstream::Compute();
+            } 
+        });
+
+        for (int i = 0; i < ITER; i++) {
+            Jetstream::Present();
+        }
+
+        thread.join();
+    }
+
 }
-BENCHMARK(BM_SyncAsyncLoop);
+BENCHMARK(BM_ComputePresentLoop);
 
 BENCHMARK_MAIN();

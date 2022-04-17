@@ -10,7 +10,7 @@ public:
     explicit CPU(const Config&, const Input&);
 
 protected:
-    Result underlyingCompute() final;
+    const Result underlyingCompute();
 
     std::vector<float> bin;
 };

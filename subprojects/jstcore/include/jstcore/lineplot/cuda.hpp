@@ -5,21 +5,16 @@
 
 #include <cuda_runtime.h>
 
-namespace Jetstream::Lineplot {
+namespace Jetstream {
 
-/**
- * This is the implementation of the Lineplot using CUDA.
- * It will make use of graphics interopability with CUDA.
- * The choosen render backend has to be compatible with it.
- * Otherwise, just use the CPU implementation of Lineplot.
- */
-class CUDA : public Generic  {
+template<>
+class Lineplot<Levice::CUDA> : public LineplotGeneric  {
 public:
-    explicit CUDA(const Config&, const Input&);
-    ~CUDA();
+    explicit Lineplot(const Config&, const Input&);
+    ~Lineplot();
 
 protected:
-    Result underlyingCompute() final;
+    const Result underlyingCompute();
 
     size_t plot_len;
     float* plot_dptr;
@@ -27,6 +22,6 @@ protected:
     cudaStream_t stream;
 };
 
-} // namespace Jetstream::Lineplot
+} // namespace Jetstream
 
 #endif

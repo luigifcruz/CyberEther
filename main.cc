@@ -27,21 +27,19 @@ public:
         stream = std::vector<std::complex<float>>(2 << 13);
 
         // Configure Jetstream
-        loop = Loop<Sync>::New();
-
-        fft = loop->add<FFT::CPU>("fft0", {}, {
+        fft = Jetstream::Block<FFT::CPU>({}, {
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        auto gui = Subloop<Sync>::New(loop);
-
-        lpt = gui->add<Lineplot::CPU>("lpt0", {}, {
+        lpt = Jetstream::Block<Lineplot::CPU>({}, {
             fft->output(),
         });
 
-        wtf = gui->add<Waterfall::CPU>("wtf0", {}, {
+        wtf = Jetstream::Block<Waterfall::CPU>({}, {
             fft->output(),
         });
+
+        Jetstream::Stream({fft, lpt, wtf});
     }
 
     bool keep_running() {
@@ -70,7 +68,7 @@ public:
             streaming = true;
             while (streaming) {
                 device->ReadStream(rx, stream.data(), stream.size(), 1000);
-                loop->compute();
+                Jetstream::Compute();
             }
 
             device->StopStream();
@@ -160,7 +158,7 @@ public:
         ImGui::End();
 
         Render::Synchronize();
-        loop->present();
+        Jetstream::Present();
         Render::End();
     }
 
@@ -171,7 +169,6 @@ private:
     int position;
 
     // Jetstream
-    std::shared_ptr<Jetstream::Loop<Sync>> loop;
     std::shared_ptr<Jetstream::FFT::Generic> fft;
     std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
     std::shared_ptr<Jetstream::Waterfall::Generic> wtf;

@@ -90,11 +90,11 @@ Result Generic::initRender(float* ptr, bool cudaInterop) {
     return Result::SUCCESS;
 }
 
-Result Generic::compute() {
+const Result Generic::compute() {
     return this->underlyingCompute();
 }
 
-Result Generic::present() {
+const Result Generic::present() {
     signalVerticesBuffer->update();
     return Result::SUCCESS;
 }

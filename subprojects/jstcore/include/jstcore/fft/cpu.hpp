@@ -13,7 +13,7 @@ public:
     ~CPU();
 
 protected:
-    Result underlyingCompute() final;
+    const Result underlyingCompute();
 
     fftwf_plan cf_plan;
 

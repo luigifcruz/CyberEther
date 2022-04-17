@@ -13,7 +13,7 @@ CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
     this->initRender((uint8_t*)bin.data());
 }
 
-Result CPU::underlyingCompute() {
+const Result CPU::underlyingCompute() {
     std::copy(input.in.buf.begin(), input.in.buf.end(), bin.begin()+(inc * input.in.buf.size()));
     return Result::SUCCESS;
 }

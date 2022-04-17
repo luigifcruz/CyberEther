@@ -9,26 +9,24 @@ class Module {
 public:
     virtual ~Module() = default;
 
-    virtual Result compute() {
-        return Result::SUCCESS;
+    virtual constexpr const Feature feature() const {
+        return Feature::NONE;
     }
 
-    virtual Result present() {
-        return Result::SUCCESS;
-    }
-
-    virtual Result barrier() {
-        return Result::SUCCESS;
+    virtual constexpr const Capability capability() const {
+        return Capability::NONE;
     }
 
 protected:
-    virtual Result underlyingCompute() {
+    virtual constexpr const Result compute() {
         return Result::SUCCESS;
     }
 
-    virtual Result underlyingPresent() {
+    virtual constexpr const Result present() {
         return Result::SUCCESS;
     }
+
+    friend class Instance;
 };
 
 } // namespace Jetstream

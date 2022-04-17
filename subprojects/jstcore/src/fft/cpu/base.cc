@@ -48,7 +48,7 @@ FFT::CPU::~CPU() {
     fftwf_destroy_plan(cf_plan);
 }
 
-Result CPU::underlyingCompute() {
+const Result CPU::underlyingCompute() {
     float tmp;
     auto n = fft_in.size();
     auto [min, max] = config.amplitude;

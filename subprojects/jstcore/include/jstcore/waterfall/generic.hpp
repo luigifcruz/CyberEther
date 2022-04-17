@@ -24,9 +24,6 @@ public:
     explicit Generic(const Config&, const Input&);
     virtual ~Generic() = default;
 
-    Result compute();
-    Result present();
-
     constexpr bool interpolate() const {
         return config.interpolate;
     }
@@ -52,6 +49,11 @@ public:
 protected:
     Config config;
     const Input input;
+
+    const Result compute();
+    const Result present();
+
+    virtual const Result underlyingCompute() = 0;
 
     int inc = 0, last = 0, ymax = 0;
 

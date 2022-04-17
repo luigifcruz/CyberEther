@@ -18,7 +18,7 @@ Generic::Generic(const Config& config, const Input& input) : config(config), inp
     }
 }
 
-Result Generic::compute() {
+const Result Generic::compute() {
     return this->underlyingCompute();
 }
 

@@ -82,13 +82,13 @@ Result Generic::initRender(uint8_t* ptr, bool cudaInterop) {
     return Result::SUCCESS;
 }
 
-Result Generic::compute() {
+const Result Generic::compute() {
     auto res = this->underlyingCompute();
     inc = (inc + 1) % ymax;
     return res;
 }
 
-Result Generic::present() {
+const Result Generic::present() {
     int start = last;
     int blocks = (inc - last);
 

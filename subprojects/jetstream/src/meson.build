@@ -1,6 +1,8 @@
 src_lst += files([
-  'helpers.cc'
+  'base.cc',
+  'helpers.cc',
 ])
+
 executable(
   'bench',
   src_lst + ['benchmark.cc'],

@@ -11,7 +11,7 @@ CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
     this->initRender(plot.data());
 }
 
-Result CPU::underlyingCompute() {
+const Result CPU::underlyingCompute() {
     for (size_t i = 0; i < input.in.buf.size(); i++) {
         plot[(i*3)+1] = input.in.buf[i];
     }

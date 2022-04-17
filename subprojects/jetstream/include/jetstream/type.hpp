@@ -9,11 +9,31 @@
 #include <thread>
 #include <vector>
 #include <complex>
+#include <span>
 
-#include "jetstream/tools/span.hpp"
 #include "jetstream/helpers.hpp"
 
 namespace Jetstream {
+
+enum class Feature : uint8_t {
+    NONE    = 1 << 0,
+    CUDA    = 1 << 1,
+    CPU     = 1 << 2,
+};
+
+inline Feature operator|(Feature lhs, Feature rhs) {
+    return static_cast<Feature>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+}
+
+enum class Capability : uint8_t {
+    NONE       = 1 << 0,
+    COMPUTE    = 1 << 1,
+    PRESENT    = 1 << 2,
+};
+
+inline Capability operator|(Capability lhs, Capability rhs) {
+    return static_cast<Capability>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+}
 
 enum class Locale : uint8_t {
     CPU     = 1 << 0,
@@ -39,8 +59,8 @@ enum Result {
     ERROR = 1,
 };
 
-typedef nonstd::span<float> VF32;
-typedef nonstd::span<std::complex<float>> VCF32;
+typedef std::span<float> VF32;
+typedef std::span<std::complex<float>> VCF32;
 
 template<typename T>
 struct Size2D {

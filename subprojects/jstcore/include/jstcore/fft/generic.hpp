@@ -22,8 +22,6 @@ public:
     explicit Generic(const Config&, const Input&);
     virtual ~Generic() = default;
 
-    Result compute();
-
     constexpr Range<float> amplitude() const {
         return config.amplitude;
     }
@@ -33,6 +31,10 @@ protected:
     Config config;
     const Input input;
     Data<VF32> out;
+
+    const Result compute();
+
+    virtual const Result underlyingCompute() = 0;
 
     std::vector<std::complex<float>> window;
 };
