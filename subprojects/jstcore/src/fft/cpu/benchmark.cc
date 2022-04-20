@@ -8,7 +8,7 @@ static void BM_SyncFFT(benchmark::State& state) {
     auto stream = std::vector<std::complex<float>>(2048);
 
     Jetstream::Stream({
-        Jetstream::Block<FFT::CPU>({}, {
+        Jetstream::New<FFT::Backend<Device::CPU>>({}, {
             Data<VCF32>{Locale::CPU, stream},
         }),
     });

@@ -19,7 +19,7 @@ class Instance {
 };
 
 template<typename T>
-std::shared_ptr<T> Block(const typename T::Config& config, const typename T::Input& input) {
+std::shared_ptr<T> New(const typename T::Config& config, const typename T::Input& input) {
     return std::make_shared<T>(config, input);
 }
 

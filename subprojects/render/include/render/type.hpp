@@ -18,7 +18,6 @@
 #endif
 
 #include <jetstream/type.hpp>
-using namespace Jetstream;
 
 typedef unsigned int uint;
 
@@ -116,6 +115,42 @@ enum class PixelType : uint {
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+template<typename T>
+struct Size2D {
+    T width;
+    T height;
+
+    bool operator==(const Size2D<T>& a) const {
+        return (width == a.width && height == a.height);
+    }
+
+    bool operator!=(const Size2D<T>& a) const {
+        return (width != a.width || height != a.height);
+    }
+
+    bool operator<=(const Size2D<T>& a) const {
+        return (width <= a.width || height <= a.height);
+    }
+};
+
+template<typename T>
+struct Range {
+    T min;
+    T max;
+
+    bool operator==(const Range<T>& a) const {
+        return (min == a.min && max == a.max);
+    }
+
+    bool operator!=(const Range<T>& a) const {
+        return (min != a.min || max != a.max);
+    }
+
+    bool operator<=(const Range<T>& a) const {
+        return (min <= a.min || max <= a.max);
+    }
+};
 
 }  // namespace Render
 

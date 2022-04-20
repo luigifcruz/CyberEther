@@ -2,7 +2,7 @@
 
 namespace Jetstream::Waterfall {
 
-CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
+Backend<Device::CPU>::Backend(const Config& config, const Input& input) : Generic(config, input) {
     if ((input.in.location & Locale::CPU) != Locale::CPU) {
         std::cerr << "[WATERFALL::CPU] This implementation expects a Locale::CPU input." << std::endl;
         JST_CHECK_THROW(Result::ERROR);
@@ -13,7 +13,7 @@ CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
     this->initRender((uint8_t*)bin.data());
 }
 
-const Result CPU::underlyingCompute() {
+const Result Backend<Device::CPU>::underlyingCompute() {
     std::copy(input.in.buf.begin(), input.in.buf.end(), bin.begin()+(inc * input.in.buf.size()));
     return Result::SUCCESS;
 }

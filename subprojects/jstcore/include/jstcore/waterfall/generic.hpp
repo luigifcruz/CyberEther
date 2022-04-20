@@ -8,11 +8,13 @@
 
 namespace Jetstream::Waterfall {
 
+template<Device D> class Backend;
+
 class Generic : public Module {
 public:
     struct Config {
         bool interpolate = true;
-        Size2D<int> size = {2500, 2000};
+        Render::Size2D<int> size = {2500, 2000};
         float zoom = 1.0;
         int offset = 0.0;
     };
@@ -29,10 +31,10 @@ public:
     }
     bool interpolate(bool);
 
-    constexpr Size2D<int> size() const {
+    constexpr Render::Size2D<int> size() const {
         return config.size;
     }
-    Size2D<int> size(const Size2D<int>&);
+    Render::Size2D<int> size(const Render::Size2D<int>&);
 
     constexpr float zoom() const {
         return config.zoom;

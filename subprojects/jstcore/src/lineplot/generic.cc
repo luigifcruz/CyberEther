@@ -99,7 +99,7 @@ const Result Generic::present() {
     return Result::SUCCESS;
 }
 
-Size2D<int> Generic::size(const Size2D<int>& size) {
+Render::Size2D<int> Generic::size(const Render::Size2D<int>& size) {
     if (surface->size(size) != this->size()) {
         config.size = surface->size();
     }

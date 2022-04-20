@@ -27,15 +27,15 @@ public:
         stream = std::vector<std::complex<float>>(2 << 13);
 
         // Configure Jetstream
-        fft = Jetstream::Block<FFT::CPU>({}, {
+        fft = Jetstream::New<FFT::Backend<Device::CPU>>({}, {
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        lpt = Jetstream::Block<Lineplot::CPU>({}, {
+        lpt = Jetstream::New<Lineplot::Backend<Device::CPU>>({}, {
             fft->output(),
         });
 
-        wtf = Jetstream::Block<Waterfall::CPU>({}, {
+        wtf = Jetstream::New<Waterfall::Backend<Device::CPU>>({}, {
             fft->output(),
         });
 

@@ -5,9 +5,10 @@
 
 namespace Jetstream::Waterfall {
 
-class CPU : public Generic  {
+template<>
+class Backend<Device::CPU> : public Generic  {
 public:
-    explicit CPU(const Config&, const Input&);
+    explicit Backend(const Config&, const Input&);
 
 protected:
     const Result underlyingCompute();

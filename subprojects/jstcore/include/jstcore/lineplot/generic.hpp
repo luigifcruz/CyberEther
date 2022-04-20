@@ -7,10 +7,12 @@
 
 namespace Jetstream::Lineplot {
 
+template<Device D> class Backend;
+
 class Generic : public Module {
 public:
     struct Config {
-        Size2D<int> size {3072, 500};
+        Render::Size2D<int> size {3072, 500};
     };
 
     struct Input {
@@ -20,10 +22,10 @@ public:
     explicit Generic(const Config&, const Input&);
     virtual ~Generic() = default;
 
-    constexpr Size2D<int> size() const {
+    constexpr Render::Size2D<int> size() const {
         return config.size;
     }
-    Size2D<int> size(const Size2D<int>&);
+    Render::Size2D<int> size(const Render::Size2D<int>&);
 
     Render::Texture& tex() const;
 

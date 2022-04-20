@@ -15,6 +15,13 @@
 
 namespace Jetstream {
 
+enum class Device : uint8_t {
+    CPU     = 1 << 0,
+    CUDA    = 1 << 1,
+    METAL   = 1 << 2,
+    VULKAN  = 1 << 3,
+};
+
 enum class Feature : uint8_t {
     NONE    = 1 << 0,
     CUDA    = 1 << 1,
@@ -63,37 +70,19 @@ typedef std::span<float> VF32;
 typedef std::span<std::complex<float>> VCF32;
 
 template<typename T>
-struct Size2D {
-    T width;
-    T height;
-
-    bool operator==(const Size2D<T>& a) const {
-        return (width == a.width && height == a.height);
-    }
-
-    bool operator!=(const Size2D<T>& a) const {
-        return (width != a.width || height != a.height);
-    }
-
-    bool operator<=(const Size2D<T>& a) const {
-        return (width <= a.width || height <= a.height);
-    }
-};
-
-template<typename T>
 struct Range {
     T min;
     T max;
 
-    bool operator==(const Size2D<T>& a) const {
+    bool operator==(const Range<T>& a) const {
         return (min == a.min && max == a.max);
     }
 
-    bool operator!=(const Size2D<T>& a) const {
+    bool operator!=(const Range<T>& a) const {
         return (min != a.min || max != a.max);
     }
 
-    bool operator<=(const Size2D<T>& a) const {
+    bool operator<=(const Range<T>& a) const {
         return (min <= a.min || max <= a.max);
     }
 };

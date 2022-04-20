@@ -123,7 +123,7 @@ bool Generic::interpolate(bool val) {
     return this->interpolate();
 }
 
-Size2D<int> Generic::size(const Size2D<int>& size) {
+Render::Size2D<int> Generic::size(const Render::Size2D<int>& size) {
     if (surface->size(size) != this->size()) {
         config.size = surface->size();
     }

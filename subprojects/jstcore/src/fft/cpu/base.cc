@@ -26,7 +26,7 @@ static inline float amplt(const std::complex<float> x, const int n) {
     return 20 * log10(abs(x) / n);
 }
 
-CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
+Backend<Device::CPU>::Backend(const Config& config, const Input& input) : Generic(config, input) {
     if ((input.in.location & Locale::CPU) != Locale::CPU) {
         std::cerr << "[FFT::CPU] This implementation expects a Locale::CPU input." << std::endl;
         JST_CHECK_THROW(Result::ERROR);
@@ -44,11 +44,11 @@ CPU::CPU(const Config& config, const Input& input) : Generic(config, input) {
     out.location = Locale::CPU;
 }
 
-FFT::CPU::~CPU() {
+Backend<Device::CPU>::~Backend() {
     fftwf_destroy_plan(cf_plan);
 }
 
-const Result CPU::underlyingCompute() {
+const Result Backend<Device::CPU>::underlyingCompute() {
     float tmp;
     auto n = fft_in.size();
     auto [min, max] = config.amplitude;

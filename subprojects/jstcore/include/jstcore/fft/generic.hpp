@@ -5,6 +5,8 @@
 
 namespace Jetstream::FFT {
 
+template<Device D> class Backend;
+
 class Generic : public Module {
 public:
     struct Config {

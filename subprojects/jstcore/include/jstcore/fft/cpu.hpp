@@ -7,10 +7,11 @@
 
 namespace Jetstream::FFT {
 
-class CPU : public Generic  {
+template<>
+class Backend<Device::CPU> : public Generic  {
 public:
-    explicit CPU(const Config&, const Input&);
-    ~CPU();
+    explicit Backend(const Config&, const Input&);
+    ~Backend();
 
 protected:
     const Result underlyingCompute();

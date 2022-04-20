@@ -13,7 +13,7 @@ public:
 
 static void BM_SyncLoop(benchmark::State& state) {
     Jetstream::Stream({
-        Jetstream::Block<Dummy>({}, {}),
+        Jetstream::New<Dummy>({}, {}),
     });
 
     for (auto _ : state) {
@@ -24,7 +24,7 @@ BENCHMARK(BM_SyncLoop);
 
 static void BM_ComputePresentLoop(benchmark::State& state) {
     Jetstream::Stream({
-        Jetstream::Block<Dummy>({}, {}),
+        Jetstream::New<Dummy>({}, {}),
     });
 
     std::size_t ITER = 8;
