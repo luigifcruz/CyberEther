@@ -1,8 +1,6 @@
 #ifndef RENDER_TYPE_H
 #define RENDER_TYPE_H
 
-#include <fmt/core.h>
-
 #include <unistd.h>
 
 #include <vector>
@@ -17,7 +15,7 @@
 #include <cuda_runtime.h>
 #endif
 
-#include <jetstream/type.hpp>
+#include <jetstream/base.hh>
 
 typedef unsigned int uint;
 

@@ -29,7 +29,7 @@ Result Metal::Program::create(const MTL::PixelFormat& pixelFormat) {
     auto library = instance.getDevice()->newLibrary(source, opts, &err);
 
     if (!library) {
-        fmt::print("Library error:\n{}\n", err->description()->utf8String());
+        JST_FATAL("Library error:\n{}\n", err->description()->utf8String());
         return Result::ERROR;
     }
 

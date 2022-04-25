@@ -2,14 +2,13 @@
 #include <emscripten.h>
 #endif
 
-#define ENABLE_NVTX
+#include <thread>
+
 #include "render/base.hpp"
 #include "samurai/samurai.hpp"
-#include "jetstream/base.hpp"
-#include "jstcore/base.hpp"
+#include "jetstream/base.hh"
 
 using namespace Jetstream;
-
 class UI {
 public:
     explicit UI() {
@@ -27,15 +26,15 @@ public:
         stream = std::vector<std::complex<float>>(2 << 13);
 
         // Configure Jetstream
-        fft = Jetstream::New<FFT::Backend<Device::CPU>>({}, {
+        fft = Jetstream::Block<FFT::Backend<Device::CPU>>({}, {
             Data<VCF32>{Locale::CPU, stream},
         });
 
-        lpt = Jetstream::New<Lineplot::Backend<Device::CPU>>({}, {
+        lpt = Jetstream::Block<Lineplot::Backend<Device::CPU>>({}, {
             fft->output(),
         });
 
-        wtf = Jetstream::New<Waterfall::Backend<Device::CPU>>({}, {
+        wtf = Jetstream::Block<Waterfall::Backend<Device::CPU>>({}, {
             fft->output(),
         });
 
@@ -187,6 +186,7 @@ auto ui = UI();
 void main_loop() {
     ui.render_step();
 }
+
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
