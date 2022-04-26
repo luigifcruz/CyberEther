@@ -4,6 +4,8 @@
 #include <span>
 #include <complex>
 
+#include "jetstream/memory/types.hh"
+
 namespace Jetstream {
 
 enum class Result : uint8_t {

@@ -15,8 +15,6 @@
 #include <cuda_runtime.h>
 #endif
 
-#include <jetstream/base.hh>
-
 typedef unsigned int uint;
 
 namespace Render {

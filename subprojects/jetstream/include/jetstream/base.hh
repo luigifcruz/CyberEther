@@ -6,4 +6,8 @@
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 
+#ifdef JETSTREAM_FFT_CPU_AVAILABLE
+#include "jetstream/modules/fft/base.hh"
+#endif
+
 #endif

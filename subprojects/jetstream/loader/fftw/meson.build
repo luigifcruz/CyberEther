@@ -1,5 +1,5 @@
 deps = [
-    dependency('cuda', version : '>=10', modules: ['dl'], required: get_option('CUDA'))
+    dependency('fftw3f', required: get_option('FFTW'))
 ]
 
 all_deps_found = true
@@ -9,9 +9,8 @@ endforeach
 all_deps_found = all_deps_found and not meson.is_cross_build()
 
 if all_deps_found
-    add_languages('cuda')
-    cfg_lst.set('JETSTREAM_CUDA_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_FFTW_AVAILABLE', true)
     dep_lst += deps
 endif
 
-ldr_lst += {'CUDA': all_deps_found}
+ldr_lst += {'FFTW': all_deps_found}

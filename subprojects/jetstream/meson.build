@@ -21,8 +21,8 @@ inc_lst = [
 ]
 
 subdir('loader')
-subdir('include')
 subdir('src')
+subdir('include')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
