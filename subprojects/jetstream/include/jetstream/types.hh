@@ -15,6 +15,11 @@ enum class Result : uint8_t {
     ASSERTION_ERROR,
 };
 
+enum class Direction : I64 {
+    Forward = 1,
+    Backward = -1,
+};
+
 template<typename T>
 struct Range {
     T min;

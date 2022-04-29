@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_MACROS_HH
 #define JETSTREAM_MACROS_HH
 
+#include "jetstream_config.hh"
 #include "jetstream/types.hh"
 
 #ifndef JETSTREAM_API

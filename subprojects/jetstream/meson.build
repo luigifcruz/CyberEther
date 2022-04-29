@@ -20,7 +20,7 @@ inc_lst = [
     include_directories('.'),
 ]
 
-subdir('loader')
+subdir('meson')
 subdir('src')
 subdir('include')
 

@@ -4,7 +4,6 @@
 #include <memory>
 #include <vector>
 
-#include "jetstream/base.hh"
 #include "jetstream/module.hh"
 
 namespace Jetstream {
@@ -22,9 +21,14 @@ class JETSTREAM_API Instance {
     std::vector<std::shared_ptr<Module>> modules;
 };
 
-Result Conduit(const std::vector<std::shared_ptr<Module>>&);
-Result Compute();
-Result Present();
+template<template<Device> class T, Device D>
+std::unique_ptr<T<D>> JETSTREAM_API Block(const typename T<D>::Config& config, const typename T<D>::Input& input) {
+    return std::make_unique<T<D>>(config, input);
+}
+
+Result JETSTREAM_API Conduit(const std::vector<std::shared_ptr<Module>>&);
+Result JETSTREAM_API Compute();
+Result JETSTREAM_API Present();
 
 }  // namespace Jetstream
 
