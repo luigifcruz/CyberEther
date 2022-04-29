@@ -8,7 +8,23 @@
 #include "jetstream/module.hh"
 
 #ifdef JETSTREAM_FFT_CPU_AVAILABLE
-#include "jetstream/modules/fft/base.hh"
+#include "jetstream/modules/fft.hh"
+#endif
+
+#ifdef JETSTREAM_WINDOW_CPU_AVAILABLE
+#include "jetstream/modules/window.hh"
+#endif
+
+#ifdef JETSTREAM_MULTIPLY_CPU_AVAILABLE
+#include "jetstream/modules/multiply.hh"
+#endif
+
+#ifdef JETSTREAM_AMPLITUDE_CPU_AVAILABLE
+#include "jetstream/modules/amplitude.hh"
+#endif
+
+#ifdef JETSTREAM_SCALE_CPU_AVAILABLE
+#include "jetstream/modules/scale.hh"
 #endif
 
 #endif

@@ -1,1 +1,5 @@
 subdir('fft')
+subdir('window')
+subdir('multiply')
+subdir('amplitude')
+subdir('scale')

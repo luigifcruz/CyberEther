@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_MODULES_FFT_BASE_HH
-#define JETSTREAM_MODULES_FFT_BASE_HH
+#ifndef JETSTREAM_MODULES_FFT_HH
+#define JETSTREAM_MODULES_FFT_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -16,8 +16,8 @@ template<Device D>
 class FFT : public Module {
  public:
     struct Config {
+        U64 size;
         Direction direction = Direction::Forward;
-        Range<F64> amplitude = {-200.0f, 0.0f};
     };
 
     struct Input {
@@ -30,13 +30,8 @@ class FFT : public Module {
 
     explicit FFT(const Config&, const Input&);
 
-    constexpr Range<float> amplitude() const {
-        return config.amplitude;
-    }
-
-    Range<float> amplitude(const Range<float>& amplitude) {
-        config.amplitude = amplitude;
-        return this->amplitude();
+    constexpr const U64 getBufferSize() const {
+        return this->config.size;
     }
 
     constexpr const Vector<D, CF32>& getOutputBuffer() const {

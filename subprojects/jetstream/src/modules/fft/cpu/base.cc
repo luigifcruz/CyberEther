@@ -1,4 +1,4 @@
-#include "jetstream/modules/fft/base.hh"
+#include "jetstream/modules/fft.hh"
 
 namespace Jetstream {
 
@@ -7,32 +7,32 @@ FFT<Device::CPU>::FFT(const Config& config, const Input& input)
     : config(config), input(input) {
     JST_DEBUG("Initializing FFT module with CPU backend.");
 
-    U64 fftSize = input.buffer.size();
+    // Intialize output.
+    this->InitInput(this->input.buffer, getBufferSize());
+    this->InitOutput(this->output.buffer, getBufferSize());
 
-    // Generate FFT window.
-    for (U64 i = 0; i < fftSize; i++) {
-        float tap;
-
-        tap = 0.5 * (1 - cos(2 * M_PI * i / fftSize));
-        tap = (i % 2) == 0 ? tap : -tap;
-
-        CPU.fftWindow.push_back(CF32(tap, 0.0));
+    // Check parameters. 
+    if (this->input.buffer.size() != this->config.size) {
+        JST_FATAL("Input Buffer size ({}) is different than the" \
+            "configuration size ({}).", this->input.buffer.size(),
+            this->config.size);
+        throw Result::ERROR;
     }
 
     // Generate FFT plan.
     auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
     auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
     auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
-    CPU.fftPlan = fftwf_plan_dft_1d(fftSize, inBuf, outBuf, direction, FFTW_MEASURE);
+    CPU.fftPlan = fftwf_plan_dft_1d(config.size, inBuf, outBuf, direction, FFTW_MEASURE);
 
     JST_INFO("===== FFT Module Configuration");
-    JST_INFO("FFT Direction: {}", static_cast<I64>(config.direction));
-    JST_INFO("FFT Amplitude (min, max): ({}, {})", config.amplitude.min, config.amplitude.max);
+    JST_INFO("Size: {}", this->config.size);
+    JST_INFO("Direction: {}", static_cast<I64>(config.direction));
 }
 
 template<>
 const Result FFT<Device::CPU>::compute() {
-    std::cout << "FFT CPU Compute" << std::endl;
+    fftwf_execute(CPU.fftPlan);
     return Result::SUCCESS;
 }
     
