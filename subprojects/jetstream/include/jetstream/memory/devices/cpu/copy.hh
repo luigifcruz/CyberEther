@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_MEMORY_CPU_COPY_HH
 #define JETSTREAM_MEMORY_CPU_COPY_HH
 
-#include "jetstream/memory/types.hh"
+#include "jetstream/types.hh"
 #include "jetstream/memory/vector.hh"
 
 namespace Jetstream::Memory {

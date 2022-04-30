@@ -21,11 +21,11 @@ class FFT : public Module {
     };
 
     struct Input {
-        const Vector<D, T>& buffer;
+        const Memory::Vector<D, T>& buffer;
     };
 
     struct Output {
-        Vector<D, T> buffer;
+        Memory::Vector<D, T> buffer;
     };
 
     explicit FFT(const Config&, const Input&);
@@ -34,7 +34,7 @@ class FFT : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, T>& getOutputBuffer() const {
+    constexpr const Memory::Vector<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

@@ -1,9 +1,9 @@
 #ifndef JETSTREAM_MEMORY_VECTOR_HH
 #define JETSTREAM_MEMORY_VECTOR_HH
 
-#include "jetstream/memory/types.hh"
+#include "jetstream/types.hh"
 
-namespace Jetstream {
+namespace Jetstream::Memory {
 
 template<Device I, typename T> class Vector;
 
@@ -60,6 +60,6 @@ class VectorImpl {
     bool managed;
 };
 
-}  // namespace Jetstream
+}  // namespace Jetstream::Memory
 
 #endif

@@ -4,10 +4,10 @@
 #include <memory>
 #include <cuda_runtime.h>
 
-#include "jetstream/memory/types.hh"
+#include "jetstream/types.hh"
 #include "jetstream/memory/vector.hh"
 
-namespace Jetstream {
+namespace Jetstream::Memory {
 
 template<typename T>
 class JETSTREAM_API Vector<Device::CUDA, T> : public VectorImpl<T> {
@@ -112,6 +112,6 @@ class JETSTREAM_API Vector<Device::CUDA | Device::CPU, T> : public VectorImpl<T>
     std::unique_ptr<Vector<Device::CUDA, T>> cudaVector;
 };
 
-}  // namespace Jetstream
+}  // namespace Jetstream::Memory
 
 #endif

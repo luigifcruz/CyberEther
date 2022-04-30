@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_MEMORY_BASE_HH
 #define JETSTREAM_MEMORY_BASE_HH
 
-#include "jetstream/memory/types.hh"
+#include "jetstream/types.hh"
 #include "jetstream/memory/vector.hh"
 
 #include "jetstream/memory/devices/cpu/copy.hh"
@@ -13,6 +13,6 @@
 #include "jetstream/memory/devices/cuda/vector.hh"
 #include "jetstream/memory/devices/cuda/helper.hh"
 
-#endif  // JETSTREAM_CUDA_AVAILABLE
+#endif
 
 #endif

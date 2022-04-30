@@ -3,7 +3,7 @@
 
 #include <cuda_runtime.h>
 
-#include "jetstream/memory/types.hh"
+#include "jetstream/types.hh"
 #include "jetstream/memory/vector.hh"
 
 namespace Jetstream::Memory {

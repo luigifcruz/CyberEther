@@ -1,10 +1,10 @@
 #ifndef JETSTREAM_MEMORY_CPU_VECTOR_HH
 #define JETSTREAM_MEMORY_CPU_VECTOR_HH
 
-#include "jetstream/memory/types.hh"
+#include "jetstream/types.hh"
 #include "jetstream/memory/vector.hh"
 
-namespace Jetstream {
+namespace Jetstream::Memory {
 
 template<typename T>
 class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
@@ -55,6 +55,6 @@ class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
     }
 };
 
-}  // namespace Jetstream
+}  // namespace Jetstream::Memory
 
 #endif

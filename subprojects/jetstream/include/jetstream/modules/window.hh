@@ -19,7 +19,7 @@ class Window : public Module {
     };
 
     struct Output {
-        Vector<D, T> window;
+        Memory::Vector<D, T> window;
     };
 
     explicit Window(const Config&, const Input&);
@@ -28,7 +28,7 @@ class Window : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, T>& getWindowBuffer() const {
+    constexpr const Memory::Vector<D, T>& getWindowBuffer() const {
         return this->output.window;
     }
 

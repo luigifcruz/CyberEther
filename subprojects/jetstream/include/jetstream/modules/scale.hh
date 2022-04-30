@@ -17,11 +17,11 @@ class Scale : public Module {
     };
 
     struct Input {
-        const Vector<D, T>& buffer;
+        const Memory::Vector<D, T>& buffer;
     };
 
     struct Output {
-        Vector<D, T> buffer;
+        Memory::Vector<D, T> buffer;
     };
 
     explicit Scale(const Config&, const Input&);
@@ -30,7 +30,7 @@ class Scale : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, T>& getOutputBuffer() const {
+    constexpr const Memory::Vector<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

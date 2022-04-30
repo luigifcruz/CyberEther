@@ -10,7 +10,7 @@ using namespace Jetstream;
 int main() {
     JST_DEBUG("Welcome to Jetstream!");
 
-    Vector<Device::CPU, CF32> data(2<<20);
+    Memory::Vector<Device::CPU, CF32> data(2<<20);
 
     auto win = Block<Window, Device::CPU>({
         .size = data.size(),
