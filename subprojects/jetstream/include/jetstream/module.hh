@@ -4,19 +4,20 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/metadata.hh"
 
 namespace Jetstream {
 
 class JETSTREAM_API Module {
-public:
+ public:
     virtual ~Module() = default;
 
-protected:
-    virtual constexpr const Result compute() {
+ protected:
+    virtual constexpr const Result compute(const RuntimeMetadata& meta = {}) {
         return Result::SUCCESS;
     }
 
-    virtual constexpr const Result present() {
+    virtual constexpr const Result present(const RuntimeMetadata& meta = {}) {
         return Result::SUCCESS;
     }
 

@@ -2,8 +2,8 @@
 
 namespace Jetstream {
 
-template<>
-Amplitude<Device::CPU>::Amplitude(const Config& config, const Input& input) 
+template<Device D, typename IT, typename OT>
+Amplitude<D, IT, OT>::Amplitude(const Config& config, const Input& input) 
     : config(config), input(input) {
     JST_DEBUG("Initializing Amplitude module with CPU backend.");
 
@@ -20,14 +20,18 @@ Amplitude<Device::CPU>::Amplitude(const Config& config, const Input& input)
     }
 
     JST_INFO("===== Amplitude Module Configuration");
-    JST_INFO("Buffer Size: {}", this->config.size);
+    JST_INFO("Size: {}", this->config.size);
+    JST_INFO("Device: {}", getDeviceName<D>());
+    JST_INFO("Input Type: {}", getTypeName<IT>());
+    JST_INFO("Output Type: {}", getTypeName<OT>());
 }
 
 // Faster Log10 by http://openaudio.blogspot.com/2017/02/faster-log10-and-pow.html
-static inline float log10(float X) {
-    float Y, F;
+template<typename T>
+static inline T log10(T X) {
+    T Y, F;
     int E;
-    F = frexpf(fabsf(X), &E);
+    F = frexpf(fabs(X), &E);
     Y = 1.23149591368684f;
     Y *= F;
     Y += -4.11852516267426f;
@@ -39,12 +43,15 @@ static inline float log10(float X) {
     return Y * 0.3010299956639812f;
 }
 
-template<>
-const Result Amplitude<Device::CPU>::compute() {
+template<Device D, typename IT, typename OT>
+const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     for (U64 i = 0; i < this->config.size; i++) {
-        this->output.buffer[i] = 20 * log10(abs(this->input.buffer[i]) / this->config.size);
+        this->output.buffer[i] = 20.0 * log10(abs(this->input.buffer[i]) / this->config.size);
     }
     return Result::SUCCESS;
 }
+
+template class Amplitude<Device::CPU, CF32>;
+template class Amplitude<Device::CPU, CF64>;
     
 }  // namespace Jetstream

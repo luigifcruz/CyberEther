@@ -8,7 +8,7 @@
 
 namespace Jetstream {
 
-template<Device D>
+template<Device D, typename T = CF32>
 class Window : public Module {
  public:
     struct Config {
@@ -19,7 +19,7 @@ class Window : public Module {
     };
 
     struct Output {
-        Vector<D, CF32> window;
+        Vector<D, T> window;
     };
 
     explicit Window(const Config&, const Input&);
@@ -28,7 +28,7 @@ class Window : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, CF32>& getWindowBuffer() const {
+    constexpr const Vector<D, T>& getWindowBuffer() const {
         return this->output.window;
     }
 

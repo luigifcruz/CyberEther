@@ -8,20 +8,20 @@
 
 namespace Jetstream {
 
-template<Device D>
+template<Device D, typename T = F32>
 class Scale : public Module {
  public:
     struct Config {
         U64 size;
-        Range<F64> range = {-1.0f, +1.0f};
+        Range<T> range = {-1.0, +1.0};
     };
 
     struct Input {
-        const Vector<D, F32>& buffer;
+        const Vector<D, T>& buffer;
     };
 
     struct Output {
-        Vector<D, F32> buffer;
+        Vector<D, T> buffer;
     };
 
     explicit Scale(const Config&, const Input&);
@@ -30,28 +30,28 @@ class Scale : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, F32>& getOutputBuffer() const {
+    constexpr const Vector<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
     constexpr const Config getConfig() const {
-        return config;
+        return this->config;
     }
 
-    constexpr Range<float> range() const {
+    constexpr const Range<T>& range() const {
         return this->config.range;
     }
 
-    Range<float> range(const Range<float>& range) {
+    const Range<T>& range(const Range<T>& range) {
         this->config.range = range;
         return this->range();
     }
 
  protected:
-    const Result compute() final;
+    const Result compute(const RuntimeMetadata& meta = {}) final;
 
  private:
-    const Config config;
+    Config config;
     const Input input;
     Output output;
 };

@@ -8,7 +8,7 @@
 
 namespace Jetstream {
 
-template<Device D>
+template<Device D, typename IT = CF32, typename OT = F32>
 class Amplitude : public Module {
  public:
     struct Config {
@@ -16,11 +16,11 @@ class Amplitude : public Module {
     };
 
     struct Input {
-        const Vector<D, CF32>& buffer;
+        const Vector<D, IT>& buffer;
     };
 
     struct Output {
-        Vector<D, F32> buffer;
+        Vector<D, OT> buffer;
     };
 
     explicit Amplitude(const Config&, const Input&);
@@ -29,7 +29,7 @@ class Amplitude : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, F32>& getOutputBuffer() const {
+    constexpr const Vector<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -38,7 +38,7 @@ class Amplitude : public Module {
     }
 
  protected:
-    const Result compute() final;
+    const Result compute(const RuntimeMetadata& meta = {}) final;
 
  private:
     const Config config;

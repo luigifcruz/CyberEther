@@ -8,7 +8,7 @@
 
 namespace Jetstream {
 
-template<Device D>
+template<Device D, typename T = CF32>
 class Multiply : public Module {
  public:
     struct Config {
@@ -16,12 +16,12 @@ class Multiply : public Module {
     };
 
     struct Input {
-        const Vector<D, CF32>& A;
-        const Vector<D, CF32>& B;
+        const Vector<D, T>& factorA;
+        const Vector<D, T>& factorB;
     };
 
     struct Output {
-        Vector<D, CF32> product;
+        Vector<D, T> product;
     };
 
     explicit Multiply(const Config&, const Input&);
@@ -30,7 +30,7 @@ class Multiply : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, CF32>& getProductBuffer() const {
+    constexpr const Vector<D, T>& getProductBuffer() const {
         return this->output.product;
     }
 
@@ -39,7 +39,7 @@ class Multiply : public Module {
     }
 
  protected:
-    const Result compute() final;
+    const Result compute(const RuntimeMetadata& meta = {}) final;
 
  private:
     const Config config;

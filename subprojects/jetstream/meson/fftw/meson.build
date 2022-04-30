@@ -1,5 +1,6 @@
 deps = [
-    dependency('fftw3f', required: get_option('FFTW'))
+    dependency('fftw3f', required: get_option('FFTW')),
+    dependency('fftw3', required: get_option('FFTW')),
 ]
 
 all_deps_found = true

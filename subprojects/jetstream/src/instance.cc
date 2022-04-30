@@ -2,8 +2,8 @@
 
 namespace Jetstream {
 
-const Result Instance::conduit(const std::vector<std::shared_ptr<Module>>& modules) {
-    this->modules = modules; 
+const Result Instance::schedule(const std::shared_ptr<Module>& block) {
+    this->blocks.push_back(block);
     return Result::SUCCESS;
 }
 
@@ -13,8 +13,8 @@ const Result Instance::present() {
     presentSync.test_and_set();
     computeSync.wait(true);
 
-    for (const auto& module : modules) {
-        if ((err = module->present()) != Result::SUCCESS) {
+    for (const auto& block : blocks) {
+        if ((err = block->present()) != Result::SUCCESS) {
             return err;
         }
     }
@@ -31,8 +31,8 @@ const Result Instance::compute() {
     presentSync.wait(true);
     computeSync.test_and_set();
 
-    for (const auto& module : modules) {
-        if ((err = module->compute()) != Result::SUCCESS) {
+    for (const auto& block : blocks) {
+        if ((err = block->compute()) != Result::SUCCESS) {
             return err;
         }
     }
@@ -53,8 +53,8 @@ static Instance& GetDefaultInstance() {
     return *instance;
 }
 
-Result Conduit(const std::vector<std::shared_ptr<Module>>& stream) {
-    return GetDefaultInstance().conduit(stream);
+Result Schedule(const std::shared_ptr<Module>& block) {
+    return GetDefaultInstance().schedule(block);
 }
 
 Result Compute() {

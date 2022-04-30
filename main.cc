@@ -13,41 +13,33 @@ int main() {
     Vector<Device::CPU, CF32> data(2<<20);
 
     auto win = Block<Window, Device::CPU>({
-        data.size(),
+        .size = data.size(),
     }, {});
 
     auto mul = Block<Multiply, Device::CPU>({
-        data.size(),
+        .size = data.size(),
     }, {
-        data, 
-        win->getWindowBuffer(),
+        .factorA = data, 
+        .factorB = win->getWindowBuffer(),
     });
 
     auto fft = Block<FFT, Device::CPU>({
-        data.size(),
+        .size = data.size(),
     }, {
-        mul->getProductBuffer(),
+        .buffer = mul->getProductBuffer(),
     });
 
     auto amp = Block<Amplitude, Device::CPU>({
-       data.size(), 
+        .size = data.size(), 
     }, {
-        fft->getOutputBuffer(),
+        .buffer = fft->getOutputBuffer(),
     });
 
     auto scl = Block<Scale, Device::CPU>({
-        data.size(),
-        {-100.0, 0.f},
+        .size = data.size(),
+        .range = {-100.0, 0.0},
     }, {
-        amp->getOutputBuffer(),
-    });
-
-    Jetstream::Conduit({
-        win, 
-        mul,
-        fft, 
-        amp,
-        scl,
+        .buffer = amp->getOutputBuffer(),
     });
 
     for (U64 i = 0; i < 512; i++) {
@@ -55,5 +47,5 @@ int main() {
         JST_INFO("Compute {} finished.", i);
     }
 
-    JST_INFO("Successfully ran!");
+    JST_INFO("Successfully finished!");
 }

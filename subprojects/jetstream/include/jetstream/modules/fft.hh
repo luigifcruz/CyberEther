@@ -12,7 +12,7 @@
 
 namespace Jetstream {
 
-template<Device D>
+template<Device D, typename T = CF32>
 class FFT : public Module {
  public:
     struct Config {
@@ -21,11 +21,11 @@ class FFT : public Module {
     };
 
     struct Input {
-        const Vector<D, CF32>& buffer;
+        const Vector<D, T>& buffer;
     };
 
     struct Output {
-        Vector<D, CF32> buffer;
+        Vector<D, T> buffer;
     };
 
     explicit FFT(const Config&, const Input&);
@@ -34,7 +34,7 @@ class FFT : public Module {
         return this->config.size;
     }
 
-    constexpr const Vector<D, CF32>& getOutputBuffer() const {
+    constexpr const Vector<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -43,7 +43,7 @@ class FFT : public Module {
     }
 
  protected:
-    const Result compute() final;
+    const Result compute(const RuntimeMetadata& meta = {}) final;
 
  private:
     const Config config;
@@ -51,9 +51,11 @@ class FFT : public Module {
     Output output;
 
 #ifdef JETSTREAM_FFT_CPU_AVAILABLE
+    const Result generatePlanCPU();
+
     struct {
-        fftwf_plan fftPlan;
-        std::vector<CF32> fftWindow;
+        fftwf_plan fftPlanCF32;
+        fftw_plan fftPlanCF64;
     } CPU;
 #endif
 };

@@ -2,8 +2,8 @@
 
 namespace Jetstream {
 
-template<>
-Scale<Device::CPU>::Scale(const Config& config, const Input& input) 
+template<Device D, typename T>
+Scale<D, T>::Scale(const Config& config, const Input& input) 
     : config(config), input(input) {
     JST_DEBUG("Initializing Scale module with CPU backend.");
 
@@ -20,22 +20,27 @@ Scale<Device::CPU>::Scale(const Config& config, const Input& input)
     }
 
     JST_INFO("===== Scale Module Configuration");
-    JST_INFO("Buffer Size: {}", this->config.size);
-    JST_INFO("FFT Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
+    JST_INFO("Size: {}", this->config.size);
+    JST_INFO("Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
+    JST_INFO("Input Type: {}", getTypeName<T>());
 }
 
-static inline F32 scale(const F32 x, const F32 min, const F32 max) {
+template<typename T>
+static inline T scale(const T x, const T min, const T max) {
     return (x - min) / (max - min);
 }
 
-template<>
-const Result Scale<Device::CPU>::compute() {
+template<Device D, typename T>
+const Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
     auto [min, max] = this->config.range;
 
     for (U64 i = 0; i < this->config.size; i++) {
-        this->output.buffer[i] = scale(this->input.buffer[i], min, max);
+        this->output.buffer[i] = scale<T>(this->input.buffer[i], min, max);
     }
     return Result::SUCCESS;
 }
+
+template class Scale<Device::CPU, F64>;
+template class Scale<Device::CPU, F32>;
     
 }  // namespace Jetstream

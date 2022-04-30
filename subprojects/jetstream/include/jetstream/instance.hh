@@ -10,7 +10,7 @@ namespace Jetstream {
 
 class JETSTREAM_API Instance {
  public:
-    const Result conduit(const std::vector<std::shared_ptr<Module>>& modules);
+    const Result schedule(const std::shared_ptr<Module>& block);
     const Result present();
     const Result compute();
       
@@ -18,17 +18,26 @@ class JETSTREAM_API Instance {
     std::atomic_flag computeSync{false};
     std::atomic_flag presentSync{false};
 
-    std::vector<std::shared_ptr<Module>> modules;
+    std::vector<std::shared_ptr<Module>> blocks;
 };
 
-template<template<Device> class T, Device D>
-std::shared_ptr<T<D>> JETSTREAM_API Block(const typename T<D>::Config& config, const typename T<D>::Input& input) {
-    return std::make_shared<T<D>>(config, input);
-}
-
-Result JETSTREAM_API Conduit(const std::vector<std::shared_ptr<Module>>&);
+Result JETSTREAM_API Schedule(const std::shared_ptr<Module>& block);
 Result JETSTREAM_API Compute();
 Result JETSTREAM_API Present();
+
+template<template<Device, typename...> class T, Device D, typename... C>
+std::shared_ptr<T<D, C...>> JETSTREAM_API Block(
+        const typename T<D, C...>::Config& config,
+        const typename T<D, C...>::Input& input) {
+    const auto& block = std::make_shared<T<D, C...>>(config, input);
+
+    if (Schedule(block) != Result::SUCCESS) {
+        JST_FATAL("Cannot schedule new block.");
+        throw Result::ERROR;
+    };
+
+    return block;
+}
 
 }  // namespace Jetstream
 
