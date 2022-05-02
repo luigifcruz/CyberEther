@@ -18,6 +18,7 @@ dep_lst = [
 inc_lst = [
     include_directories('include'),
     include_directories('.'),
+    include_directories('include/jetstream/backend/devices/metal'),
 ]
 
 subdir('meson')

@@ -7,7 +7,7 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_WINDOW_CPU_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE', true)
     src_lst += files([
         'base.cc',
     ])

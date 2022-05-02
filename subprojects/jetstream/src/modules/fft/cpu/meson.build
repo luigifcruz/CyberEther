@@ -1,5 +1,5 @@
 deps = [
-    'JETSTREAM_FFTW_AVAILABLE',
+    'JETSTREAM_BACKEND_FFTW_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -8,7 +8,7 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_FFT_CPU_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_MODULE_FFT_CPU_AVAILABLE', true)
     src_lst += files([
         'base.cc',
     ])

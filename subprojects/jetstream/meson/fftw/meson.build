@@ -10,7 +10,7 @@ endforeach
 all_deps_found = all_deps_found and not meson.is_cross_build()
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_FFTW_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_LOADER_FFTW_AVAILABLE', true)
     dep_lst += deps
 endif
 

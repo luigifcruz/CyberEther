@@ -1,6 +1,0 @@
-#define RENDER_VERSION_STR "@version@"
-
-#mesondefine RENDER_DEBUG
-#mesondefine RENDER_CUDA_AVAILABLE
-#mesondefine RENDER_GLES_AVAILABLE
-#mesondefine RENDER_METAL_AVAILABLE

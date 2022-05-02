@@ -3,6 +3,7 @@ project(
     version: '0.0.0',
     default_options: [
         'cpp_std=c++20',
+        'b_asneeded=false',
     ]
 )
 
@@ -15,7 +16,6 @@ summary({'cpp_std': get_option('cpp_std'),
 dep_lst = [
     dependency('threads'),
     subproject('samurai').get_variable('libsamurai_dep'),
-    subproject('render').get_variable('librender_dep'),
     subproject('jetstream').get_variable('libjetstream_dep'),
 ]
 

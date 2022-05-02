@@ -67,8 +67,8 @@ inline const std::string& getTypeName() {
 enum class Device : uint8_t {
     CPU     = 1 << 0,
     CUDA    = 1 << 1,
-    METAL   = 1 << 2,
-    VULKAN  = 1 << 3,
+    Metal   = 1 << 2,
+    Vulkan  = 1 << 3,
 };
 
 inline constexpr const Device operator|(Device lhs, Device rhs) {
@@ -80,8 +80,8 @@ inline const std::string& getDeviceName() {
     static std::map<std::type_index, std::string> map = {
         {typeid(Device::CPU),    "CPU"},
         {typeid(Device::CUDA),   "CUDA"},
-        {typeid(Device::METAL),  "METAL"},
-        {typeid(Device::VULKAN), "VULKAN"},
+        {typeid(Device::Metal),  "Metal"},
+        {typeid(Device::Vulkan), "Vulkan"},
         {typeid(void),           "N/S"}
     };
 

@@ -1,3 +1,0 @@
-option('OpenGL', type : 'boolean', value : false, description: 'Force OpenGL Support.')
-option('Metal', type : 'boolean', value : false, description: 'Force Metal Support.')
-option('CUDA', type : 'boolean', value : false, description: 'Force CUDA Interop Support.')

@@ -10,7 +10,7 @@ all_deps_found = all_deps_found and not meson.is_cross_build()
 
 if all_deps_found
     add_languages('cuda')
-    cfg_lst.set('JETSTREAM_CUDA_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_LOADER_CUDA_AVAILABLE', true)
     dep_lst += deps
 endif
 

@@ -53,15 +53,15 @@ static Instance& GetDefaultInstance() {
     return *instance;
 }
 
-Result Schedule(const std::shared_ptr<Module>& block) {
+const Result Schedule(const std::shared_ptr<Module>& block) {
     return GetDefaultInstance().schedule(block);
 }
 
-Result Compute() {
+const Result Compute() {
     return GetDefaultInstance().compute();
 }
 
-Result Present() {
+const Result Present() {
     return GetDefaultInstance().present();
 }
 

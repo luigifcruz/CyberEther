@@ -76,6 +76,15 @@
 }
 #endif  // JST_ASSERT
 
+#ifndef JST_ASSERT_THROW
+#define JST_ASSERT_THROW(x) { \
+    bool val = (x); \
+    if (val != true) { \
+        throw Result::ASSERTION_ERROR; \
+    } \
+}
+#endif  // JST_ASSERT
+
 #ifndef JST_CATCH
 #define JST_CATCH(x, callback) { \
     try { \

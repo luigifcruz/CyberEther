@@ -1,4 +1,5 @@
 deps = [
+    'JETSTREAM_LOADER_CUDA_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -7,10 +8,9 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_BACKEND_CUDA_AVAILABLE', true)
     src_lst += files([
-        'base.cc',
     ])
 endif
 
-sum_lst += {'CPU': all_deps_found}
+sum_lst += {'CUDA': all_deps_found}

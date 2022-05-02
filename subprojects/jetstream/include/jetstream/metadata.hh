@@ -3,18 +3,19 @@
 
 #include "jetstream/types.hh"
 
-#ifdef JETSTREAM_CUDA_AVAILABLE
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include <cuda_runtime.h>
 #endif
 
 namespace Jetstream {
 
 struct RuntimeMetadata {
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     struct {
-        const I64 magicNumber = 42;
     } CPU;
+#endif
 
-#ifdef JETSTREAM_CUDA_AVAILABLE
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     struct {
        const cudaStream_t stream = 0; 
     } CUDA;
