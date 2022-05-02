@@ -1,5 +1,5 @@
 src_lst += files([
-    'instance.cc',
+    'base.cc',
 ])
 
 subdir('devices')
