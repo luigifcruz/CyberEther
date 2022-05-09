@@ -10,6 +10,9 @@ int main() {
     JST_DEBUG("Welcome to Jetstream!");
 
     Backend::Initialize<Device::Metal>({});
+    Backend::State<Device::Metal>();
+
+    Render::Initialize<Device::Metal>({});
 
     Memory::Vector<Device::CPU, CF32> data(2<<20);
 

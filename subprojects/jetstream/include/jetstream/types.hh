@@ -92,7 +92,7 @@ inline const std::string& getDeviceName() {
     return map[type];
 }
 
-enum class Result : uint8_t {
+enum class Result : U8 {
     SUCCESS = 0,
     ERROR = 1,
     CUDA_ERROR,
@@ -102,24 +102,6 @@ enum class Result : uint8_t {
 enum class Direction : I64 {
     Forward = 1,
     Backward = -1,
-};
-
-template<typename T>
-struct Range {
-    T min;
-    T max;
-
-    bool operator==(const Range<T>& a) const {
-        return (min == a.min && max == a.max);
-    }
-
-    bool operator!=(const Range<T>& a) const {
-        return (min != a.min || max != a.max);
-    }
-
-    bool operator<=(const Range<T>& a) const {
-        return (min <= a.min || max <= a.max);
-    }
 };
 
 }  // namespace Jetstream

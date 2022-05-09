@@ -66,6 +66,11 @@ class JETSTREAM_API Instance {
 Instance& JETSTREAM_API Get();
 
 template<Device D>
+const auto& JETSTREAM_API State() {
+    return Get().state<D>();
+}
+
+template<Device D>
 const Result JETSTREAM_API Initialize(const Config& config) {
     return Get().initialize<D>(config);
 }
