@@ -1,11 +1,11 @@
-#ifndef JETSTREAM_RENDER_TEXTURE_HH
-#define JETSTREAM_RENDER_TEXTURE_HH
+#ifndef JETSTREAM_RENDER_BASE_TEXTURE_HH
+#define JETSTREAM_RENDER_BASE_TEXTURE_HH
 
 #include <memory>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/render/buffer.hh"
+#include "jetstream/render/base/buffer.hh"
 #include "jetstream/render/types.hh"
 
 namespace Jetstream::Render {

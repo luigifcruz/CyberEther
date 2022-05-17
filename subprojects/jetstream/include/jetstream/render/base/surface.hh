@@ -1,13 +1,13 @@
-#ifndef JETSTREAM_RENDER_SURFACE_HH
-#define JETSTREAM_RENDER_SURFACE_HH
+#ifndef JETSTREAM_RENDER_BASE_SURFACE_HH
+#define JETSTREAM_RENDER_BASE_SURFACE_HH
 
 #include <memory>
 #include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/render/texture.hh"
-#include "jetstream/render/program.hh"
+#include "jetstream/render/base/texture.hh"
+#include "jetstream/render/base/program.hh"
 #include "jetstream/render/types.hh"
 
 namespace Jetstream::Render {

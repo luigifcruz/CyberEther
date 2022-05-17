@@ -75,6 +75,24 @@ inline constexpr const Device operator|(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
 }
 
+template<typename T>
+struct Range {
+    T min;
+    T max;
+
+    bool operator==(const Range<T>& a) const {
+        return (min == a.min && max == a.max);
+    }
+
+    bool operator!=(const Range<T>& a) const {
+        return (min != a.min || max != a.max);
+    }
+
+    bool operator<=(const Range<T>& a) const {
+        return (min <= a.min || max <= a.max);
+    }
+};
+
 template<Device T>
 inline const std::string& getDeviceName() {
     static std::map<std::type_index, std::string> map = {

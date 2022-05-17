@@ -1,11 +1,11 @@
-#ifndef JETSTREAM_RENDER_INSTANCE_HH
-#define JETSTREAM_RENDER_INSTANCE_HH
+#ifndef JETSTREAM_RENDER_BASE_INSTANCE_HH
+#define JETSTREAM_RENDER_BASE_INSTANCE_HH
 
 #include <memory>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/render/surface.hh"
+#include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
 
 namespace Jetstream::Render {

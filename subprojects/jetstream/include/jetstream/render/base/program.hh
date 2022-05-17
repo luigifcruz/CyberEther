@@ -1,14 +1,14 @@
-#ifndef JETSTREAM_RENDER_PROGRAM_HH
-#define JETSTREAM_RENDER_PROGRAM_HH
+#ifndef JETSTREAM_RENDER_BASE_PROGRAM_HH
+#define JETSTREAM_RENDER_BASE_PROGRAM_HH
 
 #include <memory>
 #include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/render/texture.hh"
-#include "jetstream/render/buffer.hh"
-#include "jetstream/render/draw.hh"
+#include "jetstream/render/base/texture.hh"
+#include "jetstream/render/base/buffer.hh"
+#include "jetstream/render/base/draw.hh"
 #include "jetstream/render/types.hh"
 
 namespace Jetstream::Render {

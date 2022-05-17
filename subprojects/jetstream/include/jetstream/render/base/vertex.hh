@@ -1,12 +1,12 @@
-#ifndef JETSTREAM_RENDER_VERTEX_HH
-#define JETSTREAM_RENDER_VERTEX_HH
+#ifndef JETSTREAM_RENDER_BASE_VERTEX_HH
+#define JETSTREAM_RENDER_BASE_VERTEX_HH
 
 #include <memory>
 #include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/render/buffer.hh"
+#include "jetstream/render/base/buffer.hh"
 #include "jetstream/render/types.hh"
 
 namespace Jetstream::Render {

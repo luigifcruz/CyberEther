@@ -23,24 +23,6 @@ struct Size2D {
     }
 };
 
-template<typename T>
-struct Range {
-    T min;
-    T max;
-
-    bool operator==(const Range<T>& a) const {
-        return (min == a.min && max == a.max);
-    }
-
-    bool operator!=(const Range<T>& a) const {
-        return (min != a.min || max != a.max);
-    }
-
-    bool operator<=(const Range<T>& a) const {
-        return (min <= a.min || max <= a.max);
-    }
-};
-
 }  // namespace Jetstream::Render
 
 #endif
