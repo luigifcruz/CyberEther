@@ -8,6 +8,7 @@
 #include "jetstream/module.hh"
 
 #include "jetstream/backend/base.hh"
+#include "jetstream/render/base.hh"
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
 #include "jetstream/modules/fft.hh"

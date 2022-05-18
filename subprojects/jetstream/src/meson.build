@@ -3,4 +3,5 @@ src_lst += files([
 ])
 
 subdir('backend')
+subdir('render')
 subdir('modules')

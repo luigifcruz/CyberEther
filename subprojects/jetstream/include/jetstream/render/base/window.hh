@@ -10,9 +10,9 @@
 
 namespace Jetstream::Render {
 
-template<Device D> class InstanceImp;
+template<Device D> class WindowImp;
 
-class Instance {
+class Window {
  public:
     struct Config {
         Size2D<U64> size = {1280, 720};
@@ -23,10 +23,10 @@ class Instance {
         float scale = -1.0;
     };
 
-    explicit Instance(const Config& config) : config(config) {
-        JST_DEBUG("Instance initialized.");
+    explicit Window(const Config& config) : config(config) {
+        JST_DEBUG("Window initialized.");
     }
-    virtual ~Instance() = default;
+    virtual ~Window() = default;
 
     virtual const Result create() = 0;
     virtual const Result destroy() = 0;
@@ -36,9 +36,12 @@ class Instance {
     virtual const Result synchronize() = 0;
     virtual const bool keepRunning() = 0;
 
+    virtual const Result bind(const std::shared_ptr<Surface>& surface) = 0;
+    virtual const Device device() = 0;
+
     template<Device D> 
-    static std::shared_ptr<Instance> Factory(const Config& config) {
-        return std::make_shared<InstanceImp<D>>(config);
+    static std::shared_ptr<Window> Factory(const Config& config) {
+        return std::make_shared<WindowImp<D>>(config);
     }
 
  protected:

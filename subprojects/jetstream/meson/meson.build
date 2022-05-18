@@ -6,5 +6,6 @@ ldr_lst = {}
 subdir('cuda')
 subdir('fftw')
 subdir('metal')
+subdir('glfw')
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)
