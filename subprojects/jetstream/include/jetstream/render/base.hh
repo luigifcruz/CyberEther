@@ -15,6 +15,7 @@
 #include "jetstream/render/base/vertex.hh"
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+#include "jetstream/render/metal/window.hh"
 #endif
 
 namespace Jetstream::Render {

@@ -13,6 +13,10 @@ class Metal {
  public:
     explicit Metal(const Config& config);
 
+   constexpr MTL::Device* getDevice() {
+      return device;
+   }
+
  private:
     MTL::Device* device;
 };

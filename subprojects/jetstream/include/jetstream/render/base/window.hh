@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_RENDER_BASE_INSTANCE_HH
-#define JETSTREAM_RENDER_BASE_INSTANCE_HH
+#ifndef JETSTREAM_RENDER_BASE_WINDOW_HH
+#define JETSTREAM_RENDER_BASE_WINDOW_HH
 
 #include <memory>
 
@@ -37,7 +37,7 @@ class Window {
     virtual const bool keepRunning() = 0;
 
     virtual const Result bind(const std::shared_ptr<Surface>& surface) = 0;
-    virtual const Device device() = 0;
+    virtual constexpr const Device device() const = 0;
 
     template<Device D> 
     static std::shared_ptr<Window> Factory(const Config& config) {

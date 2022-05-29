@@ -14,6 +14,8 @@ int main() {
 
     Render::Initialize<Device::Metal>({});
 
+    Render::Create();
+
     Memory::Vector<Device::CPU, CF32> data(2<<20);
 
     auto win = Block<Window, Device::CPU>({

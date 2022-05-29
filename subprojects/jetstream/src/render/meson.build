@@ -3,3 +3,4 @@ src_lst += files([
 ])
 
 subdir('devices')
+subdir('tools')
