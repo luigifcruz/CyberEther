@@ -10,10 +10,9 @@
 #include "jetstream/render/base/buffer.hh"
 #include "jetstream/render/base/draw.hh"
 #include "jetstream/render/types.hh"
+#include "jetstream/render/base/implementations.hh"
 
 namespace Jetstream::Render {
-
-template<Device D> class ProgramImp;
 
 class Program {
  public:

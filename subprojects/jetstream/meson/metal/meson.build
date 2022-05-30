@@ -4,6 +4,8 @@ metal_fmrk = [
     'Foundation',
     'QuartzCore',
     'Cocoa',
+    'MediaPlayer',
+    'GameController',
 ]
 
 deps = [

@@ -16,6 +16,12 @@
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
 #include "jetstream/render/metal/window.hh"
+#include "jetstream/render/metal/surface.hh"
+#include "jetstream/render/metal/program.hh"
+#include "jetstream/render/metal/buffer.hh"
+#include "jetstream/render/metal/draw.hh"
+#include "jetstream/render/metal/texture.hh"
+#include "jetstream/render/metal/vertex.hh"
 #endif
 
 namespace Jetstream::Render {
@@ -45,7 +51,7 @@ inline Result JETSTREAM_API Create(std::shared_ptr<T>& member,
         return Get()->bind(member);
     }
 
-    return Create(Get()->device(), member, config);
+    return Create(Get()->implementation(), member, config);
 }
 
 template<Device D>

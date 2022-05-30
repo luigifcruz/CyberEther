@@ -15,6 +15,7 @@ int main() {
     Render::Initialize<Device::Metal>({});
 
     Render::Create();
+    Render::Destroy();
 
     Memory::Vector<Device::CPU, CF32> data(2<<20);
 

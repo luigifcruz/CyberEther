@@ -6,10 +6,9 @@
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/render/types.hh"
+#include "jetstream/render/base/implementations.hh"
 
 namespace Jetstream::Render {
-
-template<Device D> class BufferImp;
 
 class Buffer {
  public:

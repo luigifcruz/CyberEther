@@ -7,10 +7,9 @@
 #include "jetstream/logger.hh"
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
+#include "jetstream/render/base/implementations.hh"
 
 namespace Jetstream::Render {
-
-template<Device D> class WindowImp;
 
 class Window {
  public:
@@ -37,7 +36,7 @@ class Window {
     virtual const bool keepRunning() = 0;
 
     virtual const Result bind(const std::shared_ptr<Surface>& surface) = 0;
-    virtual constexpr const Device device() const = 0;
+    virtual constexpr const Device implementation() const = 0;
 
     template<Device D> 
     static std::shared_ptr<Window> Factory(const Config& config) {

@@ -7,10 +7,9 @@
 #include "jetstream/logger.hh"
 #include "jetstream/render/base/buffer.hh"
 #include "jetstream/render/types.hh"
+#include "jetstream/render/base/implementations.hh"
 
 namespace Jetstream::Render {
-
-template<Device D> class TextureImp;
 
 class Texture {
  public:
@@ -32,8 +31,8 @@ class Texture {
 
     struct Config {
         std::string key;
-        Size2D<U64> size;
-        std::shared_ptr<Buffer> buffer;
+        Size2D<I64> size;
+        const uint8_t* buffer;
         DataFormat dfmt = DataFormat::RGBA;
         PixelFormat pfmt = PixelFormat::RGBA;
         PixelType ptype = PixelType::UI8;
@@ -44,10 +43,10 @@ class Texture {
     }
     virtual ~Texture() = default;
 
-    constexpr const Size2D<U64> size() const {
+    constexpr const Size2D<I64> size() const {
         return config.size;
     }
-    virtual const Size2D<U64> size(const Size2D<U64>&) = 0;
+    virtual const bool size(const Size2D<I64>&) = 0;
 
     virtual const void* raw() = 0;
     virtual const Result fill() = 0;

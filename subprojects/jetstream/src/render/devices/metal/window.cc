@@ -1,14 +1,17 @@
+#include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/metal/window.hh"
 
 namespace Jetstream::Render {
 
-using Metal = WindowImp<Device::Metal>;
+using Implementation = WindowImp<Device::Metal>;
 
-Metal::WindowImp(const Config& config) : Window(config) {
-    JST_INFO("Greetings from the Metal thingy.");
+Implementation::WindowImp(const Config& config) : Window(config) {
+    JST_INFO("Greetings from the Window Metal thingy.");
 }
 
-const Result Metal::bind(const std::shared_ptr<Surface>& surface) {
+const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("Binding Metal surface to window.");
+
     surfaces.push_back(
         std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface)
     );
@@ -16,7 +19,7 @@ const Result Metal::bind(const std::shared_ptr<Surface>& surface) {
     return Result::SUCCESS;
 }
 
-const Result Metal::create() {
+const Result Implementation::create() {
     JST_DEBUG("Creating Metal window.");
 
     if (!glfwInit()) {
@@ -55,14 +58,14 @@ const Result Metal::create() {
     return Result::SUCCESS;
 }
 
-const Result Metal::destroy() {
+const Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal window.");
 
     for (auto& surface : surfaces) {
         JST_CHECK(surface->destroy());
     }
 
-    for (config.imgui) {
+    if (config.imgui) {
         JST_CHECK(destroyImgui());
     } 
 
@@ -71,9 +74,11 @@ const Result Metal::destroy() {
 
     renderPassDescriptor->release();
     commandQueue->release();
+
+    return Result::SUCCESS;
 }
 
-const Result Metal::createImgui() {
+const Result Implementation::createImgui() {
     JST_DEBUG("Creating Metal ImGui.");
 
     IMGUI_CHECKVERSION();
@@ -97,7 +102,7 @@ const Result Metal::createImgui() {
     return Result::SUCCESS;
 }
 
-const Result Metal::destroyImgui() {
+const Result Implementation::destroyImgui() {
     JST_DEBUG("Destroying Metal ImGui.");
 
     ImGui_ImplMetal_Shutdown();
@@ -107,19 +112,18 @@ const Result Metal::destroyImgui() {
     return Result::SUCCESS;
 }
 
-const Result Metal::beginImgui() {
+const Result Implementation::beginImgui() {
     JST_DEBUG("Begin Metal ImGui.");
 
-    ImGui_ImplMetal_NewFrame(renderPassDesc);
+    ImGui_ImplMetal_NewFrame(renderPassDescriptor);
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
     return Result::SUCCESS;
 }
 
-const Result Metal::endImgui() {
-    auto& renderCmdEncoder = commandBuffer->
-        renderCommandEncoder(renderPassDescriptor);
+const Result Implementation::endImgui() {
+    auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
 
     ImGui::Render();
     ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(),
@@ -131,11 +135,11 @@ const Result Metal::endImgui() {
     return Result::SUCCESS;
 }
 
-const Result Metal::begin() {
+const Result Implementation::begin() {
     commandBuffer = commandQueue->commandBuffer();
     drawable = view->draw();
 
-    auto colorAttachDesc = renderPassDescriptor->colorAttachments()->object(0);
+    auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachDescriptor->setTexture(drawable->texture());
     colorAttachDescriptor->setLoadAction(MTL::LoadActionClear);
     colorAttachDescriptor->setStoreAction(MTL::StoreActionStore);
@@ -144,19 +148,19 @@ const Result Metal::begin() {
     if (config.imgui) {
         JST_CHECK(beginImgui());
 
-        if (config.debug) {
+#if !defined(NDEBUG)
             ImGui::ShowMetricsWindow();
             ImGui::Begin("Render Info");
             ImGui::Text("Renderer Name: %s", "Apple Metal");
             ImGui::Text("Renderer Vendor: %s", "Apple");
             ImGui::End();
-        }
+#endif
     }
 
     return Result::SUCCESS;
 }
 
-const Result Metal::end() {
+const Result Implementation::end() {
     for (auto &surface : surfaces) {
         JST_CHECK(surface->draw(commandBuffer));
     }
@@ -177,48 +181,12 @@ const Result Metal::end() {
     return Result::SUCCESS;
 }
 
-const Result Metal::synchronize() {
+const Result Implementation::synchronize() {
     return Result::SUCCESS;
 }
 
-const bool Metal::keepRunning() {
+const bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window);
-}
-
-const MTL::PixelFormat Metal::convertPixelFormat(const PixelFormat& pfmt,
-                                                 const PixelType& ptype) {
-    if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
-        return MTL::PixelFormatR32Float;
-    }
-
-    if (pfmt == PixelFormat::RED && ptype == PixelType::UI8) {
-        return MTL::PixelFormatR8Unorm;
-    }
-
-    if (pfmt == PixelFormat::RGBA && ptype == PixelType::F32) {
-        return MTL::PixelFormatRGBA32Float;
-    }
-
-    if (pfmt == PixelFormat::RGBA && ptype == PixelType::UI8) {
-        return MTL::PixelFormatRGBA8Unorm;
-    }
-
-    throw Result::ERROR;
-}
-
-const std::size_t Metal::getPixelByteSize(const MTL::PixelFormat& pfmt) {
-    switch (pfmt) {
-        case MTL::PixelFormatR32Float:
-            return 4;
-        case MTL::PixelFormatR8Unorm:
-            return 1;
-        case MTL::PixelFormatRGBA32Float:
-            return 16;
-        case MTL::PixelFormatRGBA8Unorm:
-            return 4;
-        default:
-            throw "pixel format not implemented yet";
-    }
 }
 
 }  // namespace Jetstream::Render

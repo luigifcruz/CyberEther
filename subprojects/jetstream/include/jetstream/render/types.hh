@@ -5,6 +5,22 @@
 
 namespace Jetstream::Render {
 
+enum class PixelFormat : uint {
+    RGBA,
+    RED,
+};
+
+enum class DataFormat : uint {
+    RGBA,
+    UI8,
+    F32,
+};
+
+enum class PixelType : uint {
+    UI8,
+    F32,
+};
+
 template<typename T>
 struct Size2D {
     T width;

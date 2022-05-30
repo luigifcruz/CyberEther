@@ -7,10 +7,9 @@
 #include "jetstream/logger.hh"
 #include "jetstream/render/base/vertex.hh"
 #include "jetstream/render/types.hh"
+#include "jetstream/render/base/implementations.hh"
 
 namespace Jetstream::Render {
-
-template<Device D> class DrawImp;
 
 class Draw {
  public:

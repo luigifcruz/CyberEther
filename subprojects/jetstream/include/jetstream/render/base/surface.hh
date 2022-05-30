@@ -9,10 +9,9 @@
 #include "jetstream/render/base/texture.hh"
 #include "jetstream/render/base/program.hh"
 #include "jetstream/render/types.hh"
+#include "jetstream/render/base/implementations.hh"
 
 namespace Jetstream::Render {
-
-template<Device D> class SurfaceImp;
 
 class Surface {
  public:
@@ -26,13 +25,13 @@ class Surface {
     }
     virtual ~Surface() = default;
 
-    constexpr const Size2D<U64> size() const {
+    constexpr const Size2D<I64> size() const {
         if (config.framebuffer) {
             return config.framebuffer->size();
         }
-        return {1, 1};
+        return {-1, -1};
     }
-    virtual const Size2D<U64> size(const Size2D<U64>&) = 0;
+    virtual const Size2D<I64> size(const Size2D<I64>&) = 0;
 
     template<Device D> 
     static std::shared_ptr<Surface> Factory(const Config& config) {
