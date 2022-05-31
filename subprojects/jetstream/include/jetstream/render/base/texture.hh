@@ -31,8 +31,8 @@ class Texture {
 
     struct Config {
         std::string key;
-        Size2D<I64> size;
-        const uint8_t* buffer;
+        Size2D<U64> size;
+        const uint8_t* buffer = nullptr;
         DataFormat dfmt = DataFormat::RGBA;
         PixelFormat pfmt = PixelFormat::RGBA;
         PixelType ptype = PixelType::UI8;
@@ -43,12 +43,12 @@ class Texture {
     }
     virtual ~Texture() = default;
 
-    constexpr const Size2D<I64> size() const {
+    constexpr const Size2D<U64>& size() const {
         return config.size;
     }
-    virtual const bool size(const Size2D<I64>&) = 0;
+    virtual const bool size(const Size2D<U64>& size) = 0;
 
-    virtual const void* raw() = 0;
+    virtual void* raw() = 0;
     virtual const Result fill() = 0;
     virtual const Result fillRow(const U64& y, const U64& height) = 0;
 

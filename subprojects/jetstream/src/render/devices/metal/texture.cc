@@ -39,8 +39,8 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const bool Implementation::size(const Size2D<I64>& size) {
-    if (size <= Size2D<I64>{1, 1}) {
+const bool Implementation::size(const Size2D<U64>& size) {
+    if (size <= Size2D<U64>{1, 1}) {
         return false;
     }
 

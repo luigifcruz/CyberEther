@@ -30,4 +30,8 @@
 #include "jetstream/modules/scale.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
+#include "jetstream/modules/lineplot.hh"
+#endif
+
 #endif

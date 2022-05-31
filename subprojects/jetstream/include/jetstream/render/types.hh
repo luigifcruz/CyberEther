@@ -39,6 +39,8 @@ struct Size2D {
     }
 };
 
+inline Size2D<U64> NullSize = {0, 0};
+
 }  // namespace Jetstream::Render
 
 #endif

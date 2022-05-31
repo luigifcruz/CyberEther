@@ -113,8 +113,6 @@ const Result Implementation::destroyImgui() {
 }
 
 const Result Implementation::beginImgui() {
-    JST_DEBUG("Begin Metal ImGui.");
-
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();

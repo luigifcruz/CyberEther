@@ -44,7 +44,7 @@ class Scale : public Module {
 
     const Range<T>& range(const Range<T>& range) {
         this->config.range = range;
-        return this->range();
+        return range;
     }
 
  protected:

@@ -47,11 +47,15 @@ std::shared_ptr<Window>& Get(const bool& safe = true);
 template<class T>
 inline Result JETSTREAM_API Create(std::shared_ptr<T>& member, 
                                    const auto& config) {
+    auto result = Create(Get()->implementation(), member, config);
+
     if constexpr (std::is_same<T, Surface>::value) {
-        return Get()->bind(member);
+        if (result == Result::SUCCESS) {
+            return Get()->bind(member);
+        }
     }
 
-    return Create(Get()->implementation(), member, config);
+    return result;
 }
 
 template<Device D>

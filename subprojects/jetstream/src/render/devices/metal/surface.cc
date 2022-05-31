@@ -82,9 +82,9 @@ const Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     return Result::SUCCESS;
 }
 
-const Size2D<I64> Implementation::size(const Size2D<I64>& size) {
+const Size2D<U64>& Implementation::size(const Size2D<U64>& size) { 
     if (!framebuffer) {
-        return {-1, -1};
+        return NullSize;
     }
 
     if (framebuffer->size(size)) {

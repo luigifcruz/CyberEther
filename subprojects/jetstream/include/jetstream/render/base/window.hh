@@ -19,7 +19,7 @@ class Window {
         bool resizable = false;
         bool imgui = false;
         bool vsync = true;
-        float scale = -1.0;
+        float scale = 1.0;
     };
 
     explicit Window(const Config& config) : config(config) {

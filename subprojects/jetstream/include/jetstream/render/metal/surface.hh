@@ -11,7 +11,7 @@ class SurfaceImp<Device::Metal> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 
-    const Size2D<I64> size(const Size2D<I64>& size); 
+    const Size2D<U64>& size(const Size2D<U64>& size);
 
  protected:
     const Result create();
