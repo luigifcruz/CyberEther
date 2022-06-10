@@ -7,8 +7,6 @@ namespace Jetstream::Render {
 using Implementation = SurfaceImp<Device::Metal>;
 
 Implementation::SurfaceImp(const Config& config) : Surface(config) {
-    JST_INFO("Greetings from the Surface Metal thingy.");
-
     framebuffer = std::dynamic_pointer_cast<
         TextureImp<Device::Metal>>(config.framebuffer);
 

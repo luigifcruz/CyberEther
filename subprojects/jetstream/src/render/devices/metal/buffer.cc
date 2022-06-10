@@ -5,7 +5,6 @@ namespace Jetstream::Render {
 using Implementation = BufferImp<Device::Metal>;
 
 Implementation::BufferImp(const Config& config) : Buffer(config) {
-    JST_INFO("Greetings from the Buffer Metal thingy.");
 }
 
 const Result Implementation::create() {

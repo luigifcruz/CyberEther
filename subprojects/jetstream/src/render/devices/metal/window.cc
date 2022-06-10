@@ -6,7 +6,6 @@ namespace Jetstream::Render {
 using Implementation = WindowImp<Device::Metal>;
 
 Implementation::WindowImp(const Config& config) : Window(config) {
-    JST_INFO("Greetings from the Window Metal thingy.");
 }
 
 const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {

@@ -31,7 +31,7 @@ public:
         mul = Block<Multiply, Device::CPU>({
             .size = stream->size(),
         }, {
-            .factorA = *stream, 
+            .factorA = *stream,
             .factorB = win->getWindowBuffer(),
         });
 
@@ -42,7 +42,7 @@ public:
         });
 
         amp = Block<Amplitude, Device::CPU>({
-            .size = stream->size(), 
+            .size = stream->size(),
         }, {
             .buffer = fft->getOutputBuffer(),
         });

@@ -6,8 +6,6 @@ namespace Jetstream::Render {
 using Implementation = VertexImp<Device::Metal>;
 
 Implementation::VertexImp(const Config& config) : Vertex(config) {
-    JST_INFO("Greetings from the Vertex Metal thingy.");
-
     for (const auto& [buffer, stride] : config.buffers) {
         buffers.push_back(
             {std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer), stride}

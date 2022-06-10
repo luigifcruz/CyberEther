@@ -5,7 +5,6 @@ namespace Jetstream::Render {
 using Implementation = TextureImp<Device::Metal>;
 
 Implementation::TextureImp(const Config& config) : Texture(config) {
-    JST_INFO("Greetings from the Texture Metal thingy.");
 }
 
 const Result Implementation::create() {

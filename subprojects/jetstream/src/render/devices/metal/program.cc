@@ -8,8 +8,6 @@ namespace Jetstream::Render {
 using Implementation = ProgramImp<Device::Metal>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    JST_INFO("Greetings from the Program Metal thingy.");
-
     for (auto& draw : config.draws) {
         draws.push_back(
             std::dynamic_pointer_cast<DrawImp<Device::Metal>>(draw)

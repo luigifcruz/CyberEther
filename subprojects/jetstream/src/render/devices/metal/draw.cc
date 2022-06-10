@@ -6,7 +6,6 @@ namespace Jetstream::Render {
 using Implementation = DrawImp<Device::Metal>;
 
 Implementation::DrawImp(const Config& config) : Draw(config) {
-    JST_INFO("Greetings from the Draw Metal thingy.");
     buffer = std::dynamic_pointer_cast<VertexImp<Device::Metal>>(config.buffer);
 }
 
