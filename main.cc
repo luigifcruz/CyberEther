@@ -57,6 +57,10 @@ public:
         lpt = Block<Lineplot, Device::CPU>({}, {
             .buffer = scl->getOutputBuffer(),
         });
+
+        wtf = Block<Waterfall, Device::CPU>({}, {
+            .buffer = scl->getOutputBuffer(),
+        });
     }
 
     bool keep_running() {
@@ -110,6 +114,24 @@ public:
         Render::Begin();
 
         {
+            ImGui::Begin("Waterfall");
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto [width, height] = wtf->size({(U64)x, (U64)y});
+            ImGui::Image(wtf->getTexture().raw(), ImVec2(width, height));
+
+            if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
+                if (position == 0) {
+                    position = (GetRelativeMousePos().x / wtf->zoom()) + wtf->offset();
+                }
+                wtf->offset(position - (GetRelativeMousePos().x / wtf->zoom()));
+            } else {
+                position = 0;
+            }
+
+            ImGui::End();
+        }
+
+        {
             ImGui::Begin("Lineplot");
             auto [x, y] = ImGui::GetContentRegionAvail();
             auto [width, height] = lpt->size({(U64)x, (U64)y});
@@ -161,6 +183,7 @@ private:
     std::shared_ptr<Amplitude<Device::CPU>> amp;
     std::shared_ptr<Scale<Device::CPU>> scl;
     std::shared_ptr<Lineplot<Device::CPU>> lpt;
+    std::shared_ptr<Waterfall<Device::CPU>> wtf;
 
     // Samurai
     Samurai::ChannelId rx;

@@ -1,6 +1,10 @@
+# Processing 
 subdir('fft')
 subdir('window')
 subdir('multiply')
 subdir('amplitude')
-subdir('lineplot')
 subdir('scale')
+
+# Graphical
+subdir('lineplot')
+subdir('waterfall')

@@ -3,32 +3,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Lineplot<D, T>::Lineplot(const Config& config, const Input& input) 
-    : config(config), input(input) {
-    JST_DEBUG("Initializing Lineplot module.");
-
-    // Generate Grid and Plot coordinates.
-    for (float i = -1.0f; i < +1.0f; i += 0.10f) {
-        grid.push_back(-1.0f);
-        grid.push_back(i);
-        grid.push_back(+0.0f);
-        grid.push_back(+1.0f);
-        grid.push_back(i);
-        grid.push_back(+0.0f);
-        grid.push_back(i);
-        grid.push_back(-1.0f);
-        grid.push_back(+0.0f);
-        grid.push_back(i);
-        grid.push_back(+1.0f);
-        grid.push_back(+0.0f);
-    }
-
-    for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
-        plot.push_back(i);
-        plot.push_back(+0.5f);
-        plot.push_back(+0.5f);
-    }
-
+const Result Lineplot<D, T>::initializeRender() {
     Render::Buffer::Config gridVerticesConf;
     gridVerticesConf.buffer = grid.data();
     gridVerticesConf.elementByteSize = sizeof(grid[0]);
@@ -88,6 +63,38 @@ Lineplot<D, T>::Lineplot(const Config& config, const Input& input)
     surfaceCfg.programs = {program};
     JST_CHECK_THROW(Render::Create(surface, surfaceCfg));
 
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Lineplot<D, T>::Lineplot(const Config& config, const Input& input) 
+    : config(config), input(input) {
+    JST_DEBUG("Initializing Lineplot module.");
+
+    // Generate Grid and Plot coordinates.
+    for (float i = -1.0f; i < +1.0f; i += 0.10f) {
+        grid.push_back(-1.0f);
+        grid.push_back(i);
+        grid.push_back(+0.0f);
+        grid.push_back(+1.0f);
+        grid.push_back(i);
+        grid.push_back(+0.0f);
+        grid.push_back(i);
+        grid.push_back(-1.0f);
+        grid.push_back(+0.0f);
+        grid.push_back(i);
+        grid.push_back(+1.0f);
+        grid.push_back(+0.0f);
+    }
+
+    for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
+        plot.push_back(i);
+        plot.push_back(+0.0f);
+        plot.push_back(+0.0f);
+    }
+
+    JST_CHECK_THROW(initializeRender());
+    
     JST_INFO("===== Lineplot Module Configuration");
     JST_INFO("Size: {}x{}", config.size.width, config.size.height);
 }

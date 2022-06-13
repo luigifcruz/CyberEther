@@ -68,6 +68,9 @@ class Lineplot : public Module {
     const Result compute(const RuntimeMetadata& meta = {}) final;
     const Result present(const RuntimeMetadata& meta = {}) final;
 
+ private:
+    const Result initializeRender();
+
     //
     // Metal Shaders
     //

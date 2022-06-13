@@ -34,4 +34,8 @@
 #include "jetstream/modules/lineplot.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
+#include "jetstream/modules/waterfall.hh"
+#endif
+
 #endif
