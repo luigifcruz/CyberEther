@@ -1,9 +1,7 @@
 src_lst += files([
-  'helpers.cc'
+    'instance.cc',
 ])
-executable(
-  'bench',
-  src_lst + ['benchmark.cc'],
-  include_directories: inc_lst,
-  dependencies: dep_lst,
-)
+
+subdir('backend')
+subdir('render')
+subdir('modules')

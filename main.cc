@@ -1,46 +1,65 @@
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
+#include <thread>
 
-#define ENABLE_NVTX
-#include "render/base.hpp"
+#include "jetstream/base.hh"
 #include "samurai/samurai.hpp"
-#include "jetstream/base.hpp"
-#include "jstcore/base.hpp"
 
 using namespace Jetstream;
 
 class UI {
 public:
     explicit UI() {
-        // Configure Render
-        Render::Instance::Config renderCfg;
+        // Initialize Backend
+        Backend::Initialize<Device::Metal>({});
+
+        // Initialize Render
+        Render::Window::Config renderCfg;
         renderCfg.size = {3130, 1140};
         renderCfg.resizable = true;
         renderCfg.imgui = true;
         renderCfg.vsync = true;
-        renderCfg.debug = true;
         renderCfg.title = "CyberEther";
-        Render::Init(Render::Backend::GLES, renderCfg);
+        Render::Initialize<Device::Metal>(renderCfg);
 
         // Allocate Radio Buffer
-        stream = std::vector<std::complex<float>>(2 << 13);
+        stream = std::make_unique<Memory::Vector<Device::CPU, CF32>>(2 << 12);
 
         // Configure Jetstream
-        loop = Loop<Sync>::New();
+        win = Block<Window, Device::CPU>({
+            .size = stream->size(),
+        }, {});
 
-        fft = loop->add<FFT::CPU>("fft0", {}, {
-            Data<VCF32>{Locale::CPU, stream},
+        mul = Block<Multiply, Device::CPU>({
+            .size = stream->size(),
+        }, {
+            .factorA = *stream,
+            .factorB = win->getWindowBuffer(),
         });
 
-        auto gui = Subloop<Sync>::New(loop);
-
-        lpt = gui->add<Lineplot::CPU>("lpt0", {}, {
-            fft->output(),
+        fft = Block<FFT, Device::CPU>({
+            .size = stream->size(),
+        }, {
+            .buffer = mul->getProductBuffer(),
         });
 
-        wtf = gui->add<Waterfall::CPU>("wtf0", {}, {
-            fft->output(),
+        amp = Block<Amplitude, Device::CPU>({
+            .size = stream->size(),
+        }, {
+            .buffer = fft->getOutputBuffer(),
+        });
+
+        scl = Block<Scale, Device::CPU>({
+            .size = stream->size(),
+            .range = {-100.0, 0.0},
+        }, {
+            .buffer = amp->getOutputBuffer(),
+        });
+
+        lpt = Block<Lineplot, Device::CPU>({}, {
+            .buffer = scl->getOutputBuffer(),
+        });
+
+        wtf = Block<Waterfall, Device::CPU>({}, {
+            .buffer = scl->getOutputBuffer(),
         });
     }
 
@@ -62,15 +81,15 @@ public:
             device->EnableChannel(channelConfig, &rx);
 
             channelState.enableAGC = true;
-            channelState.frequency = 96.9e6;
+            channelState.frequency = 112.9e6;
             device->UpdateChannel(rx, channelState);
 
             device->StartStream();
 
             streaming = true;
             while (streaming) {
-                device->ReadStream(rx, stream.data(), stream.size(), 1000);
-                loop->compute();
+                device->ReadStream(rx, stream->data(), stream->size(), 1000);
+                Jetstream::Compute();
             }
 
             device->StopStream();
@@ -97,18 +116,10 @@ public:
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
         {
-            ImGui::Begin("Lineplot");
-            auto [x, y] = ImGui::GetContentRegionAvail();
-            auto [width, height] = lpt->size({(int)x, (int)y});
-            ImGui::Image(lpt->tex().raw(), ImVec2(width, height));
-            ImGui::End();
-        }
-
-        {
             ImGui::Begin("Waterfall");
             auto [x, y] = ImGui::GetContentRegionAvail();
-            auto [width, height] = wtf->size({(int)x, (int)y});
-            ImGui::Image(wtf->tex().raw(), ImVec2(width, height));
+            auto [width, height] = wtf->viewSize({(U64)x, (U64)y});
+            ImGui::Image(wtf->getTexture().raw(), ImVec2(width, height));
 
             if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
                 if (position == 0) {
@@ -123,6 +134,14 @@ public:
         }
 
         {
+            ImGui::Begin("Lineplot");
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto [width, height] = lpt->viewSize({(U64)x, (U64)y});
+            ImGui::Image(lpt->getTexture().raw(), ImVec2(width, height));
+            ImGui::End();
+        }
+
+        {
             ImGui::Begin("Control");
 
             ImGui::InputFloat("Frequency (Hz)", &channelState.frequency);
@@ -130,10 +149,10 @@ public:
                 device->UpdateChannel(rx, channelState);
             }
 
-            auto [min, max] = fft->amplitude();
+            auto [min, max] = scl->range();
             if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
                         1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
-                fft->amplitude({min, max});
+                scl->range({min, max});
             }
 
             auto interpolate = wtf->interpolate();
@@ -160,7 +179,7 @@ public:
         ImGui::End();
 
         Render::Synchronize();
-        loop->present();
+        Jetstream::Present();
         Render::End();
     }
 
@@ -171,10 +190,13 @@ private:
     int position;
 
     // Jetstream
-    std::shared_ptr<Jetstream::Loop<Sync>> loop;
-    std::shared_ptr<Jetstream::FFT::Generic> fft;
-    std::shared_ptr<Jetstream::Lineplot::Generic> lpt;
-    std::shared_ptr<Jetstream::Waterfall::Generic> wtf;
+    std::shared_ptr<Window<Device::CPU>> win;
+    std::shared_ptr<Multiply<Device::CPU>> mul;
+    std::shared_ptr<FFT<Device::CPU>> fft;
+    std::shared_ptr<Amplitude<Device::CPU>> amp;
+    std::shared_ptr<Scale<Device::CPU>> scl;
+    std::shared_ptr<Lineplot<Device::CPU>> lpt;
+    std::shared_ptr<Waterfall<Device::CPU>> wtf;
 
     // Samurai
     Samurai::ChannelId rx;
@@ -182,7 +204,7 @@ private:
     Samurai::Device::Config deviceConfig;
     Samurai::Channel::State channelState;
     std::shared_ptr<Samurai::Device> device;
-    std::vector<std::complex<float>> stream;
+    std::unique_ptr<Memory::Vector<Device::CPU, CF32>> stream;
 };
 
 auto ui = UI();

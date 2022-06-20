@@ -1,37 +1,30 @@
 project(
-    'jetstream', 'cpp',
-    version: '0.0.0',
+    'jetstream',
+    ['cpp'],
+    version: '0.1.0',
     default_options: [
-        'cpp_std=c++17',
+        'cpp_std=c++20',
+        'buildtype=release',
+        'b_ndebug=if-release',
     ]
 )
 
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
-  dependency('threads'),
-  dependency('benchmark'),
+    dependency('threads'),
+    dependency('fmt'),
 ]
 inc_lst = [
-    include_directories(get_option('prefix') + '/include'),
     include_directories('include'),
     include_directories('.'),
+    include_directories('include/jetstream/backend/devices/metal'),
+    include_directories('include/jetstream/render/tools'),
 ]
 
-is_release = false
-if get_option('buildtype') == 'release'
-  is_release = true
-endif
-cfg_lst.set('JETSTREAM_DEBUG', not is_release)
-
-cuda_dep = dependency('cuda', version : '>=10', modules: ['dl'],  required: false)
-if cuda_dep.found() and not meson.is_cross_build()
-  cfg_lst.set('JETSTREAM_CUDA_AVAILABLE', true)
-  dep_lst += cuda_dep
-endif
-
-subdir('include')
+subdir('meson')
 subdir('src')
+subdir('include')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
@@ -58,3 +51,5 @@ pkg.generate(
   libjetstream,
   libraries: dep_lst,
 )
+
+subdir('resources')
