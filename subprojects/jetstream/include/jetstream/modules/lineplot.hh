@@ -14,7 +14,7 @@ template<Device D, typename IT = F32>
 class Lineplot : public Module {
  public:
     struct Config {
-        Render::Size2D<U64> size = {4096, 512};
+        Render::Size2D<U64> viewSize = {4096, 512};
     };
 
     struct Input {
@@ -34,10 +34,10 @@ class Lineplot : public Module {
         return config;
     }
 
-    constexpr const Render::Size2D<U64>& size() const {
-        return config.size;
+    constexpr const Render::Size2D<U64>& viewSize() const {
+        return config.viewSize;
     }
-    const Render::Size2D<U64>& size(const Render::Size2D<U64>& size);
+    const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
 
     Render::Texture& getTexture();
 

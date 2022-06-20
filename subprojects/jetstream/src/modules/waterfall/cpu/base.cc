@@ -6,9 +6,7 @@ namespace Jetstream {
 
 template<Device D, typename T>
 const Result Waterfall<D, T>::underlyingInitialize() {
-    JST_INFO("Device init")
-
-    frequencyBins.resize(input.buffer.size() * config.size.height);
+    frequencyBins.resize(input.buffer.size() * config.height);
 
     return Result::SUCCESS;
 }

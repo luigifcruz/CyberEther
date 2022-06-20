@@ -16,8 +16,9 @@ class Waterfall : public Module {
     struct Config {
         F32 zoom = 1.0;
         I32 offset = 0;
-        BOOL interpolate = false;
-        Render::Size2D<U64> size = {4096, 512};
+        U64 height = 512;
+        bool interpolate = true;
+        Render::Size2D<U64> viewSize = {4096, 512};
     };
 
     struct Input {
@@ -37,15 +38,15 @@ class Waterfall : public Module {
         return config;
     }
 
-    constexpr const Render::Size2D<U64>& size() const {
-        return config.size;
+    constexpr const Render::Size2D<U64>& viewSize() const {
+        return config.viewSize;
     }
-    const Render::Size2D<U64>& size(const Render::Size2D<U64>& size);
+    const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
 
-    constexpr const BOOL& interpolate() const {
+    constexpr const bool& interpolate() const {
         return config.interpolate;
     }
-    const BOOL& interpolate(const BOOL& interpolate);
+    const bool& interpolate(const bool& interpolate);
 
     constexpr const F32& zoom() const {
         return config.zoom;

@@ -68,7 +68,7 @@ const Result Waterfall<D, T>::initializeRender() {
     JST_CHECK(Render::Create(program, programCfg));
 
     Render::Texture::Config textureCfg;
-    textureCfg.size = config.size;
+    textureCfg.size = config.viewSize;
     JST_CHECK(Render::Create(texture, textureCfg));
 
     Render::Surface::Config surfaceCfg;
@@ -91,13 +91,14 @@ Waterfall<D, T>::Waterfall(const Config& config, const Input& input)
     JST_INFO("Offset: {}", config.offset);
     JST_INFO("Zoom: {}", config.zoom);
     JST_INFO("Interpolate: {}", config.interpolate ? "YES" : "NO");
-    JST_INFO("Size: {}x{}", config.size.width, config.size.height);
+    JST_INFO("Height: {}", config.height);
+    JST_INFO("Window Size: {}x{}", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
 const Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
     auto res = this->underlyingCompute();
-    inc = (inc + 1) % config.size.height;
+    inc = (inc + 1) % config.height;
     return res;
 }
 
@@ -108,7 +109,7 @@ const Result Waterfall<D, T>::present(const RuntimeMetadata& meta) {
 
     // TODO: Fix this horrible thing.
     if (blocks < 0) {
-        blocks = config.size.height - last;
+        blocks = config.height - last;
 
         binTexture->update(start * input.buffer.size(), blocks * input.buffer.size());
 
@@ -121,10 +122,10 @@ const Result Waterfall<D, T>::present(const RuntimeMetadata& meta) {
 
     shaderUniforms.zoom = config.zoom;
     shaderUniforms.width = input.buffer.size();
-    shaderUniforms.height = config.size.height;
+    shaderUniforms.height = config.height;
     shaderUniforms.interpolate = config.interpolate;
     shaderUniforms.index = inc / (float)shaderUniforms.height;
-    shaderUniforms.offset = config.offset / (float)config.size.width;
+    shaderUniforms.offset = config.offset / (float)config.viewSize.width;
     shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;
 
     uniformBuffer->update();
@@ -133,7 +134,7 @@ const Result Waterfall<D, T>::present(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-const BOOL& Waterfall<D, T>::interpolate(const BOOL& val) {
+const bool& Waterfall<D, T>::interpolate(const bool& val) {
     config.interpolate = val;
     return this->interpolate();
 }
@@ -148,16 +149,16 @@ const F32& Waterfall<D, T>::zoom(const F32& zoom) {
 template<Device D, typename T>
 const I32& Waterfall<D, T>::offset(const I32& offset) {
     config.offset = std::clamp(offset, 0,
-            (I32)(config.size.width - (config.size.width / config.zoom)));
+            (I32)(config.viewSize.width - (config.viewSize.width / config.zoom)));
     return config.offset;
 }
 
 template<Device D, typename T>
-const Render::Size2D<U64>& Waterfall<D, T>::size(const Render::Size2D<U64>& size) {
-    if (surface->size(size) != this->size()) {
-        this->config.size = surface->size();
+const Render::Size2D<U64>& Waterfall<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
+    if (surface->size(viewSize) != this->viewSize()) {
+        this->config.viewSize = surface->size();
     }
-    return this->size();
+    return this->viewSize();
 }
 
 template<Device D, typename T>

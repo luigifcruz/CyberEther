@@ -21,7 +21,7 @@ public:
         Render::Initialize<Device::Metal>(renderCfg);
 
         // Allocate Radio Buffer
-        stream = std::make_unique<Memory::Vector<Device::CPU, CF32>>(2 << 18);
+        stream = std::make_unique<Memory::Vector<Device::CPU, CF32>>(2 << 12);
 
         // Configure Jetstream
         win = Block<Window, Device::CPU>({
@@ -71,9 +71,9 @@ public:
         Render::Create();
 
         dsp = std::thread([&]{
-            device = std::make_shared<Samurai::LimeSDR::Device>();
+            device = std::make_shared<Samurai::Airspy::Device>();
 
-            deviceConfig.sampleRate = 30e6;
+            deviceConfig.sampleRate = 10e6;
             device->Enable(deviceConfig);
 
             channelConfig.mode = Samurai::Mode::RX;
@@ -81,7 +81,7 @@ public:
             device->EnableChannel(channelConfig, &rx);
 
             channelState.enableAGC = true;
-            channelState.frequency = 96.9e6;
+            channelState.frequency = 112.9e6;
             device->UpdateChannel(rx, channelState);
 
             device->StartStream();
@@ -113,10 +113,12 @@ public:
     void render_step() {
         Render::Begin();
 
+        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+
         {
             ImGui::Begin("Waterfall");
             auto [x, y] = ImGui::GetContentRegionAvail();
-            auto [width, height] = wtf->size({(U64)x, (U64)y});
+            auto [width, height] = wtf->viewSize({(U64)x, (U64)y});
             ImGui::Image(wtf->getTexture().raw(), ImVec2(width, height));
 
             if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
@@ -134,7 +136,7 @@ public:
         {
             ImGui::Begin("Lineplot");
             auto [x, y] = ImGui::GetContentRegionAvail();
-            auto [width, height] = lpt->size({(U64)x, (U64)y});
+            auto [width, height] = lpt->viewSize({(U64)x, (U64)y});
             ImGui::Image(lpt->getTexture().raw(), ImVec2(width, height));
             ImGui::End();
         }
@@ -152,6 +154,17 @@ public:
                         1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
                 scl->range({min, max});
             }
+
+            auto interpolate = wtf->interpolate();
+            if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
+                wtf->interpolate(interpolate);
+            }
+
+            auto zoom = wtf->zoom();
+            if (ImGui::DragFloat("Waterfall Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
+                wtf->zoom(zoom);
+            }
+
             ImGui::End();
         }
 

@@ -55,7 +55,7 @@ const Result Lineplot<D, T>::initializeRender() {
     JST_CHECK_THROW(Render::Create(program, programCfg));
 
     Render::Texture::Config textureCfg;
-    textureCfg.size = config.size;
+    textureCfg.size = config.viewSize;
     JST_CHECK_THROW(Render::Create(texture, textureCfg));
 
     Render::Surface::Config surfaceCfg;
@@ -96,7 +96,7 @@ Lineplot<D, T>::Lineplot(const Config& config, const Input& input)
     JST_CHECK_THROW(initializeRender());
     
     JST_INFO("===== Lineplot Module Configuration");
-    JST_INFO("Size: {}x{}", config.size.width, config.size.height);
+    JST_INFO("Size: {}x{}", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
@@ -106,11 +106,11 @@ const Result Lineplot<D, T>::present(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-const Render::Size2D<U64>& Lineplot<D, T>::size(const Render::Size2D<U64>& size) {
-    if (surface->size(size) != this->size()) {
-        this->config.size = surface->size();
+const Render::Size2D<U64>& Lineplot<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
+    if (surface->size(viewSize) != this->viewSize()) {
+        this->config.viewSize = surface->size();
     }
-    return this->size();
+    return this->viewSize();
 }
 
 template<Device D, typename T>
