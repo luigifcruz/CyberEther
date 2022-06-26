@@ -51,5 +51,3 @@ pkg.generate(
   libjetstream,
   libraries: dep_lst,
 )
-
-subdir('resources')

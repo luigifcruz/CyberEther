@@ -4,4 +4,5 @@ src_lst += files([
 
 subdir('backend')
 subdir('render')
+subdir('memory')
 subdir('modules')

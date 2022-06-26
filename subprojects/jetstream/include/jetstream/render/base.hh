@@ -72,6 +72,7 @@ const Result JETSTREAM_API Create();
 const Result JETSTREAM_API Destroy();
 const Result JETSTREAM_API Begin();
 const Result JETSTREAM_API End();
+const Result JETSTREAM_API PollEvents();
 const Result JETSTREAM_API Synchronize();
 const bool JETSTREAM_API KeepRunning();
 

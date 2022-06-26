@@ -32,6 +32,7 @@ class Window {
     virtual const Result begin() = 0;
     virtual const Result end() = 0;
 
+    virtual const Result pollEvents() = 0;
     virtual const Result synchronize() = 0;
     virtual const bool keepRunning() = 0;
 

@@ -47,6 +47,7 @@ static Instance& GetDefaultInstance() {
     static std::unique_ptr<Instance> instance;
 
     if (!instance) {
+        JST_TRACE("Creating default instance.");
         instance = std::make_unique<Instance>();
     }
 

@@ -21,7 +21,7 @@ public:
         Render::Initialize<Device::Metal>(renderCfg);
 
         // Allocate Radio Buffer
-        stream = std::make_unique<Memory::Vector<Device::CPU, CF32>>(2 << 12);
+        stream = std::make_unique<Memory::Vector<Device::CPU, CF32>>(2 << 11);
 
         // Configure Jetstream
         win = Block<Window, Device::CPU>({
@@ -168,16 +168,21 @@ public:
             ImGui::End();
         }
 
-        ImGui::Begin("Samurai Info");
-        if (streaming) {
-            float bufferUsageRatio = (float)device->BufferOccupancy(rx) /
-                (float)device->BufferCapacity(rx);
-            ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
-            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-            ImGui::Text("Buffer Usage");
-        }
-        ImGui::End();
+        {
+            ImGui::Begin("Samurai Info");
 
+            if (streaming) {
+                float bufferUsageRatio = (float)device->BufferOccupancy(rx) /
+                    (float)device->BufferCapacity(rx);
+                ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                ImGui::Text("Buffer Usage");
+            }
+
+            ImGui::End();
+        }
+
+        Render::PollEvents();
         Render::Synchronize();
         Jetstream::Present();
         Render::End();

@@ -115,6 +115,8 @@ enum class Result : U8 {
     ERROR = 1,
     CUDA_ERROR,
     ASSERTION_ERROR,
+    ERROR_TIMEOUT,
+    ERROR_BEYOND_CAPACITY,
 };
 
 enum class Direction : I64 {

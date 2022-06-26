@@ -36,7 +36,7 @@ IMGUI_IMPL_API void ImGui_ImplMetal_DestroyDeviceObjects();
 
 #ifdef IMGUI_IMPL_METAL_CPP
 
-#include <Metal/Metal.hpp>
+#include "jetstream/backend/devices/metal/bindings.hpp"
 
 #ifndef __OBJC__
 

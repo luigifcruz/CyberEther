@@ -21,6 +21,7 @@ class WindowImp<Device::Metal> : public Window {
     const Result begin();
     const Result end();
 
+    const Result pollEvents();
     const Result synchronize();
     const bool keepRunning();
 

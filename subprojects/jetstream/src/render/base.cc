@@ -29,6 +29,10 @@ const Result End() {
     return Get()->end();
 }
 
+const Result PollEvents() {
+    return Get()->pollEvents();
+}
+
 const Result Synchronize() {
     return Get()->synchronize();
 }

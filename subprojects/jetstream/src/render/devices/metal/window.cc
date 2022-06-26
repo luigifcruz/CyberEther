@@ -1,5 +1,6 @@
 #include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/metal/window.hh"
+#include "jetstream/render/tools/compressed_b612.hh"
 
 namespace Jetstream::Render {
 
@@ -90,8 +91,12 @@ const Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(config.scale);
-    io->Fonts->AddFontFromFileTTF("B612Mono-Regular.ttf",
-        12.0f * config.scale, NULL, NULL);
+    io->Fonts->AddFontFromMemoryCompressedTTF(
+        B612_compressed_data, 
+        B612_compressed_size,
+        12.0f * config.scale, 
+        nullptr, 
+        nullptr);
 
     ImGui::StyleColorsDark();
 
@@ -166,8 +171,6 @@ const Result Implementation::end() {
         JST_CHECK(endImgui());
     }
 
-    glfwPollEvents();
-
     commandBuffer->presentDrawable(drawable);
     commandBuffer->commit();
     commandBuffer->waitUntilCompleted();
@@ -175,6 +178,11 @@ const Result Implementation::end() {
     commandBuffer->release();
     drawable->release();
 
+    return Result::SUCCESS;
+}
+
+const Result Implementation::pollEvents() {
+    glfwPollEvents();
     return Result::SUCCESS;
 }
 
