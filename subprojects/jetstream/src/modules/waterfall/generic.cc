@@ -156,6 +156,12 @@ const I32& Waterfall<D, T>::offset(const I32& offset) {
 template<Device D, typename T>
 const Render::Size2D<U64>& Waterfall<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
+        JST_DEBUG("Waterfall size changed from {}x{} to {}x{}.", 
+                config.viewSize.width, 
+                config.viewSize.height, 
+                viewSize.width, 
+                viewSize.height);
+
         this->config.viewSize = surface->size();
     }
     return this->viewSize();

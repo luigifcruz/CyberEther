@@ -9,6 +9,7 @@ namespace Jetstream::Backend {
 class Metal {
  public:
     explicit Metal(const Config& config);
+    ~Metal();
 
     constexpr MTL::Device* getDevice() {
       return device;

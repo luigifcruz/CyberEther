@@ -22,6 +22,9 @@ class JETSTREAM_API Instance {
     const Result initialize(const Config& config);
 
     template<Device D>
+    const Result destroy();
+
+    template<Device D>
     const auto& state();
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
@@ -29,6 +32,14 @@ class JETSTREAM_API Instance {
     const Result initialize<Device::CPU>(const Config& config) {
         if (!cpu) {
             cpu = std::make_unique<CPU>(config);
+        }
+        return Result::SUCCESS;
+    }
+
+    template<>
+    const Result destroy<Device::CPU>() {
+        if (cpu) {
+            cpu.reset();
         }
         return Result::SUCCESS;
     }
@@ -44,6 +55,14 @@ class JETSTREAM_API Instance {
     const Result initialize<Device::Metal>(const Config& config) {
         if (!metal) {
             metal = std::make_unique<Metal>(config);
+        }
+        return Result::SUCCESS;
+    }
+
+    template<>
+    const Result destroy<Device::Metal>() {
+        if (metal) {
+            metal.reset();
         }
         return Result::SUCCESS;
     }
@@ -73,6 +92,11 @@ const auto& JETSTREAM_API State() {
 template<Device D>
 const Result JETSTREAM_API Initialize(const Config& config) {
     return Get().initialize<D>(config);
+}
+
+template<Device D>
+const Result JETSTREAM_API Destroy() {
+    return Get().destroy<D>();
 }
 
 }  // namespace Jetstream::Backend

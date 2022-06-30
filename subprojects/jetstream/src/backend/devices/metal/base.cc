@@ -23,4 +23,10 @@ Metal::Metal(const Config& config) {
              this->device->hasUnifiedMemory() ? "YES" : "NO");
 }
 
+Metal::~Metal() {
+    JST_DEBUG("Destroying Metal backend.");
+
+    device->release();
+}
+
 }  // namespace Jetstream::Backend
