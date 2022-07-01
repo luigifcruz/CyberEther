@@ -132,13 +132,13 @@ const Result Implementation::endImgui() {
         commandBuffer, renderCmdEncoder);
 
     renderCmdEncoder->endEncoding();
-    renderCmdEncoder->release();
 
     return Result::SUCCESS;
 }
 
 const Result Implementation::begin() {
-    commandBuffer = commandQueue->commandBuffer();
+    pPool = NS::AutoreleasePool::alloc()->init();
+
     drawable = view->draw();
 
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0);
@@ -163,6 +163,8 @@ const Result Implementation::begin() {
 }
 
 const Result Implementation::end() {
+    commandBuffer = commandQueue->commandBuffer();
+
     for (auto &surface : surfaces) {
         JST_CHECK(surface->draw(commandBuffer));
     }
@@ -175,14 +177,13 @@ const Result Implementation::end() {
     commandBuffer->commit();
     commandBuffer->waitUntilCompleted();
 
-    commandBuffer->release();
-    drawable->release();
+    pPool->release();
 
     return Result::SUCCESS;
 }
 
 const Result Implementation::pollEvents() {
-    glfwPollEvents();
+    glfwWaitEvents();
     return Result::SUCCESS;
 }
 

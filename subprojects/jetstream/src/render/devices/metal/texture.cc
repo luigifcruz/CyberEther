@@ -21,8 +21,6 @@ const Result Implementation::create() {
     texture = device->newTexture(textureDesc); 
     JST_ASSERT(texture);
 
-    textureDesc->release();
-
     if (config.buffer) {
         JST_CHECK(fill());
     }

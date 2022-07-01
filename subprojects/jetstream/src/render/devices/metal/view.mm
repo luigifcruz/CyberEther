@@ -15,10 +15,10 @@ View::View(MTL::Device* device, GLFWwindow* window) : glfwWindow(window) {
     swapchainHolder = [CAMetalLayer layer];
     nativeWindowHolder = glfwGetCocoaWindow(glfwWindow);
 
-    auto nativeWindow = static_cast<NSWindow*>(nativeWindowHolder);
-    auto swapchain = static_cast<CAMetalLayer*>(swapchainHolder);
+    auto nativeWindow = (__bridge NSWindow*)nativeWindowHolder;
+    auto swapchain = (__bridge CAMetalLayer*)swapchainHolder;
 
-    swapchain.device = (id<MTLDevice>)device;
+    swapchain.device = (__bridge id<MTLDevice>)device;
     swapchain.pixelFormat = MTLPixelFormatBGRA8Unorm;
 
     nativeWindow.contentView.layer = swapchain;
@@ -26,21 +26,17 @@ View::View(MTL::Device* device, GLFWwindow* window) : glfwWindow(window) {
 }
 
 View::~View() {
-    [static_cast<CAMetalLayer*>(swapchainHolder) release];
+    [(__bridge CAMetalLayer*)swapchainHolder release];
 }
 
 CA::MetalDrawable* View::draw() {
-    auto swapchain = static_cast<CAMetalLayer*>(swapchainHolder);
+    auto swapchain = (__bridge CAMetalLayer*)swapchainHolder;
 
-    @autoreleasepool {
-        int width, height;
-        glfwGetFramebufferSize(glfwWindow, &width, &height);
-        swapchain.drawableSize = CGSizeMake(width, height);
-    }
+    int width, height;
+    glfwGetFramebufferSize(glfwWindow, &width, &height);
+    swapchain.drawableSize = CGSizeMake(width, height);
 
-    id<CAMetalDrawable> drawable = [swapchain nextDrawable];
-
-    return (__bridge CA::MetalDrawable*)drawable;
+    return (__bridge CA::MetalDrawable*)[swapchain nextDrawable];
 }
 
 }  // namespace Render

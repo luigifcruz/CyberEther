@@ -126,7 +126,6 @@ const Result Implementation::draw(MTL::CommandBuffer* commandBuffer,
     }
 
     renderCmdEncoder->endEncoding();
-    renderCmdEncoder->release();
 
     return Result::SUCCESS;
 }
