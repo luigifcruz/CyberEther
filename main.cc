@@ -182,6 +182,7 @@ class UI {
 
             {
                 ImGui::Begin("Waterfall");
+
                 auto [x, y] = ImGui::GetContentRegionAvail();
                 auto [width, height] = wtf->viewSize({(U64)x, (U64)y});
                 ImGui::Image(wtf->getTexture().raw(), ImVec2(width, height));
@@ -200,9 +201,11 @@ class UI {
 
             {
                 ImGui::Begin("Lineplot");
+                
                 auto [x, y] = ImGui::GetContentRegionAvail();
                 auto [width, height] = lpt->viewSize({(U64)x, (U64)y});
                 ImGui::Image(lpt->getTexture().raw(), ImVec2(width, height));
+
                 ImGui::End();
             }
 
