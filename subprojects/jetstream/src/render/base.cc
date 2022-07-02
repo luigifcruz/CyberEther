@@ -30,6 +30,10 @@ const Result End() {
 }
 
 const Result PollEvents() {
+    if (!Get(false)) {
+        return Result::SUCCESS;
+    }
+
     return Get()->pollEvents();
 }
 
@@ -38,6 +42,10 @@ const Result Synchronize() {
 }
 
 const bool KeepRunning() {
+    if (!Get(false)) {
+        return true;
+    }
+
     return Get()->keepRunning();
 }
 
