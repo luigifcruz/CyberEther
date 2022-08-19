@@ -246,8 +246,8 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
 - (instancetype)init {
     if ((self = [super init]))
     {
-        _renderPipelineStateCache = [NSMutableDictionary dictionary];
-        _bufferCache = [NSMutableArray array];
+        self.renderPipelineStateCache = [NSMutableDictionary dictionary];
+        self.bufferCache = [NSMutableArray array];
         _lastBufferCachePurge = [NSDate date].timeIntervalSince1970;
     }
     return self;
@@ -290,32 +290,35 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
 {
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
 
-    // Purge old buffers that haven't been useful for a while
-    if (now - self.lastBufferCachePurge > 1.0)
-    {
-        NSMutableArray *survivors = [NSMutableArray array];
-        for (MetalBuffer *candidate in self.bufferCache)
+    @synchronized(self) {
+
+        // Purge old buffers that haven't been useful for a while
+        if (now - self.lastBufferCachePurge > 1.0)
         {
-            if (candidate.lastReuseTime > self.lastBufferCachePurge)
+            NSMutableArray *survivors = [NSMutableArray array];
+            for (MetalBuffer *candidate in self.bufferCache)
             {
-                [survivors addObject:candidate];
+                if (candidate.lastReuseTime > self.lastBufferCachePurge)
+                {
+                    [survivors addObject:candidate];
+                }
             }
+            self.bufferCache = [survivors mutableCopy];
+            self.lastBufferCachePurge = now;
         }
-        self.bufferCache = [survivors mutableCopy];
-        self.lastBufferCachePurge = now;
-    }
 
-    // See if we have a buffer we can reuse
-    MetalBuffer *bestCandidate = nil;
-    for (MetalBuffer *candidate in self.bufferCache)
-        if (candidate.buffer.length >= length && (bestCandidate == nil || bestCandidate.lastReuseTime > candidate.lastReuseTime))
-            bestCandidate = candidate;
+        // See if we have a buffer we can reuse
+        MetalBuffer *bestCandidate = nil;
+        for (MetalBuffer *candidate in self.bufferCache)
+            if (candidate.buffer.length >= length && (bestCandidate == nil || bestCandidate.lastReuseTime > candidate.lastReuseTime))
+                bestCandidate = candidate;
 
-    if (bestCandidate != nil)
-    {
-        [self.bufferCache removeObject:bestCandidate];
-        bestCandidate.lastReuseTime = now;
-        return bestCandidate;
+        if (bestCandidate != nil)
+        {
+            [self.bufferCache removeObject:bestCandidate];
+            bestCandidate.lastReuseTime = now;
+            return bestCandidate;
+        }
     }
 
     // No luck; make a new buffer
@@ -325,7 +328,9 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
 
 - (void)enqueueReusableBuffer:(MetalBuffer *)buffer
 {
-    [self.bufferCache addObject:buffer];
+    @synchronized(self) {
+        [self.bufferCache addObject:buffer];
+    }
 }
 
 - (_Nullable id<MTLRenderPipelineState>)renderPipelineStateForFrameAndDevice:(id<MTLDevice>)device
