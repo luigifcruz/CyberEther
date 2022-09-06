@@ -37,6 +37,7 @@ const Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
     for (U64 i = 0; i < this->config.size; i++) {
         this->output.buffer[i] = scale<T>(this->input.buffer[i], min, max);
     }
+
     return Result::SUCCESS;
 }
 
