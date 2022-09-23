@@ -46,6 +46,9 @@ The only way to use CyberEther at the moment is by compiling it from the source.
 
 ## Implementation Notes
 
+### QT Gui for GNU Radio
+This is currently using a GLFW window to operate, but it's totally possible for it to be rendered as a QGLSurface inside a QTApp parent (standard GNU Radio window). The idea is to write support for this as soon as the API becomes more stable.
+
 ### Development Speed
 This is a side project that requires a considerable amount of work that I develop in my free time. I'm making some sacrifices to increase the speed of development like developing new features for Metal (because I have an Apple laptop) and later porting to other APIs, scarce documentation, and currently [no font rendering support](https://github.com/luigifcruz/gr-cyber/edit/main/README.md#font-rendering).
 
