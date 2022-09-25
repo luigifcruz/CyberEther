@@ -104,6 +104,7 @@ class Waterfall : public Module {
     // Metal
     //
 
+    // TODO: Improve gaussian blur.
     // TODO: Fix macro invalid memory access.
     const char* MetalShader = R"END(
         #include <metal_stdlib>

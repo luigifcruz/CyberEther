@@ -28,8 +28,8 @@ namespace Jetstream::Render {
 
 template<class T>
 inline Result Create(const Device& device, 
-                                   std::shared_ptr<T>& member, 
-                                   const auto& config) {
+                     std::shared_ptr<T>& member, 
+                     const auto& config) {
     switch (device) {
         case Device::Metal:
             member = T::template Factory<Device::Metal>(config); 
@@ -68,6 +68,7 @@ inline Result JETSTREAM_API Initialize(const Window::Config& config) {
     return Create(D, Get(false), config);
 }
 
+// TODO: Remove global singleton methods.
 const Result JETSTREAM_API Create();
 const Result JETSTREAM_API Destroy();
 const Result JETSTREAM_API Begin();

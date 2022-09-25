@@ -86,6 +86,8 @@ class Spectrogram : public Module {
     // Metal
     //
 
+    // TODO: Improve gaussian blur.
+    // TODO: Cleanup waterfall old code.
     // TODO: Fix macro invalid memory access.
     const char* MetalShader = R"END(
         #include <metal_stdlib>

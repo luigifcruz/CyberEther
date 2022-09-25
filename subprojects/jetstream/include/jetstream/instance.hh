@@ -25,6 +25,7 @@ const Result JETSTREAM_API Schedule(const std::shared_ptr<Module>& block);
 const Result JETSTREAM_API Compute();
 const Result JETSTREAM_API Present();
 
+// TODO: Remove global singleton methods.
 template<template<Device, typename...> class T, Device D, typename... C>
 std::shared_ptr<T<D, C...>> JETSTREAM_API Block(
         const typename T<D, C...>::Config& config,
