@@ -8,3 +8,4 @@ subdir('scale')
 # Graphical
 subdir('lineplot')
 subdir('waterfall')
+subdir('spectrogram')

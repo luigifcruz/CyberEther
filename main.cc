@@ -11,7 +11,7 @@ using ST = Memory::Vector<Device::CPU, CF32>;
 class DSP {
  public:
     DSP() {
-        stream = std::make_shared<Memory::Vector<Device::CPU, CF32>>(2 << 11);
+        stream = std::make_shared<Memory::Vector<Device::CPU, CF32>>(2 << 10);
         streaming = true;
         worker = std::thread([&]{ this->threadLoop(); });
     }
@@ -59,7 +59,7 @@ class DSP {
         while (streaming) {
             device = std::make_shared<Samurai::Airspy::Device>();
 
-            deviceConfig.sampleRate = 10e6;
+            deviceConfig.sampleRate = 2.5e6;
             device->Enable(deviceConfig);
 
             channelConfig.mode = Samurai::Mode::RX;
@@ -136,6 +136,10 @@ class UI {
             .buffer = scl->getOutputBuffer(),
         });
 
+        spc = Block<Spectrogram, Device::CPU>({}, {
+            .buffer = scl->getOutputBuffer(),
+        });
+
         Render::Create();
 
         streaming = true;
@@ -164,6 +168,7 @@ class UI {
     std::shared_ptr<Scale<Device::CPU>> scl;
     std::shared_ptr<Lineplot<Device::CPU>> lpt;
     std::shared_ptr<Waterfall<Device::CPU>> wtf;
+    std::shared_ptr<Spectrogram<Device::CPU>> spc;
 
     ImVec2 getRelativeMousePos() {
         ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
@@ -195,6 +200,16 @@ class UI {
                 } else {
                     position = 0;
                 }
+
+                ImGui::End();
+            }
+
+            {
+                ImGui::Begin("Spectrogram");
+
+                auto [x, y] = ImGui::GetContentRegionAvail();
+                auto [width, height] = spc->viewSize({(U64)x, (U64)y});
+                ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
 
                 ImGui::End();
             }

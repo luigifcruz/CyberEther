@@ -10,6 +10,10 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/render/base.hh"
 
+// 
+// Compute
+//
+
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
 #include "jetstream/modules/fft.hh"
 #endif
@@ -30,12 +34,20 @@
 #include "jetstream/modules/scale.hh"
 #endif
 
+//
+// Graphical
+// 
+
 #ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
 #include "jetstream/modules/lineplot.hh"
 #endif
 
 #ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
 #include "jetstream/modules/waterfall.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
+#include "jetstream/modules/spectrogram.hh"
 #endif
 
 #endif

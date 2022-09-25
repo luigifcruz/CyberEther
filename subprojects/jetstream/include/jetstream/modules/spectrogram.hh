@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_MODULES_WATERFALL_HH
-#define JETSTREAM_MODULES_WATERFALL_HH
+#ifndef JETSTREAM_MODULES_SPECTOGRAM_HH
+#define JETSTREAM_MODULES_SPECTOGRAM_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -11,13 +11,9 @@
 namespace Jetstream {
 
 template<Device D, typename IT = F32>
-class Waterfall : public Module {
+class Spectrogram : public Module {
  public:
     struct Config {
-        F32 zoom = 1.0;
-        I32 offset = 0;
-        U64 height = 512;
-        bool interpolate = true;
         Render::Size2D<U64> viewSize = {4096, 512};
     };
 
@@ -28,7 +24,7 @@ class Waterfall : public Module {
     struct Output {
     };
 
-    explicit Waterfall(const Config&, const Input&);
+    explicit Spectrogram(const Config&, const Input&);
 
     constexpr const U64 getBufferSize() const {
         return input.buffer.size();
@@ -42,21 +38,6 @@ class Waterfall : public Module {
         return config.viewSize;
     }
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
-
-    constexpr const bool& interpolate() const {
-        return config.interpolate;
-    }
-    const bool& interpolate(const bool& interpolate);
-
-    constexpr const F32& zoom() const {
-        return config.zoom;
-    }
-    const F32& zoom(const F32& zoom);
-
-    constexpr const I32& offset() const {
-        return config.offset;
-    }
-    const I32& offset(const I32& offset);
 
     Render::Texture& getTexture();
 
@@ -76,6 +57,7 @@ class Waterfall : public Module {
     } shaderUniforms;
 
     int inc = 0, last = 0, ymax = 0;
+    std::vector<float> intermediate; 
     std::vector<float> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
@@ -105,6 +87,7 @@ class Waterfall : public Module {
     //
 
     // TODO: Improve gaussian blur.
+    // TODO: Cleanup waterfall old code.
     // TODO: Fix macro invalid memory access.
     const char* MetalShader = R"END(
         #include <metal_stdlib>
