@@ -43,10 +43,12 @@ const Result CircularBuffer<T>::Get(T* buf, size_t size) {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
         U64 stage_a = MIN(size, Capacity() - head);
-        U64 stage_b = (stage_a < size) ? size - stage_a : 0;
 
         std::copy_n(buffer.get() + head, stage_a, buf);
-        std::copy_n(buffer.get(), stage_b, buf + stage_a);
+
+        if (stage_a < size) {
+            std::copy_n(buffer.get(), size - stage_a, buf + stage_a);
+        }
 
         head = (head + size) % Capacity();
         occupancy -= size;
@@ -72,10 +74,11 @@ const Result CircularBuffer<T>::Put(T* buf, size_t size) {
         }
 
         U64 stage_a = MIN(size, Capacity() - tail);
-        U64 stage_b = (stage_a < size) ? size - stage_a : 0;
-
         std::copy_n(buf, stage_a, buffer.get() + tail);
-        std::copy_n(buf + stage_a, stage_b, buffer.get());
+
+        if (stage_a < size) {
+            std::copy_n(buf + stage_a, size - stage_a, buffer.get());
+        }
 
         tail = (tail + size) % Capacity();
         occupancy += size;

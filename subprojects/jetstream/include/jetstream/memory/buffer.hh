@@ -15,6 +15,7 @@ namespace Jetstream::Memory {
 template <class T>
 class CircularBuffer {
 public:
+    // TODO: Convert to typedef standard.
     CircularBuffer(size_t);
     ~CircularBuffer();
 
@@ -31,6 +32,7 @@ public:
     const Result WaitBufferOccupancy(size_t);
 
 private:
+    // TODO: Replace with non-blocking atomics.
     std::mutex io_mtx;
     std::mutex sync_mtx;
     std::condition_variable semaphore;

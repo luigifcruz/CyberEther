@@ -88,15 +88,12 @@ Spectrogram<D, T>::Spectrogram(const Config& config, const Input& input)
     JST_CHECK_THROW(initializeRender());
 
     JST_INFO("===== Spectrogram Module Configuration");
-    JST_INFO("Height: {}", config.height);
     JST_INFO("Window Size: {}x{}", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
 const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
-    auto res = this->underlyingCompute();
-    inc = (inc + 1) % config.height;
-    return res;
+    return this->underlyingCompute(meta);
 }
 
 template<Device D, typename T>
@@ -105,7 +102,7 @@ const Result Spectrogram<D, T>::present(const RuntimeMetadata& meta) {
 
     shaderUniforms.zoom = 1.0;
     shaderUniforms.width = input.buffer.size();
-    shaderUniforms.height = config.height;
+    shaderUniforms.height = config.viewSize.height;
     shaderUniforms.interpolate = true;
     shaderUniforms.index = 0.0 / (float)shaderUniforms.height;
     shaderUniforms.offset = 0.0 / (float)config.viewSize.width;

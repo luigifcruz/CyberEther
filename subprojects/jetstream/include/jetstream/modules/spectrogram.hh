@@ -14,7 +14,6 @@ template<Device D, typename IT = F32>
 class Spectrogram : public Module {
  public:
     struct Config {
-        U64 height = 512;
         Render::Size2D<U64> viewSize = {4096, 512};
     };
 
