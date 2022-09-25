@@ -1,3 +1,4 @@
+#include <fmt/core.h>
 #include "jetstream/memory/buffer.hh"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -7,7 +8,11 @@ using namespace std::chrono_literals;
 namespace Jetstream::Memory {
 
 template<class T>
-CircularBuffer<T>::CircularBuffer(size_t capacity) : capacity(capacity) {
+CircularBuffer<T>::CircularBuffer(size_t capacity)
+     : transfers(0),
+       throughput(0.0),
+       capacity(capacity),
+       overflows(0) {
     this->Reset();
     this->buffer = std::unique_ptr<T[]>(new T[Capacity()]);
 }
@@ -52,6 +57,18 @@ const Result CircularBuffer<T>::Get(T* buf, size_t size) {
 
         head = (head + size) % Capacity();
         occupancy -= size;
+
+        // Throughput Calculator
+        auto now = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed = now - lastGet;
+
+        if (elapsed.count() > 0.5) {
+            throughput = (transfers * sizeof(T)) / elapsed.count();
+            transfers = 0.0;
+            lastGet = std::chrono::system_clock::now();
+        }
+
+        transfers += size;
     }
 
 exception:
@@ -68,7 +85,7 @@ const Result CircularBuffer<T>::Put(T* buf, size_t size) {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
         if (Capacity() < (Occupancy() + size)) {
-            printf("o");
+            overflows += 1;
             occupancy = 0;
             head = tail;
         }
@@ -95,6 +112,9 @@ const Result CircularBuffer<T>::Reset() {
         this->head = 0;
         this->tail = 0;
         this->occupancy = 0;
+        this->transfers = 0;
+        this->throughput = 0;
+        this->overflows = 0;
     }
 
     semaphore.notify_all();

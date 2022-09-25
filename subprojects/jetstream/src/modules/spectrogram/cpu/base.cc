@@ -9,18 +9,6 @@ const Result Spectrogram<D, T>::underlyingInitialize() {
     return Result::SUCCESS;
 }
 
-// 0: 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-// 1: 1 1 1 1 2 3 4 4 3 2 1 1 1 1 
-// 2: 1 1 1 1 1 2 3 3 2 1 1 1 1 1
-// 3: 1 1 1 1 1 1 2 2 1 1 1 1 1 1
-// 4: 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-// |: | | | | | | | | | | | | | |
-// 4: 0 0 0 0 0 0 1 1 0 0 0 0 0 0 
-// 3: 0 0 0 0 0 1 1 1 1 0 0 0 0 0
-// 2: 0 0 0 0 1 1 1 1 1 1 0 0 0 0
-// 1: 5 5 5 5 4 3 2 2 3 4 5 5 5 5
-// 0: 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-
 template<Device D, typename T>
 const Result Spectrogram<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
     for (U64 x = 0; x < input.buffer.size() * config.viewSize.height; x++) {

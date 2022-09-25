@@ -31,6 +31,14 @@ public:
 
     const Result WaitBufferOccupancy(size_t);
 
+    constexpr const F64 GetThroughput() const {
+        return throughput;
+    }
+
+    constexpr const U64 GetOverflows() const {
+        return overflows;
+    }
+
 private:
     // TODO: Replace with non-blocking atomics.
     std::mutex io_mtx;
@@ -39,10 +47,15 @@ private:
 
     std::unique_ptr<T[]> buffer{};
 
+    U64 transfers;
+    F64 throughput;
+    std::chrono::system_clock::time_point lastGet;
+
     U64 head;
     U64 tail;
     U64 capacity;
     U64 occupancy;
+    U64 overflows;
 };
 
 }  // namespace Jetstream::Memory
