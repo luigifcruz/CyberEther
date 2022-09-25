@@ -6,7 +6,7 @@
 - 🦑 Meant to be extremely portable (NVIDIA, Apple M1/M2, Raspberry Pi, AMD).
 - 🖼️ Meant to support the most common heterogeneous APIs (CUDA, Vulkan, Metal, WebGPU).
 - 🔋 Runtime configurable hardware accelerated heterogeneous computing.
-- 🧳 Compatible with GNU Radio with [gr-ether](https://github.com/luigifcruz/gr-cyber).
+- 🧳 Compatible with GNU Radio with [gr-cyber](https://github.com/luigifcruz/gr-cyber).
 
 <p align="center">
 <img src="docs/development-example.png" />
