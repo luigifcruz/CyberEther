@@ -57,7 +57,7 @@ class SDR {
 
     void setTunerFrequency(const F64& frequency) {
         config.frequency = frequency;
-        // device->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+        device->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
     }
 
  private:
@@ -188,6 +188,8 @@ class UI {
 
     bool streaming = false;
 
+    float frequency;
+
     std::shared_ptr<Window<Device::CPU>> win;
     std::shared_ptr<Multiply<Device::CPU>> mul;
     std::shared_ptr<FFT<Device::CPU>> fft;
@@ -206,6 +208,8 @@ class UI {
 
     void threadLoop() {
         int position;
+
+        frequency = sdr.getConfig().frequency;
 
         while (streaming && Render::KeepRunning()) {
             Render::Begin();
@@ -254,7 +258,6 @@ class UI {
             {
                 ImGui::Begin("Control");
 
-                float frequency = sdr.getConfig().frequency; 
                 ImGui::InputFloat("Frequency (Hz)", &frequency);
                 if (ImGui::Button("Tune")) {
                     sdr.setTunerFrequency(frequency);
