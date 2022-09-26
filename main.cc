@@ -2,92 +2,119 @@
 #include <chrono>
 
 #include "jetstream/base.hh"
-#include "samurai/samurai.hpp"
+
+#include <SoapySDR/Device.hpp>
+#include <SoapySDR/Types.hpp>
+#include <SoapySDR/Formats.hpp>
 
 using namespace Jetstream;
 
-using ST = Memory::Vector<Device::CPU, CF32>;
-
-class DSP {
+class SDR {
  public:
-    DSP() {
-        stream = std::make_shared<Memory::Vector<Device::CPU, CF32>>(2 << 10);
+    struct Config {
+        std::string deviceString;
+        F64 frequency;
+        F64 sampleRate;
+        U64 outputBufferSize;
+        U64 bufferMultiplier = 1024*8;
+    };
+
+    SDR(const Config& config)
+         : config(config), 
+           data(config.outputBufferSize),
+           buffer(config.outputBufferSize * config.bufferMultiplier) {
         streaming = true;
-        worker = std::thread([&]{ this->threadLoop(); });
+
+        producer = std::thread([&]{ this->threadLoop(); });
+
+        consumer = std::thread([&]{
+            while (streaming) {
+                if (buffer.GetOccupancy() > config.outputBufferSize) {
+                    buffer.Get(data.data(), config.outputBufferSize);
+                    Jetstream::Compute();
+                }
+            }
+        });
     }
 
-    ~DSP() {
+    ~SDR() {
         streaming = false;
-        worker.join();
-
-        JST_DEBUG("The DSP was destructed.");
+        consumer.join();
+        producer.join();
     }
 
-    constexpr const ST& getOutput() const {
-        return *stream;
+    constexpr const Memory::Vector<Device::CPU, CF32>& getOutputBuffer() const {
+        return data;
     }
 
-    constexpr const F32 getBufferCapacity() const {
-        return device->BufferCapacity(rx);
+    constexpr const Memory::CircularBuffer<CF32>& getCircularBuffer() const {
+        return buffer;
     }
 
-    constexpr const F32 getBufferOccupancy() const {
-        return device->BufferOccupancy(rx);
-    }
+    constexpr const Config& getConfig() const {
+        return config;
+    } 
 
-    constexpr F32& getTunerFrequency() {
-        return channelState.frequency;
-    }
-
-    constexpr void setTunerFrequency() {
-        device->UpdateChannel(rx, channelState);
+    void setTunerFrequency(const F64& frequency) {
+        config.frequency = frequency;
+        // device->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
     }
 
  private:
-    std::thread worker;
+    std::thread producer;
+    std::thread consumer;
 
+    Config config;
     bool streaming = false;
-    std::shared_ptr<ST> stream;
+    Memory::Vector<Device::CPU, CF32> data;
+    Memory::CircularBuffer<CF32> buffer;
 
-    Samurai::ChannelId rx;
-    Samurai::Channel::Config channelConfig;
-    Samurai::Device::Config deviceConfig;
-    Samurai::Channel::State channelState;
-    std::shared_ptr<Samurai::Device> device;
+    SoapySDR::Device* device;
+    SoapySDR::Stream* stream;
 
     void threadLoop() {
         while (streaming) {
-            device = std::make_shared<Samurai::Airspy::Device>();
+            device = SoapySDR::Device::make(config.deviceString);
 
-            deviceConfig.sampleRate = 2.5e6;
-            device->Enable(deviceConfig);
+            if (device == nullptr) {
+                JST_FATAL("Can't open device.");
+                JST_CHECK_THROW(Result::ERROR);
+            }
 
-            channelConfig.mode = Samurai::Mode::RX;
-            channelConfig.dataFmt = Samurai::Format::F32;
-            device->EnableChannel(channelConfig, &rx);
+            device->setSampleRate( SOAPY_SDR_RX, 0, config.sampleRate);
+            device->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+            device->setGainMode(SOAPY_SDR_RX, 0, true);
+            
+            stream = device->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32);
+            if (stream == nullptr) {
+                JST_FATAL("Failed to setup stream.");
+                SoapySDR::Device::unmake(device);
+                JST_CHECK_THROW(Result::ERROR);
+            }
+            device->activateStream(stream, 0, 0, 0);
 
-            channelState.enableAGC = true;
-            channelState.frequency = 112.9e6;
-            device->UpdateChannel(rx, channelState);
-
-            device->StartStream();
+            int flags;
+            long long timeNs;
+            CF32 tmp[8192];
+            void *tmp_buffers[] = { tmp };
 
             streaming = true;
             while (streaming) {
-                device->ReadStream(rx, stream->data(), stream->size(), 1000);
-                Jetstream::Compute();
+                int ret = device->readStream(stream, tmp_buffers, 8192, flags, timeNs, 1e5);
+                if (ret > 0) {
+                    buffer.Put(tmp, ret);
+                }
             }
 
-            device->StopStream();
+            device->deactivateStream(stream, 0, 0);
+            device->closeStream(stream);
         }
     }
 };
 
 class UI {
  public:
-    UI(DSP& dsp) : dsp(dsp) {
-        auto& stream = dsp.getOutput();
-
+    UI(SDR& sdr) : sdr(sdr) {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.size = {3130, 1140};
@@ -99,30 +126,30 @@ class UI {
 
         // Configure Jetstream
         win = Block<Window, Device::CPU>({
-            .size = stream.size(),
+            .size = sdr.getOutputBuffer().size(),
         }, {});
 
         mul = Block<Multiply, Device::CPU>({
-            .size = stream.size(),
+            .size = sdr.getOutputBuffer().size(),
         }, {
-            .factorA = stream,
+            .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
         fft = Block<FFT, Device::CPU>({
-            .size = stream.size(),
+            .size = sdr.getOutputBuffer().size(),
         }, {
             .buffer = mul->getProductBuffer(),
         });
 
         amp = Block<Amplitude, Device::CPU>({
-            .size = stream.size(),
+            .size = sdr.getOutputBuffer().size(),
         }, {
             .buffer = fft->getOutputBuffer(),
         });
 
         scl = Block<Scale, Device::CPU>({
-            .size = stream.size(),
+            .size = sdr.getOutputBuffer().size(),
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
@@ -156,7 +183,7 @@ class UI {
     }
 
  private:
-    DSP& dsp;
+    SDR& sdr;
     std::thread worker;
 
     bool streaming = false;
@@ -227,9 +254,10 @@ class UI {
             {
                 ImGui::Begin("Control");
 
-                ImGui::InputFloat("Frequency (Hz)", &dsp.getTunerFrequency());
+                float frequency = sdr.getConfig().frequency; 
+                ImGui::InputFloat("Frequency (Hz)", &frequency);
                 if (ImGui::Button("Tune")) {
-                    dsp.setTunerFrequency();
+                    sdr.setTunerFrequency(frequency);
                 }
 
                 auto [min, max] = scl->range();
@@ -252,15 +280,24 @@ class UI {
             }
 
             {
-                ImGui::Begin("Samurai Info");
+                ImGui::Begin("Buffer Info");
 
-                if (streaming) {
-                    float bufferUsageRatio = dsp.getBufferOccupancy() / 
-                                             dsp.getBufferCapacity();
-                    ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
-                    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                    ImGui::Text("Buffer Usage");
-                }
+                float bufferThroughputMB = (sdr.getCircularBuffer().GetThroughput() / (1024 * 1024));
+                ImGui::Text("Throughput %.0f MB/s", bufferThroughputMB);
+
+                float bufferCapacityMB = ((F32)sdr.getCircularBuffer().GetCapacity() * sizeof(CF32) / (1024 * 1024));
+                ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
+
+                ImGui::Text("Overflows %llu", sdr.getCircularBuffer().GetOverflows());
+
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                float bufferUsageRatio = (F32)sdr.getCircularBuffer().GetOccupancy() /
+                                              sdr.getCircularBuffer().GetCapacity();
+                ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                ImGui::Text("Usage");
 
                 ImGui::End();
             }
@@ -278,8 +315,14 @@ int main() {
     Backend::Initialize<Device::Metal>({});
 
     {
-        auto dsp = DSP();
-        auto ui = UI(dsp);
+        const SDR::Config& sdrConfig {
+            .deviceString = "driver=lime",
+            .frequency = 2.42e9,
+            .sampleRate = 30e6,
+            .outputBufferSize = 2 << 10,
+        }; 
+        auto sdr = SDR(sdrConfig);
+        auto ui = UI(sdr);
 
         while (Render::KeepRunning()) {
             Render::PollEvents();
