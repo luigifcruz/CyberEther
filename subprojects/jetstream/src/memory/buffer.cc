@@ -14,7 +14,7 @@ CircularBuffer<T>::CircularBuffer(size_t capacity)
        capacity(capacity),
        overflows(0) {
     this->Reset();
-    this->buffer = std::unique_ptr<T[]>(new T[Capacity()]);
+    this->buffer = std::unique_ptr<T[]>(new T[GetCapacity()]);
 }
 
 template<class T>
@@ -27,7 +27,7 @@ CircularBuffer<T>::~CircularBuffer() {
 template<class T>
 const Result CircularBuffer<T>::WaitBufferOccupancy(size_t size) {
     std::unique_lock<std::mutex> sync(sync_mtx);
-    while (Occupancy() < size) {
+    while (GetOccupancy() < size) {
         if (semaphore.wait_for(sync, 5s) == std::cv_status::timeout)
             return Result::ERROR_TIMEOUT;
     }
@@ -36,7 +36,7 @@ const Result CircularBuffer<T>::WaitBufferOccupancy(size_t size) {
 
 template<class T>
 const Result CircularBuffer<T>::Get(T* buf, size_t size) {
-    if (Capacity() < size) {
+    if (GetCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
 
@@ -47,7 +47,7 @@ const Result CircularBuffer<T>::Get(T* buf, size_t size) {
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
-        U64 stage_a = MIN(size, Capacity() - head);
+        U64 stage_a = MIN(size, GetCapacity() - head);
 
         std::copy_n(buffer.get() + head, stage_a, buf);
 
@@ -55,7 +55,7 @@ const Result CircularBuffer<T>::Get(T* buf, size_t size) {
             std::copy_n(buffer.get(), size - stage_a, buf + stage_a);
         }
 
-        head = (head + size) % Capacity();
+        head = (head + size) % GetCapacity();
         occupancy -= size;
 
         // Throughput Calculator
@@ -77,27 +77,27 @@ exception:
 
 template<class T>
 const Result CircularBuffer<T>::Put(T* buf, size_t size) {
-    if (Capacity() < size) {
+    if (GetCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
 
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
-        if (Capacity() < (Occupancy() + size)) {
+        if (GetCapacity() < (GetOccupancy() + size)) {
             overflows += 1;
             occupancy = 0;
             head = tail;
         }
 
-        U64 stage_a = MIN(size, Capacity() - tail);
+        U64 stage_a = MIN(size, GetCapacity() - tail);
         std::copy_n(buf, stage_a, buffer.get() + tail);
 
         if (stage_a < size) {
             std::copy_n(buf + stage_a, size - stage_a, buffer.get());
         }
 
-        tail = (tail + size) % Capacity();
+        tail = (tail + size) % GetCapacity();
         occupancy += size;
     }
 
@@ -122,23 +122,23 @@ const Result CircularBuffer<T>::Reset() {
 }
 
 template<class T>
-const U64 CircularBuffer<T>::Capacity() {
+const U64 CircularBuffer<T>::GetCapacity() const {
     return this->capacity;
 }
 
 template<class T>
-const U64 CircularBuffer<T>::Occupancy() {
+const U64 CircularBuffer<T>::GetOccupancy() const {
     return this->occupancy;
 }
 
 template<class T>
-const bool CircularBuffer<T>::IsEmpty() {
-    return Occupancy() == 0;
+const bool CircularBuffer<T>::IsEmpty() const {
+    return GetOccupancy() == 0;
 }
 
 template<class T>
-const bool CircularBuffer<T>::IsFull() {
-    return Occupancy() == Capacity();
+const bool CircularBuffer<T>::IsFull() const {
+    return GetOccupancy() == GetCapacity();
 }
 
 template class CircularBuffer<I8>;

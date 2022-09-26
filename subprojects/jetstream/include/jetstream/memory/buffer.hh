@@ -19,17 +19,17 @@ public:
     CircularBuffer(size_t);
     ~CircularBuffer();
 
-    const U64 Capacity();
-    const U64 Occupancy();
-
-    const bool IsEmpty();
-    const bool IsFull();
+    const bool IsEmpty() const;
+    const bool IsFull() const;
 
     const Result Get(T*, size_t);
     const Result Put(T*, size_t);
     const Result Reset();
 
     const Result WaitBufferOccupancy(size_t);
+
+    const U64 GetCapacity() const;
+    const U64 GetOccupancy() const;
 
     constexpr const F64 GetThroughput() const {
         return throughput;
