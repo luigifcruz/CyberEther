@@ -9,7 +9,7 @@ Installation is a multipart process:
     - pybind11 (if available as an O/S package)
     - meson (if available as an O/S package)
     - ninja (if available as an O/S package)
-2. pip Dependencies
+2. pip Dependencies (if needed)
     - pybind11 (if not available as an O/S package)
     - meson (if not available as an O/S package)
     - ninja (if not available as an O/S package)
