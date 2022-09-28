@@ -2,8 +2,11 @@
 
 Installation is a multipart process:
 1. O/S Dependencies
-    - cmake, gcc, git, wget (or curl) for downloading
-    - g++ (ubuntu and fedora; not required for archlinux)
+    - cmake
+    - gcc
+    - git
+    - wget (or curl) for downloading
+    - g++ (on ubuntu and fedora; not required for archlinux)
     - python3-pip (ubuntu, fedora) | python-pip (archlinux)
     - python3-dev (Ubuntu) | python3-devel (fedora) | python3 (archlinux)
     - pybind11 (if available as an O/S package)
