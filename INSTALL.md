@@ -1,7 +1,4 @@
-# LINUX / MACOS
-
-
-Create a base directory where it is convenient.  E.g. $HOME/devbase.
+# Installation Process
 
 Installation is a multipart process:
 1. O/S Dependencies
