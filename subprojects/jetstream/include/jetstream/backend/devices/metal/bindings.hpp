@@ -390,6 +390,12 @@ namespace Private
             "object");
         _NS_PRIVATE_DEF_SEL(objectAtIndex_,
             "objectAtIndex:");
+        _NS_PRIVATE_DEF_SEL(setLayer_,
+            "setLayer:");
+        _NS_PRIVATE_DEF_SEL(setWantsLayer_, 
+            "setWantsLayer:");
+        _NS_PRIVATE_DEF_SEL(contentView, 
+            "contentView");
         _NS_PRIVATE_DEF_SEL(objectEnumerator,
             "objectEnumerator");
         _NS_PRIVATE_DEF_SEL(objectForInfoDictionaryKey_,
@@ -19557,3 +19563,62 @@ _MTL_INLINE void MTL::VisibleFunctionTable::setFunctions(const MTL::FunctionHand
     (major == METALCPP_VERSION_MAJOR && minor < METALCPP_VERSION_MINOR) || \
     (major == METALCPP_VERSION_MAJOR && minor == METALCPP_VERSION_MINOR && patch <= METALCPP_VERSION_PATCH))
 
+namespace NS
+{
+namespace Private
+{
+    namespace Class
+    {
+        _NS_PRIVATE_DEF_CLS(NSView);
+    } // Class
+} // Private
+} // NS
+
+namespace NS
+{
+
+class View : public NS::Referencing<View>
+{
+public:
+    void setLayer(CA::MetalLayer* layer);
+    void setWantsLayer(bool value);
+};
+
+} // namespace NS
+
+_NS_INLINE void NS::View::setLayer(CA::MetalLayer* layer)
+{
+    return Object::sendMessage<void>(this, _NS_PRIVATE_SEL(setLayer_), layer);
+}
+
+_NS_INLINE void NS::View::setWantsLayer(bool value)
+{
+    return Object::sendMessage<void>(this, _NS_PRIVATE_SEL(setWantsLayer_), value);
+}
+
+namespace NS
+{
+namespace Private
+{
+    namespace Class
+    {
+        _NS_PRIVATE_DEF_CLS(NSWindow);
+    } // Class
+} // Private
+} // NS
+
+namespace NS
+{
+
+class Window : public NS::Referencing<Window>
+{
+public:
+    NS::View* contentView();
+};
+
+} // namespace NS
+
+_NS_INLINE NS::View* NS::Window::contentView()
+{
+    return Object::sendMessage<NS::View*>(this, _NS_PRIVATE_SEL(contentView));
+}
