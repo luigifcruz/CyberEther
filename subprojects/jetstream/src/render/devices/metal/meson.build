@@ -1,6 +1,4 @@
 deps = [
-    'JETSTREAM_BACKEND_METAL_AVAILABLE',
-    'JETSTREAM_LOADER_GLFW_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -9,12 +7,11 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    add_languages('objcpp')
     subdir('tools')
+
     cfg_lst.set('JETSTREAM_RENDER_METAL_AVAILABLE', true)
     src_lst += files([
         'window.cc',
-        'view.mm',
         'surface.cc',
         'program.cc',
         'texture.cc',
@@ -25,4 +22,3 @@ if all_deps_found
 endif
 
 sum_lst += {'Metal': all_deps_found}
-

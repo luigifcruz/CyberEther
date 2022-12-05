@@ -115,13 +115,18 @@ class SDR {
 class UI {
  public:
     UI(SDR& sdr) : sdr(sdr) {
+        // Initialize Viewport.
+        Viewport::Generic::Config viewportCfg;
+        viewportCfg.vsync = true;
+        viewportCfg.resizable = true;
+        viewportCfg.size = {3130, 1140};
+        viewportCfg.title = "CyberEther";
+        auto viewport = Viewport::MacOS::Factory(viewportCfg);
+
         // Initialize Render
         Render::Window::Config renderCfg;
-        renderCfg.size = {3130, 1140};
-        renderCfg.resizable = true;
         renderCfg.imgui = true;
-        renderCfg.vsync = true;
-        renderCfg.title = "CyberEther";
+        renderCfg.viewport = viewport;
         Render::Initialize<Device::Metal>(renderCfg);
 
         // Configure Jetstream

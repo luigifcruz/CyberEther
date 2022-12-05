@@ -1,5 +1,5 @@
-#include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/metal/window.hh"
+#include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/tools/compressed_b612.hh"
 
 namespace Jetstream::Render {
@@ -7,6 +7,7 @@ namespace Jetstream::Render {
 using Implementation = WindowImp<Device::Metal>;
 
 Implementation::WindowImp(const Config& config) : Window(config) {
+    viewport = config.viewport;
 }
 
 const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
@@ -22,24 +23,9 @@ const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
 const Result Implementation::create() {
     JST_DEBUG("Creating Metal window.");
 
-    if (!glfwInit()) {
-        return Result::ERROR;
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
-
-    auto [width, height] = config.size;
-    window = glfwCreateWindow(width, height, 
-        config.title.c_str(), nullptr, nullptr);
-
-    if (!window) {
-        glfwTerminate();
-        return Result::ERROR;
-    }
+    JST_CHECK(viewport->create());
 
     device = Backend::State<Device::Metal>()->getDevice();
-    view = std::make_unique<View>(device, window);
 
     commandQueue = device->newCommandQueue();
     JST_ASSERT(commandQueue);
@@ -54,7 +40,7 @@ const Result Implementation::create() {
     if (config.imgui) {
         JST_CHECK(createImgui());
     }
-
+    
     return Result::SUCCESS;
 }
 
@@ -69,8 +55,7 @@ const Result Implementation::destroy() {
         JST_CHECK(destroyImgui());
     } 
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    JST_CHECK(viewport->destroy());
 
     renderPassDescriptor->release();
     commandQueue->release();
@@ -100,7 +85,8 @@ const Result Implementation::createImgui() {
 
     ImGui::StyleColorsDark();
 
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    JST_CHECK(viewport->createImgui());
+
     ImGui_ImplMetal_Init(device);
 
     return Result::SUCCESS;
@@ -110,7 +96,7 @@ const Result Implementation::destroyImgui() {
     JST_DEBUG("Destroying Metal ImGui.");
 
     ImGui_ImplMetal_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    JST_CHECK(viewport->destroyImgui());
     ImGui::DestroyContext();
 
     return Result::SUCCESS;
@@ -118,7 +104,6 @@ const Result Implementation::destroyImgui() {
 
 const Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
-    ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
     return Result::SUCCESS;
@@ -139,7 +124,7 @@ const Result Implementation::endImgui() {
 const Result Implementation::begin() {
     pPool = NS::AutoreleasePool::alloc()->init();
 
-    drawable = view->draw();
+    drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
 
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachDescriptor->setTexture(drawable->texture());
@@ -183,8 +168,7 @@ const Result Implementation::end() {
 }
 
 const Result Implementation::pollEvents() {
-    glfwWaitEvents();
-    return Result::SUCCESS;
+    return viewport->pollEvents();
 }
 
 const Result Implementation::synchronize() {
@@ -192,7 +176,7 @@ const Result Implementation::synchronize() {
 }
 
 const bool Implementation::keepRunning() {
-    return !glfwWindowShouldClose(window);
+    return viewport->keepRunning();
 }
 
 }  // namespace Jetstream::Render
