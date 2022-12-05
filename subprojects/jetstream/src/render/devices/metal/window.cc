@@ -72,7 +72,9 @@ const Result Implementation::createImgui() {
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
+#ifndef TARGET_OS_IPHONE
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+#endif
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(config.scale);
