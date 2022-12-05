@@ -140,8 +140,18 @@ const Result Implementation::begin() {
 #if !defined(NDEBUG)
         ImGui::ShowMetricsWindow();
         ImGui::Begin("Render Info");
-        ImGui::Text("Renderer Name: %s", "Apple Metal");
         ImGui::Text("Renderer Vendor: %s", "Apple");
+        ImGui::Text("Renderer Name: %s", "Metal");
+
+        auto& backend = Backend::State<Device::Metal>();
+        ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
+        ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
+        ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
+        ImGui::Text("Physical Memory: %.00f GB", (float)backend->physicalMemory() / 1e9);
+        ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
+        ImGui::Text("Processor Count: %llu/%llu", backend->getActiveProcessorCount(),
+                                                  backend->getTotalProcessorCount());
+
         ImGui::End();
 #endif
     }

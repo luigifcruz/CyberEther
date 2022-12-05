@@ -15,12 +15,21 @@ class Metal {
     explicit Metal(const Config& config);
     ~Metal();
 
+    const std::string getDeviceName() const;
+    const bool hasUnifiedMemory() const;
+    const bool getLowPowerStatus() const;
+    const U64 physicalMemory() const;
+    const U64 getActiveProcessorCount() const; 
+    const U64 getTotalProcessorCount() const;
+    const U64 getThermalState() const;
+
     constexpr MTL::Device* getDevice() {
-      return device;
+        return device;
     }
 
  private:
     MTL::Device* device;
+    NS::ProcessInfo* info;
 };
 
 }  // namespace Jetstream::Backend
