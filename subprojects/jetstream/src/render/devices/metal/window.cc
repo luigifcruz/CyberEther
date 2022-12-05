@@ -136,11 +136,11 @@ const Result Implementation::begin() {
         JST_CHECK(beginImgui());
 
 #if !defined(NDEBUG)
-            ImGui::ShowMetricsWindow();
-            ImGui::Begin("Render Info");
-            ImGui::Text("Renderer Name: %s", "Apple Metal");
-            ImGui::Text("Renderer Vendor: %s", "Apple");
-            ImGui::End();
+        ImGui::ShowMetricsWindow();
+        ImGui::Begin("Render Info");
+        ImGui::Text("Renderer Name: %s", "Apple Metal");
+        ImGui::Text("Renderer Vendor: %s", "Apple");
+        ImGui::End();
 #endif
     }
 
