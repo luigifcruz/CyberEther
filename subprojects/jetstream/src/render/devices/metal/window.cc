@@ -179,10 +179,6 @@ const Result Implementation::end() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::pollEvents() {
-    return viewport->pollEvents();
-}
-
 const Result Implementation::synchronize() {
     return Result::SUCCESS;
 }
