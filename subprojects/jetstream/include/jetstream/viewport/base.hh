@@ -7,4 +7,8 @@
 #include "jetstream/viewport/macos.hh"
 #endif
 
+#ifdef JETSTREAM_VIEWPORT_IOS_AVAILABLE
+#include "jetstream/viewport/ios.hh"
+#endif
+
 #endif
