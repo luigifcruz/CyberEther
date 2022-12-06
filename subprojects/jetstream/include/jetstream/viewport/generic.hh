@@ -6,6 +6,8 @@
 #include "jetstream/macros.hh"
 #include "jetstream/render/types.hh"
 
+#include "jetstream/render/tools/imgui.h"
+
 namespace Jetstream::Viewport {
 
 class Generic {
@@ -30,6 +32,9 @@ class Generic {
     
     virtual const Result pollEvents() = 0;
     virtual const bool keepRunning() = 0;
+
+    const Result addMousePosEvent(F32 x, F32 y);
+    const Result addMouseButtonEvent(U64 button, bool down);
 
  protected:
     const Config config;
