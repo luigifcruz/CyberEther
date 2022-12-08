@@ -1,0 +1,4 @@
+subprojects/*
+!*.wrap
+!packagefiles
+*.zip
