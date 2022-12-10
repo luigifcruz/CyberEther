@@ -7,5 +7,6 @@ subdir('cuda')
 subdir('fftw')
 subdir('metal')
 subdir('glfw')
+subdir('soapy')
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)
