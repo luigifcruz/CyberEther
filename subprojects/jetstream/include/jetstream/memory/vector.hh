@@ -32,25 +32,40 @@ class VectorImpl {
         return container.data();
     }
 
-    constexpr std::size_t size() const noexcept {
+    constexpr const U64 size() const noexcept {
         return container.size();
     }
 
-    constexpr std::size_t size_bytes() const noexcept {
+    constexpr const U64 size_bytes() const noexcept {
         return container.size_bytes();
     }
 
-    [[nodiscard]] constexpr bool empty() const noexcept {
+    [[nodiscard]] constexpr const bool empty() const noexcept {
         return container.empty();
     }
 
-    constexpr T& operator[](std::size_t idx) const {
+    constexpr T& operator[](U64 idx) {
         return container[idx];
     }
 
-    // TODO: Implement iterator.
-    constexpr std::span<T>& getUnderlying() {
-        return container;
+    constexpr const T& operator[](U64 idx) const {
+        return container[idx];
+    }
+
+    constexpr auto begin() {
+        return container.begin();
+    }
+
+    constexpr auto end() {
+        return container.end();
+    }
+
+    constexpr const auto begin() const {
+        return container.begin();
+    }
+
+    constexpr const auto end() const {
+        return container.end();
     }
 
     virtual Result resize(const std::size_t& size) = 0;
