@@ -14,7 +14,7 @@ const Result Implementation::create() {
     auto device = Backend::State<Device::Metal>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
-    if (config.enableZeroCopy > 0) {
+    if (config.enableZeroCopy) {
         buffer = device->newBuffer(config.buffer,
                                    JST_PAGE_ALIGNED_SIZE(byteSize), 
                                    MTL::ResourceStorageModeShared,
