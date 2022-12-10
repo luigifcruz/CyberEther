@@ -1,0 +1,10 @@
+[wrap-file]
+directory = SoapySDR-soapy-sdr-0.8.1
+source_url = https://github.com/pothosware/SoapySDR/archive/refs/tags/soapy-sdr-0.8.1.tar.gz
+source_filename = SoapySDR-soapy-sdr-0.8.1.tar.gz
+source_hash = a508083875ed75d1090c24f88abef9895ad65f0f1b54e96d74094478f0c400e6 
+patch_directory = soapysdr-ios
+wrapdb_version = 0.8.1
+
+[provide]
+soapysdr = soapy_dep
