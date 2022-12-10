@@ -46,8 +46,8 @@ class Lineplot : public Module {
     const Input input;
     Output output;
 
-    std::vector<IT> plot;
-    std::vector<IT> grid;
+    Memory::Vector<Device::CPU, IT> plot;
+    Memory::Vector<Device::CPU, IT> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;

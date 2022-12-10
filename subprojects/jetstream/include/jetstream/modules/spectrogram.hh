@@ -57,8 +57,8 @@ class Spectrogram : public Module {
     } shaderUniforms;
 
     int inc = 0, last = 0, ymax = 0;
-    std::vector<float> intermediate; 
-    std::vector<float> frequencyBins;
+    Memory::Vector<Device::CPU, F32> intermediate; 
+    Memory::Vector<Device::CPU, F32> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;

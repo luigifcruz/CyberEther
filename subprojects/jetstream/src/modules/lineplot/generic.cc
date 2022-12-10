@@ -71,26 +71,35 @@ Lineplot<D, T>::Lineplot(const Config& config, const Input& input)
     : config(config), input(input) {
     JST_DEBUG("Initializing Lineplot module.");
 
-    // Generate Grid and Plot coordinates.
-    for (float i = -1.0f; i < +1.0f; i += 0.10f) {
-        grid.push_back(-1.0f);
-        grid.push_back(i);
-        grid.push_back(+0.0f);
-        grid.push_back(+1.0f);
-        grid.push_back(i);
-        grid.push_back(+0.0f);
-        grid.push_back(i);
-        grid.push_back(-1.0f);
-        grid.push_back(+0.0f);
-        grid.push_back(i);
-        grid.push_back(+1.0f);
-        grid.push_back(+0.0f);
+    // Generate Grid coordinates.
+    {
+        grid.resize(20 * 12);
+        int j = 0;
+        for (float i = -1.0f; i < +1.0f; i += 0.10f) {
+            grid[j++] = -1.0f;
+            grid[j++] = i;
+            grid[j++] = +0.0f;
+            grid[j++] = +1.0f;
+            grid[j++] = i;
+            grid[j++] = +0.0f;
+            grid[j++] = i;
+            grid[j++] = -1.0f;
+            grid[j++] = +0.0f;
+            grid[j++] = i;
+            grid[j++] = +1.0f;
+            grid[j++] = +0.0f;
+        }
     }
-
-    for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
-        plot.push_back(i);
-        plot.push_back(+0.0f);
-        plot.push_back(+0.0f);
+    
+    // Generate Plot coordinates.
+    {
+        plot.resize(getBufferSize() * 3);
+        int j = 0;
+        for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
+            plot[j++] = i;
+            plot[j++] = +0.0f;
+            plot[j++] = +0.0f;
+        }
     }
 
     JST_CHECK_THROW(initializeRender());
