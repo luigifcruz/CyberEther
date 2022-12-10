@@ -16,12 +16,12 @@ class Multiply : public Module {
     };
 
     struct Input {
-        const Memory::Vector<D, T>& factorA;
-        const Memory::Vector<D, T>& factorB;
+        const Vector<D, T>& factorA;
+        const Vector<D, T>& factorB;
     };
 
     struct Output {
-        Memory::Vector<D, T> product;
+        Vector<D, T> product;
     };
 
     explicit Multiply(const Config&, const Input&);
@@ -30,7 +30,7 @@ class Multiply : public Module {
         return this->config.size;
     }
 
-    constexpr const Memory::Vector<D, T>& getProductBuffer() const {
+    constexpr const Vector<D, T>& getProductBuffer() const {
         return this->output.product;
     }
 

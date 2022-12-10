@@ -18,7 +18,7 @@ class Lineplot : public Module {
     };
 
     struct Input {
-        const Memory::Vector<D, IT>& buffer;
+        const Vector<D, IT>& buffer;
     };
 
     struct Output {
@@ -46,8 +46,8 @@ class Lineplot : public Module {
     const Input input;
     Output output;
 
-    Memory::Vector<Device::CPU, IT> plot;
-    Memory::Vector<Device::CPU, IT> grid;
+    Vector<Device::CPU, IT> plot;
+    Vector<Device::CPU, IT> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;

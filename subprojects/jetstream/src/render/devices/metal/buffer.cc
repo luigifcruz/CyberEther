@@ -11,10 +11,18 @@ const Result Implementation::create() {
     JST_DEBUG("Creating Metal buffer.");
 
     // TODO: Add usage hints.
-    const auto& byteSize = config.size * config.elementByteSize;
     auto device = Backend::State<Device::Metal>()->getDevice();
-    buffer = device->newBuffer(config.buffer, byteSize, 
-                               MTL::ResourceStorageModeShared); 
+    const auto& byteSize = config.size * config.elementByteSize;
+
+    if (config.enableZeroCopy > 0) {
+        buffer = device->newBuffer(config.buffer,
+                                   JST_PAGE_ALIGNED_SIZE(byteSize), 
+                                   MTL::ResourceStorageModeShared,
+                                   nullptr); 
+    } else {
+        buffer = device->newBuffer(config.buffer, byteSize, 
+                                   MTL::ResourceStorageModeShared); 
+    }
     JST_ASSERT(buffer);
 
     return Result::SUCCESS;
@@ -39,8 +47,10 @@ const Result Implementation::update(const U64& offset, const U64& size) {
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
-    uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-    memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
+    if (!config.enableZeroCopy) {
+        uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
+        memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
+    }
     buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
 
     return Result::SUCCESS;

@@ -1,10 +1,10 @@
 #ifndef JETSTREAM_MEMORY_CPU_VECTOR_HH
 #define JETSTREAM_MEMORY_CPU_VECTOR_HH
 
-#include "jetstream/types.hh"
+#include "jetstream/memory/types.hh"
 #include "jetstream/memory/vector.hh"
 
-namespace Jetstream::Memory {
+namespace Jetstream {
 
 template<typename T>
 class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
@@ -35,15 +35,21 @@ class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
             return Result::ERROR;
         }
 
-        T* ptr;
-        auto size_bytes = size * sizeof(T);
+        T* ptr = nullptr;
+        const auto sizeBytes = size * sizeof(T);
 
 #ifdef JETSTREAM_CUDA_AVAILABLE
         BL_CUDA_CHECK(cudaMallocHost(&ptr, size_bytes), [&]{
             JST_FATAL("Failed to allocate CPU memory: {}", err);
         });
 #else
-        if ((ptr = static_cast<T*>(malloc(size_bytes))) == nullptr) {
+        void* memoryAddr = nullptr;
+        const auto pageSize = JST_PAGESIZE();
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(sizeBytes);
+        const auto result = posix_memalign(&memoryAddr, 
+                                           pageSize,
+                                           alignedSizeBytes);
+        if (result < 0 || (ptr = static_cast<T*>(memoryAddr)) == nullptr) {
             JST_FATAL("Failed to allocate CPU memory.");
         }
 #endif
@@ -55,6 +61,6 @@ class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
     }
 };
 
-}  // namespace Jetstream::Memory
+}  // namespace Jetstream
 
 #endif

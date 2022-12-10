@@ -9,6 +9,7 @@ const Result Lineplot<D, T>::initializeRender() {
     gridVerticesConf.elementByteSize = sizeof(grid[0]);
     gridVerticesConf.size = grid.size();
     gridVerticesConf.target = Render::Buffer::Target::VERTEX;
+    gridVerticesConf.enableZeroCopy = true;
     JST_CHECK_THROW(Render::Create(gridVerticesBuffer, gridVerticesConf));
 
     Render::Vertex::Config gridVertexCfg;
@@ -27,6 +28,7 @@ const Result Lineplot<D, T>::initializeRender() {
     lineVerticesConf.elementByteSize = sizeof(plot[0]);
     lineVerticesConf.size = plot.size();
     lineVerticesConf.target = Render::Buffer::Target::VERTEX;
+    lineVerticesConf.enableZeroCopy = true;
     JST_CHECK_THROW(Render::Create(lineVerticesBuffer, lineVerticesConf));
 
     Render::Vertex::Config lineVertexCfg;

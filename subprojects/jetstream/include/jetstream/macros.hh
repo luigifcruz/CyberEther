@@ -1,8 +1,9 @@
 #ifndef JETSTREAM_MACROS_HH
 #define JETSTREAM_MACROS_HH
 
+#include "jetstream/memory/macros.hh"
+
 #include "jetstream_config.hh"
-#include "jetstream/types.hh"
 
 #ifndef JETSTREAM_API
 #define JETSTREAM_API __attribute__((visibility("default")))

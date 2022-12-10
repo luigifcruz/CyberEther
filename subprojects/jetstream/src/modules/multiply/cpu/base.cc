@@ -29,7 +29,7 @@ Multiply<D, T>::Multiply(const Config& config, const Input& input)
 
     JST_INFO("===== Multiply Module Configuration");
     JST_INFO("Size: {}", this->config.size);
-    JST_INFO("Input Type: {}", getTypeName<T>());
+    JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
 }
 
 template<Device D, typename T>

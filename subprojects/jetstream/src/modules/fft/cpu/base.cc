@@ -34,7 +34,7 @@ FFT<D, T>::FFT(const Config& config, const Input& input)
     JST_INFO("===== FFT Module Configuration");
     JST_INFO("Size: {}", this->config.size);
     JST_INFO("Direction: {}", static_cast<I64>(config.direction));
-    JST_INFO("Input Type: {}", getTypeName<T>());
+    JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
 }
 
 template<>

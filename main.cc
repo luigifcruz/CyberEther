@@ -43,7 +43,7 @@ class SDR {
         producer.join();
     }
 
-    constexpr const Memory::Vector<Device::CPU, CF32>& getOutputBuffer() const {
+    constexpr const Vector<Device::CPU, CF32>& getOutputBuffer() const {
         return data;
     }
 
@@ -66,7 +66,7 @@ class SDR {
 
     Config config;
     bool streaming = false;
-    Memory::Vector<Device::CPU, CF32> data;
+    Vector<Device::CPU, CF32> data;
     Memory::CircularBuffer<CF32> buffer;
 
     SoapySDR::Device* device;

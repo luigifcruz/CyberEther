@@ -16,11 +16,11 @@ class Amplitude : public Module {
     };
 
     struct Input {
-        const Memory::Vector<D, IT>& buffer;
+        const Vector<D, IT>& buffer;
     };
 
     struct Output {
-        Memory::Vector<D, OT> buffer;
+        Vector<D, OT> buffer;
     };
 
     explicit Amplitude(const Config&, const Input&);
@@ -29,7 +29,7 @@ class Amplitude : public Module {
         return this->config.size;
     }
 
-    constexpr const Memory::Vector<D, OT>& getOutputBuffer() const {
+    constexpr const Vector<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

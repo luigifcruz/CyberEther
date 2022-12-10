@@ -22,7 +22,7 @@ class Waterfall : public Module {
     };
 
     struct Input {
-        const Memory::Vector<D, IT>& buffer;
+        const Vector<D, IT>& buffer;
     };
 
     struct Output {
@@ -76,7 +76,7 @@ class Waterfall : public Module {
     } shaderUniforms;
 
     int inc = 0, last = 0, ymax = 0;
-    Memory::Vector<Device::CPU, F32> frequencyBins;
+    Vector<Device::CPU, F32> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;

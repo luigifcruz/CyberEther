@@ -22,7 +22,7 @@ Window<D, T>::Window(const Config& config, const Input& input)
 
     JST_INFO("===== Window Module Configuration");
     JST_INFO("Window Size: {}", this->config.size);
-    JST_INFO("Output Type: {}", getTypeName<T>());
+    JST_INFO("Output Type: {}", NumericTypeInfo<T>().name);
 }
 
 template class Window<Device::CPU, CF64>;

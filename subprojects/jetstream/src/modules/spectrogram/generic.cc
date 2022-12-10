@@ -43,6 +43,7 @@ const Result Spectrogram<D, T>::initializeRender() {
     bufferCfg.size = frequencyBins.size();
     bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
     bufferCfg.target = Render::Buffer::Target::STORAGE;
+    bufferCfg.enableZeroCopy = true;
     JST_CHECK(Render::Create(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;

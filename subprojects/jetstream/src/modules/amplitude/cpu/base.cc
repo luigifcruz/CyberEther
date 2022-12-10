@@ -21,9 +21,9 @@ Amplitude<D, IT, OT>::Amplitude(const Config& config, const Input& input)
 
     JST_INFO("===== Amplitude Module Configuration");
     JST_INFO("Size: {}", this->config.size);
-    JST_INFO("Device: {}", getDeviceName<D>());
-    JST_INFO("Input Type: {}", getTypeName<IT>());
-    JST_INFO("Output Type: {}", getTypeName<OT>());
+    JST_INFO("Device: {}", DeviceTypeInfo<D>().name);
+    JST_INFO("Input Type: {}", NumericTypeInfo<IT>().name);
+    JST_INFO("Output Type: {}", NumericTypeInfo<OT>().name);
 }
 
 // Faster Log10 by http://openaudio.blogspot.com/2017/02/faster-log10-and-pow.html

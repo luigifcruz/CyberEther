@@ -23,6 +23,9 @@ class Buffer {
         Target target;
         U64 elementByteSize;
         void* buffer = nullptr;
+        // The underlying buffer memory has to be 
+        // page-aligned for the zero-copy to work.
+        bool enableZeroCopy = false;
     };
 
     explicit Buffer(const Config& config) : config(config) {

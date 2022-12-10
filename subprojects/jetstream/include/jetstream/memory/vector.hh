@@ -3,7 +3,7 @@
 
 #include "jetstream/types.hh"
 
-namespace Jetstream::Memory {
+namespace Jetstream {
 
 template<Device I, typename T> class Vector;
 
@@ -75,6 +75,6 @@ class VectorImpl {
     bool managed;
 };
 
-}  // namespace Jetstream::Memory
+}  // namespace Jetstream
 
 #endif

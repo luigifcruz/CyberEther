@@ -22,7 +22,7 @@ Scale<D, T>::Scale(const Config& config, const Input& input)
     JST_INFO("===== Scale Module Configuration");
     JST_INFO("Size: {}", this->config.size);
     JST_INFO("Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
-    JST_INFO("Input Type: {}", getTypeName<T>());
+    JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
 }
 
 template<typename T>
