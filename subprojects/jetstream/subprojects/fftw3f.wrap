@@ -7,4 +7,4 @@ patch_directory = fftw-ios
 wrapdb_version = 3.3.10-1
 
 [provide]
-fftw = fftw_dep
+fftw3f = fftw_dep
