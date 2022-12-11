@@ -50,8 +50,8 @@ const Result Implementation::update(const U64& offset, const U64& size) {
     if (!config.enableZeroCopy) {
         uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
         memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
+        buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
     }
-    buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
 
     return Result::SUCCESS;
 }

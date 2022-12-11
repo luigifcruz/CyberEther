@@ -16,7 +16,9 @@ const Result Implementation::create() {
             pixelFormat, config.size.width, config.size.height, false);
     JST_ASSERT(textureDesc);
 
-    textureDesc->setUsage(MTL::TextureUsagePixelFormatView);
+    textureDesc->setUsage(MTL::TextureUsagePixelFormatView | 
+                          MTL::TextureUsageRenderTarget |
+                          MTL::TextureUsageShaderRead);
     auto device = Backend::State<Device::Metal>()->getDevice();
     texture = device->newTexture(textureDesc); 
     JST_ASSERT(texture);
