@@ -72,8 +72,7 @@ sudo make install
 ```
 git clone https://github.com/luigifcruz/CyberEther.git
 cd CyberEther
-git checkout 35693631c3110dfab0327599f15922fdf0028005
-meson build -Dbuildtype=release
+meson build `pwd`
 cd build
 ninja
 ./cyberether # Verify!
