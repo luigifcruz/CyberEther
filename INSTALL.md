@@ -55,6 +55,11 @@ Install all of the O/S packages.
 * Follow instructions at https://github.com/google/benchmark#installation.
 * Be sure to install the library globally.
 
+### SoapySDR
+
+* Follow instructions at https://github.com/pothosware/SoapySDR/wiki/BuildGuide.
+* Be sure to install the library globally.
+
 ### fmt
 
 * Download fmt from https://fmt.dev/latest/index.html.
