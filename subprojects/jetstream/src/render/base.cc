@@ -29,14 +29,6 @@ const Result End() {
     return Get()->end();
 }
 
-const Result PollEvents() {
-    if (!Get(false)) {
-        return Result::SUCCESS;
-    }
-
-    return Get()->pollEvents();
-}
-
 const Result Synchronize() {
     return Get()->synchronize();
 }

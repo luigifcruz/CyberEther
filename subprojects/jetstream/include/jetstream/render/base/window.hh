@@ -8,18 +8,16 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
+#include "jetstream/viewport/base.hh"
 
 namespace Jetstream::Render {
 
 class Window {
  public:
     struct Config {
-        Size2D<U64> size = {1280, 720};
-        std::string title = "Render";
-        bool resizable = false;
-        bool imgui = false;
-        bool vsync = true;
         float scale = 1.0;
+        bool imgui = false;
+        std::shared_ptr<Viewport::Generic> viewport;
     };
 
     explicit Window(const Config& config) : config(config) {
@@ -32,7 +30,6 @@ class Window {
     virtual const Result begin() = 0;
     virtual const Result end() = 0;
 
-    virtual const Result pollEvents() = 0;
     virtual const Result synchronize() = 0;
     virtual const bool keepRunning() = 0;
 

@@ -114,14 +114,11 @@ class SDR {
 
 class UI {
  public:
-    UI(SDR& sdr) : sdr(sdr) {
+    UI(SDR& sdr, const std::shared_ptr<Viewport::Generic>& viewport) : sdr(sdr) {
         // Initialize Render
         Render::Window::Config renderCfg;
-        renderCfg.size = {3130, 1140};
-        renderCfg.resizable = true;
         renderCfg.imgui = true;
-        renderCfg.vsync = true;
-        renderCfg.title = "CyberEther";
+        renderCfg.viewport = viewport;
         Render::Initialize<Device::Metal>(renderCfg);
 
         // Configure Jetstream
@@ -315,7 +312,16 @@ class UI {
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
+    // Initialize Backend.
     Backend::Initialize<Device::Metal>({});
+
+    // Initialize Viewport.
+    Viewport::Generic::Config viewportCfg;
+    viewportCfg.vsync = true;
+    viewportCfg.resizable = true;
+    viewportCfg.size = {3130, 1140};
+    viewportCfg.title = "CyberEther";
+    auto viewport = Viewport::MacOS::Factory(viewportCfg);
 
     {
         const SDR::Config& sdrConfig {
@@ -325,10 +331,10 @@ int main() {
             .outputBufferSize = 2 << 10,
         }; 
         auto sdr = SDR(sdrConfig);
-        auto ui = UI(sdr);
+        auto ui = UI(sdr, viewport);
 
         while (Render::KeepRunning()) {
-            Render::PollEvents();
+            viewport->pollEvents();
         }
     }
 

@@ -11,15 +11,6 @@ const Result FFT<Device::CPU, CF32>::cpuGeneratePlan() {
     return Result::SUCCESS;
 }
 
-template<>
-const Result FFT<Device::CPU, CF64>::cpuGeneratePlan() {
-    auto inBuf = reinterpret_cast<fftw_complex*>(input.buffer.data());
-    auto outBuf = reinterpret_cast<fftw_complex*>(output.buffer.data());
-    auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
-    cpu.fftPlanCF64 = fftw_plan_dft_1d(config.size, inBuf, outBuf, direction, FFTW_MEASURE);
-    return Result::SUCCESS;
-}
-
 template<Device D, typename T>
 FFT<D, T>::FFT(const Config& config, const Input& input) 
     : config(config), input(input) {
@@ -52,13 +43,6 @@ const Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template<>
-const Result FFT<Device::CPU, CF64>::compute(const RuntimeMetadata& meta) {
-    fftw_execute(cpu.fftPlanCF64);
-    return Result::SUCCESS;
-}
-
 template class FFT<Device::CPU, CF32>;
-template class FFT<Device::CPU, CF64>;
     
 }  // namespace Jetstream

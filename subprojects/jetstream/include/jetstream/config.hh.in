@@ -17,6 +17,10 @@
 // Render 
 #mesondefine JETSTREAM_RENDER_METAL_AVAILABLE
 
+// Viewport
+#mesondefine JETSTREAM_VIEWPORT_IOS_AVAILABLE
+#mesondefine JETSTREAM_VIEWPORT_MACOS_AVAILABLE
+
 //
 // Compute Modules
 //

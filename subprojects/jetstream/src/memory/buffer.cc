@@ -1,4 +1,3 @@
-#include <fmt/core.h>
 #include "jetstream/memory/buffer.hh"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))

@@ -1,5 +1,5 @@
-#include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/metal/window.hh"
+#include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/tools/compressed_b612.hh"
 
 namespace Jetstream::Render {
@@ -7,6 +7,7 @@ namespace Jetstream::Render {
 using Implementation = WindowImp<Device::Metal>;
 
 Implementation::WindowImp(const Config& config) : Window(config) {
+    viewport = config.viewport;
 }
 
 const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
@@ -22,24 +23,9 @@ const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
 const Result Implementation::create() {
     JST_DEBUG("Creating Metal window.");
 
-    if (!glfwInit()) {
-        return Result::ERROR;
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
-
-    auto [width, height] = config.size;
-    window = glfwCreateWindow(width, height, 
-        config.title.c_str(), nullptr, nullptr);
-
-    if (!window) {
-        glfwTerminate();
-        return Result::ERROR;
-    }
+    JST_CHECK(viewport->create());
 
     device = Backend::State<Device::Metal>()->getDevice();
-    view = std::make_unique<View>(device, window);
 
     commandQueue = device->newCommandQueue();
     JST_ASSERT(commandQueue);
@@ -54,7 +40,7 @@ const Result Implementation::create() {
     if (config.imgui) {
         JST_CHECK(createImgui());
     }
-
+    
     return Result::SUCCESS;
 }
 
@@ -69,8 +55,7 @@ const Result Implementation::destroy() {
         JST_CHECK(destroyImgui());
     } 
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    JST_CHECK(viewport->destroy());
 
     renderPassDescriptor->release();
     commandQueue->release();
@@ -87,7 +72,9 @@ const Result Implementation::createImgui() {
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
+#ifndef TARGET_OS_IPHONE
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+#endif
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     style->ScaleAllSizes(config.scale);
@@ -100,7 +87,8 @@ const Result Implementation::createImgui() {
 
     ImGui::StyleColorsDark();
 
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    JST_CHECK(viewport->createImgui());
+
     ImGui_ImplMetal_Init(device);
 
     return Result::SUCCESS;
@@ -110,7 +98,7 @@ const Result Implementation::destroyImgui() {
     JST_DEBUG("Destroying Metal ImGui.");
 
     ImGui_ImplMetal_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    JST_CHECK(viewport->destroyImgui());
     ImGui::DestroyContext();
 
     return Result::SUCCESS;
@@ -118,7 +106,6 @@ const Result Implementation::destroyImgui() {
 
 const Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
-    ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
     return Result::SUCCESS;
@@ -139,7 +126,7 @@ const Result Implementation::endImgui() {
 const Result Implementation::begin() {
     pPool = NS::AutoreleasePool::alloc()->init();
 
-    drawable = view->draw();
+    drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
 
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachDescriptor->setTexture(drawable->texture());
@@ -151,11 +138,21 @@ const Result Implementation::begin() {
         JST_CHECK(beginImgui());
 
 #if !defined(NDEBUG)
-            ImGui::ShowMetricsWindow();
-            ImGui::Begin("Render Info");
-            ImGui::Text("Renderer Name: %s", "Apple Metal");
-            ImGui::Text("Renderer Vendor: %s", "Apple");
-            ImGui::End();
+        ImGui::ShowMetricsWindow();
+        ImGui::Begin("Render Info");
+        ImGui::Text("Renderer Vendor: %s", "Apple");
+        ImGui::Text("Renderer Name: %s", "Metal");
+
+        auto& backend = Backend::State<Device::Metal>();
+        ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
+        ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
+        ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
+        ImGui::Text("Physical Memory: %.00f GB", (float)backend->physicalMemory() / 1e9);
+        ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
+        ImGui::Text("Processor Count: %llu/%llu", backend->getActiveProcessorCount(),
+                                                  backend->getTotalProcessorCount());
+
+        ImGui::End();
 #endif
     }
 
@@ -182,17 +179,12 @@ const Result Implementation::end() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::pollEvents() {
-    glfwWaitEvents();
-    return Result::SUCCESS;
-}
-
 const Result Implementation::synchronize() {
     return Result::SUCCESS;
 }
 
 const bool Implementation::keepRunning() {
-    return !glfwWindowShouldClose(window);
+    return viewport->keepRunning();
 }
 
 }  // namespace Jetstream::Render

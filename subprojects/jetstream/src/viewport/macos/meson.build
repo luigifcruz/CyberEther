@@ -1,5 +1,6 @@
 deps = [
     'JETSTREAM_BACKEND_METAL_AVAILABLE',
+    'JETSTREAM_LOADER_GLFW_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -10,16 +11,10 @@ endforeach
 if all_deps_found
     subdir('tools')
 
-    cfg_lst.set('JETSTREAM_RENDER_METAL_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_VIEWPORT_MACOS_AVAILABLE', true)
     src_lst += files([
-        'window.cc',
-        'surface.cc',
-        'program.cc',
-        'texture.cc',
-        'buffer.cc',
-        'draw.cc',
-        'vertex.cc',
+        'base.cc',
     ])
 endif
 
-sum_lst += {'Metal': all_deps_found}
+sum_lst += {'macOS': all_deps_found}
