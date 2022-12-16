@@ -19,6 +19,7 @@ Installation is a multipart process:
 3. Other Dependencies
     - benchmark
     - fmt
+    - SoapySDR
 4. CyberEther
 
 ## O/S Dependencies
