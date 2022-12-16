@@ -58,7 +58,6 @@ Install all of the O/S packages.
 ### fmt
 
 * Download fmt from https://fmt.dev/latest/index.html.
-* Currently: https://github.com/fmtlib/fmt/releases/download/9.0.0/fmt-9.0.0.zip.
 * Extract zip or tar.gz, creating directory **fmt**.
 * Then,
 ```
