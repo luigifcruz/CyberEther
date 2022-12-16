@@ -38,15 +38,15 @@ Install all of the O/S packages.
 
 ## pip Dependencies
 
-If the resident O/S does not have a pybind11 package, do the following:
-Install pybind11 such that it is accessible to all users (E.g. /usr/local on Linux systems):
-```python3 -m pip install "pybind11[global]"```
+### Install to be accessible for all users
+(E.g. inside /usr/local/lib on Linux systems)
 
-If the resident O/S does not have a meson package, do the following:
-```python3 -m pip install "meson[global]"```
+```python3 -m pip install "pybind11[global] meson[global] ninja[global]"```
 
-If the resident O/S does not have a ninja package, do the following:
-```python3 -m pip install "ninja[global]"```
+### Install to be accessible for the login user only
+(E.g. inside $HOME/.local/lib on Linux systems)
+
+```python3 -m pip install -U --user pybind11 meson ninja```
 
 ## Other Dependencies
 
