@@ -32,6 +32,7 @@
 
 ## Installation
 The only way to use CyberEther at the moment is by compiling it from the source. It won't be that difficult because of the low number of dependencies.
+See file INSTALL.md for the installation process.
 
 ### Required Dependencies
 - C++20 Compiler (GCC-10 or higher)
