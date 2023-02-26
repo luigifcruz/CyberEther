@@ -121,7 +121,6 @@ class UI {
         renderCfg.viewport = viewport;
         Render::Initialize<Device::Metal>(renderCfg);
 
-
         // Configure Jetstream
         win = Block<Window, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
