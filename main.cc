@@ -121,6 +121,7 @@ class UI {
         renderCfg.viewport = viewport;
         Render::Initialize<Device::Metal>(renderCfg);
 
+
         // Configure Jetstream
         win = Block<Window, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
@@ -209,7 +210,9 @@ class UI {
         frequency = sdr.getConfig().frequency;
 
         while (streaming && Render::KeepRunning()) {
-            Render::Begin();
+            if (Render::Begin() == Result::SKIP) {
+                continue;
+            }
 
             ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
@@ -289,6 +292,7 @@ class UI {
                 ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
                 ImGui::Text("Overflows %llu", sdr.getCircularBuffer().GetOverflows());
+                ImGui::Text("Dropped Frames: %lld", Render::Stats().droppedFrames);
 
                 ImGui::Separator();
                 ImGui::Spacing();

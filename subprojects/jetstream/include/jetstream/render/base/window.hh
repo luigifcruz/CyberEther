@@ -20,6 +20,10 @@ class Window {
         std::shared_ptr<Viewport::Generic> viewport;
     };
 
+    struct Stats {
+        U64 droppedFrames;
+    };
+
     explicit Window(const Config& config) : config(config) {
         JST_DEBUG("Window initialized.");
     }
@@ -30,6 +34,7 @@ class Window {
     virtual const Result begin() = 0;
     virtual const Result end() = 0;
 
+    virtual const Stats& stats() const = 0;
     virtual const Result synchronize() = 0;
     virtual const bool keepRunning() = 0;
 

@@ -25,6 +25,10 @@ const Result Begin() {
     return Get()->begin();
 }
 
+const Window::Stats& Stats() {
+    return Get()->stats();
+}
+
 const Result End() {
     return Get()->end();
 }

@@ -22,6 +22,7 @@ class WindowImp<Device::Metal> : public Window {
     const Result pollEvents();
     const Result synchronize();
     const bool keepRunning();
+    const Stats& stats() const;
 
     const Result bind(const std::shared_ptr<Surface>& surface);
 
@@ -40,6 +41,7 @@ class WindowImp<Device::Metal> : public Window {
     std::shared_ptr<Viewport::Generic> viewport;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
+    Stats statsData;
 
     const Result createImgui();
     const Result destroyImgui();

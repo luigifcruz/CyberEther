@@ -40,6 +40,8 @@ const Result Implementation::create() {
     if (config.imgui) {
         JST_CHECK(createImgui());
     }
+
+    statsData.droppedFrames = 0;
     
     return Result::SUCCESS;
 }
@@ -128,6 +130,11 @@ const Result Implementation::begin() {
 
     drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
 
+    if (!drawable) {
+        statsData.droppedFrames += 1;
+        return Result::SKIP;
+    }
+
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachDescriptor->setTexture(drawable->texture());
     colorAttachDescriptor->setLoadAction(MTL::LoadActionClear);
@@ -185,6 +192,10 @@ const Result Implementation::synchronize() {
 
 const bool Implementation::keepRunning() {
     return viewport->keepRunning();
+}
+
+const Window::Stats& Implementation::stats() const {
+    return statsData;
 }
 
 }  // namespace Jetstream::Render

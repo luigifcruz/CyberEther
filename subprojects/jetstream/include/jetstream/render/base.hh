@@ -75,6 +75,7 @@ const Result JETSTREAM_API Begin();
 const Result JETSTREAM_API End();
 const Result JETSTREAM_API PollEvents();
 const Result JETSTREAM_API Synchronize();
+const Window::Stats& JETSTREAM_API Stats();
 const bool JETSTREAM_API KeepRunning();
 
 }  // namespace Jetstream::Render
