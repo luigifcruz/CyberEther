@@ -18,38 +18,71 @@ namespace Jetstream {
 //
 
 enum class Device : uint8_t {
-    CPU     = 1 << 0,
-    CUDA    = 1 << 1,
-    Metal   = 1 << 2,
-    Vulkan  = 1 << 3,
+    None    = 1 << 0,
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
+    CPU     = 1 << 1,
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
+    CUDA    = 1 << 2,
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
+    Metal   = 1 << 3,
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
+    Vulkan  = 1 << 4,
+#endif
 };
 
 inline constexpr const Device operator|(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
 }
 
+inline constexpr const Device operator&(Device lhs, Device rhs) {
+    return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+}
+
 template <Device>
 struct JETSTREAM_API DeviceTypeInfo;
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
 template<>
 struct JETSTREAM_API DeviceTypeInfo<Device::CPU> {
     inline static const std::string name = "CPU";
 };
+#endif
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
 template<>
 struct JETSTREAM_API DeviceTypeInfo<Device::CUDA> {
     inline static const std::string name = "CUDA";
 };
+#endif
 
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
 template<>
 struct JETSTREAM_API DeviceTypeInfo<Device::Metal> {
     inline static const std::string name = "Metal";
 };
+#endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
 template<>
 struct JETSTREAM_API DeviceTypeInfo<Device::Vulkan> {
     inline static const std::string name = "Vulkan";
 };
+#endif
+
+enum class Taint : uint16_t {
+    None        = 0 << 0,
+};
+
+inline constexpr const Taint operator|(Taint lhs, Taint rhs) {
+    return static_cast<Taint>(static_cast<uint16_t>(lhs) | static_cast<uint16_t>(rhs));
+}
+
+inline constexpr const Taint operator&(Taint lhs, Taint rhs) {
+    return static_cast<Taint>(static_cast<uint16_t>(lhs) & static_cast<uint16_t>(rhs));
+}
 
 //
 // Range

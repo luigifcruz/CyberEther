@@ -3,27 +3,40 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::initializeRender() {
+Spectrogram<D, T>::Spectrogram(const Config& config,
+                               const Input& input) 
+         : config(config), input(input) {
+    JST_DEBUG("Initializing Spectrogram module.");
+}
+
+template<Device D, typename T>
+void Spectrogram<D, T>::summary() const {
+    JST_INFO("===== Spectrogram Module Configuration");
+    JST_INFO("Window Size: {}x{}", config.viewSize.width, config.viewSize.height);
+}
+
+template<Device D, typename T>
+const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
     fillScreenVerticesConf.size = 12;
     fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(Render::Create(fillScreenVerticesBuffer, fillScreenVerticesConf));
+    JST_CHECK(window.build(fillScreenVerticesBuffer, fillScreenVerticesConf));
 
     Render::Buffer::Config fillScreenTextureVerticesConf;
     fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
     fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
     fillScreenTextureVerticesConf.size = 8;
     fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(Render::Create(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
+    JST_CHECK(window.build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
 
     Render::Buffer::Config fillScreenIndicesConf;
     fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
     fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
     fillScreenIndicesConf.size = 6;
     fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
-    JST_CHECK(Render::Create(fillScreenIndicesBuffer, fillScreenIndicesConf));
+    JST_CHECK(window.build(fillScreenIndicesBuffer, fillScreenIndicesConf));
 
     Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = {
@@ -31,12 +44,12 @@ const Result Spectrogram<D, T>::initializeRender() {
         {fillScreenTextureVerticesBuffer, 2},
     };
     vertexCfg.indices = fillScreenIndicesBuffer;
-    JST_CHECK(Render::Create(vertex, vertexCfg));
+    JST_CHECK(window.build(vertex, vertexCfg));
 
     Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(Render::Create(drawVertex, drawVertexCfg));
+    JST_CHECK(window.build(drawVertex, drawVertexCfg));
 
     Render::Buffer::Config bufferCfg;
     bufferCfg.buffer = frequencyBins.data();
@@ -44,20 +57,20 @@ const Result Spectrogram<D, T>::initializeRender() {
     bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
     bufferCfg.target = Render::Buffer::Target::STORAGE;
     bufferCfg.enableZeroCopy = true;
-    JST_CHECK(Render::Create(binTexture, bufferCfg));
+    JST_CHECK(window.build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
     lutTextureCfg.key = "LutTexture";
-    JST_CHECK(Render::Create(lutTexture, lutTextureCfg));
+    JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
     Render::Buffer::Config uniformCfg;
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
     uniformCfg.target = Render::Buffer::Target::STORAGE;
-    JST_CHECK(Render::Create(uniformBuffer, uniformCfg));
+    JST_CHECK(window.build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
@@ -66,39 +79,23 @@ const Result Spectrogram<D, T>::initializeRender() {
     programCfg.draws = {drawVertex};
     programCfg.textures = {lutTexture};
     programCfg.buffers = {uniformBuffer, binTexture};
-    JST_CHECK(Render::Create(program, programCfg));
+    JST_CHECK(window.build(program, programCfg));
 
     Render::Texture::Config textureCfg;
     textureCfg.size = config.viewSize;
-    JST_CHECK(Render::Create(texture, textureCfg));
+    JST_CHECK(window.build(texture, textureCfg));
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    JST_CHECK(Render::Create(surface, surfaceCfg));
+    JST_CHECK(window.build(surface, surfaceCfg));
+    JST_CHECK(window.bind(surface));
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Spectrogram<D, T>::Spectrogram(const Config& config, const Input& input) 
-    : config(config), input(input) {
-    JST_DEBUG("Initializing Spectrogram module.");
-
-    JST_CHECK_THROW(underlyingInitialize());
-    JST_CHECK_THROW(initializeRender());
-
-    JST_INFO("===== Spectrogram Module Configuration");
-    JST_INFO("Window Size: {}x{}", config.viewSize.width, config.viewSize.height);
-}
-
-template<Device D, typename T>
-const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
-    return this->underlyingCompute(meta);
-}
-
-template<Device D, typename T>
-const Result Spectrogram<D, T>::present(const RuntimeMetadata& meta) {
+const Result Spectrogram<D, T>::present(Render::Window& window) {
     binTexture->update(0, frequencyBins.size());
 
     shaderUniforms.zoom = 1.0;

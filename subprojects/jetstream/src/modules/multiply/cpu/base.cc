@@ -3,30 +3,34 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Multiply<D, T>::Multiply(const Config& config, const Input& input) 
-    : config(config), input(input) {
+Multiply<D, T>::Multiply(const Config& config, 
+                         const Input& input) 
+         : config(config), input(input) {
     JST_DEBUG("Initializing Multiply module with CPU backend.");
-
+    
     // Intialize output.
-    this->InitInput(this->input.factorA, getBufferSize());
-    this->InitInput(this->input.factorB, getBufferSize());
-    this->InitOutput(this->output.product, getBufferSize());
+    JST_CHECK_THROW(this->InitInput(this->input.factorA, getBufferSize()));
+    JST_CHECK_THROW(this->InitInput(this->input.factorB, getBufferSize()));
+    JST_CHECK_THROW(this->InitOutput(this->output.product, getBufferSize()));
 
     // Check parameters. 
     if (this->input.factorA.size() != this->config.size) {
         JST_FATAL("Input A size ({}) is different than the" \
             "configuration size ({}).", this->input.factorA.size(),
             this->config.size);
-        throw Result::ERROR;
+        JST_CHECK_THROW(Result::ERROR);
     }
 
     if (this->input.factorB.size() != this->config.size) {
         JST_FATAL("Input B size ({}) is different than the" \
             "configuration size ({}).", this->input.factorB.size(), 
             this->config.size);
-        throw Result::ERROR;
+        JST_CHECK_THROW(Result::ERROR);
     }
+}
 
+template<Device D, typename T>
+void Multiply<D, T>::summary() const {
     JST_INFO("===== Multiply Module Configuration");
     JST_INFO("Size: {}", this->config.size);
     JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);

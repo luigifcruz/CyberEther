@@ -3,14 +3,14 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::underlyingInitialize() {
+const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     frequencyBins.resize(input.buffer.size() * config.viewSize.height);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
+const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     for (U64 x = 0; x < input.buffer.size() * config.viewSize.height; x++) {
         frequencyBins[x] *= 0.999; 
     }

@@ -10,7 +10,7 @@
 namespace Jetstream {
 
 struct RuntimeMetadata {
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     struct {
     } CPU;
 #endif
@@ -19,6 +19,11 @@ struct RuntimeMetadata {
     struct {
        const cudaStream_t stream = 0; 
     } CUDA;
+#endif
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    struct {
+    } Metal;
 #endif
 };
 

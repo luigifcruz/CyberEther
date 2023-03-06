@@ -11,7 +11,7 @@
 namespace Jetstream {
 
 template<Device D, typename IT = F32>
-class Waterfall : public Module {
+class Waterfall : public Module, public Compute, public Present {
  public:
     struct Config {
         F32 zoom = 1.0;
@@ -28,7 +28,18 @@ class Waterfall : public Module {
     struct Output {
     };
 
-    explicit Waterfall(const Config&, const Input&);
+    explicit Waterfall(const Config& config,
+                       const Input& input);
+
+    constexpr const Device device() const {
+        return D;
+    }
+
+    constexpr const Taint taints() const {
+        return Taint::None; 
+    }
+
+    void summary() const final;
 
     constexpr const U64 getBufferSize() const {
         return input.buffer.size();
@@ -91,14 +102,14 @@ class Waterfall : public Module {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    const Result compute(const RuntimeMetadata& meta = {}) final;
-    const Result present(const RuntimeMetadata& meta = {}) final;
+    const Result createCompute(const RuntimeMetadata& meta) final;
+    const Result compute(const RuntimeMetadata& meta) final;
+
+    const Result createPresent(Render::Window& window) final;
+    const Result present(Render::Window& window) final;
 
  private:
-    const Result initializeRender();
-
-    const Result underlyingInitialize();
-    const Result underlyingCompute(const RuntimeMetadata& meta = {});
+    const Result underlyingCompute();
 
     //
     // Metal

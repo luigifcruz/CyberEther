@@ -19,7 +19,7 @@ class SDR {
         U64 bufferMultiplier = 1024*8;
     };
 
-    SDR(const Config& config)
+    SDR(const Config& config, Instance& instance)
          : config(config), 
            data(config.outputBufferSize),
            buffer(config.outputBufferSize * config.bufferMultiplier) {
@@ -31,7 +31,7 @@ class SDR {
             while (streaming) {
                 if (buffer.GetOccupancy() > config.outputBufferSize) {
                     buffer.Get(data.data(), config.outputBufferSize);
-                    Jetstream::Compute();
+                    instance.compute();
                 }
             }
         });
@@ -114,57 +114,56 @@ class SDR {
 
 class UI {
  public:
-    UI(SDR& sdr, const std::shared_ptr<Viewport::Generic>& viewport) : sdr(sdr) {
+    UI(SDR& sdr, Instance& instance) : sdr(sdr), instance(instance) {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
-        renderCfg.viewport = viewport;
-        Render::Initialize<Device::Metal>(renderCfg);
+        JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
 
         // Configure Jetstream
-        win = Block<Window, Device::CPU>({
+        win = instance.addBlock<Window, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
         }, {});
 
-        mul = Block<Multiply, Device::CPU>({
+        mul = instance.addBlock<Multiply, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
         }, {
             .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = Block<FFT, Device::CPU>({
+        fft = instance.addBlock<FFT, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
         }, {
             .buffer = mul->getProductBuffer(),
         });
 
-        amp = Block<Amplitude, Device::CPU>({
+        amp = instance.addBlock<Amplitude, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
         }, {
             .buffer = fft->getOutputBuffer(),
         });
 
-        scl = Block<Scale, Device::CPU>({
+        scl = instance.addBlock<Scale, Device::CPU>({
             .size = sdr.getOutputBuffer().size(),
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
         });
 
-        lpt = Block<Lineplot, Device::CPU>({}, {
+        lpt = instance.addBlock<Lineplot, Device::CPU>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        wtf = Block<Waterfall, Device::CPU>({}, {
+        wtf = instance.addBlock<Waterfall, Device::CPU>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        spc = Block<Spectrogram, Device::CPU>({}, {
+        spc = instance.addBlock<Spectrogram, Device::CPU>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        Render::Create();
+        JST_CHECK_THROW(instance.commit());
 
         streaming = true;
         worker = std::thread([&]{ this->threadLoop(); });
@@ -174,18 +173,15 @@ class UI {
         streaming = false;
         worker.join();
 
-        Render::Destroy();
-
         JST_DEBUG("The UI was destructed.");
     }
 
  private:
     SDR& sdr;
-    std::thread worker;
-
-    bool streaming = false;
-
     float frequency;
+    std::thread worker;
+    Instance& instance;
+    bool streaming = false;
 
     std::shared_ptr<Window<Device::CPU>> win;
     std::shared_ptr<Multiply<Device::CPU>> mul;
@@ -208,8 +204,8 @@ class UI {
 
         frequency = sdr.getConfig().frequency;
 
-        while (streaming && Render::KeepRunning()) {
-            if (Render::Begin() == Result::SKIP) {
+        while (streaming && instance.viewport().keepRunning()) {
+            if (instance.begin() == Result::SKIP) {
                 continue;
             }
 
@@ -291,7 +287,7 @@ class UI {
                 ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
                 ImGui::Text("Overflows %llu", sdr.getCircularBuffer().GetOverflows());
-                ImGui::Text("Dropped Frames: %lld", Render::Stats().droppedFrames);
+                ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
 
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -305,9 +301,8 @@ class UI {
                 ImGui::End();
             }
 
-            Render::Synchronize();
-            Jetstream::Present();
-            Render::End();
+            JST_CHECK_THROW(instance.present());
+            JST_CHECK_THROW(instance.end());
         }
     }
 };
@@ -315,16 +310,16 @@ class UI {
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
-    // Initialize Backend.
-    Backend::Initialize<Device::Metal>({});
-
-    // Initialize Viewport.
+    // Initialize Instance.
+    Instance instance;
+    
+    // Initialize Viewport
     Viewport::Generic::Config viewportCfg;
     viewportCfg.vsync = true;
     viewportCfg.resizable = true;
     viewportCfg.size = {3130, 1140};
     viewportCfg.title = "CyberEther";
-    auto viewport = Viewport::MacOS::Factory(viewportCfg);
+    JST_CHECK_THROW(instance.buildViewport<Viewport::MacOS>(viewportCfg));
 
     {
         const SDR::Config& sdrConfig {
@@ -333,15 +328,13 @@ int main() {
             .sampleRate = 30e6,
             .outputBufferSize = 2 << 10,
         }; 
-        auto sdr = SDR(sdrConfig);
-        auto ui = UI(sdr, viewport);
+        auto sdr = SDR(sdrConfig, instance);
+        auto ui = UI(sdr, instance);
 
-        while (Render::KeepRunning()) {
-            viewport->pollEvents();
+        while (instance.viewport().keepRunning()) {
+            instance.viewport().pollEvents();
         }
     }
-
-    Backend::Destroy<Device::Metal>();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

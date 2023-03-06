@@ -13,7 +13,7 @@
 namespace Jetstream {
 
 template<Device D, typename T = CF32>
-class FFT : public Module {
+class FFT : public Module, public Compute {
  public:
     struct Config {
         U64 size;
@@ -28,7 +28,18 @@ class FFT : public Module {
         Vector<D, T> buffer;
     };
 
-    explicit FFT(const Config&, const Input&);
+    explicit FFT(const Config& config, 
+                 const Input& input); 
+
+    constexpr const Device device() const {
+        return D;
+    }
+
+    constexpr const Taint taints() const {
+        return Taint::None;
+    }
+
+    void summary() const final;
 
     constexpr const U64 getBufferSize() const {
         return this->config.size;
@@ -43,7 +54,8 @@ class FFT : public Module {
     }
 
  protected:
-    const Result compute(const RuntimeMetadata& meta = {}) final;
+    const Result createCompute(const RuntimeMetadata& meta) final;
+    const Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;
@@ -55,8 +67,6 @@ class FFT : public Module {
         fftwf_plan fftPlanCF32;
         fftw_plan fftPlanCF64;
     } cpu;
-
-    const Result cpuGeneratePlan();
 #endif
 };
 

@@ -3,12 +3,13 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Window<D, T>::Window(const Config& config, const Input& input) 
-    : config(config), input(input) {
+Window<D, T>::Window(const Config& config, 
+                     const Input& input)
+         : config(config), input(input) {
     JST_DEBUG("Initializing Window module with CPU backend.");
 
-    // Intialize output.
-    this->InitOutput(this->output.window, getWindowSize());
+    // Initialize output.
+    JST_CHECK_THROW(this->InitOutput(this->output.window, getWindowSize()));
 
     // Generate FFT window.
     for (U64 i = 0; i < this->config.size; i++) {
@@ -19,7 +20,10 @@ Window<D, T>::Window(const Config& config, const Input& input)
 
         this->output.window[i] = T(tap, 0.0);
     }
+}
 
+template<Device D, typename T>
+void Window<D, T>::summary() const {
     JST_INFO("===== Window Module Configuration");
     JST_INFO("Window Size: {}", this->config.size);
     JST_INFO("Output Type: {}", NumericTypeInfo<T>().name);

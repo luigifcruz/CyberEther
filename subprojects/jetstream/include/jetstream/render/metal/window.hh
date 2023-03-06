@@ -12,36 +12,33 @@ namespace Jetstream::Render {
 template<>
 class WindowImp<Device::Metal> : public Window {
  public:
-    explicit WindowImp(const Config& config);
+    explicit WindowImp(const Config& config,
+                       std::shared_ptr<Viewport::Generic>& viewport);
 
     const Result create();
     const Result destroy();
     const Result begin();
     const Result end();
 
-    const Result pollEvents();
-    const Result synchronize();
-    const bool keepRunning();
     const Stats& stats() const;
 
-    const Result bind(const std::shared_ptr<Surface>& surface);
-
-    constexpr const Device implementation() const {
+    constexpr const Device device() const {
         return Device::Metal;
     };
 
+    const Result bind(const std::shared_ptr<Surface>& surface);
+
  private:
+    Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
-    MTL::Device* device = nullptr;
+    MTL::Device* dev = nullptr;
     NS::AutoreleasePool* pPool;
     CA::MetalDrawable* drawable = nullptr;
     MTL::CommandQueue* commandQueue = nullptr;
     MTL::CommandBuffer* commandBuffer = nullptr;
-    std::shared_ptr<Viewport::Generic> viewport;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
-    Stats statsData;
 
     const Result createImgui();
     const Result destroyImgui();

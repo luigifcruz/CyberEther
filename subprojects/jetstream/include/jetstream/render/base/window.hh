@@ -17,14 +17,16 @@ class Window {
     struct Config {
         float scale = 1.0;
         bool imgui = false;
-        std::shared_ptr<Viewport::Generic> viewport;
     };
 
     struct Stats {
         U64 droppedFrames;
     };
 
-    explicit Window(const Config& config) : config(config) {
+    explicit Window(const Config& config,
+                    std::shared_ptr<Viewport::Generic>& viewport)
+         : config(config),
+           viewport(viewport) {
         JST_DEBUG("Window initialized.");
     }
     virtual ~Window() = default;
@@ -35,19 +37,31 @@ class Window {
     virtual const Result end() = 0;
 
     virtual const Stats& stats() const = 0;
-    virtual const Result synchronize() = 0;
-    virtual const bool keepRunning() = 0;
+
+    virtual constexpr const Device device() const = 0;
 
     virtual const Result bind(const std::shared_ptr<Surface>& surface) = 0;
-    virtual constexpr const Device implementation() const = 0;
 
-    template<Device D> 
-    static std::shared_ptr<Window> Factory(const Config& config) {
-        return std::make_shared<WindowImp<D>>(config);
+    template<class T>
+    inline Result JETSTREAM_API build(std::shared_ptr<T>& member, 
+                                      const auto& config) {
+        switch (this->device()) {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+            case Device::Metal:
+                member = T::template Factory<Device::Metal>(config); 
+                break;
+#endif
+            default:
+                JST_FATAL("Backend not supported.");
+                return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
     }
 
  protected:
     Config config;
+    std::shared_ptr<Viewport::Generic> viewport;
 };
 
 }  // namespace Jetstream::Render

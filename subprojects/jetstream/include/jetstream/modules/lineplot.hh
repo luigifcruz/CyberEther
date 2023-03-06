@@ -11,7 +11,7 @@
 namespace Jetstream {
 
 template<Device D, typename IT = F32>
-class Lineplot : public Module {
+class Lineplot : public Module, public Compute, public Present {
  public:
     struct Config {
         Render::Size2D<U64> viewSize = {4096, 512};
@@ -24,7 +24,18 @@ class Lineplot : public Module {
     struct Output {
     };
 
-    explicit Lineplot(const Config&, const Input&);
+    explicit Lineplot(const Config& config,
+                      const Input& input);
+
+    constexpr const Device device() const {
+        return D;
+    }
+
+    constexpr const Taint taints() const {
+        return Taint::None;
+    }
+
+    void summary() const final;
 
     constexpr const U64 getBufferSize() const {
         return input.buffer.size();
@@ -65,12 +76,13 @@ class Lineplot : public Module {
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
 
-    const Result compute(const RuntimeMetadata& meta = {}) final;
-    const Result present(const RuntimeMetadata& meta = {}) final;
+    const Result createCompute(const RuntimeMetadata& meta) final;
+    const Result compute(const RuntimeMetadata& meta) final;
+
+    const Result createPresent(Render::Window& window) final;
+    const Result present(Render::Window& window) final;
 
  private:
-    const Result initializeRender();
-
     //
     // Metal Shaders
     //

@@ -3,14 +3,14 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::underlyingInitialize() {
+const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
     frequencyBins.resize(input.buffer.size() * config.height);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
+const Result Waterfall<D, T>::underlyingCompute() {
     std::copy(input.buffer.data(), input.buffer.data() + input.buffer.size(), 
               frequencyBins.begin() + (inc * input.buffer.size()));
 

@@ -22,7 +22,18 @@ class Window : public Module {
         Vector<D, T> window;
     };
 
-    explicit Window(const Config&, const Input&);
+    explicit Window(const Config& config,
+                    const Input& input);
+
+    constexpr const Device device() const {
+        return D;
+    }
+
+    constexpr const Taint taints() const {
+        return Taint::None;
+    }
+
+    void summary() const final;
 
     constexpr const U64 getWindowSize() const {
         return this->config.size;

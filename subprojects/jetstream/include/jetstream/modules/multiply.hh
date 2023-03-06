@@ -9,7 +9,7 @@
 namespace Jetstream {
 
 template<Device D, typename T = CF32>
-class Multiply : public Module {
+class Multiply : public Module, public Compute {
  public:
     struct Config {
         U64 size;
@@ -24,7 +24,18 @@ class Multiply : public Module {
         Vector<D, T> product;
     };
 
-    explicit Multiply(const Config&, const Input&);
+    explicit Multiply(const Config& config,
+                      const Input& input);
+
+    constexpr const Device device() const {
+        return D;
+    }
+
+    constexpr const Taint taints() const {
+        return Taint::None;
+    }
+
+    void summary() const final;
 
     constexpr const U64 getBufferSize() const {
         return this->config.size;
@@ -39,7 +50,7 @@ class Multiply : public Module {
     }
 
  protected:
-    const Result compute(const RuntimeMetadata& meta = {}) final;
+    const Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;

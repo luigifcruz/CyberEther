@@ -6,8 +6,9 @@ namespace Jetstream::Render {
 
 using Implementation = WindowImp<Device::Metal>;
 
-Implementation::WindowImp(const Config& config) : Window(config) {
-    viewport = config.viewport;
+Implementation::WindowImp(const Config& config,
+                          std::shared_ptr<Viewport::Generic>& viewport)
+         : Window(config, viewport) {
 }
 
 const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
@@ -25,9 +26,9 @@ const Result Implementation::create() {
 
     JST_CHECK(viewport->create());
 
-    device = Backend::State<Device::Metal>()->getDevice();
+    dev = Backend::State<Device::Metal>()->getDevice();
 
-    commandQueue = device->newCommandQueue();
+    commandQueue = dev->newCommandQueue();
     JST_ASSERT(commandQueue);
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
@@ -91,7 +92,7 @@ const Result Implementation::createImgui() {
 
     JST_CHECK(viewport->createImgui());
 
-    ImGui_ImplMetal_Init(device);
+    ImGui_ImplMetal_Init(dev);
 
     return Result::SUCCESS;
 }
@@ -184,14 +185,6 @@ const Result Implementation::end() {
     pPool->release();
 
     return Result::SUCCESS;
-}
-
-const Result Implementation::synchronize() {
-    return Result::SUCCESS;
-}
-
-const bool Implementation::keepRunning() {
-    return viewport->keepRunning();
 }
 
 const Window::Stats& Implementation::stats() const {

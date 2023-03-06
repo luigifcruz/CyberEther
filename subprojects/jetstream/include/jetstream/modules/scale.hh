@@ -9,7 +9,7 @@
 namespace Jetstream {
 
 template<Device D, typename T = F32>
-class Scale : public Module {
+class Scale : public Module, public Compute {
  public:
     struct Config {
         U64 size;
@@ -24,7 +24,18 @@ class Scale : public Module {
         Vector<D, T> buffer;
     };
 
-    explicit Scale(const Config&, const Input&);
+    explicit Scale(const Config& config,
+                   const Input& input);
+
+    constexpr const Device device() const {
+        return D;
+    }
+
+    constexpr const Taint taints() const {
+        return Taint::None;
+    }
+
+    void summary() const final;
 
     constexpr const U64 getBufferSize() const {
         return this->config.size;
@@ -48,7 +59,7 @@ class Scale : public Module {
     }
 
  protected:
-    const Result compute(const RuntimeMetadata& meta = {}) final;
+    const Result compute(const RuntimeMetadata& meta) final;
 
  private:
     Config config;
