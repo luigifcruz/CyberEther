@@ -29,8 +29,8 @@ class SDR {
 
         consumer = std::thread([&]{
             while (streaming) {
-                if (buffer.GetOccupancy() > config.outputBufferSize) {
-                    buffer.Get(data.data(), config.outputBufferSize);
+                if (buffer.getOccupancy() > config.outputBufferSize) {
+                    buffer.get(data.data(), config.outputBufferSize);
                     instance.compute();
                 }
             }
@@ -102,7 +102,7 @@ class SDR {
             while (streaming) {
                 int ret = device->readStream(stream, tmp_buffers, 8192, flags, timeNs, 1e5);
                 if (ret > 0) {
-                    buffer.Put(tmp, ret);
+                    buffer.put(tmp, ret);
                 }
             }
 
@@ -280,20 +280,20 @@ class UI {
             {
                 ImGui::Begin("Buffer Info");
 
-                float bufferThroughputMB = (sdr.getCircularBuffer().GetThroughput() / (1024 * 1024));
+                float bufferThroughputMB = (sdr.getCircularBuffer().getThroughput() / (1024 * 1024));
                 ImGui::Text("Throughput %.0f MB/s", bufferThroughputMB);
 
-                float bufferCapacityMB = ((F32)sdr.getCircularBuffer().GetCapacity() * sizeof(CF32) / (1024 * 1024));
+                float bufferCapacityMB = ((F32)sdr.getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
                 ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
-                ImGui::Text("Overflows %llu", sdr.getCircularBuffer().GetOverflows());
+                ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
                 ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
 
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                float bufferUsageRatio = (F32)sdr.getCircularBuffer().GetOccupancy() /
-                                              sdr.getCircularBuffer().GetCapacity();
+                float bufferUsageRatio = (F32)sdr.getCircularBuffer().getOccupancy() /
+                                              sdr.getCircularBuffer().getCapacity();
                 ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
                 ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
                 ImGui::Text("Usage");
