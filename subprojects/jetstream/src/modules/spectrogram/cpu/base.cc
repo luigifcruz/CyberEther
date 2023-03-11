@@ -4,7 +4,7 @@ namespace Jetstream {
 
 template<Device D, typename T>
 const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
-    frequencyBins.resize(input.buffer.size() * config.viewSize.height);
+    frequencyBins = Vector<Device::CPU, F32>(input.buffer.size() * config.viewSize.height);
 
     return Result::SUCCESS;
 }

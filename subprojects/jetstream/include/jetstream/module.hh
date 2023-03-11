@@ -21,10 +21,11 @@ class JETSTREAM_API Module {
     
     // TODO: Remove this.
     template<typename T>
-    static Result InitInput(const T& buffer, std::size_t size) {
+    Result initInput(const T& buffer, const U64& size) {
         if (buffer.empty()) {
             JST_DEBUG("Input is empty, allocating {} elements", size);
-            return const_cast<T&>(buffer).resize(size);
+            const_cast<T&>(buffer) = std::move(T(size));
+            return Result::SUCCESS;
         }
 
         if (buffer.size() != size) {
@@ -38,13 +39,15 @@ class JETSTREAM_API Module {
 
     // TODO: Remove this.
     template<typename T>
-    static Result InitOutput(T& buffer, std::size_t size) {
+    Result initOutput(T& buffer, const U64& size) {
         if (!buffer.empty()) {
             JST_FATAL("The output buffer should be empty on initialization.");
             return Result::ERROR;
         }
 
-        return buffer.resize(size);
+        buffer = std::move(T(size));
+
+        return Result::SUCCESS;
     }
 
     friend class Instance;

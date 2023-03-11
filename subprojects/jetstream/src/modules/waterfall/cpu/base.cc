@@ -4,7 +4,7 @@ namespace Jetstream {
 
 template<Device D, typename T>
 const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
-    frequencyBins.resize(input.buffer.size() * config.height);
+    frequencyBins = Vector<Device::CPU, F32>(input.buffer.size() * config.height);
 
     return Result::SUCCESS;
 }

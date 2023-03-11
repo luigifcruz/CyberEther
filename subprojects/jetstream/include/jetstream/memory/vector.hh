@@ -11,68 +11,94 @@ template<typename T>
 class VectorImpl {
  public:
     VectorImpl()
-             : container(),
+             : _data(nullptr),
+               _size(0),
+               managed(false) {}
+    explicit VectorImpl(const VectorImpl& other)
+             : _data(other.data()),
+               _size(other.size()),
                managed(false) {}
     explicit VectorImpl(const std::span<T>& other)
-             : container(other),
+             : _data(other.data()),
+               _size(other.size()),
                managed(false) {}
-    explicit VectorImpl(T* ptr, const std::size_t& size)
-             : container(ptr, size),
+    explicit VectorImpl(T* ptr, const U64& size)
+             : _data(ptr),
+               _size(size),
                managed(false) {}
-    explicit VectorImpl(void* ptr, const std::size_t& size)
-             : container(static_cast<T*>(ptr), size),
+    explicit VectorImpl(void* ptr, const U64& size)
+             : _data(static_cast<T*>(ptr)),
+               _size(size),
                managed(false) {}
 
-    VectorImpl(const VectorImpl&) = delete;
+    VectorImpl& operator=(VectorImpl&& other) {
+        if (!empty()) {
+            JST_FATAL("This vector is not empty.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
+
+        std::swap(_data, other._data);
+        std::swap(_size, other._size);
+        std::swap(managed, other.managed);
+
+        return *this;
+    }
+
+    VectorImpl(VectorImpl&&) = delete;
+    VectorImpl(VectorImpl&) = delete;
     VectorImpl& operator=(const VectorImpl&) = delete;
 
-    virtual ~VectorImpl() {}
+    virtual ~VectorImpl() = default;
 
     constexpr T* data() const noexcept {
-        return container.data();
+        return _data;
     }
 
     constexpr const U64 size() const noexcept {
-        return container.size();
+        return _size; 
     }
 
     constexpr const U64 size_bytes() const noexcept {
-        return container.size_bytes();
+        return size() * sizeof(T);
     }
 
     [[nodiscard]] constexpr const bool empty() const noexcept {
-        return container.empty();
+        return (_data == nullptr) && (managed == false);
     }
 
     constexpr T& operator[](U64 idx) {
-        return container[idx];
+        return _data[idx];
     }
 
     constexpr const T& operator[](U64 idx) const {
-        return container[idx];
+        return _data[idx];
     }
 
     constexpr auto begin() {
-        return container.begin();
+        return _data;
     }
 
     constexpr auto end() {
-        return container.end();
+        return _data + size_bytes();
     }
 
     constexpr const auto begin() const {
-        return container.begin();
+        return _data;
     }
 
     constexpr const auto end() const {
-        return container.end();
+        return _data + size_bytes();
     }
 
-    virtual Result resize(const std::size_t& size) = 0;
-
  protected:
-    std::span<T> container;
+    T* _data;
+    U64 _size;
     bool managed;
+
+    VectorImpl(const U64& size)
+             : _data(nullptr),
+               _size(size),
+               managed(true) {}
 };
 
 }  // namespace Jetstream

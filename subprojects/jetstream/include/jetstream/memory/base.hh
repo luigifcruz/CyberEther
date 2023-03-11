@@ -5,15 +5,9 @@
 #include "jetstream/memory/vector.hh"
 #include "jetstream/memory/buffer.hh"
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 #include "jetstream/memory/devices/cpu/copy.hh"
 #include "jetstream/memory/devices/cpu/vector.hh"
-
-#ifdef JETSTREAM_CUDA_AVAILABLE
-
-#include "jetstream/memory/devices/cuda/copy.hh"
-#include "jetstream/memory/devices/cuda/vector.hh"
-#include "jetstream/memory/devices/cuda/helper.hh"
-
 #endif
 
 #endif
