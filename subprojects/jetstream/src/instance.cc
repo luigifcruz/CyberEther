@@ -67,6 +67,10 @@ const Result Instance::commit() {
 
     commited = true;
 
+    for (const auto& block : blocks) {
+        block->summary();
+    }
+
     return Result::SUCCESS;
 }
 
