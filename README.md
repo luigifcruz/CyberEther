@@ -131,7 +131,5 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 ## Short-Term To-Do List 
 
 - TODO: Remove FFTW as a loader.
-- TODO: Port Memory::Vector to reference count.
-- TODO: Add hashes to Memory::Vector.
 - TODO: Print Compute and Present trees.
 - TODO: Implement Memory-based compute graphs.

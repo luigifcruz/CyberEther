@@ -6,12 +6,15 @@
 
 namespace Jetstream {
 
-template<typename T>
-class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
+template<typename DataType>
+class JETSTREAM_API Vector<Device::CPU, DataType> : public VectorImpl<DataType> {
  public:
-    using VectorImpl<T>::VectorImpl;
+    using VectorImpl<DataType>::VectorImpl;
 
-    explicit Vector(const U64& size) : VectorImpl<T>(size) {
+    Vector(const U64& size) : VectorImpl<DataType>(size) {
+        JST_TRACE("New CPU vector allocated.");
+
+        // Allocate memory.
 #ifdef JETSTREAM_CUDA_AVAILABLE
         BL_CUDA_CHECK(cudaMallocHost(&this->_data, this->size_bytes()), [&]{
             JST_FATAL("Failed to allocate CPU memory: {}", err);
@@ -23,29 +26,26 @@ class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
         const auto result = posix_memalign(&memoryAddr, 
                                            pageSize,
                                            alignedSizeBytes);
-        if (result < 0 || (this->_data = static_cast<T*>(memoryAddr)) == nullptr) {
+        if (result < 0 || (this->_data = static_cast<DataType*>(memoryAddr)) == nullptr) {
             JST_FATAL("Failed to allocate CPU memory.");
+            JST_CHECK_THROW(Result::ERROR);
         }
 #endif
-    }
+        this->_refs = new U64(1);
 
-    ~Vector() {
-        if (!this->managed || !this->_data) {
-            return;
-        }
+        // Register allocated memory. 
+        this->_destructorList["_data"] = this->_data;
+        this->_destructorList["_refs"] = this->_refs;
 
+        // Register memory destructor.
+        this->_destructor = [](std::unordered_map<std::string, void*>& list){
 #ifdef JETSTREAM_CUDA_AVAILABLE
-        if (cudaFreeHost(this->_data) != cudaSuccess) {
-            JST_FATAL("Failed to deallocate host memory.");
-        }
+            cudaFreeHost(list["_data"]);
 #else
-        free(this->_data);
+            free(list["_data"]);
 #endif
-    }
-
-    Vector& operator=(Vector&& other) {
-        VectorImpl<T>::operator = (std::move(other));
-        return *this;
+            free(list["_refs"]);
+        };
     }
 };
 

@@ -19,7 +19,6 @@ class JETSTREAM_API Module {
     virtual constexpr const Device device() const = 0;
     virtual constexpr const Taint taints() const = 0;
     
-    // TODO: Remove this.
     template<typename T>
     Result initInput(const T& buffer, const U64& size) {
         if (buffer.empty()) {
@@ -37,7 +36,6 @@ class JETSTREAM_API Module {
         return Result::SUCCESS;
     }
 
-    // TODO: Remove this.
     template<typename T>
     Result initOutput(T& buffer, const U64& size) {
         if (!buffer.empty()) {
