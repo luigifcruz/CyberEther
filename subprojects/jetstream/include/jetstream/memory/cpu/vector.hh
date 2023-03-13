@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_MEMORY_CPU_VECTOR_HH
 #define JETSTREAM_MEMORY_CPU_VECTOR_HH
 
-#include "jetstream/backend/base.hh"
-
 #include "jetstream/memory/types.hh"
 #include "jetstream/memory/vector.hh"
 
@@ -39,14 +37,6 @@ class JETSTREAM_API Vector<Device::CPU, DataType> : public VectorImpl<DataType> 
         this->_destructorList["_data"] = this->_data;
         this->_destructorList["_refs"] = this->_refs;
 
-        // TODO: Move this to the Device::Metal vector.
-        auto device = Backend::State<Device::Metal>()->getDevice();
-        _buffer = device->newBuffer(this->_data,
-                                   JST_PAGE_ALIGNED_SIZE(this->size_bytes()), 
-                                   MTL::ResourceStorageModeShared,
-                                   nullptr); 
-        assert(_buffer);
-
         // Register memory destructor.
         this->_destructor = [](std::unordered_map<std::string, void*>& list){
 #ifdef JETSTREAM_CUDA_AVAILABLE
@@ -55,23 +45,8 @@ class JETSTREAM_API Vector<Device::CPU, DataType> : public VectorImpl<DataType> 
             free(list["_data"]);
 #endif
             free(list["_refs"]);
-
-            // TODO: Add MTL::Buffer destructor.
         };
     }
-
-    // TODO: Move this to the Device::Metal vector.
-    const MTL::Buffer* buffer() const {
-        return _buffer;
-    }
-
-    MTL::Buffer* buffer() {
-        return _buffer;
-    }
-
- private:
-    // TODO: Move this to the Device::Metal vector.
-    MTL::Buffer* _buffer;
 };
 
 }  // namespace Jetstream

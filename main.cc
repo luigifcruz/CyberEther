@@ -125,7 +125,7 @@ class UI {
             .size = sdr.getOutputBuffer().size(),
         }, {});
 
-        mul = instance.addBlock<Multiply, Device::CPU>({
+        mul = instance.addBlock<Multiply, Device::Metal>({
             .size = sdr.getOutputBuffer().size(),
         }, {
             .factorA = sdr.getOutputBuffer(),
@@ -184,7 +184,7 @@ class UI {
     bool streaming = false;
 
     std::shared_ptr<Window<Device::CPU>> win;
-    std::shared_ptr<Multiply<Device::CPU>> mul;
+    std::shared_ptr<Multiply<Device::Metal>> mul;
     std::shared_ptr<FFT<Device::CPU>> fft;
     std::shared_ptr<Amplitude<Device::CPU>> amp;
     std::shared_ptr<Scale<Device::CPU>> scl;
@@ -309,6 +309,17 @@ class UI {
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
+    
+    // Initialize the backends.
+    if (Backend::Initialize<Device::CPU>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize CPU backend.");
+        return 1;
+    }
+
+    if (Backend::Initialize<Device::Metal>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize Metal backend.");
+        return 1;
+    }
 
     // Initialize Instance.
     Instance instance;
@@ -326,7 +337,7 @@ int main() {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
             .sampleRate = 30e6,
-            .outputBufferSize = 2 << 10,
+            .outputBufferSize = 2 << 19,
         }; 
         auto sdr = SDR(sdrConfig, instance);
         auto ui = UI(sdr, instance);

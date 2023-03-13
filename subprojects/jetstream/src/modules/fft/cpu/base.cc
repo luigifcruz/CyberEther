@@ -6,7 +6,7 @@ template<Device D, typename T>
 FFT<D, T>::FFT(const Config& config,
                const Input& input) 
          : config(config), input(input) {
-    JST_DEBUG("Initializing FFT module with CPU backend.");
+    JST_DEBUG("Initializing FFT module.");
 
     JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
     JST_CHECK_THROW(this->initOutput(this->output.buffer, getBufferSize()));
@@ -35,6 +35,12 @@ const Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) 
     auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
     cpu.fftPlanCF32 = fftwf_plan_dft_1d(config.size, inBuf, outBuf, direction, FFTW_MEASURE);
 
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+const Result FFT<D, T>::createCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Create FFT compute core using CPU backend.");
     return Result::SUCCESS;
 }
 

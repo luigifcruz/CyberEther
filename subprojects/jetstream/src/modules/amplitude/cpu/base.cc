@@ -6,7 +6,7 @@ template<Device D, typename IT, typename OT>
 Amplitude<D, IT, OT>::Amplitude(const Config& config,
                                 const Input& input)
          : config(config), input(input) {
-    JST_DEBUG("Initializing Amplitude module with CPU backend.");
+    JST_DEBUG("Initializing Amplitude module.");
     
     // Intialize output.
     JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
@@ -45,6 +45,12 @@ static inline T log10(T X) {
     Y += -3.13396450166353f;
     Y += E;
     return Y * 0.3010299956639812f;
+}
+
+template<Device D, typename IT, typename OT>
+const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Create Amplitude compute core using CPU backend.");
+    return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>

@@ -54,12 +54,6 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        // Initialize backend for the window.
-        if (Backend::Initialize<D>({}) != Result::SUCCESS) {
-            JST_FATAL("Cannot initialize window backend.");
-            return Result::ERROR;
-        }
-
         _window = std::make_shared<Render::WindowImp<D>>(config, _viewport);
 
         return Result::SUCCESS;
@@ -76,12 +70,6 @@ class JETSTREAM_API Instance {
             const typename T<D, C...>::Input& input) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-
-        // Initialize backend for the current block.
-        if (Backend::Initialize<D>({}) != Result::SUCCESS) {
-            JST_FATAL("Cannot initialize block backend.");
             JST_CHECK_THROW(Result::ERROR);
         }
 

@@ -16,12 +16,14 @@ class Multiply : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, T>& factorA;
-        const Vector<D, T>& factorB;
+        // TODO: Change this to Device::Metal. 
+        const Vector<Device::CPU, T>& factorA;
+        const Vector<Device::CPU, T>& factorB;
     };
 
     struct Output {
-        Vector<D, T> product;
+        // TODO: Change this to Device::Metal. 
+        Vector<Device::CPU, T> product;
     };
 
     explicit Multiply(const Config& config,
@@ -41,7 +43,8 @@ class Multiply : public Module, public Compute {
         return this->config.size;
     }
 
-    constexpr const Vector<D, T>& getProductBuffer() const {
+    // TODO: Change this to Device::Metal. 
+    constexpr const Vector<Device::CPU, T>& getProductBuffer() const {
         return this->output.product;
     }
 
@@ -50,12 +53,19 @@ class Multiply : public Module, public Compute {
     }
 
  protected:
+    const Result createCompute(const RuntimeMetadata& meta) final;
     const Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;
     const Input input;
     Output output;
+
+#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+    struct {
+        MTL::ComputePipelineState* state;
+    } metal;
+#endif
 };
 
 }  // namespace Jetstream

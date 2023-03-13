@@ -6,7 +6,7 @@ template<Device D, typename T>
 Window<D, T>::Window(const Config& config, 
                      const Input& input)
          : config(config), input(input) {
-    JST_DEBUG("Initializing Window module with CPU backend.");
+    JST_DEBUG("Initializing Window module.");
 
     // Initialize output.
     JST_CHECK_THROW(this->initOutput(this->output.window, getWindowSize()));

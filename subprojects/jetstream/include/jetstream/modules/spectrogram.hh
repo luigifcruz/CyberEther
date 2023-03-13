@@ -18,7 +18,8 @@ class Spectrogram : public Module, public Compute, public Present {
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        // TODO: Change back to D.
+        const Vector<Device::CPU, IT>& buffer;
     };
 
     struct Output {
@@ -91,6 +92,12 @@ class Spectrogram : public Module, public Compute, public Present {
     const Result present(Render::Window& window) final;
 
  private:
+#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+    struct {
+        MTL::ComputePipelineState* state;
+    } metal;
+#endif
+    
     //
     // Metal
     //

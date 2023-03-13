@@ -6,7 +6,7 @@ template<Device D, typename T>
 Scale<D, T>::Scale(const Config& config,
                    const Input& input) 
          : config(config), input(input) {
-    JST_DEBUG("Initializing Scale module with CPU backend.");
+    JST_DEBUG("Initializing Scale module.");
     
     // Intialize output.
     JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
@@ -32,6 +32,13 @@ void Scale<D, T>::summary() const {
 template<typename T>
 static inline T scale(const T x, const T min, const T max) {
     return (x - min) / (max - min);
+}
+
+template<Device D, typename T>
+const Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Create Scale compute core using Metal backend.");
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>

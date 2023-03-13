@@ -10,4 +10,9 @@
 #include "jetstream/memory/devices/cpu/vector.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#include "jetstream/memory/devices/metal/copy.hh"
+#include "jetstream/memory/devices/metal/vector.hh"
+#endif
+
 #endif

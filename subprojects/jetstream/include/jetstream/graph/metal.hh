@@ -15,6 +15,9 @@ class Metal : public Graph {
     constexpr const Device device() const {
         return Device::Metal;
     }
+
+ private:
+    MTL::CommandQueue* commandQueue;
 };
 
 }  // namespace Jetstream

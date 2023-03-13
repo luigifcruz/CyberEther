@@ -55,26 +55,16 @@ class JETSTREAM_API Compute {
  public:
     virtual ~Compute() = default;
 
-    virtual constexpr const Result createCompute(const RuntimeMetadata& meta) {
-        return Result::SUCCESS;
-    }
-
-    virtual constexpr const Result compute(const RuntimeMetadata& meta) {
-        return Result::SUCCESS;
-    }
+    virtual constexpr const Result createCompute(const RuntimeMetadata& meta) = 0;
+    virtual constexpr const Result compute(const RuntimeMetadata& meta) = 0;
 };
 
 class JETSTREAM_API Present {
  public:
     virtual ~Present() = default;
 
-    virtual constexpr const Result createPresent(Render::Window& window) {
-        return Result::SUCCESS;
-    }
-
-    virtual constexpr const Result present(Render::Window& window) {
-        return Result::SUCCESS;
-    }
+    virtual constexpr const Result createPresent(Render::Window& window) = 0;
+    virtual constexpr const Result present(Render::Window& window) = 0;
 };
 
 }  // namespace Jetstream

@@ -23,7 +23,8 @@
 #include "jetstream/modules/window.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE)
 #include "jetstream/modules/multiply.hh"
 #endif
 
@@ -47,7 +48,8 @@
 #include "jetstream/modules/waterfall.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
 #include "jetstream/modules/spectrogram.hh"
 #endif
 

@@ -11,6 +11,8 @@ Lineplot<D, T>::Lineplot(const Config& config,
 
 template<Device D, typename T>
 const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Create Lineplot compute core using CPU backend.");
+    
     // Generate Grid coordinates.
     {
         grid = Vector<Device::CPU, F32>(20 * 12);

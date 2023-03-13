@@ -59,6 +59,7 @@ class Scale : public Module, public Compute {
     }
 
  protected:
+    const Result createCompute(const RuntimeMetadata& meta) final;
     const Result compute(const RuntimeMetadata& meta) final;
 
  private:
