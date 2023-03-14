@@ -10,6 +10,16 @@
 #include <fftw3.h>
 #endif
 
+#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
+#pragma GCC diagnostic push 
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#define VKFFT_BACKEND 5
+#include "jetstream/tools/vkFFT.h"
+#pragma GCC diagnostic pop
+#endif
+
 namespace Jetstream {
 
 template<Device D, typename T = CF32>
@@ -21,11 +31,13 @@ class FFT : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, T>& buffer;
+        // TODO: Change back.
+        const Vector<Device::CPU, T>& buffer;
     };
 
     struct Output {
-        Vector<D, T> buffer;
+        // TODO: Change back.
+        Vector<Device::CPU, T> buffer;
     };
 
     explicit FFT(const Config& config, 
@@ -45,7 +57,8 @@ class FFT : public Module, public Compute {
         return this->config.size;
     }
 
-    constexpr const Vector<D, T>& getOutputBuffer() const {
+    // TODO: Change back.
+    constexpr const Vector<Device::CPU, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -67,6 +80,14 @@ class FFT : public Module, public Compute {
         fftwf_plan fftPlanCF32;
         fftw_plan fftPlanCF64;
     } cpu;
+#endif
+
+#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
+    struct {
+        MTL::Buffer* input;
+        MTL::Buffer* output;
+        VkFFTApplication* app;
+    } metal;
 #endif
 };
 

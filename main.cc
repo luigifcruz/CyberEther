@@ -132,19 +132,19 @@ class UI {
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, Device::CPU>({
+        fft = instance.addBlock<FFT, Device::Metal>({
             .size = sdr.getOutputBuffer().size(),
         }, {
             .buffer = mul->getProductBuffer(),
         });
 
-        amp = instance.addBlock<Amplitude, Device::CPU>({
+        amp = instance.addBlock<Amplitude, Device::Metal>({
             .size = sdr.getOutputBuffer().size(),
         }, {
             .buffer = fft->getOutputBuffer(),
         });
 
-        scl = instance.addBlock<Scale, Device::CPU>({
+        scl = instance.addBlock<Scale, Device::Metal>({
             .size = sdr.getOutputBuffer().size(),
             .range = {-100.0, 0.0},
         }, {
@@ -158,10 +158,10 @@ class UI {
         wtf = instance.addBlock<Waterfall, Device::CPU>({}, {
             .buffer = scl->getOutputBuffer(),
         });
-
-        spc = instance.addBlock<Spectrogram, Device::CPU>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
+        //
+        // spc = instance.addBlock<Spectrogram, Device::CPU>({}, {
+        //     .buffer = scl->getOutputBuffer(),
+        // });
 
         JST_CHECK_THROW(instance.commit());
 
@@ -185,9 +185,9 @@ class UI {
 
     std::shared_ptr<Window<Device::CPU>> win;
     std::shared_ptr<Multiply<Device::Metal>> mul;
-    std::shared_ptr<FFT<Device::CPU>> fft;
-    std::shared_ptr<Amplitude<Device::CPU>> amp;
-    std::shared_ptr<Scale<Device::CPU>> scl;
+    std::shared_ptr<FFT<Device::Metal>> fft;
+    std::shared_ptr<Amplitude<Device::Metal>> amp;
+    std::shared_ptr<Scale<Device::Metal>> scl;
     std::shared_ptr<Lineplot<Device::CPU>> lpt;
     std::shared_ptr<Waterfall<Device::CPU>> wtf;
     std::shared_ptr<Spectrogram<Device::CPU>> spc;
@@ -229,16 +229,16 @@ class UI {
 
                 ImGui::End();
             }
-
-            {
-                ImGui::Begin("Spectrogram");
-
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = spc->viewSize({(U64)x, (U64)y});
-                ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
-
-                ImGui::End();
-            }
+            //
+            // {
+            //     ImGui::Begin("Spectrogram");
+            //
+            //     auto [x, y] = ImGui::GetContentRegionAvail();
+            //     auto [width, height] = spc->viewSize({(U64)x, (U64)y});
+            //     ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
+            //
+            //     ImGui::End();
+            // }
 
             {
                 ImGui::Begin("Lineplot");
@@ -281,7 +281,10 @@ class UI {
                 ImGui::Begin("Buffer Info");
 
                 float bufferThroughputMB = (sdr.getCircularBuffer().getThroughput() / (1024 * 1024));
-                ImGui::Text("Throughput %.0f MB/s", bufferThroughputMB);
+                ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+
+                float sdrThroughputMB = ((sdr.getConfig().sampleRate * 8) / (1024 * 1024));
+                ImGui::Text("SDR Throughput %.0f MB/s", sdrThroughputMB);
 
                 float bufferCapacityMB = ((F32)sdr.getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
                 ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
@@ -337,7 +340,7 @@ int main() {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
             .sampleRate = 30e6,
-            .outputBufferSize = 2 << 19,
+            .outputBufferSize = 2 << 10,
         }; 
         auto sdr = SDR(sdrConfig, instance);
         auto ui = UI(sdr, instance);

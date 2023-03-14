@@ -61,11 +61,11 @@ class JETSTREAM_API Vector<Device::CPU, DataType> : public VectorImpl<DataType> 
     }
 
     // TODO: Move this to the Device::Metal vector.
-    const MTL::Buffer* buffer() const {
-        return _buffer;
-    }
+    // const MTL::Buffer* buffer() const {
+    //     return _buffer;
+    // }
 
-    MTL::Buffer* buffer() {
+    MTL::Buffer* buffer() const {
         return _buffer;
     }
 

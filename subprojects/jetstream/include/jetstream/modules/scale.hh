@@ -17,11 +17,13 @@ class Scale : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, T>& buffer;
+        // TODO: Modify back.
+        const Vector<Device::CPU, T>& buffer;
     };
 
     struct Output {
-        Vector<D, T> buffer;
+        // TODO: Modify back.
+        Vector<Device::CPU, T> buffer;
     };
 
     explicit Scale(const Config& config,
@@ -41,7 +43,8 @@ class Scale : public Module, public Compute {
         return this->config.size;
     }
 
-    constexpr const Vector<D, T>& getOutputBuffer() const {
+    // TODO: Modify back.
+    constexpr const Vector<Device::CPU, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -66,6 +69,18 @@ class Scale : public Module, public Compute {
     Config config;
     const Input input;
     Output output;
+
+#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+    struct MetalConstants {
+        float min;
+        float max;
+    };
+
+    struct {
+        MTL::ComputePipelineState* state;
+        Vector<Device::CPU, U8> constants;
+    } metal;
+#endif
 };
 
 }  // namespace Jetstream

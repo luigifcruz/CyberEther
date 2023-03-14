@@ -1,33 +1,6 @@
-#include "jetstream/modules/scale.hh"
+#include "../generic.cc"
 
 namespace Jetstream {
-
-template<Device D, typename T>
-Scale<D, T>::Scale(const Config& config,
-                   const Input& input) 
-         : config(config), input(input) {
-    JST_DEBUG("Initializing Scale module.");
-    
-    // Intialize output.
-    JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
-    JST_CHECK_THROW(this->initOutput(this->output.buffer, getBufferSize()));
-
-    // Check parameters. 
-    if (this->input.buffer.size() != this->config.size) {
-        JST_FATAL("Input buffer size ({}) is different than the" \
-            "configuration size ({}).", this->input.buffer.size(), 
-            this->config.size);
-        JST_CHECK_THROW(Result::ERROR);
-    }
-}
-
-template<Device D, typename T>
-void Scale<D, T>::summary() const {
-    JST_INFO("===== Scale Module Configuration");
-    JST_INFO("Size: {}", this->config.size);
-    JST_INFO("Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
-    JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
-}
 
 template<typename T>
 static inline T scale(const T x, const T min, const T max) {
@@ -36,7 +9,7 @@ static inline T scale(const T x, const T min, const T max) {
 
 template<Device D, typename T>
 const Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
-    JST_TRACE("Create Scale compute core using Metal backend.");
+    JST_TRACE("Create Scale compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
@@ -52,7 +25,8 @@ const Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template class Scale<Device::CPU, F64>;
+// TODO: Put this back.
+// template class Scale<Device::CPU, F64>;
 template class Scale<Device::CPU, F32>;
     
 }  // namespace Jetstream

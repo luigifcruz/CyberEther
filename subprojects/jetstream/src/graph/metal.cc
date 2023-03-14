@@ -9,7 +9,7 @@ Metal::Metal() {
     metadata->metal.commandBuffer = nullptr;
 
     auto device = Backend::State<Device::Metal>()->getDevice();
-    commandQueue = device->newCommandQueue();
+    metadata->metal.commandQueue = device->newCommandQueue();
 }
 
 const Result Metal::createCompute() {
@@ -23,13 +23,15 @@ const Result Metal::createCompute() {
 const Result Metal::compute() {
     Result err = Result::SUCCESS;
 
-    metadata->metal.commandBuffer = commandQueue->commandBuffer();
+    metadata->metal.commandBuffer = metadata->metal.commandQueue->commandBuffer();
 
     for (const auto& block : blocks) {
         if ((err = block->compute(*metadata)) != Result::SUCCESS) {
             return err;
         }
     }
+    
+    // TODO: Add automatic blit synchronization of wired output buffers.
 
     metadata->metal.commandBuffer->commit();
     metadata->metal.commandBuffer->waitUntilCompleted();

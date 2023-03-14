@@ -15,7 +15,8 @@
 // Compute
 //
 
-#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_FFT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FFT_METAL_AVAILABLE)
 #include "jetstream/modules/fft.hh"
 #endif
 
@@ -28,11 +29,13 @@
 #include "jetstream/modules/multiply.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE)
 #include "jetstream/modules/amplitude.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
 #include "jetstream/modules/scale.hh"
 #endif
 

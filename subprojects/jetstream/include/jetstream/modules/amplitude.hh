@@ -16,11 +16,13 @@ class Amplitude : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        // TODO: Change back.
+        const Vector<Device::CPU, IT>& buffer;
     };
 
     struct Output {
-        Vector<D, OT> buffer;
+        // TODO: Change back.
+        Vector<Device::CPU, OT> buffer;
     };
 
     explicit Amplitude(const Config& config,
@@ -40,7 +42,8 @@ class Amplitude : public Module, public Compute {
         return this->config.size;
     }
 
-    constexpr const Vector<D, OT>& getOutputBuffer() const {
+    // TODO: Change back.
+    constexpr const Vector<Device::CPU, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -56,6 +59,17 @@ class Amplitude : public Module, public Compute {
     const Config config;
     const Input input;
     Output output;
+
+#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+    struct MetalConstants {
+        float scalingSize;
+    };
+
+    struct {
+        MTL::ComputePipelineState* state;
+        Vector<Device::CPU, U8> constants;
+    } metal;
+#endif
 };
 
 }  // namespace Jetstream

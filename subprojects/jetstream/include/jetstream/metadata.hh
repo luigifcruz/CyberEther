@@ -27,6 +27,7 @@ struct RuntimeMetadata {
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     struct {
+        MTL::CommandQueue* commandQueue;
         MTL::CommandBuffer* commandBuffer;
     } metal;
 #endif

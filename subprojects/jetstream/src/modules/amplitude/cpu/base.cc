@@ -1,34 +1,6 @@
-#include "jetstream/modules/amplitude.hh"
+#include "../generic.cc"
 
 namespace Jetstream {
-
-template<Device D, typename IT, typename OT>
-Amplitude<D, IT, OT>::Amplitude(const Config& config,
-                                const Input& input)
-         : config(config), input(input) {
-    JST_DEBUG("Initializing Amplitude module.");
-    
-    // Intialize output.
-    JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
-    JST_CHECK_THROW(this->initOutput(this->output.buffer, getBufferSize()));
-
-    // Check parameters. 
-    if (this->input.buffer.size() != this->config.size) {
-        JST_FATAL("Input buffer size ({}) is different than the" \
-            "configuration size ({}).", this->input.buffer.size(), 
-            this->config.size);
-        JST_CHECK_THROW(Result::ERROR);
-    }
-}
-
-template<Device D, typename IT, typename OT>
-void Amplitude<D, IT, OT>::summary() const {
-    JST_INFO("===== Amplitude Module Configuration");
-    JST_INFO("Size: {}", this->config.size);
-    JST_INFO("Device: {}", DeviceTypeInfo<D>().name);
-    JST_INFO("Input Type: {}", NumericTypeInfo<IT>().name);
-    JST_INFO("Output Type: {}", NumericTypeInfo<OT>().name);
-}
 
 // Faster Log10 by http://openaudio.blogspot.com/2017/02/faster-log10-and-pow.html
 template<typename T>
@@ -62,6 +34,7 @@ const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
 }
 
 template class Amplitude<Device::CPU, CF32>;
-template class Amplitude<Device::CPU, CF64>;
+// TODO: Add back.
+// template class Amplitude<Device::CPU, CF64>;
     
 }  // namespace Jetstream

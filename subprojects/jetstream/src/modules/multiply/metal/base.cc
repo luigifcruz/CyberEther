@@ -56,11 +56,6 @@ const Result Multiply<D, T>::compute(const RuntimeMetadata& meta) {
     cmdEncoder->endEncoding();
     // cmdEncoder->release();
 
-    auto blitEncoder = meta.metal.commandBuffer->blitCommandEncoder();
-    blitEncoder->synchronizeResource(output.product.buffer());
-    blitEncoder->endEncoding();
-    // blitEncoder->release();
-
     return Result::SUCCESS;
 }
 
