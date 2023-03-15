@@ -83,7 +83,10 @@ class VectorImpl {
         return _size; 
     }
 
-    constexpr const U64* refs() const noexcept {
+    constexpr const U64 refs() const noexcept {
+        if (!_refs) {
+            return 0;
+        }
         return _refs;
     }
 
