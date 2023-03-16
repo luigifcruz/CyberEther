@@ -6,7 +6,7 @@ template<Device D, typename T>
 const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
-    frequencyBins = Vector<Device::CPU, F32>(input.buffer.size() * config.viewSize.height);
+    frequencyBins = Vector<Device::CPU, F32>({input.buffer.size() * config.viewSize.height});
 
     return Result::SUCCESS;
 }

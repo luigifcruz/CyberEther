@@ -34,7 +34,7 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     metal.state = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, nullptr, nullptr);
     assert(metal.state);
 
-    frequencyBins = Vector<Device::CPU, F32>(input.buffer.size() * config.viewSize.height);
+    frequencyBins = Vector<Device::CPU, F32>({input.buffer.size() * config.viewSize.height});
 
     return Result::SUCCESS;
 }

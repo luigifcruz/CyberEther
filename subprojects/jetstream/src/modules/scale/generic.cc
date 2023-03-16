@@ -9,8 +9,8 @@ Scale<D, T>::Scale(const Config& config,
     JST_DEBUG("Initializing Scale module.");
     
     // Initialize output.
-    JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
-    JST_CHECK_THROW(this->initOutput(this->output.buffer, getBufferSize()));
+    JST_CHECK_THROW(this->initInput(this->input.buffer, {getBufferSize()}));
+    JST_CHECK_THROW(this->initOutput(this->output.buffer, {getBufferSize()}));
 
     // Check parameters. 
     if (this->input.buffer.size() != this->config.size) {

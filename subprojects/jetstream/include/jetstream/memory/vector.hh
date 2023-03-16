@@ -8,39 +8,41 @@
 
 namespace Jetstream {
 
-template<Device DeviceId, typename DataType> class Vector;
+template<Device DeviceId, typename DataType, U64 Dimensions = 1> class Vector;
 
-template<typename DataType>
+template<typename DataType, U64 Dimensions>
 class VectorImpl {
  public:
+    using ShapeType = std::array<U64, Dimensions>;
+    
     VectorImpl()
-             : _data(nullptr),
-               _size(0),
+             : _shape({0}),
+               _data(nullptr),
                _refs(nullptr),
                _destructor(nullptr) {}
 
-    explicit VectorImpl(void* ptr, const U64& size)
-             : _data(static_cast<DataType*>(ptr)),
-               _size(size),
+    explicit VectorImpl(void* ptr, const ShapeType& shape)
+             : _shape(shape),
+               _data(static_cast<DataType*>(ptr)),
                _refs(nullptr),
                _destructor(nullptr) {}
 
     explicit VectorImpl(const VectorImpl& other)
-             : _data(other.data()),
-               _size(other.size()),
-               _refs(other.refs()),
+             : _shape(other._shape),
+               _data(other._data),
+               _refs(other._refs),
                _destructor(other._destructor),
                _destructorList(other._destructorList) {
         increaseRefCount();
     }
 
     explicit VectorImpl(VectorImpl&& other)
-             : _data(nullptr),
-               _size(0),
+             : _shape({0}),
+               _data(nullptr),
                _refs(nullptr),
                _destructor(nullptr) { 
         std::swap(_data, other._data);
-        std::swap(_size, other._size);
+        std::swap(_shape, other._shape);
         std::swap(_refs, other._refs);
         std::swap(_destructor, other._destructor);
         std::swap(_destructorList, other._destructorList);
@@ -49,7 +51,7 @@ class VectorImpl {
     VectorImpl& operator=(VectorImpl& other) {
         decreaseRefCount();
         _data = other._data;
-        _size = other._size;
+        _shape = other._shape;
         _refs = other._refs;
         _destructor = other._destructor;
         _destructorList = other._destructorList;
@@ -63,7 +65,7 @@ class VectorImpl {
         decreaseRefCount();
         reset();
         std::swap(_data, other._data);
-        std::swap(_size, other._size);
+        std::swap(_shape, other._shape);
         std::swap(_refs, other._refs);
         std::swap(_destructor, other._destructor);
         std::swap(_destructorList, other._destructorList);
@@ -80,6 +82,10 @@ class VectorImpl {
     }
 
     constexpr const U64 size() const noexcept {
+        U64 _size = 1;
+        for (const auto& dim : _shape) {
+            _size *= dim;
+        }
         return _size; 
     }
 
@@ -88,6 +94,10 @@ class VectorImpl {
             return 0;
         }
         return _refs;
+    }
+
+    constexpr const ShapeType& shape() const noexcept {
+        return _shape;
     }
 
     constexpr const U64 hash() const noexcept {
@@ -102,11 +112,19 @@ class VectorImpl {
         return (_data == nullptr);
     }
 
-    constexpr DataType& operator[](U64 idx) {
+    constexpr DataType& operator[](const ShapeType& shape) {
+        return _data[shapeToOffset(shape)];
+    }
+
+    constexpr const DataType& operator[](const ShapeType& shape) const {
+        return operator[](shape);
+    }
+
+    constexpr DataType& operator[](const U64& idx) {
         return _data[idx];
     }
 
-    constexpr const DataType& operator[](U64 idx) const {
+    constexpr const DataType& operator[](const U64& idx) const {
         return _data[idx];
     }
 
@@ -127,15 +145,16 @@ class VectorImpl {
     }
 
  protected:
+    ShapeType _shape;
     DataType* _data;
-    U64 _size;
     U64* _refs;
+
     std::unordered_map<std::string, void*> _destructorList;
     std::function<void(std::unordered_map<std::string, void*>&)> _destructor;
 
-    explicit VectorImpl(const U64& size)
-             : _data(nullptr),
-               _size(size),
+    explicit VectorImpl(const ShapeType& shape)
+             : _shape(shape),
+               _data(nullptr),
                _refs(nullptr) {}
 
     void decreaseRefCount() {
@@ -158,9 +177,21 @@ class VectorImpl {
     void reset() {
         _data = nullptr;
         _refs = nullptr;
-        _size = 0;
+        _shape = ShapeType({0});
         _destructor = nullptr;
         _destructorList.clear();
+    }
+
+    const U64 shapeToOffset(const ShapeType& shape) {
+        U64 offset = 0;
+        for (U64 i = 0; i < shape.size(); i++) {
+            U64 product = shape[i];
+            for (U64 j = i + 1; j < shape.size(); j++) {
+                product *= _shape[j];
+            }
+            offset += product;
+        }
+        return offset;
     }
 };
 

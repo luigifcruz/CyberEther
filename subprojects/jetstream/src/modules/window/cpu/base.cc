@@ -9,7 +9,7 @@ Window<D, T>::Window(const Config& config,
     JST_DEBUG("Initializing Window module.");
 
     // Initialize output.
-    JST_CHECK_THROW(this->initOutput(this->output.window, getWindowSize()));
+    JST_CHECK_THROW(this->initOutput(this->output.window, {getWindowSize()}));
 
     // Generate FFT window.
     for (U64 i = 0; i < this->config.size; i++) {

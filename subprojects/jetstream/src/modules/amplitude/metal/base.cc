@@ -63,7 +63,7 @@ const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     metal.state = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, nullptr, nullptr);
     assert(metal.state);
 
-    metal.constants = Vector<Device::CPU, U8>(sizeof(MetalConstants));
+    metal.constants = Vector<Device::CPU, U8>({sizeof(MetalConstants)});
     (*reinterpret_cast<MetalConstants*>(metal.constants.data())).scalingSize = config.size;
 
     return Result::SUCCESS;

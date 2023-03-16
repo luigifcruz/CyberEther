@@ -6,12 +6,6 @@ template<>
 const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create FFT compute core using Metal backend.");
 
-    // auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
-    // auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
-    // auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
-    // cpu.fftPlanCF32 = fftwf_plan_dft_1d(config.size, inBuf, outBuf, direction, FFTW_MEASURE);
-
-
     // TODO: Leak.
     metal.app = new VkFFTApplication({});
 
@@ -44,7 +38,7 @@ const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta
 
     auto res = initializeVkFFT(metal.app, configuration);
     if (res != VKFFT_SUCCESS) {
-        JST_FATAL("{}", res);
+        JST_FATAL("{}", static_cast<int>(res));
         throw res;
     }
 
@@ -59,7 +53,7 @@ const Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     launchParams.commandEncoder = cmdEncoder;
     auto res = VkFFTAppend(metal.app, 0, &launchParams);
     if (res != VKFFT_SUCCESS) {
-        JST_FATAL("{}", res);
+        JST_FATAL("{}", static_cast<int>(res));
         throw res;
     }
     cmdEncoder->endEncoding();

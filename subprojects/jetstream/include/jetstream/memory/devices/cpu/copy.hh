@@ -6,9 +6,9 @@
 
 namespace Jetstream::Memory {
 
-template<typename DataType>
-static Result Copy(Vector<Device::CPU, DataType>& dst,
-                   const Vector<Device::CPU, DataType>& src) {
+template<typename DataType, U64 Dimensions>
+static Result Copy(Vector<Device::CPU, DataType, Dimensions>& dst,
+                   const Vector<Device::CPU, DataType, Dimensions>& src) {
     if (dst.size() != src.size()) {
         JST_FATAL("Size mismatch between source and destination ({}, {}).",
                 src.size(), dst.size());

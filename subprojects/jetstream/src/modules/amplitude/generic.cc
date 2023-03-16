@@ -9,8 +9,8 @@ Amplitude<D, IT, OT>::Amplitude(const Config& config,
     JST_DEBUG("Initializing Amplitude module.");
     
     // Initialize output.
-    JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
-    JST_CHECK_THROW(this->initOutput(this->output.buffer, getBufferSize()));
+    JST_CHECK_THROW(this->initInput(this->input.buffer, {getBufferSize()}));
+    JST_CHECK_THROW(this->initOutput(this->output.buffer, {getBufferSize()}));
 
     // Check parameters. 
     if (this->input.buffer.size() != this->config.size) {

@@ -8,8 +8,8 @@ FFT<D, T>::FFT(const Config& config,
          : config(config), input(input) {
     JST_DEBUG("Initializing FFT module.");
 
-    JST_CHECK_THROW(this->initInput(this->input.buffer, getBufferSize()));
-    JST_CHECK_THROW(this->initOutput(this->output.buffer, getBufferSize()));
+    JST_CHECK_THROW(this->initInput(this->input.buffer, {getBufferSize()}));
+    JST_CHECK_THROW(this->initOutput(this->output.buffer, {getBufferSize()}));
 
     // Check parameters. 
     if (this->input.buffer.size() != this->config.size) {

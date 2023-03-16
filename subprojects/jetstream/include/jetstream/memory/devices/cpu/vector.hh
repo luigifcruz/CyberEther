@@ -8,13 +8,14 @@
 
 namespace Jetstream {
 
-template<typename DataType>
-class JETSTREAM_API Vector<Device::CPU, DataType> : public VectorImpl<DataType> {
+template<typename DataType, U64 Dimensions>
+class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
-    using VectorImpl<DataType>::VectorImpl;
+    using VectorType = VectorImpl<DataType, Dimensions>;
+    using VectorImpl<DataType, Dimensions>::VectorImpl;
 
-    Vector(const U64& size) : VectorImpl<DataType>(size) {
-        JST_TRACE("New CPU vector allocated.");
+    Vector(const typename VectorType::ShapeType& shape) : VectorType(shape) {
+        JST_TRACE("New CPU vector created and allocated: ", shape);
 
         // Allocate memory.
 #ifdef JETSTREAM_CUDA_AVAILABLE

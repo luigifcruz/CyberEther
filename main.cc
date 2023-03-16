@@ -21,7 +21,7 @@ class SDR {
 
     SDR(const Config& config, Instance& instance)
          : config(config), 
-           data(config.outputBufferSize),
+           data({config.outputBufferSize}),
            buffer(config.outputBufferSize * config.bufferMultiplier) {
         streaming = true;
 

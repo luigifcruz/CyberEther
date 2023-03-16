@@ -9,9 +9,9 @@ Multiply<D, T>::Multiply(const Config& config,
     JST_DEBUG("Initializing Multiply module.");
     
     // Initialize output.
-    JST_CHECK_THROW(this->initInput(this->input.factorA, getBufferSize()));
-    JST_CHECK_THROW(this->initInput(this->input.factorB, getBufferSize()));
-    JST_CHECK_THROW(this->initOutput(this->output.product, getBufferSize()));
+    JST_CHECK_THROW(this->initInput(this->input.factorA, {getBufferSize()}));
+    JST_CHECK_THROW(this->initInput(this->input.factorB, {getBufferSize()}));
+    JST_CHECK_THROW(this->initOutput(this->output.product, {getBufferSize()}));
 
     // Check parameters. 
     if (this->input.factorA.size() != this->config.size) {

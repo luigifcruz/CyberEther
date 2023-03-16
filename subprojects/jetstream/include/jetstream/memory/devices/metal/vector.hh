@@ -6,13 +6,14 @@
 
 namespace Jetstream {
 
-template<typename DataType>
-class JETSTREAM_API Vector<Device::Metal, DataType> : public VectorImpl<DataType> {
+template<typename DataType, U64 Dimensions>
+class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
-    using VectorImpl<DataType>::VectorImpl;
+    using VectorType = VectorImpl<DataType, Dimensions>;
+    using VectorImpl<DataType, Dimensions>::VectorImpl;
 
-    Vector(const U64& size) : VectorImpl<DataType>(size) {
-        JST_TRACE("New Metal vector allocated.");
+    Vector(const typename VectorType::ShapeType& shape) : VectorType(shape) {
+        JST_TRACE("New Metal vector created and allocated: ", shape);
 
         // Allocate memory.
         void* memoryAddr = nullptr;
@@ -38,8 +39,6 @@ class JETSTREAM_API Vector<Device::Metal, DataType> : public VectorImpl<DataType
             free(list["_refs"]);
         };
     }
-
-
 };
 
 }  // namespace Jetstream

@@ -42,7 +42,7 @@ const Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
     metal.state = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, nullptr, nullptr);
     assert(metal.state);
 
-    metal.constants = Vector<Device::CPU, U8>(sizeof(MetalConstants));
+    metal.constants = Vector<Device::CPU, U8>({sizeof(MetalConstants)});
 
     return Result::SUCCESS;
 }

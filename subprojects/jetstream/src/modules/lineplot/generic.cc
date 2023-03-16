@@ -15,7 +15,7 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     
     // Generate Grid coordinates.
     {
-        grid = Vector<Device::CPU, F32>(20 * 12);
+        grid = Vector<Device::CPU, F32>({20 * 12});
         int j = 0;
         for (float i = -1.0f; i < +1.0f; i += 0.10f) {
             grid[j++] = -1.0f;
@@ -35,7 +35,7 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     
     // Generate Plot coordinates.
     {
-        plot = Vector<Device::CPU, F32>(getBufferSize() * 3);
+        plot = Vector<Device::CPU, F32>({getBufferSize() * 3});
         int j = 0;
         for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
             plot[j++] = i;
