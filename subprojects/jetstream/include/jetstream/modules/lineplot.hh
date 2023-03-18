@@ -57,8 +57,8 @@ class Lineplot : public Module, public Compute, public Present {
     const Input input;
     Output output;
 
-    Vector<Device::CPU, F32> plot;
-    Vector<Device::CPU, F32> grid;
+    Vector<D, F32> plot;
+    Vector<D, F32> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;

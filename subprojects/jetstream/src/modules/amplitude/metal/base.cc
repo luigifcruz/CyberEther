@@ -63,7 +63,7 @@ const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     metal.state = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, nullptr, nullptr);
     assert(metal.state);
 
-    metal.constants = Vector<Device::CPU, U8>({sizeof(MetalConstants)});
+    metal.constants = Vector<Device::Metal, U8>({sizeof(MetalConstants)});
     (*reinterpret_cast<MetalConstants*>(metal.constants.data())).scalingSize = config.size;
 
     return Result::SUCCESS;
@@ -73,9 +73,9 @@ template<Device D, typename IT, typename OT>
 const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     auto cmdEncoder = meta.metal.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(metal.state);
-    cmdEncoder->setBuffer(metal.constants.buffer(), 0, 0);
-    cmdEncoder->setBuffer(input.buffer.buffer(), 0, 1);
-    cmdEncoder->setBuffer(output.buffer.buffer(), 0, 2);
+    cmdEncoder->setBuffer(metal.constants, 0, 0);
+    cmdEncoder->setBuffer(input.buffer, 0, 1);
+    cmdEncoder->setBuffer(output.buffer, 0, 2);
     cmdEncoder->dispatchThreads(
             MTL::Size(output.buffer.size(), 1, 1),
             MTL::Size(metal.state->maxTotalThreadsPerThreadgroup(), 1, 1)

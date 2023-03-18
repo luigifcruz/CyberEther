@@ -34,7 +34,7 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     metal.state = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, nullptr, nullptr);
     assert(metal.state);
 
-    frequencyBins = Vector<Device::CPU, F32>({input.buffer.size() * config.viewSize.height});
+    frequencyBins = Vector<Device::Metal, F32>({input.buffer.size() * config.viewSize.height});
 
     return Result::SUCCESS;
 }
@@ -55,8 +55,8 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
 
     auto cmdEncoder = meta.metal.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(metal.state);
-    cmdEncoder->setBuffer(input.buffer.buffer(), 0, 0);
-    cmdEncoder->setBuffer(frequencyBins.buffer(), 0, 1);
+    cmdEncoder->setBuffer(input.buffer, 0, 0);
+    cmdEncoder->setBuffer(frequencyBins, 0, 1);
     cmdEncoder->dispatchThreads(
             MTL::Size(input.buffer.size(), 1, 1),
             MTL::Size(metal.state->maxTotalThreadsPerThreadgroup(), 1, 1)
@@ -65,7 +65,7 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     // cmdEncoder->release();
 
     auto blitEncoder = meta.metal.commandBuffer->blitCommandEncoder();
-    blitEncoder->synchronizeResource(frequencyBins.buffer());
+    blitEncoder->synchronizeResource(frequencyBins);
     blitEncoder->endEncoding();
     // blitEncoder->release();   
 

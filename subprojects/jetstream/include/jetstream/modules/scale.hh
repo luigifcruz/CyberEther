@@ -17,13 +17,11 @@ class Scale : public Module, public Compute {
     };
 
     struct Input {
-        // TODO: Modify back.
-        const Vector<Device::CPU, T>& buffer;
+        const Vector<D, T>& buffer;
     };
 
     struct Output {
-        // TODO: Modify back.
-        Vector<Device::CPU, T> buffer;
+        Vector<D, T> buffer;
     };
 
     explicit Scale(const Config& config,
@@ -43,8 +41,7 @@ class Scale : public Module, public Compute {
         return this->config.size;
     }
 
-    // TODO: Modify back.
-    constexpr const Vector<Device::CPU, T>& getOutputBuffer() const {
+    constexpr const Vector<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -78,7 +75,7 @@ class Scale : public Module, public Compute {
 
     struct {
         MTL::ComputePipelineState* state;
-        Vector<Device::CPU, U8> constants;
+        Vector<Device::Metal, U8> constants;
     } metal;
 #endif
 };

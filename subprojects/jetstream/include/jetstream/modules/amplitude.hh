@@ -16,13 +16,11 @@ class Amplitude : public Module, public Compute {
     };
 
     struct Input {
-        // TODO: Change back.
-        const Vector<Device::CPU, IT>& buffer;
+        const Vector<D, IT>& buffer;
     };
 
     struct Output {
-        // TODO: Change back.
-        Vector<Device::CPU, OT> buffer;
+        Vector<D, OT> buffer;
     };
 
     explicit Amplitude(const Config& config,
@@ -42,8 +40,7 @@ class Amplitude : public Module, public Compute {
         return this->config.size;
     }
 
-    // TODO: Change back.
-    constexpr const Vector<Device::CPU, OT>& getOutputBuffer() const {
+    constexpr const Vector<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -67,7 +64,7 @@ class Amplitude : public Module, public Compute {
 
     struct {
         MTL::ComputePipelineState* state;
-        Vector<Device::CPU, U8> constants;
+        Vector<Device::Metal, U8> constants;
     } metal;
 #endif
 };

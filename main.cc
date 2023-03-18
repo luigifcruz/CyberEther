@@ -43,7 +43,7 @@ class SDR {
         producer.join();
     }
 
-    constexpr const Vector<Device::CPU, CF32>& getOutputBuffer() const {
+    constexpr const Vector<Device::Metal, CF32>& getOutputBuffer() const {
         return data;
     }
 
@@ -66,7 +66,7 @@ class SDR {
 
     Config config;
     bool streaming = false;
-    Vector<Device::CPU, CF32> data;
+    Vector<Device::Metal, CF32> data;
     Memory::CircularBuffer<CF32> buffer;
 
     SoapySDR::Device* device;
@@ -121,7 +121,7 @@ class UI {
         JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
 
         // Configure Jetstream
-        win = instance.addBlock<Window, Device::CPU>({
+        win = instance.addBlock<Window, Device::Metal>({
             .size = sdr.getOutputBuffer().size(),
         }, {});
 
@@ -183,7 +183,7 @@ class UI {
     Instance& instance;
     bool streaming = false;
 
-    std::shared_ptr<Window<Device::CPU>> win;
+    std::shared_ptr<Window<Device::Metal>> win;
     std::shared_ptr<Multiply<Device::Metal>> mul;
     std::shared_ptr<FFT<Device::Metal>> fft;
     std::shared_ptr<Amplitude<Device::Metal>> amp;

@@ -31,5 +31,9 @@ void Window<D, T>::summary() const {
 
 template class Window<Device::CPU, CF64>;
 template class Window<Device::CPU, CF32>;
-    
+
+// TODO: Make this compile with non-Metal devices.
+template class Window<Device::Metal, CF64>;
+template class Window<Device::Metal, CF32>;
+
 }  // namespace Jetstream

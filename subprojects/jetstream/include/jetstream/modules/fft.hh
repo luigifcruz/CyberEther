@@ -31,13 +31,11 @@ class FFT : public Module, public Compute {
     };
 
     struct Input {
-        // TODO: Change back.
-        const Vector<Device::CPU, T>& buffer;
+        const Vector<D, T>& buffer;
     };
 
     struct Output {
-        // TODO: Change back.
-        Vector<Device::CPU, T> buffer;
+        Vector<D, T> buffer;
     };
 
     explicit FFT(const Config& config, 
@@ -57,8 +55,7 @@ class FFT : public Module, public Compute {
         return this->config.size;
     }
 
-    // TODO: Change back.
-    constexpr const Vector<Device::CPU, T>& getOutputBuffer() const {
+    constexpr const Vector<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

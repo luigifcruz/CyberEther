@@ -31,8 +31,8 @@ const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta
     configuration.inputBufferSize = new U64(bufferSize);
     configuration.outputBufferSize = new U64(bufferSize);
     
-    metal.input = input.buffer.buffer();
-    metal.output = output.buffer.buffer();
+    metal.input = const_cast<Vector<Device::Metal, CF32>&>(input.buffer);
+    metal.output = output.buffer;
     configuration.inputBuffer = &metal.input;
     configuration.outputBuffer = &metal.output;
 

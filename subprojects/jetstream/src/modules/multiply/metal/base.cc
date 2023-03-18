@@ -46,9 +46,9 @@ template<Device D, typename T>
 const Result Multiply<D, T>::compute(const RuntimeMetadata& meta) {
     auto cmdEncoder = meta.metal.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(metal.state);
-    cmdEncoder->setBuffer(input.factorA.buffer(), 0, 0);
-    cmdEncoder->setBuffer(input.factorB.buffer(), 0, 1);
-    cmdEncoder->setBuffer(output.product.buffer(), 0, 2);
+    cmdEncoder->setBuffer(input.factorA, 0, 0);
+    cmdEncoder->setBuffer(input.factorB, 0, 1);
+    cmdEncoder->setBuffer(output.product, 0, 2);
     cmdEncoder->dispatchThreads(
             MTL::Size(output.product.size(), 1, 1),
             MTL::Size(metal.state->maxTotalThreadsPerThreadgroup(), 1, 1)

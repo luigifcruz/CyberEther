@@ -16,14 +16,12 @@ class Multiply : public Module, public Compute {
     };
 
     struct Input {
-        // TODO: Change this to Device::Metal. 
-        const Vector<Device::CPU, T>& factorA;
-        const Vector<Device::CPU, T>& factorB;
+        const Vector<D, T>& factorA;
+        const Vector<D, T>& factorB;
     };
 
     struct Output {
-        // TODO: Change this to Device::Metal. 
-        Vector<Device::CPU, T> product;
+        Vector<D, T> product;
     };
 
     explicit Multiply(const Config& config,
@@ -43,8 +41,7 @@ class Multiply : public Module, public Compute {
         return this->config.size;
     }
 
-    // TODO: Change this to Device::Metal. 
-    constexpr const Vector<Device::CPU, T>& getProductBuffer() const {
+    constexpr const Vector<D, T>& getProductBuffer() const {
         return this->output.product;
     }
 
