@@ -14,7 +14,6 @@ namespace Jetstream {
 class JETSTREAM_API Instance {
  public:
     Instance() : commited(false) {};
-    ~Instance();
 
     template<class Viewport>
     const Result buildViewport(const typename Viewport::Config& config) {
@@ -82,7 +81,8 @@ class JETSTREAM_API Instance {
         return block;
     }    
 
-    const Result commit();
+    const Result create();
+    const Result destroy();
 
     const Result compute();
 

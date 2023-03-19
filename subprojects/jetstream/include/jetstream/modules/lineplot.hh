@@ -7,6 +7,7 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/render/extras.hh"
+#include "jetstream/graph/base.hh"
 
 namespace Jetstream {
 

@@ -11,6 +11,7 @@ namespace Jetstream {
 template<typename DataType, U64 Dimensions>
 class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
+    // TODO: Remove. Explicitly add constructors here.
     using VectorType = VectorImpl<DataType, Dimensions>;
     using VectorImpl<DataType, Dimensions>::VectorImpl;
 
@@ -61,20 +62,36 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
     // Overloads for MTL::Buffer.
 
     operator const MTL::Buffer*() const {
+        if (!this->_refs) {
+            JST_FATAL("Using buffer from unmanaged Vector.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return _buffer;
     }
 
     operator MTL::Buffer*() {
+        if (!this->_refs) {
+            JST_FATAL("Using buffer from unmanaged Vector.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return _buffer;
     }
 
     // Overloads for Vector<Device::CPU>.
 
     operator const Vector<Device::CPU, DataType, Dimensions>&() const {
+        if (!this->_refs) {
+            JST_FATAL("Using buffer from unmanaged Vector.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return _cpu;
     }
 
     operator Vector<Device::CPU, DataType, Dimensions>&() {
+        if (!this->_refs) {
+            JST_FATAL("Using buffer from unmanaged Vector.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return _cpu;
     }
 

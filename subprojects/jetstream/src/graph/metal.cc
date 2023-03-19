@@ -23,6 +23,8 @@ const Result Metal::createCompute() {
 const Result Metal::compute() {
     Result err = Result::SUCCESS;
 
+    loopPool = NS::AutoreleasePool::alloc()->init();
+
     metadata->metal.commandBuffer = metadata->metal.commandQueue->commandBuffer();
 
     for (const auto& block : blocks) {
@@ -35,9 +37,48 @@ const Result Metal::compute() {
 
     metadata->metal.commandBuffer->commit();
     metadata->metal.commandBuffer->waitUntilCompleted();
-    // metadata->metal.commandBuffer->release();
+
+    loopPool->release();
 
     return err;
+}
+
+const Result Metal::destroyCompute() {
+    for (const auto& block : blocks) {
+        JST_CHECK(block->destroyCompute(*metadata));
+    }
+
+    return Result::SUCCESS;
+}
+
+const Result Metal::CompileKernel(const char* shaderSrc,
+                                  const char* methodName, 
+                                  MTL::ComputePipelineState** pipelineState) {
+    auto device = Backend::State<Device::Metal>()->getDevice();
+
+    NS::Error* err = nullptr;
+    MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
+    NS::String* source = NS::String::string(shaderSrc, NS::ASCIIStringEncoding);
+    auto library = device->newLibrary(source, opts, &err);
+    if (!library) {
+        JST_FATAL("Error while compiling kernel library:\n{}", err->description()->utf8String());
+        return Result::ERROR;
+    }
+
+    auto functionName = NS::String::string(methodName, NS::ASCIIStringEncoding);
+    auto kernel = library->newFunction(functionName);
+    if (!kernel) {
+        JST_FATAL("Error while creating Metal function.");
+        return Result::ERROR;
+    }
+
+    if (*pipelineState = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, 
+                                                        nullptr, nullptr); !*pipelineState) {
+        JST_FATAL("Error while creating Metal pipeline state.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

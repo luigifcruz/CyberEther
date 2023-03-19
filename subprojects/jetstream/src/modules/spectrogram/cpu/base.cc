@@ -12,6 +12,11 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
+const Result Spectrogram<D, T>::viewSizeCallback() {
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
 const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     for (U64 x = 0; x < input.buffer.size() * config.viewSize.height; x++) {
         frequencyBins[x] *= 0.999; 

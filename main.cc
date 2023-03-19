@@ -158,12 +158,12 @@ class UI {
         wtf = instance.addBlock<Waterfall, Device::CPU>({}, {
             .buffer = scl->getOutputBuffer(),
         });
-        //
-        // spc = instance.addBlock<Spectrogram, Device::CPU>({}, {
-        //     .buffer = scl->getOutputBuffer(),
-        // });
 
-        JST_CHECK_THROW(instance.commit());
+        spc = instance.addBlock<Spectrogram, Device::Metal>({}, {
+            .buffer = scl->getOutputBuffer(),
+        });
+
+        JST_CHECK_THROW(instance.create());
 
         streaming = true;
         worker = std::thread([&]{ this->threadLoop(); });
@@ -172,6 +172,7 @@ class UI {
     ~UI() {
         streaming = false;
         worker.join();
+        instance.destroy();
 
         JST_DEBUG("The UI was destructed.");
     }
@@ -190,7 +191,7 @@ class UI {
     std::shared_ptr<Scale<Device::Metal>> scl;
     std::shared_ptr<Lineplot<Device::CPU>> lpt;
     std::shared_ptr<Waterfall<Device::CPU>> wtf;
-    std::shared_ptr<Spectrogram<Device::CPU>> spc;
+    std::shared_ptr<Spectrogram<Device::Metal>> spc;
 
     ImVec2 getRelativeMousePos() {
         ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
@@ -229,16 +230,16 @@ class UI {
 
                 ImGui::End();
             }
-            //
-            // {
-            //     ImGui::Begin("Spectrogram");
-            //
-            //     auto [x, y] = ImGui::GetContentRegionAvail();
-            //     auto [width, height] = spc->viewSize({(U64)x, (U64)y});
-            //     ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
-            //
-            //     ImGui::End();
-            // }
+
+            {
+                ImGui::Begin("Spectrogram");
+
+                auto [x, y] = ImGui::GetContentRegionAvail();
+                auto [width, height] = spc->viewSize({(U64)x, (U64)y});
+                ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
+
+                ImGui::End();
+            }
 
             {
                 ImGui::Begin("Lineplot");

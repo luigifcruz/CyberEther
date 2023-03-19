@@ -7,6 +7,7 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/render/extras.hh"
+#include "jetstream/graph/base.hh"
 
 namespace Jetstream {
 
@@ -92,10 +93,18 @@ class Spectrogram : public Module, public Compute, public Present {
 
  private:
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+    struct MetalConstants {
+        U64 width;
+        U64 height;
+    };
+
     struct {
         MTL::ComputePipelineState* state;
+        Vector<Device::Metal, U8> constants;
     } metal;
 #endif
+
+    const Result viewSizeCallback();
     
     //
     // Metal

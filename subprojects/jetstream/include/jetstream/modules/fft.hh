@@ -5,6 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 #include "jetstream/memory/base.hh"
+#include "jetstream/graph/base.hh"
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
 #include <fftw3.h>
@@ -65,6 +66,7 @@ class FFT : public Module, public Compute {
 
  protected:
     const Result createCompute(const RuntimeMetadata& meta) final;
+    const Result destroyCompute(const RuntimeMetadata& meta) final;
     const Result compute(const RuntimeMetadata& meta) final;
 
  private:
@@ -81,9 +83,10 @@ class FFT : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
     struct {
-        MTL::Buffer* input;
-        MTL::Buffer* output;
         VkFFTApplication* app;
+        VkFFTConfiguration* configuration;
+        const MTL::Buffer* input;
+        MTL::Buffer* output;
     } metal;
 #endif
 };

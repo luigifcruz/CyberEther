@@ -121,6 +121,7 @@ const Render::Size2D<U64>& Spectrogram<D, T>::viewSize(const Render::Size2D<U64>
                 viewSize.height);
 
         this->config.viewSize = surface->size();
+        this->viewSizeCallback();
     }
     return this->viewSize();
 }

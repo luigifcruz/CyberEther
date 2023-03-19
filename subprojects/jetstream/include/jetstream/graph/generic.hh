@@ -15,10 +15,11 @@ class Graph {
     virtual ~Graph() = default;
 
     const Result schedule(const std::shared_ptr<Compute>& block);
-    virtual const Result createCompute() = 0;
-
-    virtual const Result compute() = 0;
     virtual constexpr const Device device() const = 0;
+
+    virtual const Result createCompute() = 0;
+    virtual const Result compute() = 0;
+    virtual const Result destroyCompute() = 0;
 
  protected:
     std::shared_ptr<RuntimeMetadata> metadata;

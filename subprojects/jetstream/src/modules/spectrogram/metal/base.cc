@@ -3,76 +3,73 @@
 namespace Jetstream {
 
 static const char shadersSrc[] = R"""(
-        #include <metal_stdlib>
+    #include <metal_stdlib>
 
-        using namespace metal;
+    using namespace metal;
 
-        kernel void multiply(
-            const device float *input [[ buffer(0) ]],
-            device float *bins [[ buffer(1) ]],
-            uint id[[ thread_position_in_grid ]])
-        {
-            bins[id] *= 0.999;
+    struct Constants {
+        uint64_t width;
+        uint64_t height;
+    };
+
+    kernel void spectrogram(constant Constants& constants [[ buffer(0) ]],
+                            const device float *input [[ buffer(1) ]],
+                            device float *bins [[ buffer(2) ]],
+                            uint2 gid[[ thread_position_in_grid ]]) {
+        uint id = gid.y * constants.width + gid.x;
+
+        bins[id] *= 0.999;
+
+        if (gid.y == 0) {
+            uint16_t dS = input[id] * constants.height;
+            if (dS < constants.height && dS > 0) {
+                bins[id + (dS * constants.width)] += 0.02;
+            }
         }
-    )""";
+    }
+)""";
 
 template<Device D, typename T>
 const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
-    NS::Error* err = nullptr;
-    auto device = Backend::State<Device::Metal>()->getDevice();
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
-    NS::String* source = NS::String::string(shadersSrc, NS::ASCIIStringEncoding);
-    auto library = device->newLibrary(source, opts, &err);
-    if (!library) {
-        JST_FATAL("Library error:\n{}", err->description()->utf8String());
-        return Result::ERROR;
-    }
-    auto kernel = library->newFunction(NS::String::string("multiply", NS::ASCIIStringEncoding));
-    assert(kernel);
-    metal.state = device->newComputePipelineState(kernel, MTL::PipelineOptionNone, nullptr, nullptr);
-    assert(metal.state);
+    auto& assets = metal;
 
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "spectrogram", &assets.state));
+    auto* constants = Metal::CreateConstants<MetalConstants>(assets);
+    constants->width = input.buffer.size();
+    constants->height = config.viewSize.height; 
     frequencyBins = Vector<Device::Metal, F32>({input.buffer.size() * config.viewSize.height});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
-    // for (U64 x = 0; x < input.buffer.size() * config.viewSize.height; x++) {
-    //     frequencyBins[x] *= 0.999; 
-    // }
-    //
-    // for (U64 x = 0; x < input.buffer.size(); x++) {
-    //     U16 index = input.buffer[x] * config.viewSize.height;
-    //
-    //     if (index < config.viewSize.height && index > 0) {
-    //         frequencyBins[x + (index * input.buffer.size())] += 0.02; 
-    //     }
-    // }
-
-    auto cmdEncoder = meta.metal.commandBuffer->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(metal.state);
-    cmdEncoder->setBuffer(input.buffer, 0, 0);
-    cmdEncoder->setBuffer(frequencyBins, 0, 1);
-    cmdEncoder->dispatchThreads(
-            MTL::Size(input.buffer.size(), 1, 1),
-            MTL::Size(metal.state->maxTotalThreadsPerThreadgroup(), 1, 1)
-        );
-    cmdEncoder->endEncoding();
-    // cmdEncoder->release();
-
-    auto blitEncoder = meta.metal.commandBuffer->blitCommandEncoder();
-    blitEncoder->synchronizeResource(frequencyBins);
-    blitEncoder->endEncoding();
-    // blitEncoder->release();   
+const Result Spectrogram<D, T>::viewSizeCallback() {
+    auto& assets = metal;
+    auto* constants = Metal::Constants<MetalConstants>(assets);
+    constants->height = config.viewSize.height;
 
     return Result::SUCCESS;
 }
 
-// template class Spectrogram<Device::CPU, F64>;
+template<Device D, typename T>
+const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
+    auto& assets = metal;
+    auto& runtime = meta.metal;
+
+    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
+    cmdEncoder->setComputePipelineState(assets.state);
+    cmdEncoder->setBuffer(assets.constants, 0, 0);
+    cmdEncoder->setBuffer(input.buffer, 0, 1);
+    cmdEncoder->setBuffer(frequencyBins, 0, 2);
+    cmdEncoder->dispatchThreads(MTL::Size(input.buffer.size(), config.viewSize.height, 1),
+                                MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
+    cmdEncoder->endEncoding();
+
+    return Result::SUCCESS;
+}
+
 template class Spectrogram<Device::Metal, F32>;
 
 }  // namespace Jetstream

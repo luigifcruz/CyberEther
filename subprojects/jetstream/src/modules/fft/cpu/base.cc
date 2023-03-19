@@ -15,6 +15,13 @@ const Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) 
 }
 
 template<>
+const Result FFT<Device::CPU, CF32>::destroyCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Destroy FFT compute core using CPU backend.");
+
+    return Result::SUCCESS;
+}
+
+template<>
 const Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata& meta) {
     fftwf_execute(cpu.fftPlanCF32);
 

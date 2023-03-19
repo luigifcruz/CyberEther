@@ -9,6 +9,7 @@ namespace Jetstream {
 template<typename DataType, U64 Dimensions>
 class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
+    // TODO: Remove. Explicitly add constructors here.
     using VectorType = VectorImpl<DataType, Dimensions>;
     using VectorImpl<DataType, Dimensions>::VectorImpl;
 

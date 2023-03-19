@@ -5,6 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 #include "jetstream/memory/base.hh"
+#include "jetstream/graph/base.hh"
 
 namespace Jetstream {
 
