@@ -130,9 +130,8 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Implement compute batches.
 - TODO: Properly release Metal graph objects.
 - TODO: Port remaining modules to Metal.
-- TODO: Remove FFTW as a loader.
+- TODO: Implement compute batches.
 - TODO: Print Compute and Present trees.
 - TODO: Implement Memory-based compute graphs.
