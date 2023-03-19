@@ -56,8 +56,10 @@ const Result Metal::CompileKernel(const char* shaderSrc,
                                   MTL::ComputePipelineState** pipelineState) {
     auto device = Backend::State<Device::Metal>()->getDevice();
 
-    NS::Error* err = nullptr;
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
+    opts->setFastMathEnabled(true);
+
+    NS::Error* err = nullptr;
     NS::String* source = NS::String::string(shaderSrc, NS::ASCIIStringEncoding);
     auto library = device->newLibrary(source, opts, &err);
     if (!library) {
