@@ -94,8 +94,8 @@ class Spectrogram : public Module, public Compute, public Present {
  private:
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
-        U64 width;
-        U64 height;
+        U32 width;
+        U32 height;
     };
 
     struct {

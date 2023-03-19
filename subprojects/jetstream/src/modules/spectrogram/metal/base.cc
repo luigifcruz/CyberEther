@@ -8,8 +8,8 @@ static const char shadersSrc[] = R"""(
     using namespace metal;
 
     struct Constants {
-        uint64_t width;
-        uint64_t height;
+        uint width;
+        uint height;
     };
 
     kernel void spectrogram(constant Constants& constants [[ buffer(0) ]],
@@ -17,14 +17,14 @@ static const char shadersSrc[] = R"""(
                             device float *bins [[ buffer(2) ]],
                             uint2 gid[[ thread_position_in_grid ]]) {
         uint id = gid.y * constants.width + gid.x;
-
         bins[id] *= 0.999;
 
         if (gid.y == 0) {
-            uint16_t dS = input[id] * constants.height;
-            if (dS < constants.height && dS > 0) {
-                bins[id + (dS * constants.width)] += 0.02;
-            }
+            ushort min = 0;
+            ushort max = constants.height;
+            ushort val = input[id] * constants.height;
+            ushort off = clamp(val, min, max);
+            bins[id + (off * constants.width)] += 0.02;
         }
     }
 )""";
