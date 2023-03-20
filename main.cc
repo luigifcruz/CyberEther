@@ -151,11 +151,11 @@ class UI {
             .buffer = amp->getOutputBuffer(),
         });
 
-        lpt = instance.addBlock<Lineplot, Device::CPU>({}, {
+        lpt = instance.addBlock<Lineplot, Device::Metal>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        wtf = instance.addBlock<Waterfall, Device::CPU>({}, {
+        wtf = instance.addBlock<Waterfall, Device::Metal>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
@@ -189,8 +189,8 @@ class UI {
     std::shared_ptr<FFT<Device::Metal>> fft;
     std::shared_ptr<Amplitude<Device::Metal>> amp;
     std::shared_ptr<Scale<Device::Metal>> scl;
-    std::shared_ptr<Lineplot<Device::CPU>> lpt;
-    std::shared_ptr<Waterfall<Device::CPU>> wtf;
+    std::shared_ptr<Lineplot<Device::Metal>> lpt;
+    std::shared_ptr<Waterfall<Device::Metal>> wtf;
     std::shared_ptr<Spectrogram<Device::Metal>> spc;
 
     ImVec2 getRelativeMousePos() {

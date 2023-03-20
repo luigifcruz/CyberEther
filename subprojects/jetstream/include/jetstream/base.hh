@@ -43,11 +43,13 @@
 // Graphical
 // 
 
-#ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE)
 #include "jetstream/modules/lineplot.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE)
 #include "jetstream/modules/waterfall.hh"
 #endif
 

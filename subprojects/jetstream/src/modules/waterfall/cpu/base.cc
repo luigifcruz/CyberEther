@@ -3,16 +3,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
-    JST_TRACE("Create Waterfall compute core using Metal backend.");
-
-    frequencyBins = Vector<Device::CPU, F32>({input.buffer.size() * config.height});
-
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-const Result Waterfall<D, T>::underlyingCompute() {
+const Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
     std::copy(input.buffer.data(), input.buffer.data() + input.buffer.size(), 
               frequencyBins.begin() + (inc * input.buffer.size()));
 

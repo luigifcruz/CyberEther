@@ -101,7 +101,7 @@ const Result Spectrogram<D, T>::present(Render::Window& window) {
     shaderUniforms.zoom = 1.0;
     shaderUniforms.width = input.buffer.size();
     shaderUniforms.height = config.viewSize.height;
-    shaderUniforms.interpolate = true;
+    shaderUniforms.interpolate = false;
     shaderUniforms.index = 0.0 / (float)shaderUniforms.height;
     shaderUniforms.offset = 0.0 / (float)config.viewSize.width;
     shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;

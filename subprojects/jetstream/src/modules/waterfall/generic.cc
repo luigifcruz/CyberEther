@@ -20,6 +20,16 @@ void Waterfall<D, T>::summary() const {
 }
 
 template<Device D, typename T>
+const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Create Waterfall compute core.");
+
+    // TODO: Make this compile in non-Metal devices.
+    frequencyBins = Vector<D, F32>({input.buffer.size() * config.height});
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
 const Result Waterfall<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
@@ -100,7 +110,7 @@ const Result Waterfall<D, T>::createPresent(Render::Window& window) {
 
 template<Device D, typename T>
 const Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
-    auto res = this->underlyingCompute();
+    auto res = this->underlyingCompute(meta);
     inc = (inc + 1) % config.height;
     return res;
 }

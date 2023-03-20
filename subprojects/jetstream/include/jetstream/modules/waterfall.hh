@@ -88,7 +88,7 @@ class Waterfall : public Module, public Compute, public Present {
     } shaderUniforms;
 
     int inc = 0, last = 0, ymax = 0;
-    Vector<Device::CPU, F32> frequencyBins;
+    Vector<D, F32> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -110,7 +110,7 @@ class Waterfall : public Module, public Compute, public Present {
     const Result present(Render::Window& window) final;
 
  private:
-    const Result underlyingCompute();
+    const Result underlyingCompute(const RuntimeMetadata& meta);
 
     //
     // Metal
