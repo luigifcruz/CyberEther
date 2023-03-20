@@ -27,8 +27,9 @@ static const char shadersSrc[] = R"""(
         ushort min = 0;
         ushort max = constants.height;
         ushort val = input[id] * constants.height;
-        ushort off = clamp(val, min, max);
-        bins[id + (val * constants.width)] += 0.01;
+        if (val > min && val < max) {
+            bins[id + (val * constants.width)] += 0.01;
+        }
     }
 
 )""";
@@ -86,7 +87,7 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         cmdEncoder->setBuffer(input.buffer, 0, 1);
         cmdEncoder->setBuffer(frequencyBins, 0, 2);
 
-        auto w = assets.stateDecay->threadExecutionWidth();
+        auto w = assets.stateDecay->maxTotalThreadsPerThreadgroup();
         auto threadsPerThreadgroup = MTL::Size(w, 1, 1);
         auto threadsPerGrid = MTL::Size(input.buffer.size(), 1, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
