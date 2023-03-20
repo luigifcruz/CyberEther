@@ -99,7 +99,8 @@ class Spectrogram : public Module, public Compute, public Present {
     };
 
     struct {
-        MTL::ComputePipelineState* state;
+        MTL::ComputePipelineState* stateDecay;
+        MTL::ComputePipelineState* stateActivate;
         Vector<Device::Metal, U8> constants;
     } metal;
 #endif
