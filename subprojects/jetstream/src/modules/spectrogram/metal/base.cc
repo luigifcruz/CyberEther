@@ -13,7 +13,7 @@ static const char shadersSrc[] = R"""(
     };
 
     kernel void spectrogram(constant Constants& constants [[ buffer(0) ]],
-                            const device float *input [[ buffer(1) ]],
+                            constant const float *input [[ buffer(1) ]],
                             device float *bins [[ buffer(2) ]],
                             uint2 gid[[ thread_position_in_grid ]]) {
         uint id = gid.y * constants.width + gid.x;

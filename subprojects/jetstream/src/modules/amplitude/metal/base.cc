@@ -36,7 +36,7 @@ static const char shadersSrc[] = R"""(
     };
 
     kernel void amplitude(constant Constants& constants [[ buffer(0) ]],
-                          const device float2 *input [[ buffer(1) ]],
+                          constant const float2 *input [[ buffer(1) ]],
                           device float *output [[ buffer(2) ]],
                           uint id[[ thread_position_in_grid ]]) {
         output[id] = 20.0 * log10(jsAbs(input[id]) / constants.scalingSize);

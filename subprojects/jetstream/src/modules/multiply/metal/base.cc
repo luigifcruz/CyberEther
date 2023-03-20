@@ -7,8 +7,8 @@ static const char shadersSrc[] = R"""(
 
     using namespace metal;
 
-    kernel void multiply(const device float *factorA [[ buffer(0) ]],
-                         const device float *factorB [[ buffer(1) ]],
+    kernel void multiply(constant const float *factorA [[ buffer(0) ]],
+                         constant const float *factorB [[ buffer(1) ]],
                          device float *product [[ buffer(2) ]],
                          uint id[[ thread_position_in_grid ]]) {
         uint index = id * 2;

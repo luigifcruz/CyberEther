@@ -14,7 +14,7 @@ static const char shadersSrc[] = R"""(
     };
 
     kernel void scale(constant Constants& constants [[ buffer(0) ]],
-                      const device float *input [[ buffer(1) ]],
+                      constant const float *input [[ buffer(1) ]],
                       device float *output [[ buffer(2) ]],
                       uint id[[ thread_position_in_grid ]]) {
         // TODO: Can cache constants.max - constants.min.
