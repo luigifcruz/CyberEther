@@ -9,7 +9,7 @@ const Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) 
     auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
     auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
     auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
-    cpu.fftPlanCF32 = fftwf_plan_dft_1d(config.size, inBuf, outBuf, direction, FFTW_MEASURE);
+    cpu.fftPlanCF32 = fftwf_plan_dft_1d(input.buffer.shape(1), inBuf, outBuf, direction, FFTW_MEASURE);
 
     return Result::SUCCESS;
 }

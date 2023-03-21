@@ -44,9 +44,9 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
 
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->width = input.buffer.size();
+    constants->width = input.buffer.shape(1);
     constants->height = config.viewSize.height; 
-    frequencyBins = Vector<Device::Metal, F32>({input.buffer.size() * config.viewSize.height});
+    frequencyBins = Vector<Device::Metal, F32>({input.buffer.shape(1) * config.viewSize.height});
 
     return Result::SUCCESS;
 }
@@ -74,7 +74,7 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.size(), config.viewSize.height, 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), config.viewSize.height, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -89,7 +89,7 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
 
         auto w = assets.stateDecay->maxTotalThreadsPerThreadgroup();
         auto threadsPerThreadgroup = MTL::Size(w, 1, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.size(), 1, 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), 1, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();

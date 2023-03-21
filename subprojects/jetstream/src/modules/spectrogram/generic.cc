@@ -99,7 +99,7 @@ const Result Spectrogram<D, T>::present(Render::Window& window) {
     binTexture->update(0, frequencyBins.size());
 
     shaderUniforms.zoom = 1.0;
-    shaderUniforms.width = input.buffer.size();
+    shaderUniforms.width = input.buffer.shape(1);
     shaderUniforms.height = config.viewSize.height;
     shaderUniforms.interpolate = false;
     shaderUniforms.index = 0.0 / (float)shaderUniforms.height;

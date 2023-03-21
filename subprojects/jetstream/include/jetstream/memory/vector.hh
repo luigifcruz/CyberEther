@@ -100,6 +100,10 @@ class VectorImpl {
         return _shape;
     }
 
+    constexpr const U64& shape(const U64& index) const noexcept {
+        return _shape[index];
+    }
+
     constexpr const U64 hash() const noexcept {
         return std::hash<void*>{}(this->_data);
     }
@@ -117,7 +121,7 @@ class VectorImpl {
     }
 
     constexpr const DataType& operator[](const ShapeType& shape) const {
-        return operator[](shape);
+        return _data[shapeToOffset(shape)];
     }
 
     constexpr DataType& operator[](const U64& idx) {
@@ -182,7 +186,7 @@ class VectorImpl {
         _destructorList.clear();
     }
 
-    const U64 shapeToOffset(const ShapeType& shape) {
+    const U64 shapeToOffset(const ShapeType& shape) const {
         U64 offset = 0;
         for (U64 i = 0; i < shape.size(); i++) {
             U64 product = shape[i];

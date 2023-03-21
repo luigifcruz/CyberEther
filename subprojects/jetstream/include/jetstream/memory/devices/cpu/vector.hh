@@ -14,7 +14,7 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
     using VectorImpl<DataType, Dimensions>::VectorImpl;
 
     Vector(const typename VectorType::ShapeType& shape) : VectorType(shape) {
-        JST_TRACE("New CPU vector created and allocated: ", shape);
+        JST_TRACE("New CPU vector created and allocated: {}", shape);
 
         // Allocate memory.
 #ifdef JETSTREAM_CUDA_AVAILABLE

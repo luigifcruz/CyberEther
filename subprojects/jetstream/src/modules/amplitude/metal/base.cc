@@ -51,7 +51,7 @@ const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->scalingSize = config.size;
+    constants->scalingSize = this->input.buffer.shape(1);
 
     return Result::SUCCESS;
 }

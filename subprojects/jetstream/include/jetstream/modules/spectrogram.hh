@@ -19,7 +19,7 @@ class Spectrogram : public Module, public Compute, public Present {
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        const Vector<D, IT, 2>& buffer;
     };
 
     struct Output {
@@ -37,10 +37,6 @@ class Spectrogram : public Module, public Compute, public Present {
     }
 
     void summary() const final;
-
-    constexpr const U64 getBufferSize() const {
-        return input.buffer.size();
-    }
 
     constexpr const Config getConfig() const {
         return config;

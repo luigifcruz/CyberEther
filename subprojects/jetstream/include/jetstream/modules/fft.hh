@@ -27,16 +27,15 @@ template<Device D, typename T = CF32>
 class FFT : public Module, public Compute {
  public:
     struct Config {
-        U64 size;
         Direction direction = Direction::Forward;
     };
 
     struct Input {
-        const Vector<D, T>& buffer;
+        const Vector<D, T, 2>& buffer;
     };
 
     struct Output {
-        Vector<D, T> buffer;
+        Vector<D, T, 2> buffer;
     };
 
     explicit FFT(const Config& config, 
@@ -52,11 +51,7 @@ class FFT : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const U64 getBufferSize() const {
-        return this->config.size;
-    }
-
-    constexpr const Vector<D, T>& getOutputBuffer() const {
+    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

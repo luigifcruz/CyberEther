@@ -9,22 +9,16 @@ Multiply<D, T>::Multiply(const Config& config,
     JST_DEBUG("Initializing Multiply module.");
     
     // Initialize output.
-    JST_CHECK_THROW(this->initInput(this->input.factorA, {getBufferSize()}));
-    JST_CHECK_THROW(this->initInput(this->input.factorB, {getBufferSize()}));
-    JST_CHECK_THROW(this->initOutput(this->output.product, {getBufferSize()}));
+    JST_CHECK_THROW(this->initInput(this->input.factorA));
+    JST_CHECK_THROW(this->initInput(this->input.factorB));
+    JST_CHECK_THROW(this->initOutput(this->output.product, this->input.factorA.shape()));
 
     // Check parameters. 
-    if (this->input.factorA.size() != this->config.size) {
-        JST_FATAL("Input A size ({}) is different than the" \
-            "configuration size ({}).", this->input.factorA.size(),
-            this->config.size);
-        JST_CHECK_THROW(Result::ERROR);
-    }
-
-    if (this->input.factorB.size() != this->config.size) {
-        JST_FATAL("Input B size ({}) is different than the" \
-            "configuration size ({}).", this->input.factorB.size(), 
-            this->config.size);
+    if (this->input.factorA.shape(1) != this->input.factorB.shape(1)) {
+        JST_FATAL("Input A shape ({}) is different than the" \
+            "Input B shape ({}).",
+            this->input.factorA.shape(),
+            this->input.factorB.shape());
         JST_CHECK_THROW(Result::ERROR);
     }
 }
@@ -32,7 +26,7 @@ Multiply<D, T>::Multiply(const Config& config,
 template<Device D, typename T>
 void Multiply<D, T>::summary() const {
     JST_INFO("===== Multiply Module Configuration");
-    JST_INFO("Size: {}", this->config.size);
+    JST_INFO("Shape: {}", this->input.factorA.shape());
     JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
 }
 

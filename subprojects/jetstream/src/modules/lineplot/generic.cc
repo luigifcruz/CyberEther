@@ -35,9 +35,9 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     
     // Generate Plot coordinates.
     {
-        plot = Vector<D, F32>({getBufferSize() * 3});
+        plot = Vector<D, F32>({input.buffer.shape(1) * 3});
         int j = 0;
-        for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
+        for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)input.buffer.shape(1))) {
             plot[j++] = i;
             plot[j++] = +0.0f;
             plot[j++] = +0.0f;

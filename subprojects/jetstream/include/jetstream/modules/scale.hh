@@ -13,16 +13,15 @@ template<Device D, typename T = F32>
 class Scale : public Module, public Compute {
  public:
     struct Config {
-        U64 size;
         Range<T> range = {-1.0, +1.0};
     };
 
     struct Input {
-        const Vector<D, T>& buffer;
+        const Vector<D, T, 2>& buffer;
     };
 
     struct Output {
-        Vector<D, T> buffer;
+        Vector<D, T, 2> buffer;
     };
 
     explicit Scale(const Config& config,
@@ -38,11 +37,7 @@ class Scale : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const U64 getBufferSize() const {
-        return this->config.size;
-    }
-
-    constexpr const Vector<D, T>& getOutputBuffer() const {
+    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
