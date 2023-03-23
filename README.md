@@ -130,7 +130,6 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Fix Metal vector constructors.
 - TODO: Do bug hunt for batches for Metal.
 - TODO: Implement compute batches for CPU.
 - TODO: Properly release Metal graph objects.

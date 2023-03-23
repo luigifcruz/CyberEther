@@ -36,7 +36,7 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
 
-        buffer = std::move(T(shape));
+        buffer = T(shape);
 
         return Result::SUCCESS;
     }
