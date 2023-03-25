@@ -17,7 +17,7 @@ namespace Jetstream {
 // Device
 //
 
-enum class Device : uint8_t {
+enum class JETSTREAM_API Device : uint8_t {
     None    = 1 << 0,
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
     CPU     = 1 << 1,

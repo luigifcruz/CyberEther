@@ -9,6 +9,8 @@
 
 using namespace Jetstream;
 
+constexpr static Device CurrentDevice = Device::Metal;
+
 class SDR {
  public:
     struct Config {
@@ -44,7 +46,7 @@ class SDR {
         producer.join();
     }
 
-    constexpr const Vector<Device::Metal, CF32, 2>& getOutputBuffer() const {
+    constexpr const Vector<CurrentDevice, CF32, 2>& getOutputBuffer() const {
         return data;
     }
 
@@ -67,7 +69,7 @@ class SDR {
 
     Config config;
     bool streaming = false;
-    Vector<Device::Metal, CF32, 2> data;
+    Vector<CurrentDevice, CF32, 2> data;
     Memory::CircularBuffer<CF32> buffer;
 
     SoapySDR::Device* device;
@@ -119,41 +121,41 @@ class UI {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
-        JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
+        JST_CHECK_THROW(instance.buildWindow<Device::Metal`>(renderCfg));
 
         // Configure Jetstream
-        win = instance.addBlock<Window, Device::Metal>({
+        win = instance.addBlock<Window, CurrentDevice>({
             .shape = sdr.getOutputBuffer().shape(),
         }, {});
 
-        mul = instance.addBlock<Multiply, Device::Metal>({}, {
+        mul = instance.addBlock<Multiply, CurrentDevice>({}, {
             .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, Device::Metal>({}, {
+        fft = instance.addBlock<FFT, CurrentDevice>({}, {
             .buffer = mul->getProductBuffer(),
         });
 
-        amp = instance.addBlock<Amplitude, Device::Metal>({}, {
+        amp = instance.addBlock<Amplitude, CurrentDevice>({}, {
             .buffer = fft->getOutputBuffer(),
         });
 
-        scl = instance.addBlock<Scale, Device::Metal>({
+        scl = instance.addBlock<Scale, CurrentDevice>({
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
         });
 
-        lpt = instance.addBlock<Lineplot, Device::Metal>({}, {
+        lpt = instance.addBlock<Lineplot, CurrentDevice>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        wtf = instance.addBlock<Waterfall, Device::Metal>({}, {
+        wtf = instance.addBlock<Waterfall, CurrentDevice>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        spc = instance.addBlock<Spectrogram, Device::Metal>({}, {
+        spc = instance.addBlock<Spectrogram, CurrentDevice>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
@@ -178,14 +180,14 @@ class UI {
     Instance& instance;
     bool streaming = false;
 
-    std::shared_ptr<Window<Device::Metal>> win;
-    std::shared_ptr<Multiply<Device::Metal>> mul;
-    std::shared_ptr<FFT<Device::Metal>> fft;
-    std::shared_ptr<Amplitude<Device::Metal>> amp;
-    std::shared_ptr<Scale<Device::Metal>> scl;
-    std::shared_ptr<Lineplot<Device::Metal>> lpt;
-    std::shared_ptr<Waterfall<Device::Metal>> wtf;
-    std::shared_ptr<Spectrogram<Device::Metal>> spc;
+    std::shared_ptr<Window<CurrentDevice>> win;
+    std::shared_ptr<Multiply<CurrentDevice>> mul;
+    std::shared_ptr<FFT<CurrentDevice>> fft;
+    std::shared_ptr<Amplitude<CurrentDevice>> amp;
+    std::shared_ptr<Scale<CurrentDevice>> scl;
+    std::shared_ptr<Lineplot<CurrentDevice>> lpt;
+    std::shared_ptr<Waterfall<CurrentDevice>> wtf;
+    std::shared_ptr<Spectrogram<CurrentDevice>> spc;
 
     ImVec2 getRelativeMousePos() {
         ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
