@@ -93,6 +93,18 @@ class VectorImpl {
         return _data + size();
     }
 
+    const U64 shapeToOffset(const ShapeType& shape) const {
+        U64 offset = 0;
+        for (U64 i = 0; i < shape.size(); i++) {
+            U64 product = shape[i];
+            for (U64 j = i + 1; j < shape.size(); j++) {
+                product *= _shape[j];
+            }
+            offset += product;
+        }
+        return offset;
+    }
+
     VectorImpl(VectorImpl&&) = delete;
     VectorImpl& operator=(VectorImpl&&) = delete;
 
@@ -177,18 +189,6 @@ class VectorImpl {
         _refs = nullptr;
         _shape = ShapeType({0});
         _destructors = nullptr;
-    }
-
-    const U64 shapeToOffset(const ShapeType& shape) const {
-        U64 offset = 0;
-        for (U64 i = 0; i < shape.size(); i++) {
-            U64 product = shape[i];
-            for (U64 j = i + 1; j < shape.size(); j++) {
-                product *= _shape[j];
-            }
-            offset += product;
-        }
-        return offset;
     }
 };
 
