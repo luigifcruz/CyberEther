@@ -15,6 +15,8 @@ template<Device D, typename IT = F32>
 class Lineplot : public Module, public Compute, public Present {
  public:
     struct Config {
+        U64 numberOfVerticalLines = 20;
+        U64 numberOfHorizontalLines = 5;
         Render::Size2D<U64> viewSize = {4096, 512};
     };
 
@@ -54,8 +56,8 @@ class Lineplot : public Module, public Compute, public Present {
     const Input input;
     Output output;
 
-    Vector<D, F32> plot;
-    Vector<D, F32> grid;
+    Vector<D, F32, 2> plot;
+    Vector<D, F32, 3> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;
@@ -74,10 +76,23 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Draw> drawLineVertex;
 
     const Result createCompute(const RuntimeMetadata& meta) final;
+    const Result underlyingCreateCompute(const RuntimeMetadata& meta);
     const Result compute(const RuntimeMetadata& meta) final;
 
     const Result createPresent(Render::Window& window) final;
     const Result present(Render::Window& window) final;
+
+#ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
+    struct MetalConstants {
+        uint16_t batchSize;
+        uint16_t gridSize;
+    };
+
+    struct {
+        MTL::ComputePipelineState* state;
+        Vector<Device::Metal, U8> constants;
+    } metal;
+#endif
 
  private:
     //
@@ -104,13 +119,9 @@ class Lineplot : public Module, public Compute, public Present {
             float3 vert = vertexArray[vID];
             TexturePipelineRasterizerData out;
 
-            float min_x = 0.0;
-            float max_x = 1.0;
-            float y = (2.0 * ((vert.y - min_x)/(max_x - min_x)) - 1.0);
-            out.position = vector_float4(vert.x, y, vert.z, 1.0);
-
-            float pos = (y + 1.0)/2.0;
+            float pos = (vert.y + 1.0)/2.0;
             out.texcoord = vector_float2(pos, 0.0);
+            out.position = vector_float4(vert.x, vert.y, vert.z, 1.0);
 
             return out;
         }
