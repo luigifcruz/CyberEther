@@ -9,7 +9,7 @@
 
 using namespace Jetstream;
 
-constexpr static Device CurrentDevice = Device::Metal;
+constexpr static Device CurrentDevice = Device::CPU;
 
 class SDR {
  public:
@@ -121,7 +121,7 @@ class UI {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
-        JST_CHECK_THROW(instance.buildWindow<Device::Metal`>(renderCfg));
+        JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
 
         // Configure Jetstream
         win = instance.addBlock<Window, CurrentDevice>({
