@@ -23,8 +23,7 @@ template<Device D, typename T>
 const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Waterfall compute core.");
 
-    // TODO: Make this compile in non-Metal devices.
-    frequencyBins = Vector<D, F32>({input.buffer.shape(1) * config.height});
+    frequencyBins = Vector<D, F32, 2>({input.buffer.shape(1),  config.height});
 
     return Result::SUCCESS;
 }

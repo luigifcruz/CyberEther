@@ -12,8 +12,8 @@ const Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
     const auto sampleByteSize = batchByteSize / input.buffer.shape(0);
     const auto offset = inc * sampleByteSize;
     const auto size = JST_MIN(batchByteSize, (config.height - inc) * sampleByteSize);
-    blitEncoder->copyFromBuffer(input.buffer, 0, frequencyBins, offset, size);
 
+    blitEncoder->copyFromBuffer(input.buffer, 0, frequencyBins, offset, size);
     if (size < batchByteSize) {
         blitEncoder->copyFromBuffer(input.buffer, size, 
             frequencyBins, 0, batchByteSize - size);

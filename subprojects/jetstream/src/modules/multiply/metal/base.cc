@@ -11,7 +11,7 @@ static const char shadersSrc[] = R"""(
                          constant const float *factorB [[ buffer(1) ]],
                          device float *product [[ buffer(2) ]],
                          uint id[[ thread_position_in_grid ]]) {
-        uint index = id * 2;
+        const uint index = id * 2;
         product[index + 0] = (factorA[index + 0] * (factorB[index + 0])) - 
                              (factorA[index + 1] * (factorB[index + 1]));
         product[index + 1] = (factorA[index + 0] * (factorB[index + 1])) + 
