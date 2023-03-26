@@ -19,7 +19,6 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
         const U64 num_rows = config.numberOfHorizontalLines;
         
         grid = Vector<D, F32, 3>({num_cols + num_rows, 2, 3});
-        std::fill(grid.begin(), grid.end(), 0.0f);
 
         const F32 x_step  = +2.0f / (num_cols - 1);
         const F32 y_step  = +2.0f / (num_rows - 1);
@@ -54,7 +53,6 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
         const U64 num_cols = input.buffer.shape(1);
 
         plot = Vector<D, F32, 2>({num_cols, 3});
-        std::fill(plot.begin(), plot.end(), 0.0f);
 
         for (U64 j = 0; j < num_cols; j++) {
             plot[{j, 0}] = j * 2.0f / (num_cols - 1) - 1.0f;

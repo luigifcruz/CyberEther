@@ -44,6 +44,9 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         }
         this->_destructors->push_back([ptr = this->_data]() { free(ptr); });
 
+        // Null out array.
+        std::fill(this->begin(), this->end(), 0.0f);
+
         allocateExtras();
     }
 
