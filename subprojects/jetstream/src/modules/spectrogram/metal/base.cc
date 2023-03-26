@@ -24,18 +24,15 @@ static const char shadersSrc[] = R"""(
 
     kernel void activate(constant Constants& constants [[ buffer(0) ]],
                             constant const float *input [[ buffer(1) ]],
-                            device float *bins [[ buffer(2) ]],
-                            uint id[[ thread_position_in_grid ]]) {
+                            device atomic_float *bins [[ buffer(2) ]],
+                            uint2 gid[[ thread_position_in_grid ]]) {
         const ushort min = 0;
         const ushort max = constants.height;
+        const uint offset = gid.y * constants.width;
+        const ushort val = input[gid.x + offset] * constants.height;
 
-        for (uint b = 0; b < constants.batchSize; b++) {
-            const uint offset = b * constants.width;
-            const ushort val = input[id + offset] * constants.height;
-
-            if (val > min && val < max) {
-                bins[id + (val * constants.width)] += 0.01;
-            }
+        if (val > min && val < max) {
+            atomic_fetch_add_explicit(&bins[gid.x + (val * constants.width)], 0.01f, memory_order_relaxed);
         }
     }
 )""";
@@ -97,9 +94,10 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         cmdEncoder->setBuffer(input.buffer, 0, 1);
         cmdEncoder->setBuffer(frequencyBins, 0, 2);
 
-        auto w = assets.stateDecay->maxTotalThreadsPerThreadgroup();
-        auto threadsPerThreadgroup = MTL::Size(w, 1, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), 1, 1);
+        auto w = assets.stateDecay->threadExecutionWidth();
+        auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
+        auto threadsPerThreadgroup = MTL::Size(w, h, 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), input.buffer.shape(0), 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();

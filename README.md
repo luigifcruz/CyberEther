@@ -130,8 +130,7 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Do bug hunt for batches for Metal.
-- TODO: Implement compute batches for CPU.
+- TODO: Fix spectrogram height.
 - TODO: Properly release Metal graph objects.
 - TODO: Implement Memory-based compute graphs.
 - TODO: Print Compute and Present trees.
