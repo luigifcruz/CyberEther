@@ -65,6 +65,7 @@ const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     lutTextureCfg.key = "LutTexture";
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
+    // TODO: This could use unified memory.
     Render::Buffer::Config uniformCfg;
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
@@ -96,16 +97,12 @@ const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 
 template<Device D, typename T>
 const Result Spectrogram<D, T>::present(Render::Window& window) {
-    binTexture->update(0, frequencyBins.size());
+    binTexture->update();
 
-    shaderUniforms.zoom = 1.0;
     shaderUniforms.width = input.buffer.shape(1);
-    shaderUniforms.height = config.viewSize.height;
-    shaderUniforms.interpolate = false;
-    shaderUniforms.index = 0.0 / (float)shaderUniforms.height;
-    shaderUniforms.offset = 0.0 / (float)config.viewSize.width;
-    shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;
-
+    shaderUniforms.height = config.height;
+    shaderUniforms.zoom = 1.0;
+    shaderUniforms.offset = 0.0;
     uniformBuffer->update();
 
     return Result::SUCCESS;
@@ -114,14 +111,13 @@ const Result Spectrogram<D, T>::present(Render::Window& window) {
 template<Device D, typename T>
 const Render::Size2D<U64>& Spectrogram<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
-        JST_DEBUG("Spectrogram size changed from {}x{} to {}x{}.", 
+        JST_TRACE("Spectrogram size changed from {}x{} to {}x{}.", 
                 config.viewSize.width, 
                 config.viewSize.height, 
                 viewSize.width, 
                 viewSize.height);
 
         this->config.viewSize = surface->size();
-        this->viewSizeCallback();
     }
     return this->viewSize();
 }
