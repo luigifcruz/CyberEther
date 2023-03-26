@@ -64,9 +64,8 @@ class Spectrogram : public Module, public Compute, public Present {
         bool interpolate;
     } shaderUniforms;
 
-    int inc = 0, last = 0, ymax = 0;
-    Vector<D, F32> intermediate; 
-    Vector<D, F32> frequencyBins;
+    F32 decayFactor;
+    Vector<D, F32, 2> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -92,6 +91,8 @@ class Spectrogram : public Module, public Compute, public Present {
     struct MetalConstants {
         U32 width;
         U32 height;
+        F32 decayFactor;
+        U32 batchSize;
     };
 
     struct {

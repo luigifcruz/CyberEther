@@ -288,6 +288,7 @@ class UI {
 
                 ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
                 ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
+                ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
 
                 ImGui::Separator();
                 ImGui::Spacing();

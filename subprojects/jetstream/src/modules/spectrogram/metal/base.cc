@@ -11,27 +11,33 @@ static const char shadersSrc[] = R"""(
     struct Constants {
         uint width;
         uint height;
+        float decayFactor;
+        uint batchSize;
     };
 
     kernel void decay(constant Constants& constants [[ buffer(0) ]],
-                            device float *bins [[ buffer(1) ]],
-                            uint2 gid[[ thread_position_in_grid ]]) {
-        uint id = gid.y * constants.width + gid.x;
-        bins[id] *= 0.999;
+                      device float *bins [[ buffer(1) ]],
+                      uint2 gid[[ thread_position_in_grid ]]) {
+        const uint id = gid.y * constants.width + gid.x;
+        bins[id] *= constants.decayFactor;
     }
 
     kernel void activate(constant Constants& constants [[ buffer(0) ]],
                             constant const float *input [[ buffer(1) ]],
                             device float *bins [[ buffer(2) ]],
                             uint id[[ thread_position_in_grid ]]) {
-        ushort min = 0;
-        ushort max = constants.height;
-        ushort val = input[id] * constants.height;
-        if (val > min && val < max) {
-            bins[id + (val * constants.width)] += 0.01;
+        const ushort min = 0;
+        const ushort max = constants.height;
+
+        for (uint b = 0; b < constants.batchSize; b++) {
+            const uint offset = b * constants.width;
+            const ushort val = input[id + offset] * constants.height;
+
+            if (val > min && val < max) {
+                bins[id + (val * constants.width)] += 0.01;
+            }
         }
     }
-
 )""";
 
 template<Device D, typename T>
@@ -43,10 +49,14 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &assets.stateDecay));
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
 
+    frequencyBins = Vector<Device::Metal, F32, 2>({input.buffer.shape(1), config.viewSize.height});
+    decayFactor = pow(0.999, input.buffer.shape(0));
+
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
     constants->width = input.buffer.shape(1);
     constants->height = config.viewSize.height; 
-    frequencyBins = Vector<Device::Metal, F32>({input.buffer.shape(1) * config.viewSize.height});
+    constants->decayFactor = decayFactor;
+    constants->batchSize = input.buffer.shape(0);
 
     return Result::SUCCESS;
 }
