@@ -55,7 +55,7 @@ class Amplitude : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
-        float scalingSize;
+        F32 scalingSize;
     };
 
     struct {

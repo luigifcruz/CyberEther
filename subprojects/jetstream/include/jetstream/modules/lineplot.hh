@@ -84,8 +84,8 @@ class Lineplot : public Module, public Compute, public Present {
 
 #ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
     struct MetalConstants {
-        uint16_t batchSize;
-        uint16_t gridSize;
+        U16 batchSize;
+        U16 gridSize;
     };
 
     struct {

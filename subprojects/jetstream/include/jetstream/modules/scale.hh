@@ -65,8 +65,8 @@ class Scale : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
-        float min;
-        float max;
+        F32 min;
+        F32 max;
     };
 
     struct {
