@@ -1,7 +1,5 @@
 #include "jetstream/memory/buffer.hh"
 
-#define MIN(a,b) (((a)<(b))?(a):(b))
-
 using namespace std::chrono_literals;
 
 namespace Jetstream::Memory {
@@ -46,7 +44,7 @@ const Result CircularBuffer<T>::get(T* buf, U64 size) {
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
-        U64 stage_a = MIN(size, getCapacity() - head);
+        U64 stage_a = JST_MIN(size, getCapacity() - head);
 
         std::copy_n(buffer.get() + head, stage_a, buf);
 
@@ -89,7 +87,7 @@ const Result CircularBuffer<T>::put(T* buf, U64 size) {
             head = tail;
         }
 
-        U64 stage_a = MIN(size, getCapacity() - tail);
+        U64 stage_a = JST_MIN(size, getCapacity() - tail);
         std::copy_n(buf, stage_a, buffer.get() + tail);
 
         if (stage_a < size) {

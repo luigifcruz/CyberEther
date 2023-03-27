@@ -4,6 +4,8 @@
 #include "jetstream/types.hh"
 #include "jetstream/memory/vector.hh"
 #include "jetstream/memory/buffer.hh"
+#include "jetstream/memory/macros.hh"
+#include "jetstream/memory/types.hh"
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 #include "jetstream/memory/devices/cpu/copy.hh"

@@ -9,19 +9,22 @@
 
 using namespace Jetstream;
 
+constexpr static Device CurrentDevice = Device::CPU;
+
 class SDR {
  public:
     struct Config {
         std::string deviceString;
         F64 frequency;
         F64 sampleRate;
+        U64 batchSize;
         U64 outputBufferSize;
         U64 bufferMultiplier = 1024*8;
     };
 
     SDR(const Config& config, Instance& instance)
          : config(config), 
-           data({config.outputBufferSize}),
+           data({config.batchSize, config.outputBufferSize}),
            buffer(config.outputBufferSize * config.bufferMultiplier) {
         streaming = true;
 
@@ -29,8 +32,8 @@ class SDR {
 
         consumer = std::thread([&]{
             while (streaming) {
-                if (buffer.getOccupancy() > config.outputBufferSize) {
-                    buffer.get(data.data(), config.outputBufferSize);
+                if (buffer.getOccupancy() > data.size()) {
+                    buffer.get(data.data(), data.size());
                     instance.compute();
                 }
             }
@@ -43,7 +46,7 @@ class SDR {
         producer.join();
     }
 
-    constexpr const Vector<Device::Metal, CF32>& getOutputBuffer() const {
+    constexpr const Vector<CurrentDevice, CF32, 2>& getOutputBuffer() const {
         return data;
     }
 
@@ -66,7 +69,7 @@ class SDR {
 
     Config config;
     bool streaming = false;
-    Vector<Device::Metal, CF32> data;
+    Vector<CurrentDevice, CF32, 2> data;
     Memory::CircularBuffer<CF32> buffer;
 
     SoapySDR::Device* device;
@@ -121,45 +124,38 @@ class UI {
         JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
 
         // Configure Jetstream
-        win = instance.addBlock<Window, Device::Metal>({
-            .size = sdr.getOutputBuffer().size(),
+        win = instance.addBlock<Window, CurrentDevice>({
+            .shape = sdr.getOutputBuffer().shape(),
         }, {});
 
-        mul = instance.addBlock<Multiply, Device::Metal>({
-            .size = sdr.getOutputBuffer().size(),
-        }, {
+        mul = instance.addBlock<Multiply, CurrentDevice>({}, {
             .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, Device::Metal>({
-            .size = sdr.getOutputBuffer().size(),
-        }, {
+        fft = instance.addBlock<FFT, CurrentDevice>({}, {
             .buffer = mul->getProductBuffer(),
         });
 
-        amp = instance.addBlock<Amplitude, Device::Metal>({
-            .size = sdr.getOutputBuffer().size(),
-        }, {
+        amp = instance.addBlock<Amplitude, CurrentDevice>({}, {
             .buffer = fft->getOutputBuffer(),
         });
 
-        scl = instance.addBlock<Scale, Device::Metal>({
-            .size = sdr.getOutputBuffer().size(),
+        scl = instance.addBlock<Scale, CurrentDevice>({
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
         });
 
-        lpt = instance.addBlock<Lineplot, Device::Metal>({}, {
+        lpt = instance.addBlock<Lineplot, CurrentDevice>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        wtf = instance.addBlock<Waterfall, Device::Metal>({}, {
+        wtf = instance.addBlock<Waterfall, CurrentDevice>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
-        spc = instance.addBlock<Spectrogram, Device::Metal>({}, {
+        spc = instance.addBlock<Spectrogram, CurrentDevice>({}, {
             .buffer = scl->getOutputBuffer(),
         });
 
@@ -184,14 +180,14 @@ class UI {
     Instance& instance;
     bool streaming = false;
 
-    std::shared_ptr<Window<Device::Metal>> win;
-    std::shared_ptr<Multiply<Device::Metal>> mul;
-    std::shared_ptr<FFT<Device::Metal>> fft;
-    std::shared_ptr<Amplitude<Device::Metal>> amp;
-    std::shared_ptr<Scale<Device::Metal>> scl;
-    std::shared_ptr<Lineplot<Device::Metal>> lpt;
-    std::shared_ptr<Waterfall<Device::Metal>> wtf;
-    std::shared_ptr<Spectrogram<Device::Metal>> spc;
+    std::shared_ptr<Window<CurrentDevice>> win;
+    std::shared_ptr<Multiply<CurrentDevice>> mul;
+    std::shared_ptr<FFT<CurrentDevice>> fft;
+    std::shared_ptr<Amplitude<CurrentDevice>> amp;
+    std::shared_ptr<Scale<CurrentDevice>> scl;
+    std::shared_ptr<Lineplot<CurrentDevice>> lpt;
+    std::shared_ptr<Waterfall<CurrentDevice>> wtf;
+    std::shared_ptr<Spectrogram<CurrentDevice>> spc;
 
     ImVec2 getRelativeMousePos() {
         ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
@@ -292,6 +288,7 @@ class UI {
 
                 ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
                 ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
+                ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
 
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -341,6 +338,7 @@ int main() {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
             .sampleRate = 30e6,
+            .batchSize = 8,
             .outputBufferSize = 2 << 10,
         }; 
         auto sdr = SDR(sdrConfig, instance);

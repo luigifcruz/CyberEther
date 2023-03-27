@@ -11,27 +11,30 @@ static const char shadersSrc[] = R"""(
     struct Constants {
         uint width;
         uint height;
+        float decayFactor;
+        uint batchSize;
     };
 
     kernel void decay(constant Constants& constants [[ buffer(0) ]],
-                            device float *bins [[ buffer(1) ]],
-                            uint2 gid[[ thread_position_in_grid ]]) {
-        uint id = gid.y * constants.width + gid.x;
-        bins[id] *= 0.999;
+                      device float *bins [[ buffer(1) ]],
+                      uint2 gid[[ thread_position_in_grid ]]) {
+        const uint id = gid.y * constants.width + gid.x;
+        bins[id] *= constants.decayFactor;
     }
 
     kernel void activate(constant Constants& constants [[ buffer(0) ]],
                             constant const float *input [[ buffer(1) ]],
-                            device float *bins [[ buffer(2) ]],
-                            uint id[[ thread_position_in_grid ]]) {
-        ushort min = 0;
-        ushort max = constants.height;
-        ushort val = input[id] * constants.height;
+                            device atomic_float *bins [[ buffer(2) ]],
+                            uint2 gid[[ thread_position_in_grid ]]) {
+        const ushort min = 0;
+        const ushort max = constants.height;
+        const uint offset = gid.y * constants.width;
+        const ushort val = input[gid.x + offset] * constants.height;
+
         if (val > min && val < max) {
-            bins[id + (val * constants.width)] += 0.01;
+            atomic_fetch_add_explicit(&bins[gid.x + (val * constants.width)], 0.01f, memory_order_relaxed);
         }
     }
-
 )""";
 
 template<Device D, typename T>
@@ -43,19 +46,14 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &assets.stateDecay));
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
 
+    frequencyBins = Vector<Device::Metal, F32, 2>({input.buffer.shape(1), config.height});
+    decayFactor = pow(0.999, input.buffer.shape(0));
+
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->width = input.buffer.size();
-    constants->height = config.viewSize.height; 
-    frequencyBins = Vector<Device::Metal, F32>({input.buffer.size() * config.viewSize.height});
-
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-const Result Spectrogram<D, T>::viewSizeCallback() {
-    auto& assets = metal;
-    auto* constants = Metal::Constants<MetalConstants>(assets);
-    constants->height = config.viewSize.height;
+    constants->width = input.buffer.shape(1);
+    constants->height = config.height; 
+    constants->decayFactor = decayFactor;
+    constants->batchSize = input.buffer.shape(0);
 
     return Result::SUCCESS;
 }
@@ -74,7 +72,7 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.size(), config.viewSize.height, 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), config.height, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -87,9 +85,10 @@ const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         cmdEncoder->setBuffer(input.buffer, 0, 1);
         cmdEncoder->setBuffer(frequencyBins, 0, 2);
 
-        auto w = assets.stateDecay->maxTotalThreadsPerThreadgroup();
-        auto threadsPerThreadgroup = MTL::Size(w, 1, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.size(), 1, 1);
+        auto w = assets.stateDecay->threadExecutionWidth();
+        auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
+        auto threadsPerThreadgroup = MTL::Size(w, h, 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), input.buffer.shape(0), 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();

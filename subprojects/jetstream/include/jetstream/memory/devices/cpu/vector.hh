@@ -9,19 +9,29 @@ namespace Jetstream {
 template<typename DataType, U64 Dimensions>
 class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
-    // TODO: Remove. Explicitly add constructors here.
     using VectorType = VectorImpl<DataType, Dimensions>;
-    using VectorImpl<DataType, Dimensions>::VectorImpl;
 
-    Vector(const typename VectorType::ShapeType& shape) : VectorType(shape) {
-        JST_TRACE("New CPU vector created and allocated: ", shape);
+    Vector() : VectorType() {}
+
+    explicit Vector(const Vector& other) : VectorType(other) {}
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    explicit Vector(const Vector<Device::Metal, DataType, Dimensions>& other)
+             : VectorType(other) {
+        allocateExtras();
+    }
+#endif
+
+    explicit Vector(void* ptr, const typename VectorType::ShapeType& shape)
+             : VectorType(ptr, shape) {
+        allocateExtras();
+    }
+
+    explicit Vector(const typename VectorType::ShapeType& shape)
+             : VectorType(nullptr, shape) {
+        JST_TRACE("New CPU vector created and allocated: {}", shape);
 
         // Allocate memory.
-#ifdef JETSTREAM_CUDA_AVAILABLE
-        BL_CUDA_CHECK(cudaMallocHost(&this->_data, this->size_bytes()), [&]{
-            JST_FATAL("Failed to allocate CPU memory: {}", err);
-        });
-#else
         void* memoryAddr = nullptr;
         const auto pageSize = JST_PAGESIZE();
         const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(this->size_bytes());
@@ -32,22 +42,26 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
             JST_FATAL("Failed to allocate CPU memory.");
             JST_CHECK_THROW(Result::ERROR);
         }
-#endif
-        this->_refs = new U64(1);
+        this->_destructors->push_back([ptr = this->_data]() { free(ptr); });
 
-        // Register allocated memory. 
-        this->_destructorList["_data"] = this->_data;
-        this->_destructorList["_refs"] = this->_refs;
+        // Null out array.
+        std::fill(this->begin(), this->end(), 0.0f);
 
-        // Register memory destructor.
-        this->_destructor = [](std::unordered_map<std::string, void*>& list){
-#ifdef JETSTREAM_CUDA_AVAILABLE
-            cudaFreeHost(list["_data"]);
-#else
-            free(list["_data"]);
-#endif
-            free(list["_refs"]);
-        };
+        allocateExtras();
+    }
+
+    Vector& operator=(const Vector& other) {
+        VectorType::operator=(other);
+        return *this;
+    }
+
+ private:
+    void allocateExtras() {
+        // Allocate reference counter.
+        if (!this->_refs) {
+            this->_refs = new U64(1);
+            this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
+        }
     }
 };
 

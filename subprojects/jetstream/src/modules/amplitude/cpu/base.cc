@@ -27,14 +27,16 @@ const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 
 template<Device D, typename IT, typename OT>
 const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
-    for (U64 i = 0; i < this->config.size; i++) {
-        this->output.buffer[i] = 20.0 * log10(abs(this->input.buffer[i]) / this->config.size);
+    const auto& fftSize = input.buffer.shape(1);
+
+    for (U64 i = 0; i < input.buffer.size(); i++) {
+        output.buffer[i] = 20.0 * log10(abs(input.buffer[i]) / fftSize);
     }
+
     return Result::SUCCESS;
 }
 
 template class Amplitude<Device::CPU, CF32>;
-// TODO: Add back.
-// template class Amplitude<Device::CPU, CF64>;
+template class Amplitude<Device::CPU, CF64>;
     
 }  // namespace Jetstream

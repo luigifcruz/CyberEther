@@ -13,15 +13,14 @@ template<Device D, typename IT = CF32, typename OT = F32>
 class Amplitude : public Module, public Compute {
  public:
     struct Config {
-        U64 size;
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        const Vector<D, IT, 2>& buffer;
     };
 
     struct Output {
-        Vector<D, OT> buffer;
+        Vector<D, OT, 2> buffer;
     };
 
     explicit Amplitude(const Config& config,
@@ -37,11 +36,7 @@ class Amplitude : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const U64 getBufferSize() const {
-        return this->config.size;
-    }
-
-    constexpr const Vector<D, OT>& getOutputBuffer() const {
+    constexpr const Vector<D, OT, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -60,7 +55,7 @@ class Amplitude : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
-        float scalingSize;
+        F32 scalingSize;
     };
 
     struct {

@@ -13,37 +13,54 @@ template<Device D, typename T>
 const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Lineplot compute core using CPU backend.");
     
-    // Generate Grid coordinates.
     {
-        grid = Vector<D, F32>({20 * 12});
-        int j = 0;
-        for (float i = -1.0f; i < +1.0f; i += 0.10f) {
-            grid[j++] = -1.0f;
-            grid[j++] = i;
-            grid[j++] = +0.0f;
-            grid[j++] = +1.0f;
-            grid[j++] = i;
-            grid[j++] = +0.0f;
-            grid[j++] = i;
-            grid[j++] = -1.0f;
-            grid[j++] = +0.0f;
-            grid[j++] = i;
-            grid[j++] = +1.0f;
-            grid[j++] = +0.0f;
+        // Generate Grid coordinates.
+        const U64 num_cols = config.numberOfVerticalLines;
+        const U64 num_rows = config.numberOfHorizontalLines;
+        
+        grid = Vector<D, F32, 3>({num_cols + num_rows, 2, 3});
+
+        const F32 x_step  = +2.0f / (num_cols - 1);
+        const F32 y_step  = +2.0f / (num_rows - 1);
+        const F32 x_start = -1.0f;
+        const F32 y_start = -1.0f;
+        const F32 x_end   = +1.0f;
+        const F32 y_end   = +1.0f;
+
+        for (U64 row = 0; row < num_rows; row++) {
+            const F32 y = y_start + row * y_step;
+            
+            grid[{row, 0, 0}] = x_start;
+            grid[{row, 0, 1}] = y;
+
+            grid[{row, 1, 0}] = x_end;
+            grid[{row, 1, 1}] = y;
         }
-    }
-    
-    // Generate Plot coordinates.
-    {
-        plot = Vector<D, F32>({getBufferSize() * 3});
-        int j = 0;
-        for (float i = -1.0f; i < +1.0f; i += 2.0f/((float)getBufferSize())) {
-            plot[j++] = i;
-            plot[j++] = +0.0f;
-            plot[j++] = +0.0f;
+
+        for (U64 col = 0; col < num_cols; col++) {
+            const F32 x = x_start + col * x_step;
+            
+            grid[{col + num_rows, 0, 0}] = x;
+            grid[{col + num_rows, 0, 1}] = y_start;
+
+            grid[{col + num_rows, 1, 0}] = x;
+            grid[{col + num_rows, 1, 1}] = y_end;
         }
     }
 
+    {
+        // Generate Plot coordinates.
+        const U64 num_cols = input.buffer.shape(1);
+
+        plot = Vector<D, F32, 2>({num_cols, 3});
+
+        for (U64 j = 0; j < num_cols; j++) {
+            plot[{j, 0}] = j * 2.0f / (num_cols - 1) - 1.0f;
+        }
+    }
+
+    JST_CHECK(underlyingCreateCompute(meta));
+    
     return Result::SUCCESS;
 }
 

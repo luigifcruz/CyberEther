@@ -16,17 +16,15 @@ const Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
 
 template<Device D, typename T>
 const Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
-    auto [min, max] = this->config.range;
+    auto [min, max] = config.range;
 
-    for (U64 i = 0; i < this->config.size; i++) {
-        this->output.buffer[i] = scale<T>(this->input.buffer[i], min, max);
+    for (U64 i = 0; i < input.buffer.size(); i++) {
+        output.buffer[i] = scale<T>(input.buffer[i], min, max);
     }
 
     return Result::SUCCESS;
 }
 
-// TODO: Put this back.
-// template class Scale<Device::CPU, F64>;
 template class Scale<Device::CPU, F32>;
     
 }  // namespace Jetstream

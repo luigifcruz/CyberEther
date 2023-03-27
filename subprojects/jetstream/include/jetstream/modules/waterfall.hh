@@ -23,7 +23,7 @@ class Waterfall : public Module, public Compute, public Present {
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        const Vector<D, IT, 2>& buffer;
     };
 
     struct Output {
@@ -41,10 +41,6 @@ class Waterfall : public Module, public Compute, public Present {
     }
 
     void summary() const final;
-
-    constexpr const U64 getBufferSize() const {
-        return input.buffer.size();
-    }
 
     constexpr const Config getConfig() const {
         return config;
@@ -88,7 +84,7 @@ class Waterfall : public Module, public Compute, public Present {
     } shaderUniforms;
 
     int inc = 0, last = 0, ymax = 0;
-    Vector<D, F32> frequencyBins;
+    Vector<D, F32, 2> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;

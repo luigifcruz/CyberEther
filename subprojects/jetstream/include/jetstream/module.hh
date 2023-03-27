@@ -20,16 +20,9 @@ class JETSTREAM_API Module {
     virtual constexpr const Taint taints() const = 0;
     
     template<typename T>
-    Result initInput(const T& buffer, const typename T::ShapeType& shape) {
+    Result initInput(const T& buffer) {
         if (buffer.empty()) {
-            JST_DEBUG("Input is empty, allocating.");
-            const_cast<T&>(buffer) = std::move(T(shape));
-            return Result::SUCCESS;
-        }
-
-        if (buffer.shape() != shape) {
-            JST_FATAL("Input shape ({}) doesn't match the configuration shape ({}).",
-                buffer.shape(), shape);
+            JST_FATAL("Module input can't be empty.");
             return Result::ERROR;
         }
 
@@ -43,7 +36,7 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
 
-        buffer = std::move(T(shape));
+        buffer = T(shape);
 
         return Result::SUCCESS;
     }

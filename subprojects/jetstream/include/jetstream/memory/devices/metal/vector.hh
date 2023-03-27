@@ -11,12 +11,31 @@ namespace Jetstream {
 template<typename DataType, U64 Dimensions>
 class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
-    // TODO: Remove. Explicitly add constructors here.
     using VectorType = VectorImpl<DataType, Dimensions>;
-    using VectorImpl<DataType, Dimensions>::VectorImpl;
 
-    Vector(const typename VectorType::ShapeType& shape) : VectorType(shape) {
-        JST_TRACE("New Metal vector created and allocated: ", shape);
+    Vector() : VectorType() {}
+
+    explicit Vector(const Vector& other)
+             : VectorType(other),
+               _metal(other._metal),
+               _cpu(other._cpu) {
+    }
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    explicit Vector(const Vector<Device::CPU, DataType, Dimensions>& other)
+             : VectorType(other) {
+        allocateExtras();     
+    }
+#endif
+
+    explicit Vector(void* ptr, const typename VectorType::ShapeType& shape)
+             : VectorType(ptr, shape) {
+        allocateExtras();
+    }
+
+    explicit Vector(const typename VectorType::ShapeType& shape) 
+             : VectorType(nullptr, shape) {
+        JST_TRACE("New Metal vector created and allocated: {}", shape);
 
         // Allocate memory.
         void* memoryAddr = nullptr;
@@ -29,75 +48,73 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
             JST_FATAL("Failed to allocate CPU memory.");
             JST_CHECK_THROW(Result::ERROR);
         }
+        this->_destructors->push_back([ptr = this->_data]() { free(ptr); });
 
-        this->_refs = new U64(1);
+        // Null out array.
+        std::fill(this->begin(), this->end(), 0.0f);
 
-        // Create MTL::Buffer.
-        auto device = Backend::State<Device::Metal>()->getDevice();
-        _buffer = device->newBuffer(this->_data,
-                                   JST_PAGE_ALIGNED_SIZE(this->size_bytes()), 
-                                   MTL::ResourceStorageModeShared,
-                                   nullptr); 
-        if (!_buffer) {
-            JST_FATAL("Couldn't allocate MTL::Buffer.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-
-        // Create unmanaged CPU buffer.
-        _cpu = Vector<Device::CPU, DataType, Dimensions>(this->data(), this->shape());
-
-        // Register allocated memory. 
-        this->_destructorList["_data"] = this->_data;
-        this->_destructorList["_refs"] = this->_refs;
-        this->_destructorList["_buffer"] = this->_buffer;
-        
-        // Register memory destructor.
-        this->_destructor = [](std::unordered_map<std::string, void*>& list){
-            free(list["_data"]);
-            free(list["_refs"]);
-            reinterpret_cast<MTL::Buffer*>(list["_buffer"])->release();
-        };
+        allocateExtras();
     }
 
-    // Overloads for MTL::Buffer.
+    Vector& operator=(const Vector& other) {
+        VectorType::operator=(other);
+        _metal = other._metal;
+        _cpu = other._cpu;
+        return *this;
+    }
+
+    // Expose overloads for MTL::Buffer.
 
     operator const MTL::Buffer*() const {
-        if (!this->_refs) {
-            JST_FATAL("Using buffer from unmanaged Vector.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return _buffer;
+        return this->_metal;
     }
 
     operator MTL::Buffer*() {
-        if (!this->_refs) {
-            JST_FATAL("Using buffer from unmanaged Vector.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return _buffer;
+        return this->_metal;
     }
 
-    // Overloads for Vector<Device::CPU>.
+    // Expose overloads for Vector<Device::CPU>.
 
     operator const Vector<Device::CPU, DataType, Dimensions>&() const {
-        if (!this->_refs) {
-            JST_FATAL("Using buffer from unmanaged Vector.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return _cpu;
+        return this->_cpu;
     }
 
     operator Vector<Device::CPU, DataType, Dimensions>&() {
-        if (!this->_refs) {
-            JST_FATAL("Using buffer from unmanaged Vector.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return _cpu;
+        return this->_cpu;
     }
 
  private:
-    MTL::Buffer* _buffer;
-    Vector<Device::CPU, DataType, Dimensions> _cpu; 
+    MTL::Buffer* _metal;
+    Vector<Device::CPU, DataType, Dimensions> _cpu;
+
+    void allocateExtras() {
+        // Check if memory is aligned.
+        if (!JST_IS_ALIGNED(this->data())) {
+            JST_FATAL("Memory pointer is not aligned. Can't create vector.");
+            JST_CHECK_THROW(Result::SUCCESS);
+        }
+
+        // Allocate reference counter.
+        if (!this->_refs) {
+            this->_refs = new U64(1);
+            this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
+        }
+
+        // Create MTL::Buffer.
+        auto device = Backend::State<Device::Metal>()->getDevice();
+        this->_metal = device->newBuffer(this->_data,
+                                         JST_PAGE_ALIGNED_SIZE(this->size_bytes()), 
+                                         MTL::ResourceStorageModeShared,
+                                         nullptr); 
+        if (!this->_metal) {
+            JST_FATAL("Couldn't allocate MTL::Buffer.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
+        this->_destructors->push_back([ptr = this->_metal]() { reinterpret_cast<MTL::Buffer*>(ptr)->release(); });
+
+        // Create unmanaged CPU buffer.
+        this->_cpu = Vector<Device::CPU, DataType, Dimensions>(*this);
+    }
 };
 
 }  // namespace Jetstream
