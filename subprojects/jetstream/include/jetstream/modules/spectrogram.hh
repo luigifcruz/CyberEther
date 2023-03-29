@@ -7,6 +7,7 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/render/extras.hh"
+#include "jetstream/graph/base.hh"
 
 namespace Jetstream {
 
@@ -14,11 +15,12 @@ template<Device D, typename IT = F32>
 class Spectrogram : public Module, public Compute, public Present {
  public:
     struct Config {
+        U64 height = 256;
         Render::Size2D<U64> viewSize = {4096, 512};
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        const Vector<D, IT, 2>& buffer;
     };
 
     struct Output {
@@ -37,10 +39,6 @@ class Spectrogram : public Module, public Compute, public Present {
 
     void summary() const final;
 
-    constexpr const U64 getBufferSize() const {
-        return input.buffer.size();
-    }
-
     constexpr const Config getConfig() const {
         return config;
     }
@@ -58,18 +56,14 @@ class Spectrogram : public Module, public Compute, public Present {
     Output output;
 
     struct {
-        int width;
-        int height;
-        int maxSize;
-        float index;
-        float offset;
-        float zoom;
-        bool interpolate;
+        U32 width;
+        U32 height;
+        F32 offset;
+        F32 zoom;
     } shaderUniforms;
 
-    int inc = 0, last = 0, ymax = 0;
-    Vector<Device::CPU, F32> intermediate; 
-    Vector<Device::CPU, F32> frequencyBins;
+    F32 decayFactor;
+    Vector<D, F32, 2> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -91,37 +85,41 @@ class Spectrogram : public Module, public Compute, public Present {
     const Result present(Render::Window& window) final;
 
  private:
+#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+    struct MetalConstants {
+        U32 width;
+        U32 height;
+        F32 decayFactor;
+        U32 batchSize;
+    };
+
+    struct {
+        MTL::ComputePipelineState* stateDecay;
+        MTL::ComputePipelineState* stateActivate;
+        Vector<Device::Metal, U8> constants;
+    } metal;
+#endif
+    
     //
     // Metal
     //
 
-    // TODO: Improve gaussian blur.
-    // TODO: Cleanup waterfall old code.
-    // TODO: Fix macro invalid memory access.
     const char* MetalShader = R"END(
         #include <metal_stdlib>
-
-        #define SAMPLER(x, y) ({ \
-            int _idx = ((int)y)*uniforms.width+((int)x); \
-            (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : \
-                _idx += uniforms.maxSize; \
-                (_idx < uniforms.maxSize && _idx > 0) ? data[_idx] : 1.0; })
 
         using namespace metal;
 
         struct TexturePipelineRasterizerData {
             float4 position [[position]];
             float2 texcoord;
+            uint maxSize;
         };
 
         struct ShaderUniforms {
-            int width;
-            int height;
-            int maxSize;
-            float index;
+            uint width;
+            uint height;
             float offset;
             float zoom;
-            bool interpolate;
         };
 
         vertex TexturePipelineRasterizerData vertFunc(
@@ -132,9 +130,9 @@ class Spectrogram : public Module, public Compute, public Present {
             TexturePipelineRasterizerData out;
 
             out.position = vector_float4(vertexArray[vID], 1.0);
-            float vertical = ((uniforms.index - (1.0 - texcoord[vID].y)) * (float)uniforms.height);
-            float horizontal = (((texcoord[vID].x / uniforms.zoom) + uniforms.offset) * (float)uniforms.width);
-            out.texcoord = float2(horizontal, vertical);
+            out.texcoord = float2(texcoord[vID].x * uniforms.width,
+                                  texcoord[vID].y * uniforms.height);
+            out.maxSize = uniforms.width * uniforms.height;
 
             return out;
         }
@@ -144,24 +142,15 @@ class Spectrogram : public Module, public Compute, public Present {
                 constant ShaderUniforms& uniforms [[buffer(0)]],
                 const device float* data [[buffer(1)]],
                 texture2d<float> lut [[texture(0)]]) {
-            float mag = 0.0;
+            uint2 texcoord = uint2(in.texcoord);
+            uint index = texcoord.y * uniforms.width + texcoord.x;
 
-            if (uniforms.interpolate) {
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y - 4.0) * 0.0162162162;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y - 3.0) * 0.0540540541;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y - 2.0) * 0.1216216216;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y - 1.0) * 0.1945945946;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y      ) * 0.2270270270;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y + 1.0) * 0.1945945946;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y + 2.0) * 0.1216216216;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y + 3.0) * 0.0540540541;
-                mag += SAMPLER(in.texcoord.x, in.texcoord.y + 4.0) * 0.0162162162;
-            } else {
-                mag = SAMPLER(in.texcoord.x, in.texcoord.y);
+            if (index > in.maxSize && index < 0) {
+                return float4(0.0f, 0.0f, 0.0f, 0.0f);
             }
 
             constexpr sampler lutSampler(filter::linear);
-            return lut.sample(lutSampler, vector_float2(mag, 0.0));
+            return lut.sample(lutSampler, vector_float2(data[index], 0.0));
         }
     )END";
 };

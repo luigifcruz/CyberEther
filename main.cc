@@ -9,19 +9,22 @@
 
 using namespace Jetstream;
 
+constexpr static Device CurrentDevice = Device::Metal;
+
 class SDR {
  public:
     struct Config {
         std::string deviceString;
         F64 frequency;
         F64 sampleRate;
+        U64 batchSize;
         U64 outputBufferSize;
         U64 bufferMultiplier = 1024*8;
     };
 
     SDR(const Config& config, Instance& instance)
          : config(config), 
-           data(config.outputBufferSize),
+           data({config.batchSize, config.outputBufferSize}),
            buffer(config.outputBufferSize * config.bufferMultiplier) {
         streaming = true;
 
@@ -29,8 +32,8 @@ class SDR {
 
         consumer = std::thread([&]{
             while (streaming) {
-                if (buffer.getOccupancy() > config.outputBufferSize) {
-                    buffer.get(data.data(), config.outputBufferSize);
+                if (buffer.getOccupancy() > data.size()) {
+                    buffer.get(data.data(), data.size());
                     instance.compute();
                 }
             }
@@ -43,7 +46,7 @@ class SDR {
         producer.join();
     }
 
-    constexpr const Vector<Device::CPU, CF32>& getOutputBuffer() const {
+    constexpr const Vector<CurrentDevice, CF32, 2>& getOutputBuffer() const {
         return data;
     }
 
@@ -66,7 +69,7 @@ class SDR {
 
     Config config;
     bool streaming = false;
-    Vector<Device::CPU, CF32> data;
+    Vector<CurrentDevice, CF32, 2> data;
     Memory::CircularBuffer<CF32> buffer;
 
     SoapySDR::Device* device;
@@ -114,56 +117,43 @@ class SDR {
 
 class UI {
  public:
-    UI(SDR& sdr, Instance& instance) : sdr(sdr), instance(instance) {
+    UI(SDR& sdr, Instance& instance)
+             : sdr(sdr),
+               instance(instance) {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
         JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
 
         // Configure Jetstream
-        win = instance.addBlock<Window, Device::CPU>({
-            .size = sdr.getOutputBuffer().size(),
+        win = instance.addBlock<Window, CurrentDevice>({
+            .shape = sdr.getOutputBuffer().shape(),
         }, {});
 
-        mul = instance.addBlock<Multiply, Device::CPU>({
-            .size = sdr.getOutputBuffer().size(),
-        }, {
+        mul = instance.addBlock<Multiply, CurrentDevice>({}, {
             .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, Device::CPU>({
-            .size = sdr.getOutputBuffer().size(),
-        }, {
+        fft = instance.addBlock<FFT, CurrentDevice>({}, {
             .buffer = mul->getProductBuffer(),
         });
 
-        amp = instance.addBlock<Amplitude, Device::CPU>({
-            .size = sdr.getOutputBuffer().size(),
-        }, {
+        amp = instance.addBlock<Amplitude, CurrentDevice>({}, {
             .buffer = fft->getOutputBuffer(),
         });
 
-        scl = instance.addBlock<Scale, Device::CPU>({
-            .size = sdr.getOutputBuffer().size(),
+        scl = instance.addBlock<Scale, CurrentDevice>({
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
         });
 
-        lpt = instance.addBlock<Lineplot, Device::CPU>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
+        lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
 
-        wtf = instance.addBlock<Waterfall, Device::CPU>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
-
-        spc = instance.addBlock<Spectrogram, Device::CPU>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
-
-        JST_CHECK_THROW(instance.commit());
+        JST_CHECK_THROW(instance.create());
 
         streaming = true;
         worker = std::thread([&]{ this->threadLoop(); });
@@ -172,6 +162,7 @@ class UI {
     ~UI() {
         streaming = false;
         worker.join();
+        instance.destroy();
 
         JST_DEBUG("The UI was destructed.");
     }
@@ -183,25 +174,17 @@ class UI {
     Instance& instance;
     bool streaming = false;
 
-    std::shared_ptr<Window<Device::CPU>> win;
-    std::shared_ptr<Multiply<Device::CPU>> mul;
-    std::shared_ptr<FFT<Device::CPU>> fft;
-    std::shared_ptr<Amplitude<Device::CPU>> amp;
-    std::shared_ptr<Scale<Device::CPU>> scl;
-    std::shared_ptr<Lineplot<Device::CPU>> lpt;
-    std::shared_ptr<Waterfall<Device::CPU>> wtf;
-    std::shared_ptr<Spectrogram<Device::CPU>> spc;
+    std::shared_ptr<Window<CurrentDevice>> win;
+    std::shared_ptr<Multiply<CurrentDevice>> mul;
+    std::shared_ptr<FFT<CurrentDevice>> fft;
+    std::shared_ptr<Amplitude<CurrentDevice>> amp;
+    std::shared_ptr<Scale<CurrentDevice>> scl;
 
-    ImVec2 getRelativeMousePos() {
-        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
-        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
-        return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
-                      mousePositionAbsolute.y - screenPositionAbsolute.y);
-    }
+    Bundle::LineplotUI<CurrentDevice> lpt;
+    Bundle::WaterfallUI<CurrentDevice> wtf;
+    Bundle::SpectrogramUI<CurrentDevice> spc;
 
     void threadLoop() {
-        int position;
-
         frequency = sdr.getConfig().frequency;
 
         while (streaming && instance.viewport().keepRunning()) {
@@ -211,44 +194,9 @@ class UI {
 
             ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
-            {
-                ImGui::Begin("Waterfall");
-
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = wtf->viewSize({(U64)x, (U64)y});
-                ImGui::Image(wtf->getTexture().raw(), ImVec2(width, height));
-
-                if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
-                    if (position == 0) {
-                        position = (getRelativeMousePos().x / wtf->zoom()) + wtf->offset();
-                    }
-                    wtf->offset(position - (getRelativeMousePos().x / wtf->zoom()));
-                } else {
-                    position = 0;
-                }
-
-                ImGui::End();
-            }
-
-            {
-                ImGui::Begin("Spectrogram");
-
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = spc->viewSize({(U64)x, (U64)y});
-                ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
-
-                ImGui::End();
-            }
-
-            {
-                ImGui::Begin("Lineplot");
-                
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = lpt->viewSize({(U64)x, (U64)y});
-                ImGui::Image(lpt->getTexture().raw(), ImVec2(width, height));
-
-                ImGui::End();
-            }
+            JST_CHECK_THROW(lpt.draw());
+            JST_CHECK_THROW(wtf.draw());
+            JST_CHECK_THROW(spc.draw());
 
             {
                 ImGui::Begin("Control");
@@ -258,21 +206,9 @@ class UI {
                     sdr.setTunerFrequency(frequency);
                 }
 
-                auto [min, max] = scl->range();
-                if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
-                            1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
-                    scl->range({min, max});
-                }
-
-                auto interpolate = wtf->interpolate();
-                if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
-                    wtf->interpolate(interpolate);
-                }
-
-                auto zoom = wtf->zoom();
-                if (ImGui::DragFloat("Waterfall Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
-                    wtf->zoom(zoom);
-                }
+                JST_CHECK_THROW(lpt.drawControl());
+                JST_CHECK_THROW(wtf.drawControl());
+                JST_CHECK_THROW(spc.drawControl());
 
                 ImGui::End();
             }
@@ -281,13 +217,19 @@ class UI {
                 ImGui::Begin("Buffer Info");
 
                 float bufferThroughputMB = (sdr.getCircularBuffer().getThroughput() / (1024 * 1024));
-                ImGui::Text("Throughput %.0f MB/s", bufferThroughputMB);
+                ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+
+                float sdrThroughputMB = ((sdr.getConfig().sampleRate * 8) / (1024 * 1024));
+                ImGui::Text("SDR Throughput %.0f MB/s", sdrThroughputMB);
 
                 float bufferCapacityMB = ((F32)sdr.getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
                 ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
                 ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
                 ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
+                ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
+                ImGui::Text("Bandwidth: %.0f MHz", sdr.getConfig().sampleRate / (1000 * 1000));
+                ImGui::Text("Compute Device: %s", DeviceTypeInfo<CurrentDevice>().name);
 
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -297,6 +239,10 @@ class UI {
                 ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
                 ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
                 ImGui::Text("Usage");
+
+                JST_CHECK_THROW(lpt.drawInfo());
+                JST_CHECK_THROW(wtf.drawInfo());
+                JST_CHECK_THROW(spc.drawInfo());
 
                 ImGui::End();
             }
@@ -309,6 +255,17 @@ class UI {
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
+    
+    // Initialize the backends.
+    if (Backend::Initialize<Device::CPU>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize CPU backend.");
+        return 1;
+    }
+
+    if (Backend::Initialize<Device::Metal>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize Metal backend.");
+        return 1;
+    }
 
     // Initialize Instance.
     Instance instance;
@@ -325,7 +282,8 @@ int main() {
         const SDR::Config& sdrConfig {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
-            .sampleRate = 30e6,
+            .sampleRate = 64e6,
+            .batchSize = 16,
             .outputBufferSize = 2 << 10,
         }; 
         auto sdr = SDR(sdrConfig, instance);

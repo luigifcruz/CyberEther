@@ -35,6 +35,8 @@ const Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     auto device = Backend::State<Device::Metal>()->getDevice();
 
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
+    opts->setFastMathEnabled(true);
+    
     NS::String* source = NS::String::string(shader, NS::ASCIIStringEncoding);
     auto library = device->newLibrary(source, opts, &err);
 

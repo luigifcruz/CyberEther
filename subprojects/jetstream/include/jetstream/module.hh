@@ -20,16 +20,9 @@ class JETSTREAM_API Module {
     virtual constexpr const Taint taints() const = 0;
     
     template<typename T>
-    Result initInput(const T& buffer, const U64& size) {
+    Result initInput(const T& buffer) {
         if (buffer.empty()) {
-            JST_DEBUG("Input is empty, allocating {} elements", size);
-            const_cast<T&>(buffer) = std::move(T(size));
-            return Result::SUCCESS;
-        }
-
-        if (buffer.size() != size) {
-            JST_FATAL("Input size ({}) doesn't match the configuration size ({}).",
-                buffer.size(), size);
+            JST_FATAL("Module input can't be empty.");
             return Result::ERROR;
         }
 
@@ -37,13 +30,13 @@ class JETSTREAM_API Module {
     }
 
     template<typename T>
-    Result initOutput(T& buffer, const U64& size) {
+    Result initOutput(T& buffer, const typename T::ShapeType& shape) {
         if (!buffer.empty()) {
             JST_FATAL("The output buffer should be empty on initialization.");
             return Result::ERROR;
         }
 
-        buffer = std::move(T(size));
+        buffer = T(shape);
 
         return Result::SUCCESS;
     }
@@ -55,26 +48,22 @@ class JETSTREAM_API Compute {
  public:
     virtual ~Compute() = default;
 
-    virtual constexpr const Result createCompute(const RuntimeMetadata& meta) {
+    virtual constexpr const Result createCompute(const RuntimeMetadata& meta) = 0;
+    virtual constexpr const Result destroyCompute(const RuntimeMetadata& meta) {
         return Result::SUCCESS;
     }
-
-    virtual constexpr const Result compute(const RuntimeMetadata& meta) {
-        return Result::SUCCESS;
-    }
+    virtual constexpr const Result compute(const RuntimeMetadata& meta) = 0;
 };
 
 class JETSTREAM_API Present {
  public:
     virtual ~Present() = default;
 
-    virtual constexpr const Result createPresent(Render::Window& window) {
+    virtual constexpr const Result createPresent(Render::Window& window) = 0;
+    virtual constexpr const Result destroyPresent(Render::Window& window) {
         return Result::SUCCESS;
     }
-
-    virtual constexpr const Result present(Render::Window& window) {
-        return Result::SUCCESS;
-    }
+    virtual constexpr const Result present(Render::Window& window) = 0;
 };
 
 }  // namespace Jetstream

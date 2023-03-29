@@ -19,16 +19,16 @@
 |------------|-----------|--------------|---------------------|
 | Lineplot   | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
 | Waterfall  | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
-| Spectogram | ❌ (Next)  | ❌ (Porting) | ✅ (Slow but full)  |
+| Spectogram | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
 
 ### Compute Modules
 |   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |         Description         |
 |------------|-------|--------------|-----------|------------|-----------------------------|
-| Amplitude  | ✅    | ❌ (Porting)  | ❌ (Next) | ❌ (Future) | Complex data to power.      |
-| FFT        | ✅    | ❌ (Porting)  | ❌ (Next) | ❌ (Future) | Channelization.             |
-| Multiply   | ✅    | ❌ (Porting)  | ❌ (Next) | ❌ (Future) | Vector multiplication.      |
-| Scale      | ✅    | ❌ (Porting)  | ❌ (Next) | ❌ (Future) | Scaling vector by factor.   |
-| Windowing  | ✅    | ❌ (Porting)  | ❌ (Next) | ❌ (Future) | Apply window to vector.     |
+| Amplitude  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Complex data to power.      |
+| FFT        | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Channelization.             |
+| Multiply   | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Vector multiplication.      |
+| Scale      | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Scaling vector by factor.   |
+| Windowing  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Apply window to vector.     |
 
 ## Installation
 The only way to use CyberEther at the moment is by compiling it from the source. It won't be that difficult because of the low number of dependencies.
@@ -130,6 +130,5 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Remove FFTW as a loader.
-- TODO: Print Compute and Present trees.
 - TODO: Implement Memory-based compute graphs.
+- TODO: Print Compute and Present trees.

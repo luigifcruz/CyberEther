@@ -14,7 +14,6 @@ namespace Jetstream {
 class JETSTREAM_API Instance {
  public:
     Instance() : commited(false) {};
-    ~Instance();
 
     template<class Viewport>
     const Result buildViewport(const typename Viewport::Config& config) {
@@ -54,12 +53,6 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        // Initialize backend for the window.
-        if (Backend::Initialize<D>({}) != Result::SUCCESS) {
-            JST_FATAL("Cannot initialize window backend.");
-            return Result::ERROR;
-        }
-
         _window = std::make_shared<Render::WindowImp<D>>(config, _viewport);
 
         return Result::SUCCESS;
@@ -69,19 +62,12 @@ class JETSTREAM_API Instance {
         return *_window;
     }
 
-    // TODO: Log input and output 
     template<template<Device, typename...> class T, Device D, typename... C>
     std::shared_ptr<T<D, C...>> addBlock(
             const typename T<D, C...>::Config& config,
             const typename T<D, C...>::Input& input) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
-            JST_CHECK_THROW(Result::ERROR);
-        }
-
-        // Initialize backend for the current block.
-        if (Backend::Initialize<D>({}) != Result::SUCCESS) {
-            JST_FATAL("Cannot initialize block backend.");
             JST_CHECK_THROW(Result::ERROR);
         }
 
@@ -94,7 +80,8 @@ class JETSTREAM_API Instance {
         return block;
     }    
 
-    const Result commit();
+    const Result create();
+    const Result destroy();
 
     const Result compute();
 

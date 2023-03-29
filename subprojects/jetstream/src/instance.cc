@@ -2,14 +2,8 @@
 
 namespace Jetstream {
 
-Instance::~Instance() {
-    if (_window) {
-        _window->destroy();
-    }
-}
-
-const Result Instance::commit() {
-    JST_INFO("Building compute graph.");
+const Result Instance::create() {
+    JST_INFO("Create compute graph.");
 
     // Check minimum requirements.
     if (commited) {
@@ -74,11 +68,34 @@ const Result Instance::commit() {
     return Result::SUCCESS;
 }
 
+const Result Instance::destroy() {
+    JST_INFO("Destroy compute graph.");
+
+    if (!commited) {
+        JST_FATAL("Can't create instance that wasn't created.");
+        return Result::ERROR;
+    }
+
+    if (_window) {
+        JST_CHECK(_window->destroy());
+    }
+
+    for (const auto& block : presentBlocks) {
+        JST_CHECK(block->destroyPresent(*_window));
+    }
+
+    for (const auto& graph : graphs) {
+        JST_CHECK(graph->destroyCompute());
+    }
+
+    return Result::SUCCESS;
+}
+
 const Result Instance::compute() {
     Result err = Result::SUCCESS;
 
     if (!commited) {
-        JST_FATAL("The instance wasn't commited.");
+        JST_FATAL("The instance wasn't created.");
         return Result::ERROR;
     }
 

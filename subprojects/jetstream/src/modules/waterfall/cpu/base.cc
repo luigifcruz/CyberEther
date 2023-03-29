@@ -3,21 +3,20 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
-    frequencyBins = Vector<Device::CPU, F32>(input.buffer.size() * config.height);
+const Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
+    const auto totalSize = input.buffer.size();
+    const auto fftSize = input.buffer.shape(1);
+    const auto offset = inc * fftSize;
+    const auto size = JST_MIN(totalSize, (config.height - inc) * fftSize);
+
+    std::copy(input.buffer.begin(), input.buffer.begin() + size, frequencyBins.data() + offset);
+    if (size < totalSize) {
+        std::copy(input.buffer.begin() + size, input.buffer.end(), frequencyBins.data());
+    }
 
     return Result::SUCCESS;
 }
 
-template<Device D, typename T>
-const Result Waterfall<D, T>::underlyingCompute() {
-    std::copy(input.buffer.data(), input.buffer.data() + input.buffer.size(), 
-              frequencyBins.begin() + (inc * input.buffer.size()));
-
-    return Result::SUCCESS;
-}
-
-template class Waterfall<Device::CPU, F64>;
 template class Waterfall<Device::CPU, F32>;
     
 }  // namespace Jetstream

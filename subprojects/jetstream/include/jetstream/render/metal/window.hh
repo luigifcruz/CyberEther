@@ -33,7 +33,8 @@ class WindowImp<Device::Metal> : public Window {
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
     MTL::Device* dev = nullptr;
-    NS::AutoreleasePool* pPool;
+    NS::AutoreleasePool* innerPool;
+    NS::AutoreleasePool* outerPool;
     CA::MetalDrawable* drawable = nullptr;
     MTL::CommandQueue* commandQueue = nullptr;
     MTL::CommandBuffer* commandBuffer = nullptr;

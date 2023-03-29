@@ -29,7 +29,7 @@ const Result MacOS::create() {
 
     auto* device = Backend::State<Device::Metal>()->getDevice();
 
-    swapchain = CA::MetalLayer::layer();
+    swapchain = CA::MetalLayer::layer()->retain();
     swapchain->setDevice(device);
     swapchain->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
 
@@ -41,10 +41,10 @@ const Result MacOS::create() {
 }
 
 const Result MacOS::destroy() {
-    swapchain->release(); 
-
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    swapchain->release(); 
 
     return Result::SUCCESS;
 }

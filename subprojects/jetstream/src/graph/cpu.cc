@@ -27,5 +27,12 @@ const Result CPU::compute() {
     return Result::SUCCESS;
 }
 
+const Result CPU::destroyCompute() {
+    for (const auto& block : blocks) {
+        JST_CHECK(block->destroyCompute(*metadata));
+    }
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream

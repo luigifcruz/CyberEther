@@ -47,6 +47,10 @@ class JETSTREAM_API Instance {
 
     template<>
     const auto& state<Device::CPU>() {
+        if (!cpu) {
+            JST_DEBUG("The CPU backend is not initialized.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return cpu; 
     }
 #endif
@@ -71,6 +75,10 @@ class JETSTREAM_API Instance {
 
     template<>
     const auto& state<Device::Metal>() {
+        if (!metal) {
+            JST_DEBUG("The Metal backend is not initialized.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return metal; 
     }
 #endif
