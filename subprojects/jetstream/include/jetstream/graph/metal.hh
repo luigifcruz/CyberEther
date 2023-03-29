@@ -34,8 +34,8 @@ class Metal : public Graph {
     }
 
  private:
-    // TODO: Add auto-release between create and destroy.
-    NS::AutoreleasePool* loopPool;
+    NS::AutoreleasePool* innerPool;
+    NS::AutoreleasePool* outerPool;
 };
 
 }  // namespace Jetstream

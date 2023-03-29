@@ -105,7 +105,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
         this->_metal = device->newBuffer(this->_data,
                                          JST_PAGE_ALIGNED_SIZE(this->size_bytes()), 
                                          MTL::ResourceStorageModeShared,
-                                         nullptr); 
+                                         nullptr)->retain(); 
         if (!this->_metal) {
             JST_FATAL("Couldn't allocate MTL::Buffer.");
             JST_CHECK_THROW(Result::ERROR);

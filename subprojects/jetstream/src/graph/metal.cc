@@ -13,6 +13,8 @@ Metal::Metal() {
 }
 
 const Result Metal::createCompute() {
+    outerPool = NS::AutoreleasePool::alloc()->init();
+
     for (const auto& block : blocks) {
         JST_CHECK(block->createCompute(*metadata));
     }
@@ -23,7 +25,7 @@ const Result Metal::createCompute() {
 const Result Metal::compute() {
     Result err = Result::SUCCESS;
 
-    loopPool = NS::AutoreleasePool::alloc()->init();
+    innerPool = NS::AutoreleasePool::alloc()->init();
 
     metadata->metal.commandBuffer = metadata->metal.commandQueue->commandBuffer();
 
@@ -38,7 +40,7 @@ const Result Metal::compute() {
     metadata->metal.commandBuffer->commit();
     metadata->metal.commandBuffer->waitUntilCompleted();
 
-    loopPool->release();
+    innerPool->release();
 
     return err;
 }
@@ -47,6 +49,8 @@ const Result Metal::destroyCompute() {
     for (const auto& block : blocks) {
         JST_CHECK(block->destroyCompute(*metadata));
     }
+
+    outerPool->release();
 
     return Result::SUCCESS;
 }

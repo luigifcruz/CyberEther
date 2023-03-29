@@ -46,6 +46,8 @@ const Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& met
         return Result::SUCCESS;
     }
 
+    deleteVkFFT(assets.app);
+  
     free(assets.configuration->inputBufferSize);
     free(assets.configuration->bufferSize);
     free(assets.configuration);

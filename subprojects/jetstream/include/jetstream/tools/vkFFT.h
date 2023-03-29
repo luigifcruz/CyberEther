@@ -28219,10 +28219,10 @@ static inline VkFFTResult VkFFT_transferDataFromCPU(VkFFTApplication* app, void*
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	}
 #elif(VKFFT_BACKEND==5)
-	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(cpu_arr, transferSize, MTL::ResourceStorageModeShared);
-	MTL::CommandBuffer* copyCommandBuffer = app->configuration.queue->commandBuffer();
+	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(cpu_arr, transferSize, MTL::ResourceStorageModeShared)->retain();
+	MTL::CommandBuffer* copyCommandBuffer = app->configuration.queue->commandBuffer()->retain();
 	if (copyCommandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-	MTL::BlitCommandEncoder* blitCommandEncoder = copyCommandBuffer->blitCommandEncoder();
+	MTL::BlitCommandEncoder* blitCommandEncoder = copyCommandBuffer->blitCommandEncoder()->retain();
 	if (blitCommandEncoder == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
 	MTL::Buffer* buffer = ((MTL::Buffer**)input_buffer)[0];
 	blitCommandEncoder->copyFromBuffer((MTL::Buffer*)stagingBuffer, 0, (MTL::Buffer*)buffer, 0, transferSize);
@@ -28332,10 +28332,10 @@ static inline VkFFTResult VkFFT_transferDataToCPU(VkFFTApplication* app, void* c
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	}
 #elif(VKFFT_BACKEND==5)
-	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(transferSize, MTL::ResourceStorageModeShared);
-	MTL::CommandBuffer* copyCommandBuffer = app->configuration.queue->commandBuffer();
+	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(transferSize, MTL::ResourceStorageModeShared)->retain();
+	MTL::CommandBuffer* copyCommandBuffer = app->configuration.queue->commandBuffer()->retain();
 	if (copyCommandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-	MTL::BlitCommandEncoder* blitCommandEncoder = copyCommandBuffer->blitCommandEncoder();
+	MTL::BlitCommandEncoder* blitCommandEncoder = copyCommandBuffer->blitCommandEncoder()->retain();
 	if (blitCommandEncoder == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
 	MTL::Buffer* buffer = ((MTL::Buffer**)output_buffer)[0];
 	blitCommandEncoder->copyFromBuffer((MTL::Buffer*)buffer, 0, (MTL::Buffer*)stagingBuffer, 0, transferSize);
@@ -31772,13 +31772,13 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	}
 #elif(VKFFT_BACKEND==5)
-	app->bufferBluestein[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
+	app->bufferBluestein[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate)->retain();
 
 	if (!app->configuration.makeInversePlanOnly) {
-		app->bufferBluesteinFFT[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
+		app->bufferBluesteinFFT[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate)->retain();
 	}
 	if (!app->configuration.makeForwardPlanOnly) {
-		app->bufferBluesteinIFFT[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
+		app->bufferBluesteinIFFT[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate)->retain();
 	}
 #endif
 #ifdef VkFFT_use_FP128_Bluestein_RaderFFT
@@ -32754,7 +32754,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, bufferSize, sizeof(float), app->configuration.device[0], &bufferRaderFFT);
 				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #elif(VKFFT_BACKEND==5)
-				bufferRaderFFT = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
+				bufferRaderFFT = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate)->retain();
 #endif
 
 				resFFT = VkFFT_transferDataFromCPU(app, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
@@ -34093,7 +34093,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					return resFFT;
 				}
 #elif(VKFFT_BACKEND==5)
-				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
+				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate)->retain();
 
 				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
@@ -34201,7 +34201,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					return resFFT;
 				}
 #elif(VKFFT_BACKEND==5)
-				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
+				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate)->retain();
 
 				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
@@ -35663,16 +35663,16 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
 			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 			dispatch_data_t data = dispatch_data_create(code, codeSize, 0, 0);
-			axis->library = app->configuration.device->newLibrary(data, &error);
+			axis->library = app->configuration.device->newLibrary(data, &error)->retain();
 			free(code);
 			code = 0;
 		}
 		else {
 			size_t codelen = strlen(code0);
-			MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc();
+			MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc()->retain();
 			compileOptions->setFastMathEnabled(true);
-			NS::String* str = NS::String::string(code0, NS::UTF8StringEncoding);
-			axis->library = app->configuration.device->newLibrary(str, compileOptions, &error);
+			NS::String* str = NS::String::string(code0, NS::UTF8StringEncoding)->retain();
+			axis->library = app->configuration.device->newLibrary(str, compileOptions, &error)->retain();
 			if (error) {
 				printf("%s\n%s\n", error->debugDescription()->cString(NS::ASCIIStringEncoding), error->localizedDescription()->cString(NS::ASCIIStringEncoding));
 				free(code0);
@@ -35687,9 +35687,9 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			str->release();
 		}
 		const char function_name[20] = "VkFFT_main_R2C";
-		NS::String* str = NS::String::string(function_name, NS::UTF8StringEncoding);
-		MTL::Function* function = axis->library->newFunction(str);
-		axis->pipeline = app->configuration.device->newComputePipelineState(function, &error);
+		NS::String* str = NS::String::string(function_name, NS::UTF8StringEncoding)->retain();
+		MTL::Function* function = axis->library->newFunction(str)->retain();
+		axis->pipeline = app->configuration.device->newComputePipelineState(function, &error)->retain();
 		function->release();
 		str->release();
 #endif
@@ -35921,7 +35921,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		app->configuration.tempBuffer[0] = app->configuration.device->newBuffer(app->configuration.tempBufferSize[0], MTL::ResourceStorageModePrivate);
+		app->configuration.tempBuffer[0] = app->configuration.device->newBuffer(app->configuration.tempBufferSize[0], MTL::ResourceStorageModePrivate)->retain();
 #endif
 	}
 	//generate Rader Kernels
@@ -36445,7 +36445,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								return resFFT;
 							}
 #elif(VKFFT_BACKEND==5)
-							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
+							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate)->retain();
 							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
@@ -36776,7 +36776,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								return resFFT;
 							}
 #elif(VKFFT_BACKEND==5)
-							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
+							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate)->retain();
 							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
@@ -36893,7 +36893,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				return resFFT;
 			}
 #elif(VKFFT_BACKEND==5)
-			app->bufferRaderUintLUT[axis_id][axis_upload_id] = app->configuration.device->newBuffer(app->bufferRaderUintLUTSize[axis_id][axis_upload_id], MTL::ResourceStorageModePrivate);
+			app->bufferRaderUintLUT[axis_id][axis_upload_id] = app->configuration.device->newBuffer(app->bufferRaderUintLUTSize[axis_id][axis_upload_id], MTL::ResourceStorageModePrivate)->retain();
 			resFFT = VkFFT_transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
 			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
@@ -38936,17 +38936,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
 			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 			dispatch_data_t data = dispatch_data_create(code, codeSize, 0, 0);
-			axis->library = app->configuration.device->newLibrary(data, &error);
+			axis->library = app->configuration.device->newLibrary(data, &error)->retain();
 			if (error)std::cout << error->debugDescription()->cString(NS::ASCIIStringEncoding) << error->localizedDescription()->cString(NS::ASCIIStringEncoding) << std::endl;
 			free(code);
 			code = 0;
 		}
 		else {
 			size_t codelen = strlen(code0);
-			MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc();
+			MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc()->retain();
 			compileOptions->setFastMathEnabled(true);
-			NS::String* str = NS::String::string(code0, NS::UTF8StringEncoding);
-			axis->library = app->configuration.device->newLibrary(str, compileOptions, &error);
+			NS::String* str = NS::String::string(code0, NS::UTF8StringEncoding)->retain();
+			axis->library = app->configuration.device->newLibrary(str, compileOptions, &error)->retain();
 			if (error) {
 				printf("%s\n%s\n", error->debugDescription()->cString(NS::ASCIIStringEncoding), error->localizedDescription()->cString(NS::ASCIIStringEncoding));
 				free(code0);
@@ -38961,9 +38961,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			str->release();
 		}
 		const char function_name[20] = "VkFFT_main";
-		NS::String* str = NS::String::string(function_name, NS::UTF8StringEncoding);
-		MTL::Function* function = axis->library->newFunction(str);
-		axis->pipeline = app->configuration.device->newComputePipelineState(function, &error);
+		NS::String* str = NS::String::string(function_name, NS::UTF8StringEncoding)->retain();
+		MTL::Function* function = axis->library->newFunction(str)->retain();
+		axis->pipeline = app->configuration.device->newComputePipelineState(function, &error)->retain();
 		function->release();
 		str->release();
 #endif
@@ -39868,12 +39868,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	const char function_name[20] = "VkFFT_dummy";
 
 	NS::Error* error;
-	MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc();
-	NS::String* str_code = NS::String::string(dummy_kernel, NS::UTF8StringEncoding);
-	MTL::Library* dummy_library = app->configuration.device->newLibrary(str_code, compileOptions, &error);
-	NS::String* str_name = NS::String::string(function_name, NS::UTF8StringEncoding);
-	MTL::Function* function = dummy_library->newFunction(str_name);
-	MTL::ComputePipelineState* dummy_state = app->configuration.device->newComputePipelineState(function, &error);
+	MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc()->retain();
+	NS::String* str_code = NS::String::string(dummy_kernel, NS::UTF8StringEncoding)->retain();
+	MTL::Library* dummy_library = app->configuration.device->newLibrary(str_code, compileOptions, &error)->retain();
+	NS::String* str_name = NS::String::string(function_name, NS::UTF8StringEncoding)->retain();
+	MTL::Function* function = dummy_library->newFunction(str_name)->retain();
+	MTL::ComputePipelineState* dummy_state = app->configuration.device->newComputePipelineState(function, &error)->retain();
 
 	MTL::Size size = app->configuration.device->maxThreadsPerThreadgroup();
 	app->configuration.maxThreadsNum = dummy_state->maxTotalThreadsPerThreadgroup();
@@ -41085,7 +41085,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				if (axis->pushConstants.structSize > 0) {
 					if (app->configuration.useUint64) {
 						if (!axis->pushConstants.dataUintBuffer) {
-							axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared);
+							axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared)->retain();
 							memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.dataUint64, axis->pushConstants.structSize);
 							axis->updatePushConstants = 0;
 						}
@@ -41097,7 +41097,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 					}
 					else {
 						if (!axis->pushConstants.dataUintBuffer) {
-							axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared);
+							axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared)->retain();
 							memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.dataUint32, axis->pushConstants.structSize);
 							axis->updatePushConstants = 0;
 						}

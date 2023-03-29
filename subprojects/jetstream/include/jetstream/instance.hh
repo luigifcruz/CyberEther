@@ -62,7 +62,6 @@ class JETSTREAM_API Instance {
         return *_window;
     }
 
-    // TODO: Log input and output 
     template<template<Device, typename...> class T, Device D, typename... C>
     std::shared_ptr<T<D, C...>> addBlock(
             const typename T<D, C...>::Config& config,
