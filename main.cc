@@ -229,6 +229,7 @@ class UI {
                 ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
                 ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
                 ImGui::Text("Bandwidth: %.0f MHz", sdr.getConfig().sampleRate / (1000 * 1000));
+                ImGui::Text("Compute Device: %s", DeviceTypeInfo<CurrentDevice>().name);
 
                 ImGui::Separator();
                 ImGui::Spacing();
