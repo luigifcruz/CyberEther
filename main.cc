@@ -9,7 +9,7 @@
 
 using namespace Jetstream;
 
-constexpr static Device CurrentDevice = Device::CPU;
+constexpr static Device CurrentDevice = Device::Metal;
 
 class SDR {
  public:
@@ -117,7 +117,9 @@ class SDR {
 
 class UI {
  public:
-    UI(SDR& sdr, Instance& instance) : sdr(sdr), instance(instance) {
+    UI(SDR& sdr, Instance& instance)
+             : sdr(sdr),
+               instance(instance) {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
@@ -147,17 +149,9 @@ class UI {
             .buffer = amp->getOutputBuffer(),
         });
 
-        lpt = instance.addBlock<Lineplot, CurrentDevice>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
-
-        wtf = instance.addBlock<Waterfall, CurrentDevice>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
-
-        spc = instance.addBlock<Spectrogram, CurrentDevice>({}, {
-            .buffer = scl->getOutputBuffer(),
-        });
+        lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
 
         JST_CHECK_THROW(instance.create());
 
@@ -185,20 +179,12 @@ class UI {
     std::shared_ptr<FFT<CurrentDevice>> fft;
     std::shared_ptr<Amplitude<CurrentDevice>> amp;
     std::shared_ptr<Scale<CurrentDevice>> scl;
-    std::shared_ptr<Lineplot<CurrentDevice>> lpt;
-    std::shared_ptr<Waterfall<CurrentDevice>> wtf;
-    std::shared_ptr<Spectrogram<CurrentDevice>> spc;
 
-    ImVec2 getRelativeMousePos() {
-        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
-        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
-        return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
-                      mousePositionAbsolute.y - screenPositionAbsolute.y);
-    }
+    Bundle::LineplotUI<CurrentDevice> lpt;
+    Bundle::WaterfallUI<CurrentDevice> wtf;
+    Bundle::SpectrogramUI<CurrentDevice> spc;
 
     void threadLoop() {
-        int position;
-
         frequency = sdr.getConfig().frequency;
 
         while (streaming && instance.viewport().keepRunning()) {
@@ -208,44 +194,9 @@ class UI {
 
             ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
-            {
-                ImGui::Begin("Waterfall");
-
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = wtf->viewSize({(U64)x, (U64)y});
-                ImGui::Image(wtf->getTexture().raw(), ImVec2(width, height));
-
-                if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
-                    if (position == 0) {
-                        position = (getRelativeMousePos().x / wtf->zoom()) + wtf->offset();
-                    }
-                    wtf->offset(position - (getRelativeMousePos().x / wtf->zoom()));
-                } else {
-                    position = 0;
-                }
-
-                ImGui::End();
-            }
-
-            {
-                ImGui::Begin("Spectrogram");
-
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = spc->viewSize({(U64)x, (U64)y});
-                ImGui::Image(spc->getTexture().raw(), ImVec2(width, height));
-
-                ImGui::End();
-            }
-
-            {
-                ImGui::Begin("Lineplot");
-                
-                auto [x, y] = ImGui::GetContentRegionAvail();
-                auto [width, height] = lpt->viewSize({(U64)x, (U64)y});
-                ImGui::Image(lpt->getTexture().raw(), ImVec2(width, height));
-
-                ImGui::End();
-            }
+            JST_CHECK_THROW(lpt.draw());
+            JST_CHECK_THROW(wtf.draw());
+            JST_CHECK_THROW(spc.draw());
 
             {
                 ImGui::Begin("Control");
@@ -255,21 +206,9 @@ class UI {
                     sdr.setTunerFrequency(frequency);
                 }
 
-                auto [min, max] = scl->range();
-                if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
-                            1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
-                    scl->range({min, max});
-                }
-
-                auto interpolate = wtf->interpolate();
-                if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
-                    wtf->interpolate(interpolate);
-                }
-
-                auto zoom = wtf->zoom();
-                if (ImGui::DragFloat("Waterfall Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
-                    wtf->zoom(zoom);
-                }
+                JST_CHECK_THROW(lpt.drawControl());
+                JST_CHECK_THROW(wtf.drawControl());
+                JST_CHECK_THROW(spc.drawControl());
 
                 ImGui::End();
             }
@@ -289,6 +228,7 @@ class UI {
                 ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
                 ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
                 ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
+                ImGui::Text("Bandwidth: %.0f MHz", sdr.getConfig().sampleRate / (1000 * 1000));
 
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -298,6 +238,10 @@ class UI {
                 ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
                 ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
                 ImGui::Text("Usage");
+
+                JST_CHECK_THROW(lpt.drawInfo());
+                JST_CHECK_THROW(wtf.drawInfo());
+                JST_CHECK_THROW(spc.drawInfo());
 
                 ImGui::End();
             }
@@ -337,8 +281,8 @@ int main() {
         const SDR::Config& sdrConfig {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
-            .sampleRate = 30e6,
-            .batchSize = 8,
+            .sampleRate = 64e6,
+            .batchSize = 16,
             .outputBufferSize = 2 << 10,
         }; 
         auto sdr = SDR(sdrConfig, instance);
