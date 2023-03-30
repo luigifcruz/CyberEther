@@ -8,7 +8,6 @@ namespace Jetstream::Viewport {
 
 class iOS : public Generic {
  public:
-
     explicit iOS(const Config& config, CA::MetalLayer* layer);
     virtual ~iOS();
 

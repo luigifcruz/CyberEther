@@ -15,8 +15,9 @@ class JETSTREAM_API Instance {
  public:
     Instance() : commited(false) {};
 
-    template<class Viewport>
-    const Result buildViewport(const typename Viewport::Config& config) {
+    template<class Viewport, typename... Args>
+    const Result buildViewport(const typename Viewport::Config& config,
+                               Args... args) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
             return Result::ERROR;
@@ -27,7 +28,7 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        _viewport = std::make_shared<Viewport>(config);
+        _viewport = std::make_shared<Viewport>(config, args...);
 
         return Result::SUCCESS;
     }

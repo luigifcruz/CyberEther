@@ -15,7 +15,6 @@ namespace Jetstream::Viewport {
 
 class MacOS : public Generic {
  public:
-
     explicit MacOS(const Config& config);
     virtual ~MacOS();
 
