@@ -206,6 +206,12 @@ class UI {
                     sdr.setTunerFrequency(frequency);
                 }
 
+                auto [min, max] = scl->range();
+                if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
+                            1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
+                    scl->range({min, max});
+                }
+
                 JST_CHECK_THROW(lpt.drawControl());
                 JST_CHECK_THROW(wtf.drawControl());
                 JST_CHECK_THROW(spc.drawControl());
