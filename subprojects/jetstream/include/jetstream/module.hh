@@ -26,6 +26,8 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
 
+        inputs.push_back(buffer.hash());
+
         return Result::SUCCESS;
     }
 
@@ -38,8 +40,22 @@ class JETSTREAM_API Module {
 
         buffer = T(shape);
 
+        outputs.push_back(buffer.hash());
+
         return Result::SUCCESS;
     }
+
+    const std::vector<U64>& getInputs() const {
+        return inputs;
+    }
+
+    const std::vector<U64>& getOutputs() const {
+        return outputs;
+    }
+
+ private:
+    std::vector<U64> inputs;
+    std::vector<U64> outputs;
 
     friend class Instance;
 };

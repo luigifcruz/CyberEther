@@ -7,6 +7,7 @@ Waterfall<D, T>::Waterfall(const Config& config,
                            const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Waterfall module.");
+    JST_CHECK_THROW(initInput(input.buffer));
 }
 
 template<Device D, typename T>

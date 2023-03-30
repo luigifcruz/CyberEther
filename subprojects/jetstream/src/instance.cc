@@ -63,6 +63,8 @@ const Result Instance::create() {
 
     for (const auto& block : blocks) {
         block->summary();
+        JST_INFO("Inputs: {}", block->getInputs());
+        JST_INFO("Outputs: {}", block->getOutputs());
     }
 
     return Result::SUCCESS;

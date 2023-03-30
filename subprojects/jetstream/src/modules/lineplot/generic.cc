@@ -7,6 +7,7 @@ Lineplot<D, T>::Lineplot(const Config& config,
                          const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Lineplot module.");
+    JST_CHECK_THROW(initInput(input.buffer));
 }
 
 template<Device D, typename T>
