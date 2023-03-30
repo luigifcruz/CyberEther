@@ -3,10 +3,6 @@
 
 #include "jetstream/base.hh"
 
-#include <SoapySDR/Device.hpp>
-#include <SoapySDR/Types.hpp>
-#include <SoapySDR/Formats.hpp>
-
 using namespace Jetstream;
 
 void PrintVarDebug(const std::string& varName, const auto& a) {
