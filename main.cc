@@ -289,9 +289,6 @@ class UI {
                     ImGui::Text("RF Bandwidth: %.0f MHz", sdr.getConfig().sampleRate / (1000 * 1000));
                 }
 
-                ImGui::Separator();
-                ImGui::Spacing();
-
                 JST_CHECK_THROW(lpt.drawInfo());
                 JST_CHECK_THROW(wtf.drawInfo());
                 JST_CHECK_THROW(spc.drawInfo());
