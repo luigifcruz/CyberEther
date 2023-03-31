@@ -70,9 +70,24 @@ class SDR {
         return deviceHardwareKey;
     }
 
-    void setTunerFrequency(const F64& frequency) {
+    float setTunerFrequency(const F64& frequency) {
+        SoapySDR::RangeList freqRange = device->getFrequencyRange(SOAPY_SDR_RX, 0);
+        float minFreq = freqRange.front().minimum();
+        float maxFreq = freqRange.back().maximum();
+
         config.frequency = frequency;
+
+        if (frequency < minFreq) {
+            config.frequency = minFreq;
+        }
+
+        if (frequency > maxFreq) {
+            config.frequency = maxFreq;
+        }
+
         device->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+
+        return config.frequency;
     }
 
  private:
@@ -202,7 +217,9 @@ class UI {
     Bundle::SpectrogramUI<ComputeDevice> spc;
 
     void threadLoop() {
-        frequency = sdr.getConfig().frequency;
+        frequency = sdr.getConfig().frequency / 1e6;
+
+        F32 stepSize = 10;
 
         while (streaming && instance.viewport().keepRunning()) {
             if (instance.begin() == Result::SKIP) {
@@ -218,10 +235,9 @@ class UI {
             {
                 ImGui::Begin("Control");
 
-                ImGui::InputFloat("Frequency (Hz)", &frequency);
-                if (ImGui::Button("Tune")) {
-                    sdr.setTunerFrequency(frequency);
-                }
+                ImGui::InputFloat("Frequency (MHz)", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
+                if (ImGui::IsItemEdited()) { frequency = sdr.setTunerFrequency(frequency * 1e6) / 1e6; }
+                ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");
 
                 auto [min, max] = scl->range();
                 if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
