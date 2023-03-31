@@ -143,6 +143,8 @@ class SDR {
 
             device->deactivateStream(stream, 0, 0);
             device->closeStream(stream);
+
+            JST_TRACE("SDR Thread Safed");
         }
     }
 };
@@ -240,7 +242,7 @@ class UI {
                 ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");
 
                 auto [min, max] = scl->range();
-                if (ImGui::DragFloatRange2("dBFS Range", &min, &max,
+                if (ImGui::DragFloatRange2("Range (dBFS)", &min, &max,
                             1, -300, 0, "Min: %.0f dBFS", "Max: %.0f dBFS")) {
                     scl->range({min, max});
                 }
@@ -299,6 +301,8 @@ class UI {
             JST_CHECK_THROW(instance.present());
             JST_CHECK_THROW(instance.end());
         }
+
+        JST_TRACE("UI Thread Safed");
     }
 };
 
@@ -331,7 +335,7 @@ int main() {
         const SDR::Config& sdrConfig {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
-            .sampleRate = 56e6,
+            .sampleRate = 32e6,
             .batchSize = 16,
             .outputBufferSize = 2 << 10,
         }; 
