@@ -1,5 +1,5 @@
 #include "jetstream/render/base/window.hh"
-#include "jetstream/render/tools/compressed_b612.hh"
+#include "jetstream/render/tools/compressed_jbmm.hh"
 
 namespace Jetstream::Render {
 
@@ -86,12 +86,18 @@ void Window::ApplyImGuiTheme(const F32& scale) {
 
     style.ScaleAllSizes(scale);
 
+    ImFontConfig font_config;
+    font_config.OversampleH = 5;
+    font_config.OversampleV = 5;
+    font_config.FontBuilderFlags = 1;
+    io.Fonts->Clear();
+
     io.Fonts->AddFontFromMemoryCompressedTTF(
-        B612_compressed_data, 
-        B612_compressed_size,
-        12.0f * scale, 
-        nullptr, 
+        jbmm_compressed_data, 
+        jbmm_compressed_size,
+        15.0f * scale, 
+        &font_config, 
         nullptr);
-}
+ }
 
 }  // namespace Jetstream::Render
