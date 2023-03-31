@@ -90,6 +90,14 @@ class JETSTREAM_API Instance {
     const Result present();
     const Result end();
 
+    constexpr const Viewport::Generic& getViewport() const {
+        return *_viewport;
+    }
+
+    constexpr const Render::Window& getRender() const {
+        return *_window;       
+    }
+
  private:
     std::atomic_flag computeSync{false};
     std::atomic_flag presentSync{false};

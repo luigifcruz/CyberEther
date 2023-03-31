@@ -9,7 +9,9 @@
 
 using namespace Jetstream;
 
-constexpr static Device CurrentDevice = Device::Metal;
+using SystemViewport = Viewport::MacOS;
+constexpr static Device ComputeDevice = Device::Metal;
+constexpr static Device RenderDevice  = Device::Metal;
 
 class SDR {
  public:
@@ -27,6 +29,8 @@ class SDR {
            data({config.batchSize, config.outputBufferSize}),
            buffer(config.outputBufferSize * config.bufferMultiplier) {
         streaming = true;
+        deviceName = "None";
+        deviceHardwareKey = "None";
 
         producer = std::thread([&]{ this->threadLoop(); });
 
@@ -46,7 +50,7 @@ class SDR {
         producer.join();
     }
 
-    constexpr const Vector<CurrentDevice, CF32, 2>& getOutputBuffer() const {
+    constexpr const Vector<ComputeDevice, CF32, 2>& getOutputBuffer() const {
         return data;
     }
 
@@ -57,6 +61,14 @@ class SDR {
     constexpr const Config& getConfig() const {
         return config;
     } 
+
+    constexpr const std::string& getDeviceName() const {
+        return deviceName;
+    }
+
+    constexpr const std::string& getDeviceHardwareKey() const {
+        return deviceHardwareKey;
+    }
 
     void setTunerFrequency(const F64& frequency) {
         config.frequency = frequency;
@@ -69,7 +81,9 @@ class SDR {
 
     Config config;
     bool streaming = false;
-    Vector<CurrentDevice, CF32, 2> data;
+    std::string deviceName;
+    std::string deviceHardwareKey;
+    Vector<ComputeDevice, CF32, 2> data;
     Memory::CircularBuffer<CF32> buffer;
 
     SoapySDR::Device* device;
@@ -95,6 +109,9 @@ class SDR {
                 JST_CHECK_THROW(Result::ERROR);
             }
             device->activateStream(stream, 0, 0, 0);
+
+            deviceName = device->getDriverKey();
+            deviceHardwareKey = device->getHardwareKey();
 
             int flags;
             long long timeNs;
@@ -123,27 +140,27 @@ class UI {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
-        JST_CHECK_THROW(instance.buildWindow<Device::Metal>(renderCfg));
+        JST_CHECK_THROW(instance.buildWindow<RenderDevice>(renderCfg));
 
         // Configure Jetstream
-        win = instance.addBlock<Window, CurrentDevice>({
+        win = instance.addBlock<Window, ComputeDevice>({
             .shape = sdr.getOutputBuffer().shape(),
         }, {});
 
-        mul = instance.addBlock<Multiply, CurrentDevice>({}, {
+        mul = instance.addBlock<Multiply, ComputeDevice>({}, {
             .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, CurrentDevice>({}, {
+        fft = instance.addBlock<FFT, ComputeDevice>({}, {
             .buffer = mul->getProductBuffer(),
         });
 
-        amp = instance.addBlock<Amplitude, CurrentDevice>({}, {
+        amp = instance.addBlock<Amplitude, ComputeDevice>({}, {
             .buffer = fft->getOutputBuffer(),
         });
 
-        scl = instance.addBlock<Scale, CurrentDevice>({
+        scl = instance.addBlock<Scale, ComputeDevice>({
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
@@ -174,15 +191,15 @@ class UI {
     Instance& instance;
     bool streaming = false;
 
-    std::shared_ptr<Window<CurrentDevice>> win;
-    std::shared_ptr<Multiply<CurrentDevice>> mul;
-    std::shared_ptr<FFT<CurrentDevice>> fft;
-    std::shared_ptr<Amplitude<CurrentDevice>> amp;
-    std::shared_ptr<Scale<CurrentDevice>> scl;
+    std::shared_ptr<Window<ComputeDevice>> win;
+    std::shared_ptr<Multiply<ComputeDevice>> mul;
+    std::shared_ptr<FFT<ComputeDevice>> fft;
+    std::shared_ptr<Amplitude<ComputeDevice>> amp;
+    std::shared_ptr<Scale<ComputeDevice>> scl;
 
-    Bundle::LineplotUI<CurrentDevice> lpt;
-    Bundle::WaterfallUI<CurrentDevice> wtf;
-    Bundle::SpectrogramUI<CurrentDevice> spc;
+    Bundle::LineplotUI<ComputeDevice> lpt;
+    Bundle::WaterfallUI<ComputeDevice> wtf;
+    Bundle::SpectrogramUI<ComputeDevice> spc;
 
     void threadLoop() {
         frequency = sdr.getConfig().frequency;
@@ -220,31 +237,44 @@ class UI {
             }
 
             {
-                ImGui::Begin("Buffer Info");
+                ImGui::Begin("System Info");
 
-                float bufferThroughputMB = (sdr.getCircularBuffer().getThroughput() / (1024 * 1024));
-                ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+                if (ImGui::CollapsingHeader("Buffer Health", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    float bufferThroughputMB = (sdr.getCircularBuffer().getThroughput() / (1024 * 1024));
+                    ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
 
-                float sdrThroughputMB = ((sdr.getConfig().sampleRate * 8) / (1024 * 1024));
-                ImGui::Text("SDR Throughput %.0f MB/s", sdrThroughputMB);
+                    float bufferCapacityMB = ((F32)sdr.getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
+                    ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
-                float bufferCapacityMB = ((F32)sdr.getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
-                ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
+                    ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
 
-                ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
-                ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
-                ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
-                ImGui::Text("Bandwidth: %.0f MHz", sdr.getConfig().sampleRate / (1000 * 1000));
-                ImGui::Text("Compute Device: %s", DeviceTypeInfo<CurrentDevice>().name);
+                    float bufferUsageRatio = (F32)sdr.getCircularBuffer().getOccupancy() /
+                                                  sdr.getCircularBuffer().getCapacity();
+                    ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+                }
+
+                if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
+                    ImGui::Text("Compute Device: %s", DeviceTypeInfo<ComputeDevice>().name);
+                }
+
+                if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    instance.getRender().drawDebugMessage();
+                    ImGui::Text("Viewport Device: %s", instance.getViewport().name().c_str());
+                    ImGui::Text("Render Device: %s", DeviceTypeInfo<RenderDevice>().name);
+                    ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
+                }
+
+                if (ImGui::CollapsingHeader("SDR", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::Text("Device Name: %s", sdr.getDeviceName().c_str());
+                    ImGui::Text("Hardware Key: %s", sdr.getDeviceHardwareKey().c_str());
+                    float sdrThroughputMB = ((sdr.getConfig().sampleRate * 8) / (1024 * 1024));
+                    ImGui::Text("Data Throughput %.0f MB/s", sdrThroughputMB);
+                    ImGui::Text("RF Bandwidth: %.0f MHz", sdr.getConfig().sampleRate / (1000 * 1000));
+                }
 
                 ImGui::Separator();
                 ImGui::Spacing();
-
-                float bufferUsageRatio = (F32)sdr.getCircularBuffer().getOccupancy() /
-                                              sdr.getCircularBuffer().getCapacity();
-                ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
-                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                ImGui::Text("Usage");
 
                 JST_CHECK_THROW(lpt.drawInfo());
                 JST_CHECK_THROW(wtf.drawInfo());
@@ -282,13 +312,13 @@ int main() {
     viewportCfg.resizable = true;
     viewportCfg.size = {3130, 1140};
     viewportCfg.title = "CyberEther";
-    JST_CHECK_THROW(instance.buildViewport<Viewport::MacOS>(viewportCfg));
+    JST_CHECK_THROW(instance.buildViewport<SystemViewport>(viewportCfg));
 
     {
         const SDR::Config& sdrConfig {
             .deviceString = "driver=lime",
             .frequency = 2.42e9,
-            .sampleRate = 64e6,
+            .sampleRate = 56e6,
             .batchSize = 16,
             .outputBufferSize = 2 << 10,
         }; 
