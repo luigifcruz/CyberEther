@@ -14,10 +14,7 @@ FFT<D, T>::FFT(const Config& config,
 
 template<Device D, typename T>
 void FFT<D, T>::summary() const {
-    JST_INFO("===== FFT Module Configuration");
-    JST_INFO("Shape: {}", this->input.buffer.shape());
-    JST_INFO("Direction: {}", static_cast<I64>(config.direction));
-    JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
+    JST_INFO("    Direction: {}", static_cast<I64>(config.direction));
 }
 
 }  // namespace Jetstream

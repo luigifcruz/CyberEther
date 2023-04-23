@@ -55,6 +55,10 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         return *this;
     }
 
+    constexpr const Device device() const {
+        return Device::CPU;
+    }
+
  private:
     void allocateExtras() {
         // Allocate reference counter.

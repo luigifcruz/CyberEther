@@ -63,6 +63,10 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
         return *this;
     }
 
+    constexpr const Device device() const {
+        return Device::Metal;
+    }
+
     // Expose overloads for MTL::Buffer.
 
     operator const MTL::Buffer*() const {

@@ -6,11 +6,18 @@
 #include <complex>
 
 #include <fmt/ranges.h>
+#include <fmt/ostream.h>
 
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 
 namespace Jetstream {
+
+inline std::string GetTypeName(const auto& type) {
+    std::ostringstream oss;
+    oss << type;
+    return oss.str();
+}
 
 //
 // Device
@@ -40,47 +47,24 @@ inline constexpr const Device operator&(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
 }
 
-template <Device>
-struct JETSTREAM_API DeviceTypeInfo;
-
+inline std::ostream& operator<<(std::ostream& os, const Device& device) {
+    switch(device) {
+        case Device::None: os << "None"; break;
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::CPU> {
-    inline static const char* name = "CPU";
-};
+        case Device::CPU: os << "CPU"; break;
 #endif
-
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::CUDA> {
-    inline static const char* name = "CUDA";
-};
+        case Device::CUDA: os << "CUDA"; break;
 #endif
-
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::Metal> {
-    inline static const char* name = "Metal";
-};
+        case Device::Metal: os << "Metal"; break;
 #endif
-
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::Vulkan> {
-    inline static const char* name = "Vulkan";
-};
+        case Device::Vulkan: os << "Vulkan"; break;
 #endif
-
-enum class Taint : uint16_t {
-    None        = 0 << 0,
-};
-
-inline constexpr const Taint operator|(Taint lhs, Taint rhs) {
-    return static_cast<Taint>(static_cast<uint16_t>(lhs) | static_cast<uint16_t>(rhs));
-}
-
-inline constexpr const Taint operator&(Taint lhs, Taint rhs) {
-    return static_cast<Taint>(static_cast<uint16_t>(lhs) & static_cast<uint16_t>(rhs));
+        default: os.setstate(std::ios_base::failbit);
+    }
+    return os;
 }
 
 //
@@ -304,5 +288,7 @@ struct JETSTREAM_API NumericTypeInfo<CU64> {
 };
 
 }  // namespace Jetstream
+
+template <> struct fmt::formatter<Jetstream::Device> : ostream_formatter {};
 
 #endif

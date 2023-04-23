@@ -38,7 +38,9 @@ class SDR {
             while (streaming) {
                 if (buffer.getOccupancy() > data.size()) {
                     buffer.get(data.data(), data.size());
-                    instance.compute();
+                    if (instance.isCommited()) {
+                        JST_CHECK_THROW(instance.compute());
+                    }
                 }
             }
         });
@@ -273,13 +275,13 @@ class UI {
 
                 if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
                     ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
-                    ImGui::Text("Compute Device: %s", DeviceTypeInfo<ComputeDevice>().name);
+                    ImGui::Text("Compute Device: %s", GetTypeName(ComputeDevice).c_str());
                 }
 
                 if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
                     instance.getRender().drawDebugMessage();
                     ImGui::Text("Viewport Device: %s", instance.getViewport().name().c_str());
-                    ImGui::Text("Render Device: %s", DeviceTypeInfo<RenderDevice>().name);
+                    ImGui::Text("Render Device: %s", GetTypeName(RenderDevice).c_str());
                     ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
                 }
 
@@ -333,11 +335,11 @@ int main() {
 
     {
         const SDR::Config& sdrConfig {
-            .deviceString = "driver=lime",
-            .frequency = 2.42e9,
-            .sampleRate = 32e6,
+            .deviceString = "driver=airspy",
+            .frequency = 96e6,
+            .sampleRate = 14e6,
             .batchSize = 16,
-            .outputBufferSize = 2 << 10,
+            .outputBufferSize = 2 << 9,
         }; 
         auto sdr = SDR(sdrConfig, instance);
         auto ui = UI(sdr, instance);

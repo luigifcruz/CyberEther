@@ -11,13 +11,25 @@ namespace Jetstream {
 
 class JETSTREAM_API Module {
  public:
+    struct IoMetadata {
+        U64 hash;
+        void* ptr;
+        Device device;
+        std::string type;
+        std::vector<U64> shape;
+    };
+
     virtual ~Module() = default;
 
+    virtual const std::string name() const = 0;
     virtual void summary() const = 0;
+
+    constexpr const U64& id() const {
+        return _id;
+    }
 
  protected:
     virtual constexpr const Device device() const = 0;
-    virtual constexpr const Taint taints() const = 0;
     
     template<typename T>
     Result initInput(const T& buffer) {
@@ -26,7 +38,13 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
 
-        inputs.push_back(buffer.hash());
+        inputs.push_back({
+            buffer.hash(),
+            buffer.data(),
+            buffer.device(),
+            NumericTypeInfo<typename T::DataType>::name,
+            buffer.shapeVector(),
+        });
 
         return Result::SUCCESS;
     }
@@ -40,22 +58,33 @@ class JETSTREAM_API Module {
 
         buffer = T(shape);
 
-        outputs.push_back(buffer.hash());
+        outputs.push_back({
+            buffer.hash(),
+            buffer.data(),
+            buffer.device(),
+            NumericTypeInfo<typename T::DataType>::name,
+            buffer.shapeVector(),
+        });
 
         return Result::SUCCESS;
     }
 
-    const std::vector<U64>& getInputs() const {
+    const std::vector<IoMetadata>& getInputs() const {
         return inputs;
     }
 
-    const std::vector<U64>& getOutputs() const {
+    const std::vector<IoMetadata>& getOutputs() const {
         return outputs;
     }
 
+    void setId(const U64& id) {
+        _id = id;
+    }
+
  private:
-    std::vector<U64> inputs;
-    std::vector<U64> outputs;
+    U64 _id;
+    std::vector<IoMetadata> inputs;
+    std::vector<IoMetadata> outputs;
 
     friend class Instance;
 };

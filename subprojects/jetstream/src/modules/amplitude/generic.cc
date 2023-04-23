@@ -15,11 +15,7 @@ Amplitude<D, IT, OT>::Amplitude(const Config& config,
 
 template<Device D, typename IT, typename OT>
 void Amplitude<D, IT, OT>::summary() const {
-    JST_INFO("===== Amplitude Module Configuration");
-    JST_INFO("Shape: {}", this->input.buffer.shape());
-    JST_INFO("Device: {}", DeviceTypeInfo<D>().name);
-    JST_INFO("Input Type: {}", NumericTypeInfo<IT>().name);
-    JST_INFO("Output Type: {}", NumericTypeInfo<OT>().name);
+    JST_INFO("    None");
 }
 
 }  // namespace Jetstream

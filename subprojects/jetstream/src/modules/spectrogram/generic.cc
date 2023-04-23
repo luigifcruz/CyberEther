@@ -12,8 +12,7 @@ Spectrogram<D, T>::Spectrogram(const Config& config,
 
 template<Device D, typename T>
 void Spectrogram<D, T>::summary() const {
-    JST_INFO("===== Spectrogram Module Configuration");
-    JST_INFO("Window Size: {}x{}", config.viewSize.width, config.viewSize.height);
+    JST_INFO("     Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
@@ -112,7 +111,7 @@ const Result Spectrogram<D, T>::present(Render::Window& window) {
 template<Device D, typename T>
 const Render::Size2D<U64>& Spectrogram<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
-        JST_TRACE("Spectrogram size changed from {}x{} to {}x{}.", 
+        JST_TRACE("Spectrogram size changed from [{}, {}] to [{}, {}].", 
                 config.viewSize.width, 
                 config.viewSize.height, 
                 viewSize.width, 
