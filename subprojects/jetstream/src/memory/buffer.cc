@@ -1,19 +1,17 @@
 #include "jetstream/memory/buffer.hh"
 
-#define MIN(a,b) (((a)<(b))?(a):(b))
-
 using namespace std::chrono_literals;
 
 namespace Jetstream::Memory {
 
 template<class T>
-CircularBuffer<T>::CircularBuffer(size_t capacity)
+CircularBuffer<T>::CircularBuffer(U64 capacity)
      : transfers(0),
        throughput(0.0),
        capacity(capacity),
        overflows(0) {
-    this->Reset();
-    this->buffer = std::unique_ptr<T[]>(new T[GetCapacity()]);
+    this->reset();
+    this->buffer = std::unique_ptr<T[]>(new T[getCapacity()]);
 }
 
 template<class T>
@@ -24,9 +22,9 @@ CircularBuffer<T>::~CircularBuffer() {
 }
 
 template<class T>
-const Result CircularBuffer<T>::WaitBufferOccupancy(size_t size) {
+const Result CircularBuffer<T>::waitBufferOccupancy(U64 size) {
     std::unique_lock<std::mutex> sync(sync_mtx);
-    while (GetOccupancy() < size) {
+    while (getOccupancy() < size) {
         if (semaphore.wait_for(sync, 5s) == std::cv_status::timeout)
             return Result::ERROR_TIMEOUT;
     }
@@ -34,19 +32,19 @@ const Result CircularBuffer<T>::WaitBufferOccupancy(size_t size) {
 }
 
 template<class T>
-const Result CircularBuffer<T>::Get(T* buf, size_t size) {
-    if (GetCapacity() < size) {
+const Result CircularBuffer<T>::get(T* buf, U64 size) {
+    if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
 
-    Result res = WaitBufferOccupancy(size);
+    Result res = waitBufferOccupancy(size);
     if (res != Result::SUCCESS)
         goto exception;
 
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
-        U64 stage_a = MIN(size, GetCapacity() - head);
+        U64 stage_a = JST_MIN(size, getCapacity() - head);
 
         std::copy_n(buffer.get() + head, stage_a, buf);
 
@@ -54,7 +52,7 @@ const Result CircularBuffer<T>::Get(T* buf, size_t size) {
             std::copy_n(buffer.get(), size - stage_a, buf + stage_a);
         }
 
-        head = (head + size) % GetCapacity();
+        head = (head + size) % getCapacity();
         occupancy -= size;
 
         // Throughput Calculator
@@ -75,28 +73,28 @@ exception:
 }
 
 template<class T>
-const Result CircularBuffer<T>::Put(T* buf, size_t size) {
-    if (GetCapacity() < size) {
+const Result CircularBuffer<T>::put(T* buf, U64 size) {
+    if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
 
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
 
-        if (GetCapacity() < (GetOccupancy() + size)) {
+        if (getCapacity() < (getOccupancy() + size)) {
             overflows += 1;
             occupancy = 0;
             head = tail;
         }
 
-        U64 stage_a = MIN(size, GetCapacity() - tail);
+        U64 stage_a = JST_MIN(size, getCapacity() - tail);
         std::copy_n(buf, stage_a, buffer.get() + tail);
 
         if (stage_a < size) {
             std::copy_n(buf + stage_a, size - stage_a, buffer.get());
         }
 
-        tail = (tail + size) % GetCapacity();
+        tail = (tail + size) % getCapacity();
         occupancy += size;
     }
 
@@ -105,7 +103,7 @@ const Result CircularBuffer<T>::Put(T* buf, size_t size) {
 }
 
 template<class T>
-const Result CircularBuffer<T>::Reset() {
+const Result CircularBuffer<T>::reset() {
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
         this->head = 0;
@@ -121,23 +119,23 @@ const Result CircularBuffer<T>::Reset() {
 }
 
 template<class T>
-const U64 CircularBuffer<T>::GetCapacity() const {
+const U64 CircularBuffer<T>::getCapacity() const {
     return this->capacity;
 }
 
 template<class T>
-const U64 CircularBuffer<T>::GetOccupancy() const {
+const U64 CircularBuffer<T>::getOccupancy() const {
     return this->occupancy;
 }
 
 template<class T>
-const bool CircularBuffer<T>::IsEmpty() const {
-    return GetOccupancy() == 0;
+const bool CircularBuffer<T>::isEmpty() const {
+    return getOccupancy() == 0;
 }
 
 template<class T>
-const bool CircularBuffer<T>::IsFull() const {
-    return GetOccupancy() == GetCapacity();
+const bool CircularBuffer<T>::isFull() const {
+    return getOccupancy() == getCapacity();
 }
 
 template class CircularBuffer<I8>;

@@ -31,6 +31,7 @@ class JETSTREAM_API Instance {
     template<>
     const Result initialize<Device::CPU>(const Config& config) {
         if (!cpu) {
+            JST_DEBUG("Initializing CPU backend.");
             cpu = std::make_unique<CPU>(config);
         }
         return Result::SUCCESS;
@@ -46,6 +47,10 @@ class JETSTREAM_API Instance {
 
     template<>
     const auto& state<Device::CPU>() {
+        if (!cpu) {
+            JST_DEBUG("The CPU backend is not initialized.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return cpu; 
     }
 #endif
@@ -54,6 +59,7 @@ class JETSTREAM_API Instance {
     template<>
     const Result initialize<Device::Metal>(const Config& config) {
         if (!metal) {
+            JST_DEBUG("Initializing Metal backend.");
             metal = std::make_unique<Metal>(config);
         }
         return Result::SUCCESS;
@@ -69,6 +75,10 @@ class JETSTREAM_API Instance {
 
     template<>
     const auto& state<Device::Metal>() {
+        if (!metal) {
+            JST_DEBUG("The Metal backend is not initialized.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
         return metal; 
     }
 #endif

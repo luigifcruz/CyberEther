@@ -3,53 +3,69 @@
 
 #include <span>
 #include <vector>
-#include <string>
 #include <complex>
 
 #include <fmt/ranges.h>
+#include <fmt/ostream.h>
 
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 
 namespace Jetstream {
 
+inline std::string GetTypeName(const auto& type) {
+    std::ostringstream oss;
+    oss << type;
+    return oss.str();
+}
+
 //
 // Device
 //
 
-enum class Device : uint8_t {
-    CPU     = 1 << 0,
-    CUDA    = 1 << 1,
-    Metal   = 1 << 2,
-    Vulkan  = 1 << 3,
+enum class JETSTREAM_API Device : uint8_t {
+    None    = 1 << 0,
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
+    CPU     = 1 << 1,
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
+    CUDA    = 1 << 2,
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
+    Metal   = 1 << 3,
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
+    Vulkan  = 1 << 4,
+#endif
 };
 
 inline constexpr const Device operator|(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
 }
 
-template <Device>
-struct JETSTREAM_API DeviceTypeInfo;
+inline constexpr const Device operator&(Device lhs, Device rhs) {
+    return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+}
 
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::CPU> {
-    inline static const std::string name = "CPU";
-};
-
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::CUDA> {
-    inline static const std::string name = "CUDA";
-};
-
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::Metal> {
-    inline static const std::string name = "Metal";
-};
-
-template<>
-struct JETSTREAM_API DeviceTypeInfo<Device::Vulkan> {
-    inline static const std::string name = "Vulkan";
-};
+inline std::ostream& operator<<(std::ostream& os, const Device& device) {
+    switch(device) {
+        case Device::None: os << "None"; break;
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
+        case Device::CPU: os << "CPU"; break;
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
+        case Device::CUDA: os << "CUDA"; break;
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
+        case Device::Metal: os << "Metal"; break;
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
+        case Device::Vulkan: os << "Vulkan"; break;
+#endif
+        default: os.setstate(std::ios_base::failbit);
+    }
+    return os;
+}
 
 //
 // Range
@@ -108,7 +124,7 @@ struct JETSTREAM_API NumericTypeInfo<F32> {
     using type = F32;
     using subtype = F32;
     using surtype = CF32;
-    inline static const std::string name = "F32";
+    inline static const char* name = "F32";
 };
 
 template<>
@@ -116,7 +132,7 @@ struct JETSTREAM_API NumericTypeInfo<F64> {
     using type = F64;
     using subtype = F64;
     using surtype = CF64;
-    inline static const std::string name = "F64";
+    inline static const char* name = "F64";
 };
 
 template<>
@@ -124,7 +140,7 @@ struct JETSTREAM_API NumericTypeInfo<I8> {
     using type = I8;
     using subtype = I8;
     using surtype = CI8;
-    inline static const std::string name = "I8";
+    inline static const char* name = "I8";
 };
 
 template<>
@@ -132,7 +148,7 @@ struct JETSTREAM_API NumericTypeInfo<I16> {
     using type = I16;
     using subtype = I16;
     using surtype = CI16;
-    inline static const std::string name = "I16";
+    inline static const char* name = "I16";
 };
 
 template<>
@@ -140,7 +156,7 @@ struct JETSTREAM_API NumericTypeInfo<I32> {
     using type = I32;
     using subtype = I32;
     using surtype = CI32;
-    inline static const std::string name = "I32";
+    inline static const char* name = "I32";
 };
 
 template<>
@@ -148,7 +164,7 @@ struct JETSTREAM_API NumericTypeInfo<I64> {
     using type = I64;
     using subtype = I64;
     using surtype = CI64;
-    inline static const std::string name = "I64";
+    inline static const char* name = "I64";
 };
 
 template<>
@@ -156,7 +172,7 @@ struct JETSTREAM_API NumericTypeInfo<U8> {
     using type = U8;
     using subtype = U8;
     using surtype = CU8;
-    inline static const std::string name = "U8";
+    inline static const char* name = "U8";
 };
 
 template<>
@@ -164,7 +180,7 @@ struct JETSTREAM_API NumericTypeInfo<U16> {
     using type = U16;
     using subtype = U16;
     using surtype = CU16;
-    inline static const std::string name = "U16";
+    inline static const char* name = "U16";
 };
 
 template<>
@@ -172,7 +188,7 @@ struct JETSTREAM_API NumericTypeInfo<U32> {
     using type = U32;
     using subtype = U32;
     using surtype = CU32;
-    inline static const std::string name = "U32";
+    inline static const char* name = "U32";
 };
 
 template<>
@@ -180,7 +196,7 @@ struct JETSTREAM_API NumericTypeInfo<U64> {
     using type = U64;
     using subtype = U64;
     using surtype = CU64;
-    inline static const std::string name = "U64";
+    inline static const char* name = "U64";
 };
 
 template<>
@@ -188,7 +204,7 @@ struct JETSTREAM_API NumericTypeInfo<BOOL> {
     using type = BOOL;
     using subtype = BOOL;
     using surtype = BOOL;
-    inline static const std::string name = "BOOL";
+    inline static const char* name = "BOOL";
 };
 
 template<>
@@ -196,7 +212,7 @@ struct JETSTREAM_API NumericTypeInfo<CF32> {
     using type = CF32;
     using subtype = F32;
     using surtype = F32;
-    inline static const std::string name = "CF32";
+    inline static const char* name = "CF32";
 };
 
 template<>
@@ -204,7 +220,7 @@ struct JETSTREAM_API NumericTypeInfo<CF64> {
     using type = CF64;
     using subtype = F64;
     using surtype = F64;
-    inline static const std::string name = "CF64";
+    inline static const char* name = "CF64";
 };
 
 template<>
@@ -212,7 +228,7 @@ struct JETSTREAM_API NumericTypeInfo<CI8> {
     using type = CI8;
     using subtype = I8;
     using surtype = I8;
-    inline static const std::string name = "CI8";
+    inline static const char* name = "CI8";
 };
 
 template<>
@@ -220,7 +236,7 @@ struct JETSTREAM_API NumericTypeInfo<CI16> {
     using type = CI16;
     using subtype = I16;
     using surtype = I16;
-    inline static const std::string name = "CI16";
+    inline static const char* name = "CI16";
 };
 
 template<>
@@ -228,7 +244,7 @@ struct JETSTREAM_API NumericTypeInfo<CI32> {
     using type = CI32;
     using subtype = I32;
     using surtype = I32;
-    inline static const std::string name = "CI32";
+    inline static const char* name = "CI32";
 };
 
 template<>
@@ -236,7 +252,7 @@ struct JETSTREAM_API NumericTypeInfo<CI64> {
     using type = CI64;
     using subtype = I64;
     using surtype = I64;
-    inline static const std::string name = "CI64";
+    inline static const char* name = "CI64";
 };
 
 template<>
@@ -244,7 +260,7 @@ struct JETSTREAM_API NumericTypeInfo<CU8> {
     using type = CU8;
     using subtype = U8;
     using surtype = U8;
-    inline static const std::string name = "CU8";
+    inline static const char* name = "CU8";
 };
 
 template<>
@@ -252,7 +268,7 @@ struct JETSTREAM_API NumericTypeInfo<CU16> {
     using type = CU16;
     using subtype = U16;
     using surtype = U16;
-    inline static const std::string name = "CU16";
+    inline static const char* name = "CU16";
 };
 
 template<>
@@ -260,7 +276,7 @@ struct JETSTREAM_API NumericTypeInfo<CU32> {
     using type = CU32;
     using subtype = U32;
     using surtype = U32;
-    inline static const std::string name = "CU32";
+    inline static const char* name = "CU32";
 };
 
 template<>
@@ -268,9 +284,11 @@ struct JETSTREAM_API NumericTypeInfo<CU64> {
     using type = CU64;
     using subtype = U64;
     using surtype = U64;
-    inline static const std::string name = "CU64";
+    inline static const char* name = "CU64";
 };
 
 }  // namespace Jetstream
+
+template <> struct fmt::formatter<Jetstream::Device> : ostream_formatter {};
 
 #endif

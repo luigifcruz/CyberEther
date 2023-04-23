@@ -6,58 +6,66 @@
 
 namespace Jetstream {
 
-template<typename T>
-class JETSTREAM_API Vector<Device::CPU, T> : public VectorImpl<T> {
+template<typename DataType, U64 Dimensions>
+class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
-    using VectorImpl<T>::VectorImpl;
+    using VectorType = VectorImpl<DataType, Dimensions>;
 
-    explicit Vector(const std::size_t& size) {
-        JST_CHECK_THROW(this->resize(size));
+    Vector() : VectorType() {}
+
+    explicit Vector(const Vector& other) : VectorType(other) {}
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    explicit Vector(const Vector<Device::Metal, DataType, Dimensions>& other)
+             : VectorType(other) {
+        allocateExtras();
     }
-
-    ~Vector() {
-        if (this->container.empty() || !this->managed) {
-            return;
-        }
-
-#ifdef JETSTREAM_CUDA_AVAILABLE
-        if (cudaFreeHost(this->container.data()) != cudaSuccess) {
-            JST_FATAL("Failed to deallocate host memory.");
-        }
-#else
-        free(this->container.data());
 #endif
+
+    explicit Vector(void* ptr, const typename VectorType::ShapeType& shape)
+             : VectorType(ptr, shape) {
+        allocateExtras();
     }
 
-    // TODO: Implement resize.
-    Result resize(const std::size_t& size) override {
-        if (!this->container.empty() && !this->managed) {
-            return Result::ERROR;
-        }
+    explicit Vector(const typename VectorType::ShapeType& shape)
+             : VectorType(nullptr, shape) {
+        JST_TRACE("New CPU vector created and allocated: {}", shape);
 
-        T* ptr = nullptr;
-        const auto sizeBytes = size * sizeof(T);
-
-#ifdef JETSTREAM_CUDA_AVAILABLE
-        BL_CUDA_CHECK(cudaMallocHost(&ptr, size_bytes), [&]{
-            JST_FATAL("Failed to allocate CPU memory: {}", err);
-        });
-#else
+        // Allocate memory.
         void* memoryAddr = nullptr;
         const auto pageSize = JST_PAGESIZE();
-        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(sizeBytes);
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(this->size_bytes());
         const auto result = posix_memalign(&memoryAddr, 
                                            pageSize,
                                            alignedSizeBytes);
-        if (result < 0 || (ptr = static_cast<T*>(memoryAddr)) == nullptr) {
+        if (result < 0 || (this->_data = static_cast<DataType*>(memoryAddr)) == nullptr) {
             JST_FATAL("Failed to allocate CPU memory.");
+            JST_CHECK_THROW(Result::ERROR);
         }
-#endif
+        this->_destructors->push_back([ptr = this->_data]() { free(ptr); });
 
-        this->container = std::span<T>(ptr, size);
-        this->managed = true;
+        // Null out array.
+        std::fill(this->begin(), this->end(), 0.0f);
 
-        return Result::SUCCESS;
+        allocateExtras();
+    }
+
+    Vector& operator=(const Vector& other) {
+        VectorType::operator=(other);
+        return *this;
+    }
+
+    constexpr const Device device() const {
+        return Device::CPU;
+    }
+
+ private:
+    void allocateExtras() {
+        // Allocate reference counter.
+        if (!this->_refs) {
+            this->_refs = new U64(1);
+            this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
+        }
     }
 };
 

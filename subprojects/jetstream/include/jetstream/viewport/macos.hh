@@ -15,9 +15,12 @@ namespace Jetstream::Viewport {
 
 class MacOS : public Generic {
  public:
-
     explicit MacOS(const Config& config);
     virtual ~MacOS();
+
+    const std::string name() const {
+        return "MacOS (GLFW)";
+    }
 
     const Result create();
     const Result destroy();

@@ -1,6 +1,7 @@
-src_lst += files([
-    'base.cc',
-])
+sum_lst = {}
 
-subdir('devices')
+subdir('metal')
 subdir('tools')
+subdir('base')
+
+summary(sum_lst, section: 'Render (Present)', bool_yn: true)

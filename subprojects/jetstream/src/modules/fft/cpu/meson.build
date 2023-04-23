@@ -1,5 +1,5 @@
 deps = [
-    'JETSTREAM_BACKEND_FFTW_AVAILABLE',
+    'JETSTREAM_LOADER_FFTW_AVAILABLE',
 ]
 
 all_deps_found = true

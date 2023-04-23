@@ -47,6 +47,8 @@ libjetstream_dep = declare_dependency(
     link_with: libjetstream
 )
 
+subdir('tests')
+
 pkg = import('pkgconfig')
 pkg.generate(
   libjetstream,

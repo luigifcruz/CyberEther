@@ -1,13 +1,13 @@
 #include "jetstream/render/metal/window.hh"
 #include "jetstream/render/metal/surface.hh"
-#include "jetstream/render/tools/compressed_b612.hh"
 
 namespace Jetstream::Render {
 
 using Implementation = WindowImp<Device::Metal>;
 
-Implementation::WindowImp(const Config& config) : Window(config) {
-    viewport = config.viewport;
+Implementation::WindowImp(const Config& config,
+                          std::shared_ptr<Viewport::Generic>& viewport)
+         : Window(config, viewport) {
 }
 
 const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
@@ -23,11 +23,13 @@ const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
 const Result Implementation::create() {
     JST_DEBUG("Creating Metal window.");
 
+    outerPool = NS::AutoreleasePool::alloc()->init();
+
     JST_CHECK(viewport->create());
 
-    device = Backend::State<Device::Metal>()->getDevice();
+    dev = Backend::State<Device::Metal>()->getDevice();
 
-    commandQueue = device->newCommandQueue();
+    commandQueue = dev->newCommandQueue();
     JST_ASSERT(commandQueue);
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
@@ -57,10 +59,12 @@ const Result Implementation::destroy() {
         JST_CHECK(destroyImgui());
     } 
 
-    JST_CHECK(viewport->destroy());
-
     renderPassDescriptor->release();
     commandQueue->release();
+
+    JST_CHECK(viewport->destroy());
+
+    outerPool->release();
 
     return Result::SUCCESS;
 }
@@ -71,6 +75,8 @@ const Result Implementation::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
+    this->ApplyImGuiTheme(config.scale);
+
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
@@ -78,20 +84,10 @@ const Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 #endif
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
-    style->ScaleAllSizes(config.scale);
-    io->Fonts->AddFontFromMemoryCompressedTTF(
-        B612_compressed_data, 
-        B612_compressed_size,
-        12.0f * config.scale, 
-        nullptr, 
-        nullptr);
-
-    ImGui::StyleColorsDark();
-
+    
     JST_CHECK(viewport->createImgui());
 
-    ImGui_ImplMetal_Init(device);
+    ImGui_ImplMetal_Init(dev);
 
     return Result::SUCCESS;
 }
@@ -126,7 +122,7 @@ const Result Implementation::endImgui() {
 }
 
 const Result Implementation::begin() {
-    pPool = NS::AutoreleasePool::alloc()->init();
+    innerPool = NS::AutoreleasePool::alloc()->init();
 
     drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
 
@@ -143,24 +139,6 @@ const Result Implementation::begin() {
 
     if (config.imgui) {
         JST_CHECK(beginImgui());
-
-#if !defined(NDEBUG)
-        ImGui::ShowMetricsWindow();
-        ImGui::Begin("Render Info");
-        ImGui::Text("Renderer Vendor: %s", "Apple");
-        ImGui::Text("Renderer Name: %s", "Metal");
-
-        auto& backend = Backend::State<Device::Metal>();
-        ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
-        ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
-        ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
-        ImGui::Text("Physical Memory: %.00f GB", (float)backend->physicalMemory() / 1e9);
-        ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
-        ImGui::Text("Processor Count: %llu/%llu", backend->getActiveProcessorCount(),
-                                                  backend->getTotalProcessorCount());
-
-        ImGui::End();
-#endif
     }
 
     return Result::SUCCESS;
@@ -181,17 +159,24 @@ const Result Implementation::end() {
     commandBuffer->commit();
     commandBuffer->waitUntilCompleted();
 
-    pPool->release();
+    innerPool->release();
 
     return Result::SUCCESS;
 }
 
-const Result Implementation::synchronize() {
-    return Result::SUCCESS;
-}
+void Implementation::drawDebugMessage() const {
+    auto& backend = Backend::State<Device::Metal>();
+    ImGuiIO& io = ImGui::GetIO();
 
-const bool Implementation::keepRunning() {
-    return viewport->keepRunning();
+    ImGui::Text("FPS: %.1f Hz", io.Framerate);
+    ImGui::Text("Vendor: %s", "Apple (Metal)");
+    ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
+    ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
+    ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
+    ImGui::Text("Physical Memory: %.00f GB", (float)backend->physicalMemory() / 1e9);
+    ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
+    ImGui::Text("Processor Count: %llu/%llu", backend->getActiveProcessorCount(),
+                                              backend->getTotalProcessorCount());
 }
 
 const Window::Stats& Implementation::stats() const {

@@ -1,30 +1,6 @@
-#include "jetstream/modules/amplitude.hh"
+#include "../generic.cc"
 
 namespace Jetstream {
-
-template<Device D, typename IT, typename OT>
-Amplitude<D, IT, OT>::Amplitude(const Config& config, const Input& input) 
-    : config(config), input(input) {
-    JST_DEBUG("Initializing Amplitude module with CPU backend.");
-
-    // Intialize output.
-    this->InitInput(this->input.buffer, getBufferSize());
-    this->InitOutput(this->output.buffer, getBufferSize());
-
-    // Check parameters. 
-    if (this->input.buffer.size() != this->config.size) {
-        JST_FATAL("Input buffer size ({}) is different than the" \
-            "configuration size ({}).", this->input.buffer.size(), 
-            this->config.size);
-        throw Result::ERROR;
-    }
-
-    JST_INFO("===== Amplitude Module Configuration");
-    JST_INFO("Size: {}", this->config.size);
-    JST_INFO("Device: {}", DeviceTypeInfo<D>().name);
-    JST_INFO("Input Type: {}", NumericTypeInfo<IT>().name);
-    JST_INFO("Output Type: {}", NumericTypeInfo<OT>().name);
-}
 
 // Faster Log10 by http://openaudio.blogspot.com/2017/02/faster-log10-and-pow.html
 template<typename T>
@@ -44,10 +20,19 @@ static inline T log10(T X) {
 }
 
 template<Device D, typename IT, typename OT>
+const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+    JST_TRACE("Create Amplitude compute core using CPU backend.");
+    return Result::SUCCESS;
+}
+
+template<Device D, typename IT, typename OT>
 const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
-    for (U64 i = 0; i < this->config.size; i++) {
-        this->output.buffer[i] = 20.0 * log10(abs(this->input.buffer[i]) / this->config.size);
+    const auto& fftSize = input.buffer.shape(1);
+
+    for (U64 i = 0; i < input.buffer.size(); i++) {
+        output.buffer[i] = 20.0 * log10(abs(input.buffer[i]) / fftSize);
     }
+
     return Result::SUCCESS;
 }
 

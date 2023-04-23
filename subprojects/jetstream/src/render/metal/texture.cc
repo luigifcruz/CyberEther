@@ -86,6 +86,7 @@ const MTL::PixelFormat Implementation::ConvertPixelFormat(const PixelFormat& pfm
         return MTL::PixelFormatRGBA8Unorm;
     }
 
+    JST_FATAL("Can't convert pixel format.");
     throw Result::ERROR;
 }
 
@@ -100,7 +101,8 @@ const U64 Implementation::GetPixelByteSize(const MTL::PixelFormat& pfmt) {
         case MTL::PixelFormatRGBA8Unorm:
             return 4;
         default:
-            throw "pixel format not implemented yet";
+            JST_FATAL("Pixel format not implemented yet.");
+            throw Result::ERROR;
     }
 }
 

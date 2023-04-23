@@ -12,23 +12,30 @@ template<Device D, typename T = CF32>
 class Window : public Module {
  public:
     struct Config {
-        U64 size;
+        std::array<U64, 2> shape;
     };
 
     struct Input {
     };
 
     struct Output {
-        Vector<D, T> window;
+        Vector<D, T, 2> window;
     };
 
-    explicit Window(const Config&, const Input&);
+    explicit Window(const Config& config,
+                    const Input& input);
 
-    constexpr const U64 getWindowSize() const {
-        return this->config.size;
+    constexpr const Device device() const {
+        return D;
     }
 
-    constexpr const Vector<D, T>& getWindowBuffer() const {
+    const std::string name() const {
+        return "Window";
+    }
+
+    void summary() const final;
+
+    constexpr const Vector<D, T, 2>& getWindowBuffer() const {
         return this->output.window;
     }
 
