@@ -10,9 +10,10 @@ namespace Jetstream {
 
 template<Device DeviceId, typename DataType, U64 Dimensions = 1> class Vector;
 
-template<typename DataType, U64 Dimensions>
+template<typename Type, U64 Dimensions>
 class VectorImpl {
  public:
+    using DataType = Type;
     using ShapeType = std::array<U64, Dimensions>;
 
     virtual ~VectorImpl() {
@@ -40,6 +41,10 @@ class VectorImpl {
 
     constexpr const ShapeType& shape() const noexcept {
         return _shape;
+    }
+
+    constexpr const std::vector<U64> shapeVector() const noexcept {
+        return std::vector<U64>(_shape.begin(), _shape.end());
     }
 
     constexpr const U64& shape(const U64& index) const noexcept {

@@ -36,8 +36,8 @@ class Waterfall : public Module, public Compute, public Present {
         return D;
     }
 
-    constexpr const Taint taints() const {
-        return Taint::None; 
+    const std::string name() const {
+        return "Waterfall";
     }
 
     void summary() const final;

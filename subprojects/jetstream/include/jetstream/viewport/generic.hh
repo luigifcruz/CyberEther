@@ -22,6 +22,8 @@ class Generic {
     explicit Generic(const Config& config);   
     virtual ~Generic() = default;
 
+    virtual const std::string name() const = 0;
+
     virtual const Result create() = 0;
     virtual const Result destroy() = 0;
 

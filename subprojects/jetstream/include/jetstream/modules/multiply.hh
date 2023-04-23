@@ -31,8 +31,8 @@ class Multiply : public Module, public Compute {
         return D;
     }
 
-    constexpr const Taint taints() const {
-        return Taint::None;
+    const std::string name() const {
+        return "Multiply";
     }
 
     void summary() const final;

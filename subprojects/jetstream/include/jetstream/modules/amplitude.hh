@@ -30,8 +30,8 @@ class Amplitude : public Module, public Compute {
         return D;
     }
 
-    constexpr const Taint taints() const {
-        return Taint::None;
+    const std::string name() const {
+        return "Amplitude";
     }
 
     void summary() const final;

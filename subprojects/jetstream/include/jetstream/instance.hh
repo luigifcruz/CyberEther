@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include <algorithm>
 
 #include "jetstream/module.hh"
 #include "jetstream/backend/base.hh"
@@ -75,6 +76,9 @@ class JETSTREAM_API Instance {
         // Initialize block module.
         auto block = std::make_shared<T<D, C...>>(config, input);
 
+        // Add metadata.
+        block->setId(this->blocks.size());
+
         // Register block module to scheduler.
         this->blocks.push_back(block);
 
@@ -90,12 +94,26 @@ class JETSTREAM_API Instance {
     const Result present();
     const Result end();
 
+    constexpr const Viewport::Generic& getViewport() const {
+        return *_viewport;
+    }
+
+    constexpr const Render::Window& getRender() const {
+        return *_window;       
+    }
+
+    constexpr const bool isCommited() const {
+        return commited;       
+    }
+
  private:
     std::atomic_flag computeSync{false};
     std::atomic_flag presentSync{false};
 
     std::vector<std::shared_ptr<Module>> blocks;
-    std::vector<std::shared_ptr<Present>> presentBlocks;
+    std::unordered_map<U64, std::shared_ptr<Present>> presentBlocks;
+    std::unordered_map<U64, std::shared_ptr<Compute>> computeBlocks;
+        
     std::vector<std::unique_ptr<Graph>> graphs;
 
     std::shared_ptr<Render::Window> _window;

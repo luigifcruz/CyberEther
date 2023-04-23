@@ -26,9 +26,7 @@ Window<D, T>::Window(const Config& config,
 
 template<Device D, typename T>
 void Window<D, T>::summary() const {
-    JST_INFO("===== Window Module Configuration");
-    JST_INFO("Window Shape: {}", this->config.shape);
-    JST_INFO("Output Type: {}", NumericTypeInfo<T>().name);
+    JST_INFO("    Window Shape: {}", this->config.shape);
 }
 
 template class Window<Device::CPU, CF64>;

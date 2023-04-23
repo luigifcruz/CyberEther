@@ -9,6 +9,7 @@
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/viewport/base.hh"
+#include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Render {
 
@@ -37,6 +38,7 @@ class Window {
     virtual const Result end() = 0;
 
     virtual const Stats& stats() const = 0;
+    virtual void drawDebugMessage() const = 0;
 
     virtual constexpr const Device device() const = 0;
 
@@ -62,6 +64,8 @@ class Window {
  protected:
     Config config;
     std::shared_ptr<Viewport::Generic> viewport;
+
+    static void ApplyImGuiTheme(const F32& scale);
 };
 
 }  // namespace Jetstream::Render

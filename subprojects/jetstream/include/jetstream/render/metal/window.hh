@@ -21,6 +21,7 @@ class WindowImp<Device::Metal> : public Window {
     const Result end();
 
     const Stats& stats() const;
+    void drawDebugMessage() const;
 
     constexpr const Device device() const {
         return Device::Metal;

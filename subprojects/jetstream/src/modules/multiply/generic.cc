@@ -25,9 +25,7 @@ Multiply<D, T>::Multiply(const Config& config,
 
 template<Device D, typename T>
 void Multiply<D, T>::summary() const {
-    JST_INFO("===== Multiply Module Configuration");
-    JST_INFO("Shape: {}", this->input.factorA.shape());
-    JST_INFO("Input Type: {}", NumericTypeInfo<T>().name);
+    JST_INFO("     None");
 }
 
 }  // namespace Jetstream

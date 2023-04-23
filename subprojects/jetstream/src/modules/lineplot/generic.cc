@@ -7,6 +7,7 @@ Lineplot<D, T>::Lineplot(const Config& config,
                          const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Lineplot module.");
+    JST_CHECK_THROW(initInput(input.buffer));
 }
 
 template<Device D, typename T>
@@ -133,8 +134,7 @@ const Result Lineplot<D, T>::createPresent(Render::Window& window) {
 
 template<Device D, typename T>
 void Lineplot<D, T>::summary() const {
-    JST_INFO("===== Lineplot Module Configuration");
-    JST_INFO("Size: {}x{}", config.viewSize.width, config.viewSize.height);
+    JST_INFO("     Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
