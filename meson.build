@@ -1,5 +1,6 @@
 project(
-    'cyberether', 'cpp',
+    'cyberether',
+    ['cpp'],
     version: '0.0.0',
     default_options: [
         'cpp_std=c++20',
@@ -14,7 +15,7 @@ summary({'cpp_std': get_option('cpp_std'),
         }, section: 'General', bool_yn: true)
 
 dep_lst = [
-    dependency('SoapySDR'),
+    dependency('SoapySDR', fallback: ['soapysdr']),
     dependency('threads'),
     subproject('jetstream').get_variable('libjetstream_dep'),
 ]

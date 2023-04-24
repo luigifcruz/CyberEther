@@ -1,5 +1,5 @@
 deps = [
-    'JETSTREAM_LOADER_FFTW_AVAILABLE',
+    'JETSTREAM_LOADER_VULKAN_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -8,9 +8,11 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_BACKEND_FFTW_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_BACKEND_VULKAN_AVAILABLE', true)
     src_lst += files([
+        'base.cc',
+        'loader.cc',
     ])
 endif
 
-sum_lst += {'FFTW': all_deps_found}
+sum_lst += {'Vulkan': all_deps_found}

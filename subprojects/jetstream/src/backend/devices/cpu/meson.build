@@ -10,6 +10,7 @@ if all_deps_found
     cfg_lst.set('JETSTREAM_BACKEND_CPU_AVAILABLE', true)
     src_lst += files([
         'base.cc',
+        'loader.cc',
     ])
 endif
 

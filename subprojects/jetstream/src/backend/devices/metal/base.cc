@@ -12,6 +12,8 @@ namespace Jetstream::Backend {
 Metal::Metal(const Config& config) {
     JST_DEBUG("Initializing Metal backend.");
 
+    // TODO: Add validation layer.
+
     if (!(device = MTL::CreateSystemDefaultDevice())) {
         JST_FATAL("Cannot create Metal device.");
         throw Result::ERROR;

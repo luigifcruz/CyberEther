@@ -15,6 +15,7 @@ enum class Result : uint8_t {
     SUCCESS = 0,
     ERROR = 1,
     CUDA_ERROR,
+    VULKAN_ERROR,
     ASSERTION_ERROR,
     ERROR_TIMEOUT,
     ERROR_BEYOND_CAPACITY,

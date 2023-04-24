@@ -14,6 +14,10 @@
 #include "jetstream/backend/devices/metal/base.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/backend/devices/vulkan/base.hh"
+#endif
+
 namespace Jetstream::Backend {
 
 class JETSTREAM_API Instance {
@@ -27,52 +31,6 @@ class JETSTREAM_API Instance {
     template<Device D>
     const auto& state();
 
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-    template<>
-    const Result initialize<Device::CPU>(const Config& config) {
-        if (!cpu) {
-            cpu = std::make_unique<CPU>(config);
-        }
-        return Result::SUCCESS;
-    }
-
-    template<>
-    const Result destroy<Device::CPU>() {
-        if (cpu) {
-            cpu.reset();
-        }
-        return Result::SUCCESS;
-    }
-
-    template<>
-    const auto& state<Device::CPU>() {
-        return cpu; 
-    }
-#endif
-
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    template<>
-    const Result initialize<Device::Metal>(const Config& config) {
-        if (!metal) {
-            metal = std::make_unique<Metal>(config);
-        }
-        return Result::SUCCESS;
-    }
-
-    template<>
-    const Result destroy<Device::Metal>() {
-        if (metal) {
-            metal.reset();
-        }
-        return Result::SUCCESS;
-    }
-
-    template<>
-    const auto& state<Device::Metal>() {
-        return metal; 
-    }
-#endif
-
  private:
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     std::unique_ptr<CPU> cpu;
@@ -80,22 +38,25 @@ class JETSTREAM_API Instance {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     std::unique_ptr<Metal> metal;
 #endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    std::unique_ptr<Vulkan> vulkan;
+#endif
 };
 
-Instance& JETSTREAM_API Get();
+Instance& Get();
 
 template<Device D>
-const auto& JETSTREAM_API State() {
+const auto& State() {
     return Get().state<D>();
 }
 
 template<Device D>
-const Result JETSTREAM_API Initialize(const Config& config) {
+Result Initialize(const Config& config) {
     return Get().initialize<D>(config);
 }
 
 template<Device D>
-const Result JETSTREAM_API Destroy() {
+Result Destroy() {
     return Get().destroy<D>();
 }
 

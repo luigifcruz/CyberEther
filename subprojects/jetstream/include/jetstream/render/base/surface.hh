@@ -25,7 +25,7 @@ class Surface {
     }
     virtual ~Surface() = default;
 
-    constexpr const Size2D<U64>& size() const {
+    const Size2D<U64>& size() const {
         if (config.framebuffer) {
             return config.framebuffer->size();
         }
