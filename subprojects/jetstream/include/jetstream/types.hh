@@ -14,6 +14,7 @@ namespace Jetstream {
 enum class Result : uint8_t {
     SUCCESS = 0,
     ERROR = 1,
+    SKIP = 2,
     CUDA_ERROR,
     VULKAN_ERROR,
     ASSERTION_ERROR,

@@ -1,78 +1,201 @@
 #ifndef JETSTREAM_MEMORY_VECTOR_HH
 #define JETSTREAM_MEMORY_VECTOR_HH
 
+#include <memory>
+#include <unordered_map>
+#include <functional>
+
 #include "jetstream/types.hh"
 
 namespace Jetstream {
 
-template<Device I, typename T> class Vector;
+template<Device DeviceId, typename DataType, U64 Dimensions = 1> class Vector;
 
-template<typename T>
+template<typename Type, U64 Dimensions>
 class VectorImpl {
  public:
-    VectorImpl()
-             : container(),
-               managed(false) {}
-    explicit VectorImpl(const std::span<T>& other)
-             : container(other),
-               managed(false) {}
-    explicit VectorImpl(T* ptr, const std::size_t& size)
-             : container(ptr, size),
-               managed(false) {}
-    explicit VectorImpl(void* ptr, const std::size_t& size)
-             : container(static_cast<T*>(ptr), size),
-               managed(false) {}
+    using DataType = Type;
+    using ShapeType = std::array<U64, Dimensions>;
 
-    VectorImpl(const VectorImpl&) = delete;
-    VectorImpl& operator=(const VectorImpl&) = delete;
+    virtual ~VectorImpl() {
+        decreaseRefCount();
+    }
 
-    virtual ~VectorImpl() {}
-
-    constexpr T* data() const noexcept {
-        return container.data();
+    constexpr DataType* data() const noexcept {
+        return _data;
     }
 
     constexpr const U64 size() const noexcept {
-        return container.size();
+        U64 _size = 1;
+        for (const auto& dim : _shape) {
+            _size *= dim;
+        }
+        return _size; 
+    }
+
+    constexpr const U64 refs() const noexcept {
+        if (!_refs) {
+            return 0;
+        }
+        return *_refs;
+    }
+
+    constexpr const ShapeType& shape() const noexcept {
+        return _shape;
+    }
+
+    constexpr const std::vector<U64> shapeVector() const noexcept {
+        return std::vector<U64>(_shape.begin(), _shape.end());
+    }
+
+    constexpr const U64& shape(const U64& index) const noexcept {
+        return _shape[index];
+    }
+
+    constexpr const U64 hash() const noexcept {
+        if (!_data) {
+            return 0;
+        }
+        return std::hash<void*>{}(this->_data);
     }
 
     constexpr const U64 size_bytes() const noexcept {
-        return container.size_bytes();
+        return size() * sizeof(DataType);
     }
 
     [[nodiscard]] constexpr const bool empty() const noexcept {
-        return container.empty();
+        return (_data == nullptr);
     }
 
-    constexpr T& operator[](U64 idx) {
-        return container[idx];
+    constexpr DataType& operator[](const ShapeType& shape) {
+        return _data[shapeToOffset(shape)];
     }
 
-    constexpr const T& operator[](U64 idx) const {
-        return container[idx];
+    constexpr const DataType& operator[](const ShapeType& shape) const {
+        return _data[shapeToOffset(shape)];
+    }
+
+    constexpr DataType& operator[](const U64& idx) {
+        return _data[idx];
+    }
+
+    constexpr const DataType& operator[](const U64& idx) const {
+        return _data[idx];
     }
 
     constexpr auto begin() {
-        return container.begin();
+        return _data;
     }
 
     constexpr auto end() {
-        return container.end();
+        return _data + size();
     }
 
     constexpr const auto begin() const {
-        return container.begin();
+        return _data;
     }
 
     constexpr const auto end() const {
-        return container.end();
+        return _data + size();
     }
 
-    virtual Result resize(const std::size_t& size) = 0;
+    const U64 shapeToOffset(const ShapeType& shape) const {
+        U64 offset = 0;
+        for (U64 i = 0; i < shape.size(); i++) {
+            U64 product = shape[i];
+            for (U64 j = i + 1; j < shape.size(); j++) {
+                product *= _shape[j];
+            }
+            offset += product;
+        }
+        return offset;
+    }
+
+    VectorImpl(VectorImpl&&) = delete;
+    VectorImpl& operator=(VectorImpl&&) = delete;
 
  protected:
-    std::span<T> container;
-    bool managed;
+    ShapeType _shape;
+    DataType* _data;
+    U64* _refs;
+    std::vector<std::function<void()>>* _destructors;
+
+    VectorImpl()
+             : _shape({0}),
+               _data(nullptr),
+               _refs(nullptr), 
+               _destructors(nullptr) {
+        JST_TRACE("Empty vector created.");
+    }
+
+    explicit VectorImpl(const VectorImpl& other)
+             : _shape(other._shape),
+               _data(other._data),
+               _refs(other._refs),
+               _destructors(other._destructors) {
+        JST_TRACE("Vector created by copy.");
+
+        increaseRefCount();
+    }
+
+    VectorImpl& operator=(const VectorImpl& other) {
+        JST_TRACE("Vector copied to existing.");
+
+        decreaseRefCount();
+            
+        _data = other._data;
+        _shape = other._shape;
+        _refs = other._refs;
+        _destructors = other._destructors;
+
+        increaseRefCount();
+
+        return *this;
+    }
+
+    explicit VectorImpl(void* ptr, const ShapeType& shape)
+             : _shape(shape),
+               _data(static_cast<DataType*>(ptr)),
+               _refs(nullptr), 
+               _destructors(nullptr) {
+        increaseRefCount();
+    }
+    
+    void decreaseRefCount() {
+        if (!_refs) {
+            return;
+        }
+        JST_TRACE("Decreasing reference counter to {}.", *_refs - 1);
+
+        if (--(*_refs) == 0) {
+            JST_TRACE("Deleting {} pointers.", _destructors->size());
+
+            for (auto& destructor : *_destructors) {
+                destructor();                    
+            }
+
+            delete _destructors;
+            
+            reset();
+        }
+    }
+
+    void increaseRefCount() {
+        if (!_refs) {
+            JST_TRACE("Creating new destructor list.");
+            _destructors = new std::vector<std::function<void()>>();
+            return;
+        }
+        JST_TRACE("Increasing reference counter to {}.", *_refs + 1);
+        *_refs += 1;
+    }
+
+    void reset() {
+        _data = nullptr;
+        _refs = nullptr;
+        _shape = ShapeType({0});
+        _destructors = nullptr;
+    }
 };
 
 }  // namespace Jetstream

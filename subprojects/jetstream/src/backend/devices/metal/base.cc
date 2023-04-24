@@ -16,7 +16,7 @@ Metal::Metal(const Config& config) {
 
     if (!(device = MTL::CreateSystemDefaultDevice())) {
         JST_FATAL("Cannot create Metal device.");
-        throw Result::ERROR;
+        JST_CHECK_THROW(Result::ERROR);
     }
 
     info = NS::ProcessInfo::processInfo();

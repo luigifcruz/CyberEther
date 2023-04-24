@@ -7,11 +7,12 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/render/extras.hh"
+#include "jetstream/graph/base.hh"
 
 namespace Jetstream {
 
 template<Device D, typename IT = F32>
-class Waterfall : public Module {
+class Waterfall : public Module, public Compute, public Present {
  public:
     struct Config {
         F32 zoom = 1.0;
@@ -22,17 +23,24 @@ class Waterfall : public Module {
     };
 
     struct Input {
-        const Vector<D, IT>& buffer;
+        const Vector<D, IT, 2>& buffer;
     };
 
     struct Output {
     };
 
-    explicit Waterfall(const Config&, const Input&);
+    explicit Waterfall(const Config& config,
+                       const Input& input);
 
-    constexpr const U64 getBufferSize() const {
-        return input.buffer.size();
+    constexpr const Device device() const {
+        return D;
     }
+
+    const std::string name() const {
+        return "Waterfall";
+    }
+
+    void summary() const final;
 
     constexpr const Config getConfig() const {
         return config;
@@ -76,7 +84,7 @@ class Waterfall : public Module {
     } shaderUniforms;
 
     int inc = 0, last = 0, ymax = 0;
-    Vector<Device::CPU, F32> frequencyBins;
+    Vector<D, F32, 2> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -91,14 +99,14 @@ class Waterfall : public Module {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    const Result compute(const RuntimeMetadata& meta = {}) final;
-    const Result present(const RuntimeMetadata& meta = {}) final;
+    const Result createCompute(const RuntimeMetadata& meta) final;
+    const Result compute(const RuntimeMetadata& meta) final;
+
+    const Result createPresent(Render::Window& window) final;
+    const Result present(Render::Window& window) final;
 
  private:
-    const Result initializeRender();
-
-    const Result underlyingInitialize();
-    const Result underlyingCompute(const RuntimeMetadata& meta = {});
+    const Result underlyingCompute(const RuntimeMetadata& meta);
 
     //
     // Metal

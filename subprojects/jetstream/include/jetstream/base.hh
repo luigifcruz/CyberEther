@@ -10,12 +10,14 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/viewport/base.hh"
+#include "jetstream/memory/base.hh"
 
 // 
 // Compute
 //
 
-#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_FFT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FFT_METAL_AVAILABLE)
 #include "jetstream/modules/fft.hh"
 #endif
 
@@ -23,15 +25,18 @@
 #include "jetstream/modules/window.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE)
 #include "jetstream/modules/multiply.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE)
 #include "jetstream/modules/amplitude.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
 #include "jetstream/modules/scale.hh"
 #endif
 
@@ -39,16 +44,22 @@
 // Graphical
 // 
 
-#ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE)
 #include "jetstream/modules/lineplot.hh"
+#include "jetstream/bundle/lineplot.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE)
 #include "jetstream/modules/waterfall.hh"
+#include "jetstream/bundle/waterfall.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
 #include "jetstream/modules/spectrogram.hh"
+#include "jetstream/bundle/spectrogram.hh"
 #endif
 
 #endif
