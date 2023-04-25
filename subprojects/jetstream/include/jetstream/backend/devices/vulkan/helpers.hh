@@ -4,6 +4,7 @@
 #include <set>
 #include <optional>
 #include <vector>
+#include <thread>
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -25,7 +26,7 @@ struct QueueFamilyIndices {
     }
 };
 
-inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
+inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device, const bool headlessEnabled) {
     QueueFamilyIndices indices;
 
     uint32_t queueFamilyCount = 0;
@@ -43,7 +44,11 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
             indices.computeFamily = i;
         }
 
-        if (indices.isComplete()) {
+        if (headlessEnabled) {
+            indices.presentFamily = i;
+        }
+
+        if (indices.isComplete(headlessEnabled)) {
             break;
         }
 

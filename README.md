@@ -130,5 +130,6 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Implement Memory-based compute graphs.
-- TODO: Print Compute and Present trees.
+- TODO: Implement Vulkan Backend.
+- TODO: Implement Vulkan Render.
+- TODO: Implement Vulkan Compute.

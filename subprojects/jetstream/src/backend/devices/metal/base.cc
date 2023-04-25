@@ -21,10 +21,10 @@ Metal::Metal(const Config& config) {
 
     info = NS::ProcessInfo::processInfo();
 
+    // TODO: Convert this to current.
     JST_INFO("===== Metal Backend Configuration");
     JST_INFO("GPU Name: {}", this->device->name()->utf8String());
-    JST_INFO("Has Unified Memory: {}", 
-             this->device->hasUnifiedMemory() ? "YES" : "NO");
+    JST_INFO("Has Unified Memory: {}", hasUnifiedMemory() ? "YES" : "NO");
 }
 
 Metal::~Metal() {

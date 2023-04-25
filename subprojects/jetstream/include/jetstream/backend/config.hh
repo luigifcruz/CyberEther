@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_BACKEND_CONFIG_HH
 #define JETSTREAM_BACKEND_CONFIG_HH
 
+#include <fmt/ostream.h>
+
 #include "jetstream/types.hh"
 
 namespace Jetstream::Backend {
@@ -37,9 +39,12 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
 
 struct Config {
     U64 deviceId;
-    bool validationEnabled = false;
+    bool validationEnabled = true;
+    bool headless = true;
 };
 
 }  // namespace Jetstream::Backend
+
+template <> struct fmt::formatter<Jetstream::Backend::PhysicalDeviceType> : ostream_formatter {};
 
 #endif

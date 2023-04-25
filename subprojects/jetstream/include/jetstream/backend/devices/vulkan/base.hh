@@ -5,6 +5,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+#include <vulkan/vk_enum_string_helper.h>
 
 #include "jetstream/backend/config.hh"
 
@@ -13,6 +14,7 @@
     VkResult err = (f); \
     if (err != VK_SUCCESS) { \
     callback(); \
+    JST_FATAL("[VULKAN] Error code: {} ({})", string_VkResult(err), err); \
     return Result::ERROR; \
     } \
 }
@@ -23,6 +25,7 @@
     VkResult err = (f); \
     if (err != VK_SUCCESS) { \
     callback(); \
+    JST_FATAL("[VULKAN] Error code: {} ({})", string_VkResult(err), err); \
     JST_CHECK_THROW(Result::ERROR); \
     } \
 }
@@ -39,7 +42,7 @@ class Vulkan {
     const std::string getApiVersion() const;
     const PhysicalDeviceType getPhysicalDeviceType() const;
     const bool hasUnifiedMemory() const;
-    const U64 physicalMemory() const;
+    const U64 getPhysicalMemory() const;
     const U64 getTotalProcessorCount() const;
     const bool getLowPowerStatus() const;
     const U64 getThermalState() const;
@@ -55,6 +58,9 @@ class Vulkan {
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceProperties properties;
+    VkQueue graphicsQueue;
+    VkQueue computeQueue;
+    VkQueue presentQueue;
 
     struct {
         std::string deviceName;
@@ -70,7 +76,7 @@ class Vulkan {
     VkDebugReportCallbackEXT debugReportCallback{};
         
     bool checkValidationLayerSupport();
-    std::vector<const char*> getRequiredExtensions();
+    std::vector<const char*> getRequiredInstanceExtensions();
     std::vector<const char*> getRequiredDeviceExtensions();
     std::vector<const char*> getRequiredValidationLayers();
     bool checkDeviceExtensionSupport(const VkPhysicalDevice& device);

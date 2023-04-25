@@ -20,9 +20,11 @@ inline std::unique_ptr<Graph> NewGraph(const Device& device) {
 #endif
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
         case Device::CUDA:
+            return std::make_unique<CUDA>();
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
         case Device::Vulkan:
+            return std::make_unique<Vulkan>();
 #endif
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
         case Device::Metal:
