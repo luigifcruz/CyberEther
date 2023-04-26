@@ -6,9 +6,6 @@
 #include "jetstream/logger.hh"
 #include "jetstream/backend/config.hh"
 
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-#include "jetstream/backend/devices/cpu/base.hh"
-#endif
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/devices/metal/base.hh"
@@ -18,28 +15,93 @@
 #include "jetstream/backend/devices/vulkan/base.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+#include "jetstream/backend/devices/cpu/base.hh"
+#endif
+
 namespace Jetstream::Backend {
 
 class JETSTREAM_API Instance {
  public:
-    template<Device D>
-    const Result initialize(const Config& config);
+    template<Device DeviceId>
+    const Result initialize(const Config& config) {
+        using BackendType = typename GetBackend<DeviceId>::Type;
+        if (!backends.count(DeviceId)) {
+            JST_DEBUG("Initializing {} backend.", DeviceId);
+            backends[DeviceId] = std::make_unique<BackendType>(config);
+        }
+        return Result::SUCCESS;
+    }
 
-    template<Device D>
-    const Result destroy();
+    template<Device DeviceId>
+    const Result destroy() {
+        if (backends.count(DeviceId)) {
+            JST_DEBUG("Destroying {} backend.", DeviceId);
+            backends.erase(DeviceId);
+        }
+        return Result::SUCCESS;
+    }
 
-    template<Device D>
-    const auto& state();
+    template<Device DeviceId>
+    const auto& state() {
+        using BackendType = typename GetBackend<DeviceId>::Type;
+        if (!backends.count(DeviceId)) {
+            JST_DEBUG("The {} backend is not initialized.", DeviceId);
+            JST_CHECK_THROW(Result::ERROR);
+        }
+        return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
+    }
 
- private:
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-    std::unique_ptr<CPU> cpu;
-#endif
+    ~Instance() {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    std::unique_ptr<Metal> metal;
+        destroy<Device::Metal>();
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    std::unique_ptr<Vulkan> vulkan;
+        destroy<Device::Vulkan>();
+#endif
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        destroy<Device::CPU>();
+#endif
+        
+    }
+
+ private:
+    typedef std::variant<
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+        std::unique_ptr<Metal>,
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        std::unique_ptr<Vulkan>,
+#endif
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        std::unique_ptr<CPU>
+#endif
+    > BackendHolder;
+
+    std::unordered_map<Device, BackendHolder> backends;
+
+    template<Device DeviceId>
+    struct GetBackend {};
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    template<>
+    struct GetBackend<Device::Metal> {
+        using Type = Metal;  
+    };
+#endif
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    template<>
+    struct GetBackend<Device::Vulkan> {
+        using Type = Vulkan;  
+    };
+#endif
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    template<>
+    struct GetBackend<Device::CPU> {
+        using Type = CPU;  
+    };
 #endif
 };
 

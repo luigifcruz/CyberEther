@@ -10,8 +10,6 @@
 namespace Jetstream::Backend {
 
 Metal::Metal(const Config& config) {
-    JST_DEBUG("Initializing Metal backend.");
-
     // TODO: Add validation layer.
 
     if (!(device = MTL::CreateSystemDefaultDevice())) {
@@ -28,8 +26,6 @@ Metal::Metal(const Config& config) {
 }
 
 Metal::~Metal() {
-    JST_DEBUG("Destroying Metal backend.");
-
     info->release();
     device->release();
 }

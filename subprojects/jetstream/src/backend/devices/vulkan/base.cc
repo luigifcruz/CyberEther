@@ -94,8 +94,6 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
 }
 
 Vulkan::Vulkan(const Config& config) : config(config) {
-    JST_DEBUG("Initializing Vulkan backend.");
-
     // Create application.
 
     {
@@ -333,8 +331,6 @@ Vulkan::Vulkan(const Config& config) : config(config) {
 }
 
 Vulkan::~Vulkan() {
-    JST_DEBUG("Destroying Vulkan backend.");
-
     if (config.validationEnabled) {
         if (debugReportCallback != VK_NULL_HANDLE) {
             PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
