@@ -173,7 +173,7 @@ void Implementation::drawDebugMessage() const {
     ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
     ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
     ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::Text("Physical Memory: %.00f GB", (float)backend->physicalMemory() / 1e9);
+    ImGui::Text("Physical Memory: %.00f GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
     ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
     ImGui::Text("Processor Count: %llu/%llu", backend->getActiveProcessorCount(),
                                               backend->getTotalProcessorCount());

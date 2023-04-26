@@ -16,12 +16,14 @@ class Metal {
     ~Metal();
 
     const std::string getDeviceName() const;
+    const std::string getApiVersion() const;
     const bool hasUnifiedMemory() const;
     const bool getLowPowerStatus() const;
-    const U64 physicalMemory() const;
+    const U64 getPhysicalMemory() const;
     const U64 getActiveProcessorCount() const; 
     const U64 getTotalProcessorCount() const;
     const U64 getThermalState() const;
+    const PhysicalDeviceType getPhysicalDeviceType() const;
 
     constexpr MTL::Device* getDevice() {
         return device;
