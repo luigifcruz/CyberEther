@@ -2,9 +2,7 @@
 
 namespace Jetstream::Viewport {
 
-Generic::Generic(const Config& config) : config(config) {
-    JST_DEBUG("Creating Generic viewport.");
-}
+Generic::Generic(const Config& config) : config(config) {}
 
 Result Generic::addMousePosEvent(F32 x, F32 y) {
     ImGui::GetIO().AddMousePosEvent(x, y);

@@ -51,6 +51,14 @@ class Vulkan {
         return device;
     }
 
+    constexpr VkPhysicalDevice& getPhysicalDevice() {
+        return physicalDevice;
+    }
+
+    constexpr VkInstance& getInstance() {
+        return instance;
+    }
+
  private:
     const Config& config;
 

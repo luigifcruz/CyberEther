@@ -9,24 +9,21 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
+namespace Jetstream::Backend {
+
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicFamily;
     std::optional<uint32_t> computeFamily;
     std::optional<uint32_t> presentFamily;
 
-    bool isComplete(bool headlessEnabled = false) {
-        if (headlessEnabled) {
-            return computeFamily.has_value() &&
-                   graphicFamily.has_value();
-        } else {
-            return graphicFamily.has_value() &&
-                   computeFamily.has_value() &&
-                   presentFamily.has_value();
-        }
+    bool isComplete() {
+        return graphicFamily.has_value() &&
+               computeFamily.has_value() &&
+               presentFamily.has_value();
     }
 };
 
-inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device, const bool headlessEnabled) {
+inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
     QueueFamilyIndices indices;
 
     uint32_t queueFamilyCount = 0;
@@ -44,11 +41,9 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device, cons
             indices.computeFamily = i;
         }
 
-        if (headlessEnabled) {
-            indices.presentFamily = i;
-        }
+        indices.presentFamily = i;
 
-        if (indices.isComplete(headlessEnabled)) {
+        if (indices.isComplete()) {
             break;
         }
 
@@ -57,5 +52,7 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device, cons
 
     return indices;
 }
+
+}  // namespace Jetstream::Backend
 
 #endif

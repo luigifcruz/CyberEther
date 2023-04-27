@@ -11,4 +11,8 @@
 #include "jetstream/viewport/ios.hh"
 #endif
 
+#ifdef JETSTREAM_VIEWPORT_LINUX_AVAILABLE
+#include "jetstream/viewport/linux.hh"
+#endif
+
 #endif

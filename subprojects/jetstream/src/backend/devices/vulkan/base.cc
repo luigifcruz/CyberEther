@@ -10,15 +10,12 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
     std::vector<const char*> extensions;
 
     extensions.push_back("VK_KHR_get_physical_device_properties2");
-
-    if (!config.headless) {
-        extensions.push_back("VK_KHR_surface");
+    extensions.push_back("VK_KHR_surface");
 
 #ifdef __linux__
-        extensions.push_back("VK_KHR_xcb_surface");
+    extensions.push_back("VK_KHR_xcb_surface");
 #endif
-        // TODO: Add Windows and Android support.
-    }
+    // TODO: Add Windows and Android support.
 
     if (config.validationEnabled) {
         extensions.push_back("VK_EXT_debug_report");
@@ -39,6 +36,7 @@ std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     std::vector<const char*> extensions;
 
     extensions.push_back("VK_EXT_memory_budget");
+    extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
     return extensions;
 }
@@ -88,9 +86,9 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
         requiredExtensions.erase(extension.extensionName);
     }
 
-    auto indices = FindQueueFamilies(device, config.headless);
+    auto indices = FindQueueFamilies(device);
 
-    return indices.isComplete(config.headless) && requiredExtensions.empty();
+    return indices.isComplete() && requiredExtensions.empty();
 }
 
 Vulkan::Vulkan(const Config& config) : config(config) {
@@ -261,17 +259,14 @@ Vulkan::Vulkan(const Config& config) : config(config) {
     // Create logical device.
 
     {
-        QueueFamilyIndices indices = FindQueueFamilies(physicalDevice, config.headless);
+        QueueFamilyIndices indices = FindQueueFamilies(physicalDevice);
 
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         std::set<uint32_t> uniqueQueueFamilies = {
             indices.graphicFamily.value(),
             indices.computeFamily.value(),
+            indices.presentFamily.value(),
         };
-
-        if (!config.headless) {
-            uniqueQueueFamilies.insert(indices.presentFamily.value());
-        }
 
         float queuePriority = 0.0f;
         for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -311,9 +306,7 @@ Vulkan::Vulkan(const Config& config) : config(config) {
 
         vkGetDeviceQueue(device, indices.graphicFamily.value(), 0, &graphicsQueue);
         vkGetDeviceQueue(device, indices.computeFamily.value(), 0, &computeQueue);
-        if (!config.headless) {
-            vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
-        }
+        vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
     }
 
     // Print device information.

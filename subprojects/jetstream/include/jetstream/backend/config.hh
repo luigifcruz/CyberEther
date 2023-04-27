@@ -40,7 +40,6 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
 struct Config {
     U64 deviceId;
     bool validationEnabled = true;
-    bool headless = true;
 };
 
 }  // namespace Jetstream::Backend

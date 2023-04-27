@@ -21,6 +21,7 @@
 // Viewport
 #mesondefine JETSTREAM_VIEWPORT_IOS_AVAILABLE
 #mesondefine JETSTREAM_VIEWPORT_MACOS_AVAILABLE
+#mesondefine JETSTREAM_VIEWPORT_LINUX_AVAILABLE
 
 //
 // Compute Modules

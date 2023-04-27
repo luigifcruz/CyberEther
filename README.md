@@ -15,11 +15,11 @@
 ## Compatibility
 
 ### Graphical Modules
-|   Module   |   Metal   |     CUDA     |     CPU+Render      |
-|------------|-----------|--------------|---------------------|
-| Lineplot   | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
-| Waterfall  | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
-| Spectogram | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
+|   Module   |   Metal   |      Vulkan      |     CUDA    |     CPU+Render     |
+|------------|-----------|------------------|-------------|--------------------|
+| Lineplot   | ✅ (Full)  | ❌ (In Progress) | ❌ (Porting) | ✅ (Slow but full)  |
+| Waterfall  | ✅ (Full)  | ❌ (In Progress) | ❌ (Porting) | ✅ (Slow but full)  |
+| Spectogram | ✅ (Full)  | ❌ (In Progress) | ❌ (Porting) | ✅ (Slow but full)  |
 
 ### Compute Modules
 |   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |         Description         |
@@ -130,6 +130,6 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Implement Vulkan Backend.
+- TODO: Implement Vulkan+Linux Viewport.
 - TODO: Implement Vulkan Render.
 - TODO: Implement Vulkan Compute.
