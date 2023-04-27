@@ -38,7 +38,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
     auto& assets = metal;
@@ -59,7 +59,7 @@ const Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
+Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
 

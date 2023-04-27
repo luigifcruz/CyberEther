@@ -22,16 +22,16 @@ class MacOS : public Generic {
         return "MacOS (GLFW)";
     }
 
-    const Result create();
-    const Result destroy();
+    Result create();
+    Result destroy();
 
-    const Result createImgui();
-    const Result destroyImgui();
+    Result createImgui();
+    Result destroyImgui();
 
     void* nextDrawable();
     
-    const Result pollEvents();
-    const bool keepRunning();
+    Result pollEvents();
+    bool keepRunning();
 
     static std::shared_ptr<MacOS> Factory(const Config& config) {
         return std::make_shared<MacOS>(config);

@@ -17,7 +17,7 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     }
 }
 
-const Result Implementation::create() {
+Result Implementation::create() {
     JST_DEBUG("Creating Metal surface.");
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
@@ -32,7 +32,7 @@ const Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal surface.");
 
     for (auto& program : programs) {
@@ -46,7 +46,7 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::createFramebuffer() {
+Result Implementation::createFramebuffer() {
     JST_DEBUG("Creating Metal surface framebuffer.");
 
     JST_CHECK(framebuffer->create());
@@ -61,13 +61,13 @@ const Result Implementation::createFramebuffer() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroyFramebuffer() {
+Result Implementation::destroyFramebuffer() {
     JST_DEBUG("Destroying Metal surface framebuffer");
 
     return framebuffer->destroy();
 }
 
-const Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
+Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     for (auto& program : programs) {
         JST_CHECK(program->draw(commandBuffer, renderPassDescriptor));
     }

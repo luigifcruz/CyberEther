@@ -32,7 +32,7 @@ class Waterfall : public Module, public Compute, public Present {
     explicit Waterfall(const Config& config,
                        const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -42,26 +42,26 @@ class Waterfall : public Module, public Compute, public Present {
 
     void summary() const final;
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
-    constexpr const Render::Size2D<U64>& viewSize() const {
+    constexpr Render::Size2D<U64>& viewSize() const {
         return config.viewSize;
     }
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
 
-    constexpr const bool& interpolate() const {
+    constexpr bool& interpolate() const {
         return config.interpolate;
     }
     const bool& interpolate(const bool& interpolate);
 
-    constexpr const F32& zoom() const {
+    constexpr F32& zoom() const {
         return config.zoom;
     }
     const F32& zoom(const F32& zoom);
 
-    constexpr const I32& offset() const {
+    constexpr I32& offset() const {
         return config.offset;
     }
     const I32& offset(const I32& offset);
@@ -99,14 +99,14 @@ class Waterfall : public Module, public Compute, public Present {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
-    const Result createPresent(Render::Window& window) final;
-    const Result present(Render::Window& window) final;
+    Result createPresent(Render::Window& window) final;
+    Result present(Render::Window& window) final;
 
  private:
-    const Result underlyingCompute(const RuntimeMetadata& meta);
+    Result underlyingCompute(const RuntimeMetadata& meta);
 
     //
     // Metal

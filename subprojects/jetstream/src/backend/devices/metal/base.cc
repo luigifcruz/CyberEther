@@ -37,39 +37,39 @@ Metal::~Metal() {
     device->release();
 }
 
-const std::string Metal::getDeviceName() const {
+std::string Metal::getDeviceName() const {
     return device->name()->utf8String();
 }
 
-const std::string Metal::getApiVersion() const {
+std::string Metal::getApiVersion() const {
     return device->supportsFamily(MTL::GPUFamilyMetal3) ? "Metal 3" : "Metal <2";       
 }
 
-const bool Metal::getLowPowerStatus() const {
+bool Metal::getLowPowerStatus() const {
     return info->isLowPowerModeEnabled();
 }
 
-const bool Metal::hasUnifiedMemory() const {
+bool Metal::hasUnifiedMemory() const {
     return device->hasUnifiedMemory();
 }
 
-const U64 Metal::getPhysicalMemory() const {
+U64 Metal::getPhysicalMemory() const {
     return info->physicalMemory();
 }
 
-const U64 Metal::getActiveProcessorCount() const {
+U64 Metal::getActiveProcessorCount() const {
     return info->activeProcessorCount();
 }
 
-const U64 Metal::getTotalProcessorCount() const {
+U64 Metal::getTotalProcessorCount() const {
     return info->processorCount();
 }
 
-const U64 Metal::getThermalState() const {
+U64 Metal::getThermalState() const {
     return info->thermalState();
 }
 
-const PhysicalDeviceType Metal::getPhysicalDeviceType() const {
+PhysicalDeviceType Metal::getPhysicalDeviceType() const {
     PhysicalDeviceType deviceType = PhysicalDeviceType::INTEGRATED;
 
     if (device->removable()) {

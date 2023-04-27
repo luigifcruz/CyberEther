@@ -46,11 +46,11 @@ class Texture {
     constexpr const Size2D<U64>& size() const {
         return config.size;
     }
-    virtual const bool size(const Size2D<U64>& size) = 0;
+    virtual bool size(const Size2D<U64>& size) = 0;
 
     virtual void* raw() = 0;
-    virtual const Result fill() = 0;
-    virtual const Result fillRow(const U64& y, const U64& height) = 0;
+    virtual Result fill() = 0;
+    virtual Result fillRow(const U64& y, const U64& height) = 0;
 
     template<Device D> 
     static std::shared_ptr<Texture> Factory(const Config& config) {

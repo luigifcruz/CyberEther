@@ -20,7 +20,7 @@ void Waterfall<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Waterfall compute core.");
 
     frequencyBins = Vector<D, F32, 2>({input.buffer.shape(1),  config.height});
@@ -29,7 +29,7 @@ const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::createPresent(Render::Window& window) {
+Result Waterfall<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
@@ -108,14 +108,14 @@ const Result Waterfall<D, T>::createPresent(Render::Window& window) {
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
+Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
     auto res = this->underlyingCompute(meta);
     inc = (inc + input.buffer.shape(0)) % config.height;
     return res;
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::present(Render::Window& window) {
+Result Waterfall<D, T>::present(Render::Window& window) {
     int start = last;
     int blocks = (inc - last);
 

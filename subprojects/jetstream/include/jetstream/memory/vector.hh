@@ -25,7 +25,7 @@ class VectorImpl {
         return _data;
     }
 
-    constexpr const U64 size() const noexcept {
+    constexpr U64 size() const noexcept {
         U64 _size = 1;
         for (const auto& dim : _shape) {
             _size *= dim;
@@ -33,37 +33,37 @@ class VectorImpl {
         return _size; 
     }
 
-    constexpr const U64 refs() const noexcept {
+    constexpr U64 refs() const noexcept {
         if (!_refs) {
             return 0;
         }
         return *_refs;
     }
 
-    constexpr const ShapeType& shape() const noexcept {
+    constexpr ShapeType& shape() const noexcept {
         return _shape;
     }
 
-    constexpr const std::vector<U64> shapeVector() const noexcept {
+    constexpr std::vector<U64> shapeVector() const noexcept {
         return std::vector<U64>(_shape.begin(), _shape.end());
     }
 
-    constexpr const U64& shape(const U64& index) const noexcept {
+    constexpr U64& shape(const U64& index) const noexcept {
         return _shape[index];
     }
 
-    constexpr const U64 hash() const noexcept {
+    constexpr U64 hash() const noexcept {
         if (!_data) {
             return 0;
         }
         return std::hash<void*>{}(this->_data);
     }
 
-    constexpr const U64 size_bytes() const noexcept {
+    constexpr U64 size_bytes() const noexcept {
         return size() * sizeof(DataType);
     }
 
-    [[nodiscard]] constexpr const bool empty() const noexcept {
+    [[nodiscard]] constexpr bool empty() const noexcept {
         return (_data == nullptr);
     }
 
@@ -71,7 +71,7 @@ class VectorImpl {
         return _data[shapeToOffset(shape)];
     }
 
-    constexpr const DataType& operator[](const ShapeType& shape) const {
+    constexpr DataType& operator[](const ShapeType& shape) const {
         return _data[shapeToOffset(shape)];
     }
 
@@ -79,7 +79,7 @@ class VectorImpl {
         return _data[idx];
     }
 
-    constexpr const DataType& operator[](const U64& idx) const {
+    constexpr DataType& operator[](const U64& idx) const {
         return _data[idx];
     }
 
@@ -91,15 +91,15 @@ class VectorImpl {
         return _data + size();
     }
 
-    constexpr const auto begin() const {
+    constexpr auto begin() const {
         return _data;
     }
 
-    constexpr const auto end() const {
+    constexpr auto end() const {
         return _data + size();
     }
 
-    const U64 shapeToOffset(const ShapeType& shape) const {
+    U64 shapeToOffset(const ShapeType& shape) const {
         U64 offset = 0;
         for (U64 i = 0; i < shape.size(); i++) {
             U64 product = shape[i];

@@ -12,24 +12,24 @@ class TextureImp<Device::Metal> : public Texture {
     explicit TextureImp(const Config& config);
 
     using Render::Texture::size;
-    const bool size(const Size2D<U64>& size);
+    bool size(const Size2D<U64>& size);
 
-    const Result fill();
-    const Result fillRow(const U64& y, const U64& height);
+    Result fill();
+    Result fillRow(const U64& y, const U64& height);
 
     void* raw() {
         return texture;
     }
 
  protected:
-    const Result create();
-    const Result destroy();
+    Result create();
+    Result destroy();
 
-    constexpr const MTL::PixelFormat getPixelFormat() const {
+    constexpr MTL::PixelFormat getPixelFormat() const {
         return pixelFormat;
     }
 
-    constexpr const MTL::Texture* getHandle() const {
+    constexpr MTL::Texture* getHandle() const {
         return texture;
     }
 

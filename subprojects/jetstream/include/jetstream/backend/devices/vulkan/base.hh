@@ -38,14 +38,14 @@ class Vulkan {
     explicit Vulkan(const Config& config);
     ~Vulkan();
 
-    const std::string getDeviceName() const;
-    const std::string getApiVersion() const;
-    const PhysicalDeviceType getPhysicalDeviceType() const;
-    const bool hasUnifiedMemory() const;
-    const U64 getPhysicalMemory() const;
-    const U64 getTotalProcessorCount() const;
-    const bool getLowPowerStatus() const;
-    const U64 getThermalState() const;
+    std::string getDeviceName() const;
+    std::string getApiVersion() const;
+    PhysicalDeviceType getPhysicalDeviceType() const;
+    bool hasUnifiedMemory() const;
+    U64 getPhysicalMemory() const;
+    U64 getTotalProcessorCount() const;
+    bool getLowPowerStatus() const;
+    U64 getThermalState() const;
 
     constexpr VkDevice& getDevice() {
         return device;

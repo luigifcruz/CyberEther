@@ -39,11 +39,11 @@ enum class JETSTREAM_API Device : uint8_t {
 #endif
 };
 
-inline constexpr const Device operator|(Device lhs, Device rhs) {
+inline constexpr Device operator|(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
 }
 
-inline constexpr const Device operator&(Device lhs, Device rhs) {
+inline constexpr Device operator&(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
 }
 

@@ -10,7 +10,7 @@ MacOS::~MacOS() {
     JST_DEBUG("Destroying macOS viewport.");
 }
 
-const Result MacOS::create() {
+Result MacOS::create() {
     if (!glfwInit()) {
         return Result::ERROR;
     }
@@ -40,7 +40,7 @@ const Result MacOS::create() {
     return Result::SUCCESS;
 }
 
-const Result MacOS::destroy() {
+Result MacOS::destroy() {
     glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -49,13 +49,13 @@ const Result MacOS::destroy() {
     return Result::SUCCESS;
 }
 
-const Result MacOS::createImgui() {
+Result MacOS::createImgui() {
     ImGui_ImplGlfw_InitForOther(window, true);
 
     return Result::SUCCESS;
 }
 
-const Result MacOS::destroyImgui() {
+Result MacOS::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
 
     return Result::SUCCESS;
@@ -74,13 +74,13 @@ void* MacOS::nextDrawable() {
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
-const Result MacOS::pollEvents() {
+Result MacOS::pollEvents() {
     glfwWaitEvents();
 
     return Result::SUCCESS;
 }
 
-const bool MacOS::keepRunning() {
+bool MacOS::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 

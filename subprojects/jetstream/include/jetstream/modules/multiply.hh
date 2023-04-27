@@ -27,7 +27,7 @@ class Multiply : public Module, public Compute {
     explicit Multiply(const Config& config,
                       const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -37,17 +37,17 @@ class Multiply : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const Vector<D, T, 2>& getProductBuffer() const {
+    constexpr Vector<D, T, 2>& getProductBuffer() const {
         return this->output.product;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
  protected:
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;

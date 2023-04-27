@@ -7,7 +7,7 @@ using Implementation = BufferImp<Device::Metal>;
 Implementation::BufferImp(const Config& config) : Buffer(config) {
 }
 
-const Result Implementation::create() {
+Result Implementation::create() {
     JST_DEBUG("Creating Metal buffer.");
 
     // TODO: Add usage hints.
@@ -28,7 +28,7 @@ const Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal buffer.");
 
     if (buffer) {
@@ -39,11 +39,11 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::update() {
+Result Implementation::update() {
     return update(0, config.size);
 }
 
-const Result Implementation::update(const U64& offset, const U64& size) {
+Result Implementation::update(const U64& offset, const U64& size) {
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 

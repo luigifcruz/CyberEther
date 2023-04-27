@@ -18,23 +18,23 @@ public:
     CircularBuffer(U64);
     ~CircularBuffer();
 
-    const bool isEmpty() const;
-    const bool isFull() const;
+    bool isEmpty() const;
+    bool isFull() const;
 
-    const Result get(T*, U64);
-    const Result put(T*, U64);
-    const Result reset();
+    Result get(T*, U64);
+    Result put(T*, U64);
+    Result reset();
 
-    const Result waitBufferOccupancy(U64);
+    Result waitBufferOccupancy(U64);
 
-    const U64 getCapacity() const;
-    const U64 getOccupancy() const;
+    U64 getCapacity() const;
+    U64 getOccupancy() const;
 
-    constexpr const F64 getThroughput() const {
+    constexpr F64 getThroughput() const {
         return throughput;
     }
 
-    constexpr const U64 getOverflows() const {
+    constexpr U64 getOverflows() const {
         return overflows;
     }
 

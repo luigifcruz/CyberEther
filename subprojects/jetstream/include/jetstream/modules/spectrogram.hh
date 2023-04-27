@@ -29,7 +29,7 @@ class Spectrogram : public Module, public Compute, public Present {
     explicit Spectrogram(const Config& config,
                          const Input& input); 
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -39,11 +39,11 @@ class Spectrogram : public Module, public Compute, public Present {
 
     void summary() const final;
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
-    constexpr const Render::Size2D<U64>& viewSize() const {
+    constexpr Render::Size2D<U64>& viewSize() const {
         return config.viewSize;
     }
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
@@ -78,11 +78,11 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
-    const Result createPresent(Render::Window& window) final;
-    const Result present(Render::Window& window) final;
+    Result createPresent(Render::Window& window) final;
+    Result present(Render::Window& window) final;
 
  private:
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE

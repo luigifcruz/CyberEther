@@ -7,7 +7,7 @@ CPU::CPU() {
     metadata = std::make_shared<RuntimeMetadata>();
 }
 
-const Result CPU::createCompute() {
+Result CPU::createCompute() {
     for (const auto& block : blocks) {
         JST_CHECK(block->createCompute(*metadata));
     }
@@ -15,7 +15,7 @@ const Result CPU::createCompute() {
     return Result::SUCCESS;
 }
 
-const Result CPU::compute() {
+Result CPU::compute() {
     Result err = Result::SUCCESS;
 
     for (const auto& block : blocks) {
@@ -27,7 +27,7 @@ const Result CPU::compute() {
     return Result::SUCCESS;
 }
 
-const Result CPU::destroyCompute() {
+Result CPU::destroyCompute() {
     for (const auto& block : blocks) {
         JST_CHECK(block->destroyCompute(*metadata));
     }

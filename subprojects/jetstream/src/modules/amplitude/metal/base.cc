@@ -44,7 +44,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename IT, typename OT>
-const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     auto& assets = metal;
@@ -57,7 +57,7 @@ const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename IT, typename OT>
-const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
 

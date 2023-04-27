@@ -15,19 +15,19 @@ class WindowImp<Device::Metal> : public Window {
     explicit WindowImp(const Config& config,
                        std::shared_ptr<Viewport::Generic>& viewport);
 
-    const Result create();
-    const Result destroy();
-    const Result begin();
-    const Result end();
+    Result create();
+    Result destroy();
+    Result begin();
+    Result end();
 
     const Stats& stats() const;
     void drawDebugMessage() const;
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return Device::Metal;
     };
 
-    const Result bind(const std::shared_ptr<Surface>& surface);
+    Result bind(const std::shared_ptr<Surface>& surface);
 
  private:
     Stats statsData;
@@ -42,10 +42,10 @@ class WindowImp<Device::Metal> : public Window {
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
 
-    const Result createImgui();
-    const Result destroyImgui();
-    const Result beginImgui();
-    const Result endImgui();
+    Result createImgui();
+    Result destroyImgui();
+    Result beginImgui();
+    Result endImgui();
 };
 
 }  // namespace Jetstream::Render

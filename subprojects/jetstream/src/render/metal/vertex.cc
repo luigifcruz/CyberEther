@@ -17,7 +17,7 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
     }
 }
 
-const Result Implementation::create() {
+Result Implementation::create() {
     JST_DEBUG("Creating Metal vertex.");
 
     for (const auto& [buffer, stride] : buffers) {
@@ -33,7 +33,7 @@ const Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal vertex.");
 
     for (const auto& [buffer, stride] : buffers) {
@@ -47,8 +47,8 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                                    const U64& offset) {
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
+                              const U64& offset) {
     U64 index = offset;
 
     for (const auto& [buffer, stride] : buffers) {

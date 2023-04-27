@@ -30,7 +30,7 @@ class Lineplot : public Module, public Compute, public Present {
     explicit Lineplot(const Config& config,
                       const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -40,11 +40,11 @@ class Lineplot : public Module, public Compute, public Present {
 
     void summary() const final;
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
-    constexpr const Render::Size2D<U64>& viewSize() const {
+    constexpr Render::Size2D<U64>& viewSize() const {
         return config.viewSize;
     }
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
@@ -75,12 +75,12 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
 
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result underlyingCreateCompute(const RuntimeMetadata& meta);
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result underlyingCreateCompute(const RuntimeMetadata& meta);
+    Result compute(const RuntimeMetadata& meta) final;
 
-    const Result createPresent(Render::Window& window) final;
-    const Result present(Render::Window& window) final;
+    Result createPresent(Render::Window& window) final;
+    Result present(Render::Window& window) final;
 
 #ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
     struct MetalConstants {

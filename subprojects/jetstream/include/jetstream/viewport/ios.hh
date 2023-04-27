@@ -15,16 +15,16 @@ class iOS : public Generic {
         return "iOS (Native)";
     }
 
-    const Result create();
-    const Result destroy();
+    Result create();
+    Result destroy();
 
-    const Result createImgui();
-    const Result destroyImgui();
+    Result createImgui();
+    Result destroyImgui();
 
     void* nextDrawable();
     
-    const Result pollEvents();
-    const bool keepRunning();
+    Result pollEvents();
+    bool keepRunning();
 
     static std::shared_ptr<iOS> Factory(const Config& config, 
                                         CA::MetalLayer* layer) {

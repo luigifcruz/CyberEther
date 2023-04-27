@@ -50,7 +50,7 @@ struct GetBackend<Device::CPU> {
 class JETSTREAM_API Instance {
  public:
     template<Device DeviceId>
-    const Result initialize(const Config& config) {
+    Result initialize(const Config& config) {
         using BackendType = typename GetBackend<DeviceId>::Type;
         if (!backends.count(DeviceId)) {
             JST_DEBUG("Initializing {} backend.", DeviceId);
@@ -60,7 +60,7 @@ class JETSTREAM_API Instance {
     }
 
     template<Device DeviceId>
-    const Result destroy() {
+    Result destroy() {
         if (backends.count(DeviceId)) {
             JST_DEBUG("Destroying {} backend.", DeviceId);
             backends.erase(DeviceId);

@@ -10,7 +10,7 @@ Implementation::WindowImp(const Config& config,
          : Window(config, viewport) {
 }
 
-const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
+Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("Binding Metal surface to window.");
 
     surfaces.push_back(
@@ -20,7 +20,7 @@ const Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     return Result::SUCCESS;
 }
 
-const Result Implementation::create() {
+Result Implementation::create() {
     JST_DEBUG("Creating Metal window.");
 
     outerPool = NS::AutoreleasePool::alloc()->init();
@@ -48,7 +48,7 @@ const Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal window.");
 
     for (auto& surface : surfaces) {
@@ -69,7 +69,7 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::createImgui() {
+Result Implementation::createImgui() {
     JST_DEBUG("Creating Metal ImGui.");
 
     IMGUI_CHECKVERSION();
@@ -92,7 +92,7 @@ const Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroyImgui() {
+Result Implementation::destroyImgui() {
     JST_DEBUG("Destroying Metal ImGui.");
 
     ImGui_ImplMetal_Shutdown();
@@ -102,14 +102,14 @@ const Result Implementation::destroyImgui() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::beginImgui() {
+Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
     ImGui::NewFrame();
 
     return Result::SUCCESS;
 }
 
-const Result Implementation::endImgui() {
+Result Implementation::endImgui() {
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
 
     ImGui::Render();
@@ -121,7 +121,7 @@ const Result Implementation::endImgui() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::begin() {
+Result Implementation::begin() {
     innerPool = NS::AutoreleasePool::alloc()->init();
 
     drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
@@ -144,7 +144,7 @@ const Result Implementation::begin() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::end() {
+Result Implementation::end() {
     commandBuffer = commandQueue->commandBuffer();
 
     for (auto &surface : surfaces) {

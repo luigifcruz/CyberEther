@@ -11,7 +11,7 @@ Lineplot<D, T>::Lineplot(const Config& config,
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Lineplot compute core using CPU backend.");
     
     {
@@ -66,7 +66,7 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::createPresent(Render::Window& window) {
+Result Lineplot<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config gridVerticesConf;
     gridVerticesConf.buffer = grid.data();
     gridVerticesConf.elementByteSize = sizeof(grid[0]);
@@ -138,7 +138,7 @@ void Lineplot<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::present(Render::Window& window) {
+Result Lineplot<D, T>::present(Render::Window& window) {
     lineVerticesBuffer->update();
     return Result::SUCCESS;
 }

@@ -25,7 +25,7 @@ class Window : public Module {
     explicit Window(const Config& config,
                     const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -35,11 +35,11 @@ class Window : public Module {
 
     void summary() const final;
 
-    constexpr const Vector<D, T, 2>& getWindowBuffer() const {
+    constexpr Vector<D, T, 2>& getWindowBuffer() const {
         return this->output.window;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 

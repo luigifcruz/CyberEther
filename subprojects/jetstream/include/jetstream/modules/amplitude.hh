@@ -26,7 +26,7 @@ class Amplitude : public Module, public Compute {
     explicit Amplitude(const Config& config,
                        const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -36,17 +36,17 @@ class Amplitude : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const Vector<D, OT, 2>& getOutputBuffer() const {
+    constexpr Vector<D, OT, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
  protected:
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;

@@ -11,7 +11,7 @@ iOS::~iOS() {
     JST_DEBUG("Destroying iOS viewport.");
 }
 
-const Result iOS::create() {
+Result iOS::create() {
     auto* device = Backend::State<Device::Metal>()->getDevice();
     
     swapchain->setDevice(device);
@@ -21,17 +21,17 @@ const Result iOS::create() {
     return Result::SUCCESS;
 }
 
-const Result iOS::destroy() {
+Result iOS::destroy() {
     swapchain->release();
     
     return Result::SUCCESS;
 }
 
-const Result iOS::createImgui() {
+Result iOS::createImgui() {
 
     return Result::SUCCESS;
 }
-const Result iOS::destroyImgui() {
+Result iOS::destroyImgui() {
 
     return Result::SUCCESS;
 }
@@ -44,11 +44,11 @@ void* iOS::nextDrawable() {
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
-const Result iOS::pollEvents() {
+Result iOS::pollEvents() {
     return Result::SUCCESS;
 }
 
-const bool iOS::keepRunning() {
+bool iOS::keepRunning() {
     return true;
 }
 

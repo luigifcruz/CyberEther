@@ -55,7 +55,7 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         return *this;
     }
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return Device::CPU;
     }
 

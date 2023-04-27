@@ -12,10 +12,10 @@ class ProgramImp<Device::Metal> : public Program {
     explicit ProgramImp(const Config& config);
 
  protected:
-    const Result create(const MTL::PixelFormat& pixelFormat);
-    const Result destroy();
-    const Result draw(MTL::CommandBuffer* commandBuffer,
-                      MTL::RenderPassDescriptor* renderPassDescriptor);
+    Result create(const MTL::PixelFormat& pixelFormat);
+    Result destroy();
+    Result draw(MTL::CommandBuffer* commandBuffer,
+                MTL::RenderPassDescriptor* renderPassDescriptor);
 
  private:
     MTL::RenderPipelineState* renderPipelineState = nullptr;

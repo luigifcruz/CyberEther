@@ -24,19 +24,19 @@ class Generic {
 
     virtual const std::string name() const = 0;
 
-    virtual const Result create() = 0;
-    virtual const Result destroy() = 0;
+    virtual Result create() = 0;
+    virtual Result destroy() = 0;
 
-    virtual const Result createImgui() = 0;
-    virtual const Result destroyImgui() = 0;
+    virtual Result createImgui() = 0;
+    virtual Result destroyImgui() = 0;
 
     virtual void* nextDrawable() = 0;
     
-    virtual const Result pollEvents() = 0;
-    virtual const bool keepRunning() = 0;
+    virtual Result pollEvents() = 0;
+    virtual bool keepRunning() = 0;
 
-    const Result addMousePosEvent(F32 x, F32 y);
-    const Result addMouseButtonEvent(U64 button, bool down);
+    Result addMousePosEvent(F32 x, F32 y);
+    Result addMouseButtonEvent(U64 button, bool down);
 
  protected:
     const Config config;

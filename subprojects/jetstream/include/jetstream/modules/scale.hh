@@ -27,7 +27,7 @@ class Scale : public Module, public Compute {
     explicit Scale(const Config& config,
                    const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -37,15 +37,15 @@ class Scale : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
+    constexpr Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return this->config;
     }
 
-    constexpr const Range<T>& range() const {
+    constexpr<T>& range() const {
         return this->config.range;
     }
 
@@ -55,8 +55,8 @@ class Scale : public Module, public Compute {
     }
 
  protected:
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
     Config config;

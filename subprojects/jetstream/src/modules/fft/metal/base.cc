@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<>
-const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create FFT compute core using Metal backend.");
 
     auto& assets = metal;
@@ -37,7 +37,7 @@ const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta
 }
 
 template<>
-const Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Destroy FFT compute core using Metal backend.");
 
     auto& assets = metal;
@@ -57,7 +57,7 @@ const Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& met
 }
 
 template<>
-const Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
+Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
 

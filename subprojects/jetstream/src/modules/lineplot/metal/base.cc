@@ -31,7 +31,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
     auto& assets = metal;
@@ -45,7 +45,7 @@ const Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
     

@@ -41,7 +41,7 @@ class FFT : public Module, public Compute {
     explicit FFT(const Config& config, 
                  const Input& input); 
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -51,18 +51,18 @@ class FFT : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
+    constexpr Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
  protected:
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result destroyCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result destroyCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;

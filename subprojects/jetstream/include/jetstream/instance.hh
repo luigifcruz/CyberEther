@@ -18,8 +18,8 @@ class JETSTREAM_API Instance {
     Instance() : commited(false) {};
 
     template<class Viewport, typename... Args>
-    const Result buildViewport(const typename Viewport::Config& config,
-                               Args... args) {
+    Result buildViewport(const typename Viewport::Config& config,
+                         Args... args) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
             return Result::ERROR;
@@ -40,7 +40,7 @@ class JETSTREAM_API Instance {
     }
 
     template<Device D>
-    const Result buildWindow(const Render::Window::Config& config) {
+    Result buildWindow(const Render::Window::Config& config) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
             return Result::ERROR;
@@ -86,14 +86,14 @@ class JETSTREAM_API Instance {
         return block;
     }    
 
-    const Result create();
-    const Result destroy();
+    Result create();
+    Result destroy();
 
-    const Result compute();
+    Result compute();
 
-    const Result begin();
-    const Result present();
-    const Result end();
+    Result begin();
+    Result present();
+    Result end();
 
     const Viewport::Generic& getViewport() const {
         return *_viewport;
@@ -103,7 +103,7 @@ class JETSTREAM_API Instance {
         return *_window;       
     }
 
-    constexpr const bool isCommited() const {
+    bool isCommited() const {
         return commited;       
     }
 

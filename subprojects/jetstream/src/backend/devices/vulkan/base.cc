@@ -342,36 +342,36 @@ Vulkan::~Vulkan() {
     vkDestroyInstance(instance, nullptr);
 }
 
-const std::string Vulkan::getDeviceName() const {
+std::string Vulkan::getDeviceName() const {
     return cache.deviceName;
 }
 
-const std::string Vulkan::getApiVersion() const {
+std::string Vulkan::getApiVersion() const {
     return cache.apiVersion;       
 }
 
-const PhysicalDeviceType Vulkan::getPhysicalDeviceType() const {
+PhysicalDeviceType Vulkan::getPhysicalDeviceType() const {
     return cache.physicalDeviceType; 
 }
 
-const bool Vulkan::hasUnifiedMemory() const {
+bool Vulkan::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
 }
 
-const U64 Vulkan::getPhysicalMemory() const {
+U64 Vulkan::getPhysicalMemory() const {
     return cache.physicalMemory;
 }
 
-const U64 Vulkan::getTotalProcessorCount() const {
+U64 Vulkan::getTotalProcessorCount() const {
     return cache.totalProcessorCount;
 }
 
-const bool Vulkan::getLowPowerStatus() const {
+bool Vulkan::getLowPowerStatus() const {
     // TODO: Pool power status periodically.
     return cache.lowPowerStatus;
 }
 
-const U64 Vulkan::getThermalState() const {
+U64 Vulkan::getThermalState() const {
     // TODO: Pool thermal state periodically.
     return cache.getThermalState;
 }

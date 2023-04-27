@@ -12,18 +12,18 @@ class VertexImp<Device::Metal> : public Vertex {
     explicit VertexImp(const Config& config);
 
  protected:
-    const Result create();
-    const Result destroy();
-    const Result encode(MTL::RenderCommandEncoder* encode,
+    Result create();
+    Result destroy();
+    Result encode(MTL::RenderCommandEncoder* encode,
                         const U64& offset);
 
     const MTL::Buffer* getIndexBuffer();
 
-    constexpr const U64 getVertexCount() const {
+    constexpr U64 getVertexCount() const {
         return vertexCount;
     }
 
-    const bool isBuffered() {
+    bool isBuffered() {
         return indices != nullptr;
     }
 

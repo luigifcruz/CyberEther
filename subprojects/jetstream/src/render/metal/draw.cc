@@ -9,7 +9,7 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
     buffer = std::dynamic_pointer_cast<VertexImp<Device::Metal>>(config.buffer);
 }
 
-const Result Implementation::create() {
+Result Implementation::create() {
     JST_DEBUG("Creating Metal draw.");
 
     JST_CHECK(buffer->create());
@@ -17,7 +17,7 @@ const Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal draw.");
 
     JST_CHECK(buffer->destroy());
@@ -25,8 +25,8 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                                    const U64& offset) {
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
+                              const U64& offset) {
     MTL::PrimitiveType mode;
 
     switch (config.mode) {

@@ -12,7 +12,7 @@ Metal::Metal() {
     metadata->metal.commandQueue = device->newCommandQueue();
 }
 
-const Result Metal::createCompute() {
+Result Metal::createCompute() {
     outerPool = NS::AutoreleasePool::alloc()->init();
 
     for (const auto& block : blocks) {
@@ -22,7 +22,7 @@ const Result Metal::createCompute() {
     return Result::SUCCESS;
 }
 
-const Result Metal::compute() {
+Result Metal::compute() {
     Result err = Result::SUCCESS;
 
     innerPool = NS::AutoreleasePool::alloc()->init();
@@ -45,7 +45,7 @@ const Result Metal::compute() {
     return err;
 }
 
-const Result Metal::destroyCompute() {
+Result Metal::destroyCompute() {
     for (const auto& block : blocks) {
         JST_CHECK(block->destroyCompute(*metadata));
     }
@@ -55,9 +55,9 @@ const Result Metal::destroyCompute() {
     return Result::SUCCESS;
 }
 
-const Result Metal::CompileKernel(const char* shaderSrc,
-                                  const char* methodName, 
-                                  MTL::ComputePipelineState** pipelineState) {
+Result Metal::CompileKernel(const char* shaderSrc,
+                            const char* methodName, 
+                            MTL::ComputePipelineState** pipelineState) {
     auto device = Backend::State<Device::Metal>()->getDevice();
 
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();

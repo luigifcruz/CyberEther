@@ -3,7 +3,7 @@
 
 namespace Jetstream {
 
-const Result Instance::create() {
+Result Instance::create() {
     JST_DEBUG("Creating compute graph.");
 
     // Check minimum requirements.
@@ -232,7 +232,7 @@ const Result Instance::create() {
     return Result::SUCCESS;
 }
 
-const Result Instance::destroy() {
+Result Instance::destroy() {
     JST_INFO("Destroy compute graph.");
 
     if (!commited) {
@@ -258,7 +258,7 @@ const Result Instance::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Instance::compute() {
+Result Instance::compute() {
     Result err = Result::SUCCESS;
 
     if (!commited) {
@@ -279,7 +279,7 @@ const Result Instance::compute() {
     return err;
 }
 
-const Result Instance::begin() {
+Result Instance::begin() {
     if (_window) {
         return _window->begin();
     }
@@ -287,7 +287,7 @@ const Result Instance::begin() {
     return Result::SUCCESS;
 }
 
-const Result Instance::present() {
+Result Instance::present() {
     Result err = Result::SUCCESS;
 
     if (!commited) {
@@ -308,7 +308,7 @@ const Result Instance::present() {
     return err;
 }
 
-const Result Instance::end() {
+Result Instance::end() {
     if (_window) {
         return _window->end();
     }

@@ -27,7 +27,7 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
     }
 }
 
-const Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
+Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     JST_DEBUG("Creating Metal program.");
 
     NS::Error* err = nullptr;
@@ -81,7 +81,7 @@ const Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     for (const auto& draw : draws) {
         JST_CHECK(draw->destroy());
     }
@@ -99,8 +99,8 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::draw(MTL::CommandBuffer* commandBuffer,
-                         MTL::RenderPassDescriptor* renderPassDescriptor) {
+Result Implementation::draw(MTL::CommandBuffer* commandBuffer,
+                            MTL::RenderPassDescriptor* renderPassDescriptor) {
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
 
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);

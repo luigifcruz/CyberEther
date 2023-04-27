@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
+Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
     auto& runtime = meta.metal;
 
     auto blitEncoder = runtime.commandBuffer->blitCommandEncoder();

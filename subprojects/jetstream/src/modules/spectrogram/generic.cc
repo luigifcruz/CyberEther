@@ -16,7 +16,7 @@ void Spectrogram<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
+Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
@@ -96,7 +96,7 @@ const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::present(Render::Window& window) {
+Result Spectrogram<D, T>::present(Render::Window& window) {
     binTexture->update();
 
     shaderUniforms.width = input.buffer.shape(1);
