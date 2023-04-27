@@ -35,7 +35,7 @@ class Window : public Module {
 
     void summary() const final;
 
-    constexpr Vector<D, T, 2>& getWindowBuffer() const {
+    constexpr const Vector<D, T, 2>& getWindowBuffer() const {
         return this->output.window;
     }
 

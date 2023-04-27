@@ -36,7 +36,7 @@ class Amplitude : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr Vector<D, OT, 2>& getOutputBuffer() const {
+    constexpr const Vector<D, OT, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

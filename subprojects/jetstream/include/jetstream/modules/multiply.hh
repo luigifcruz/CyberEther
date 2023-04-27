@@ -37,7 +37,7 @@ class Multiply : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr Vector<D, T, 2>& getProductBuffer() const {
+    constexpr const Vector<D, T, 2>& getProductBuffer() const {
         return this->output.product;
     }
 

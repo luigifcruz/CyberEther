@@ -33,9 +33,9 @@ class TextureImp<Device::Metal> : public Texture {
         return texture;
     }
 
-    static const MTL::PixelFormat ConvertPixelFormat(const PixelFormat&, 
-                                                     const PixelType&);
-    static const U64 GetPixelByteSize(const MTL::PixelFormat&);
+    static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&, 
+                                               const PixelType&);
+    static U64 GetPixelByteSize(const MTL::PixelFormat&);
 
  private:
     MTL::Texture* texture = nullptr;

@@ -44,7 +44,7 @@ class Lineplot : public Module, public Compute, public Present {
         return config;
     }
 
-    constexpr Render::Size2D<U64>& viewSize() const {
+    constexpr const Render::Size2D<U64>& viewSize() const {
         return config.viewSize;
     }
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);

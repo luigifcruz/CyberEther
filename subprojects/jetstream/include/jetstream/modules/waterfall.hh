@@ -46,22 +46,22 @@ class Waterfall : public Module, public Compute, public Present {
         return config;
     }
 
-    constexpr Render::Size2D<U64>& viewSize() const {
+    constexpr const Render::Size2D<U64>& viewSize() const {
         return config.viewSize;
     }
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
 
-    constexpr bool& interpolate() const {
+    constexpr const bool& interpolate() const {
         return config.interpolate;
     }
     const bool& interpolate(const bool& interpolate);
 
-    constexpr F32& zoom() const {
+    constexpr const F32& zoom() const {
         return config.zoom;
     }
     const F32& zoom(const F32& zoom);
 
-    constexpr I32& offset() const {
+    constexpr const I32& offset() const {
         return config.offset;
     }
     const I32& offset(const I32& offset);

@@ -51,7 +51,7 @@ class FFT : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr Vector<D, T, 2>& getOutputBuffer() const {
+    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

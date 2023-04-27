@@ -40,7 +40,7 @@ class VectorImpl {
         return *_refs;
     }
 
-    constexpr ShapeType& shape() const noexcept {
+    constexpr const ShapeType& shape() const noexcept {
         return _shape;
     }
 
@@ -48,7 +48,7 @@ class VectorImpl {
         return std::vector<U64>(_shape.begin(), _shape.end());
     }
 
-    constexpr U64& shape(const U64& index) const noexcept {
+    constexpr const U64& shape(const U64& index) const noexcept {
         return _shape[index];
     }
 
@@ -71,7 +71,7 @@ class VectorImpl {
         return _data[shapeToOffset(shape)];
     }
 
-    constexpr DataType& operator[](const ShapeType& shape) const {
+    constexpr const DataType& operator[](const ShapeType& shape) const {
         return _data[shapeToOffset(shape)];
     }
 
@@ -79,7 +79,7 @@ class VectorImpl {
         return _data[idx];
     }
 
-    constexpr DataType& operator[](const U64& idx) const {
+    constexpr const DataType& operator[](const U64& idx) const {
         return _data[idx];
     }
 

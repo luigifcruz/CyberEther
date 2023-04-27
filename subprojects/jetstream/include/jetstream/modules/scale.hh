@@ -37,7 +37,7 @@ class Scale : public Module, public Compute {
 
     void summary() const final;
 
-    constexpr Vector<D, T, 2>& getOutputBuffer() const {
+    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -45,7 +45,7 @@ class Scale : public Module, public Compute {
         return this->config;
     }
 
-    constexpr<T>& range() const {
+    constexpr const Range<T>& range() const {
         return this->config.range;
     }
 
