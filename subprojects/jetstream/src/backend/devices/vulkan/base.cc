@@ -331,13 +331,11 @@ Vulkan::Vulkan(const Config& config) : config(config) {
 }
 
 Vulkan::~Vulkan() {
-    if (config.validationEnabled) {
-        if (debugReportCallback != VK_NULL_HANDLE) {
-            PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
-                    reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
-                        vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
-            vkDestroyDebugReportCallbackEXT(instance, debugReportCallback, nullptr);
-        }
+    if (debugReportCallback != VK_NULL_HANDLE) {
+        PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
+                reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
+                    vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
+        vkDestroyDebugReportCallbackEXT(instance, debugReportCallback, nullptr);
     }
 
     vkDestroyDevice(device, nullptr);

@@ -1,11 +1,13 @@
 #ifndef JETSTREAM_BACKEND_BASE_HH
 #define JETSTREAM_BACKEND_BASE_HH
 
+#include <unordered_map>
+#include <variant>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/backend/config.hh"
-
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/devices/metal/base.hh"
@@ -20,6 +22,30 @@
 #endif
 
 namespace Jetstream::Backend {
+
+template<Device DeviceId>
+struct GetBackend {};
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+template<>
+struct GetBackend<Device::Metal> {
+    using Type = Metal;  
+};
+#endif
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+template<>
+struct GetBackend<Device::Vulkan> {
+    using Type = Vulkan;  
+};
+#endif
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+template<>
+struct GetBackend<Device::CPU> {
+    using Type = CPU;  
+};
+#endif
 
 class JETSTREAM_API Instance {
  public:
@@ -79,30 +105,6 @@ class JETSTREAM_API Instance {
     > BackendHolder;
 
     std::unordered_map<Device, BackendHolder> backends;
-
-    template<Device DeviceId>
-    struct GetBackend {};
-
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    template<>
-    struct GetBackend<Device::Metal> {
-        using Type = Metal;  
-    };
-#endif
-
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    template<>
-    struct GetBackend<Device::Vulkan> {
-        using Type = Vulkan;  
-    };
-#endif
-
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-    template<>
-    struct GetBackend<Device::CPU> {
-        using Type = CPU;  
-    };
-#endif
 };
 
 Instance& Get();
