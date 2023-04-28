@@ -24,4 +24,14 @@
 #include "jetstream/render/metal/vertex.hh"
 #endif
 
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+#include "jetstream/render/vulkan/window.hh"
+#include "jetstream/render/vulkan/surface.hh"
+#include "jetstream/render/vulkan/program.hh"
+#include "jetstream/render/vulkan/buffer.hh"
+#include "jetstream/render/vulkan/draw.hh"
+#include "jetstream/render/vulkan/texture.hh"
+#include "jetstream/render/vulkan/vertex.hh"
+#endif
+
 #endif
