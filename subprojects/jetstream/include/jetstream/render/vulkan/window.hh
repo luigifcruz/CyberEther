@@ -6,6 +6,7 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/backend/base.hh"
+#include "jetstream/viewport/base.hh"
 
 namespace Jetstream::Render {
 
@@ -13,7 +14,7 @@ template<>
 class WindowImp<Device::Vulkan> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Generic>& viewport);
+                       std::shared_ptr<Viewport::Provider<Device::Vulkan>>& viewport);
 
     Result create();
     Result destroy();
@@ -38,6 +39,7 @@ class WindowImp<Device::Vulkan> : public Window {
     // MTL::CommandBuffer* commandBuffer = nullptr;
     // MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
+    std::shared_ptr<Viewport::Provider<Device::Vulkan>> viewport;
 
     Result createImgui();
     Result destroyImgui();

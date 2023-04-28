@@ -6,14 +6,13 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
-#include "jetstream/viewport/generic.hh"
-#include "jetstream/backend/base.hh"
-
+#include "jetstream/viewport/devices/metal.hh"
 #include "jetstream/viewport/tools/imgui_impl_glfw.h"
+#include "jetstream/backend/base.hh"
 
 namespace Jetstream::Viewport {
 
-class MacOS : public Generic {
+class MacOS : public Provider<Device::Metal> {
  public:
     explicit MacOS(const Config& config);
     virtual ~MacOS();
@@ -42,6 +41,6 @@ class MacOS : public Generic {
     CA::MetalLayer* swapchain;
 };
 
-}
+}  // namespace Jetstream::Viewport
 
 #endif

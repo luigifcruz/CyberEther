@@ -5,20 +5,19 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/render/types.hh"
-
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Viewport {
 
+struct Config {
+  bool vsync = true;
+  bool resizable = false;
+  std::string title = "Render";
+  Render::Size2D<U64> size = {1280, 720};
+};
+
 class Generic {
  public:
-    struct Config {
-        bool vsync = true;
-        bool resizable = false;
-        std::string title = "Render";
-        Render::Size2D<U64> size = {1280, 720};
-    };
-
     explicit Generic(const Config& config);   
     virtual ~Generic() = default;
 
@@ -30,8 +29,6 @@ class Generic {
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
 
-    virtual void* nextDrawable() = 0;
-    
     virtual Result pollEvents() = 0;
     virtual bool keepRunning() = 0;
 
@@ -42,6 +39,9 @@ class Generic {
     const Config config;
 };
 
-}
+template<Device DeviceId>
+class Provider : public Generic {};
+
+}  // namespace Jetstream::Viewport
 
 #endif

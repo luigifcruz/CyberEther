@@ -8,7 +8,6 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
-#include "jetstream/viewport/base.hh"
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Render {
@@ -24,10 +23,7 @@ class Window {
         U64 droppedFrames;
     };
 
-    explicit Window(const Config& config,
-                    std::shared_ptr<Viewport::Generic>& viewport)
-         : config(config),
-           viewport(viewport) {
+    explicit Window(const Config& config) : config(config) {
         JST_DEBUG("Window initialized.");
     }
     virtual ~Window() = default;
@@ -53,6 +49,11 @@ class Window {
                 member = T::template Factory<Device::Metal>(config); 
                 break;
 #endif
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+            case Device::Vulkan:
+                member = T::template Factory<Device::Vulkan>(config); 
+                break;
+#endif
             default:
                 JST_FATAL("Backend not supported.");
                 return Result::ERROR;
@@ -63,7 +64,6 @@ class Window {
 
  protected:
     Config config;
-    std::shared_ptr<Viewport::Generic> viewport;
 
     static void ApplyImGuiTheme(const F32& scale);
 };

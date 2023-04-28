@@ -4,15 +4,15 @@
 #include "jetstream/viewport/generic.hh"
 
 #ifdef JETSTREAM_VIEWPORT_MACOS_AVAILABLE
-#include "jetstream/viewport/macos.hh"
+#include "jetstream/viewport/providers/macos.hh"
 #endif
 
 #ifdef JETSTREAM_VIEWPORT_IOS_AVAILABLE
-#include "jetstream/viewport/ios.hh"
+#include "jetstream/viewport/providers/ios.hh"
 #endif
 
 #ifdef JETSTREAM_VIEWPORT_LINUX_AVAILABLE
-#include "jetstream/viewport/linux.hh"
+#include "jetstream/viewport/providers/linux.hh"
 #endif
 
 #endif

@@ -1,15 +1,15 @@
 #ifndef JETSTREAM_VIEWPORT_LINUX_HH
 #define JETSTREAM_VIEWPORT_LINUX_HH
 
-#include "jetstream/viewport/generic.hh"
-#include "jetstream/backend/base.hh"
+#include "jetstream/viewport/devices/vulkan.hh"
 #include "jetstream/viewport/tools/imgui_impl_glfw.h"
+#include "jetstream/backend/base.hh"
 
 #include <GLFW/glfw3.h>
 
 namespace Jetstream::Viewport {
 
-class Linux : public Generic {
+class Linux : public Provider<Device::Vulkan> {
  public:
     explicit Linux(const Config& config);
     virtual ~Linux();
@@ -59,6 +59,6 @@ class Linux : public Generic {
     static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 };
 
-}
+}  // namespace Jetstream::Viewport
 
 #endif

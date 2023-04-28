@@ -94,7 +94,7 @@ class JETSTREAM_API Compute {
     virtual ~Compute() = default;
 
     virtual constexpr Result createCompute(const RuntimeMetadata& meta) = 0;
-    virtual constexpr Result destroyCompute(const RuntimeMetadata& meta) {
+    virtual constexpr Result destroyCompute(const RuntimeMetadata&) {
         return Result::SUCCESS;
     }
     virtual constexpr Result compute(const RuntimeMetadata& meta) = 0;
@@ -105,7 +105,7 @@ class JETSTREAM_API Present {
     virtual ~Present() = default;
 
     virtual constexpr Result createPresent(Render::Window& window) = 0;
-    virtual constexpr Result destroyPresent(Render::Window& window) {
+    virtual constexpr Result destroyPresent(Render::Window&) {
         return Result::SUCCESS;
     }
     virtual constexpr Result present(Render::Window& window) = 0;

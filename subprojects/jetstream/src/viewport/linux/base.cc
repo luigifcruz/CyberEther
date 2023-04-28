@@ -1,4 +1,4 @@
-#include "jetstream/viewport/linux.hh"
+#include "jetstream/viewport/providers/linux.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Viewport {
@@ -162,7 +162,7 @@ void Linux::framebufferResizeCallback(GLFWwindow *window, int width, int height)
     reinterpret_cast<Linux*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
 }
 
-Linux::Linux(const Config& config) : Generic(config) {
+Linux::Linux(const Config& config) : Provider(config) {
     JST_DEBUG("Creating Linux viewport.");
 }
 
@@ -240,4 +240,3 @@ bool Linux::keepRunning() {
 }
 
 }  // namespace Jetstream::Viewport 
-

@@ -1,12 +1,12 @@
 #ifndef JETSTREAM_VIEWPORT_IOS_HH
 #define JETSTREAM_VIEWPORT_IOS_HH
 
-#include "jetstream/viewport/generic.hh"
+#include "jetstream/viewport/devices/metal.hh"
 #include "jetstream/backend/base.hh"
 
 namespace Jetstream::Viewport {
 
-class iOS : public Generic {
+class iOS : public Provider<Device::Metal> {
  public:
     explicit iOS(const Config& config, CA::MetalLayer* layer);
     virtual ~iOS();
@@ -35,6 +35,6 @@ class iOS : public Generic {
     CA::MetalLayer* swapchain;
 };
 
-}
+}  // namespace Jetstream::Viewport
 
 #endif
