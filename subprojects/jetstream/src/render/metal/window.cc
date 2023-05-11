@@ -169,7 +169,6 @@ void Implementation::drawDebugMessage() const {
     ImGuiIO& io = ImGui::GetIO();
 
     ImGui::Text("FPS: %.1f Hz", io.Framerate);
-    ImGui::Text("Vendor: %s", "Apple (Metal)");
     ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
     ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
     ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");

@@ -2,6 +2,7 @@
 #define JETSTREAM_VIEWPORT_DEVICES_METAL_HH
 
 #include "jetstream/viewport/generic.hh"
+#include "jetstream/backend/base.hh"
 
 namespace Jetstream::Viewport {
 
