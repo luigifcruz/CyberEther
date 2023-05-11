@@ -21,6 +21,10 @@
 #include "jetstream/modules/fft.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_FILTER_CPU_AVAILABLE
+#include "jetstream/modules/filter.hh"
+#endif
+
 #ifdef JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE
 #include "jetstream/modules/window.hh"
 #endif

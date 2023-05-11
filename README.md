@@ -22,13 +22,14 @@
 | Spectogram | ✅ (Full)  | ❌ (In Progress) | ❌ (Porting) | ✅ (Slow but full)  |
 
 ### Compute Modules
-|   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |         Description         |
-|------------|-------|--------------|-----------|------------|-----------------------------|
-| Amplitude  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Complex data to power.      |
-| FFT        | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Channelization.             |
-| Multiply   | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Vector multiplication.      |
-| Scale      | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Scaling vector by factor.   |
-| Windowing  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Apply window to vector.     |
+|   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |          Description           |
+|------------|-------|--------------|-----------|------------|--------------------------------|
+| Amplitude  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Complex data to power.        |
+| FFT        | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Channelization.               |
+| Multiply   | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Vector multiplication.        |
+| Scale      | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Scaling vector by factor.     |
+| Windowing  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Apply a window to vector.     |
+| Filter     | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Apply a FIR Filter to vector. |
 
 ## Installation
 The only way to use CyberEther at the moment is by compiling it from the source. It won't be that difficult because of the low number of dependencies.
