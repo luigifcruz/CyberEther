@@ -15,6 +15,10 @@ class iOS : public Provider<Device::Metal> {
         return "iOS (Native)";
     }
 
+    constexpr Device device() const {
+        return Device::Metal;
+    };
+
     Result create();
     Result destroy();
 

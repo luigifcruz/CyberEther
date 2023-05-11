@@ -362,7 +362,7 @@ int main() {
     Instance instance;
     
     // Initialize Viewport
-    Viewport::Generic::Config viewportCfg;
+    Viewport::Config viewportCfg;
     viewportCfg.vsync = true;
     viewportCfg.resizable = true;
     viewportCfg.size = {3130, 1140};

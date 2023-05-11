@@ -21,6 +21,10 @@ class MacOS : public Provider<Device::Metal> {
         return "MacOS (GLFW)";
     }
 
+    constexpr Device device() const {
+        return Device::Metal;
+    };
+
     Result create();
     Result destroy();
 

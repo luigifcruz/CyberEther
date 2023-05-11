@@ -32,7 +32,7 @@ class Filter : public Module {
     explicit Filter(const Config& config,
                     const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 

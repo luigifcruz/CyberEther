@@ -1,8 +1,8 @@
-#include "jetstream/viewport/ios.hh"
+#include "jetstream/viewport/providers/ios.hh"
 
 namespace Jetstream::Viewport {
     
-iOS::iOS(const Config& config, CA::MetalLayer* layer) : Viewport::Generic(config) {
+iOS::iOS(const Config& config, CA::MetalLayer* layer) : Provider(config) {
     JST_DEBUG("Creating iOS viewport.");
     swapchain = layer;
 };

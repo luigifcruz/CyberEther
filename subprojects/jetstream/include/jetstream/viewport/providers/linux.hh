@@ -18,6 +18,10 @@ class Linux : public Provider<Device::Vulkan> {
         return "Linux (GLFW)";
     }
 
+    constexpr Device device() const {
+        return Device::Vulkan;
+    };
+
     Result create();
     Result destroy();
 

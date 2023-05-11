@@ -1,8 +1,8 @@
-#include "jetstream/viewport/macos.hh"
+#include "jetstream/viewport/providers/macos.hh"
 
 namespace Jetstream::Viewport {
 
-MacOS::MacOS(const Config& config) : Generic(config) {
+MacOS::MacOS(const Config& config) : Provider(config) {
     JST_DEBUG("Creating macOS viewport.");
 }
 

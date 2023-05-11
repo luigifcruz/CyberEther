@@ -6,6 +6,7 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/backend/base.hh"
+#include "jetstream/viewport/base.hh"
 
 namespace Jetstream::Render {
 
