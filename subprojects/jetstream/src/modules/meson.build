@@ -4,6 +4,7 @@ subdir('window')
 subdir('multiply')
 subdir('amplitude')
 subdir('scale')
+subdir('filter')
 
 # Graphical
 subdir('lineplot')

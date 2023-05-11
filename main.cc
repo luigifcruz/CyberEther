@@ -17,8 +17,8 @@ class SDR {
  public:
     struct Config {
         std::string deviceString;
-        F64 frequency;
-        F64 sampleRate;
+        F32 frequency;
+        F32 sampleRate;
         U64 batchSize;
         U64 outputBufferSize;
         U64 bufferMultiplier = 1024*8;
@@ -166,17 +166,29 @@ class UI {
             .shape = sdr.getOutputBuffer().shape(),
         }, {});
 
-        mul = instance.addBlock<Multiply, ComputeDevice>({}, {
+        flt = instance.addBlock<Filter, ComputeDevice>({
+            .signalSampleRate = sdr.getConfig().sampleRate,
+            .filterSampleRate = 5e6,
+            .filterCenter = -5e6,
+            .shape = sdr.getOutputBuffer().shape(),
+        }, {});
+
+        win_mul = instance.addBlock<Multiply, ComputeDevice>({}, {
             .factorA = sdr.getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
         fft = instance.addBlock<FFT, ComputeDevice>({}, {
-            .buffer = mul->getProductBuffer(),
+            .buffer = win_mul->getProductBuffer(),
+        });
+
+        flt_mul = instance.addBlock<Multiply, ComputeDevice>({}, {
+            .factorA = fft->getOutputBuffer(),
+            .factorB = flt->getCoeffsBuffer(),
         });
 
         amp = instance.addBlock<Amplitude, ComputeDevice>({}, {
-            .buffer = fft->getOutputBuffer(),
+            .buffer = flt_mul->getProductBuffer(),
         });
 
         scl = instance.addBlock<Scale, ComputeDevice>({
@@ -211,10 +223,12 @@ class UI {
     bool streaming = false;
 
     std::shared_ptr<Window<ComputeDevice>> win;
-    std::shared_ptr<Multiply<ComputeDevice>> mul;
+    std::shared_ptr<Multiply<ComputeDevice>> win_mul;
     std::shared_ptr<FFT<ComputeDevice>> fft;
     std::shared_ptr<Amplitude<ComputeDevice>> amp;
     std::shared_ptr<Scale<ComputeDevice>> scl;
+    std::shared_ptr<Filter<ComputeDevice>> flt;
+    std::shared_ptr<Multiply<ComputeDevice>> flt_mul;
 
     Bundle::LineplotUI<ComputeDevice> lpt;
     Bundle::WaterfallUI<ComputeDevice> wtf;
@@ -235,6 +249,28 @@ class UI {
             JST_CHECK_THROW(lpt.draw());
             JST_CHECK_THROW(wtf.draw());
             JST_CHECK_THROW(spc.draw());
+
+            {
+                ImGui::Begin("FIR Filter Control");
+
+                auto sampleRate = flt->filterSampleRate() / (1000 * 1000);
+                if (ImGui::DragFloat("Bandwidth (MHz)", &sampleRate, 0.01, 0, sdr.getConfig().sampleRate / (1000 * 1000), "%.2f MHz")) {
+                    flt->filterSampleRate(sampleRate * (1000 * 1000));
+                }
+
+                auto center = flt->filterCenter() / (1000 * 1000);
+                auto halfSampleRate = (sdr.getConfig().sampleRate / 2.0) / (1000 * 1000);
+                if (ImGui::DragFloat("Center (MHz)", &center, 0.01, -halfSampleRate, halfSampleRate, "%.2f MHz")) {
+                    flt->filterCenter(center * (1000 * 1000));
+                }
+
+                auto numberOfTaps = static_cast<int>(flt->filterTaps());
+                if (ImGui::DragInt("Taps", &numberOfTaps, 2, 3, 200, "%d taps")) {
+                    flt->filterTaps(numberOfTaps);
+                }
+
+                ImGui::End();
+            }
 
             {
                 ImGui::Begin("Control");
@@ -335,11 +371,11 @@ int main() {
 
     {
         const SDR::Config& sdrConfig {
-            .deviceString = "driver=airspy",
-            .frequency = 96e6,
-            .sampleRate = 14e6,
+            .deviceString = "driver=lime",
+            .frequency = 2.42e9,
+            .sampleRate = 20e6,
             .batchSize = 16,
-            .outputBufferSize = 2 << 9,
+            .outputBufferSize = 2 << 10,
         }; 
         auto sdr = SDR(sdrConfig, instance);
         auto ui = UI(sdr, instance);
