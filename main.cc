@@ -178,7 +178,9 @@ class UI {
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, ComputeDevice>({}, {
+        fft = instance.addBlock<FFT, ComputeDevice>({
+            .direction = Direction::Forward,
+        }, {
             .buffer = win_mul->getProductBuffer(),
         });
 
@@ -197,9 +199,16 @@ class UI {
             .buffer = amp->getOutputBuffer(),
         });
 
+        ifft = instance.addBlock<FFT, ComputeDevice>({
+            .direction = Direction::Backward,
+        }, {
+            .buffer = flt_mul->getProductBuffer(),
+        });
+
         lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
         wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
         spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
 
         JST_CHECK_THROW(instance.create());
 
@@ -225,6 +234,7 @@ class UI {
     std::shared_ptr<Window<ComputeDevice>> win;
     std::shared_ptr<Multiply<ComputeDevice>> win_mul;
     std::shared_ptr<FFT<ComputeDevice>> fft;
+    std::shared_ptr<FFT<ComputeDevice>> ifft;
     std::shared_ptr<Amplitude<ComputeDevice>> amp;
     std::shared_ptr<Scale<ComputeDevice>> scl;
     std::shared_ptr<Filter<ComputeDevice>> flt;
@@ -233,6 +243,7 @@ class UI {
     Bundle::LineplotUI<ComputeDevice> lpt;
     Bundle::WaterfallUI<ComputeDevice> wtf;
     Bundle::SpectrogramUI<ComputeDevice> spc;
+    Bundle::ConstellationUI<Device::CPU> cst;
 
     void threadLoop() {
         frequency = sdr.getConfig().frequency / 1e6;
@@ -249,6 +260,7 @@ class UI {
             JST_CHECK_THROW(lpt.draw());
             JST_CHECK_THROW(wtf.draw());
             JST_CHECK_THROW(spc.draw());
+            JST_CHECK_THROW(cst.draw());
 
             {
                 ImGui::Begin("FIR Filter Control");
@@ -265,7 +277,7 @@ class UI {
                 }
 
                 auto numberOfTaps = static_cast<int>(flt->filterTaps());
-                if (ImGui::DragInt("Taps", &numberOfTaps, 2, 3, 200, "%d taps")) {
+                if (ImGui::DragInt("Taps", &numberOfTaps, 2, 3, 2000, "%d taps")) {
                     flt->filterTaps(numberOfTaps);
                 }
 
@@ -288,6 +300,7 @@ class UI {
                 JST_CHECK_THROW(lpt.drawControl());
                 JST_CHECK_THROW(wtf.drawControl());
                 JST_CHECK_THROW(spc.drawControl());
+                JST_CHECK_THROW(cst.drawControl());
 
                 ImGui::End();
             }
@@ -332,6 +345,7 @@ class UI {
                 JST_CHECK_THROW(lpt.drawInfo());
                 JST_CHECK_THROW(wtf.drawInfo());
                 JST_CHECK_THROW(spc.drawInfo());
+                JST_CHECK_THROW(cst.drawInfo());
 
                 ImGui::End();
             }
