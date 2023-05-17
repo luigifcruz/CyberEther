@@ -20,7 +20,6 @@ inc_lst = [
     include_directories('.'),
     include_directories('include/jetstream/backend/devices/metal'),
     include_directories('include/jetstream/render/tools'),
-    include_directories('include/jetstream/viewport/tools'),
 ]
 
 subdir('meson')
