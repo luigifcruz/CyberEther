@@ -7,7 +7,7 @@
 #include <GLFW/glfw3native.h>
 
 #include "jetstream/viewport/devices/metal.hh"
-#include "jetstream/viewport/tools/imgui_impl_glfw.h"
+#include "jetstream/render/tools/imgui_impl_glfw.h"
 #include "jetstream/backend/base.hh"
 
 namespace Jetstream::Viewport {

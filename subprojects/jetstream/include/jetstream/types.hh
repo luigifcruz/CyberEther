@@ -23,8 +23,8 @@ enum class Result : uint8_t {
 };
 
 enum class Direction : int8_t {
-    Forward = 1,
-    Backward = -1,
+    Forward = 0,
+    Backward = 1,
 };
 
 }  // namespace Jetstream
