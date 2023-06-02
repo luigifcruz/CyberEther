@@ -151,7 +151,7 @@ Result Linux::createImageView() {
         createInfo.subresourceRange.layerCount = 1;
 
         JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &swapchainImageViews[i]), [&]{
-            JST_FATAL("[VULKAN] Failed to creat image view."); 
+            JST_FATAL("[VULKAN] Failed to create image view."); 
         });
     }
 
@@ -209,7 +209,7 @@ Result Linux::destroy() {
 }
 
 Result Linux::createImgui() {
-    ImGui_ImplGlfw_InitForOther(window, true);
+    ImGui_ImplGlfw_InitForVulkan(window, true);
 
     return Result::SUCCESS;
 }
@@ -220,13 +220,16 @@ Result Linux::destroyImgui() {
     return Result::SUCCESS;
 }
 
-void* Linux::nextDrawable() {
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
+const VkFormat& Linux::getSwapchainImageFormat() const {
+    return swapchainImageFormat;
+}
 
-    ImGui_ImplGlfw_NewFrame();
+std::vector<VkImageView>& Linux::getSwapchainImageViews() {
+    return swapchainImageViews;
+}
 
-    return nullptr;
+const VkExtent2D& Linux::getSwapchainExtent() const {
+    return swapchainExtent;       
 }
 
 Result Linux::pollEvents() {

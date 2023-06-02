@@ -15,12 +15,15 @@ class SurfaceImp<Device::Vulkan> : public Surface {
 
  protected:
     Result create();
+    Result encode(VkCommandBuffer& commandBuffer);
     Result destroy();
-    Result draw(VkCommandBuffer* commandBuffer);
 
  private:
-    // MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::shared_ptr<TextureImp<Device::Vulkan>> framebuffer;
+    VkImageView framebufferImageView;
+    VkFramebuffer framebufferObject;
+    VkRenderPass renderPass;
+      
     std::vector<std::shared_ptr<ProgramImp<Device::Vulkan>>> programs;
 
     Result createFramebuffer();

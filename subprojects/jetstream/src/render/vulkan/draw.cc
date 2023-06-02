@@ -10,51 +10,28 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal draw.");
+    JST_DEBUG("[VULKAN] Creating draw.");
 
     JST_CHECK(buffer->create());
 
     return Result::SUCCESS;
 }
 
-Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal draw.");
+Result Implementation::encode(VkCommandBuffer& commandBuffer,
+                              const U64& offset) {
+    // TODO: Draw type was here.
 
-    JST_CHECK(buffer->destroy());
+    JST_CHECK(buffer->encode(commandBuffer, offset));
+
+    vkCmdDrawIndexed(commandBuffer, buffer->getIndicesCount(), 1, 0, 0, 0);
 
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                              const U64& offset) {
-    MTL::PrimitiveType mode;
+Result Implementation::destroy() {
+    JST_DEBUG("[VULKAN] Destroying draw.");
 
-    switch (config.mode) {
-        case Mode::TRIANGLE_FAN:
-            mode = MTL::PrimitiveTypeTriangleStrip;
-            break;
-        case Draw::Mode::TRIANGLES:
-            mode = MTL::PrimitiveTypeTriangle;
-            break;
-        case Draw::Mode::LINES:
-            mode = MTL::PrimitiveTypeLine;
-            break;
-        case Draw::Mode::LINE_STRIP:
-            mode = MTL::PrimitiveTypeLineStrip;
-            break;
-        case Draw::Mode::POINTS:
-            mode = MTL::PrimitiveTypePoint;
-            break;
-    }
-
-    JST_CHECK(buffer->encode(encoder, offset));
-
-    if (buffer->isBuffered()) {
-        encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->getVertexCount(),
-                MTL::IndexTypeUInt32, buffer->getIndexBuffer(), 0);
-    } else {
-        encoder->drawPrimitives(mode, (NS::UInteger)0, buffer->getVertexCount());
-    }
+    JST_CHECK(buffer->destroy());
 
     return Result::SUCCESS;
 }

@@ -18,29 +18,29 @@ class TextureImp<Device::Vulkan> : public Texture {
     Result fillRow(const U64& y, const U64& height);
 
     void* raw() {
-        // return texture;
-        return nullptr;
+        return &texture;
     }
 
  protected:
     Result create();
     Result destroy();
 
-    // constexpr MTL::PixelFormat getPixelFormat() const {
-    //     return pixelFormat;
-    // }
+    constexpr const VkFormat& getPixelFormat() const {
+        return pixelFormat;
+    }
 
-    // constexpr MTL::Texture* getHandle() const {
-    //     return texture;
-    // }
+    constexpr const VkImage& getHandle() const {
+        return texture;
+    }
 
-    // static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&, 
-    //                                            const PixelType&);
-    // static U64 GetPixelByteSize(const MTL::PixelFormat&);
+    static VkFormat ConvertPixelFormat(const PixelFormat&, 
+                                       const PixelType&);
+    static U64 GetPixelByteSize(const VkFormat&);
 
  private:
-    // MTL::Texture* texture = nullptr;
-    // MTL::PixelFormat pixelFormat;
+    VkImage texture;
+    VkFormat pixelFormat;
+    VkDeviceMemory memory;
 
     friend class SurfaceImp<Device::Vulkan>;
     friend class ProgramImp<Device::Vulkan>;

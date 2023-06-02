@@ -2,7 +2,7 @@
 #define JETSTREAM_VIEWPORT_LINUX_HH
 
 #include "jetstream/viewport/devices/vulkan.hh"
-#include "jetstream/viewport/tools/imgui_impl_glfw.h"
+#include "jetstream/render/tools/imgui_impl_glfw.h"
 #include "jetstream/backend/base.hh"
 
 #include <GLFW/glfw3.h>
@@ -27,8 +27,6 @@ class Linux : public Provider<Device::Vulkan> {
 
     Result createImgui();
     Result destroyImgui();
-
-    void* nextDrawable();
     
     Result pollEvents();
     bool keepRunning();
@@ -36,6 +34,11 @@ class Linux : public Provider<Device::Vulkan> {
     static std::shared_ptr<Linux> Factory(const Config& config) {
         return std::make_shared<Linux>(config);
     }
+
+    // TODO: Maybe protect those?
+    const VkFormat& getSwapchainImageFormat() const;
+    std::vector<VkImageView>& getSwapchainImageViews();
+    const VkExtent2D& getSwapchainExtent() const;
 
  private:
     struct SwapChainSupportDetails {

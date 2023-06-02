@@ -59,6 +59,18 @@ class Vulkan {
         return instance;
     }
 
+    constexpr VkQueue& getGraphicsQueue() {
+        return graphicsQueue;
+    }
+
+    constexpr VkQueue& getPresentQueue() {
+        return presentQueue;
+    }
+
+    constexpr VkQueue& getComputeQueue() {
+        return computeQueue;
+    }
+
  private:
     const Config& config;
 

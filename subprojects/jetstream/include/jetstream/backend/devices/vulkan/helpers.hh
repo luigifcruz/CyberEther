@@ -6,6 +6,8 @@
 #include <vector>
 #include <thread>
 
+#include "jetstream/types.hh"
+
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
@@ -51,6 +53,36 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
     }
 
     return indices;
+}
+
+inline U32 FindMemoryType(const VkPhysicalDevice& device, const U32& typeFilter, const VkMemoryPropertyFlags& properties) {
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(device, &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+
+    JST_FATAL("[VULKAN] Failed to find suitable memory type!");
+    JST_CHECK_THROW(Result::ERROR);
+
+    return 0;
+}
+
+inline VkShaderModule LoadShader(const U8& code, const U64& size, VkDevice device) {
+    VkShaderModule shaderModule;
+    VkShaderModuleCreateInfo moduleCreateInfo{};
+    moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    moduleCreateInfo.codeSize = size;
+    moduleCreateInfo.pCode = reinterpret_cast<const U32*>(&code);
+
+    JST_VK_CHECK_THROW(vkCreateShaderModule(device, &moduleCreateInfo, nullptr, &shaderModule), [&]{
+        JST_FATAL("[VULKAN] Can't create shader module.");  
+    });
+
+    return shaderModule;
 }
 
 }  // namespace Jetstream::Backend

@@ -21,11 +21,13 @@
 #include "jetstream/modules/fft.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_FILTER_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FILTER_METAL_AVAILABLE)
 #include "jetstream/modules/filter.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_WINDOW_METAL_AVAILABLE)
 #include "jetstream/modules/window.hh"
 #endif
 

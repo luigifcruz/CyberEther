@@ -1,6 +1,7 @@
 sum_lst = {}
 
 subdir('metal')
+subdir('vulkan')
 subdir('tools')
 subdir('base')
 

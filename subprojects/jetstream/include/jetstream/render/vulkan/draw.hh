@@ -13,9 +13,9 @@ class DrawImp<Device::Vulkan> : public Draw {
 
  protected:
     Result create();
-    Result destroy();
-    Result encode(VkCommandBuffer* encode,
+    Result encode(VkCommandBuffer& commandBuffer,
                   const U64& offset);
+    Result destroy();
 
  private:
     std::shared_ptr<VertexImp<Device::Vulkan>> buffer;

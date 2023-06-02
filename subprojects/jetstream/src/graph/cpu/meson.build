@@ -1,5 +1,4 @@
 deps = [
-    'JETSTREAM_BACKEND_METAL_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -8,10 +7,10 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_MODULE_SCALE_METAL_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_GRAPH_CPU_AVAILABLE', true)
     src_lst += files([
         'base.cc',
     ])
 endif
 
-sum_lst += {'Metal': all_deps_found}
+sum_lst += {'CPU': all_deps_found}

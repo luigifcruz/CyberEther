@@ -18,7 +18,7 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal vertex.");
+    JST_DEBUG("[VULKAN] Creating vertex.");
 
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->create());
@@ -33,8 +33,32 @@ Result Implementation::create() {
     return Result::SUCCESS;
 }
 
+Result Implementation::encode(VkCommandBuffer& commandBuffer,
+                              const U64& offset) {
+    U64 index = offset;
+    std::vector<VkBuffer> vertexBuffers;
+    std::vector<VkDeviceSize> vertexOffsets;
+
+    for (const auto& [buffer, stride] : buffers) {
+        vertexBuffers.push_back(buffer->getHandle());
+        vertexOffsets.push_back(index++);
+    }
+
+    vkCmdBindVertexBuffers(commandBuffer,
+                           0,
+                           vertexBuffers.size(),
+                           vertexBuffers.data(),
+                           vertexOffsets.data());
+
+    if (indices) {
+        vkCmdBindIndexBuffer(commandBuffer, indices->getHandle(), 0, VK_INDEX_TYPE_UINT16);
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal vertex.");
+    JST_DEBUG("[VULKAN] Destroying vertex.");
 
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->destroy());
@@ -45,21 +69,6 @@ Result Implementation::destroy() {
     }
 
     return Result::SUCCESS;
-}
-
-Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                              const U64& offset) {
-    U64 index = offset;
-
-    for (const auto& [buffer, stride] : buffers) {
-        encoder->setVertexBuffer(buffer->getHandle(), 0, index++);
-    }
-
-    return Result::SUCCESS;
-}
-
-const MTL::Buffer* Implementation::getIndexBuffer() {
-    return indices->getHandle();
 }
 
 }  // namespace Jetstream::Render

@@ -3,6 +3,7 @@
 
 #include "jetstream/render/base/program.hh"
 #include "jetstream/backend/base.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -12,13 +13,14 @@ class ProgramImp<Device::Vulkan> : public Program {
     explicit ProgramImp(const Config& config);
 
  protected:
-    Result create(/*const MTL::PixelFormat& pixelFormat*/);
+    Result create(VkRenderPass& renderPass,
+                  std::shared_ptr<TextureImp<Device::Vulkan>>& texture);
+    Result encode(VkCommandBuffer& commandBuffer, VkRenderPass& renderPass);
     Result destroy();
-    Result draw(VkCommandBuffer* commandBuffer,
-                VkRenderPass* renderPassDescriptor);
 
  private:
-    // MTL::RenderPipelineState* renderPipelineState = nullptr;
+    VkPipelineLayout pipelineLayout;
+    VkPipeline graphicsPipeline;
 
     std::vector<std::shared_ptr<DrawImp<Device::Vulkan>>> draws;
     std::vector<std::shared_ptr<TextureImp<Device::Vulkan>>> textures;

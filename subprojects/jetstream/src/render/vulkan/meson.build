@@ -14,12 +14,12 @@ if all_deps_found
     cfg_lst.set('JETSTREAM_RENDER_VULKAN_AVAILABLE', true)
     src_lst += files([
         'window.cc',
-        # 'surface.cc',
-        # 'program.cc',
-        # 'texture.cc',
-        # 'buffer.cc',
-        # 'draw.cc',
-        # 'vertex.cc',
+        'surface.cc',
+        'program.cc',
+        'texture.cc',
+        'buffer.cc',
+        'draw.cc',
+        'vertex.cc',
     ])
 endif
 

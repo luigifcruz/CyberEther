@@ -41,6 +41,11 @@ class WindowImp<Device::Vulkan> : public Window {
     std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
     std::shared_ptr<Viewport::Provider<Device::Vulkan>> viewport;
 
+    VkRenderPass renderPass;
+    VkCommandPool commandPool;
+    std::vector<VkFramebuffer> swapchainFramebuffers;
+    std::vector<VkCommandBuffer> commandBuffers;
+
     Result createImgui();
     Result destroyImgui();
     Result beginImgui();

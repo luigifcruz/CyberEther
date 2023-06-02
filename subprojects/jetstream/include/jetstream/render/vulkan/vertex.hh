@@ -13,18 +13,12 @@ class VertexImp<Device::Vulkan> : public Vertex {
 
  protected:
     Result create();
-    Result destroy();
-    Result encode(VkCommandBuffer* encode,
+    Result encode(VkCommandBuffer& commandBuffer, 
                   const U64& offset);
+    Result destroy();
 
-    const VkBuffer* getIndexBuffer();
-
-    constexpr U64 getVertexCount() const {
+    constexpr U32 getIndicesCount() const {
         return vertexCount;
-    }
-
-    bool isBuffered() {
-        return indices != nullptr;
     }
 
  private:

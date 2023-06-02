@@ -25,18 +25,10 @@ inline std::string GetTypeName(const auto& type) {
 
 enum class JETSTREAM_API Device : uint8_t {
     None    = 1 << 0,
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
     CPU     = 1 << 1,
-#endif
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
     CUDA    = 1 << 2,
-#endif
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
     Metal   = 1 << 3,
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
     Vulkan  = 1 << 4,
-#endif
 };
 
 inline constexpr Device operator|(Device lhs, Device rhs) {

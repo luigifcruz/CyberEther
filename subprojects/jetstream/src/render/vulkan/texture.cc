@@ -1,4 +1,5 @@
 #include "jetstream/render/vulkan/texture.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -8,20 +9,48 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal texture.");
+    JST_DEBUG("[VULKAN] Creating texture.");
 
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
 
-    auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
-            pixelFormat, config.size.width, config.size.height, false);
-    JST_ASSERT(textureDesc);
+    VkImageCreateInfo imageCreateInfo = {};
+    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.extent.width = config.size.width;
+    imageCreateInfo.extent.height = config.size.height;
+    imageCreateInfo.extent.depth = 1;
+    imageCreateInfo.mipLevels = 1;
+    imageCreateInfo.arrayLayers = 1;
+    imageCreateInfo.format = pixelFormat;
+    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    textureDesc->setUsage(MTL::TextureUsagePixelFormatView | 
-                          MTL::TextureUsageRenderTarget |
-                          MTL::TextureUsageShaderRead);
-    auto device = Backend::State<Device::Vulkan>()->getDevice();
-    texture = device->newTexture(textureDesc); 
-    JST_ASSERT(texture);
+    JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &texture), [&]{
+        JST_FATAL("[VULKAN] Failed to create texture.");   
+    });
+
+    VkMemoryRequirements memoryRequirements;
+    vkGetImageMemoryRequirements(device, texture, &memoryRequirements);
+
+    VkMemoryAllocateInfo memoryAllocateInfo = {};
+    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memoryAllocateInfo.allocationSize = memoryRequirements.size;
+    memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                                 memoryRequirements.memoryTypeBits,
+                                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
+        JST_FATAL("[VULKAN] Failed to allocate texture memory.");
+    });
+
+    JST_VK_CHECK(vkBindImageMemory(device, texture, memory, 0), [&]{
+        JST_FATAL("[VULKAN] Failed to bind memory to the texture.");
+    });
 
     if (config.buffer) {
         JST_CHECK(fill());
@@ -31,9 +60,11 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal texture.");
+    JST_DEBUG("[VULKAN] Destroying texture.");
 
-    texture->release();
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    vkDestroyImage(device, texture, nullptr);
+    vkFreeMemory(device, memory, nullptr);
 
     return Result::SUCCESS;
 }
@@ -60,49 +91,54 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    auto region = MTL::Region::Make2D(0, y, config.size.width, height);
-    auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
-    auto bufferByteOffset = rowByteSize * y;
-    texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
+    // TODO: Implement this.
+    JST_WARN("[VULKAN] Texture fill not implemented.");
+
+    // auto region = MTL::Region::Make2D(0, y, config.size.width, height);
+    // auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
+    // auto bufferByteOffset = rowByteSize * y;
+    // texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
 
     return Result::SUCCESS;
 }
 
-MTL::PixelFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
-                                                    const PixelType& ptype) {
+VkFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
+                                            const PixelType& ptype) {
     if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
-        return MTL::PixelFormatR32Float;
+        return VK_FORMAT_R32_SFLOAT;
     }
 
     if (pfmt == PixelFormat::RED && ptype == PixelType::UI8) {
-        return MTL::PixelFormatR8Unorm;
+        return VK_FORMAT_R8_UNORM;
     }
 
     if (pfmt == PixelFormat::RGBA && ptype == PixelType::F32) {
-        return MTL::PixelFormatRGBA32Float;
+        return VK_FORMAT_R32G32B32A32_SFLOAT;
     }
 
     if (pfmt == PixelFormat::RGBA && ptype == PixelType::UI8) {
-        return MTL::PixelFormatRGBA8Unorm;
+        return VK_FORMAT_R8G8B8A8_UNORM;
     }
 
     JST_FATAL("Can't convert pixel format.");
-    throw Result::ERROR;
+
+    return VK_FORMAT_UNDEFINED;
 }
 
-U64 Implementation::GetPixelByteSize(const MTL::PixelFormat& pfmt) {
+U64 Implementation::GetPixelByteSize(const VkFormat& pfmt) {
     switch (pfmt) {
-        case MTL::PixelFormatR32Float:
+        case VK_FORMAT_R32_SFLOAT:
             return 4;
-        case MTL::PixelFormatR8Unorm:
+        case VK_FORMAT_R8_UNORM:
             return 1;
-        case MTL::PixelFormatRGBA32Float:
+        case VK_FORMAT_R32G32B32A32_SFLOAT:
             return 16;
-        case MTL::PixelFormatRGBA8Unorm:
+        case VK_FORMAT_R8G8B8A8_UNORM:
             return 4;
         default:
-            JST_FATAL("Pixel format not implemented yet.");
-            throw Result::ERROR;
+            JST_FATAL("[VULKAN] Pixel format not implemented yet.");
+            JST_CHECK_THROW(Result::ERROR);
+            return 0;
     }
 }
 

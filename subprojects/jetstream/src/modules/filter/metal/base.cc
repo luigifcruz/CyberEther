@@ -2,6 +2,6 @@
 
 namespace Jetstream {
 
-template class Filter<Device::CPU, CF32>;
+template class Filter<Device::Metal, CF32>;
 
 }  // namespace Jetstream

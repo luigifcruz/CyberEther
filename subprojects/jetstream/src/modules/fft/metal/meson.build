@@ -15,4 +15,4 @@ if all_deps_found
     ])
 endif
 
-sum_lst += {'METAL': all_deps_found}
+sum_lst += {'Metal': all_deps_found}

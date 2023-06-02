@@ -20,12 +20,13 @@ class BufferImp<Device::Vulkan> : public Buffer {
     Result create();
     Result destroy();
 
-    constexpr VkBuffer* getHandle() const {
+    constexpr VkBuffer getHandle() const {
         return buffer;
     }
 
  private:
-    VkBuffer* buffer;
+    VkBuffer buffer;
+    VkDeviceMemory memory;
 
     friend class SurfaceImp<Device::Vulkan>;
     friend class ProgramImp<Device::Vulkan>;
