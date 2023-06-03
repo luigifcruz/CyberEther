@@ -77,7 +77,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<U32>(attributeDescriptions.size());
     vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
@@ -97,8 +97,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = VkExtent2D{
-            static_cast<uint32_t>(framebuffer->size().width),
-            static_cast<uint32_t>(framebuffer->size().height)
+            static_cast<U32>(framebuffer->size().width),
+            static_cast<U32>(framebuffer->size().height)
         };
 
     VkPipelineViewportStateCreateInfo viewportState{};

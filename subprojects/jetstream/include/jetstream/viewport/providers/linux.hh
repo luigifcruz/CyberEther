@@ -22,6 +22,10 @@ class Linux : public Provider<Device::Vulkan> {
         return Device::Vulkan;
     };
 
+    constexpr const U32& currentDrawableIndex() const {
+        return _currentDrawableIndex;
+    }
+
     Result create();
     Result destroy();
 
@@ -30,6 +34,8 @@ class Linux : public Provider<Device::Vulkan> {
     
     Result pollEvents();
     bool keepRunning();
+    Result nextDrawable(VkSemaphore& semaphore);
+    Result commitDrawable(std::vector<VkSemaphore>& semaphores);
 
     static std::shared_ptr<Linux> Factory(const Config& config) {
         return std::make_shared<Linux>(config);
@@ -49,6 +55,7 @@ class Linux : public Provider<Device::Vulkan> {
 
     GLFWwindow* window = nullptr;
     bool framebufferDidResize = false;
+    U32 _currentDrawableIndex;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;
     std::vector<VkImage> swapchainImages;

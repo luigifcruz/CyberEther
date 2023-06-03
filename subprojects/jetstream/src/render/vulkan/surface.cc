@@ -149,20 +149,14 @@ Result Implementation::destroyFramebuffer() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    JST_VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo), [&]{
-        JST_FATAL("[VULKAN] Can't begin command buffer.");     
-    });
-
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
     renderPassInfo.framebuffer = framebufferObject;
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = VkExtent2D{
-            static_cast<uint32_t>(framebuffer->size().width),
-            static_cast<uint32_t>(framebuffer->size().height)
+            static_cast<U32>(framebuffer->size().width),
+            static_cast<U32>(framebuffer->size().height)
         };
 
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};

@@ -6,6 +6,7 @@ namespace Jetstream::Render {
 using Implementation = TextureImp<Device::Vulkan>;
 
 Implementation::TextureImp(const Config& config) : Texture(config) {
+    pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
 }
 
 Result Implementation::create() {
@@ -13,7 +14,6 @@ Result Implementation::create() {
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
-    pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
 
     VkImageCreateInfo imageCreateInfo = {};
     imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;

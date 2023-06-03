@@ -9,9 +9,9 @@
 
 using namespace Jetstream;
 
-using SystemViewport = Viewport::MacOS;
-constexpr static Device ComputeDevice = Device::Metal;
-constexpr static Device RenderDevice  = Device::Metal;
+using SystemViewport = Viewport::Linux;
+constexpr static Device ComputeDevice = Device::CPU;
+constexpr static Device RenderDevice  = Device::Vulkan;
 
 class SDR {
  public:
@@ -315,7 +315,7 @@ class UI {
                     float bufferCapacityMB = ((F32)sdr.getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
                     ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
-                    ImGui::Text("Overflows %llu", sdr.getCircularBuffer().getOverflows());
+                    ImGui::Text("Overflows %lu", sdr.getCircularBuffer().getOverflows());
 
                     float bufferUsageRatio = (F32)sdr.getCircularBuffer().getOccupancy() /
                                                   sdr.getCircularBuffer().getCapacity();
@@ -323,7 +323,7 @@ class UI {
                 }
 
                 if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-                    ImGui::Text("Data Shape: (%lld, %lld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
+                    ImGui::Text("Data Shape: (%ld, %ld)", sdr.getConfig().batchSize, sdr.getConfig().outputBufferSize);
                     ImGui::Text("Compute Device: %s", GetTypeName(ComputeDevice).c_str());
                 }
 
@@ -331,7 +331,7 @@ class UI {
                     instance.getRender().drawDebugMessage();
                     ImGui::Text("Viewport Device: %s", instance.getViewport().name().c_str());
                     ImGui::Text("Render Device: %s", GetTypeName(RenderDevice).c_str());
-                    ImGui::Text("Dropped Frames: %lld", instance.window().stats().droppedFrames);
+                    ImGui::Text("Dropped Frames: %ld", instance.window().stats().droppedFrames);
                 }
 
                 if (ImGui::CollapsingHeader("SDR", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -367,8 +367,8 @@ int main() {
         return 1;
     }
 
-    if (Backend::Initialize<Device::Metal>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize Metal backend.");
+    if (Backend::Initialize<Device::Vulkan>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize Vulkan backend.");
         return 1;
     }
 
@@ -385,9 +385,9 @@ int main() {
 
     {
         const SDR::Config& sdrConfig {
-            .deviceString = "driver=lime",
-            .frequency = 2.42e9,
-            .sampleRate = 20e6,
+            .deviceString = "driver=airspy",
+            .frequency = 96.9e9,
+            .sampleRate = 10e6,
             .batchSize = 16,
             .outputBufferSize = 2 << 10,
         }; 

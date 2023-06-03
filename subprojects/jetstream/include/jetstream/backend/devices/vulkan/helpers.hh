@@ -5,8 +5,10 @@
 #include <optional>
 #include <vector>
 #include <thread>
+#include <functional>
 
 #include "jetstream/types.hh"
+#include "jetstream/macros.hh"
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -83,6 +85,57 @@ inline VkShaderModule LoadShader(const U8& code, const U64& size, VkDevice devic
     });
 
     return shaderModule;
+}
+
+inline Result ExecuteOnce(VkDevice& device,
+                          VkQueue& queue,
+                          VkCommandBuffer& commandBuffer,
+                          VkCommandPool& commandPool,
+                          std::function<void(VkCommandBuffer&)> func) {
+    VkCommandBufferBeginInfo cmdBeginInfo = {};
+    cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    JST_VK_CHECK(vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo), [&]{
+        JST_FATAL("[VULKAN] Failed to begin one time command buffer.");    
+    });
+
+    func(commandBuffer);
+
+    JST_VK_CHECK(vkEndCommandBuffer(commandBuffer), [&]{
+        JST_FATAL("[VULKAN] Failed to end one time command buffer.");   
+    });
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.pNext = nullptr;
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = nullptr;
+    submitInfo.pWaitDstStageMask = nullptr;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = nullptr;
+
+    VkFence fence;
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+    JST_VK_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &fence), [&]{
+        JST_FATAL("[VULKAN] Can't create one time fence.");            
+    });
+
+    JST_VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), [&]{
+        JST_FATAL("[VULKAN] Can't submit one time queue.");            
+    });
+
+    vkWaitForFences(device, 1, &fence, true, UINT64_MAX);
+    vkResetFences(device, 1, &fence);
+    vkDestroyFence(device, fence, nullptr);
+
+    vkResetCommandPool(device, commandPool, 0);
+
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream::Backend

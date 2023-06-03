@@ -34,17 +34,24 @@ class WindowImp<Device::Vulkan> : public Window {
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
-    // CA::MetalDrawable* drawable = nullptr;
-    // MTL::CommandQueue* commandQueue = nullptr;
-    // MTL::CommandBuffer* commandBuffer = nullptr;
-    // MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
     std::shared_ptr<Viewport::Provider<Device::Vulkan>> viewport;
 
-    VkRenderPass renderPass;
     VkCommandPool commandPool;
+    VkDescriptorPool imguiDescPool;
+    VkCommandBufferBeginInfo commandBufferBeginInfo;
+    VkCommandBuffer currentCommandBuffer;
+    VkRenderPassBeginInfo renderPassBeginInfo;
+    VkRenderPass renderPass;
     std::vector<VkFramebuffer> swapchainFramebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
+
+    Result CreateSynchronizationObjects();
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
+    std::vector<VkFence> imagesInFlight;
+    size_t currentFrame = 0;
 
     Result createImgui();
     Result destroyImgui();

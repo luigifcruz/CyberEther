@@ -10,6 +10,10 @@ template<>
 class Provider<Device::Vulkan> : public Generic {
  public:
     using Generic::Generic;
+
+    virtual const U32& currentDrawableIndex() const = 0;
+    virtual Result nextDrawable(VkSemaphore& semaphore) = 0;
+    virtual Result commitDrawable(std::vector<VkSemaphore>& semaphores) = 0;
     
     virtual const VkFormat& getSwapchainImageFormat() const = 0;
     virtual std::vector<VkImageView>& getSwapchainImageViews() = 0;

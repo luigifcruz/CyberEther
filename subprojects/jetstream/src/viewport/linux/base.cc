@@ -27,8 +27,8 @@ Linux::SwapChainSupportDetails Linux::querySwapChainSupport(const VkPhysicalDevi
 
 VkSurfaceFormatKHR Linux::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto &availableFormat : availableFormats) {
-        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_SRGB &&
-            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_UNORM &&
+            availableFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
         }
     }
@@ -55,8 +55,8 @@ VkExtent2D Linux::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
         glfwGetFramebufferSize(window, &width, &height);
 
         VkExtent2D actualExtent = {
-            static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height)
+            static_cast<U32>(width),
+            static_cast<U32>(height)
         };
 
         actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
@@ -202,6 +202,15 @@ Result Linux::create() {
 }
 
 Result Linux::destroy() {
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
+
+    for (auto& swapchainImageView : swapchainImageViews) {
+        vkDestroyImageView(device, swapchainImageView, nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapchain, nullptr);   
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+
     glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -216,6 +225,51 @@ Result Linux::createImgui() {
 
 Result Linux::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
+
+    return Result::SUCCESS;
+}
+
+Result Linux::nextDrawable(VkSemaphore& semaphore) {
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+
+    const VkResult result = vkAcquireNextImageKHR(device,
+                                                  swapchain,
+                                                  UINT64_MAX,
+                                                  semaphore,
+                                                  VK_NULL_HANDLE,
+                                                  &_currentDrawableIndex);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        return Result::RECREATE;
+    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        return Result::ERROR;
+    }
+
+    ImGui_ImplGlfw_NewFrame();
+
+    return Result::SUCCESS;
+}
+
+Result Linux::commitDrawable(std::vector<VkSemaphore>& semaphores) {
+    VkSwapchainKHR swapchains[] = {swapchain};
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = semaphores.data();
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapchains;
+    presentInfo.pImageIndices = &_currentDrawableIndex;
+
+    auto& presentQueue = Backend::State<Device::Vulkan>()->getPresentQueue();
+    const VkResult result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferDidResize) {
+        framebufferDidResize = false;
+        return Result::RECREATE;
+    } else if (result != VK_SUCCESS) {
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }

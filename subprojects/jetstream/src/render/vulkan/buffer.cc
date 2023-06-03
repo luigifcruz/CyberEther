@@ -94,7 +94,7 @@ Result Implementation::update(const U64& offset, const U64& size) {
 //     }
 
     // TODO: Implement this.
-    JST_WARN("[VULKAN] Buffer update not implemented.");
+    //JST_WARN("[VULKAN] Buffer update not implemented.");
 
     return Result::SUCCESS;
 }
