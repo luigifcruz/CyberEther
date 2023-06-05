@@ -1,4 +1,5 @@
 #include "jetstream/modules/spectrogram.hh"
+#include "shaders/spectrogram_shaders.hh"
 
 namespace Jetstream {
 
@@ -75,7 +76,8 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+        //{Device::Metal, {MetalShader}},
+        {Device::Vulkan, {spectrogram_spv_vert_shader, spectrogram_spv_frag_shader}},
     };
     programCfg.draws = {drawVertex};
     programCfg.textures = {lutTexture};

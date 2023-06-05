@@ -1,4 +1,5 @@
 #include "jetstream/modules/waterfall.hh"
+#include "shaders/waterfall_shaders.hh"
 
 namespace Jetstream {
 
@@ -87,7 +88,8 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+        //{Device::Metal, {MetalShader}},
+        {Device::Vulkan, {waterfall_spv_vert_shader, waterfall_spv_frag_shader}},
     };
     programCfg.draws = {drawVertex};
     programCfg.textures = {lutTexture};

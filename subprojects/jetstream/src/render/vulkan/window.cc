@@ -126,9 +126,9 @@ Result Implementation::create() {
 
     // Create children.
 
-    // for (auto& surface : surfaces) {
-    //     JST_CHECK(surface->create());
-    // }
+    for (auto& surface : surfaces) {
+        JST_CHECK(surface->create());
+    }
 
     if (config.imgui) {
         JST_CHECK(createImgui());
@@ -158,9 +158,9 @@ Result Implementation::destroy() {
         JST_CHECK(destroyImgui());
     } 
 
-    // for (auto& surface : surfaces) {
-    //     JST_CHECK(surface->destroy());
-    // }
+    for (auto& surface : surfaces) {
+        JST_CHECK(surface->destroy());
+    }
 
     vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
 
@@ -333,9 +333,9 @@ Result Implementation::end() {
 
     vkCmdEndRenderPass(currentCommandBuffer);
 
-    // for (auto &surface : surfaces) {
-    //     JST_CHECK(surface->encode(currentCommandBuffer));
-    // }
+    for (auto &surface : surfaces) {
+        JST_CHECK(surface->encode(currentCommandBuffer));
+    }
 
     JST_VK_CHECK(vkEndCommandBuffer(currentCommandBuffer), [&]{
         JST_FATAL("[VULKAN] Can't end command buffer.");

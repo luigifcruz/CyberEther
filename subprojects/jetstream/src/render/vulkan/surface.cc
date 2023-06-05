@@ -96,30 +96,7 @@ Result Implementation::createFramebuffer() {
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
-    // Create framebuffer image view.
-
-    VkImageViewCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    createInfo.image = framebuffer->getHandle();
-    createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    createInfo.format = framebuffer->getPixelFormat();
-
-    createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-
-    createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    createInfo.subresourceRange.baseMipLevel = 0;
-    createInfo.subresourceRange.levelCount = 1;
-    createInfo.subresourceRange.baseArrayLayer = 0;
-    createInfo.subresourceRange.layerCount = 1;
-
-    JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &framebufferImageView), [&]{
-        JST_FATAL("[VULKAN] Failed to create image view."); 
-    });
-
-    VkImageView attachments[] = { framebufferImageView };
+    VkImageView attachments[] = { framebuffer->getViewHandle() };
 
     VkFramebufferCreateInfo framebufferInfo{};
     framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -143,7 +120,6 @@ Result Implementation::destroyFramebuffer() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     vkDestroyFramebuffer(device, framebufferObject, nullptr);
-    vkDestroyImageView(device, framebufferImageView, nullptr);
 
     return framebuffer->destroy();
 }
@@ -170,10 +146,6 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     }
 
     vkCmdEndRenderPass(commandBuffer);
-
-    JST_VK_CHECK(vkEndCommandBuffer(commandBuffer), [&]{
-        JST_FATAL("[VULKAN] Can't end command buffer.");
-    });
 
     return Result::SUCCESS;
 }

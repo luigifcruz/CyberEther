@@ -20,7 +20,6 @@ class SurfaceImp<Device::Vulkan> : public Surface {
 
  private:
     std::shared_ptr<TextureImp<Device::Vulkan>> framebuffer;
-    VkImageView framebufferImageView;
     VkFramebuffer framebufferObject;
     VkRenderPass renderPass;
       

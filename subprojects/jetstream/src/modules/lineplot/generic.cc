@@ -1,4 +1,5 @@
 #include "jetstream/modules/lineplot.hh"
+#include "shaders/lineplot_shaders.hh"
 
 namespace Jetstream {
 
@@ -113,7 +114,8 @@ Result Lineplot<D, T>::createPresent(Render::Window& window) {
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+        //{Device::Metal, {MetalShader}},
+        {Device::Vulkan, {lineplot_spv_vert_shader, lineplot_spv_frag_shader}},
     };
     programCfg.draws = {drawGridVertex, drawLineVertex};
     programCfg.textures = {lutTexture};

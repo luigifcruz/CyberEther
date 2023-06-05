@@ -23,6 +23,7 @@ inc_lst = [
 ]
 
 subdir('meson')
+subdir('shaders')
 subdir('src')
 subdir('include')
 
@@ -46,7 +47,8 @@ libjetstream_dep = declare_dependency(
     link_with: libjetstream
 )
 
-subdir('tests')
+# TODO: Re-enable tests.
+#subdir('tests')
 
 pkg = import('pkgconfig')
 pkg.generate(

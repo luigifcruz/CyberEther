@@ -38,10 +38,16 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
+    // Check if module have shader.
+    if (config.shaders.count(Device::Vulkan) == 0) {
+        JST_FATAL("[VULKAN] Module doesn't have necessary shader.");       
+        JST_CHECK(Result::ERROR);
+    }
+
     // Load shader data.
-    const auto& shader = config.shaders[Device::Vulkan][0];
-    VkShaderModule vertShaderModule = Backend::LoadShader(shader[0], sizeof(shader[0]), device);
-    VkShaderModule fragShaderModule = Backend::LoadShader(shader[1], sizeof(shader[1]), device);
+    const auto& shader = config.shaders[Device::Vulkan];
+    VkShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
+    VkShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
 
     // Create Vertex & Fragment shader for the pipeline.
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
@@ -64,15 +70,11 @@ Result Implementation::create(VkRenderPass& renderPass,
     bindingDescription.stride = sizeof(ShaderVertexAttachment);
     bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+    std::array<VkVertexInputAttributeDescription, 1> attributeDescriptions{};
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = 0;
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = 8;
     
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -165,7 +167,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    JST_VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
+    JST_VK_CHECK(vkCreateGraphicsPipelines(device, nullptr, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
         JST_FATAL("[VULKAN] Can't create graphics pipeline.");    
     });
 

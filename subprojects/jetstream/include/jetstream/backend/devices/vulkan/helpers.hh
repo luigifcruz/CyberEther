@@ -73,12 +73,12 @@ inline U32 FindMemoryType(const VkPhysicalDevice& device, const U32& typeFilter,
     return 0;
 }
 
-inline VkShaderModule LoadShader(const U8& code, const U64& size, VkDevice device) {
+inline VkShaderModule LoadShader(const std::span<const U8>& data, VkDevice device) {
     VkShaderModule shaderModule;
     VkShaderModuleCreateInfo moduleCreateInfo{};
     moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    moduleCreateInfo.codeSize = size;
-    moduleCreateInfo.pCode = reinterpret_cast<const U32*>(&code);
+    moduleCreateInfo.codeSize = data.size_bytes();
+    moduleCreateInfo.pCode = reinterpret_cast<const U32*>(data.data());
 
     JST_VK_CHECK_THROW(vkCreateShaderModule(device, &moduleCreateInfo, nullptr, &shaderModule), [&]{
         JST_FATAL("[VULKAN] Can't create shader module.");  

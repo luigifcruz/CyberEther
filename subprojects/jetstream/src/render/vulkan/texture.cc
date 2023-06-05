@@ -26,7 +26,7 @@ Result Implementation::create() {
     imageCreateInfo.format = pixelFormat;
     imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -52,6 +52,29 @@ Result Implementation::create() {
         JST_FATAL("[VULKAN] Failed to bind memory to the texture.");
     });
 
+    // Create framebuffer image view.
+
+    VkImageViewCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    createInfo.image = texture;
+    createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    createInfo.format = pixelFormat;
+
+    createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+    createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    createInfo.subresourceRange.baseMipLevel = 0;
+    createInfo.subresourceRange.levelCount = 1;
+    createInfo.subresourceRange.baseArrayLayer = 0;
+    createInfo.subresourceRange.layerCount = 1;
+
+    JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &imageView), [&]{
+        JST_FATAL("[VULKAN] Failed to create image view."); 
+    });
+
     if (config.buffer) {
         JST_CHECK(fill());
     }
@@ -63,6 +86,7 @@ Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying texture.");
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    vkDestroyImageView(device, imageView, nullptr);
     vkDestroyImage(device, texture, nullptr);
     vkFreeMemory(device, memory, nullptr);
 

@@ -1,4 +1,5 @@
 #include "jetstream/modules/constellation.hh"
+#include "shaders/constellation_shaders.hh"
 
 namespace Jetstream {
 
@@ -75,7 +76,8 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+       // {Device::Metal, {MetalShader}},
+       {Device::Vulkan, {constellation_spv_vert_shader, constellation_spv_frag_shader}},
     };
     programCfg.draws = {drawVertex};
     programCfg.textures = {lutTexture};

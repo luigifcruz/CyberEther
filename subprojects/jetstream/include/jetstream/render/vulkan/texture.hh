@@ -18,7 +18,7 @@ class TextureImp<Device::Vulkan> : public Texture {
     Result fillRow(const U64& y, const U64& height);
 
     void* raw() {
-        return &texture;
+        return imageView;
     }
 
  protected:
@@ -33,12 +33,17 @@ class TextureImp<Device::Vulkan> : public Texture {
         return texture;
     }
 
+    constexpr const VkImageView& getViewHandle() const {
+        return imageView;
+    }
+
     static VkFormat ConvertPixelFormat(const PixelFormat&, 
                                        const PixelType&);
     static U64 GetPixelByteSize(const VkFormat&);
 
  private:
     VkImage texture;
+    VkImageView imageView;
     VkFormat pixelFormat;
     VkDeviceMemory memory;
 

@@ -20,7 +20,7 @@ class Program {
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::shared_ptr<Buffer>> buffers;
-        std::map<Device, std::vector<const char*>> shaders;
+        std::map<Device, std::vector<std::span<const U8>>> shaders;
     };
 
     explicit Program(const Config& config) : config(config) {
