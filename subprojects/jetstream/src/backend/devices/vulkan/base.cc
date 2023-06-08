@@ -21,6 +21,8 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
         extensions.push_back("VK_EXT_debug_report");
     }
 
+    JST_DEBUG("[VULKAN] Requested Extensions: {}", extensions);
+
     return extensions;
 }
 
@@ -28,6 +30,8 @@ std::vector<const char*> Vulkan::getRequiredValidationLayers() {
     std::vector<const char*> layers;
 
     layers.push_back("VK_LAYER_KHRONOS_validation");
+
+    JST_DEBUG("[VULKAN] Requested Validation Layers: {}", layers);
 
     return layers;
 }
@@ -282,7 +286,6 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         }
 
         VkPhysicalDeviceFeatures deviceFeatures{};
-        deviceFeatures.wideLines = VK_TRUE;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

@@ -2,12 +2,12 @@
 
 namespace Jetstream {
 
-float sinc(float x) {
+inline F32 sinc(F32 x) {
     return (x == 0) ? 1.0 : sin(M_PI * x) / (M_PI * x);
 }
 
-float n(U64 len, U64 index) {
-    return static_cast<float>(index - static_cast<float>(len - 1) / 2);
+inline F32 n(U64 len, U64 index) {
+    return static_cast<F32>(index - static_cast<float>(len - 1) / 2);
 }
 
 template<Device D, typename T>

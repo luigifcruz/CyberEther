@@ -14,7 +14,7 @@
     VkResult err = (f); \
     if (err != VK_SUCCESS) { \
     callback(); \
-    JST_FATAL("[VULKAN] Error code: {} ({})", string_VkResult(err), err); \
+    JST_FATAL("[VULKAN] Error code: {}", string_VkResult(err)); \
     return Result::ERROR; \
     } \
 }
@@ -25,7 +25,7 @@
     VkResult err = (f); \
     if (err != VK_SUCCESS) { \
     callback(); \
-    JST_FATAL("[VULKAN] Error code: {} ({})", string_VkResult(err), err); \
+    JST_FATAL("[VULKAN] Error code: {}", string_VkResult(err)); \
     JST_CHECK_THROW(Result::ERROR); \
     } \
 }
