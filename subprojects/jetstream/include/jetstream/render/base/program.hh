@@ -17,7 +17,7 @@ namespace Jetstream::Render {
 class Program {
  public:
     struct Config {
-        std::vector<std::shared_ptr<Draw>> draws;
+        std::shared_ptr<Draw> draw;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::shared_ptr<Buffer>> buffers;
         std::map<Device, std::vector<std::span<const U8>>> shaders;

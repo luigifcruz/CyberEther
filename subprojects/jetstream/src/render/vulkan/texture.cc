@@ -15,6 +15,8 @@ Result Implementation::create() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
+    // Create image.
+
     VkImageCreateInfo imageCreateInfo = {};
     imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -26,13 +28,18 @@ Result Implementation::create() {
     imageCreateInfo.format = pixelFormat;
     imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    // TODO: Review these.
+    imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT | 
+                            VK_IMAGE_USAGE_SAMPLED_BIT;
     imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &texture), [&]{
         JST_FATAL("[VULKAN] Failed to create texture.");   
     });
+
+    // Allocate backing memory.
 
     VkMemoryRequirements memoryRequirements;
     vkGetImageMemoryRequirements(device, texture, &memoryRequirements);
@@ -52,7 +59,7 @@ Result Implementation::create() {
         JST_FATAL("[VULKAN] Failed to bind memory to the texture.");
     });
 
-    // Create framebuffer image view.
+    // Create image view.
 
     VkImageViewCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -71,9 +78,78 @@ Result Implementation::create() {
     createInfo.subresourceRange.baseArrayLayer = 0;
     createInfo.subresourceRange.layerCount = 1;
 
-    JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &imageView), [&]{
+    JST_VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &imageView), [&]{
         JST_FATAL("[VULKAN] Failed to create image view."); 
     });
+
+    // Create sampler.
+
+    VkSamplerCreateInfo samplerCreateInfo = {};
+    samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.anisotropyEnable = VK_FALSE;
+    samplerCreateInfo.maxAnisotropy = 1.0f;
+    samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerCreateInfo.compareEnable = VK_FALSE;
+    samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.mipLodBias = 0.0f;
+    samplerCreateInfo.minLod = 0.0f;
+    samplerCreateInfo.maxLod = 1.0f;
+
+    JST_VK_CHECK(vkCreateSampler(device, &samplerCreateInfo, nullptr, &sampler), [&]{
+        JST_FATAL("[VULKAN] Can't create texture sampler.")     
+    });
+
+    // Register descriptor for ImGui attachment.
+
+    auto& backend = Backend::State<Device::Vulkan>();
+
+    VkDescriptorSetLayoutBinding binding{};
+    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding.descriptorCount = 1;
+    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    binding.binding = 0;
+
+    VkDescriptorSetLayoutCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    info.bindingCount = 1;
+    info.pBindings = &binding;
+
+    JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
+        JST_FATAL("[VULKAN] Can't create descriptor set layout.");
+    });
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = backend->getDescriptorPool();
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout;
+
+    JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+        JST_FATAL("[VULKAN] Failed to allocate descriptor set.");
+    });
+
+    VkDescriptorImageInfo descImage{};
+    descImage.sampler = sampler;
+    descImage.imageView = imageView;
+    descImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkWriteDescriptorSet writeDesc{};
+    writeDesc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDesc.dstSet = descriptorSet;
+    writeDesc.descriptorCount = 1;
+    writeDesc.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writeDesc.pImageInfo = &descImage;
+
+    vkUpdateDescriptorSets(device, 1, &writeDesc, 0, nullptr);
+
+    // Fill image with initial data.
 
     if (config.buffer) {
         JST_CHECK(fill());
@@ -86,6 +162,11 @@ Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying texture.");
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& descriptorPool = Backend::State<Device::Vulkan>()->getDescriptorPool();
+
+    vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    vkDestroySampler(device, sampler, nullptr);
     vkDestroyImageView(device, imageView, nullptr);
     vkDestroyImage(device, texture, nullptr);
     vkFreeMemory(device, memory, nullptr);
@@ -115,13 +196,69 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    // TODO: Implement this.
-    JST_WARN("[VULKAN] Texture fill not implemented.");
+    void* mappedData;
+    auto& backend = Backend::State<Device::Vulkan>();
+    const auto rowByteSize = config.size.width * GetPixelByteSize(pixelFormat);
+    const auto bufferByteOffset = rowByteSize * y;
+    const auto bufferByteSize = rowByteSize * height;
 
-    // auto region = MTL::Region::Make2D(0, y, config.size.width, height);
-    // auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
-    // auto bufferByteOffset = rowByteSize * y;
-    // texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
+    if (bufferByteSize >= backend->getStagingBufferSize()) {
+        JST_ERROR("[VULKAN] Memory copy is larger than the staging buffer.");
+        return Result::ERROR;
+    }
+
+    auto& stagingBufferMemory = backend->getStagingBufferMemory();
+    JST_VK_CHECK(vkMapMemory(backend->getDevice(), stagingBufferMemory, 0, bufferByteSize, 0, &mappedData), [&]{
+        JST_FATAL("[VULKAN] Can't map staging buffer memory.");
+    });
+    memcpy(mappedData, (uint8_t*)config.buffer + bufferByteOffset, bufferByteSize);
+    vkUnmapMemory(backend->getDevice(), stagingBufferMemory);
+
+    // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
+    JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
+                                   backend->getComputeQueue(),
+                                   backend->getTransferCommandPool(),
+        [&](VkCommandBuffer& commandBuffer){
+            JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
+                                                     texture, 
+                                                     VK_IMAGE_LAYOUT_UNDEFINED,
+                                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL));
+            VkBufferImageCopy region{};
+            region.bufferOffset = 0;
+            region.bufferRowLength = 0;
+            region.bufferImageHeight = 0;
+            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            region.imageSubresource.mipLevel = 0;
+            region.imageSubresource.baseArrayLayer = 0;
+            region.imageSubresource.layerCount = 1;
+            region.imageOffset = {
+                    0,
+                    static_cast<I32>(y),
+                    0
+                };
+            region.imageExtent = {
+                    static_cast<U32>(config.size.width),
+                    static_cast<U32>(height),
+                    1
+                }; 
+
+            vkCmdCopyBufferToImage(
+                commandBuffer,
+                backend->getStagingBuffer(),
+                texture,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &region
+            );
+
+            JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
+                                                     texture, 
+                                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+
+            return Result::SUCCESS;
+        }
+    ));
 
     return Result::SUCCESS;
 }

@@ -17,12 +17,46 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
     }
 }
 
-Result Implementation::create() {
+Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
+                              std::vector<VkVertexInputAttributeDescription>& attributeDescrition) {
     JST_DEBUG("[VULKAN] Creating vertex.");
 
+    U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
+
+        VkVertexInputBindingDescription _bindingDescription{};
+        _bindingDescription.binding = bindingCount;
+        _bindingDescription.stride = stride * sizeof(F32);
+        _bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        bindingDescription.push_back(_bindingDescription);
+
+        VkFormat bindingFormat = VK_FORMAT_UNDEFINED;
+        
+        switch (stride) {
+            case 1:
+                bindingFormat = VK_FORMAT_R32_SFLOAT;
+                break;       
+            case 2:
+                bindingFormat = VK_FORMAT_R32G32_SFLOAT;
+                break;       
+            case 3:
+                bindingFormat = VK_FORMAT_R32G32B32_SFLOAT;
+                break;       
+            case 4:
+                bindingFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+                break;       
+        }
+
+        VkVertexInputAttributeDescription _attributeDescription{};
+        _attributeDescription.binding = bindingCount;
+        _attributeDescription.location = bindingCount;
+        _attributeDescription.format = bindingFormat;
+        _attributeDescription.offset = 0;
+        attributeDescrition.push_back(_attributeDescription);
+
+        bindingCount += 1;
     }
 
     if (indices) {
@@ -33,25 +67,16 @@ Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer,
-                              const U64& offset) {
-    U64 index = offset;
-    std::vector<VkBuffer> vertexBuffers;
-    std::vector<VkDeviceSize> vertexOffsets;
-
+Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
-        vertexBuffers.push_back(buffer->getHandle());
-        vertexOffsets.push_back(index++);
+        const VkBuffer buffers[] = { buffer->getHandle() };
+        const VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, bindingCount++, 1, buffers, offsets);
     }
 
-    vkCmdBindVertexBuffers(commandBuffer,
-                           0,
-                           vertexBuffers.size(),
-                           vertexBuffers.data(),
-                           vertexOffsets.data());
-
     if (indices) {
-        vkCmdBindIndexBuffer(commandBuffer, indices->getHandle(), 0, VK_INDEX_TYPE_UINT16);
+        vkCmdBindIndexBuffer(commandBuffer, indices->getHandle(), 0, VK_INDEX_TYPE_UINT32);
     }
 
     return Result::SUCCESS;

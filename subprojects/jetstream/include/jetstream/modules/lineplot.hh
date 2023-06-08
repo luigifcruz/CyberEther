@@ -17,7 +17,8 @@ class Lineplot : public Module, public Compute, public Present {
     struct Config {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        Render::Size2D<U64> viewSize = {4096, 512};
+        // TODO: Revert.
+        Render::Size2D<U64> viewSize = {2456, 521};
     };
 
     struct Input {
@@ -65,7 +66,8 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> lutTexture;
 
-    std::shared_ptr<Render::Program> program;
+    std::shared_ptr<Render::Program> signalProgram;
+    std::shared_ptr<Render::Program> gridProgram;
 
     std::shared_ptr<Render::Surface> surface;
 

@@ -37,6 +37,10 @@ class Buffer {
         return config.size;
     }
 
+    constexpr U64 byteSize() const {
+        return config.size * config.elementByteSize;
+    }
+
     virtual Result update() = 0;
     virtual Result update(const U64& offset, const U64& size) = 0;
 

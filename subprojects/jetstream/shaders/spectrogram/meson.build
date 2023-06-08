@@ -1,4 +1,6 @@
 shader_pkg_lst += [{
-    'vert': files('spectrogram.vert.glsl'), 
-    'frag': files('spectrogram.frag.glsl'), 
+    'name': 'spectrogram',
+    'shaders': [
+        files(['signal.vert.glsl', 'signal.frag.glsl']),
+    ],
 }]

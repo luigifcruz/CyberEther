@@ -101,7 +101,10 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         appInfo.applicationVersion = VK_MAKE_VERSION(0, 0, 1);
         appInfo.pEngineName = "Jetstream Vulkan Backend";
         appInfo.engineVersion = VK_MAKE_VERSION(0, 0, 1);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
+
+        // Reasons why this is Vulkan 1.1:
+        // 1. Negative viewport support for compatibility with Metal.
+        appInfo.apiVersion = VK_API_VERSION_1_1;
 
         // Create instance.
 
@@ -279,6 +282,7 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         }
 
         VkPhysicalDeviceFeatures deviceFeatures{};
+        deviceFeatures.wideLines = VK_TRUE;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -309,6 +313,84 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
     }
 
+    // Create descriptor pool.
+
+    {
+        VkDescriptorPoolSize poolSizes[] = {
+            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+        };
+
+        VkDescriptorPoolCreateInfo descriptorPoolInfo{};
+        descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        descriptorPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        descriptorPoolInfo.maxSets = 1000;
+        descriptorPoolInfo.poolSizeCount = std::size(poolSizes);
+        descriptorPoolInfo.pPoolSizes = poolSizes;
+
+        JST_VK_CHECK_THROW(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool), [&]{
+            JST_FATAL("[VULKAN] Can't create descriptor pool.")
+        });
+    }
+
+    // Create staging buffer.
+
+    {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = config.stagingBufferSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer), [&]{
+            JST_FATAL("[VULKAN] Failed to create staging buffer.");     
+        });
+
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                            memRequirements.memoryTypeBits,
+                                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        JST_VK_CHECK_THROW(vkAllocateMemory(device, &allocInfo, nullptr, &stagingBufferMemory), [&]{
+            JST_FATAL("[VULKAN] Failed to allocate staging buffer memory.");
+        });
+
+        JST_VK_CHECK_THROW(vkBindBufferMemory(device, stagingBuffer, stagingBufferMemory, 0), [&]{
+            JST_FATAL("[VULKAN] Failed to bind memory to staging buffer.");
+        });
+    }
+
+    // Create transfer pool.
+
+    {
+        Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
+
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.queueFamilyIndex = indices.computeFamily.value();
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT |
+                         VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+
+        JST_VK_CHECK_THROW(vkCreateCommandPool(device, &poolInfo, nullptr, &transferCommandPool), [&]{
+            JST_FATAL("[VULKAN] Failed to create transfer command pool.");
+        });
+    }
+
     // Print device information.
 
     JST_INFO("—————————————————————————————————————————————————————");
@@ -320,10 +402,16 @@ Vulkan::Vulkan(const Config& config) : config(config) {
     JST_INFO("Unified Memory:  {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Processor Count: {}", getTotalProcessorCount());
     JST_INFO("Physical Memory: {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
+    JST_INFO("Staging Buffer:  {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / (1024*1024));
     JST_INFO("—————————————————————————————————————————————————————");
 }
 
 Vulkan::~Vulkan() {
+    vkDestroyCommandPool(device, transferCommandPool, nullptr);
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+
     if (debugReportCallback != VK_NULL_HANDLE) {
         PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
                 reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(

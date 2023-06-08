@@ -12,12 +12,15 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating buffer.");
 
-    VkBufferUsageFlags bufferUsageFlag = 0;
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
+    // Convert usage flags.
     // TODO: Implement implicit specification.
+
+    VkBufferUsageFlags bufferUsageFlag = 0;
     bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
     switch (config.target) {
         case Target::VERTEX:
             bufferUsageFlag |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
@@ -30,19 +33,19 @@ Result Implementation::create() {
             break;
     }
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
-    const auto& byteSize = config.size * config.elementByteSize;
+    // Create buffer.
 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = byteSize;
+    bufferInfo.size = byteSize();
     bufferInfo.usage = bufferUsageFlag;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), [&]{
         JST_FATAL("[VULKAN] Can't create memory buffer.");
     });
+
+    // Allocate backing memory.
 
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
@@ -61,8 +64,12 @@ Result Implementation::create() {
     JST_VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0), [&]{
         JST_FATAL("[VULKAN] Failed to bind memory to the buffer.");
     });
+
+    // Populate memory with initial data.
     
-    // TODO: Implement zero-copy option.
+    if (config.buffer) {
+        JST_CHECK(update());
+    }
 
     return Result::SUCCESS;
 }
@@ -82,19 +89,38 @@ Result Implementation::update() {
 }
 
 Result Implementation::update(const U64& offset, const U64& size) {
-//     const auto& byteOffset = offset * config.elementByteSize;
-//     const auto& byteSize = size * config.elementByteSize;
+    // TODO: Implement zero-copy option.
 
-//     if (!config.enableZeroCopy) {
-//         uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-//         memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
-// #if !defined(TARGET_OS_IOS)
-//         buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
-// #endif
-//     }
+    void* mappedData;
+    auto& backend = Backend::State<Device::Vulkan>();
+    const auto& byteOffset = offset * config.elementByteSize;
+    const auto& byteSize = size * config.elementByteSize;
 
-    // TODO: Implement this.
-    //JST_WARN("[VULKAN] Buffer update not implemented.");
+    if (byteSize >= backend->getStagingBufferSize()) {
+        JST_ERROR("[VULKAN] Memory copy is larger than the staging buffer.");
+        return Result::ERROR;
+    }
+
+    auto& stagingBufferMemory = backend->getStagingBufferMemory();
+    JST_VK_CHECK(vkMapMemory(backend->getDevice(), stagingBufferMemory, 0, byteSize, 0, &mappedData), [&]{
+        JST_FATAL("[VULKAN] Can't map staging buffer memory.");        
+    });
+    memcpy(mappedData, (uint8_t*)config.buffer + byteOffset, byteSize);
+    vkUnmapMemory(backend->getDevice(), stagingBufferMemory);
+
+    // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
+    JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
+                                   backend->getComputeQueue(),
+                                   backend->getTransferCommandPool(),
+        [&](VkCommandBuffer& commandBuffer){
+            VkBufferCopy copyRegion{};
+            copyRegion.srcOffset = 0;
+            copyRegion.dstOffset = byteOffset;
+            copyRegion.size = byteSize;
+            vkCmdCopyBuffer(commandBuffer, backend->getStagingBuffer(), buffer, 1, &copyRegion);
+            return Result::SUCCESS;
+        }
+    ));
 
     return Result::SUCCESS;
 }

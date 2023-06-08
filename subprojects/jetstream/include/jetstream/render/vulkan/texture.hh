@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_RENDER_VULKAN_TEXTURE_HH
 #define JETSTREAM_RENDER_VULKAN_TEXTURE_HH
 
+#include "jetstream/render/tools/imgui_impl_vulkan.h"
+
 #include "jetstream/render/base/texture.hh"
 #include "jetstream/backend/base.hh"
 
@@ -18,7 +20,7 @@ class TextureImp<Device::Vulkan> : public Texture {
     Result fillRow(const U64& y, const U64& height);
 
     void* raw() {
-        return imageView;
+        return descriptorSet;
     }
 
  protected:
@@ -37,6 +39,10 @@ class TextureImp<Device::Vulkan> : public Texture {
         return imageView;
     }
 
+    constexpr const VkSampler& getSamplerHandler() const {
+        return sampler;
+    }
+
     static VkFormat ConvertPixelFormat(const PixelFormat&, 
                                        const PixelType&);
     static U64 GetPixelByteSize(const VkFormat&);
@@ -44,6 +50,9 @@ class TextureImp<Device::Vulkan> : public Texture {
  private:
     VkImage texture;
     VkImageView imageView;
+    VkSampler sampler;
+    VkDescriptorSet descriptorSet;
+    VkDescriptorSetLayout descriptorSetLayout;
     VkFormat pixelFormat;
     VkDeviceMemory memory;
 

@@ -121,17 +121,17 @@ Result Implementation::create() {
     allocInfo.commandBufferCount = static_cast<U32>(commandBuffers.size());
 
     JST_VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()), [&]{
-        JST_FATAL("[VULKAN] Can't create render buffers.");
+        JST_FATAL("[VULKAN] Can't create render command buffers.");
     });
 
     // Create children.
 
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->create());
-    }
-
     if (config.imgui) {
         JST_CHECK(createImgui());
+    }
+
+    for (auto& surface : surfaces) {
+        JST_CHECK(surface->create());
     }
 
     statsData.droppedFrames = 0;
@@ -154,13 +154,13 @@ Result Implementation::destroy() {
         vkDestroyFence(device, inFlightFences[i], nullptr);
     }
 
-    if (config.imgui) {
-        JST_CHECK(destroyImgui());
-    } 
-
     for (auto& surface : surfaces) {
         JST_CHECK(surface->destroy());
     }
+
+    if (config.imgui) {
+        JST_CHECK(destroyImgui());
+    } 
 
     vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
 
@@ -194,49 +194,25 @@ Result Implementation::createImgui() {
 
     auto& backend = Backend::State<Device::Vulkan>();
 
-    VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
-    };
-
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pool_info.maxSets = 1000;
-    pool_info.poolSizeCount = std::size(pool_sizes);
-    pool_info.pPoolSizes = pool_sizes;
-
-    JST_VK_CHECK(vkCreateDescriptorPool(backend->getDevice(), &pool_info, nullptr, &imguiDescPool), [&]{
-        JST_FATAL("[VULKAN] Can't create descriptor pool for ImGui,")
-    });
-
     ImGui_ImplVulkan_InitInfo init_info = {
         .Instance = backend->getInstance(),
         .PhysicalDevice = backend->getPhysicalDevice(),
         .Device = backend->getDevice(),
         .QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value(),
         .Queue = backend->getGraphicsQueue(),
-        .DescriptorPool = imguiDescPool,
+        .DescriptorPool = backend->getDescriptorPool(),
         .MinImageCount = static_cast<U32>(swapchainFramebuffers.size()),
         .ImageCount = static_cast<U32>(swapchainFramebuffers.size()),
     };
     ImGui_ImplVulkan_Init(&init_info, renderPass); 
 
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
-                                   backend->getGraphicsQueue(),
-                                   commandBuffers[0],
-                                   commandPool,
+                                   backend->getComputeQueue(),
+                                   backend->getTransferCommandPool(),
         [&](VkCommandBuffer& commandBuffer){
             ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+
+            return Result::SUCCESS;
         }
     ));
 
@@ -251,10 +227,6 @@ Result Implementation::destroyImgui() {
     ImGui_ImplVulkan_Shutdown();
     JST_CHECK(viewport->destroyImgui());
     ImGui::DestroyContext();
-
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-
-    vkDestroyDescriptorPool(device, imguiDescPool, nullptr);
 
     return Result::SUCCESS;
 }

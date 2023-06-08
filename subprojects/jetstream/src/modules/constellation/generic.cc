@@ -76,10 +76,10 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-       // {Device::Metal, {MetalShader}},
-       {Device::Vulkan, {constellation_spv_vert_shader, constellation_spv_frag_shader}},
+       {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
+       {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
     };
-    programCfg.draws = {drawVertex};
+    programCfg.draw = drawVertex;
     programCfg.textures = {lutTexture};
     programCfg.buffers = {uniformBuffer, binTexture};
     JST_CHECK(window.build(program, programCfg));

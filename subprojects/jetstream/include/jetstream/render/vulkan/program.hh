@@ -21,8 +21,11 @@ class ProgramImp<Device::Vulkan> : public Program {
  private:
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
+    U64 bindingOffset;
+    std::vector<VkDescriptorSet> descriptorSets;
+    VkDescriptorSetLayout descriptorSetLayout;
 
-    std::vector<std::shared_ptr<DrawImp<Device::Vulkan>>> draws;
+    std::shared_ptr<DrawImp<Device::Vulkan>> draw;
     std::vector<std::shared_ptr<TextureImp<Device::Vulkan>>> textures;
     std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
 

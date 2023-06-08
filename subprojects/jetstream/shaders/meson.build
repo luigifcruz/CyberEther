@@ -12,50 +12,59 @@ subdir('spectrogram')
 subdir('waterfall')
 
 foreach shader_pkg : shader_pkg_lst
-    # Translate to SPIR-V (Vulkan).
+    name = shader_pkg.get('name')
+    shaders = shader_pkg.get('shaders')
+    input_lst = []
+
+    foreach shader : shaders
+
+        # Translate to SPIR-V (Vulkan).
   
-    if glslang.found()
-        vert = custom_target(
-            input : shader_pkg.get('vert'),
-            output : fs.stem(shader_pkg.get('vert')) + '.spv',
-            command : [glslang, '--quiet', '-V', '-S', 'vert', '@INPUT@', '-o', '@OUTPUT@'],
-            build_by_default : true,
-        )
+        if glslang.found()
+            vert = custom_target(
+                input : shader[0],
+                output : name + '_' + fs.stem(shader[0]) + '.spv',
+                command : [glslang, '--quiet', '-V', '-S', 'vert', '@INPUT@', '-o', '@OUTPUT@'],
+                build_by_default : true,
+            )
 
-        frag = custom_target(
-            input : shader_pkg.get('frag'),
-            output : fs.stem(shader_pkg.get('frag')) + '.spv',
-            command : [glslang, '--quiet', '-V', '-S', 'frag', '@INPUT@', '-o', '@OUTPUT@'],
-            build_by_default : true,
-        )
-    endif
+            frag = custom_target(
+                input : shader[1],
+                output : name + '_' + fs.stem(shader[1]) + '.spv',
+                command : [glslang, '--quiet', '-V', '-S', 'frag', '@INPUT@', '-o', '@OUTPUT@'],
+                build_by_default : true,
+            )
+        endif
 
-    # Translate to MSL (Metal).
+        # Translate to MSL (Metal).
   
-    if glslang.found()
-        custom_target(
-            input : vert,
-            output : fs.stem(shader_pkg.get('vert')) + '.msl',
-            command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@'],
-            build_by_default : true,
-        )
+        if glslang.found()
+            custom_target(
+                input : vert,
+                output : name + '_' + fs.stem(shader[0]) + '.msl',
+                command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@'],
+                build_by_default : true,
+            )
 
-        custom_target(
-            input : frag,
-            output : fs.stem(shader_pkg.get('frag')) + '.msl',
-            command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@'],
-            build_by_default : true,
-        )
-    endif
+            custom_target(
+                input : frag,
+                output : name + '_' + fs.stem(shader[1]) + '.msl',
+                command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@'],
+                build_by_default : true,
+            )
+        endif
+
+        input_lst += [vert, frag]
+
+    endforeach
 
     # Package all translations into a single header.
 
     if python_bin.found()
-        basename = fs.stem(fs.stem(shader_pkg.get('vert')))
         custom_target(
-            input : [vert, frag],
-            output : basename + '_shaders.hh',
-            command : [python_bin, files('parser.py'), meson.project_build_root(), basename],
+            input : input_lst,
+            output : name + '_shaders.hh',
+            command : [python_bin, files('parser.py'), meson.project_build_root(), name],
             build_by_default : true,
         )
     endif

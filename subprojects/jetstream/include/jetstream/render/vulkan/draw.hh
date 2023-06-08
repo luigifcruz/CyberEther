@@ -12,9 +12,10 @@ class DrawImp<Device::Vulkan> : public Draw {
     explicit DrawImp(const Config& config);
 
  protected:
-    Result create();
-    Result encode(VkCommandBuffer& commandBuffer,
-                  const U64& offset);
+   Result create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
+                 std::vector<VkVertexInputAttributeDescription>& attributeDescrition,
+                 VkPipelineInputAssemblyStateCreateInfo& inputAssembly);
+    Result encode(VkCommandBuffer& commandBuffer);
     Result destroy();
 
  private:

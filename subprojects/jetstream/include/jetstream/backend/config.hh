@@ -40,6 +40,7 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
 struct Config {
     U64 deviceId;
     bool validationEnabled = true;
+    U64 stagingBufferSize = 32*1024*1024;
 };
 
 }  // namespace Jetstream::Backend

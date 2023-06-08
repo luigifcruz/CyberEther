@@ -7,19 +7,18 @@ import sys
 def bin_to_header(path, stub):
     path = os.path.join(path, 'shaders')
     
-    shader_target = []
-    for file in glob.glob(os.path.join(path, f'{stub}.vert.*')):
-        shader_target.append(file.split('.')[-1])
-
     with open(os.path.join(path, f'{stub}_shaders.hh'), 'w') as f:
         f.write('#pragma once\n')
         f.write('#include <array>\n')
 
-        for target in shader_target:
-            for type in ['frag', 'vert']:
-                varname = f'{stub}_{target}_{type}_shader'
+        for file in glob.glob(os.path.join(path, f'{stub}_*.vert.*')):
+            target = file.split('.')[-1]
+            name = os.path.basename(file).split('.')[0].split('_')[1]
 
-                with open(os.path.join(path, f'{stub}.{type}.{target}'), 'rb') as fr:
+            for type in ['frag', 'vert']:
+                varname = f'{name}_{target}_{type}_shader'
+
+                with open(os.path.join(path, f'{stub}_{name}.{type}.{target}'), 'rb') as fr:
                     data = fr.read()
                 size = str(len(data))
 

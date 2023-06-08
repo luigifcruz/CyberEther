@@ -8,10 +8,10 @@
 namespace Jetstream::Render::Extras {
 
 inline float FillScreenVertices[] = {
-    +1.0f, +1.0f, 0.0f,
     +1.0f, -1.0f, 0.0f,
-    -1.0f, -1.0f, 0.0f,
+    +1.0f, +1.0f, 0.0f,
     -1.0f, +1.0f, 0.0f,
+    -1.0f, -1.0f, 0.0f,
 };
 
 inline float FillScreenTextureVertices[] = {

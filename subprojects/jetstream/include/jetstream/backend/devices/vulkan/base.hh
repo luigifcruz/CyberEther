@@ -71,6 +71,26 @@ class Vulkan {
         return computeQueue;
     }
 
+    constexpr VkDescriptorPool& getDescriptorPool() {
+        return descriptorPool;
+    }
+
+    constexpr VkDeviceMemory& getStagingBufferMemory() {
+        return stagingBufferMemory;       
+    }
+
+    constexpr VkBuffer& getStagingBuffer() {
+        return stagingBuffer;       
+    }
+
+    constexpr const U64& getStagingBufferSize() {
+         return config.stagingBufferSize;       
+    }
+
+    constexpr VkCommandPool& getTransferCommandPool() {
+         return transferCommandPool;
+    }
+
  private:
     const Config& config;
 
@@ -78,6 +98,10 @@ class Vulkan {
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceProperties properties;
+    VkDescriptorPool descriptorPool;
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    VkCommandPool transferCommandPool;
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;

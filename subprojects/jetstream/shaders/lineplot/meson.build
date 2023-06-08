@@ -1,4 +1,7 @@
 shader_pkg_lst += [{
-    'vert': files('lineplot.vert.glsl'), 
-    'frag': files('lineplot.frag.glsl'), 
+    'name': 'lineplot',
+    'shaders': [
+        files(['signal.vert.glsl', 'signal.frag.glsl']),
+        files(['grid.vert.glsl', 'grid.frag.glsl']),
+    ],
 }]

@@ -12,6 +12,7 @@ class BufferImp<Device::Vulkan> : public Buffer {
     explicit BufferImp(const Config& config);
 
     using Render::Buffer::size;
+    using Render::Buffer::byteSize;
 
     Result update();
     Result update(const U64& offset, const U64& size);
@@ -20,7 +21,7 @@ class BufferImp<Device::Vulkan> : public Buffer {
     Result create();
     Result destroy();
 
-    constexpr VkBuffer getHandle() const {
+    constexpr const VkBuffer& getHandle() const {
         return buffer;
     }
 

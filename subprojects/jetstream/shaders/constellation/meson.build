@@ -1,4 +1,6 @@
 shader_pkg_lst += [{
-    'vert': files('constellation.vert.glsl'), 
-    'frag': files('constellation.frag.glsl'), 
+    'name': 'constellation',
+    'shaders': [
+        files(['signal.vert.glsl', 'signal.frag.glsl']),
+    ],
 }]

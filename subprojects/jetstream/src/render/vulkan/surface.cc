@@ -32,7 +32,7 @@ Result Implementation::create() {
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     VkAttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = 0;
@@ -155,10 +155,11 @@ const Size2D<U64>& Implementation::size(const Size2D<U64>& size) {
         return NullSize;
     }
 
-    if (framebuffer->size(size)) {
-        destroyFramebuffer();
-        createFramebuffer();
-    }
+    // TODO: Implement resize.
+    // if (framebuffer->size(size)) {
+    //     // destroyFramebuffer();
+    //     // createFramebuffer();
+    // }
 
     return framebuffer->size();
 } 

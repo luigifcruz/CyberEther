@@ -38,7 +38,7 @@ class WindowImp<Device::Vulkan> : public Window {
     std::shared_ptr<Viewport::Provider<Device::Vulkan>> viewport;
 
     VkCommandPool commandPool;
-    VkDescriptorPool imguiDescPool;
+    VkDescriptorPool descriptorPool;
     VkCommandBufferBeginInfo commandBufferBeginInfo;
     VkCommandBuffer currentCommandBuffer;
     VkRenderPassBeginInfo renderPassBeginInfo;
