@@ -46,7 +46,8 @@ class WindowImp<Device::Vulkan> : public Window {
     std::vector<VkFramebuffer> swapchainFramebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
 
-    Result CreateSynchronizationObjects();
+    Result createSynchronizationObjects();
+    Result destroySynchronizationObjects();
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
@@ -57,6 +58,7 @@ class WindowImp<Device::Vulkan> : public Window {
     Result destroyImgui();
     Result beginImgui();
     Result endImgui();
+    Result recreate();
 };
 
 }  // namespace Jetstream::Render

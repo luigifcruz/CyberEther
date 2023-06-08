@@ -223,6 +223,7 @@ Result Instance::create() {
 
     // Initialize instance window.
     if (_window) {
+        JST_CHECK(_viewport->create());
         JST_CHECK(_window->create());
     }
 
@@ -243,6 +244,7 @@ Result Instance::destroy() {
     // Destroy instance window.
     if (_window) {
         JST_CHECK(_window->destroy());
+        JST_CHECK(_viewport->destroy());
     }
 
     // Destroy present logic from modules.

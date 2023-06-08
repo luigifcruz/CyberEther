@@ -26,8 +26,6 @@ Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating window.");
 
-    JST_CHECK(viewport->create());
-
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
@@ -137,7 +135,7 @@ Result Implementation::create() {
     statsData.droppedFrames = 0;
     renderPassBeginInfo = {};
     commandBufferBeginInfo = {};
-    JST_CHECK_THROW(CreateSynchronizationObjects());
+    JST_CHECK(createSynchronizationObjects());
 
     return Result::SUCCESS;
 }
@@ -147,12 +145,11 @@ Result Implementation::destroy() {
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
-    vkWaitForFences(device, inFlightFences.size(), inFlightFences.data(), VK_TRUE, UINT64_MAX);
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-        vkDestroyFence(device, inFlightFences[i], nullptr);
-    }
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_FATAL("[VULKAN] Can't wait for graphics queue to finish.");
+    });
+
+    JST_CHECK(destroySynchronizationObjects());
 
     for (auto& surface : surfaces) {
         JST_CHECK(surface->destroy());
@@ -172,7 +169,14 @@ Result Implementation::destroy() {
 
     vkDestroyRenderPass(device, renderPass, nullptr);
     
-    JST_CHECK(viewport->destroy());
+    return Result::SUCCESS;
+}
+
+Result Implementation::recreate() {
+    JST_CHECK(destroy());
+    JST_CHECK(viewport->destroySwapchain());
+    JST_CHECK(viewport->createSwapchain());
+    JST_CHECK(create());
 
     return Result::SUCCESS;
 }
@@ -252,13 +256,13 @@ Result Implementation::begin() {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     // Get next viewport framebuffer.
-    const Result result = viewport->nextDrawable(imageAvailableSemaphores[currentFrame]);
+    const Result& result = viewport->nextDrawable(imageAvailableSemaphores[currentFrame]);
 
     if (result == Result::SKIP) {
         statsData.droppedFrames += 1;
         return Result::SKIP;
     } else if (result == Result::RECREATE) {
-        // TODO: Recreate everything.
+        JST_CHECK(recreate());
         return Result::SKIP;       
     } else if (result != Result::SUCCESS) {
         return result;
@@ -338,21 +342,23 @@ Result Implementation::end() {
         return Result::ERROR;
     }
 
-    JST_CHECK(viewport->commitDrawable(signalSemaphores));
-    
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-    return Result::SUCCESS;
+    const auto& result = viewport->commitDrawable(signalSemaphores);
+    if (result == Result::RECREATE) {
+        return recreate();
+    }
+    return result;
 }
 
-Result Implementation::CreateSynchronizationObjects() {
+Result Implementation::createSynchronizationObjects() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     currentFrame = 0;
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-    imagesInFlight.resize(swapchainFramebuffers.size(), VK_NULL_HANDLE);
+    imagesInFlight.resize(swapchainFramebuffers.size(), nullptr);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -369,6 +375,19 @@ Result Implementation::CreateSynchronizationObjects() {
             return Result::ERROR;
         }
     }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::destroySynchronizationObjects() {
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+        vkDestroyFence(device, inFlightFences[i], nullptr);
+    }
+    std::fill(imagesInFlight.begin(), imagesInFlight.end(), nullptr);
 
     return Result::SUCCESS;
 }

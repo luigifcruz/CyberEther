@@ -11,6 +11,9 @@ class Provider<Device::Vulkan> : public Generic {
  public:
     using Generic::Generic;
 
+    virtual Result createSwapchain() = 0;
+    virtual Result destroySwapchain() = 0;
+
     virtual const U32& currentDrawableIndex() const = 0;
     virtual Result nextDrawable(VkSemaphore& semaphore) = 0;
     virtual Result commitDrawable(std::vector<VkSemaphore>& semaphores) = 0;

@@ -32,6 +32,9 @@ class Linux : public Provider<Device::Vulkan> {
     Result createImgui();
     Result destroyImgui();
     
+    Result createSwapchain();
+    Result destroySwapchain();
+
     Result pollEvents();
     bool keepRunning();
     Result nextDrawable(VkSemaphore& semaphore);
@@ -41,7 +44,6 @@ class Linux : public Provider<Device::Vulkan> {
         return std::make_shared<Linux>(config);
     }
 
-    // TODO: Maybe protect those?
     const VkFormat& getSwapchainImageFormat() const;
     std::vector<VkImageView>& getSwapchainImageViews();
     const VkExtent2D& getSwapchainExtent() const;
@@ -63,8 +65,6 @@ class Linux : public Provider<Device::Vulkan> {
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
 
-    Result createSwapchain();
-    Result createImageView();
     SwapChainSupportDetails querySwapChainSupport(const VkPhysicalDevice& device);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);

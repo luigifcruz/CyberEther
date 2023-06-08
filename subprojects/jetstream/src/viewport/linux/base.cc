@@ -3,74 +3,62 @@
 
 namespace Jetstream::Viewport {
 
-Linux::SwapChainSupportDetails Linux::querySwapChainSupport(const VkPhysicalDevice& device) {
-    U32 formatCount;
-    U32 presentModeCount;
-    SwapChainSupportDetails details;
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-
-    if (formatCount != 0) {
-        details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
-    }
-
-    if (presentModeCount != 0) {
-        details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
-    }
-
-    return details;
+Linux::Linux(const Config& config) : Provider(config) {
+    JST_DEBUG("Creating Linux viewport.");
 }
 
-VkSurfaceFormatKHR Linux::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    for (const auto &availableFormat : availableFormats) {
-        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_UNORM &&
-            availableFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR) {
-            return availableFormat;
-        }
-    }
-
-    return availableFormats[0];
+Linux::~Linux() {
+    JST_DEBUG("Destroying Linux viewport.");
 }
 
-VkPresentModeKHR Linux::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    return VK_PRESENT_MODE_IMMEDIATE_KHR;
-    for (const auto &availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
-            return availablePresentMode;
-        }
+Result Linux::create() {
+    if (!glfwInit()) {
+        return Result::ERROR;
     }
-    return VK_PRESENT_MODE_FIFO_KHR;
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    auto [width, height] = config.size;
+    window = glfwCreateWindow(width, height, 
+        config.title.c_str(), nullptr, nullptr);
+
+    if (!window) {
+        glfwTerminate();
+        return Result::ERROR;
+    }
+
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+
+    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
+    JST_VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface), [&]{
+        JST_FATAL("[VULKAN] GLFW failed to create window surface.");     
+    });
+
+    JST_CHECK(createSwapchain());
+
+    return Result::SUCCESS;
 }
 
-VkExtent2D Linux::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-    if (capabilities.currentExtent.width != UINT32_MAX) {
-        return capabilities.currentExtent;
-    } else {
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
+Result Linux::destroy() {
+    JST_CHECK(destroySwapchain());
 
-        VkExtent2D actualExtent = {
-            static_cast<U32>(width),
-            static_cast<U32>(height)
-        };
+    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
+    vkDestroySurfaceKHR(instance, surface, nullptr);
 
-        actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
-        actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
+    glfwDestroyWindow(window);
+    glfwTerminate();
 
-        return actualExtent;
-    }        
+    return Result::SUCCESS;
 }
 
 Result Linux::createSwapchain() {
-    JST_DEBUG("[VULKAN] Creating swapchain.");
+    JST_DEBUG("Creating swapchain.");
 
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
+
+    // Create swapchain.
 
     auto swapchainSupport = querySwapChainSupport(physicalDevice);
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapchainSupport.formats);
@@ -94,7 +82,6 @@ Result Linux::createSwapchain() {
     Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicFamily.value(), indices.presentFamily.value()};
 
-    // TODO: Might give problems in the future.
     if (indices.graphicFamily != indices.presentFamily ||
         indices.graphicFamily != indices.computeFamily) {
         createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -123,13 +110,8 @@ Result Linux::createSwapchain() {
     swapchainImageFormat = surfaceFormat.format;
     swapchainExtent = extent;
 
-    return Result::SUCCESS;
-}
+    // Create image views.
 
-Result Linux::createImageView() {
-    JST_DEBUG("[VULKAN] Creating image view.");
-
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
     swapchainImageViews.resize(swapchainImages.size());
 
     for (size_t i = 0; i < swapchainImages.size(); i++) {
@@ -155,64 +137,18 @@ Result Linux::createImageView() {
         });
     }
 
-    return Result::SUCCESS;       
-}
-
-void Linux::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
-    reinterpret_cast<Linux*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
-}
-
-Linux::Linux(const Config& config) : Provider(config) {
-    JST_DEBUG("Creating Linux viewport.");
-}
-
-Linux::~Linux() {
-    JST_DEBUG("Destroying Linux viewport.");
-}
-
-Result Linux::create() {
-    if (!glfwInit()) {
-        return Result::ERROR;
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
-
-    auto [width, height] = config.size;
-    window = glfwCreateWindow(width, height, 
-        config.title.c_str(), nullptr, nullptr);
-
-    if (!window) {
-        glfwTerminate();
-        return Result::ERROR;
-    }
-
-    glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-
-    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
-    JST_VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface), [&]{
-        JST_FATAL("[VULKAN] GLFW failed to create window surface.");     
-    });
-
-    JST_CHECK(createSwapchain());
-    JST_CHECK(createImageView());
-
     return Result::SUCCESS;
 }
 
-Result Linux::destroy() {
+Result Linux::destroySwapchain() {
+    JST_DEBUG("Destroying swapchain.");
+
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
 
     for (auto& swapchainImageView : swapchainImageViews) {
         vkDestroyImageView(device, swapchainImageView, nullptr);
     }
     vkDestroySwapchainKHR(device, swapchain, nullptr);   
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
 
     return Result::SUCCESS;
 }
@@ -264,7 +200,9 @@ Result Linux::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     auto& presentQueue = Backend::State<Device::Vulkan>()->getPresentQueue();
     const VkResult result = vkQueuePresentKHR(presentQueue, &presentInfo);
 
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferDidResize) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR ||
+        result == VK_SUBOPTIMAL_KHR || 
+        framebufferDidResize) {
         framebufferDidResize = false;
         return Result::RECREATE;
     } else if (result != VK_SUCCESS) {
@@ -272,6 +210,76 @@ Result Linux::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     }
 
     return Result::SUCCESS;
+}
+
+Linux::SwapChainSupportDetails Linux::querySwapChainSupport(const VkPhysicalDevice& device) {
+    U32 formatCount;
+    U32 presentModeCount;
+    SwapChainSupportDetails details;
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+
+    if (formatCount != 0) {
+        details.formats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+    }
+
+    if (presentModeCount != 0) {
+        details.presentModes.resize(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+    }
+
+    return details;
+}
+
+VkSurfaceFormatKHR Linux::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+    for (const auto &availableFormat : availableFormats) {
+        if (availableFormat.format     == VK_FORMAT_B8G8R8A8_UNORM &&
+            availableFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR) {
+            return availableFormat;
+        }
+    }
+
+    return availableFormats[0];
+}
+
+VkPresentModeKHR Linux::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+    if (config.vsync) {
+        for (const auto &availablePresentMode : availablePresentModes) {
+            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
+                return availablePresentMode;
+            }
+        }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D Linux::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+    if (capabilities.currentExtent.width != UINT32_MAX) {
+        return capabilities.currentExtent;
+    } else {
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+
+        VkExtent2D actualExtent = {
+            static_cast<U32>(width),
+            static_cast<U32>(height)
+        };
+
+        actualExtent.width = std::max(capabilities.minImageExtent.width,
+                                      std::min(capabilities.maxImageExtent.width, actualExtent.width));
+        actualExtent.height = std::max(capabilities.minImageExtent.height,
+                                       std::min(capabilities.maxImageExtent.height, actualExtent.height));
+
+        return actualExtent;
+    }        
+}
+
+void Linux::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
+    reinterpret_cast<Linux*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
 }
 
 const VkFormat& Linux::getSwapchainImageFormat() const {
