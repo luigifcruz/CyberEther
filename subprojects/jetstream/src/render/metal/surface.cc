@@ -68,9 +68,11 @@ Result Implementation::destroyFramebuffer() {
 }
 
 Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
+    auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
     for (auto& program : programs) {
-        JST_CHECK(program->draw(commandBuffer, renderPassDescriptor));
+        JST_CHECK(program->draw(renderCmdEncoder));
     }
+    renderCmdEncoder->endEncoding();
 
     auto blitCommandEncoder = commandBuffer->blitCommandEncoder();
     auto texture = reinterpret_cast<const MTL::Texture*>(framebuffer->raw());

@@ -9,9 +9,9 @@
 
 using namespace Jetstream;
 
-using SystemViewport = Viewport::Linux;
-constexpr static Device ComputeDevice = Device::CPU;
-constexpr static Device RenderDevice  = Device::Vulkan;
+using SystemViewport = Viewport::MacOS;
+constexpr static Device ComputeDevice = Device::Metal;
+constexpr static Device RenderDevice  = Device::Metal;
 
 class SDR {
  public:
@@ -159,7 +159,7 @@ class UI {
         // Initialize Render
         Render::Window::Config renderCfg;
         renderCfg.imgui = true;
-        renderCfg.scale = 1.5;
+        // renderCfg.scale = 1.5;
         JST_CHECK_THROW(instance.buildWindow<RenderDevice>(renderCfg));
 
         // Configure Jetstream
@@ -368,7 +368,7 @@ int main() {
         return 1;
     }
 
-    if (Backend::Initialize<Device::Vulkan>({}) != Result::SUCCESS) {
+    if (Backend::Initialize<Device::Metal>({}) != Result::SUCCESS) {
         JST_FATAL("Cannot initialize Vulkan backend.");
         return 1;
     }

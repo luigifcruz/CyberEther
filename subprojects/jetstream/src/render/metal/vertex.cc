@@ -17,12 +17,42 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
     }
 }
 
-Result Implementation::create() {
+Result Implementation::create(MTL::VertexDescriptor* vertDesc) {
     JST_DEBUG("Creating Metal vertex.");
 
+    U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
+
+        MTL::VertexFormat bindingFormat = MTL::VertexFormat::VertexFormatInvalid;
+        
+        switch (stride) {
+            case 1:
+                bindingFormat = MTL::VertexFormat::VertexFormatFloat;
+                break;       
+            case 2:
+                bindingFormat = MTL::VertexFormat::VertexFormatFloat2;
+                break;       
+            case 3:
+                bindingFormat = MTL::VertexFormat::VertexFormatFloat3;
+                break;       
+            case 4:
+                bindingFormat = MTL::VertexFormat::VertexFormatFloat4;
+                break;       
+        }
+
+        auto attr = vertDesc->attributes()->object(0)->init();
+        attr->setFormat(bindingFormat);
+        attr->setBufferIndex(bindingCount);
+        attr->setOffset(0);
+
+        auto layout = vertDesc->layouts()->object(0)->init();
+        layout->setStride(stride * sizeof(F32));
+        layout->setStepRate(1);
+        layout->setStepFunction(MTL::VertexStepFunctionPerVertex);
+
+        bindingCount += 1;
     }
 
     if (indices) {

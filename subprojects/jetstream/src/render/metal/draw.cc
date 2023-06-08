@@ -9,10 +9,10 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
     buffer = std::dynamic_pointer_cast<VertexImp<Device::Metal>>(config.buffer);
 }
 
-Result Implementation::create() {
+Result Implementation::create(MTL::VertexDescriptor* vertDesc) {
     JST_DEBUG("Creating Metal draw.");
 
-    JST_CHECK(buffer->create());
+    JST_CHECK(buffer->create(vertDesc));
 
     return Result::SUCCESS;
 }

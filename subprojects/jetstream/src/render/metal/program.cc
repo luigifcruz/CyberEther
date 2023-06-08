@@ -8,11 +8,7 @@ namespace Jetstream::Render {
 using Implementation = ProgramImp<Device::Metal>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    for (auto& draw : config.draws) {
-        draws.push_back(
-            std::dynamic_pointer_cast<DrawImp<Device::Metal>>(draw)
-        );
-    }
+    _draw = std::dynamic_pointer_cast<DrawImp<Device::Metal>>(config.draw);
 
     for (auto& texture : config.textures) {
         textures.push_back(
@@ -31,44 +27,49 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     JST_DEBUG("Creating Metal program.");
 
     NS::Error* err = nullptr;
-    const auto& shader = config.shaders[Device::Metal][0];
+    const auto& shaders = config.shaders[Device::Metal];
     auto device = Backend::State<Device::Metal>()->getDevice();
 
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
     opts->setFastMathEnabled(true);
-    
-    NS::String* source = NS::String::string(shader, NS::ASCIIStringEncoding);
-    auto library = device->newLibrary(source, opts, &err);
 
-    if (!library) {
+    auto vertSource = NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::ASCIIStringEncoding, false);
+    auto vertLibrary = device->newLibrary(vertSource, opts, &err);
+
+    auto fragSource = NS::String::alloc()->init((char*)shaders[1].data(), shaders[1].size(), NS::ASCIIStringEncoding, false);
+    auto fragLibrary = device->newLibrary(fragSource, opts, &err);
+
+    if (!vertLibrary || !fragLibrary) {
         JST_FATAL("Library error:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
 
-    MTL::Function* vertFunc = library->newFunction(
-        NS::String::string("vertFunc", NS::ASCIIStringEncoding)
+    MTL::Function* vertFunc = vertLibrary->newFunction(
+        NS::String::string("main0", NS::ASCIIStringEncoding)
     );
     JST_ASSERT(vertFunc);
 
-    MTL::Function* fragFunc = library->newFunction(
-        NS::String::string("fragFunc", NS::ASCIIStringEncoding)
+    MTL::Function* fragFunc = fragLibrary->newFunction(
+        NS::String::string("main0", NS::ASCIIStringEncoding)
     );
     JST_ASSERT(fragFunc);
+    
+    auto vertDesc = MTL::VertexDescriptor::alloc()->init();
+    JST_CHECK(_draw->create(vertDesc));
 
     auto renderPipelineDescriptor = MTL::RenderPipelineDescriptor::alloc()->init();
     JST_ASSERT(renderPipelineDescriptor);
     renderPipelineDescriptor->setVertexFunction(vertFunc);
     renderPipelineDescriptor->setFragmentFunction(fragFunc);
+    renderPipelineDescriptor->setVertexDescriptor(vertDesc);
     renderPipelineDescriptor->colorAttachments()->object(0)->setPixelFormat(pixelFormat);
-
     renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
-    JST_ASSERT(renderPipelineState);
+    if (!renderPipelineState) {
+        JST_FATAL("Failed to create pipeline state:\n{}", err->description()->utf8String());
+        return Result::ERROR;
+    }
 
     renderPipelineDescriptor->release();
-
-    for (const auto& draw : draws) {
-        JST_CHECK(draw->create());
-    }
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->create());
@@ -82,9 +83,7 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
 }
 
 Result Implementation::destroy() {
-    for (const auto& draw : draws) {
-        JST_CHECK(draw->destroy());
-    }
+    JST_CHECK(_draw->destroy());
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->destroy());
@@ -99,10 +98,7 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(MTL::CommandBuffer* commandBuffer,
-                            MTL::RenderPassDescriptor* renderPassDescriptor) {
-    auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
-
+Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
 
     // Attach frame textures.
@@ -116,18 +112,8 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer,
         renderCmdEncoder->setVertexBuffer(buffers[i]->getHandle(), 0, i);
     }
 
-    drawIndex = 0;
-    for (auto& draw : draws) {
-        // Attach drawIndex uniforms.
-        renderCmdEncoder->setVertexBytes(&drawIndex, sizeof(drawIndex), 30);
-        renderCmdEncoder->setFragmentBytes(&drawIndex, sizeof(drawIndex), 30);
-        drawIndex += 1;
-
-        // Attach frame encoder.
-        JST_CHECK(draw->encode(renderCmdEncoder, buffers.size()));
-    }
-
-    renderCmdEncoder->endEncoding();
+    // Attach frame encoder.
+    JST_CHECK(_draw->encode(renderCmdEncoder, buffers.size()));
 
     return Result::SUCCESS;
 }

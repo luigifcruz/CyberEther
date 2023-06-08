@@ -12,7 +12,7 @@ class VertexImp<Device::Metal> : public Vertex {
     explicit VertexImp(const Config& config);
 
  protected:
-    Result create();
+    Result create(MTL::VertexDescriptor* vertDesc);
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode,
                   const U64& offset);
