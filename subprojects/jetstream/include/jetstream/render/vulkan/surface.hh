@@ -22,11 +22,9 @@ class SurfaceImp<Device::Vulkan> : public Surface {
     std::shared_ptr<TextureImp<Device::Vulkan>> framebuffer;
     VkFramebuffer framebufferObject;
     VkRenderPass renderPass;
+    Size2D<U64> requestedSize;
       
     std::vector<std::shared_ptr<ProgramImp<Device::Vulkan>>> programs;
-
-    Result createFramebuffer();
-    Result destroyFramebuffer();
 
     friend class WindowImp<Device::Vulkan>;
 };

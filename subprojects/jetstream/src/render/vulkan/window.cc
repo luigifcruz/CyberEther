@@ -293,6 +293,10 @@ Result Implementation::begin() {
     renderPassBeginInfo.clearValueCount = 1;
     renderPassBeginInfo.pClearValues = &clearColor;
 
+    for (auto &surface : surfaces) {
+        JST_CHECK(surface->encode(currentCommandBuffer));
+    }
+
     vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     if (config.imgui) {
@@ -308,10 +312,6 @@ Result Implementation::end() {
     }
 
     vkCmdEndRenderPass(currentCommandBuffer);
-
-    for (auto &surface : surfaces) {
-        JST_CHECK(surface->encode(currentCommandBuffer));
-    }
 
     JST_VK_CHECK(vkEndCommandBuffer(currentCommandBuffer), [&]{
         JST_FATAL("[VULKAN] Can't end command buffer.");

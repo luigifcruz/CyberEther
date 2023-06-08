@@ -68,33 +68,7 @@ Result Implementation::create() {
         JST_CHECK(program->create(renderPass, framebuffer));
     }
 
-    JST_CHECK(createFramebuffer());
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::destroy() {
-    JST_DEBUG("[VULKAN] Destroying surface.");
-
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-
-    for (auto& program : programs) {
-        JST_CHECK(program->destroy());
-    }
-
-    JST_CHECK(destroyFramebuffer());
-
-    vkDestroyRenderPass(device, renderPass, nullptr);
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::createFramebuffer() {
-    JST_DEBUG("[VULKAN] Creating surface framebuffer.");
-
     JST_CHECK(framebuffer->create());
-
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     VkImageView attachments[] = { framebuffer->getViewHandle() };
 
@@ -111,20 +85,39 @@ Result Implementation::createFramebuffer() {
         JST_FATAL("[VULKAN] Failed to create surface framebuffer.");
     });
 
+    requestedSize = framebuffer->size();
+
     return Result::SUCCESS;
 }
 
-Result Implementation::destroyFramebuffer() {
-    JST_DEBUG("[VULKAN] Destroying surface framebuffer");
+Result Implementation::destroy() {
+    JST_DEBUG("[VULKAN] Destroying surface.");
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
+    for (auto& program : programs) {
+        JST_CHECK(program->destroy());
+    }
+
     vkDestroyFramebuffer(device, framebufferObject, nullptr);
 
-    return framebuffer->destroy();
+    JST_CHECK(framebuffer->destroy());
+
+    vkDestroyRenderPass(device, renderPass, nullptr);
+
+    return Result::SUCCESS;
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    if (framebuffer->size(requestedSize)) {
+        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+            JST_FATAL("[VULKAN] Can't wait for graphics queue to finish.");
+        });
+            
+        JST_CHECK(destroy());
+        JST_CHECK(create());
+    }
+
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
@@ -155,11 +148,7 @@ const Size2D<U64>& Implementation::size(const Size2D<U64>& size) {
         return NullSize;
     }
 
-    // TODO: Implement resize.
-    // if (framebuffer->size(size)) {
-    //     // destroyFramebuffer();
-    //     // createFramebuffer();
-    // }
+    requestedSize = size;
 
     return framebuffer->size();
 } 
