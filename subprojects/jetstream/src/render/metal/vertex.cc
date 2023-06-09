@@ -42,12 +42,12 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc) {
                 break;       
         }
 
-        auto attr = vertDesc->attributes()->object(0)->init();
+        auto attr = vertDesc->attributes()->object(bindingCount)->init();
         attr->setFormat(bindingFormat);
         attr->setBufferIndex(bindingCount);
         attr->setOffset(0);
 
-        auto layout = vertDesc->layouts()->object(0)->init();
+        auto layout = vertDesc->layouts()->object(bindingCount)->init();
         layout->setStride(stride * sizeof(F32));
         layout->setStepRate(1);
         layout->setStepFunction(MTL::VertexStepFunctionPerVertex);

@@ -25,8 +25,6 @@ Result Implementation::create() {
 
     outerPool = NS::AutoreleasePool::alloc()->init();
 
-    JST_CHECK(viewport->create());
-
     dev = Backend::State<Device::Metal>()->getDevice();
 
     commandQueue = dev->newCommandQueue();
@@ -61,8 +59,6 @@ Result Implementation::destroy() {
 
     renderPassDescriptor->release();
     commandQueue->release();
-
-    JST_CHECK(viewport->destroy());
 
     outerPool->release();
 

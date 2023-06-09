@@ -16,9 +16,9 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
         );
     }
 
-    for (auto& buffer : config.buffers) {
+    for (auto& [buffer, target] : config.buffers) {
         buffers.push_back(
-            std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer)
+            {std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer), target}
         );
     }
 }
@@ -75,7 +75,7 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
         JST_CHECK(texture->create());
     }
 
-    for (const auto& buffer : buffers) {
+    for (const auto& [buffer, _] : buffers) {
         JST_CHECK(buffer->create());
     }
 
@@ -89,7 +89,7 @@ Result Implementation::destroy() {
         JST_CHECK(texture->destroy());
     }
 
-    for (const auto& buffer : buffers) {
+    for (const auto& [buffer, _] : buffers) {
         JST_CHECK(buffer->destroy());
     }
 
@@ -108,8 +108,13 @@ Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
 
     // Attach frame fragment-shader buffers.
     for (U64 i = 0; i < buffers.size(); i++) {
-        renderCmdEncoder->setFragmentBuffer(buffers[i]->getHandle(), 0, i);
-        renderCmdEncoder->setVertexBuffer(buffers[i]->getHandle(), 0, i);
+        auto& [buffer, target] = buffers[i];
+        if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
+            renderCmdEncoder->setFragmentBuffer(buffer->getHandle(), 0, i);
+        }
+        if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
+            renderCmdEncoder->setVertexBuffer(buffer->getHandle(), 0, i);
+        }
     }
 
     // Attach frame encoder.
