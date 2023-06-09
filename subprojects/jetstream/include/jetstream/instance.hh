@@ -17,7 +17,7 @@ class JETSTREAM_API Instance {
  public:
     Instance() : commited(false) {};
 
-    template<class ViewportProvider, typename... Args>
+    template<class Platform, typename... Args>
     Result buildViewport(const typename Viewport::Config& config,
                          Args... args) {
         if (commited) {
@@ -30,7 +30,7 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        _viewport = std::make_shared<ViewportProvider>(config, args...);
+        _viewport = std::make_shared<Platform>(config, args...);
 
         return Result::SUCCESS;
     }
@@ -61,7 +61,7 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        auto viewport = std::dynamic_pointer_cast<Viewport::Provider<D>>(_viewport);
+        auto viewport = std::dynamic_pointer_cast<Viewport::Adapter<D>>(_viewport);
         _window = std::make_shared<Render::WindowImp<D>>(config, viewport);
 
         return Result::SUCCESS;

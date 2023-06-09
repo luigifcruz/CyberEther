@@ -9,9 +9,9 @@
 
 using namespace Jetstream;
 
-using SystemViewport = Viewport::MacOS;
 constexpr static Device ComputeDevice = Device::Metal;
 constexpr static Device RenderDevice  = Device::Metal;
+using Platform = Viewport::GLFW<RenderDevice>;
 
 class SDR {
  public:
@@ -208,7 +208,7 @@ class UI {
 
         lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
         // wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-        // spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
         // cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
 
         JST_CHECK_THROW(instance.create());
@@ -243,7 +243,7 @@ class UI {
 
     Bundle::LineplotUI<ComputeDevice> lpt;
     // Bundle::WaterfallUI<ComputeDevice> wtf;
-    // Bundle::SpectrogramUI<ComputeDevice> spc;
+    Bundle::SpectrogramUI<ComputeDevice> spc;
     // Bundle::ConstellationUI<Device::CPU> cst;
 
     void threadLoop() {
@@ -260,7 +260,7 @@ class UI {
 
             JST_CHECK_THROW(lpt.draw());
             // JST_CHECK_THROW(wtf.draw());
-            // JST_CHECK_THROW(spc.draw());
+            JST_CHECK_THROW(spc.draw());
             // JST_CHECK_THROW(cst.draw());
 
             {
@@ -300,7 +300,7 @@ class UI {
 
                 JST_CHECK_THROW(lpt.drawControl());
                 // JST_CHECK_THROW(wtf.drawControl());
-                // JST_CHECK_THROW(spc.drawControl());
+                JST_CHECK_THROW(spc.drawControl());
                 // JST_CHECK_THROW(cst.drawControl());
 
                 ImGui::End();
@@ -345,7 +345,7 @@ class UI {
 
                 JST_CHECK_THROW(lpt.drawInfo());
                 // JST_CHECK_THROW(wtf.drawInfo());
-                // JST_CHECK_THROW(spc.drawInfo());
+                JST_CHECK_THROW(spc.drawInfo());
                 // JST_CHECK_THROW(cst.drawInfo());
 
                 ImGui::End();
@@ -369,6 +369,11 @@ int main() {
     }
 
     if (Backend::Initialize<Device::Metal>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize Metal backend.");
+        return 1;
+    }
+
+    if (Backend::Initialize<Device::Vulkan>({}) != Result::SUCCESS) {
         JST_FATAL("Cannot initialize Vulkan backend.");
         return 1;
     }
@@ -382,7 +387,7 @@ int main() {
     viewportCfg.resizable = true;
     viewportCfg.size = {3130, 1140};
     viewportCfg.title = "CyberEther";
-    JST_CHECK_THROW(instance.buildViewport<SystemViewport>(viewportCfg));
+    JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg));
 
     {
         const SDR::Config& sdrConfig {

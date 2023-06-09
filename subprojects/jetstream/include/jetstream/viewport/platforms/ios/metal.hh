@@ -1,12 +1,13 @@
-#ifndef JETSTREAM_VIEWPORT_IOS_HH
-#define JETSTREAM_VIEWPORT_IOS_HH
+#ifndef JETSTREAM_VIEWPORT_PLATFORM_IOS_METAL_HH
+#define JETSTREAM_VIEWPORT_PLATFORM_IOS_METAL_HH
 
-#include "jetstream/viewport/devices/metal.hh"
-#include "jetstream/backend/base.hh"
+#include "jetstream/viewport/adapters/metal.hh"
+#include "jetstream/viewport/platforms/ios/generic.hh"
 
 namespace Jetstream::Viewport {
 
-class iOS : public Provider<Device::Metal> {
+template<>
+class iOS<Device::Metal> : public Adapter<Device::Metal> {
  public:
     explicit iOS(const Config& config, CA::MetalLayer* layer);
     virtual ~iOS();

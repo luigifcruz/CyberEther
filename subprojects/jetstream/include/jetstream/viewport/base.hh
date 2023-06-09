@@ -1,18 +1,19 @@
 #ifndef JETSTREAM_VIEWPORT_BASE_HH
 #define JETSTREAM_VIEWPORT_BASE_HH
 
-#include "jetstream/viewport/generic.hh"
-
-#ifdef JETSTREAM_VIEWPORT_MACOS_AVAILABLE
-#include "jetstream/viewport/providers/macos.hh"
+#ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#include "jetstream/viewport/platforms/glfw/metal.hh"
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/viewport/platforms/glfw/vulkan.hh"
+#endif
 #endif
 
 #ifdef JETSTREAM_VIEWPORT_IOS_AVAILABLE
-#include "jetstream/viewport/providers/ios.hh"
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#include "jetstream/viewport/platforms/ios/metal.hh"
 #endif
-
-#ifdef JETSTREAM_VIEWPORT_LINUX_AVAILABLE
-#include "jetstream/viewport/providers/linux.hh"
 #endif
 
 #endif

@@ -14,7 +14,7 @@ template<>
 class WindowImp<Device::Metal> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Provider<Device::Metal>>& viewport);
+                       std::shared_ptr<Viewport::Adapter<Device::Metal>>& viewport);
 
     Result create();
     Result destroy();
@@ -41,8 +41,9 @@ class WindowImp<Device::Metal> : public Window {
     MTL::CommandQueue* commandQueue = nullptr;
     MTL::CommandBuffer* commandBuffer = nullptr;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
+
     std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
-    std::shared_ptr<Viewport::Provider<Device::Metal>> viewport;
+    std::shared_ptr<Viewport::Adapter<Device::Metal>> viewport;
 
     Result createImgui();
     Result destroyImgui();

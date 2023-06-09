@@ -1,17 +1,19 @@
-#include "jetstream/viewport/providers/ios.hh"
+#include "jetstream/viewport/platforms/ios/metal.hh"
 
 namespace Jetstream::Viewport {
     
-iOS::iOS(const Config& config, CA::MetalLayer* layer) : Provider(config) {
+using Implementation = iOS<Device::Metal>;
+
+Implementation::iOS(const Config& config, CA::MetalLayer* layer) : Adapter(config) {
     JST_DEBUG("Creating iOS viewport.");
     swapchain = layer;
 };
 
-iOS::~iOS() {
+Implementation::~iOS() {
     JST_DEBUG("Destroying iOS viewport.");
 }
 
-Result iOS::create() {
+Result Implementation::create() {
     auto* device = Backend::State<Device::Metal>()->getDevice();
     
     swapchain->setDevice(device);
@@ -21,22 +23,22 @@ Result iOS::create() {
     return Result::SUCCESS;
 }
 
-Result iOS::destroy() {
+Result Implementation::destroy() {
     swapchain->release();
     
     return Result::SUCCESS;
 }
 
-Result iOS::createImgui() {
+Result Implementation::createImgui() {
 
     return Result::SUCCESS;
 }
-Result iOS::destroyImgui() {
+Result Implementation::destroyImgui() {
 
     return Result::SUCCESS;
 }
 
-void* iOS::nextDrawable() {
+void* Implementation::nextDrawable() {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize.x = swapchain->drawableSize().width;
     io.DisplaySize.y = swapchain->drawableSize().height;
@@ -44,11 +46,11 @@ void* iOS::nextDrawable() {
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
-Result iOS::pollEvents() {
+Result Implementation::pollEvents() {
     return Result::SUCCESS;
 }
 
-bool iOS::keepRunning() {
+bool Implementation::keepRunning() {
     return true;
 }
 

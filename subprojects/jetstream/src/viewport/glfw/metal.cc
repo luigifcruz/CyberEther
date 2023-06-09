@@ -1,16 +1,18 @@
-#include "jetstream/viewport/providers/macos.hh"
+#include "jetstream/viewport/platforms/glfw/metal.hh"
 
 namespace Jetstream::Viewport {
 
-MacOS::MacOS(const Config& config) : Provider(config) {
+using Implementation = GLFW<Device::Metal>;
+
+Implementation::GLFW(const Config& config) : Adapter(config) {
     JST_DEBUG("Creating macOS viewport.");
 }
 
-MacOS::~MacOS() {
+Implementation::~GLFW() {
     JST_DEBUG("Destroying macOS viewport.");
 }
 
-Result MacOS::create() {
+Result Implementation::create() {
     if (!glfwInit()) {
         return Result::ERROR;
     }
@@ -40,7 +42,7 @@ Result MacOS::create() {
     return Result::SUCCESS;
 }
 
-Result MacOS::destroy() {
+Result Implementation::destroy() {
     glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -49,19 +51,19 @@ Result MacOS::destroy() {
     return Result::SUCCESS;
 }
 
-Result MacOS::createImgui() {
+Result Implementation::createImgui() {
     ImGui_ImplGlfw_InitForOther(window, true);
 
     return Result::SUCCESS;
 }
 
-Result MacOS::destroyImgui() {
+Result Implementation::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
 
     return Result::SUCCESS;
 }
 
-void* MacOS::nextDrawable() {
+void* Implementation::nextDrawable() {
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     swapchain->setDrawableSize({
@@ -74,13 +76,13 @@ void* MacOS::nextDrawable() {
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
-Result MacOS::pollEvents() {
+Result Implementation::pollEvents() {
     glfwWaitEvents();
 
     return Result::SUCCESS;
 }
 
-bool MacOS::keepRunning() {
+bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 

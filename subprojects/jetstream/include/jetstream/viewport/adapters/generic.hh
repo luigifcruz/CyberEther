@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_VIEWPORT_GENERIC_HH
-#define JETSTREAM_VIEWPORT_GENERIC_HH
+#ifndef JETSTREAM_ADAPTER_GENERIC_HH
+#define JETSTREAM_ADAPTER_GENERIC_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
@@ -41,7 +41,7 @@ class Generic {
 };
 
 template<Device DeviceId>
-class Provider : public Generic {};
+class Adapter : public Generic {};
 
 }  // namespace Jetstream::Viewport
 

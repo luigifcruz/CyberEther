@@ -9,7 +9,7 @@ namespace Jetstream::Render {
 using Implementation = WindowImp<Device::Vulkan>;
 
 Implementation::WindowImp(const Config& config,
-                          std::shared_ptr<Viewport::Provider<Device::Vulkan>>& viewport)
+                          std::shared_ptr<Viewport::Adapter<Device::Vulkan>>& viewport)
          : Window(config), viewport(viewport) {
 }
 

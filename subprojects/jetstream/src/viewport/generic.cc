@@ -1,4 +1,4 @@
-#include "jetstream/viewport/generic.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 
 namespace Jetstream::Viewport {
 

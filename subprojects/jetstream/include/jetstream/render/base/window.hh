@@ -55,7 +55,7 @@ class Window {
                 break;
 #endif
             default:
-                JST_FATAL("Backend not supported.");
+                JST_FATAL("Backend not supported yet.");
                 return Result::ERROR;
         }
 

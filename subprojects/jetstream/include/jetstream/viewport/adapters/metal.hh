@@ -1,13 +1,13 @@
-#ifndef JETSTREAM_VIEWPORT_DEVICES_METAL_HH
-#define JETSTREAM_VIEWPORT_DEVICES_METAL_HH
+#ifndef JETSTREAM_VIEWPORT_ADAPTER_METAL_HH
+#define JETSTREAM_VIEWPORT_ADAPTER_METAL_HH
 
-#include "jetstream/viewport/generic.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/backend/base.hh"
 
 namespace Jetstream::Viewport {
 
 template<>
-class Provider<Device::Metal> : public Generic {
+class Adapter<Device::Metal> : public Generic {
  public:
     using Generic::Generic;
     

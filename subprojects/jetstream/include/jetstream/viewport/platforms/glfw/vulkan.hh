@@ -1,21 +1,21 @@
-#ifndef JETSTREAM_VIEWPORT_LINUX_HH
-#define JETSTREAM_VIEWPORT_LINUX_HH
+#ifndef JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
+#define JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
 
-#include "jetstream/viewport/devices/vulkan.hh"
-#include "jetstream/render/tools/imgui_impl_glfw.h"
-#include "jetstream/backend/base.hh"
+#include "jetstream/viewport/adapters/vulkan.hh"
+#include "jetstream/viewport/platforms/glfw/generic.hh"
 
 #include <GLFW/glfw3.h>
 
 namespace Jetstream::Viewport {
 
-class Linux : public Provider<Device::Vulkan> {
+template<>
+class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
  public:
-    explicit Linux(const Config& config);
-    virtual ~Linux();
+    explicit GLFW(const Config& config);
+    virtual ~GLFW();
 
     const std::string name() const {
-        return "Linux (GLFW)";
+        return "GLFW (Vulkan)";
     }
 
     constexpr Device device() const {
@@ -39,10 +39,6 @@ class Linux : public Provider<Device::Vulkan> {
     bool keepRunning();
     Result nextDrawable(VkSemaphore& semaphore);
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
-
-    static std::shared_ptr<Linux> Factory(const Config& config) {
-        return std::make_shared<Linux>(config);
-    }
 
     const VkFormat& getSwapchainImageFormat() const;
     std::vector<VkImageView>& getSwapchainImageViews();

@@ -1,17 +1,19 @@
-#include "jetstream/viewport/providers/linux.hh"
+#include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Viewport {
 
-Linux::Linux(const Config& config) : Provider(config) {
+using Implementation = GLFW<Device::Vulkan>;
+
+Implementation::GLFW(const Config& config) : Adapter(config) {
     JST_DEBUG("Creating Linux viewport.");
 }
 
-Linux::~Linux() {
+Implementation::~GLFW() {
     JST_DEBUG("Destroying Linux viewport.");
 }
 
-Result Linux::create() {
+Result Implementation::create() {
     if (!glfwInit()) {
         return Result::ERROR;
     }
@@ -40,7 +42,7 @@ Result Linux::create() {
     return Result::SUCCESS;
 }
 
-Result Linux::destroy() {
+Result Implementation::destroy() {
     JST_CHECK(destroySwapchain());
 
     auto& instance = Backend::State<Device::Vulkan>()->getInstance();
@@ -52,7 +54,7 @@ Result Linux::destroy() {
     return Result::SUCCESS;
 }
 
-Result Linux::createSwapchain() {
+Result Implementation::createSwapchain() {
     JST_DEBUG("Creating swapchain.");
 
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
@@ -140,7 +142,7 @@ Result Linux::createSwapchain() {
     return Result::SUCCESS;
 }
 
-Result Linux::destroySwapchain() {
+Result Implementation::destroySwapchain() {
     JST_DEBUG("Destroying swapchain.");
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
@@ -153,19 +155,19 @@ Result Linux::destroySwapchain() {
     return Result::SUCCESS;
 }
 
-Result Linux::createImgui() {
+Result Implementation::createImgui() {
     ImGui_ImplGlfw_InitForVulkan(window, true);
 
     return Result::SUCCESS;
 }
 
-Result Linux::destroyImgui() {
+Result Implementation::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
 
     return Result::SUCCESS;
 }
 
-Result Linux::nextDrawable(VkSemaphore& semaphore) {
+Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     const VkResult result = vkAcquireNextImageKHR(device,
@@ -186,7 +188,7 @@ Result Linux::nextDrawable(VkSemaphore& semaphore) {
     return Result::SUCCESS;
 }
 
-Result Linux::commitDrawable(std::vector<VkSemaphore>& semaphores) {
+Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     VkSwapchainKHR swapchains[] = {swapchain};
 
     VkPresentInfoKHR presentInfo{};
@@ -212,7 +214,7 @@ Result Linux::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     return Result::SUCCESS;
 }
 
-Linux::SwapChainSupportDetails Linux::querySwapChainSupport(const VkPhysicalDevice& device) {
+Implementation::SwapChainSupportDetails Implementation::querySwapChainSupport(const VkPhysicalDevice& device) {
     U32 formatCount;
     U32 presentModeCount;
     SwapChainSupportDetails details;
@@ -234,7 +236,7 @@ Linux::SwapChainSupportDetails Linux::querySwapChainSupport(const VkPhysicalDevi
     return details;
 }
 
-VkSurfaceFormatKHR Linux::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto &availableFormat : availableFormats) {
         if (availableFormat.format     == VK_FORMAT_B8G8R8A8_UNORM &&
             availableFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR) {
@@ -245,7 +247,7 @@ VkSurfaceFormatKHR Linux::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFor
     return availableFormats[0];
 }
 
-VkPresentModeKHR Linux::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
     if (config.vsync) {
         for (const auto &availablePresentMode : availablePresentModes) {
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -257,7 +259,7 @@ VkPresentModeKHR Linux::chooseSwapPresentMode(const std::vector<VkPresentModeKHR
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D Linux::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
     if (capabilities.currentExtent.width != UINT32_MAX) {
         return capabilities.currentExtent;
     } else {
@@ -278,29 +280,29 @@ VkExtent2D Linux::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
     }        
 }
 
-void Linux::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
-    reinterpret_cast<Linux*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
+void Implementation::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
+    reinterpret_cast<Implementation*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
 }
 
-const VkFormat& Linux::getSwapchainImageFormat() const {
+const VkFormat& Implementation::getSwapchainImageFormat() const {
     return swapchainImageFormat;
 }
 
-std::vector<VkImageView>& Linux::getSwapchainImageViews() {
+std::vector<VkImageView>& Implementation::getSwapchainImageViews() {
     return swapchainImageViews;
 }
 
-const VkExtent2D& Linux::getSwapchainExtent() const {
+const VkExtent2D& Implementation::getSwapchainExtent() const {
     return swapchainExtent;       
 }
 
-Result Linux::pollEvents() {
+Result Implementation::pollEvents() {
     glfwWaitEvents();
 
     return Result::SUCCESS;
 }
 
-bool Linux::keepRunning() {
+bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window);
 }
 

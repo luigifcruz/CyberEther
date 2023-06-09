@@ -1,11 +1,10 @@
 src_lst += files([
-    'base.cc',
+    'generic.cc',
 ])
 
 sum_lst = {}
 
-subdir('macos')
+subdir('glfw')
 subdir('ios')
-subdir('linux')
 
 summary(sum_lst, section: 'Viewport', bool_yn: true)

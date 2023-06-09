@@ -1,13 +1,13 @@
-#ifndef JETSTREAM_VIEWPORT_DEVICES_VULKAN_HH
-#define JETSTREAM_VIEWPORT_DEVICES_VULKAN_HH
+#ifndef JETSTREAM_VIEWPORT_ADAPTER_VULKAN_HH
+#define JETSTREAM_VIEWPORT_ADAPTER_VULKAN_HH
 
-#include "jetstream/viewport/generic.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/backend/base.hh"
 
 namespace Jetstream::Viewport {
 
 template<>
-class Provider<Device::Vulkan> : public Generic {
+class Adapter<Device::Vulkan> : public Generic {
  public:
     using Generic::Generic;
 

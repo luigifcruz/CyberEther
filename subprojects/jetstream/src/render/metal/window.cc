@@ -6,7 +6,7 @@ namespace Jetstream::Render {
 using Implementation = WindowImp<Device::Metal>;
 
 Implementation::WindowImp(const Config& config,
-                          std::shared_ptr<Viewport::Provider<Device::Metal>>& viewport)
+                          std::shared_ptr<Viewport::Adapter<Device::Metal>>& viewport)
          : Window(config), viewport(viewport) {
 }
 

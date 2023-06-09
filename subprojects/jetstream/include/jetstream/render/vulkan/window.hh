@@ -14,7 +14,7 @@ template<>
 class WindowImp<Device::Vulkan> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Provider<Device::Vulkan>>& viewport);
+                       std::shared_ptr<Viewport::Adapter<Device::Vulkan>>& viewport);
 
     Result create();
     Result destroy();
@@ -34,31 +34,30 @@ class WindowImp<Device::Vulkan> : public Window {
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
-    std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
-    std::shared_ptr<Viewport::Provider<Device::Vulkan>> viewport;
-
+    VkRenderPass renderPass;
     VkCommandPool commandPool;
     VkDescriptorPool descriptorPool;
     VkCommandBufferBeginInfo commandBufferBeginInfo;
     VkCommandBuffer currentCommandBuffer;
     VkRenderPassBeginInfo renderPassBeginInfo;
-    VkRenderPass renderPass;
     std::vector<VkFramebuffer> swapchainFramebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
-
-    Result createSynchronizationObjects();
-    Result destroySynchronizationObjects();
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
     size_t currentFrame = 0;
 
+    std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
+    std::shared_ptr<Viewport::Adapter<Device::Vulkan>> viewport;
+
     Result createImgui();
     Result destroyImgui();
     Result beginImgui();
     Result endImgui();
     Result recreate();
+    Result createSynchronizationObjects();
+    Result destroySynchronizationObjects();
 };
 
 }  // namespace Jetstream::Render
