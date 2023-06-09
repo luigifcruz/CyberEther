@@ -104,7 +104,7 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
     return indices.isComplete() && requiredExtensions.empty();
 }
 
-Vulkan::Vulkan(const Config& config) : config(config) {
+Vulkan::Vulkan(const Config& _config) : config(_config) {
     // Create application.
 
     {
@@ -126,8 +126,8 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         instanceCreateInfo.pApplicationInfo = &appInfo;
 
         if (config.validationEnabled && !checkValidationLayerSupport()) {
-            JST_FATAL("[VULKAN] Couldn't find validation layers.");
-            JST_CHECK_THROW(Result::VULKAN_ERROR);
+            JST_WARN("[VULKAN] Couldn't find validation layers. Disabling Vulkan debug.");
+            config.validationEnabled = false;
         }
 
         const auto extensions = getRequiredInstanceExtensions();
@@ -135,8 +135,8 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
         instanceCreateInfo.enabledLayerCount = 0;
 
-        const auto validationLayers = getRequiredValidationLayers();
         if (config.validationEnabled) {
+            const auto validationLayers = getRequiredValidationLayers();
             instanceCreateInfo.enabledLayerCount = validationLayers.size();
             instanceCreateInfo.ppEnabledLayerNames = validationLayers.data();
         }
@@ -308,8 +308,8 @@ Vulkan::Vulkan(const Config& config) : config(config) {
         createInfo.enabledExtensionCount = static_cast<U32>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-        const auto validationLayers = getRequiredValidationLayers();
         if (config.validationEnabled) {
+            const auto validationLayers = getRequiredValidationLayers();
             createInfo.enabledLayerCount = validationLayers.size();
             createInfo.ppEnabledLayerNames = validationLayers.data();
         } else {

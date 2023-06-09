@@ -23,6 +23,12 @@ Result Implementation::create() {
     texture = device->newTexture(textureDesc); 
     JST_ASSERT(texture);
 
+    auto samplerDesc = MTL::SamplerDescriptor::alloc()->init();
+    samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
+    samplerDesc->setMagFilter(MTL::SamplerMinMagFilterLinear);
+    samplerState = device->newSamplerState(samplerDesc);
+    samplerDesc->release();
+
     if (config.buffer) {
         JST_CHECK(fill());
     }
@@ -33,6 +39,7 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal texture.");
 
+    samplerState->release();
     texture->release();
 
     return Result::SUCCESS;

@@ -14,8 +14,7 @@ class VertexImp<Device::Metal> : public Vertex {
  protected:
     Result create(MTL::VertexDescriptor* vertDesc);
     Result destroy();
-    Result encode(MTL::RenderCommandEncoder* encode,
-                  const U64& offset);
+    Result encode(MTL::RenderCommandEncoder* encode);
 
     const MTL::Buffer* getIndexBuffer();
 

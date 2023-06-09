@@ -128,7 +128,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
             static_cast<U32>(framebuffer->size().height)
         };
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 0.0f}}};
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
 

@@ -104,6 +104,7 @@ Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
     // Attach frame textures.
     for (U64 i = 0; i < textures.size(); i++) {
         renderCmdEncoder->setFragmentTexture(textures[i]->getHandle(), i);
+        renderCmdEncoder->setFragmentSamplerState(textures[i]->getSamplerStateHandle(), i);
     }
 
     // Attach frame fragment-shader buffers.
@@ -118,7 +119,7 @@ Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
     }
 
     // Attach frame encoder.
-    JST_CHECK(_draw->encode(renderCmdEncoder, buffers.size()));
+    JST_CHECK(_draw->encode(renderCmdEncoder));
 
     return Result::SUCCESS;
 }

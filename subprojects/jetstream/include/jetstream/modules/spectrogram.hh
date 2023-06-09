@@ -16,7 +16,7 @@ class Spectrogram : public Module, public Compute, public Present {
  public:
     struct Config {
         U64 height = 256;
-        Render::Size2D<U64> viewSize = {4096, 512};
+        Render::Size2D<U64> viewSize = {2048, 1024};
     };
 
     struct Input {
@@ -70,7 +70,7 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
 
     std::shared_ptr<Render::Texture> texture;
-    std::shared_ptr<Render::Buffer> binTexture;
+    std::shared_ptr<Render::Texture> binTexture;
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;

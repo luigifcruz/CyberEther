@@ -63,7 +63,6 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    lutTextureCfg.key = "LutTexture";
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
     // TODO: This could use unified memory.

@@ -33,6 +33,10 @@ class TextureImp<Device::Metal> : public Texture {
         return texture;
     }
 
+    constexpr MTL::SamplerState* getSamplerStateHandle() const {
+        return samplerState;
+    }
+
     static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&, 
                                                const PixelType&);
     static U64 GetPixelByteSize(const MTL::PixelFormat&);
@@ -40,6 +44,7 @@ class TextureImp<Device::Metal> : public Texture {
  private:
     MTL::Texture* texture = nullptr;
     MTL::PixelFormat pixelFormat;
+    MTL::SamplerState* samplerState;
 
     friend class SurfaceImp<Device::Metal>;
     friend class ProgramImp<Device::Metal>;

@@ -77,10 +77,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                              const U64& offset) {
-    U64 index = offset;
-
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
+    U64 index = 0;
     for (const auto& [buffer, stride] : buffers) {
         encoder->setVertexBuffer(buffer->getHandle(), 0, index++);
     }

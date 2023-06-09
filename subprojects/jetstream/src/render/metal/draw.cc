@@ -25,8 +25,7 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                              const U64& offset) {
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
     MTL::PrimitiveType mode;
 
     switch (config.mode) {
@@ -47,7 +46,7 @@ Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
             break;
     }
 
-    JST_CHECK(buffer->encode(encoder, offset));
+    JST_CHECK(buffer->encode(encoder));
 
     if (buffer->isBuffered()) {
         encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->getVertexCount(),

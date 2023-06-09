@@ -52,18 +52,17 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
     JST_CHECK(window.build(drawVertex, drawVertexCfg));
 
-    Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = frequencyBins.data();
-    bufferCfg.size = frequencyBins.size();
-    bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
-    bufferCfg.target = Render::Buffer::Target::STORAGE;
-    bufferCfg.enableZeroCopy = true;
+    Render::Texture::Config bufferCfg;
+    bufferCfg.buffer = (U8*)(frequencyBins.data());
+    bufferCfg.size = {frequencyBins.shape(0), frequencyBins.shape(1)};
+    bufferCfg.dfmt = Render::Texture::DataFormat::F32;
+    bufferCfg.pfmt = Render::Texture::PixelFormat::RED;
+    bufferCfg.ptype = Render::Texture::PixelType::F32;
     JST_CHECK(window.build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    lutTextureCfg.key = "LutTexture";
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
     // TODO: This could use unified memory.
@@ -80,11 +79,10 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
         {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
     };
     programCfg.draw = drawVertex;
-    programCfg.textures = {lutTexture};
+    programCfg.textures = {binTexture, lutTexture};
     programCfg.buffers = {
         {uniformBuffer, Render::Program::Target::VERTEX |
                         Render::Program::Target::FRAGMENT},
-        {binTexture, Render::Program::Target::FRAGMENT},
     };
     JST_CHECK(window.build(program, programCfg));
 
@@ -103,7 +101,7 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::present(Render::Window& window) {
-    binTexture->update();
+    binTexture->fill();
 
     shaderUniforms.width = input.buffer.shape(1);
     shaderUniforms.height = config.height;

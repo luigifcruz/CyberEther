@@ -92,7 +92,7 @@ class Vulkan {
     }
 
  private:
-    const Config& config;
+    Config config;
 
     VkDevice device;
     VkInstance instance;

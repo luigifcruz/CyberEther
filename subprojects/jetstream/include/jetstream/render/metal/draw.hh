@@ -14,8 +14,7 @@ class DrawImp<Device::Metal> : public Draw {
  protected:
     Result create(MTL::VertexDescriptor* vertDesc);
     Result destroy();
-    Result encode(MTL::RenderCommandEncoder* encode,
-                  const U64& offset);
+    Result encode(MTL::RenderCommandEncoder* encode);
 
  private:
     std::shared_ptr<VertexImp<Device::Metal>> buffer;

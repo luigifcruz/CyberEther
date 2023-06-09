@@ -30,7 +30,6 @@ class Texture {
     };
 
     struct Config {
-        std::string key;
         Size2D<U64> size;
         const uint8_t* buffer = nullptr;
         DataFormat dfmt = DataFormat::RGBA;
