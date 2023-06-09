@@ -2,7 +2,6 @@
 
 #include "jetstream/backend/devices/vulkan/base.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
-#include <vulkan/vulkan_core.h>
 
 namespace Jetstream::Backend {
 
@@ -12,10 +11,20 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
     extensions.push_back("VK_KHR_get_physical_device_properties2");
     extensions.push_back("VK_KHR_surface");
 
-#ifdef __linux__
+#if defined(__linux__)
     extensions.push_back("VK_KHR_xcb_surface");
+    extensions.push_back("VK_KHR_wayland_surface");
 #endif
-    // TODO: Add Windows and Android support.
+#if defined(__APPLE__)
+    extensions.push_back("VK_MVK_macos_surface");
+    extensions.push_back("VK_EXT_metal_surface");
+#endif
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32)
+    extensions.push_back("VK_KHR_win32_surface");
+#endif
+#if defined(__ANDROID__)
+    extensions.push_back("VK_KHR_android_surface");
+#endif
 
     if (config.validationEnabled) {
         extensions.push_back("VK_EXT_debug_report");

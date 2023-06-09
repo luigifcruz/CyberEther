@@ -8,10 +8,6 @@ foreach x_dep : deps
     all_deps_found = all_deps_found and cfg_lst.get(x_dep, false)
 endforeach
 
-if host_machine.system() != 'linux' 
-    all_deps_found = false
-endif
-
 if all_deps_found
     subdir('tools')
 
