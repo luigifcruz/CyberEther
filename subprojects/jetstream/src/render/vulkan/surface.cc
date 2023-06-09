@@ -111,7 +111,7 @@ Result Implementation::destroy() {
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     if (framebuffer->size(requestedSize)) {
         JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-            JST_FATAL("[VULKAN] Can't wait for graphics queue to finish.");
+            JST_FATAL("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
         });
             
         JST_CHECK(destroy());

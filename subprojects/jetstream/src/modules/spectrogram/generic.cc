@@ -71,7 +71,7 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::STORAGE;
+    uniformCfg.target = Render::Buffer::Target::UNIFORM;
     JST_CHECK(window.build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
@@ -81,7 +81,11 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     };
     programCfg.draw = drawVertex;
     programCfg.textures = {lutTexture};
-    programCfg.buffers = {uniformBuffer, binTexture};
+    programCfg.buffers = {
+        {uniformBuffer, Render::Program::Target::VERTEX |
+                        Render::Program::Target::FRAGMENT},
+        {binTexture, Render::Program::Target::FRAGMENT},
+    };
     JST_CHECK(window.build(program, programCfg));
 
     Render::Texture::Config textureCfg;

@@ -93,7 +93,11 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
     };
     programCfg.draw = drawVertex;
     programCfg.textures = {lutTexture};
-    programCfg.buffers = {uniformBuffer, binTexture};
+    programCfg.buffers = {
+        {uniformBuffer, Render::Program::Target::VERTEX |
+                        Render::Program::Target::FRAGMENT},
+        {binTexture, Render::Program::Target::FRAGMENT},
+    };
     JST_CHECK(window.build(program, programCfg));
 
     Render::Texture::Config textureCfg;

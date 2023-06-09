@@ -17,8 +17,7 @@ class Lineplot : public Module, public Compute, public Present {
     struct Config {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        // TODO: Revert.
-        Render::Size2D<U64> viewSize = {2456, 521};
+        Render::Size2D<U64> viewSize = {1024, 512};
     };
 
     struct Input {

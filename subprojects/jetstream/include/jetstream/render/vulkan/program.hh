@@ -22,15 +22,15 @@ class ProgramImp<Device::Vulkan> : public Program {
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
     U64 bindingOffset;
-    std::vector<VkDescriptorSet> descriptorSets;
+    VkDescriptorSet descriptorSet;
     VkDescriptorSetLayout descriptorSetLayout;
 
     std::shared_ptr<DrawImp<Device::Vulkan>> draw;
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
     std::vector<std::shared_ptr<TextureImp<Device::Vulkan>>> textures;
-    std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
+    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Vulkan>>, Program::Target>> buffers;
 
-    static Result checkShaderCompilation(U64);
-    static Result checkProgramCompilation(U64);
+    static VkShaderStageFlags TargetToVulkan(const Program::Target& target);
 
     friend class SurfaceImp<Device::Vulkan>; 
 };

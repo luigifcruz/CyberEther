@@ -29,7 +29,20 @@ Result Implementation::create() {
             bufferUsageFlag |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
             break;
         case Target::STORAGE:
-            bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; 
+            bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            break;
+        case Target::UNIFORM:
+            bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            break;
+        case Target::STORAGE_DYNAMIC:
+            bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            break;
+        case Target::UNIFORM_DYNAMIC:
+            bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             break;
     }
 

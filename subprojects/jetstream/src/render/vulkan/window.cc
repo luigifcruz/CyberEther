@@ -146,7 +146,7 @@ Result Implementation::destroy() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_FATAL("[VULKAN] Can't wait for graphics queue to finish.");
+        JST_FATAL("[VULKAN] Can't wait for graphics queue to finish for window destruction.");
     });
 
     JST_CHECK(destroySynchronizationObjects());

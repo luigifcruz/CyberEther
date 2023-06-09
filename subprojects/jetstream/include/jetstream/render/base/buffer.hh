@@ -16,6 +16,9 @@ class Buffer {
         VERTEX,
         VERTEX_INDICES,
         STORAGE,
+        UNIFORM,
+        STORAGE_DYNAMIC,
+        UNIFORM_DYNAMIC,
     };
 
     struct Config {
