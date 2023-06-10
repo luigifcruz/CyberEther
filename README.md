@@ -131,6 +131,6 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Implement Vulkan+Linux Viewport.
-- TODO: Implement Vulkan Render.
-- TODO: Implement Vulkan Compute.
+- TODO: Add missing shaders and polish existing.
+- TODO: Add runtime graph programming.
+- TODO: Add CUDA compute logic.
