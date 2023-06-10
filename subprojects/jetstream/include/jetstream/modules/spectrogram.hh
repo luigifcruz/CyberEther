@@ -16,7 +16,7 @@ class Spectrogram : public Module, public Compute, public Present {
  public:
     struct Config {
         U64 height = 256;
-        Render::Size2D<U64> viewSize = {2048, 1024};
+        Render::Size2D<U64> viewSize = {2048, 512};
     };
 
     struct Input {

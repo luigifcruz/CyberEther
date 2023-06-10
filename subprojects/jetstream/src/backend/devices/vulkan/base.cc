@@ -30,8 +30,6 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
         extensions.push_back("VK_EXT_debug_report");
     }
 
-    JST_DEBUG("[VULKAN] Requested Extensions: {}", extensions);
-
     return extensions;
 }
 
@@ -39,8 +37,6 @@ std::vector<const char*> Vulkan::getRequiredValidationLayers() {
     std::vector<const char*> layers;
 
     layers.push_back("VK_LAYER_KHRONOS_validation");
-
-    JST_DEBUG("[VULKAN] Requested Validation Layers: {}", layers);
 
     return layers;
 }
@@ -135,8 +131,8 @@ Vulkan::Vulkan(const Config& _config) : config(_config) {
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
         instanceCreateInfo.enabledLayerCount = 0;
 
+        const auto validationLayers = getRequiredValidationLayers();
         if (config.validationEnabled) {
-            const auto validationLayers = getRequiredValidationLayers();
             instanceCreateInfo.enabledLayerCount = validationLayers.size();
             instanceCreateInfo.ppEnabledLayerNames = validationLayers.data();
         }
@@ -308,8 +304,8 @@ Vulkan::Vulkan(const Config& _config) : config(_config) {
         createInfo.enabledExtensionCount = static_cast<U32>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
+        const auto validationLayers = getRequiredValidationLayers();
         if (config.validationEnabled) {
-            const auto validationLayers = getRequiredValidationLayers();
             createInfo.enabledLayerCount = validationLayers.size();
             createInfo.ppEnabledLayerNames = validationLayers.data();
         } else {

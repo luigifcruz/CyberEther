@@ -6,7 +6,7 @@ template<Device D, typename T>
 Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Spectrogram compute core using CPU backend.");
 
-    frequencyBins = Vector<Device::CPU, F32, 2>({input.buffer.size(), config.height});
+    frequencyBins = Vector<Device::CPU, F32, 2>({input.buffer.shape(1), config.height});
     decayFactor = pow(0.999, input.buffer.shape(0));
 
     return Result::SUCCESS;
@@ -14,8 +14,10 @@ Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
-    for (U64 x = 0; x < input.buffer.size() * config.height; x++) {
-        frequencyBins[x] *= decayFactor;
+    const U64& size = frequencyBins.size();
+    const F32 factor = decayFactor;
+    for (U64 x = 0; x < size; ++x) {
+        frequencyBins[x] *= factor;
     }
 
     for (U64 b = 0; b < input.buffer.shape(0); b++) {

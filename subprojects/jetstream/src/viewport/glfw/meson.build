@@ -12,13 +12,13 @@ if all_deps_found
     
     cfg_lst.set('JETSTREAM_VIEWPORT_GLFW_AVAILABLE', true)
 
-    if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', true)
+    if cfg_lst.get('JETSTREAM_BACKEND_METAL_AVAILABLE', false)
         src_lst += files([
             'metal.cc',
         ])
     endif
     
-    if cfg_lst.get('JETSTREAM_BACKEND_VULKAN_AVAILABLE', true)
+    if cfg_lst.get('JETSTREAM_BACKEND_VULKAN_AVAILABLE', false)
         src_lst += files([
             'vulkan.cc',
         ])
