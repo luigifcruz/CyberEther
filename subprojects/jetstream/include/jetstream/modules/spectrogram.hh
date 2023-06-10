@@ -99,60 +99,6 @@ class Spectrogram : public Module, public Compute, public Present {
         Vector<Device::Metal, U8> constants;
     } metal;
 #endif
-    
-    //
-    // Metal
-    //
-
-    const char* MetalShader = R"END(
-        #include <metal_stdlib>
-
-        using namespace metal;
-
-        struct TexturePipelineRasterizerData {
-            float4 position [[position]];
-            float2 texcoord;
-            uint maxSize;
-        };
-
-        struct ShaderUniforms {
-            uint width;
-            uint height;
-            float offset;
-            float zoom;
-        };
-
-        vertex TexturePipelineRasterizerData vertFunc(
-                constant ShaderUniforms& uniforms [[buffer(0)]],
-                const device packed_float3* vertexArray [[buffer(2)]],
-                const device packed_float2* texcoord [[buffer(3)]],
-                unsigned int vID[[vertex_id]]) {
-            TexturePipelineRasterizerData out;
-
-            out.position = vector_float4(vertexArray[vID], 1.0);
-            out.texcoord = float2(texcoord[vID].x * uniforms.width,
-                                  texcoord[vID].y * uniforms.height);
-            out.maxSize = uniforms.width * uniforms.height;
-
-            return out;
-        }
-
-        fragment float4 fragFunc(
-                TexturePipelineRasterizerData in [[stage_in]],
-                constant ShaderUniforms& uniforms [[buffer(0)]],
-                const device float* data [[buffer(1)]],
-                texture2d<float> lut [[texture(0)]]) {
-            uint2 texcoord = uint2(in.texcoord);
-            uint index = texcoord.y * uniforms.width + texcoord.x;
-
-            if (index > in.maxSize && index < 0) {
-                return float4(0.0f, 0.0f, 0.0f, 0.0f);
-            }
-
-            constexpr sampler lutSampler(filter::linear);
-            return lut.sample(lutSampler, vector_float2(data[index], 0.0));
-        }
-    )END";
 };
 
 }  // namespace Jetstream
