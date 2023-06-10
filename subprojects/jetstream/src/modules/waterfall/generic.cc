@@ -82,7 +82,7 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::STORAGE;
+    uniformCfg.target = Render::Buffer::Target::UNIFORM;
     JST_CHECK(window.build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
