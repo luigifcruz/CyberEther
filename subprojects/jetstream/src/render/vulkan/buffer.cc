@@ -102,8 +102,11 @@ Result Implementation::update() {
 }
 
 Result Implementation::update(const U64& offset, const U64& size) {
-    // TODO: Implement zero-copy option.
+    if (size == 0) {
+        return Result::SUCCESS;
+    }
 
+    // TODO: Implement zero-copy option.
     void* mappedData;
     auto& backend = Backend::State<Device::Vulkan>();
     const auto& byteOffset = offset * config.elementByteSize;

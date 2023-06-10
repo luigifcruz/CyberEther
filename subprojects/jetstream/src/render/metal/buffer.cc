@@ -44,6 +44,10 @@ Result Implementation::update() {
 }
 
 Result Implementation::update(const U64& offset, const U64& size) {
+    if (size == 0) {
+        return Result::SUCCESS;
+    }
+
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
