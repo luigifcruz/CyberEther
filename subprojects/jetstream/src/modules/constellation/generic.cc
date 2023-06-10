@@ -52,12 +52,12 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
     JST_CHECK(window.build(drawVertex, drawVertexCfg));
 
-    Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = timeSamples.data();
-    bufferCfg.size = timeSamples.size();
-    bufferCfg.elementByteSize = sizeof(timeSamples[0]);
-    bufferCfg.target = Render::Buffer::Target::STORAGE;
-    bufferCfg.enableZeroCopy = true;
+    Render::Texture::Config bufferCfg;
+    bufferCfg.buffer = (U8*)(timeSamples.data());
+    bufferCfg.size = {timeSamples.shape(0), timeSamples.shape(1)};
+    bufferCfg.dfmt = Render::Texture::DataFormat::F32;
+    bufferCfg.pfmt = Render::Texture::PixelFormat::RED;
+    bufferCfg.ptype = Render::Texture::PixelType::F32;
     JST_CHECK(window.build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
@@ -79,11 +79,10 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
     };
     programCfg.draw = drawVertex;
-    programCfg.textures = {lutTexture};
+    programCfg.textures = {binTexture, lutTexture};
     programCfg.buffers = {
         {uniformBuffer, Render::Program::Target::VERTEX |
                         Render::Program::Target::FRAGMENT},
-        {binTexture, Render::Program::Target::FRAGMENT},
     };
     JST_CHECK(window.build(program, programCfg));
 
@@ -102,7 +101,7 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
 
 template<Device D, typename T>
 Result Constellation<D, T>::present(Render::Window& window) {
-    binTexture->update();
+    binTexture->fill();
 
     shaderUniforms.width = timeSamples.shape(0);
     shaderUniforms.height = timeSamples.shape(1);

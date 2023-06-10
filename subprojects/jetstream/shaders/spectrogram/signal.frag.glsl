@@ -19,4 +19,3 @@ void main() {
     vec2 color = texture(data, inTexcoord).rb;
     outColor = texture(lut, color);
 }
-

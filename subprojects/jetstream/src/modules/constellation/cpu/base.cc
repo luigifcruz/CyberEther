@@ -14,7 +14,7 @@ Result Constellation<D, T>::createCompute(const RuntimeMetadata& meta) {
 
 template<Device D, typename T>
 Result Constellation<D, T>::compute(const RuntimeMetadata& meta) {
-    for (U64 x = 0; x < timeSamples.shape(0) * timeSamples.shape(1); x++) {
+    for (U64 x = 0; x < timeSamples.size(); x++) {
         timeSamples[x] *= decayFactor;
     }
 
@@ -42,7 +42,7 @@ Result Constellation<D, T>::compute(const RuntimeMetadata& meta) {
             const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * timeSamples.shape(0);
 
             if (r >= 0 and r < timeSamples.shape(0) and i >= 0 and i < timeSamples.shape(1)) {
-                timeSamples[{r, i}] += 0.02; 
+                timeSamples[{r, i}] += 0.02;
             }
         }
     }
