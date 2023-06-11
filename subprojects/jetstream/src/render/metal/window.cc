@@ -127,7 +127,7 @@ Result Implementation::begin() {
         return Result::SKIP;
     }
 
-    auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0);
+    auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0)->init();
     colorAttachDescriptor->setTexture(drawable->texture());
     colorAttachDescriptor->setLoadAction(MTL::LoadActionClear);
     colorAttachDescriptor->setStoreAction(MTL::StoreActionStore);

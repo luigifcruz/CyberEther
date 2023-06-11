@@ -42,14 +42,14 @@ foreach shader_pkg : shader_pkg_lst
             custom_target(
                 input : vert,
                 output : name + '_' + fs.stem(shader[0]) + '.msl',
-                command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@'],
+                command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@', '--msl-version', '30000'],
                 build_by_default : true,
             )
 
             custom_target(
                 input : frag,
                 output : name + '_' + fs.stem(shader[1]) + '.msl',
-                command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@'],
+                command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@', '--msl-version', '30000'],
                 build_by_default : true,
             )
         endif

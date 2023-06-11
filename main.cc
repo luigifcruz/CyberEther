@@ -10,7 +10,7 @@
 using namespace Jetstream;
 
 constexpr static Device ComputeDevice = Device::Metal;
-constexpr static Device RenderDevice  = Device::Metal;
+constexpr static Device RenderDevice  = Device::Vulkan;
 using Platform = Viewport::GLFW<RenderDevice>;
 
 class SDR {
@@ -207,9 +207,9 @@ class UI {
         });
 
         lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-        // wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
         spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-        // cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
+        cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
 
         JST_CHECK_THROW(instance.create());
 
@@ -242,9 +242,9 @@ class UI {
     std::shared_ptr<Multiply<ComputeDevice>> flt_mul;
 
     Bundle::LineplotUI<ComputeDevice> lpt;
-    // Bundle::WaterfallUI<ComputeDevice> wtf;
+    Bundle::WaterfallUI<ComputeDevice> wtf;
     Bundle::SpectrogramUI<ComputeDevice> spc;
-    // Bundle::ConstellationUI<Device::CPU> cst;
+    Bundle::ConstellationUI<Device::CPU> cst;
 
     void threadLoop() {
         frequency = sdr.getConfig().frequency / 1e6;
@@ -259,9 +259,9 @@ class UI {
             ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
             JST_CHECK_THROW(lpt.draw());
-            // JST_CHECK_THROW(wtf.draw());
+            JST_CHECK_THROW(wtf.draw());
             JST_CHECK_THROW(spc.draw());
-            // JST_CHECK_THROW(cst.draw());
+            JST_CHECK_THROW(cst.draw());
 
             {
                 ImGui::Begin("FIR Filter Control");
@@ -299,9 +299,9 @@ class UI {
                 }
 
                 JST_CHECK_THROW(lpt.drawControl());
-                // JST_CHECK_THROW(wtf.drawControl());
+                JST_CHECK_THROW(wtf.drawControl());
                 JST_CHECK_THROW(spc.drawControl());
-                // JST_CHECK_THROW(cst.drawControl());
+                JST_CHECK_THROW(cst.drawControl());
 
                 ImGui::End();
             }
@@ -344,9 +344,9 @@ class UI {
                 }
 
                 JST_CHECK_THROW(lpt.drawInfo());
-                // JST_CHECK_THROW(wtf.drawInfo());
+                JST_CHECK_THROW(wtf.drawInfo());
                 JST_CHECK_THROW(spc.drawInfo());
-                // JST_CHECK_THROW(cst.drawInfo());
+                JST_CHECK_THROW(cst.drawInfo());
 
                 ImGui::End();
             }

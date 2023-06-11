@@ -51,7 +51,7 @@ Result Implementation::createFramebuffer() {
 
     JST_CHECK(framebuffer->create());
 
-    auto colorAttachDescOff = renderPassDescriptor->colorAttachments()->object(0);
+    auto colorAttachDescOff = renderPassDescriptor->colorAttachments()->object(0)->init();
     auto texture = reinterpret_cast<const MTL::Texture*>(framebuffer->raw());
     colorAttachDescOff->setTexture(texture);
     colorAttachDescOff->setLoadAction(MTL::LoadActionClear);

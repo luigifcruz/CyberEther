@@ -60,18 +60,19 @@ Result Metal::CompileKernel(const char* shaderSrc,
                             MTL::ComputePipelineState** pipelineState) {
     auto device = Backend::State<Device::Metal>()->getDevice();
 
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc();
+    MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
     opts->setFastMathEnabled(true);
+    opts->setLanguageVersion(MTL::LanguageVersion3_0);
 
     NS::Error* err = nullptr;
-    NS::String* source = NS::String::string(shaderSrc, NS::ASCIIStringEncoding);
+    NS::String* source = NS::String::string(shaderSrc, NS::UTF8StringEncoding);
     auto library = device->newLibrary(source, opts, &err);
     if (!library) {
         JST_FATAL("Error while compiling kernel library:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
 
-    auto functionName = NS::String::string(methodName, NS::ASCIIStringEncoding);
+    auto functionName = NS::String::string(methodName, NS::UTF8StringEncoding);
     auto kernel = library->newFunction(functionName);
     if (!kernel) {
         JST_FATAL("Error while creating Metal function.");

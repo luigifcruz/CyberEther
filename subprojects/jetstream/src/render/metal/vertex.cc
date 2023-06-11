@@ -17,8 +17,11 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
     }
 }
 
-Result Implementation::create(MTL::VertexDescriptor* vertDesc) {
+Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset) {
     JST_DEBUG("Creating Metal vertex.");
+
+    // Offset vertex buffers for buffer attachments.
+    indexOffset = offset;
 
     U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
@@ -44,10 +47,10 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc) {
 
         auto attr = vertDesc->attributes()->object(bindingCount)->init();
         attr->setFormat(bindingFormat);
-        attr->setBufferIndex(bindingCount);
+        attr->setBufferIndex(bindingCount + indexOffset);
         attr->setOffset(0);
 
-        auto layout = vertDesc->layouts()->object(bindingCount)->init();
+        auto layout = vertDesc->layouts()->object(bindingCount + indexOffset)->init();
         layout->setStride(stride * sizeof(F32));
         layout->setStepRate(1);
         layout->setStepFunction(MTL::VertexStepFunctionPerVertex);
@@ -78,7 +81,7 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
-    U64 index = 0;
+    U64 index = indexOffset;
     for (const auto& [buffer, stride] : buffers) {
         encoder->setVertexBuffer(buffer->getHandle(), 0, index++);
     }

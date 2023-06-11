@@ -20,7 +20,8 @@ Result Implementation::create() {
                                    MTL::ResourceStorageModeShared,
                                    nullptr); 
     } else {
-        buffer = device->newBuffer(config.buffer, byteSize, 
+        buffer = device->newBuffer(config.buffer,
+                                   byteSize, 
                                    MTL::ResourceStorageModeShared); 
     }
     JST_ASSERT(buffer);

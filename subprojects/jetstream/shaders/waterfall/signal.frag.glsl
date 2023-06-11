@@ -15,7 +15,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     bool interpolate;
 } uniforms;
 
-layout(set = 0, binding = 1) buffer DataBuffer {
+layout(set = 0, binding = 1) readonly buffer DataBuffer {
     float data[];
 };
 

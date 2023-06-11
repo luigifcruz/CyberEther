@@ -12,7 +12,7 @@ class DrawImp<Device::Metal> : public Draw {
     explicit DrawImp(const Config& config);
 
  protected:
-    Result create(MTL::VertexDescriptor* vertDesc);
+    Result create(MTL::VertexDescriptor* vertDesc, const U64& offset);
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode);
 

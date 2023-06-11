@@ -12,7 +12,7 @@ class VertexImp<Device::Metal> : public Vertex {
     explicit VertexImp(const Config& config);
 
  protected:
-    Result create(MTL::VertexDescriptor* vertDesc);
+    Result create(MTL::VertexDescriptor* vertDesc, const U64& offset);
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode);
 
@@ -28,6 +28,8 @@ class VertexImp<Device::Metal> : public Vertex {
 
  private:
     U64 vertexCount;
+    U64 indexOffset;
+
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, U32>> buffers;
     std::shared_ptr<BufferImp<Device::Metal>> indices;
 
