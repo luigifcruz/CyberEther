@@ -13,7 +13,7 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
 
     Vector() : VectorType() {}
 
-    explicit Vector(const Vector& other) : VectorType(other) {}
+    Vector(const Vector& other) : VectorType(other) {}
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     explicit Vector(const Vector<Device::Metal, DataType, Dimensions>& other)

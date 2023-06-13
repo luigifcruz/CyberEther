@@ -19,7 +19,7 @@ class Constellation : public Module, public Compute, public Present {
     };
 
     struct Input {
-        const Vector<D, IT, 2>& buffer;
+        const Vector<D, IT, 2> buffer;
     };
 
     struct Output {
@@ -48,6 +48,11 @@ class Constellation : public Module, public Compute, public Present {
     const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
 
     Render::Texture& getTexture();
+
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Constellation<D, IT>>& module);
 
  protected:
     Config config;

@@ -81,6 +81,41 @@ class JETSTREAM_API Module {
         _id = id;
     }
 
+    template<typename T>
+    static Result BindVariable(std::unordered_map<std::string, std::any>& map,
+                               const std::string& name,
+                               const T& variable) {
+        if (map.count(name) == 0) {
+            JST_FATAL("Varible name not found inside map.");
+            return Result::ERROR;
+        }
+
+        auto& anyVar = map[name];
+
+        if (!anyVar.has_value()) {
+            JST_ERROR("Variable not initialized.");
+            return Result::ERROR;
+        }
+
+        try {
+            const_cast<T&>(variable) = std::any_cast<T>(anyVar);
+        } catch (const std::bad_any_cast& e) {
+            JST_ERROR("Failed to cast from any.");
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    }
+
+    template<typename T>
+    static Result RegisterVariable(std::unordered_map<std::string, std::any>& map,
+                                   const std::string& name,
+                                   T& variable) {
+        map[name] = std::any(variable);
+
+        return Result::SUCCESS;
+    }
+
  private:
     U64 _id;
     std::vector<IoMetadata> inputs;

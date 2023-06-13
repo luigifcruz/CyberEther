@@ -92,6 +92,22 @@ class JETSTREAM_API Instance {
         return block;
     }    
 
+    template<template<Device, typename...> class T, Device D, typename... C>
+    Result addBlock(std::shared_ptr<T<D, C...>>& block) {
+        if (commited) {
+            JST_FATAL("The instance was already commited.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
+
+        // Add metadata.
+        block->setId(this->blocks.size());
+
+        // Register block module to scheduler.
+        this->blocks.push_back(block);
+
+        return Result::SUCCESS;
+    }
+
     Result create();
     Result destroy();
 

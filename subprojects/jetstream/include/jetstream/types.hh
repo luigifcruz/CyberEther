@@ -1,11 +1,12 @@
 #ifndef JETSTREAM_TYPE_HH
 #define JETSTREAM_TYPE_HH
 
-#include <map>
+#include <any>
 #include <span>
 #include <vector>
 #include <complex>
 #include <typeindex>
+#include <unordered_map>
 
 #include "jetstream/memory/types.hh"
 

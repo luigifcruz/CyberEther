@@ -17,7 +17,7 @@ class Scale : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, T, 2>& buffer;
+        const Vector<D, T, 2> buffer;
     };
 
     struct Output {
@@ -53,6 +53,11 @@ class Scale : public Module, public Compute {
         this->config.range = range;
         return range;
     }
+
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Scale<D, T>>& module);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;

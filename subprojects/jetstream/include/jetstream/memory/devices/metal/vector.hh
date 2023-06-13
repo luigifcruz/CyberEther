@@ -15,7 +15,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
 
     Vector() : VectorType() {}
 
-    explicit Vector(const Vector& other)
+    Vector(const Vector& other)
              : VectorType(other),
                _metal(other._metal),
                _cpu(other._cpu) {

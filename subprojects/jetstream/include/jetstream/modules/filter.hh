@@ -90,6 +90,11 @@ class Filter : public Module {
 
     // TODO: Copy only when compute.
 
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Filter<D, T>>& module);
+
  private:
     Config config;
     const Input input;

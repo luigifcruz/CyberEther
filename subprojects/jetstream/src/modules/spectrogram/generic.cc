@@ -8,7 +8,7 @@ Spectrogram<D, T>::Spectrogram(const Config& config,
                                const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Spectrogram module.");
-    JST_CHECK_THROW(initInput(input.buffer));
+    JST_CHECK_THROW(Module::initInput(input.buffer));
 }
 
 template<Device D, typename T>
@@ -130,5 +130,26 @@ template<Device D, typename T>
 Render::Texture& Spectrogram<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+Result Spectrogram<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                                  std::unordered_map<std::string, std::any>& inputMap,
+                                  std::unordered_map<std::string, std::any>& outputMap,
+                                  std::shared_ptr<Spectrogram<D, T>>& module) {
+    using Module = Spectrogram<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "height", config.height));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
+
+    module = std::make_shared<Module>(config, input);
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream

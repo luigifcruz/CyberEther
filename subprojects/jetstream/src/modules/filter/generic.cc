@@ -87,7 +87,7 @@ Filter<D, T>::Filter(const Config& config,
     scratchCoeffs = Vector<D, T, 2>(config.shape);
 
     // Initialize output.
-    JST_CHECK_THROW(this->initOutput(this->output.coeffs, config.shape));
+    JST_CHECK_THROW(Module::initOutput(this->output.coeffs, config.shape));
 
     // Calculate fractions.
     JST_CHECK_THROW(calculateFractions());
@@ -136,6 +136,30 @@ void Filter<D, T>::summary() const {
     JST_INFO("    Number Of Taps:     {}", config.numberOfTaps);
     JST_INFO("    Linear Frequency:   {}", config.linearFrequency ? "YES" : "NO");
     JST_INFO("    Filter Shape:       {}", config.shape);
+}
+
+template<Device D, typename T>
+Result Filter<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                             std::unordered_map<std::string, std::any>& inputMap,
+                             std::unordered_map<std::string, std::any>& outputMap,
+                             std::shared_ptr<Filter<D, T>>& module) {
+    using Module = Filter<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "signalSampleRate", config.signalSampleRate));
+    JST_CHECK(Module::BindVariable(configMap, "filterSampleRate", config.filterSampleRate));
+    JST_CHECK(Module::BindVariable(configMap, "filterCenter", config.filterCenter));
+    JST_CHECK(Module::BindVariable(configMap, "numberOfTaps", config.shape));
+    JST_CHECK(Module::BindVariable(configMap, "linearFrequency", config.linearFrequency));
+
+    Module::Input input{};
+
+    module = std::make_shared<Module>(config, input);
+
+    JST_CHECK(Module::RegisterVariable(outputMap, "coeffs", module->getCoeffsBuffer()));
+
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

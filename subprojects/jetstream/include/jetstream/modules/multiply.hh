@@ -16,8 +16,8 @@ class Multiply : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, T, 2>& factorA;
-        const Vector<D, T, 2>& factorB;
+        const Vector<D, T, 2> factorA;
+        const Vector<D, T, 2> factorB;
     };
 
     struct Output {
@@ -44,6 +44,11 @@ class Multiply : public Module, public Compute {
     constexpr Config getConfig() const {
         return config;
     }
+
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Multiply<D, T>>& module);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;

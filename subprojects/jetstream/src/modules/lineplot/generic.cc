@@ -8,7 +8,7 @@ Lineplot<D, T>::Lineplot(const Config& config,
                          const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Lineplot module.");
-    JST_CHECK_THROW(initInput(input.buffer));
+    JST_CHECK_THROW(Module::initInput(input.buffer));
 }
 
 template<Device D, typename T>
@@ -164,5 +164,27 @@ template<Device D, typename T>
 Render::Texture& Lineplot<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+Result Lineplot<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                               std::unordered_map<std::string, std::any>& inputMap,
+                               std::unordered_map<std::string, std::any>& outputMap,
+                               std::shared_ptr<Lineplot<D, T>>& module) {
+    using Module = Lineplot<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "numberOfVerticalLines", config.numberOfVerticalLines));
+    JST_CHECK(Module::BindVariable(configMap, "numberOfHorizontalLines", config.numberOfHorizontalLines));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
+
+    module = std::make_shared<Module>(config, input);
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream

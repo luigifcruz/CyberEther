@@ -43,6 +43,11 @@ class Window : public Module {
         return config;
     }
 
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Window<D, T>>& module);
+
  private:
     const Config config;
     const Input input;

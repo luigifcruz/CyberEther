@@ -8,7 +8,8 @@ Waterfall<D, T>::Waterfall(const Config& config,
                            const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Waterfall module.");
-    JST_CHECK_THROW(initInput(input.buffer));
+
+    JST_CHECK_THROW(Module::initInput(input.buffer));
 }
 
 template<Device D, typename T>
@@ -188,5 +189,29 @@ template<Device D, typename T>
 Render::Texture& Waterfall<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+Result Waterfall<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                                std::unordered_map<std::string, std::any>& inputMap,
+                                std::unordered_map<std::string, std::any>& outputMap,
+                                std::shared_ptr<Waterfall<D, T>>& module) {
+    using Module = Waterfall<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "zoom", config.zoom));
+    JST_CHECK(Module::BindVariable(configMap, "offset", config.offset));
+    JST_CHECK(Module::BindVariable(configMap, "height", config.height));
+    JST_CHECK(Module::BindVariable(configMap, "interpolate", config.interpolate));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
+
+    module = std::make_shared<Module>(config, input);
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream
