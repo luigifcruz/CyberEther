@@ -49,8 +49,7 @@ libjetstream_dep = declare_dependency(
     link_with: libjetstream
 )
 
-# TODO: Re-enable tests.
-#subdir('tests')
+subdir('tests')
 
 pkg = import('pkgconfig')
 pkg.generate(

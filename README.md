@@ -131,6 +131,6 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Add missing shaders and polish existing.
 - TODO: Add runtime graph programming.
+- TODO: Add in-place modules.
 - TODO: Add CUDA compute logic.
