@@ -292,7 +292,7 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass& renderPass) {
+Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
     if (!bindings.empty()) {
         // Bind uniform and texture buffers.
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);

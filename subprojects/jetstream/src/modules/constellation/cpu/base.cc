@@ -41,7 +41,7 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
             const U64 r = ((sample.real() - min_real) / (max_real - min_real)) * timeSamples.shape(0);
             const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * timeSamples.shape(0);
 
-            if (r >= 0 and r < timeSamples.shape(0) and i >= 0 and i < timeSamples.shape(1)) {
+            if (r < timeSamples.shape(0) and i < timeSamples.shape(1)) {
                 timeSamples[{r, i}] += 0.02;
             }
         }

@@ -197,16 +197,21 @@ Result Implementation::createImgui() {
     JST_CHECK(viewport->createImgui());
 
     auto& backend = Backend::State<Device::Vulkan>();
-
+    
     ImGui_ImplVulkan_InitInfo init_info = {
         .Instance = backend->getInstance(),
         .PhysicalDevice = backend->getPhysicalDevice(),
         .Device = backend->getDevice(),
         .QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value(),
         .Queue = backend->getGraphicsQueue(),
+        .PipelineCache = {},
         .DescriptorPool = backend->getDescriptorPool(),
+        .Subpass = {},
         .MinImageCount = static_cast<U32>(swapchainFramebuffers.size()),
         .ImageCount = static_cast<U32>(swapchainFramebuffers.size()),
+        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+        .Allocator = {},
+        .CheckVkResultFn = nullptr
     };
     ImGui_ImplVulkan_Init(&init_info, renderPass); 
 

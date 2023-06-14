@@ -50,14 +50,14 @@ std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     return extensions;
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT flags,
-                                                           VkDebugReportObjectTypeEXT objectType,
-                                                           uint64_t object,
-                                                           size_t location,
-                                                           int32_t messageCode,
-                                                           const char *pLayerPrefix,
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT,
+                                                           VkDebugReportObjectTypeEXT,
+                                                           uint64_t,
+                                                           size_t,
+                                                           int32_t,
+                                                           const char*,
                                                            const char *pMessage,
-                                                           void *pUserData) {
+                                                           void*) {
     JST_DEBUG("[VULKAN] {}", pMessage);
     return VK_FALSE;
 }
