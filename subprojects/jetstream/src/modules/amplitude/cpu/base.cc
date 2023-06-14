@@ -20,13 +20,13 @@ static inline T log10(T X) {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Amplitude compute core using CPU backend.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {
     const auto& fftSize = input.buffer.shape(1);
 
     for (U64 i = 0; i < input.buffer.size(); i++) {

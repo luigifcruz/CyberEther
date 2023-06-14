@@ -46,6 +46,11 @@
 #include "jetstream/modules/scale.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE)
+#include "jetstream/modules/soapy.hh"
+#endif
+
 //
 // Graphical
 // 

@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Spectrogram<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Spectrogram compute core using CPU backend.");
 
     frequencyBins = Vector<Device::CPU, F32, 2>({input.buffer.shape(1), config.height});
@@ -13,7 +13,7 @@ Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
+Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
     const U64& size = frequencyBins.size();
     const F32 factor = decayFactor;
     for (U64 x = 0; x < size; ++x) {

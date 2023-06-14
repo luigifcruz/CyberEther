@@ -14,4 +14,3 @@ if all_deps_found
 endif
 
 ldr_lst += {'Vulkan': all_deps_found}
-

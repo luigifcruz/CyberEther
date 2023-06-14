@@ -31,6 +31,9 @@ Result Metal::compute() {
 
     for (const auto& block : blocks) {
         if ((err = block->compute(*metadata)) != Result::SUCCESS) {
+            if (err == Result::SKIP) {
+                return Result::SUCCESS;
+            }
             return err;
         }
     }

@@ -29,7 +29,7 @@ void Multiply<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-Result Multiply<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+Result Multiply<D, T>::Factory(std::unordered_map<std::string, std::any>&,
                                std::unordered_map<std::string, std::any>& inputMap,
                                std::unordered_map<std::string, std::any>& outputMap,
                                std::shared_ptr<Multiply<D, T>>& module) {

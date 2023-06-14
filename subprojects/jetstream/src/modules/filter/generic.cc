@@ -140,7 +140,7 @@ void Filter<D, T>::summary() const {
 
 template<Device D, typename T>
 Result Filter<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                             std::unordered_map<std::string, std::any>& inputMap,
+                             std::unordered_map<std::string, std::any>&,
                              std::unordered_map<std::string, std::any>& outputMap,
                              std::shared_ptr<Filter<D, T>>& module) {
     using Module = Filter<D, T>;

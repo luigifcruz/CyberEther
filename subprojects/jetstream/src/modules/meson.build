@@ -5,6 +5,7 @@ subdir('multiply')
 subdir('amplitude')
 subdir('scale')
 subdir('filter')
+subdir('soapy')
 
 # Graphical
 subdir('lineplot')

@@ -100,7 +100,7 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
 }
 
 template<Device D, typename T>
-Result Constellation<D, T>::present(Render::Window& window) {
+Result Constellation<D, T>::present(Render::Window&) {
     binTexture->fill();
 
     shaderUniforms.width = timeSamples.shape(0);
@@ -134,7 +134,7 @@ Render::Texture& Constellation<D, T>::getTexture() {
 template<Device D, typename T>
 Result Constellation<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                                     std::unordered_map<std::string, std::any>& inputMap,
-                                    std::unordered_map<std::string, std::any>& outputMap,
+                                    std::unordered_map<std::string, std::any>&,
                                     std::shared_ptr<Constellation<D, T>>& module) {
     using Module = Constellation<D, T>;
 

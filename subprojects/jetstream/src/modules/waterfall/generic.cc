@@ -22,7 +22,7 @@ void Waterfall<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Waterfall compute core.");
 
     frequencyBins = Vector<D, F32, 2>({input.buffer.shape(1),  config.height});
@@ -121,7 +121,7 @@ Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::present(Render::Window& window) {
+Result Waterfall<D, T>::present(Render::Window&) {
     int start = last;
     int blocks = (inc - last);
 
@@ -193,7 +193,7 @@ Render::Texture& Waterfall<D, T>::getTexture() {
 template<Device D, typename T>
 Result Waterfall<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                                 std::unordered_map<std::string, std::any>& inputMap,
-                                std::unordered_map<std::string, std::any>& outputMap,
+                                std::unordered_map<std::string, std::any>&,
                                 std::shared_ptr<Waterfall<D, T>>& module) {
     using Module = Waterfall<D, T>;
 

@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<>
-Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create FFT compute core using CPU backend.");
 
     auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
@@ -37,14 +37,14 @@ Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<>
-Result FFT<Device::CPU, CF32>::destroyCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::CPU, CF32>::destroyCompute(const RuntimeMetadata&) {
     JST_TRACE("Destroy FFT compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<>
-Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata& meta) {
+Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata&) {
     fftwf_execute(cpu.fftPlanCF32);
 
     return Result::SUCCESS;

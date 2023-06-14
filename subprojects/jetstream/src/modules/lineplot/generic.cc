@@ -147,7 +147,7 @@ void Lineplot<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-Result Lineplot<D, T>::present(Render::Window& window) {
+Result Lineplot<D, T>::present(Render::Window&) {
     lineVerticesBuffer->update();
     return Result::SUCCESS;
 }
@@ -168,7 +168,7 @@ Render::Texture& Lineplot<D, T>::getTexture() {
 template<Device D, typename T>
 Result Lineplot<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                                std::unordered_map<std::string, std::any>& inputMap,
-                               std::unordered_map<std::string, std::any>& outputMap,
+                               std::unordered_map<std::string, std::any>&,
                                std::shared_ptr<Lineplot<D, T>>& module) {
     using Module = Lineplot<D, T>;
 

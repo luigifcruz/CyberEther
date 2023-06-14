@@ -8,14 +8,14 @@ static inline T scale(const T x, const T min, const T max) {
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Scale<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
+Result Scale<D, T>::compute(const RuntimeMetadata&) {
     auto [min, max] = config.range;
 
     for (U64 i = 0; i < input.buffer.size(); i++) {

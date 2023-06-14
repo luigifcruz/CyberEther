@@ -4,7 +4,7 @@
 
 namespace Jetstream::Backend {
 
-CPU::CPU(const Config& config) {
+CPU::CPU(const Config&) {
 }
 
 }  // namespace Jetstream::Backend

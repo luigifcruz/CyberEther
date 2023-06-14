@@ -280,7 +280,7 @@ VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
     }        
 }
 
-void Implementation::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
+void Implementation::framebufferResizeCallback(GLFWwindow *window, int, int) {
     reinterpret_cast<Implementation*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
 }
 

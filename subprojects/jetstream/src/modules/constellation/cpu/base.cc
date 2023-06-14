@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Constellation<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Constellation<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Constellation compute core using CPU backend.");
 
     timeSamples = Vector<Device::CPU, F32, 2>({config.viewSize.width, config.viewSize.height});
@@ -13,7 +13,7 @@ Result Constellation<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-Result Constellation<D, T>::compute(const RuntimeMetadata& meta) {
+Result Constellation<D, T>::compute(const RuntimeMetadata&) {
     for (U64 x = 0; x < timeSamples.size(); x++) {
         timeSamples[x] *= decayFactor;
     }

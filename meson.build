@@ -15,7 +15,6 @@ summary({'cpp_std': get_option('cpp_std'),
         }, section: 'General', bool_yn: true)
 
 dep_lst = [
-    dependency('SoapySDR', fallback: ['soapysdr']),
     dependency('threads'),
     subproject('jetstream').get_variable('libjetstream_dep'),
 ]

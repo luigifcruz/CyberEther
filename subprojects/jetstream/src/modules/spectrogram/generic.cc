@@ -100,7 +100,7 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::present(Render::Window& window) {
+Result Spectrogram<D, T>::present(Render::Window&) {
     binTexture->fill();
 
     shaderUniforms.width = input.buffer.shape(1);
@@ -134,7 +134,7 @@ Render::Texture& Spectrogram<D, T>::getTexture() {
 template<Device D, typename T>
 Result Spectrogram<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                                   std::unordered_map<std::string, std::any>& inputMap,
-                                  std::unordered_map<std::string, std::any>& outputMap,
+                                  std::unordered_map<std::string, std::any>&,
                                   std::shared_ptr<Spectrogram<D, T>>& module) {
     using Module = Spectrogram<D, T>;
 
