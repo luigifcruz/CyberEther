@@ -291,7 +291,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config) {
         }
 
         VkPhysicalDeviceFeatures deviceFeatures{};
-        deviceFeatures.wideLines = true;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
