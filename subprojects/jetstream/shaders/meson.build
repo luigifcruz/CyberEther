@@ -67,6 +67,6 @@ foreach shader_pkg : shader_pkg_lst
             command : [python_bin, files('parser.py'), meson.project_build_root(), name],
             build_by_default : true,
         )
-    endforeach
+    endif
   
 endforeach
