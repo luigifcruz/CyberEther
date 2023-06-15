@@ -34,11 +34,13 @@ foreach shader_pkg : shader_pkg_lst
                 command : [glslang, '--quiet', '-V', '-S', 'frag', '@INPUT@', '-o', '@OUTPUT@'],
                 build_by_default : true,
             )
+
+            input_lst += [vert, frag]
         endif
 
         # Translate to MSL (Metal).
   
-        if glslang.found()
+        if spirvcross.found()
             custom_target(
                 input : vert,
                 output : name + '_' + fs.stem(shader[0]) + '.msl',
@@ -54,8 +56,6 @@ foreach shader_pkg : shader_pkg_lst
             )
         endif
 
-        input_lst += [vert, frag]
-
     endforeach
 
     # Package all translations into a single header.
@@ -67,6 +67,6 @@ foreach shader_pkg : shader_pkg_lst
             command : [python_bin, files('parser.py'), meson.project_build_root(), name],
             build_by_default : true,
         )
-    endif
+    endforeach
   
 endforeach

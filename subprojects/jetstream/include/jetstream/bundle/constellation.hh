@@ -14,7 +14,7 @@ class ConstellationUI {
     Result init(Instance& instance, 
                 const typename Module::Config& config,
                 const typename Module::Input& input) {
-        module =  instance.addBlock<Constellation, DeviceId>(config, input);
+        module = instance.addBlock<Constellation, DeviceId>(config, input);
 
         return Result::SUCCESS;
     }
