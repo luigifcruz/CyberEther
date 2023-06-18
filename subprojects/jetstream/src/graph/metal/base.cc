@@ -37,8 +37,6 @@ Result Metal::compute() {
             return err;
         }
     }
-    
-    // TODO: Add automatic blit synchronization of wired output buffers.
 
     metadata->metal.commandBuffer->commit();
     metadata->metal.commandBuffer->waitUntilCompleted();

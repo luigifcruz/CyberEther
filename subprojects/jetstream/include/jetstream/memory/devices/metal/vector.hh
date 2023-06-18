@@ -103,6 +103,10 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
             this->_refs = new U64(1);
             this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
         }
+        if (!this->_pos) {
+            this->_pos = new U64(0);
+            this->_destructors->push_back([ptr = this->_pos]() { free(ptr); });
+        }
 
         // Create MTL::Buffer.
         auto device = Backend::State<Device::Metal>()->getDevice();

@@ -6,6 +6,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/metadata.hh"
 #include "jetstream/render/base.hh"
+#include "jetstream/memory/base.hh"
 
 namespace Jetstream {
 
@@ -13,6 +14,7 @@ class JETSTREAM_API Module {
  public:
     struct IoMetadata {
         U64 hash;
+        U64 phash;
         void* ptr;
         Device device;
         std::string type;
@@ -40,6 +42,7 @@ class JETSTREAM_API Module {
 
         inputs.push_back({
             buffer.hash(),
+            buffer.phash(),
             buffer.data(),
             buffer.device(),
             NumericTypeInfo<typename T::DataType>::name,
@@ -60,6 +63,7 @@ class JETSTREAM_API Module {
 
         outputs.push_back({
             buffer.hash(),
+            buffer.phash(),
             buffer.data(),
             buffer.device(),
             NumericTypeInfo<typename T::DataType>::name,
@@ -68,6 +72,27 @@ class JETSTREAM_API Module {
 
         return Result::SUCCESS;
     }
+
+    template<Device DeviceId, typename Type, U64 Dimensions>
+    Result initInplaceOutput(Vector<DeviceId, Type, Dimensions>& dst,
+                             const Vector<DeviceId, Type, Dimensions>& src) {
+        dst = const_cast<Vector<DeviceId, Type, Dimensions>&>(src);
+
+        dst.incrementPositionalIndex();
+
+        outputs.push_back({
+            dst.hash(),
+            dst.phash(),
+            dst.data(),
+            dst.device(),
+            NumericTypeInfo<Type>::name,
+            dst.shapeVector(),
+        });
+
+        return Result::SUCCESS;
+    }
+
+    // TODO: Add initInplaceOutput with reshape.
 
     const std::vector<IoMetadata>& getInputs() const {
         return inputs;

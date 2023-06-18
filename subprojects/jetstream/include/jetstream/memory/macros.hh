@@ -20,4 +20,11 @@
 #define JST_MIN(a,b) (((a)<(b))?(a):(b))
 #endif
 
+inline uint64_t HashU64(uint64_t x) {
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;
+    x = (x ^ (x >> 31));
+    return x;
+}
+
 #endif

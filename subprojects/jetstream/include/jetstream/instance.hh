@@ -134,13 +134,26 @@ class JETSTREAM_API Instance {
     std::atomic_flag presentSync{false};
 
     std::vector<std::shared_ptr<Module>> blocks;
+
     std::unordered_map<U64, std::shared_ptr<Present>> presentBlocks;
     std::unordered_map<U64, std::shared_ptr<Compute>> computeBlocks;
-        
-    std::vector<std::unique_ptr<Graph>> graphs;
+
+    std::unordered_map<U64, std::vector<U64>> blockInputs, blockOutputs;
+    std::unordered_map<U64, std::vector<U64>> blockInputsPos, blockOutputsPos;
+
+    std::vector<U64> executionOrder;
+    std::vector<std::pair<Device, std::vector<U64>>> deviceExecutionOrder;
+
+    std::vector<std::shared_ptr<Graph>> graphs;
 
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
+
+    Result printGraphSummary();
+    Result filterStaleIo();
+    Result applyTopologicalSort();
+    Result createComputeGraphs();
+    Result assertInplaceCorrectness();
 
     bool commited;
 };

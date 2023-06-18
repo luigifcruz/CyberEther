@@ -3,7 +3,6 @@
 
 #include <memory>
 #include <unordered_map>
-#include <functional>
 
 #include "jetstream/types.hh"
 
@@ -56,7 +55,24 @@ class VectorImpl {
         if (!_data) {
             return 0;
         }
-        return std::hash<void*>{}(this->_data);
+
+        // For some fucking reason, std::hash is ignoring 32 MSB. 
+        // I don't know why, I don't want to know why.
+        // Thats why I'm using a custom hash function.
+        //
+        // Don't believe me? See it for yourself:
+        //     uint64_t* a = (uint64_t*)0x118008000;
+        //     uint64_t* b = (uint64_t*)0x158008000;
+        //     std::cout << (std::hash<void*>{}(a) == std::hash<void*>{}(b)) << std::endl;
+        // 
+        // This should print 0. But it prints 1 on M1 Pro.
+        // https://twitter.com/luigifcruz/status/1670260464058605568
+
+        return HashU64(reinterpret_cast<U64>(this->_data));
+    }
+
+    constexpr U64 phash() const noexcept {
+        return hash() + *this->_pos;
     }
 
     constexpr U64 size_bytes() const noexcept {
@@ -111,17 +127,23 @@ class VectorImpl {
         return offset;
     }
 
+    void incrementPositionalIndex() {
+        *this->_pos += 1;
+    }
+
     VectorImpl(VectorImpl&&) = delete;
     VectorImpl& operator=(VectorImpl&&) = delete;
 
  protected:
+    U64* _pos;
     ShapeType _shape;
     DataType* _data;
     U64* _refs;
     std::vector<std::function<void()>>* _destructors;
 
     VectorImpl()
-             : _shape({0}),
+             : _pos(nullptr),
+               _shape({0}),
                _data(nullptr),
                _refs(nullptr), 
                _destructors(nullptr) {
@@ -129,7 +151,8 @@ class VectorImpl {
     }
 
     explicit VectorImpl(const VectorImpl& other)
-             : _shape(other._shape),
+             : _pos(other._pos),
+               _shape(other._shape),
                _data(other._data),
                _refs(other._refs),
                _destructors(other._destructors) {
@@ -144,6 +167,7 @@ class VectorImpl {
         decreaseRefCount();
             
         _data = other._data;
+        _pos = other._pos;
         _shape = other._shape;
         _refs = other._refs;
         _destructors = other._destructors;
@@ -154,7 +178,8 @@ class VectorImpl {
     }
 
     explicit VectorImpl(void* ptr, const ShapeType& shape)
-             : _shape(shape),
+             : _pos(nullptr),
+               _shape(shape),
                _data(static_cast<DataType*>(ptr)),
                _refs(nullptr), 
                _destructors(nullptr) {
@@ -193,6 +218,7 @@ class VectorImpl {
     void reset() {
         _data = nullptr;
         _refs = nullptr;
+        _pos = nullptr;
         _shape = ShapeType({0});
         _destructors = nullptr;
     }
