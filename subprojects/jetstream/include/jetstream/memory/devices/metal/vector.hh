@@ -28,12 +28,12 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
     }
 #endif
 
-    explicit Vector(void* ptr, const typename VectorType::ShapeType& shape)
+    explicit Vector(void* ptr, const VectorShape<Dimensions>& shape)
              : VectorType(ptr, shape) {
         allocateExtras();
     }
 
-    explicit Vector(const typename VectorType::ShapeType& shape) 
+    explicit Vector(const VectorShape<Dimensions>& shape) 
              : VectorType(nullptr, shape) {
         JST_TRACE("New Metal vector created and allocated: {}", shape);
 

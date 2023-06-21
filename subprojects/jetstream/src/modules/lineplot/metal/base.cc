@@ -38,8 +38,8 @@ Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->batchSize = this->input.buffer.shape(0);
-    constants->gridSize = this->input.buffer.shape(1);
+    constants->batchSize = this->input.buffer.shape()[0];
+    constants->gridSize = this->input.buffer.shape()[1];
 
     return Result::SUCCESS;
 }
@@ -54,7 +54,7 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     cmdEncoder->setBuffer(assets.constants, 0, 0);
     cmdEncoder->setBuffer(input.buffer, 0, 1);
     cmdEncoder->setBuffer(plot, 0, 2);
-    cmdEncoder->dispatchThreads(MTL::Size(input.buffer.shape(1), 1, 1),
+    cmdEncoder->dispatchThreads(MTL::Size(input.buffer.shape()[1], 1, 1),
                                 MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 

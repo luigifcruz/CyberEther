@@ -17,11 +17,11 @@ Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     assets.app = new VkFFTApplication({});
     assets.configuration = new VkFFTConfiguration({});
     assets.configuration->FFTdim = 1;
-    assets.configuration->size[0] = input.buffer.shape(1);
+    assets.configuration->size[0] = input.buffer.shape()[1];
     assets.configuration->device = Backend::State<Device::Metal>()->getDevice();
     assets.configuration->queue = runtime.commandQueue;
     assets.configuration->doublePrecision = false;
-    assets.configuration->numberBatches = input.buffer.shape(0);
+    assets.configuration->numberBatches = input.buffer.shape()[0];
     assets.configuration->isInputFormatted = 1;
     assets.configuration->inputBufferSize = new U64(input.buffer.size_bytes());
     assets.configuration->inputBuffer = const_cast<MTL::Buffer**>(&assets.input);

@@ -52,7 +52,7 @@ Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 
     {
         // Generate Plot coordinates.
-        const U64 num_cols = input.buffer.shape(1);
+        const U64 num_cols = input.buffer.shape()[1];
 
         plot = Vector<D, F32, 2>({num_cols, 3});
 

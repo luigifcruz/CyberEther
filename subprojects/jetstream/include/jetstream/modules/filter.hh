@@ -17,7 +17,7 @@ class Filter : public Module {
         F32 signalSampleRate;
         F32 filterSampleRate = 1e6;
         F32 filterCenter = 0.0;
-        std::array<U64, 2> shape;
+        VectorShape<2> shape;
         U64 numberOfTaps = 101;
         bool linearFrequency = true;
     };

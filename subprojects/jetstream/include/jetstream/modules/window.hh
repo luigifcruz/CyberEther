@@ -12,7 +12,7 @@ template<Device D, typename T = CF32>
 class Window : public Module {
  public:
     struct Config {
-        std::array<U64, 2> shape;
+        VectorShape<2> shape;
     };
 
     struct Input {

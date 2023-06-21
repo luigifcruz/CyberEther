@@ -25,7 +25,7 @@ template<Device D, typename T>
 Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Waterfall compute core.");
 
-    frequencyBins = Vector<D, F32, 2>({input.buffer.shape(1),  config.height});
+    frequencyBins = Vector<D, F32, 2>({input.buffer.shape()[1],  config.height});
 
     return Result::SUCCESS;
 }
@@ -116,7 +116,7 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
 template<Device D, typename T>
 Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
     auto res = this->underlyingCompute(meta);
-    inc = (inc + input.buffer.shape(0)) % config.height;
+    inc = (inc + input.buffer.shape()[0]) % config.height;
     return res;
 }
 
@@ -129,17 +129,17 @@ Result Waterfall<D, T>::present(Render::Window&) {
     if (blocks < 0) {
         blocks = config.height - last;
 
-        binTexture->update(start * input.buffer.shape(1), blocks * input.buffer.shape(1));
+        binTexture->update(start * input.buffer.shape()[1], blocks * input.buffer.shape()[1]);
 
         start = 0;
         blocks = inc;
     }
 
-    binTexture->update(start * input.buffer.shape(1), blocks * input.buffer.shape(1));
+    binTexture->update(start * input.buffer.shape()[1], blocks * input.buffer.shape()[1]);
     last = inc;
 
     shaderUniforms.zoom = config.zoom;
-    shaderUniforms.width = input.buffer.shape(1);
+    shaderUniforms.width = input.buffer.shape()[1];
     shaderUniforms.height = config.height;
     shaderUniforms.interpolate = config.interpolate;
     shaderUniforms.index = inc / (float)shaderUniforms.height;

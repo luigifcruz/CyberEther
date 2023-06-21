@@ -10,10 +10,10 @@
 namespace Jetstream::Viewport {
 
 struct Config {
-  bool vsync = true;
-  bool resizable = false;
-  std::string title = "Render";
-  Render::Size2D<U64> size = {1280, 720};
+    bool vsync = true;
+    bool resizable = false;
+    std::string title = "Render";
+    Render::Size2D<U64> size = {1280, 720};
 };
 
 class Generic {
