@@ -3,14 +3,14 @@
 namespace Jetstream {
 
 template<>
-const Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create FFT compute core using CPU backend.");
 
     auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
     auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
 
-    const I32 M = input.buffer.shape(0);
-    const I32 N = input.buffer.shape(1);
+    const I32 M = input.buffer.shape()[0];
+    const I32 N = input.buffer.shape()[1];
     auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
 
     int rank     = 1;      // Number of dimensions
@@ -37,14 +37,14 @@ const Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata& meta) 
 }
 
 template<>
-const Result FFT<Device::CPU, CF32>::destroyCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::CPU, CF32>::destroyCompute(const RuntimeMetadata&) {
     JST_TRACE("Destroy FFT compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<>
-const Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata& meta) {
+Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata&) {
     fftwf_execute(cpu.fftPlanCF32);
 
     return Result::SUCCESS;

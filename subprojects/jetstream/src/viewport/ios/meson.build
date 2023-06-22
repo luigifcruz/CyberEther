@@ -10,7 +10,7 @@ endforeach
 if all_deps_found
     cfg_lst.set('JETSTREAM_VIEWPORT_IOS_AVAILABLE', true)
     src_lst += files([
-        'base.cc',
+        'metal.cc',
     ])
 endif
 

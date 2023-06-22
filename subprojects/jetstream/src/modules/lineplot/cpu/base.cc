@@ -5,16 +5,16 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Multiply compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
-    const U64 num_batches = input.buffer.shape(0);
-    const U64 num_samples = input.buffer.shape(1);
+Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
+    const U64 num_batches = input.buffer.shape()[0];
+    const U64 num_samples = input.buffer.shape()[1];
 
     for (U64 i = 0; i < num_samples; ++i) {
         F32 sum = 0.0;

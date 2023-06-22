@@ -12,17 +12,16 @@ class ProgramImp<Device::Metal> : public Program {
     explicit ProgramImp(const Config& config);
 
  protected:
-    const Result create(const MTL::PixelFormat& pixelFormat);
-    const Result destroy();
-    const Result draw(MTL::CommandBuffer* commandBuffer,
-                      MTL::RenderPassDescriptor* renderPassDescriptor);
+    Result create(const MTL::PixelFormat& pixelFormat);
+    Result destroy();
+    Result draw(MTL::RenderCommandEncoder* renderCmdEncoder);
 
  private:
     MTL::RenderPipelineState* renderPipelineState = nullptr;
 
-    std::vector<std::shared_ptr<DrawImp<Device::Metal>>> draws;
+    std::shared_ptr<DrawImp<Device::Metal>> _draw;
     std::vector<std::shared_ptr<TextureImp<Device::Metal>>> textures;
-    std::vector<std::shared_ptr<BufferImp<Device::Metal>>> buffers;
+    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, Program::Target>> buffers;
 
     static Result checkShaderCompilation(U64);
     static Result checkProgramCompilation(U64);

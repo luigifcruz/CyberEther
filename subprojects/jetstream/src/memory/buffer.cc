@@ -22,7 +22,7 @@ CircularBuffer<T>::~CircularBuffer() {
 }
 
 template<class T>
-const Result CircularBuffer<T>::waitBufferOccupancy(U64 size) {
+Result CircularBuffer<T>::waitBufferOccupancy(U64 size) {
     std::unique_lock<std::mutex> sync(sync_mtx);
     while (getOccupancy() < size) {
         if (semaphore.wait_for(sync, 5s) == std::cv_status::timeout)
@@ -32,7 +32,7 @@ const Result CircularBuffer<T>::waitBufferOccupancy(U64 size) {
 }
 
 template<class T>
-const Result CircularBuffer<T>::get(T* buf, U64 size) {
+Result CircularBuffer<T>::get(T* buf, U64 size) {
     if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
@@ -73,7 +73,7 @@ exception:
 }
 
 template<class T>
-const Result CircularBuffer<T>::put(T* buf, U64 size) {
+Result CircularBuffer<T>::put(T* buf, U64 size) {
     if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
@@ -103,7 +103,7 @@ const Result CircularBuffer<T>::put(T* buf, U64 size) {
 }
 
 template<class T>
-const Result CircularBuffer<T>::reset() {
+Result CircularBuffer<T>::reset() {
     {
         const std::lock_guard<std::mutex> lock(io_mtx);
         this->head = 0;
@@ -119,22 +119,22 @@ const Result CircularBuffer<T>::reset() {
 }
 
 template<class T>
-const U64 CircularBuffer<T>::getCapacity() const {
+U64 CircularBuffer<T>::getCapacity() const {
     return this->capacity;
 }
 
 template<class T>
-const U64 CircularBuffer<T>::getOccupancy() const {
+U64 CircularBuffer<T>::getOccupancy() const {
     return this->occupancy;
 }
 
 template<class T>
-const bool CircularBuffer<T>::isEmpty() const {
+bool CircularBuffer<T>::isEmpty() const {
     return getOccupancy() == 0;
 }
 
 template<class T>
-const bool CircularBuffer<T>::isFull() const {
+bool CircularBuffer<T>::isFull() const {
     return getOccupancy() == getCapacity();
 }
 

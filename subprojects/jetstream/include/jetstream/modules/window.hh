@@ -12,7 +12,7 @@ template<Device D, typename T = CF32>
 class Window : public Module {
  public:
     struct Config {
-        std::array<U64, 2> shape;
+        VectorShape<2> shape;
     };
 
     struct Input {
@@ -25,7 +25,7 @@ class Window : public Module {
     explicit Window(const Config& config,
                     const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -39,9 +39,14 @@ class Window : public Module {
         return this->output.window;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
+
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Window<D, T>>& module);
 
  private:
     const Config config;

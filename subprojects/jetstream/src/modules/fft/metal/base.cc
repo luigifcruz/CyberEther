@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<>
-const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create FFT compute core using Metal backend.");
 
     auto& assets = metal;
@@ -17,11 +17,11 @@ const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta
     assets.app = new VkFFTApplication({});
     assets.configuration = new VkFFTConfiguration({});
     assets.configuration->FFTdim = 1;
-    assets.configuration->size[0] = input.buffer.shape(1);
+    assets.configuration->size[0] = input.buffer.shape()[1];
     assets.configuration->device = Backend::State<Device::Metal>()->getDevice();
     assets.configuration->queue = runtime.commandQueue;
     assets.configuration->doublePrecision = false;
-    assets.configuration->numberBatches = input.buffer.shape(0);
+    assets.configuration->numberBatches = input.buffer.shape()[0];
     assets.configuration->isInputFormatted = 1;
     assets.configuration->inputBufferSize = new U64(input.buffer.size_bytes());
     assets.configuration->inputBuffer = const_cast<MTL::Buffer**>(&assets.input);
@@ -37,7 +37,7 @@ const Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta
 }
 
 template<>
-const Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& meta) {
+Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Destroy FFT compute core using Metal backend.");
 
     auto& assets = metal;
@@ -57,7 +57,7 @@ const Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& met
 }
 
 template<>
-const Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
+Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
 
@@ -65,7 +65,8 @@ const Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     launchParams.commandBuffer = runtime.commandBuffer;
     launchParams.commandEncoder = runtime.commandBuffer->computeCommandEncoder();
 
-    if (auto res = VkFFTAppend(assets.app, 0, &launchParams); res != VKFFT_SUCCESS) {
+    const int inverse = static_cast<int>(config.direction);
+    if (auto res = VkFFTAppend(assets.app, inverse, &launchParams); res != VKFFT_SUCCESS) {
         JST_FATAL("Failed to append to VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;
     }

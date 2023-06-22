@@ -1,4 +1,5 @@
 #include "jetstream/modules/spectrogram.hh"
+#include "shaders/spectrogram_shaders.hh"
 
 namespace Jetstream {
 
@@ -7,7 +8,7 @@ Spectrogram<D, T>::Spectrogram(const Config& config,
                                const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Spectrogram module.");
-    JST_CHECK_THROW(initInput(input.buffer));
+    JST_CHECK_THROW(Module::initInput(input.buffer));
 }
 
 template<Device D, typename T>
@@ -16,7 +17,7 @@ void Spectrogram<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
+Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
@@ -51,18 +52,17 @@ const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
     JST_CHECK(window.build(drawVertex, drawVertexCfg));
 
-    Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = frequencyBins.data();
-    bufferCfg.size = frequencyBins.size();
-    bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
-    bufferCfg.target = Render::Buffer::Target::STORAGE;
-    bufferCfg.enableZeroCopy = true;
+    Render::Texture::Config bufferCfg;
+    bufferCfg.buffer = (U8*)(frequencyBins.data());
+    bufferCfg.size = {frequencyBins.shape()[0], frequencyBins.shape()[1]};
+    bufferCfg.dfmt = Render::Texture::DataFormat::F32;
+    bufferCfg.pfmt = Render::Texture::PixelFormat::RED;
+    bufferCfg.ptype = Render::Texture::PixelType::F32;
     JST_CHECK(window.build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    lutTextureCfg.key = "LutTexture";
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
     // TODO: This could use unified memory.
@@ -70,16 +70,20 @@ const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::STORAGE;
+    uniformCfg.target = Render::Buffer::Target::UNIFORM;
     JST_CHECK(window.build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+        {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
+        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
     };
-    programCfg.draws = {drawVertex};
-    programCfg.textures = {lutTexture};
-    programCfg.buffers = {uniformBuffer, binTexture};
+    programCfg.draw = drawVertex;
+    programCfg.textures = {binTexture, lutTexture};
+    programCfg.buffers = {
+        {uniformBuffer, Render::Program::Target::VERTEX |
+                        Render::Program::Target::FRAGMENT},
+    };
     JST_CHECK(window.build(program, programCfg));
 
     Render::Texture::Config textureCfg;
@@ -96,10 +100,10 @@ const Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 }
 
 template<Device D, typename T>
-const Result Spectrogram<D, T>::present(Render::Window& window) {
-    binTexture->update();
+Result Spectrogram<D, T>::present(Render::Window&) {
+    binTexture->fill();
 
-    shaderUniforms.width = input.buffer.shape(1);
+    shaderUniforms.width = input.buffer.shape()[1];
     shaderUniforms.height = config.height;
     shaderUniforms.zoom = 1.0;
     shaderUniforms.offset = 0.0;
@@ -126,5 +130,26 @@ template<Device D, typename T>
 Render::Texture& Spectrogram<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+Result Spectrogram<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                                  std::unordered_map<std::string, std::any>& inputMap,
+                                  std::unordered_map<std::string, std::any>&,
+                                  std::shared_ptr<Spectrogram<D, T>>& module) {
+    using Module = Spectrogram<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "height", config.height));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
+
+    module = std::make_shared<Module>(config, input);
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream

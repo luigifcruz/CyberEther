@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
 
 #include "jetstream/module.hh"
 #include "jetstream/backend/base.hh"
@@ -16,9 +17,9 @@ class JETSTREAM_API Instance {
  public:
     Instance() : commited(false) {};
 
-    template<class Viewport, typename... Args>
-    const Result buildViewport(const typename Viewport::Config& config,
-                               Args... args) {
+    template<class Platform, typename... Args>
+    Result buildViewport(const typename Viewport::Config& config,
+                         Args... args) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
             return Result::ERROR;
@@ -29,17 +30,17 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        _viewport = std::make_shared<Viewport>(config, args...);
+        _viewport = std::make_shared<Platform>(config, args...);
 
         return Result::SUCCESS;
     }
 
-    constexpr Viewport::Generic& viewport() {
+    Viewport::Generic& viewport() {
         return *_viewport;
     }
 
     template<Device D>
-    const Result buildWindow(const Render::Window::Config& config) {
+    Result buildWindow(const Render::Window::Config& config) {
         if (commited) {
             JST_FATAL("The instance was already commited.");
             return Result::ERROR;
@@ -55,12 +56,18 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        _window = std::make_shared<Render::WindowImp<D>>(config, _viewport);
+        if (_viewport->device() != D) {
+            JST_FATAL("Viewport and Window device mismatch.");
+            return Result::ERROR;
+        }
+
+        auto viewport = std::dynamic_pointer_cast<Viewport::Adapter<D>>(_viewport);
+        _window = std::make_shared<Render::WindowImp<D>>(config, viewport);
 
         return Result::SUCCESS;
     }
 
-    constexpr Render::Window& window() {
+    Render::Window& window() {
         return *_window;
     }
 
@@ -85,24 +92,40 @@ class JETSTREAM_API Instance {
         return block;
     }    
 
-    const Result create();
-    const Result destroy();
+    template<template<Device, typename...> class T, Device D, typename... C>
+    Result addBlock(std::shared_ptr<T<D, C...>>& block) {
+        if (commited) {
+            JST_FATAL("The instance was already commited.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
 
-    const Result compute();
+        // Add metadata.
+        block->setId(this->blocks.size());
 
-    const Result begin();
-    const Result present();
-    const Result end();
+        // Register block module to scheduler.
+        this->blocks.push_back(block);
 
-    constexpr const Viewport::Generic& getViewport() const {
+        return Result::SUCCESS;
+    }
+
+    Result create();
+    Result destroy();
+
+    Result compute();
+
+    Result begin();
+    Result present();
+    Result end();
+
+    const Viewport::Generic& getViewport() const {
         return *_viewport;
     }
 
-    constexpr const Render::Window& getRender() const {
+    const Render::Window& getRender() const {
         return *_window;       
     }
 
-    constexpr const bool isCommited() const {
+    bool isCommited() const {
         return commited;       
     }
 
@@ -111,13 +134,26 @@ class JETSTREAM_API Instance {
     std::atomic_flag presentSync{false};
 
     std::vector<std::shared_ptr<Module>> blocks;
+
     std::unordered_map<U64, std::shared_ptr<Present>> presentBlocks;
     std::unordered_map<U64, std::shared_ptr<Compute>> computeBlocks;
-        
-    std::vector<std::unique_ptr<Graph>> graphs;
+
+    std::unordered_map<U64, std::vector<U64>> blockInputs, blockOutputs;
+    std::unordered_map<U64, std::vector<U64>> blockInputsPos, blockOutputsPos;
+
+    std::vector<U64> executionOrder;
+    std::vector<std::pair<Device, std::vector<U64>>> deviceExecutionOrder;
+
+    std::vector<std::shared_ptr<Graph>> graphs;
 
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
+
+    Result printGraphSummary();
+    Result filterStaleIo();
+    Result applyTopologicalSort();
+    Result createComputeGraphs();
+    Result assertInplaceCorrectness();
 
     bool commited;
 };

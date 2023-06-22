@@ -16,7 +16,7 @@ class Amplitude : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, IT, 2>& buffer;
+        const Vector<D, IT, 2> buffer;
     };
 
     struct Output {
@@ -26,7 +26,7 @@ class Amplitude : public Module, public Compute {
     explicit Amplitude(const Config& config,
                        const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -40,13 +40,18 @@ class Amplitude : public Module, public Compute {
         return this->output.buffer;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return config;
     }
 
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Amplitude<D, IT, OT>>& module);
+
  protected:
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
     const Config config;

@@ -8,7 +8,6 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
-#include "jetstream/viewport/base.hh"
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Render {
@@ -24,25 +23,22 @@ class Window {
         U64 droppedFrames;
     };
 
-    explicit Window(const Config& config,
-                    std::shared_ptr<Viewport::Generic>& viewport)
-         : config(config),
-           viewport(viewport) {
+    explicit Window(const Config& config) : config(config) {
         JST_DEBUG("Window initialized.");
     }
     virtual ~Window() = default;
 
-    virtual const Result create() = 0;
-    virtual const Result destroy() = 0;
-    virtual const Result begin() = 0;
-    virtual const Result end() = 0;
+    virtual Result create() = 0;
+    virtual Result destroy() = 0;
+    virtual Result begin() = 0;
+    virtual Result end() = 0;
 
     virtual const Stats& stats() const = 0;
     virtual void drawDebugMessage() const = 0;
 
-    virtual constexpr const Device device() const = 0;
+    virtual constexpr Device device() const = 0;
 
-    virtual const Result bind(const std::shared_ptr<Surface>& surface) = 0;
+    virtual Result bind(const std::shared_ptr<Surface>& surface) = 0;
 
     template<class T>
     inline Result JETSTREAM_API build(std::shared_ptr<T>& member, 
@@ -53,8 +49,13 @@ class Window {
                 member = T::template Factory<Device::Metal>(config); 
                 break;
 #endif
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+            case Device::Vulkan:
+                member = T::template Factory<Device::Vulkan>(config); 
+                break;
+#endif
             default:
-                JST_FATAL("Backend not supported.");
+                JST_FATAL("Backend not supported yet.");
                 return Result::ERROR;
         }
 
@@ -63,7 +64,6 @@ class Window {
 
  protected:
     Config config;
-    std::shared_ptr<Viewport::Generic> viewport;
 
     static void ApplyImGuiTheme(const F32& scale);
 };

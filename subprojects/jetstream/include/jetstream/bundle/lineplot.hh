@@ -11,15 +11,15 @@ class LineplotUI {
  public:
     using Module = Lineplot<DeviceId>;
 
-    const Result init(Instance& instance,
-                      const typename Module::Config& config,
-                      const typename Module::Input& input) {
+    Result init(Instance& instance,
+                const typename Module::Config& config,
+                const typename Module::Input& input) {
         module = instance.addBlock<Lineplot, DeviceId>(config, input);
 
         return Result::SUCCESS;
     }
 
-    const Result draw() {
+    Result draw() {
         ImGui::Begin("Lineplot");
         
         auto [x, y] = ImGui::GetContentRegionAvail();
@@ -31,12 +31,12 @@ class LineplotUI {
         return Result::SUCCESS;       
     }
 
-    const Result drawControl() {
+    Result drawControl() {
             
         return Result::SUCCESS;       
     }
 
-    const Result drawInfo() {
+    Result drawInfo() {
             
         return Result::SUCCESS;       
     }

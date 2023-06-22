@@ -10,17 +10,17 @@ class Metal : public Graph {
  public:
     Metal();
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return Device::Metal;
     }
 
-    const Result createCompute();
-    const Result compute();
-    const Result destroyCompute();
+    Result createCompute();
+    Result compute();
+    Result destroyCompute();
 
-    static const Result CompileKernel(const char* shaderSrc, 
-                                      const char* methodName,
-                                      MTL::ComputePipelineState** pipelineState);
+    static Result CompileKernel(const char* shaderSrc, 
+                                const char* methodName,
+                                MTL::ComputePipelineState** pipelineState);
 
     template<typename ConstantsType>
     static ConstantsType* Constants(auto& assets) {

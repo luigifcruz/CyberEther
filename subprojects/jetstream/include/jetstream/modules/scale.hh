@@ -17,7 +17,7 @@ class Scale : public Module, public Compute {
     };
 
     struct Input {
-        const Vector<D, T, 2>& buffer;
+        const Vector<D, T, 2> buffer;
     };
 
     struct Output {
@@ -27,7 +27,7 @@ class Scale : public Module, public Compute {
     explicit Scale(const Config& config,
                    const Input& input);
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return D;
     }
 
@@ -41,7 +41,7 @@ class Scale : public Module, public Compute {
         return this->output.buffer;
     }
 
-    constexpr const Config getConfig() const {
+    constexpr Config getConfig() const {
         return this->config;
     }
 
@@ -54,9 +54,14 @@ class Scale : public Module, public Compute {
         return range;
     }
 
+    static Result Factory(std::unordered_map<std::string, std::any>& config,
+                          std::unordered_map<std::string, std::any>& input,
+                          std::unordered_map<std::string, std::any>& output,
+                          std::shared_ptr<Scale<D, T>>& module);
+
  protected:
-    const Result createCompute(const RuntimeMetadata& meta) final;
-    const Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
     Config config;

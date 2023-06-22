@@ -15,7 +15,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
 
     Vector() : VectorType() {}
 
-    explicit Vector(const Vector& other)
+    Vector(const Vector& other)
              : VectorType(other),
                _metal(other._metal),
                _cpu(other._cpu) {
@@ -28,12 +28,12 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
     }
 #endif
 
-    explicit Vector(void* ptr, const typename VectorType::ShapeType& shape)
+    explicit Vector(void* ptr, const VectorShape<Dimensions>& shape)
              : VectorType(ptr, shape) {
         allocateExtras();
     }
 
-    explicit Vector(const typename VectorType::ShapeType& shape) 
+    explicit Vector(const VectorShape<Dimensions>& shape) 
              : VectorType(nullptr, shape) {
         JST_TRACE("New Metal vector created and allocated: {}", shape);
 
@@ -63,7 +63,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
         return *this;
     }
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return Device::Metal;
     }
 
@@ -102,6 +102,10 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
         if (!this->_refs) {
             this->_refs = new U64(1);
             this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
+        }
+        if (!this->_pos) {
+            this->_pos = new U64(0);
+            this->_destructors->push_back([ptr = this->_pos]() { free(ptr); });
         }
 
         // Create MTL::Buffer.

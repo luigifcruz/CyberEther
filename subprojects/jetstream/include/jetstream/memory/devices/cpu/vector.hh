@@ -13,7 +13,7 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
 
     Vector() : VectorType() {}
 
-    explicit Vector(const Vector& other) : VectorType(other) {}
+    Vector(const Vector& other) : VectorType(other) {}
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     explicit Vector(const Vector<Device::Metal, DataType, Dimensions>& other)
@@ -22,12 +22,12 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
     }
 #endif
 
-    explicit Vector(void* ptr, const typename VectorType::ShapeType& shape)
+    explicit Vector(void* ptr, const VectorShape<Dimensions>& shape)
              : VectorType(ptr, shape) {
         allocateExtras();
     }
 
-    explicit Vector(const typename VectorType::ShapeType& shape)
+    explicit Vector(const VectorShape<Dimensions>& shape)
              : VectorType(nullptr, shape) {
         JST_TRACE("New CPU vector created and allocated: {}", shape);
 
@@ -55,7 +55,7 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         return *this;
     }
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return Device::CPU;
     }
 
@@ -65,6 +65,10 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         if (!this->_refs) {
             this->_refs = new U64(1);
             this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
+        }
+        if (!this->_pos) {
+            this->_pos = new U64(0);
+            this->_destructors->push_back([ptr = this->_pos]() { free(ptr); });
         }
     }
 };

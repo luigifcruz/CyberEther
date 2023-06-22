@@ -31,21 +31,21 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
     auto& assets = metal;
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->batchSize = this->input.buffer.shape(0);
-    constants->gridSize = this->input.buffer.shape(1);
+    constants->batchSize = this->input.buffer.shape()[0];
+    constants->gridSize = this->input.buffer.shape()[1];
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
     
@@ -54,7 +54,7 @@ const Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     cmdEncoder->setBuffer(assets.constants, 0, 0);
     cmdEncoder->setBuffer(input.buffer, 0, 1);
     cmdEncoder->setBuffer(plot, 0, 2);
-    cmdEncoder->dispatchThreads(MTL::Size(input.buffer.shape(1), 1, 1),
+    cmdEncoder->dispatchThreads(MTL::Size(input.buffer.shape()[1], 1, 1),
                                 MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 

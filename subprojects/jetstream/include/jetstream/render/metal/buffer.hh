@@ -13,14 +13,14 @@ class BufferImp<Device::Metal> : public Buffer {
 
     using Render::Buffer::size;
 
-    const Result update();
-    const Result update(const U64& offset, const U64& size);
+    Result update();
+    Result update(const U64& offset, const U64& size);
 
  protected:
-    const Result create();
-    const Result destroy();
+    Result create();
+    Result destroy();
 
-    constexpr const MTL::Buffer* getHandle() const {
+    constexpr MTL::Buffer* getHandle() const {
         return buffer;
     }
 

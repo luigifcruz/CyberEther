@@ -44,20 +44,20 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename IT, typename OT>
-const Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     auto& assets = metal;
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->scalingSize = this->input.buffer.shape(1);
+    constants->scalingSize = this->input.buffer.shape()[1];
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>
-const Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
 

@@ -6,6 +6,7 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/backend/base.hh"
+#include "jetstream/viewport/base.hh"
 
 namespace Jetstream::Render {
 
@@ -13,21 +14,21 @@ template<>
 class WindowImp<Device::Metal> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Generic>& viewport);
+                       std::shared_ptr<Viewport::Adapter<Device::Metal>>& viewport);
 
-    const Result create();
-    const Result destroy();
-    const Result begin();
-    const Result end();
+    Result create();
+    Result destroy();
+    Result begin();
+    Result end();
 
     const Stats& stats() const;
     void drawDebugMessage() const;
 
-    constexpr const Device device() const {
+    constexpr Device device() const {
         return Device::Metal;
     };
 
-    const Result bind(const std::shared_ptr<Surface>& surface);
+    Result bind(const std::shared_ptr<Surface>& surface);
 
  private:
     Stats statsData;
@@ -40,12 +41,14 @@ class WindowImp<Device::Metal> : public Window {
     MTL::CommandQueue* commandQueue = nullptr;
     MTL::CommandBuffer* commandBuffer = nullptr;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
-    std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
 
-    const Result createImgui();
-    const Result destroyImgui();
-    const Result beginImgui();
-    const Result endImgui();
+    std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
+    std::shared_ptr<Viewport::Adapter<Device::Metal>> viewport;
+
+    Result createImgui();
+    Result destroyImgui();
+    Result beginImgui();
+    Result endImgui();
 };
 
 }  // namespace Jetstream::Render

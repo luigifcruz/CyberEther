@@ -9,12 +9,12 @@ Multiply<D, T>::Multiply(const Config& config,
     JST_DEBUG("Initializing Multiply module.");
     
     // Initialize output.
-    JST_CHECK_THROW(this->initInput(this->input.factorA));
-    JST_CHECK_THROW(this->initInput(this->input.factorB));
-    JST_CHECK_THROW(this->initOutput(this->output.product, this->input.factorA.shape()));
+    JST_CHECK_THROW(Module::initInput(this->input.factorA));
+    JST_CHECK_THROW(Module::initInput(this->input.factorB));
+    JST_CHECK_THROW(Module::initOutput(this->output.product, this->input.factorA.shape()));
 
-    // Check parameters. 
-    if (this->input.factorA.shape(1) != this->input.factorB.shape(1)) {
+    // Check parameters.
+    if (this->input.factorA.shape()[1] != this->input.factorB.shape()[1]) {
         JST_FATAL("Input A shape ({}) is different than the" \
             "Input B shape ({}).",
             this->input.factorA.shape(),
@@ -26,6 +26,26 @@ Multiply<D, T>::Multiply(const Config& config,
 template<Device D, typename T>
 void Multiply<D, T>::summary() const {
     JST_INFO("     None");
+}
+
+template<Device D, typename T>
+Result Multiply<D, T>::Factory(std::unordered_map<std::string, std::any>&,
+                               std::unordered_map<std::string, std::any>& inputMap,
+                               std::unordered_map<std::string, std::any>& outputMap,
+                               std::shared_ptr<Multiply<D, T>>& module) {
+    using Module = Multiply<D, T>;
+
+    Module::Config config{};
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "factorA", input.factorA));
+    JST_CHECK(Module::BindVariable(inputMap, "factorB", input.factorB));
+
+    module = std::make_shared<Module>(config, input);
+
+    JST_CHECK(Module::RegisterVariable(outputMap, "product", module->getProductBuffer()));
+
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

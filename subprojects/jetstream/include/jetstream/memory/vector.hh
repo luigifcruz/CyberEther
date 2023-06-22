@@ -2,6 +2,7 @@
 #define JETSTREAM_MEMORY_VECTOR_HH
 
 #include <memory>
+#include <functional>
 #include <unordered_map>
 
 #include "jetstream/types.hh"
@@ -10,11 +11,44 @@ namespace Jetstream {
 
 template<Device DeviceId, typename DataType, U64 Dimensions = 1> class Vector;
 
+template<U64 Dimensions>
+struct VectorShape {
+ public:
+    std::array<U64, Dimensions> _shape;
+
+    constexpr U64& operator[](const U64& idx) {
+        return _shape[idx];
+    }
+
+    constexpr const U64& operator[](const U64& idx) const {
+        return _shape[idx];
+    }
+
+    constexpr auto begin() {
+        return _shape.begin();
+    }
+
+    constexpr auto end() {
+        return _shape.end();
+    }
+
+    constexpr auto begin() const {
+        return _shape.begin();
+    }
+
+    constexpr auto end() const {
+        return _shape.end();
+    }
+
+    constexpr std::vector<U64> native() const noexcept {
+        return std::vector<U64>(_shape.begin(), _shape.end());
+    }
+};
+
 template<typename Type, U64 Dimensions>
-class VectorImpl {
+class VectorImpl : public VectorShape<Dimensions> {
  public:
     using DataType = Type;
-    using ShapeType = std::array<U64, Dimensions>;
 
     virtual ~VectorImpl() {
         decreaseRefCount();
@@ -24,53 +58,61 @@ class VectorImpl {
         return _data;
     }
 
-    constexpr const U64 size() const noexcept {
+    constexpr const VectorShape<Dimensions>& shape() const noexcept {
+        return *this;
+    }
+
+    constexpr U64 size() const noexcept {
         U64 _size = 1;
-        for (const auto& dim : _shape) {
+        for (const auto& dim : this->_shape) {
             _size *= dim;
         }
         return _size; 
     }
 
-    constexpr const U64 refs() const noexcept {
+    constexpr U64 refs() const noexcept {
         if (!_refs) {
             return 0;
         }
         return *_refs;
     }
 
-    constexpr const ShapeType& shape() const noexcept {
-        return _shape;
-    }
-
-    constexpr const std::vector<U64> shapeVector() const noexcept {
-        return std::vector<U64>(_shape.begin(), _shape.end());
-    }
-
-    constexpr const U64& shape(const U64& index) const noexcept {
-        return _shape[index];
-    }
-
-    constexpr const U64 hash() const noexcept {
+    constexpr U64 hash() const noexcept {
         if (!_data) {
             return 0;
         }
-        return std::hash<void*>{}(this->_data);
+        return HashU64(reinterpret_cast<U64>(_data));
     }
 
-    constexpr const U64 size_bytes() const noexcept {
+    constexpr U64 phash() const noexcept {
+        return hash() + *this->_pos;
+    }
+
+    constexpr U64 size_bytes() const noexcept {
         return size() * sizeof(DataType);
     }
 
-    [[nodiscard]] constexpr const bool empty() const noexcept {
+    [[nodiscard]] constexpr bool empty() const noexcept {
         return (_data == nullptr);
     }
 
-    constexpr DataType& operator[](const ShapeType& shape) {
+    U64 shapeToOffset(const VectorShape<Dimensions>& shape) const {
+        U64 offset = 0;
+        for (U64 i = 0; i < Dimensions; i++) {
+            U64 product = shape[i];
+            for (U64 j = i + 1; j < Dimensions; j++) {
+                product *= this->_shape[j];
+            }
+            offset += product;
+        }
+        return offset;
+    }
+
+    constexpr DataType& operator[](const VectorShape<Dimensions>& shape) {
         return _data[shapeToOffset(shape)];
     }
 
-    constexpr const DataType& operator[](const ShapeType& shape) const {
+    constexpr const DataType& operator[](const VectorShape<Dimensions>& shape) const {
         return _data[shapeToOffset(shape)];
     }
 
@@ -90,37 +132,26 @@ class VectorImpl {
         return _data + size();
     }
 
-    constexpr const auto begin() const {
+    constexpr auto begin() const {
         return _data;
     }
 
-    constexpr const auto end() const {
+    constexpr auto end() const {
         return _data + size();
-    }
-
-    const U64 shapeToOffset(const ShapeType& shape) const {
-        U64 offset = 0;
-        for (U64 i = 0; i < shape.size(); i++) {
-            U64 product = shape[i];
-            for (U64 j = i + 1; j < shape.size(); j++) {
-                product *= _shape[j];
-            }
-            offset += product;
-        }
-        return offset;
     }
 
     VectorImpl(VectorImpl&&) = delete;
     VectorImpl& operator=(VectorImpl&&) = delete;
 
  protected:
-    ShapeType _shape;
+    U64* _pos;
     DataType* _data;
     U64* _refs;
     std::vector<std::function<void()>>* _destructors;
 
     VectorImpl()
-             : _shape({0}),
+             : VectorShape<Dimensions>({0}),
+               _pos(nullptr),
                _data(nullptr),
                _refs(nullptr), 
                _destructors(nullptr) {
@@ -128,7 +159,8 @@ class VectorImpl {
     }
 
     explicit VectorImpl(const VectorImpl& other)
-             : _shape(other._shape),
+             : VectorShape<Dimensions>(other._shape),
+               _pos(other._pos),
                _data(other._data),
                _refs(other._refs),
                _destructors(other._destructors) {
@@ -142,8 +174,9 @@ class VectorImpl {
 
         decreaseRefCount();
             
+        this->_shape = other._shape;
         _data = other._data;
-        _shape = other._shape;
+        _pos = other._pos;
         _refs = other._refs;
         _destructors = other._destructors;
 
@@ -152,8 +185,9 @@ class VectorImpl {
         return *this;
     }
 
-    explicit VectorImpl(void* ptr, const ShapeType& shape)
-             : _shape(shape),
+    explicit VectorImpl(void* ptr, const VectorShape<Dimensions>& shape)
+             : VectorShape<Dimensions>(shape),
+               _pos(nullptr),
                _data(static_cast<DataType*>(ptr)),
                _refs(nullptr), 
                _destructors(nullptr) {
@@ -190,11 +224,17 @@ class VectorImpl {
     }
 
     void reset() {
+        this->_shape = {0};
         _data = nullptr;
         _refs = nullptr;
-        _shape = ShapeType({0});
+        _pos = nullptr;
         _destructors = nullptr;
     }
+
+ private:
+    using VectorShape<Dimensions>::operator[];
+    using VectorShape<Dimensions>::begin;
+    using VectorShape<Dimensions>::end;
 };
 
 }  // namespace Jetstream

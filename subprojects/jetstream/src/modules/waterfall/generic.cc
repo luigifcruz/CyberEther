@@ -1,4 +1,5 @@
 #include "jetstream/modules/waterfall.hh"
+#include "shaders/waterfall_shaders.hh"
 
 namespace Jetstream {
 
@@ -7,7 +8,8 @@ Waterfall<D, T>::Waterfall(const Config& config,
                            const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Waterfall module.");
-    JST_CHECK_THROW(initInput(input.buffer));
+
+    JST_CHECK_THROW(Module::initInput(input.buffer));
 }
 
 template<Device D, typename T>
@@ -20,16 +22,16 @@ void Waterfall<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Waterfall compute core.");
 
-    frequencyBins = Vector<D, F32, 2>({input.buffer.shape(1),  config.height});
+    frequencyBins = Vector<D, F32, 2>({input.buffer.shape()[1],  config.height});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::createPresent(Render::Window& window) {
+Result Waterfall<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
@@ -75,23 +77,27 @@ const Result Waterfall<D, T>::createPresent(Render::Window& window) {
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    lutTextureCfg.key = "LutTexture";
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
     Render::Buffer::Config uniformCfg;
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::STORAGE;
+    uniformCfg.target = Render::Buffer::Target::UNIFORM;
     JST_CHECK(window.build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
     programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+        {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
+        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
     };
-    programCfg.draws = {drawVertex};
+    programCfg.draw = drawVertex;
     programCfg.textures = {lutTexture};
-    programCfg.buffers = {uniformBuffer, binTexture};
+    programCfg.buffers = {
+        {uniformBuffer, Render::Program::Target::VERTEX |
+                        Render::Program::Target::FRAGMENT},
+        {binTexture, Render::Program::Target::FRAGMENT},
+    };
     JST_CHECK(window.build(program, programCfg));
 
     Render::Texture::Config textureCfg;
@@ -108,14 +114,14 @@ const Result Waterfall<D, T>::createPresent(Render::Window& window) {
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
+Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
     auto res = this->underlyingCompute(meta);
-    inc = (inc + input.buffer.shape(0)) % config.height;
+    inc = (inc + input.buffer.shape()[0]) % config.height;
     return res;
 }
 
 template<Device D, typename T>
-const Result Waterfall<D, T>::present(Render::Window& window) {
+Result Waterfall<D, T>::present(Render::Window&) {
     int start = last;
     int blocks = (inc - last);
 
@@ -123,17 +129,17 @@ const Result Waterfall<D, T>::present(Render::Window& window) {
     if (blocks < 0) {
         blocks = config.height - last;
 
-        binTexture->update(start * input.buffer.shape(1), blocks * input.buffer.shape(1));
+        binTexture->update(start * input.buffer.shape()[1], blocks * input.buffer.shape()[1]);
 
         start = 0;
         blocks = inc;
     }
 
-    binTexture->update(start * input.buffer.shape(1), blocks * input.buffer.shape(1));
+    binTexture->update(start * input.buffer.shape()[1], blocks * input.buffer.shape()[1]);
     last = inc;
 
     shaderUniforms.zoom = config.zoom;
-    shaderUniforms.width = input.buffer.shape(1);
+    shaderUniforms.width = input.buffer.shape()[1];
     shaderUniforms.height = config.height;
     shaderUniforms.interpolate = config.interpolate;
     shaderUniforms.index = inc / (float)shaderUniforms.height;
@@ -183,5 +189,29 @@ template<Device D, typename T>
 Render::Texture& Waterfall<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+Result Waterfall<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                                std::unordered_map<std::string, std::any>& inputMap,
+                                std::unordered_map<std::string, std::any>&,
+                                std::shared_ptr<Waterfall<D, T>>& module) {
+    using Module = Waterfall<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "zoom", config.zoom));
+    JST_CHECK(Module::BindVariable(configMap, "offset", config.offset));
+    JST_CHECK(Module::BindVariable(configMap, "height", config.height));
+    JST_CHECK(Module::BindVariable(configMap, "interpolate", config.interpolate));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
+
+    module = std::make_shared<Module>(config, input);
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream

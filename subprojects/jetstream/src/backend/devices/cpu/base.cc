@@ -4,8 +4,7 @@
 
 namespace Jetstream::Backend {
 
-CPU::CPU(const Config& config) {
-    JST_DEBUG("Initializing CPU backend.");
+CPU::CPU(const Config&) {
 }
 
 }  // namespace Jetstream::Backend

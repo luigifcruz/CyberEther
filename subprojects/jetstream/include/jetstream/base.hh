@@ -21,7 +21,13 @@
 #include "jetstream/modules/fft.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE
+#if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FILTER_METAL_AVAILABLE)
+#include "jetstream/modules/filter.hh"
+#endif
+
+#if defined(JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_WINDOW_METAL_AVAILABLE)
 #include "jetstream/modules/window.hh"
 #endif
 
@@ -38,6 +44,11 @@
 #if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
     defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
 #include "jetstream/modules/scale.hh"
+#endif
+
+#if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE)
+#include "jetstream/modules/soapy.hh"
 #endif
 
 //
@@ -60,6 +71,12 @@
     defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
 #include "jetstream/modules/spectrogram.hh"
 #include "jetstream/bundle/spectrogram.hh"
+#endif
+
+#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
+#include "jetstream/modules/constellation.hh"
+#include "jetstream/bundle/constellation.hh"
 #endif
 
 #endif

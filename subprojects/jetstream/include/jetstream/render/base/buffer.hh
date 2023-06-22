@@ -16,6 +16,9 @@ class Buffer {
         VERTEX,
         VERTEX_INDICES,
         STORAGE,
+        UNIFORM,
+        STORAGE_DYNAMIC,
+        UNIFORM_DYNAMIC,
     };
 
     struct Config {
@@ -33,12 +36,16 @@ class Buffer {
     }
     virtual ~Buffer() = default;
 
-    constexpr const U64 size() const {
+    constexpr U64 size() const {
         return config.size;
     }
 
-    virtual const Result update() = 0;
-    virtual const Result update(const U64& offset, const U64& size) = 0;
+    constexpr U64 byteSize() const {
+        return config.size * config.elementByteSize;
+    }
+
+    virtual Result update() = 0;
+    virtual Result update(const U64& offset, const U64& size) = 0;
 
     template<Device D> 
     static std::shared_ptr<Buffer> Factory(const Config& config) {

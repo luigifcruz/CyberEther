@@ -9,15 +9,15 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
     buffer = std::dynamic_pointer_cast<VertexImp<Device::Metal>>(config.buffer);
 }
 
-const Result Implementation::create() {
+Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset) {
     JST_DEBUG("Creating Metal draw.");
 
-    JST_CHECK(buffer->create());
+    JST_CHECK(buffer->create(vertDesc, offset));
 
     return Result::SUCCESS;
 }
 
-const Result Implementation::destroy() {
+Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal draw.");
 
     JST_CHECK(buffer->destroy());
@@ -25,8 +25,7 @@ const Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-const Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
-                                    const U64& offset) {
+Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
     MTL::PrimitiveType mode;
 
     switch (config.mode) {
@@ -47,7 +46,7 @@ const Result Implementation::encode(MTL::RenderCommandEncoder* encoder,
             break;
     }
 
-    JST_CHECK(buffer->encode(encoder, offset));
+    JST_CHECK(buffer->encode(encoder));
 
     if (buffer->isBuffered()) {
         encoder->drawIndexedPrimitives(mode, (NS::UInteger)buffer->getVertexCount(),

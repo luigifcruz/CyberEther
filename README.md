@@ -14,21 +14,36 @@
 
 ## Compatibility
 
+### Devices
+|               Device             |     Metal    |        Vulkan        |      WebGPU    |
+|----------------------------------|--------------|----------------------|----------------|
+| macOS (Apple Silicon)            | ✅ (Native)   | ✅ (via MoltenVK)    | ❌ (Future)     |
+| iOS/iPadOS                       | ✅ (Native)   | ✅ (via MoltenVK)    | ❌ (Future)     |
+| Linux (NVIDIA/AMD/Intel)         | N/A          | ✅ (Native)          | ❌ (Future)     |
+| Windows (NVIDIA/AMD/Intel)       | N/A          | ✅ (Native*)         | ❌ (Future)     |
+| Android                          | N/A          | ✅ (Native*)          | ❌ (Future)     |
+| Browser (WebKit/Chrome/Firefox)  | N/A          | N/A                  | ❌ (Future)     |
+
+`*` Not validated yet.
+ 
 ### Graphical Modules
-|   Module   |   Metal   |     CUDA     |     CPU+Render      |
-|------------|-----------|--------------|---------------------|
-| Lineplot   | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
-| Waterfall  | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
-| Spectogram | ✅ (Full)  | ❌ (Porting) | ✅ (Slow but full)  |
+|     Module    |     Metal    |      Vulkan      |      WebGPU        |    CPU+Render     |
+|---------------|--------------|------------------|--------------------|--------------------|
+| Lineplot      | ✅ (Full)     | ✅ (Graphical)   |  ❌ (Future)        | ✅ (Full)           |
+| Waterfall     | ✅ (Full)     | ✅ (Graphical)   |  ❌ (Future)        | ✅ (Full)           |
+| Spectrogram   | ✅ (Full)     | ✅ (Graphical)   |  ❌ (Future)        | ✅ (Slow but full)  |
+| Constellation | ❌ (Porting)  | ❌ (Porting)     |  ❌ (Future)        | ✅ (Slow but full)  |
 
 ### Compute Modules
-|   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |         Description         |
-|------------|-------|--------------|-----------|------------|-----------------------------|
-| Amplitude  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Complex data to power.      |
-| FFT        | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Channelization.             |
-| Multiply   | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Vector multiplication.      |
-| Scale      | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Scaling vector by factor.   |
-| Windowing  | ✅    | ❌ (Porting)  | ✅        | ❌ (Future) | Apply window to vector.     |
+|   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |          Description           |
+|------------|-------|--------------|-----------|------------|--------------------------------|
+| Amplitude  | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Complex data to power.        |
+| FFT        | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Channelization.               |
+| Multiply   | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Vector multiplication.        |
+| Scale      | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Scaling vector by factor.     |
+| Window     | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Apply a window to vector.     |
+| Filter     | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Apply a FIR Filter to vector. |
+| Soapy      | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Simple SoapySDR tap.          |
 
 ## Installation
 The only way to use CyberEther at the moment is by compiling it from the source. It won't be that difficult because of the low number of dependencies.
@@ -130,5 +145,6 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 ## Short-Term To-Do List 
 
-- TODO: Implement Memory-based compute graphs.
-- TODO: Print Compute and Present trees.
+- TODO: Add runtime graph programming.
+- TODO: Add in-place modules.
+- TODO: Add CUDA compute logic.

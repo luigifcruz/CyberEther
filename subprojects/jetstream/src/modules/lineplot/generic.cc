@@ -1,4 +1,5 @@
 #include "jetstream/modules/lineplot.hh"
+#include "shaders/lineplot_shaders.hh"
 
 namespace Jetstream {
 
@@ -7,11 +8,11 @@ Lineplot<D, T>::Lineplot(const Config& config,
                          const Input& input) 
          : config(config), input(input) {
     JST_DEBUG("Initializing Lineplot module.");
-    JST_CHECK_THROW(initInput(input.buffer));
+    JST_CHECK_THROW(Module::initInput(input.buffer));
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Lineplot compute core using CPU backend.");
     
     {
@@ -51,7 +52,7 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 
     {
         // Generate Plot coordinates.
-        const U64 num_cols = input.buffer.shape(1);
+        const U64 num_cols = input.buffer.shape()[1];
 
         plot = Vector<D, F32, 2>({num_cols, 3});
 
@@ -66,7 +67,7 @@ const Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::createPresent(Render::Window& window) {
+Result Lineplot<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config gridVerticesConf;
     gridVerticesConf.buffer = grid.data();
     gridVerticesConf.elementByteSize = sizeof(grid[0]);
@@ -108,16 +109,24 @@ const Result Lineplot<D, T>::createPresent(Render::Window& window) {
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    lutTextureCfg.key = "LutTexture";
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
-    Render::Program::Config programCfg;
-    programCfg.shaders = {
-        {Device::Metal, {MetalShader}},
+    Render::Program::Config gridProgramCfg;
+    gridProgramCfg.shaders = {
+        {Device::Metal,  {grid_msl_vert_shader, grid_msl_frag_shader}},
+        {Device::Vulkan, {grid_spv_vert_shader, grid_spv_frag_shader}},
     };
-    programCfg.draws = {drawGridVertex, drawLineVertex};
-    programCfg.textures = {lutTexture};
-    JST_CHECK(window.build(program, programCfg));
+    gridProgramCfg.draw = drawGridVertex;
+    JST_CHECK(window.build(gridProgram, gridProgramCfg));
+
+    Render::Program::Config signalProgramCfg;
+    signalProgramCfg.shaders = {
+        {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
+        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
+    };
+    signalProgramCfg.draw = drawLineVertex;
+    signalProgramCfg.textures = {lutTexture};
+    JST_CHECK(window.build(signalProgram, signalProgramCfg));
 
     Render::Texture::Config textureCfg;
     textureCfg.size = config.viewSize;
@@ -125,7 +134,7 @@ const Result Lineplot<D, T>::createPresent(Render::Window& window) {
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {program};
+    surfaceCfg.programs = {gridProgram, signalProgram};
     JST_CHECK(window.build(surface, surfaceCfg));
     JST_CHECK(window.bind(surface));
 
@@ -138,7 +147,7 @@ void Lineplot<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-const Result Lineplot<D, T>::present(Render::Window& window) {
+Result Lineplot<D, T>::present(Render::Window&) {
     lineVerticesBuffer->update();
     return Result::SUCCESS;
 }
@@ -155,5 +164,27 @@ template<Device D, typename T>
 Render::Texture& Lineplot<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+Result Lineplot<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
+                               std::unordered_map<std::string, std::any>& inputMap,
+                               std::unordered_map<std::string, std::any>&,
+                               std::shared_ptr<Lineplot<D, T>>& module) {
+    using Module = Lineplot<D, T>;
+
+    Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "numberOfVerticalLines", config.numberOfVerticalLines));
+    JST_CHECK(Module::BindVariable(configMap, "numberOfHorizontalLines", config.numberOfHorizontalLines));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+
+    Module::Input input{};
+
+    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
+
+    module = std::make_shared<Module>(config, input);
+
+    return Result::SUCCESS;
+}
 
 }  // namespace Jetstream

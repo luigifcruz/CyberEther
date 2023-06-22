@@ -1,10 +1,10 @@
 src_lst += files([
-    'instance.cc',
+   'instance.cc',
 ])
 
-subdir('backend')
-subdir('render')
 subdir('memory')
-subdir('modules')
+subdir('backend')
 subdir('viewport')
+subdir('render')
+subdir('modules')
 subdir('graph')

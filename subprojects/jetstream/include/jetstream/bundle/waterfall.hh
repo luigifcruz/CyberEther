@@ -11,15 +11,15 @@ class WaterfallUI {
  public:
     using Module = Waterfall<DeviceId>;
 
-    const Result init(Instance& instance,
-                      const typename Module::Config& config,
-                      const typename Module::Input& input) {
+    Result init(Instance& instance,
+                const typename Module::Config& config,
+                const typename Module::Input& input) {
         module = instance.addBlock<Waterfall, DeviceId>(config, input);
 
         return Result::SUCCESS;
     }
 
-    const Result draw() {
+    Result draw() {
         ImGui::Begin("Waterfall");
 
         auto [x, y] = ImGui::GetContentRegionAvail();
@@ -40,7 +40,7 @@ class WaterfallUI {
         return Result::SUCCESS;       
     }
 
-    const Result drawControl() {
+    Result drawControl() {
         auto interpolate = module->interpolate();
         if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
             module->interpolate(interpolate);
@@ -54,7 +54,7 @@ class WaterfallUI {
         return Result::SUCCESS;       
     }
 
-    const Result drawInfo() {
+    Result drawInfo() {
             
         return Result::SUCCESS;       
     }
