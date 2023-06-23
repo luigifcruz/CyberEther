@@ -9,6 +9,7 @@
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/tools/imnodes.h"
 
 namespace Jetstream::Render {
 
