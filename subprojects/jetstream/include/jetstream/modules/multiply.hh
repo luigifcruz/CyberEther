@@ -9,6 +9,7 @@
 
 namespace Jetstream {
 
+// TODO: Fix input/output template arguments.
 template<Device D, typename T = CF32>
 class Multiply : public Module, public Compute {
  public:

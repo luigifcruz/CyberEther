@@ -73,6 +73,7 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class Amplitude<Device::Metal, CF32>;
     
 }  // namespace Jetstream

@@ -61,6 +61,7 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class Lineplot<Device::Metal, F32>;
     
 }  // namespace Jetstream

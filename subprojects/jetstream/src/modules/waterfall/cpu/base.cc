@@ -17,6 +17,7 @@ Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class Waterfall<Device::CPU, F32>;
     
 }  // namespace Jetstream
