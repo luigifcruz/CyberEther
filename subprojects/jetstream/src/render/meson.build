@@ -2,6 +2,7 @@ sum_lst = {}
 
 subdir('metal')
 subdir('vulkan')
+subdir('webgpu')
 subdir('tools')
 subdir('base')
 

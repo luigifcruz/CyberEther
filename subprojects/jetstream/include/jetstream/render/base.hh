@@ -34,4 +34,14 @@
 #include "jetstream/render/vulkan/vertex.hh"
 #endif
 
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+#include "jetstream/render/webgpu/window.hh"
+// #include "jetstream/render/webgpu/surface.hh"
+// #include "jetstream/render/webgpu/program.hh"
+// #include "jetstream/render/webgpu/buffer.hh"
+// #include "jetstream/render/webgpu/draw.hh"
+// #include "jetstream/render/webgpu/texture.hh"
+// #include "jetstream/render/webgpu/vertex.hh"
+#endif
+
 #endif

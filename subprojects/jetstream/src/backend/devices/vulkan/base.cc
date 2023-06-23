@@ -100,7 +100,7 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
     return indices.isComplete() && requiredExtensions.empty();
 }
 
-Vulkan::Vulkan(const Config& _config) : config(_config) {
+Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     // Create application.
 
     {

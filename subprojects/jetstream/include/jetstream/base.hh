@@ -4,52 +4,52 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
-// #include "jetstream/instance.hh"
+#include "jetstream/instance.hh"
 #include "jetstream/module.hh"
 
 #include "jetstream/backend/base.hh"
-// #include "jetstream/render/base.hh"
-// #include "jetstream/viewport/base.hh"
-// #include "jetstream/memory/base.hh"
+#include "jetstream/render/base.hh"
+#include "jetstream/viewport/base.hh"
+#include "jetstream/memory/base.hh"
 
 // 
 // Compute
 //
 
-// #if defined(JETSTREAM_MODULE_FFT_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_FFT_METAL_AVAILABLE)
-// #include "jetstream/modules/fft.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_FFT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FFT_METAL_AVAILABLE)
+#include "jetstream/modules/fft.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_FILTER_METAL_AVAILABLE)
-// #include "jetstream/modules/filter.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FILTER_METAL_AVAILABLE)
+#include "jetstream/modules/filter.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_WINDOW_METAL_AVAILABLE)
-// #include "jetstream/modules/window.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_WINDOW_METAL_AVAILABLE)
+#include "jetstream/modules/window.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE)
-// #include "jetstream/modules/multiply.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE)
+#include "jetstream/modules/multiply.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE)
-// #include "jetstream/modules/amplitude.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE)
+#include "jetstream/modules/amplitude.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
-// #include "jetstream/modules/scale.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
+#include "jetstream/modules/scale.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE)
-// #include "jetstream/modules/soapy.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE)
+#include "jetstream/modules/soapy.hh"
+#endif
 
 //
 // Graphical
