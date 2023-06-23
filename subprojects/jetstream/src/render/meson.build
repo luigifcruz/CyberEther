@@ -11,7 +11,8 @@ foreach x_render : sum_lst.keys()
 endforeach
 
 if not some_render_found
-    error('Failed to find a compatible render. Check your dependencies and try again.')
+    # TODO: Revert.
+    # error('Failed to find a compatible render. Check your dependencies and try again.')
 endif
 
 summary(sum_lst, section: 'Render (Present)', bool_yn: true)

@@ -13,7 +13,8 @@ foreach x_viewport : sum_lst.keys()
 endforeach
 
 if not some_viewport_found
-    error('Failed to find a compatible viewport. Check your dependencies and try again.')
+    # TODO: Revert
+    # error('Failed to find a compatible viewport. Check your dependencies and try again.')
 endif
 
 summary(sum_lst, section: 'Viewport', bool_yn: true)

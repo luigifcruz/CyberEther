@@ -30,6 +30,7 @@ enum class JETSTREAM_API Device : uint8_t {
     CUDA    = 1 << 2,
     Metal   = 1 << 3,
     Vulkan  = 1 << 4,
+    WebGPU  = 1 << 5,
 };
 
 inline constexpr Device operator|(Device lhs, Device rhs) {
@@ -54,6 +55,9 @@ inline std::ostream& operator<<(std::ostream& os, const Device& device) {
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
         case Device::Vulkan: os << "Vulkan"; break;
+#endif
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE 
+        case Device::WebGPU: os << "WebGPU"; break;
 #endif
         default: os.setstate(std::ios_base::failbit);
     }

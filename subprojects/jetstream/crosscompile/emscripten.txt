@@ -1,0 +1,32 @@
+# This is a cross compilation file to Emscripten (browser).
+
+[binaries]
+c = 'emcc'
+cpp = 'em++'
+ar = 'emar'
+ranlib='emranlib'
+
+[built-in options]
+cpp_args = ['-O1']
+c_args = cpp_args
+
+cpp_link_args = [
+    '-s', 'WASM=1',
+    '-s', 'USE_GLFW=3',
+    '-s', 'USE_WEBGPU=1',
+    '-o', 'cyberether.js',
+    '-s', 'ASYNCIFY=1',
+    '-s', 'ASYNCIFY_STACK_SIZE=8192',
+    '-s', 'ASSERTIONS=1',
+    '-s', 'DEMANGLE_SUPPORT=1',
+    '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
+    '-s', 'INITIAL_MEMORY=128MB']
+c_link_args = cpp_link_args
+
+default_library = 'static'
+
+[host_machine]
+cpu = 'mvp'
+cpu_family = 'wasm64'
+endian = 'little'
+system = 'emscripten'
