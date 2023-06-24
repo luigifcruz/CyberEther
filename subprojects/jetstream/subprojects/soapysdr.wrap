@@ -7,4 +7,4 @@ patch_directory = soapysdr-ios
 wrapdb_version = 0.8.1
 
 [provide]
-soapysdr = soapy_dep
+soapysdr = soapysdr_dep
