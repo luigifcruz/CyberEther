@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class ProgramImp<Device::Metal> : public Program {
+class ProgramImp<Device::WebGPU> : public Program {
  public:
     explicit ProgramImp(const Config& config);
 

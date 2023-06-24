@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class TextureImp<Device::Metal> : public Texture {
+class TextureImp<Device::WebGPU> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 
@@ -25,26 +25,26 @@ class TextureImp<Device::Metal> : public Texture {
     Result create();
     Result destroy();
 
-    constexpr MTL::PixelFormat getPixelFormat() const {
-        return pixelFormat;
-    }
-
-    constexpr MTL::Texture* getHandle() const {
+    constexpr wgpu::Texture& getHandle() {
         return texture;
     }
 
-    constexpr MTL::SamplerState* getSamplerStateHandle() const {
-        return samplerState;
+    constexpr wgpu::Sampler& getSamplerHandle() {
+        return sampler;
     }
 
-    static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&, 
-                                               const PixelType&);
-    static U64 GetPixelByteSize(const MTL::PixelFormat&);
+    constexpr const wgpu::TextureFormat& getTextureFormat() const {
+        return textureFormat;
+    }
+
+    static wgpu::TextureFormat ConvertPixelFormat(const PixelFormat&, 
+                                                  const PixelType&);
+    static U64 GetPixelByteSize(const wgpu::TextureFormat&);
 
  private:
-    MTL::Texture* texture = nullptr;
-    MTL::PixelFormat pixelFormat;
-    MTL::SamplerState* samplerState;
+    wgpu::Sampler sampler;
+    wgpu::Texture texture;
+    wgpu::TextureFormat textureFormat;
 
     friend class SurfaceImp<Device::Metal>;
     friend class ProgramImp<Device::Metal>;

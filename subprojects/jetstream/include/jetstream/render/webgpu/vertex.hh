@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class VertexImp<Device::Metal> : public Vertex {
+class VertexImp<Device::WebGPU> : public Vertex {
  public:
     explicit VertexImp(const Config& config);
 

@@ -19,7 +19,8 @@ layout(set = 0, binding = 1) readonly buffer DataBuffer {
     float data[];
 };
 
-layout(set = 0, binding = 2) uniform sampler2D lut;
+layout(set = 0, binding = 2) uniform texture2D lutTex;
+layout(set = 0, binding = 3) uniform sampler lutSam;
 
 float samplerXY(float x, float y) {
     int idx = int(y) * uniforms.width + int(x);
@@ -52,5 +53,5 @@ void main() {
         mag = samplerXY(inTexcoord.x, inTexcoord.y);
     }
 
-    outColor = texture(lut, vec2(mag, 0.0));
+    outColor = texture(sampler2D(lutTex, lutSam), vec2(mag, 0.0));
 }

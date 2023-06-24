@@ -1,16 +1,18 @@
-#include "jetstream/render/metal/texture.hh"
+#include "jetstream/render/webgpu/texture.hh"
 
 namespace Jetstream::Render {
 
-using Implementation = TextureImp<Device::Metal>;
+using Implementation = TextureImp<Device::WebGPU>;
 
 Implementation::TextureImp(const Config& config) : Texture(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal texture.");
+    JST_DEBUG("[WebGPU] Creating texture.");
 
-    pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
+    textureFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
+
+    
 
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
             pixelFormat, config.size.width, config.size.height, false);
@@ -37,10 +39,9 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal texture.");
+    JST_DEBUG("[WebGPU] Destroying texture.");
 
-    samplerState->release();
-    texture->release();
+    texture->Destroy();
 
     return Result::SUCCESS;
 }
@@ -67,45 +68,49 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    auto region = MTL::Region::Make2D(0, y, config.size.width, height);
-    auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
-    auto bufferByteOffset = rowByteSize * y;
-    texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
+    // TODO: implement this.
+
+    JST_ERROR("not implemented: texture")
+
+    // auto region = MTL::Region::Make2D(0, y, config.size.width, height);
+    // auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
+    // auto bufferByteOffset = rowByteSize * y;
+    // texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
 
     return Result::SUCCESS;
 }
 
-MTL::PixelFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
-                                                    const PixelType& ptype) {
+wgpu::TextureFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
+                                                       const PixelType& ptype) {
     if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
-        return MTL::PixelFormatR32Float;
+        return wgpu::TextureFormat::R32Float;
     }
 
     if (pfmt == PixelFormat::RED && ptype == PixelType::UI8) {
-        return MTL::PixelFormatR8Unorm;
+        return wgpu::TextureFormat::R8Unorm;
     }
 
     if (pfmt == PixelFormat::RGBA && ptype == PixelType::F32) {
-        return MTL::PixelFormatRGBA32Float;
+        return wgpu::TextureFormat::RGBA32Float;
     }
 
     if (pfmt == PixelFormat::RGBA && ptype == PixelType::UI8) {
-        return MTL::PixelFormatRGBA8Unorm;
+        return wgpu::TextureFormat::RGBA8Unorm;
     }
 
     JST_FATAL("Can't convert pixel format.");
     throw Result::ERROR;
 }
 
-U64 Implementation::GetPixelByteSize(const MTL::PixelFormat& pfmt) {
+U64 Implementation::GetPixelByteSize(const wgpu::TextureFormat& pfmt) {
     switch (pfmt) {
-        case MTL::PixelFormatR32Float:
+        case wgpu::TextureFormat::R32Float:
             return 4;
-        case MTL::PixelFormatR8Unorm:
+        case wgpu::TextureFormat::R8Unorm:
             return 1;
-        case MTL::PixelFormatRGBA32Float:
+        case wgpu::TextureFormat::RGBA32Float:
             return 16;
-        case MTL::PixelFormatRGBA8Unorm:
+        case wgpu::TextureFormat::RGBA8Unorm:
             return 4;
         default:
             JST_FATAL("Pixel format not implemented yet.");

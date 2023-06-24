@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class SurfaceImp<Device::Metal> : public Surface {
+class SurfaceImp<Device::WebGPU> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 

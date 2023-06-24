@@ -1,9 +1,9 @@
-#include "jetstream/render/metal/buffer.hh"
-#include "jetstream/render/metal/vertex.hh"
+#include "jetstream/render/webgpu/buffer.hh"
+#include "jetstream/render/webgpu/vertex.hh"
 
 namespace Jetstream::Render {
 
-using Implementation = VertexImp<Device::Metal>;
+using Implementation = VertexImp<Device::WebGPU>;
 
 Implementation::VertexImp(const Config& config) : Vertex(config) {
     for (const auto& [buffer, stride] : config.buffers) {

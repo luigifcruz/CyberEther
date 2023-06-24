@@ -1,9 +1,9 @@
-#include "jetstream/render/metal/vertex.hh"
-#include "jetstream/render/metal/draw.hh"
+#include "jetstream/render/webgpu/vertex.hh"
+#include "jetstream/render/webgpu/draw.hh"
 
 namespace Jetstream::Render {
 
-using Implementation = DrawImp<Device::Metal>;
+using Implementation = DrawImp<Device::WebGPU>;
 
 Implementation::DrawImp(const Config& config) : Draw(config) {
     buffer = std::dynamic_pointer_cast<VertexImp<Device::Metal>>(config.buffer);

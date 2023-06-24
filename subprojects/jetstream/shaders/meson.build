@@ -2,6 +2,7 @@ fs = import('fs')
 
 glslang = find_program('glslangValidator', required : false)
 spirvcross = find_program('spirv-cross', required : false)
+naga = find_program('naga', required : false)
 python_bin = find_program('python3', 'python', required : false)
 
 shader_pkg_lst = []
@@ -52,6 +53,24 @@ foreach shader_pkg : shader_pkg_lst
                 input : frag,
                 output : name + '_' + fs.stem(shader[1]) + '.msl',
                 command : [spirvcross, '--msl', '@INPUT@', '--output', '@OUTPUT@', '--msl-version', '30000'],
+                build_by_default : true,
+            )
+        endif
+
+        # Translate to WGSL (WebGPU).
+
+        if naga.found()
+            custom_target(
+                input : vert,
+                output : name + '_' + fs.stem(shader[0]) + '.wgsl',
+                command : [naga, '@INPUT@', '@OUTPUT@'],
+                build_by_default : true,
+            )
+
+            custom_target(
+                input : frag,
+                output : name + '_' + fs.stem(shader[1]) + '.wgsl',
+                command : [naga, '@INPUT@', '@OUTPUT@'],
                 build_by_default : true,
             )
         endif

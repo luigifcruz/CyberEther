@@ -1,11 +1,11 @@
-#include "jetstream/render/metal/buffer.hh"
-#include "jetstream/render/metal/draw.hh"
-#include "jetstream/render/metal/texture.hh"
-#include "jetstream/render/metal/program.hh"
+#include "jetstream/render/webgpu/buffer.hh"
+#include "jetstream/render/webgpu/draw.hh"
+#include "jetstream/render/webgpu/texture.hh"
+#include "jetstream/render/webgpu/program.hh"
 
 namespace Jetstream::Render {
 
-using Implementation = ProgramImp<Device::Metal>;
+using Implementation = ProgramImp<Device::WebGPU>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
     _draw = std::dynamic_pointer_cast<DrawImp<Device::Metal>>(config.draw);

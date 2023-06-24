@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class DrawImp<Device::Metal> : public Draw {
+class DrawImp<Device::WebGPU> : public Draw {
  public:
     explicit DrawImp(const Config& config);
 

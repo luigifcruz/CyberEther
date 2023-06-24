@@ -80,7 +80,7 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     for (U64 i = 0; i < textures.size(); i++) {
         VkDescriptorSetLayoutBinding binding{};
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;  // TODO: Make this as separate image and sampler.
         binding.descriptorCount = 1;
         binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         binding.binding = bindingOffset++;

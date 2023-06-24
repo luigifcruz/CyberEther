@@ -1,10 +1,10 @@
-#include "jetstream/render/metal/program.hh"
-#include "jetstream/render/metal/texture.hh"
-#include "jetstream/render/metal/surface.hh"
+#include "jetstream/render/webgpu/program.hh"
+#include "jetstream/render/webgpu/texture.hh"
+#include "jetstream/render/webgpu/surface.hh"
 
 namespace Jetstream::Render {
 
-using Implementation = SurfaceImp<Device::Metal>;
+using Implementation = SurfaceImp<Device::WebGPU>;
 
 Implementation::SurfaceImp(const Config& config) : Surface(config) {
     framebuffer = std::dynamic_pointer_cast<

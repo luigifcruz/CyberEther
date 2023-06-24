@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class BufferImp<Device::Metal> : public Buffer {
+class BufferImp<Device::WebGPU> : public Buffer {
  public:
     explicit BufferImp(const Config& config);
 
@@ -20,12 +20,12 @@ class BufferImp<Device::Metal> : public Buffer {
     Result create();
     Result destroy();
 
-    constexpr MTL::Buffer* getHandle() const {
+    constexpr wgpu::Buffer& getHandle() {
         return buffer;
     }
 
  private:
-    MTL::Buffer* buffer = nullptr;
+    wgpu::Buffer buffer;
 
     friend class SurfaceImp<Device::Metal>;
     friend class ProgramImp<Device::Metal>;

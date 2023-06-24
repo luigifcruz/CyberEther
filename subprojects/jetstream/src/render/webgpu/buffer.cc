@@ -1,41 +1,54 @@
-#include "jetstream/render/metal/buffer.hh"
+#include "jetstream/render/webgpu/buffer.hh"
 
 namespace Jetstream::Render {
 
-using Implementation = BufferImp<Device::Metal>;
+using Implementation = BufferImp<Device::WebGPU>;
 
 Implementation::BufferImp(const Config& config) : Buffer(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal buffer.");
+    JST_DEBUG("[WebGPU] Creating buffer.");
 
-    // TODO: Add usage hints.
-    auto device = Backend::State<Device::Metal>()->getDevice();
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
-    if (config.enableZeroCopy) {
-        buffer = device->newBuffer(config.buffer,
-                                   JST_PAGE_ALIGNED_SIZE(byteSize), 
-                                   MTL::ResourceStorageModeShared,
-                                   nullptr); 
-    } else {
-        buffer = device->newBuffer(config.buffer,
-                                   byteSize, 
-                                   MTL::ResourceStorageModeShared); 
+    wgpu::BufferUsage bufferUsageFlag = {};
+    bufferUsageFlag |= wgpu::BufferUsage::CopySrc;
+    bufferUsageFlag |= wgpu::BufferUsage::CopyDst;
+    switch (config.target) {
+        case Target::VERTEX:
+            bufferUsageFlag |= wgpu::BufferUsage::Vertex;
+            break;
+        case Target::VERTEX_INDICES:
+            bufferUsageFlag |= wgpu::BufferUsage::Index;
+            break;
+        case Target::STORAGE:
+            bufferUsageFlag |= wgpu::BufferUsage::Storage;
+            break;
+        case Target::UNIFORM:
+            bufferUsageFlag |= wgpu::BufferUsage::Uniform;
+            break;
+        case Target::STORAGE_DYNAMIC:
+        case Target::UNIFORM_DYNAMIC:
+            JST_FATAL("[WebGPU] Buffer usage type not supported.")
+            return Result::ERROR;
+            break;
     }
-    JST_ASSERT(buffer);
+
+    wgpu::BufferDescriptor bufferDescriptor{};
+    bufferDescriptor.size = byteSize;
+    bufferDescriptor.usage = bufferUsageFlag;
+
+    buffer = device.CreateBuffer(&bufferDescriptor);
 
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal buffer.");
+    JST_DEBUG("[WebGPU] Destroying buffer.");
 
-    if (buffer) {
-        buffer->release();
-    }
-    buffer = nullptr;
+    buffer.Destroy();
 
     return Result::SUCCESS;
 }
@@ -49,16 +62,17 @@ Result Implementation::update(const U64& offset, const U64& size) {
         return Result::SUCCESS;
     }
 
-    const auto& byteOffset = offset * config.elementByteSize;
-    const auto& byteSize = size * config.elementByteSize;
+    // TODO: Implement this.
 
-    if (!config.enableZeroCopy) {
-        uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-        memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
-#if !defined(TARGET_OS_IOS)
-        buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
-#endif
-    }
+    JST_ERROR("not implemented: buffer");
+
+    // const auto& byteOffset = offset * config.elementByteSize;
+    // const auto& byteSize = size * config.elementByteSize;
+
+    // if (!config.enableZeroCopy) {
+    //     uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
+    //     memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
+    // }
 
     return Result::SUCCESS;
 }
