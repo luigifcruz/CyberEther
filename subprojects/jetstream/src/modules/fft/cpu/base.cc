@@ -9,8 +9,8 @@ Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
     auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
     auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
 
-    const I32 M = input.buffer.shape(0);
-    const I32 N = input.buffer.shape(1);
+    const I32 M = input.buffer.shape()[0];
+    const I32 N = input.buffer.shape()[1];
     auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
 
     int rank     = 1;      // Number of dimensions
@@ -50,6 +50,7 @@ Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class FFT<Device::CPU, CF32>;
     
 }  // namespace Jetstream

@@ -11,6 +11,7 @@
 
 namespace Jetstream {
 
+// TODO: Fix input/output template arguments.
 template<Device D, typename IT = F32>
 class Lineplot : public Module, public Compute, public Present {
  public:

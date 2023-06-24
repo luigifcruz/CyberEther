@@ -13,6 +13,7 @@
 
 namespace Jetstream {
 
+// TODO: Fix input/output template arguments.
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {
  public:

@@ -33,8 +33,8 @@ class JETSTREAM_API Module {
  protected:
     virtual constexpr Device device() const = 0;
     
-    template<typename T>
-    Result initInput(const T& buffer) {
+    template<Device DeviceId, typename DataType, U64 Dimensions>
+    Result initInput(const Vector<DeviceId, DataType, Dimensions>& buffer) {
         if (buffer.empty()) {
             JST_FATAL("Module input can't be empty.");
             return Result::ERROR;
@@ -45,29 +45,30 @@ class JETSTREAM_API Module {
             buffer.phash(),
             buffer.data(),
             buffer.device(),
-            NumericTypeInfo<typename T::DataType>::name,
-            buffer.shapeVector(),
+            NumericTypeInfo<DataType>::name,
+            buffer.shape().native(),
         });
 
         return Result::SUCCESS;
     }
 
-    template<typename T>
-    Result initOutput(T& buffer, const typename T::ShapeType& shape) {
+    template<Device DeviceId, typename DataType, U64 Dimensions>
+    Result initOutput(Vector<DeviceId, DataType, Dimensions>& buffer,
+                      const VectorShape<Dimensions>& shape) {
         if (!buffer.empty()) {
             JST_FATAL("The output buffer should be empty on initialization.");
             return Result::ERROR;
         }
 
-        buffer = T(shape);
+        buffer = Vector<DeviceId, DataType, Dimensions>(shape);
 
         outputs.push_back({
             buffer.hash(),
             buffer.phash(),
             buffer.data(),
             buffer.device(),
-            NumericTypeInfo<typename T::DataType>::name,
-            buffer.shapeVector(),
+            NumericTypeInfo<DataType>::name,
+            buffer.shape().native(),
         });
 
         return Result::SUCCESS;
@@ -86,7 +87,7 @@ class JETSTREAM_API Module {
             dst.data(),
             dst.device(),
             NumericTypeInfo<Type>::name,
-            dst.shapeVector(),
+            dst.shape().native(),
         });
 
         return Result::SUCCESS;

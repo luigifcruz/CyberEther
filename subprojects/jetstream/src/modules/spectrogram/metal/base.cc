@@ -46,14 +46,14 @@ Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &assets.stateDecay));
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
 
-    frequencyBins = Vector<Device::Metal, F32, 2>({input.buffer.shape(1), config.height});
-    decayFactor = pow(0.999, input.buffer.shape(0));
+    frequencyBins = Vector<Device::Metal, F32, 2>({input.buffer.shape()[1], config.height});
+    decayFactor = pow(0.999, input.buffer.shape()[0]);
 
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->width = input.buffer.shape(1);
+    constants->width = input.buffer.shape()[1];
     constants->height = config.height; 
     constants->decayFactor = decayFactor;
-    constants->batchSize = input.buffer.shape(0);
+    constants->batchSize = input.buffer.shape()[0];
 
     return Result::SUCCESS;
 }
@@ -72,7 +72,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), config.height, 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape()[1], config.height, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -88,7 +88,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.shape(1), input.buffer.shape(0), 1);
+        auto threadsPerGrid = MTL::Size(input.buffer.shape()[1], input.buffer.shape()[0], 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -97,6 +97,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class Spectrogram<Device::Metal, F32>;
 
 }  // namespace Jetstream

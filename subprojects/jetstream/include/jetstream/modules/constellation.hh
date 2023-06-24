@@ -11,6 +11,7 @@
 
 namespace Jetstream {
 
+// TODO: Fix input/output template arguments.
 template<Device D, typename IT = CF32>
 class Constellation : public Module, public Compute, public Present {
  public:

@@ -54,7 +54,7 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
 
     Render::Texture::Config bufferCfg;
     bufferCfg.buffer = (U8*)(frequencyBins.data());
-    bufferCfg.size = {frequencyBins.shape(0), frequencyBins.shape(1)};
+    bufferCfg.size = {frequencyBins.shape()[0], frequencyBins.shape()[1]};
     bufferCfg.dfmt = Render::Texture::DataFormat::F32;
     bufferCfg.pfmt = Render::Texture::PixelFormat::RED;
     bufferCfg.ptype = Render::Texture::PixelType::F32;
@@ -103,7 +103,7 @@ template<Device D, typename T>
 Result Spectrogram<D, T>::present(Render::Window&) {
     binTexture->fill();
 
-    shaderUniforms.width = input.buffer.shape(1);
+    shaderUniforms.width = input.buffer.shape()[1];
     shaderUniforms.height = config.height;
     shaderUniforms.zoom = 1.0;
     shaderUniforms.offset = 0.0;
