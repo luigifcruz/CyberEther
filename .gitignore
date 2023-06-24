@@ -6,3 +6,6 @@ __pycache__
 .ipynb_checkpoints
 .vscode
 .idea
+
+subprojects/*
+!subprojects/jetstream
