@@ -11,6 +11,9 @@ class Adapter<Device::WebGPU> : public Generic {
  public:
     using Generic::Generic;
 
+    virtual Result createSwapchain() = 0;
+    virtual Result destroySwapchain() = 0;
+
     virtual Result nextDrawable() = 0;
     virtual Result commitDrawable(wgpu::TextureView& framebufferTexture) = 0;
 };

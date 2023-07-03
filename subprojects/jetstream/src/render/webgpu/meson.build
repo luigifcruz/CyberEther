@@ -16,7 +16,7 @@ if all_deps_found
     #    'surface.cc',
     #    'program.cc',
     #    'texture.cc',
-    #    'buffer.cc',
+        'buffer.cc',
     #    'draw.cc',
     #    'vertex.cc',
     ])

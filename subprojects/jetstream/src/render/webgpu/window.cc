@@ -97,8 +97,8 @@ Result Implementation::destroyImgui() {
 
 Result Implementation::recreate() {
     JST_CHECK(destroy());
-    JST_CHECK(viewport->destroy());
-    JST_CHECK(viewport->create());
+    JST_CHECK(viewport->destroySwapchain());
+    JST_CHECK(viewport->createSwapchain());
     JST_CHECK(create());
 
     return Result::SUCCESS;
@@ -142,7 +142,7 @@ Result Implementation::end() {
         return Result::SKIP;
     } else if (result == Result::RECREATE) {
         JST_CHECK(recreate());
-        return Result::SKIP;       
+        return Result::SKIP;
     } else if (result != Result::SUCCESS) {
         return result;
     }
@@ -160,7 +160,7 @@ Result Implementation::end() {
     renderPassDesc.colorAttachments = &colorAttachments;
     renderPassDesc.depthStencilAttachment = nullptr;
 
-    wgpu::CommandEncoderDescriptor encDesc = {};
+    wgpu::CommandEncoderDescriptor encDesc{};
     encoder = device.CreateCommandEncoder(&encDesc);
 
     // for (auto &surface : surfaces) {
@@ -171,7 +171,7 @@ Result Implementation::end() {
         JST_CHECK(endImgui());
     }
 
-    wgpu::CommandBufferDescriptor cmdBufferDesc = {};
+    wgpu::CommandBufferDescriptor cmdBufferDesc{};
     wgpu::CommandBuffer cmdBuffer = encoder.Finish(&cmdBufferDesc);
     device.GetQueue().Submit(1, &cmdBuffer);
 

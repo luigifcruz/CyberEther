@@ -28,6 +28,9 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     Result createImgui();
     Result destroyImgui();
 
+    Result createSwapchain();
+    Result destroySwapchain();
+
     Result nextDrawable();
     Result commitDrawable(wgpu::TextureView& framebufferTexture);
     
@@ -39,6 +42,8 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     wgpu::Surface surface;
     wgpu::SwapChain swapchain;
     Render::Size2D<U64> swapchainSize;
+
+    static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 };
 
 }  // namespace Jetstream::Viewport

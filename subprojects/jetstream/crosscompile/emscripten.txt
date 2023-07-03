@@ -7,7 +7,7 @@ ar = 'emar'
 ranlib='emranlib'
 
 [built-in options]
-cpp_args = ['-O1']
+cpp_args = ['-O3', '-pthread', '-msimd128']
 c_args = cpp_args
 
 cpp_link_args = [
@@ -15,8 +15,8 @@ cpp_link_args = [
     '-s', 'USE_GLFW=3',
     '-s', 'USE_WEBGPU=1',
     '-o', 'cyberether.js',
-#   '-s', 'ASYNCIFY=1',
-#   '-s', 'ASYNCIFY_STACK_SIZE=8192',
+    '-s', 'SHARED_MEMORY=1',
+    '-s', 'ALLOW_MEMORY_GROWTH=1',
     '-s', 'ASSERTIONS=1',
     '-s', 'DEMANGLE_SUPPORT=1',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',

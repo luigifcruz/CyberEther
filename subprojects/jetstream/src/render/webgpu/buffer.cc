@@ -13,7 +13,7 @@ Result Implementation::create() {
     auto device = Backend::State<Device::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
-    wgpu::BufferUsage bufferUsageFlag = {};
+    wgpu::BufferUsage bufferUsageFlag{};
     bufferUsageFlag |= wgpu::BufferUsage::CopySrc;
     bufferUsageFlag |= wgpu::BufferUsage::CopyDst;
     switch (config.target) {
