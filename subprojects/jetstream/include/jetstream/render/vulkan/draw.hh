@@ -13,7 +13,7 @@ class DrawImp<Device::Vulkan> : public Draw {
 
  protected:
    Result create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                 std::vector<VkVertexInputAttributeDescription>& attributeDescrition,
+                 std::vector<VkVertexInputAttributeDescription>& attributeDescription,
                  VkPipelineInputAssemblyStateCreateInfo& inputAssembly);
     Result encode(VkCommandBuffer& commandBuffer);
     Result destroy();

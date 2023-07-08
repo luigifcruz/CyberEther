@@ -1,5 +1,6 @@
 #include "jetstream/render/vulkan/buffer.hh"
 #include "jetstream/render/vulkan/vertex.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -18,7 +19,7 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
 }
 
 Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                              std::vector<VkVertexInputAttributeDescription>& attributeDescrition) {
+                              std::vector<VkVertexInputAttributeDescription>& attributeDescription) {
     JST_DEBUG("[VULKAN] Creating vertex.");
 
     U32 bindingCount = 0;

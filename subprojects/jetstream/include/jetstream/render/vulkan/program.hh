@@ -3,7 +3,6 @@
 
 #include "jetstream/render/base/program.hh"
 #include "jetstream/backend/base.hh"
-#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 

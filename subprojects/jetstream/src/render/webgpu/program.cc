@@ -47,8 +47,8 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     auto device = Backend::State<Device::WebGPU>()->getDevice();
 
     const auto& shader = config.shaders[Device::WebGPU];
-    wgpu::ShaderModule vertShaderModule = Backend::LoadShaderWebGPU(shader[0], device);
-    wgpu::ShaderModule fragShaderModule = Backend::LoadShaderWebGPU(shader[1], device);
+    wgpu::ShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
+    wgpu::ShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
 
 
     // Enumerate the bindings of program targers.

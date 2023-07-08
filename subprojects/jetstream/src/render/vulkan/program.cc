@@ -2,6 +2,7 @@
 #include "jetstream/render/vulkan/draw.hh"
 #include "jetstream/render/vulkan/texture.hh"
 #include "jetstream/render/vulkan/program.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -156,6 +157,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 
+    // TODO: Change this to the same pattern as WebGPU implemenation.
     JST_CHECK(draw->create(bindingDescription,
                            attributeDescriptions,
                            inputAssembly));
