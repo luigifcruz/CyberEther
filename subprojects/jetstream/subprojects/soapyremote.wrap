@@ -3,7 +3,7 @@ directory = SoapyRemote-soapy-remote-0.5.2
 source_url = https://github.com/pothosware/SoapyRemote/archive/refs/tags/soapy-remote-0.5.2.tar.gz 
 source_filename = SoapyRemote-soapy-remote-0.5.2.tar.gz 
 source_hash = 66a372d85c984e7279b4fdc0a7f5b0d7ba340e390bc4b8bd626a6523cd3c3c76 
-patch_directory = soapyremote-ios
+patch_directory = soapyremote
 wrapdb_version = 0.8.1
 
 [provide]

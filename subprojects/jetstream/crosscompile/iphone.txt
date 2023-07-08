@@ -23,7 +23,7 @@ root = '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/D
 has_function_printf = true
 
 [host_machine]
-system = 'darwin'
+system = 'ios'
 cpu_family = 'aarch64'
 cpu = 'aarch64'
 endian = 'little'

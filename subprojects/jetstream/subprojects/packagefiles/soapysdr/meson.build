@@ -1,4 +1,4 @@
-project('soapysdr', 'cpp', version: '0.8.1', license: 'BSD', default_options: ['cpp_std=c++11'])
+project('soapysdr', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11'])
 
 private_cpp_args = []
 interface_cpp_args = []

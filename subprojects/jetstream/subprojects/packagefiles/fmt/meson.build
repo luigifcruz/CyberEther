@@ -1,4 +1,4 @@
-project('fmt', 'cpp', version: '9.1.0', license: 'BSD', default_options: ['cpp_std=c++14'])
+project('fmt', 'cpp', version: '9.1.0', default_options: ['cpp_std=c++14'])
 
 fmt_private_cpp_args = []
 fmt_interface_cpp_args = []
