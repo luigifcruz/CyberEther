@@ -1,5 +1,9 @@
 #include "jetstream/modules/soapy.hh"
 
+#ifdef JETSTREAM_STATIC
+#include "SoapyAirspy.hpp"
+#endif
+
 namespace Jetstream { 
 
 template<Device D, typename T>
@@ -30,14 +34,24 @@ Soapy<D, T>::~Soapy() {
 template<Device D, typename T>
 void Soapy<D, T>::soapyThreadLoop() {
     while (streaming) {
-        soapyDevice = SoapySDR::Device::make(config.deviceString);
+        SoapySDR::Kwargs args = SoapySDR::KwargsFromString(config.deviceString);
+
+#ifdef JETSTREAM_STATIC
+        const std::string device = args["driver"];
+        if (device.compare("airspy") == 0) {
+            static auto device = SoapyAirspy(args); 
+            soapyDevice = &device;
+        }
+#else
+        soapyDevice = SoapySDR::Device::make(args);
+#endif
 
         if (soapyDevice == nullptr) {
             JST_FATAL("Can't open device.");
             JST_CHECK_THROW(Result::ERROR);
         }
 
-        soapyDevice->setSampleRate( SOAPY_SDR_RX, 0, config.sampleRate);
+        soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
         soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
         soapyDevice->setGainMode(SOAPY_SDR_RX, 0, true);
         

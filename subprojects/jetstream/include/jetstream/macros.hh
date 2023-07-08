@@ -5,6 +5,10 @@
 
 #include "jetstream_config.hh"
 
+#ifdef __EMSCRIPTEN__
+#define JETSTREAM_STATIC
+#endif
+
 #ifndef JETSTREAM_API
 #define JETSTREAM_API __attribute__((visibility("default")))
 #endif  // JETSTREAM_API

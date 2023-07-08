@@ -20,6 +20,7 @@ cpp_link_args = [
     '-s', 'ALLOW_MEMORY_GROWTH=1',
     '-s', 'ASSERTIONS=1',
     '-s', 'ASYNCIFY',
+    '-s', 'ASYNCIFY_STACK_SIZE=16383',
     '-s', 'DEMANGLE_SUPPORT=1',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
     '-s', 'NO_DISABLE_EXCEPTION_CATCHING=1',

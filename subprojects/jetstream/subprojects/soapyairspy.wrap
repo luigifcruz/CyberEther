@@ -1,0 +1,10 @@
+[wrap-file]
+directory = SoapyAirspy-soapy-airspy-0.2.0
+source_url = https://github.com/pothosware/SoapyAirspy/archive/refs/tags/soapy-airspy-0.2.0.tar.gz
+source_filename = SoapyAirspy-soapy-airspy-0.2.0.tar.gz
+source_hash = 4279ab4278fab699ef8325f3f921b2307496130a56028d33022be10916b6ccff 
+patch_directory = soapyairspy
+wrapdb_version = 0.2.0
+
+[provide]
+soapyairspy = soapyairspy_dep
