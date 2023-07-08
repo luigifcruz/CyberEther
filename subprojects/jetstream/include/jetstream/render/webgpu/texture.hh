@@ -18,7 +18,7 @@ class TextureImp<Device::WebGPU> : public Texture {
     Result fillRow(const U64& y, const U64& height);
 
     void* raw() {
-        return texture;
+        return textureView.Get();
     }
 
  protected:
@@ -33,8 +33,20 @@ class TextureImp<Device::WebGPU> : public Texture {
         return sampler;
     }
 
+    constexpr wgpu::TextureView& getViewHandle() {
+        return textureView;
+    }
+
     constexpr const wgpu::TextureFormat& getTextureFormat() const {
         return textureFormat;
+    }
+
+    constexpr const wgpu::TextureBindingLayout& getTextureBindingLayout() const {
+        return textureBindingLayout;
+    }
+
+    constexpr const wgpu::SamplerBindingLayout& getSamplerBindingLayout() const {
+        return samplerBindingLayout;
     }
 
     static wgpu::TextureFormat ConvertPixelFormat(const PixelFormat&, 
@@ -42,12 +54,15 @@ class TextureImp<Device::WebGPU> : public Texture {
     static U64 GetPixelByteSize(const wgpu::TextureFormat&);
 
  private:
-    wgpu::Sampler sampler;
     wgpu::Texture texture;
+    wgpu::TextureView textureView;
+    wgpu::Sampler sampler;
     wgpu::TextureFormat textureFormat;
+    wgpu::SamplerBindingLayout samplerBindingLayout;
+    wgpu::TextureBindingLayout textureBindingLayout;
 
-    friend class SurfaceImp<Device::Metal>;
-    friend class ProgramImp<Device::Metal>;
+    friend class SurfaceImp<Device::WebGPU>;
+    friend class ProgramImp<Device::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

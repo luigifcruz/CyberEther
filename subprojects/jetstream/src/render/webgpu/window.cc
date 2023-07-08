@@ -1,5 +1,5 @@
 #include "jetstream/render/webgpu/window.hh"
-// #include "jetstream/render/metal/surface.hh"
+#include "jetstream/render/webgpu/surface.hh"
 
 namespace Jetstream::Render {
 
@@ -13,9 +13,9 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("[WebGPU] Binding surface to window.");
 
-    // surfaces.push_back(
-    //     std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface)
-    // );
+    surfaces.push_back(
+        std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface)
+    );
 
     return Result::SUCCESS;
 }
@@ -23,17 +23,13 @@ Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating window.");
 
-    // dev = Backend::State<Device::Metal>()->getDevice();
+    auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
-    // commandQueue = dev->newCommandQueue();
-    // JST_ASSERT(commandQueue);
+    queue = device.GetQueue();    
 
-    // renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
-    // JST_ASSERT(renderPassDescriptor);
-
-    // for (auto& surface : surfaces) {
-    //     JST_CHECK(surface->create());
-    // }
+    for (auto& surface : surfaces) {
+        JST_CHECK(surface->create());
+    }
 
     if (config.imgui) {
         JST_CHECK(createImgui());
@@ -47,16 +43,13 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying window.");
 
-    // for (auto& surface : surfaces) {
-    //     JST_CHECK(surface->destroy());
-    // }
+    for (auto& surface : surfaces) {
+        JST_CHECK(surface->destroy());
+    }
 
     if (config.imgui) {
         JST_CHECK(destroyImgui());
     } 
-
-    // renderPassDescriptor->release();
-    // commandQueue->release();
 
     return Result::SUCCESS;
 }
@@ -114,9 +107,9 @@ Result Implementation::beginImgui() {
 Result Implementation::endImgui() {
     ImGui::Render();
 
-    WGPURenderPassEncoder pass = encoder.BeginRenderPass(&renderPassDesc).Release();
-    ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), pass);
-    wgpuRenderPassEncoderEnd(pass);
+    auto renderPassEncoder = encoder.BeginRenderPass(&renderPassDesc).Release();
+    ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPassEncoder);
+    wgpuRenderPassEncoderEnd(renderPassEncoder);
 
     return Result::SUCCESS;
 }
@@ -152,7 +145,10 @@ Result Implementation::end() {
     colorAttachments = {};
     colorAttachments.loadOp = wgpu::LoadOp::Clear;
     colorAttachments.storeOp = wgpu::StoreOp::Store;
-    colorAttachments.clearValue = { 1.0, 0.0, 1.0, 1.0 };
+    colorAttachments.clearValue.r = 0.0f;
+    colorAttachments.clearValue.g = 0.0f;
+    colorAttachments.clearValue.b = 0.0f;
+    colorAttachments.clearValue.a = 1.0f;
     colorAttachments.view = framebufferTexture;
 
     renderPassDesc = {};
@@ -163,12 +159,12 @@ Result Implementation::end() {
     wgpu::CommandEncoderDescriptor encDesc{};
     encoder = device.CreateCommandEncoder(&encDesc);
 
-    // for (auto &surface : surfaces) {
-    //     JST_CHECK(surface->draw(commandBuffer));
-    // }
-
     if (config.imgui) {
         JST_CHECK(endImgui());
+    }
+
+    for (auto &surface : surfaces) {
+        JST_CHECK(surface->draw(encoder));
     }
 
     wgpu::CommandBufferDescriptor cmdBufferDesc{};

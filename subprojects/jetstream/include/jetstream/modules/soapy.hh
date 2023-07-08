@@ -12,6 +12,7 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 #include <SoapySDR/Formats.hpp>
+#include <SoapySDR/Modules.hpp>
 
 namespace Jetstream {
 

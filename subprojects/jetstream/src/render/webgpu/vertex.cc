@@ -8,52 +8,49 @@ using Implementation = VertexImp<Device::WebGPU>;
 Implementation::VertexImp(const Config& config) : Vertex(config) {
     for (const auto& [buffer, stride] : config.buffers) {
         buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer), stride}
+            {std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(buffer), stride}
         );
     }
 
     if (config.indices) {
-        indices = std::dynamic_pointer_cast<BufferImp<Device::Metal>>(config.indices);
+        indices = std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(config.indices);
     }
 }
 
-Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset) {
-    JST_DEBUG("Creating Metal vertex.");
-
-    // Offset vertex buffers for buffer attachments.
-    indexOffset = offset;
+Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) {
+    JST_DEBUG("[WebGPU] Creating vertex.");
 
     U32 bindingCount = 0;
+    vertexLayouts.resize(buffers.size());
+    vertexAttributes.resize(buffers.size());
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
 
-        MTL::VertexFormat bindingFormat = MTL::VertexFormat::VertexFormatInvalid;
+        auto bindingFormat = wgpu::VertexFormat::Undefined;
         
         switch (stride) {
             case 1:
-                bindingFormat = MTL::VertexFormat::VertexFormatFloat;
-                break;       
+                bindingFormat = wgpu::VertexFormat::Float32;
+                break;
             case 2:
-                bindingFormat = MTL::VertexFormat::VertexFormatFloat2;
-                break;       
+                bindingFormat = wgpu::VertexFormat::Float32x2;
+                break;
             case 3:
-                bindingFormat = MTL::VertexFormat::VertexFormatFloat3;
-                break;       
+                bindingFormat = wgpu::VertexFormat::Float32x3;
+                break;
             case 4:
-                bindingFormat = MTL::VertexFormat::VertexFormatFloat4;
-                break;       
+                bindingFormat = wgpu::VertexFormat::Float32x4;
+                break;
         }
 
-        auto attr = vertDesc->attributes()->object(bindingCount)->init();
-        attr->setFormat(bindingFormat);
-        attr->setBufferIndex(bindingCount + indexOffset);
-        attr->setOffset(0);
+        vertexAttributes[bindingCount].format = bindingFormat;
+        vertexAttributes[bindingCount].offset = 0;
+        vertexAttributes[bindingCount].shaderLocation = bindingCount;
 
-        auto layout = vertDesc->layouts()->object(bindingCount + indexOffset)->init();
-        layout->setStride(stride * sizeof(F32));
-        layout->setStepRate(1);
-        layout->setStepFunction(MTL::VertexStepFunctionPerVertex);
+        vertexLayouts[bindingCount].arrayStride = stride * sizeof(F32);
+        vertexLayouts[bindingCount].attributeCount = 1;
+        vertexLayouts[bindingCount].attributes = &vertexAttributes[bindingCount];
 
         bindingCount += 1;
     }
@@ -63,11 +60,14 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
         vertexCount = indices->size();
     }
 
+    renderDescriptor.vertex.bufferCount = vertexLayouts.size();
+    renderDescriptor.vertex.buffers = vertexLayouts.data();
+
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal vertex.");
+    JST_DEBUG("[WebGPU] Destroying vertex.");
 
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->destroy());
@@ -80,17 +80,17 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
-    U64 index = indexOffset;
+Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
+    U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
-        encoder->setVertexBuffer(buffer->getHandle(), 0, index++);
+        renderPassEncoder.SetVertexBuffer(bindingCount++, buffer->getHandle());
+    }
+
+    if (indices) {
+        renderPassEncoder.SetIndexBuffer(indices->getHandle(), wgpu::IndexFormat::Uint32);
     }
 
     return Result::SUCCESS;
-}
-
-const MTL::Buffer* Implementation::getIndexBuffer() {
-    return indices->getHandle();
 }
 
 }  // namespace Jetstream::Render

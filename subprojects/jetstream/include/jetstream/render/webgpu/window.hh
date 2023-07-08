@@ -3,7 +3,7 @@
 
 #include "jetstream/render/tools/imgui_impl_wgpu.h"
 
-//#include "jetstream/render/base/surface.hh"
+#include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/base.hh"
@@ -38,13 +38,9 @@ class WindowImp<Device::WebGPU> : public Window {
 
     wgpu::RenderPassColorAttachment colorAttachments;
     wgpu::RenderPassDescriptor renderPassDesc;
+    wgpu::Queue queue;
 
-    //CA::MetalDrawable* drawable = nullptr;
-    //MTL::CommandQueue* commandQueue = nullptr;
-    //MTL::CommandBuffer* commandBuffer = nullptr;
-    //MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
-
-    //std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
+    std::vector<std::shared_ptr<SurfaceImp<Device::WebGPU>>> surfaces;
     std::shared_ptr<Viewport::Adapter<Device::WebGPU>> viewport;
 
     Result recreate();

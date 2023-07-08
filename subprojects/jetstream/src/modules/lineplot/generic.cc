@@ -115,6 +115,7 @@ Result Lineplot<D, T>::createPresent(Render::Window& window) {
     gridProgramCfg.shaders = {
         {Device::Metal,  {grid_msl_vert_shader, grid_msl_frag_shader}},
         {Device::Vulkan, {grid_spv_vert_shader, grid_spv_frag_shader}},
+        {Device::WebGPU, {grid_wgsl_vert_shader, grid_wgsl_frag_shader}},
     };
     gridProgramCfg.draw = drawGridVertex;
     JST_CHECK(window.build(gridProgram, gridProgramCfg));
@@ -123,6 +124,7 @@ Result Lineplot<D, T>::createPresent(Render::Window& window) {
     signalProgramCfg.shaders = {
         {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
         {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
+        {Device::WebGPU, {signal_wgsl_vert_shader, signal_wgsl_frag_shader}},
     };
     signalProgramCfg.draw = drawLineVertex;
     signalProgramCfg.textures = {lutTexture};

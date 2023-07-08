@@ -2,83 +2,32 @@
 #include "jetstream/render/webgpu/draw.hh"
 #include "jetstream/render/webgpu/texture.hh"
 #include "jetstream/render/webgpu/program.hh"
+#include "jetstream/backend/devices/webgpu/helpers.hh"
 
 namespace Jetstream::Render {
 
 using Implementation = ProgramImp<Device::WebGPU>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    _draw = std::dynamic_pointer_cast<DrawImp<Device::Metal>>(config.draw);
+    _draw = std::dynamic_pointer_cast<DrawImp<Device::WebGPU>>(config.draw);
 
     for (auto& texture : config.textures) {
         textures.push_back(
-            std::dynamic_pointer_cast<TextureImp<Device::Metal>>(texture)
+            std::dynamic_pointer_cast<TextureImp<Device::WebGPU>>(texture)
         );
     }
 
     for (auto& [buffer, target] : config.buffers) {
         buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer), target}
+            {std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(buffer), target}
         );
     }
 }
 
-Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
-    JST_DEBUG("Creating Metal program.");
+Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
+    JST_DEBUG("[WebGPU] Creating program.");
 
-    NS::Error* err = nullptr;
-    const auto& shaders = config.shaders[Device::Metal];
-    auto device = Backend::State<Device::Metal>()->getDevice();
-
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
-    opts->setFastMathEnabled(true);
-    opts->setLanguageVersion(MTL::LanguageVersion3_0);
-    opts->setLibraryType(MTL::LibraryTypeExecutable);
-
-    auto vertSource = NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::UTF8StringEncoding, false);
-    auto vertLibrary = device->newLibrary(vertSource, opts, &err);
-
-    auto fragSource = NS::String::alloc()->init((char*)shaders[1].data(), shaders[1].size(), NS::UTF8StringEncoding, false);
-    auto fragLibrary = device->newLibrary(fragSource, opts, &err);
-
-    if (!vertLibrary || !fragLibrary) {
-        JST_FATAL("Library error:\n{}", err->description()->utf8String());
-        return Result::ERROR;
-    }
-
-    MTL::Function* vertFunc = vertLibrary->newFunction(
-        NS::String::string("main0", NS::UTF8StringEncoding)
-    );
-    JST_ASSERT(vertFunc);
-
-    MTL::Function* fragFunc = fragLibrary->newFunction(
-        NS::String::string("main0", NS::UTF8StringEncoding)
-    );
-    JST_ASSERT(fragFunc);
-
-    U64 indexOffset = 0;
-    for (U64 i = 0; i < buffers.size(); i++) {
-        auto& [_, target] = buffers[i];
-        if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
-            indexOffset++;
-        }
-    }
-    auto vertDesc = MTL::VertexDescriptor::alloc()->init();
-    JST_CHECK(_draw->create(vertDesc, indexOffset));
-
-    auto renderPipelineDescriptor = MTL::RenderPipelineDescriptor::alloc()->init();
-    JST_ASSERT(renderPipelineDescriptor);
-    renderPipelineDescriptor->setVertexDescriptor(vertDesc);
-    renderPipelineDescriptor->setVertexFunction(vertFunc);
-    renderPipelineDescriptor->setFragmentFunction(fragFunc);
-    renderPipelineDescriptor->colorAttachments()->object(0)->init()->setPixelFormat(pixelFormat);
-    renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
-    if (!renderPipelineState) {
-        JST_FATAL("Failed to create pipeline state:\n{}", err->description()->utf8String());
-        return Result::ERROR;
-    }
-
-    renderPipelineDescriptor->release();
+    // Create program targets.
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->create());
@@ -87,6 +36,147 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     for (const auto& [buffer, _] : buffers) {
         JST_CHECK(buffer->create());
     }
+
+    // Load shaders from memory.
+
+    if (config.shaders.count(Device::WebGPU) == 0) {
+        JST_FATAL("[WebGPU] Module doesn't have necessary shader.");       
+        JST_CHECK(Result::ERROR);
+    }
+
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
+
+    const auto& shader = config.shaders[Device::WebGPU];
+    wgpu::ShaderModule vertShaderModule = Backend::LoadShaderWebGPU(shader[0], device);
+    wgpu::ShaderModule fragShaderModule = Backend::LoadShaderWebGPU(shader[1], device);
+
+
+    // Enumerate the bindings of program targers.
+
+    U32 bindingOffset = 0;
+    for (U64 i = 0; i < buffers.size(); i++) {
+        auto& [buffer, target] = buffers[i];
+
+        wgpu::BindGroupLayoutEntry binding{};
+        binding.binding = bindingOffset++;
+        binding.visibility = TargetToWebGPU(target);
+        binding.buffer = buffer->getBufferBindingLayout();
+        bindings.push_back(binding);
+    }
+
+    for (U64 i = 0; i < textures.size(); i++) {
+        auto& texture = textures[i];
+
+        {
+            wgpu::BindGroupLayoutEntry binding{};
+            binding.binding = bindingOffset++;
+            binding.visibility = wgpu::ShaderStage::Fragment;
+            binding.texture = texture->getTextureBindingLayout();
+            bindings.push_back(binding);
+        }
+
+        {
+            wgpu::BindGroupLayoutEntry binding{};
+            binding.binding = bindingOffset++;
+            binding.visibility = wgpu::ShaderStage::Fragment;
+            binding.sampler = texture->getSamplerBindingLayout();
+            bindings.push_back(binding);
+        }
+    }
+
+    if (!bindings.empty()) {
+        wgpu::BindGroupLayoutDescriptor bglDesc{};
+        bglDesc.entryCount = bindings.size();
+        bglDesc.entries = bindings.data();
+        bindGroupLayout = device.CreateBindGroupLayout(&bglDesc);
+
+        wgpu::PipelineLayoutDescriptor layoutDesc{};
+        layoutDesc.bindGroupLayoutCount = 1;
+        layoutDesc.bindGroupLayouts = &bindGroupLayout;
+        pipelineLayout = device.CreatePipelineLayout(&layoutDesc);
+    }
+
+    bindingOffset = 0;
+    for (U64 i = 0; i < buffers.size(); i++) {
+        auto& [buffer, target] = buffers[i];
+
+        wgpu::BindGroupEntry bindGroupEntry{};
+        bindGroupEntry.binding = bindingOffset++;
+        bindGroupEntry.buffer = buffer->getHandle();
+        bindGroupEntry.size = buffer->byteSize();
+        bindGroupEntry.offset = 0;
+
+        bindGroupEntries.push_back(bindGroupEntry);
+    }
+
+    for (U64 i = 0; i < textures.size(); i++) {
+        auto& texture = textures[i];
+
+        {
+            wgpu::BindGroupEntry bindGroupEntry;
+            bindGroupEntry.binding = bindingOffset++;
+            bindGroupEntry.textureView = texture->getViewHandle();
+            bindGroupEntry.offset = 0;
+
+            bindGroupEntries.push_back(bindGroupEntry);
+        }
+
+        {
+            wgpu::BindGroupEntry bindGroupEntry;
+            bindGroupEntry.binding = bindingOffset++;
+            bindGroupEntry.sampler = texture->getSamplerHandle();
+            bindGroupEntry.offset = 0;
+
+            bindGroupEntries.push_back(bindGroupEntry);
+        }
+    }
+
+    if (!bindings.empty()) {
+        wgpu::BindGroupDescriptor bindGroupDescriptor{};
+        bindGroupDescriptor.layout = bindGroupLayout;
+        bindGroupDescriptor.entryCount = bindGroupEntries.size();
+        bindGroupDescriptor.entries = bindGroupEntries.data();
+
+        bindGroup = device.CreateBindGroup(&bindGroupDescriptor);
+    }
+
+    // Configure render pipeline.
+
+    renderPipelineDescriptor = {};
+
+    wgpu::BlendState blend{};
+    blend.color.operation = wgpu::BlendOperation::Add;
+    blend.color.srcFactor = wgpu::BlendFactor::One;
+    blend.color.dstFactor = wgpu::BlendFactor::One;
+    blend.alpha.operation = wgpu::BlendOperation::Add;
+    blend.alpha.srcFactor = wgpu::BlendFactor::One;
+    blend.alpha.dstFactor = wgpu::BlendFactor::One;
+
+    wgpu::ColorTargetState colorTarget{};
+    colorTarget.format = pixelFormat;
+    colorTarget.blend = &blend;
+    colorTarget.writeMask = wgpu::ColorWriteMask::All;
+
+    wgpu::FragmentState fragment{};
+    fragment.module = fragShaderModule;
+    fragment.entryPoint = "main";
+    fragment.targetCount = 1;
+    fragment.targets = &colorTarget;
+
+    renderPipelineDescriptor.fragment = &fragment;
+    renderPipelineDescriptor.layout = pipelineLayout;
+    renderPipelineDescriptor.depthStencil = nullptr;
+
+    renderPipelineDescriptor.multisample.count = 1;
+    renderPipelineDescriptor.multisample.mask = 0xFFFFFFFF;
+    renderPipelineDescriptor.multisample.alphaToCoverageEnabled = false;
+
+    JST_CHECK(_draw->create(renderPipelineDescriptor));
+
+    renderPipelineDescriptor.vertex.module = vertShaderModule;
+    renderPipelineDescriptor.vertex.entryPoint = "main";
+
+    pipeline = device.CreateRenderPipeline(&renderPipelineDescriptor);
 
     return Result::SUCCESS;
 }
@@ -102,35 +192,33 @@ Result Implementation::destroy() {
         JST_CHECK(buffer->destroy());
     }
 
-    renderPipelineState->release();
+    return Result::SUCCESS;
+}
+
+Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
+    renderPassEncoder.SetPipeline(pipeline);
+
+    if (!bindings.empty()) {
+        renderPassEncoder.SetBindGroup(0, bindGroup, 0, 0);
+    }
+
+    JST_CHECK(_draw->encode(renderPassEncoder));
 
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
-    renderCmdEncoder->setRenderPipelineState(renderPipelineState);
+wgpu::ShaderStage Implementation::TargetToWebGPU(const Program::Target& target) {
+    auto flags = wgpu::ShaderStage::None;
 
-    // Attach frame fragment-shader buffers.
-    for (U64 i = 0; i < buffers.size(); i++) {
-        auto& [buffer, target] = buffers[i];
-        if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
-            renderCmdEncoder->setVertexBuffer(buffer->getHandle(), 0, i);
-        }
-        if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
-            renderCmdEncoder->setFragmentBuffer(buffer->getHandle(), 0, i);
-        }
+    if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
+        flags |= wgpu::ShaderStage::Vertex;
     }
 
-    // Attach frame textures.
-    for (U64 i = 0; i < textures.size(); i++) {
-        renderCmdEncoder->setFragmentTexture(textures[i]->getHandle(), i);
-        renderCmdEncoder->setFragmentSamplerState(textures[i]->getSamplerStateHandle(), i);
+    if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
+        flags |= wgpu::ShaderStage::Fragment;
     }
-
-    // Attach frame encoder.
-    JST_CHECK(_draw->encode(renderCmdEncoder));
-
-    return Result::SUCCESS;
+        
+    return flags;
 }
 
 }  // namespace Jetstream::Render

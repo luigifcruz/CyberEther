@@ -1,6 +1,4 @@
 #include "jetstream/render/vulkan/buffer.hh"
-#include "jetstream/backend/devices/vulkan/helpers.hh"
-#include <vulkan/vulkan_core.h>
 
 namespace Jetstream::Render {
 

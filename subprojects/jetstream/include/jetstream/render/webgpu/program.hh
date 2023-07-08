@@ -12,21 +12,29 @@ class ProgramImp<Device::WebGPU> : public Program {
     explicit ProgramImp(const Config& config);
 
  protected:
-    Result create(const MTL::PixelFormat& pixelFormat);
+    Result create(const wgpu::TextureFormat& pixelFormat);
     Result destroy();
-    Result draw(MTL::RenderCommandEncoder* renderCmdEncoder);
+    Result draw(wgpu::RenderPassEncoder& renderPassEncoder);
 
  private:
-    MTL::RenderPipelineState* renderPipelineState = nullptr;
+    wgpu::RenderPipeline pipeline;
+    wgpu::PipelineLayout pipelineLayout;
+    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
+    wgpu::BindGroupLayout bindGroupLayout;
+    wgpu::BindGroup bindGroup;
 
-    std::shared_ptr<DrawImp<Device::Metal>> _draw;
-    std::vector<std::shared_ptr<TextureImp<Device::Metal>>> textures;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, Program::Target>> buffers;
+    std::vector<wgpu::BindGroupLayoutEntry> bindings;
+    std::vector<wgpu::BindGroupEntry> bindGroupEntries;
+
+    std::shared_ptr<DrawImp<Device::WebGPU>> _draw;
+    std::vector<std::shared_ptr<TextureImp<Device::WebGPU>>> textures;
+    std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, Program::Target>> buffers;
 
     static Result checkShaderCompilation(U64);
     static Result checkProgramCompilation(U64);
+    static wgpu::ShaderStage TargetToWebGPU(const Program::Target& target);
 
-    friend class SurfaceImp<Device::Metal>; 
+    friend class SurfaceImp<Device::WebGPU>; 
 };
 
 }  // namespace Jetstream::Render

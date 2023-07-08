@@ -8,32 +8,29 @@ using Implementation = SurfaceImp<Device::WebGPU>;
 
 Implementation::SurfaceImp(const Config& config) : Surface(config) {
     framebuffer = std::dynamic_pointer_cast<
-        TextureImp<Device::Metal>>(config.framebuffer);
+        TextureImp<Device::WebGPU>>(config.framebuffer);
 
     for (auto& program : config.programs) {
         programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<Device::Metal>>(program)
+            std::dynamic_pointer_cast<ProgramImp<Device::WebGPU>>(program)
         );
     }
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal surface.");
-
-    renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
-    JST_ASSERT(renderPassDescriptor);
+    JST_DEBUG("[WebGPU] Creating surface.");
 
     JST_CHECK(createFramebuffer());
 
     for (auto& program : programs) {
-        JST_CHECK(program->create(framebuffer->getPixelFormat()));
+        JST_CHECK(program->create(framebuffer->getTextureFormat()));
     }
 
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal surface.");
+    JST_DEBUG("[WebGPU] Destroying surface.");
 
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
@@ -41,43 +38,43 @@ Result Implementation::destroy() {
 
     JST_CHECK(destroyFramebuffer());
 
-    renderPassDescriptor->release();
-
     return Result::SUCCESS;
 }
 
 Result Implementation::createFramebuffer() {
-    JST_DEBUG("Creating Metal surface framebuffer.");
+    JST_DEBUG("[WebGPU] Creating surface framebuffer.");
 
-    JST_CHECK(framebuffer->create());
-
-    auto colorAttachDescOff = renderPassDescriptor->colorAttachments()->object(0)->init();
-    auto texture = reinterpret_cast<const MTL::Texture*>(framebuffer->raw());
-    colorAttachDescOff->setTexture(texture);
-    colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
-    colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
-    colorAttachDescOff->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 0.0));
-
-    return Result::SUCCESS;
+    return framebuffer->create();
 }
 
 Result Implementation::destroyFramebuffer() {
-    JST_DEBUG("Destroying Metal surface framebuffer");
+    JST_DEBUG("[WebGPU] Destroying surface framebuffer");
 
     return framebuffer->destroy();
 }
 
-Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
-    auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
-    for (auto& program : programs) {
-        JST_CHECK(program->draw(renderCmdEncoder));
-    }
-    renderCmdEncoder->endEncoding();
+Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
+    wgpu::RenderPassColorAttachment colorAttachment{};
+    colorAttachment.view = framebuffer->getViewHandle();
+    colorAttachment.loadOp = wgpu::LoadOp::Clear;
+    colorAttachment.storeOp = wgpu::StoreOp::Store;
+    colorAttachment.clearValue.r = 0.0f;
+    colorAttachment.clearValue.g = 0.0f;
+    colorAttachment.clearValue.b = 0.0f;
+    colorAttachment.clearValue.a = 1.0f;
 
-    auto blitCommandEncoder = commandBuffer->blitCommandEncoder();
-    auto texture = reinterpret_cast<const MTL::Texture*>(framebuffer->raw());
-    blitCommandEncoder->synchronizeResource(texture);
-    blitCommandEncoder->endEncoding();
+    wgpu::RenderPassDescriptor renderPass{};
+    renderPass.colorAttachmentCount = 1;
+    renderPass.colorAttachments = &colorAttachment;
+    renderPass.depthStencilAttachment = nullptr;
+
+    auto renderPassEncoder = commandEncoder.BeginRenderPass(&renderPass);
+
+    for (auto& program : programs) {
+        JST_CHECK(program->draw(renderPassEncoder));
+    }
+
+    renderPassEncoder.End();
 
     return Result::SUCCESS;
 }

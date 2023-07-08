@@ -16,17 +16,16 @@ class SurfaceImp<Device::WebGPU> : public Surface {
  protected:
     Result create();
     Result destroy();
-    Result draw(MTL::CommandBuffer* commandBuffer);
+    Result draw(wgpu::CommandEncoder& commandEncoder);
 
  private:
-    MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
-    std::shared_ptr<TextureImp<Device::Metal>> framebuffer;
-    std::vector<std::shared_ptr<ProgramImp<Device::Metal>>> programs;
+    std::shared_ptr<TextureImp<Device::WebGPU>> framebuffer;
+    std::vector<std::shared_ptr<ProgramImp<Device::WebGPU>>> programs;
 
     Result createFramebuffer();
     Result destroyFramebuffer();
 
-    friend class WindowImp<Device::Metal>;
+    friend class WindowImp<Device::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

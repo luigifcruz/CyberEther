@@ -12,6 +12,7 @@ class BufferImp<Device::WebGPU> : public Buffer {
     explicit BufferImp(const Config& config);
 
     using Render::Buffer::size;
+    using Render::Buffer::byteSize;
 
     Result update();
     Result update(const U64& offset, const U64& size);
@@ -24,12 +25,18 @@ class BufferImp<Device::WebGPU> : public Buffer {
         return buffer;
     }
 
+    constexpr const wgpu::BufferBindingLayout& getBufferBindingLayout() const {
+        return bufferBindingLayout;
+    }
+
  private:
     wgpu::Buffer buffer;
 
-    friend class SurfaceImp<Device::Metal>;
-    friend class ProgramImp<Device::Metal>;
-    friend class VertexImp<Device::Metal>;
+    wgpu::BufferBindingLayout bufferBindingLayout;
+
+    friend class SurfaceImp<Device::WebGPU>;
+    friend class ProgramImp<Device::WebGPU>;
+    friend class VertexImp<Device::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

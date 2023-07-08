@@ -11,6 +11,7 @@ cpp_args = ['-O3', '-pthread', '-msimd128']
 c_args = cpp_args
 
 cpp_link_args = [
+    '--bind',
     '-s', 'WASM=1',
     '-s', 'USE_GLFW=3',
     '-s', 'USE_WEBGPU=1',
@@ -18,8 +19,12 @@ cpp_link_args = [
     '-s', 'SHARED_MEMORY=1',
     '-s', 'ALLOW_MEMORY_GROWTH=1',
     '-s', 'ASSERTIONS=1',
+    '-s', 'ASYNCIFY',
     '-s', 'DEMANGLE_SUPPORT=1',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
+    '-s', 'NO_DISABLE_EXCEPTION_CATCHING=1',
+    '-s', 'EXPORTED_RUNTIME_METHODS=["callMain"]',
+    '-s', 'INVOKE_RUN=0',
     '-s', 'INITIAL_MEMORY=128MB']
 c_link_args = cpp_link_args
 

@@ -55,29 +55,29 @@
 // Graphical
 // 
 
-// #if defined(JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE)
-// #include "jetstream/modules/lineplot.hh"
-// #include "jetstream/bundle/lineplot.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE)
+#include "jetstream/modules/lineplot.hh"
+#include "jetstream/bundle/lineplot.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE)
-// #include "jetstream/modules/waterfall.hh"
-// #include "jetstream/bundle/waterfall.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE)
+#include "jetstream/modules/waterfall.hh"
+#include "jetstream/bundle/waterfall.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
-// #include "jetstream/modules/spectrogram.hh"
-// #include "jetstream/bundle/spectrogram.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
+#include "jetstream/modules/spectrogram.hh"
+#include "jetstream/bundle/spectrogram.hh"
+#endif
 
-// #if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
-//     defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
-// #include "jetstream/modules/constellation.hh"
-// #include "jetstream/bundle/constellation.hh"
-// #endif
+#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
+#include "jetstream/modules/constellation.hh"
+#include "jetstream/bundle/constellation.hh"
+#endif
 
 #if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
     defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)

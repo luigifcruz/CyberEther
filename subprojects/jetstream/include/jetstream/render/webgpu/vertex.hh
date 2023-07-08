@@ -12,14 +12,16 @@ class VertexImp<Device::WebGPU> : public Vertex {
     explicit VertexImp(const Config& config);
 
  protected:
-    Result create(MTL::VertexDescriptor* vertDesc, const U64& offset);
+    Result create(wgpu::RenderPipelineDescriptor& renderDescriptor);
     Result destroy();
-    Result encode(MTL::RenderCommandEncoder* encode);
-
-    const MTL::Buffer* getIndexBuffer();
+    Result encode(wgpu::RenderPassEncoder& renderPassEncoder);
 
     constexpr U64 getVertexCount() const {
         return vertexCount;
+    }
+
+    constexpr std::vector<wgpu::VertexBufferLayout>& getHandle() {
+        return vertexLayouts;
     }
 
     bool isBuffered() {
@@ -28,12 +30,14 @@ class VertexImp<Device::WebGPU> : public Vertex {
 
  private:
     U64 vertexCount;
-    U64 indexOffset;
 
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, U32>> buffers;
-    std::shared_ptr<BufferImp<Device::Metal>> indices;
+    std::vector<wgpu::VertexAttribute> vertexAttributes;
+    std::vector<wgpu::VertexBufferLayout> vertexLayouts;
 
-    friend class DrawImp<Device::Metal>;
+    std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, U32>> buffers;
+    std::shared_ptr<BufferImp<Device::WebGPU>> indices;
+
+    friend class DrawImp<Device::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

@@ -12,14 +12,14 @@ class DrawImp<Device::WebGPU> : public Draw {
     explicit DrawImp(const Config& config);
 
  protected:
-    Result create(MTL::VertexDescriptor* vertDesc, const U64& offset);
+    Result create(wgpu::RenderPipelineDescriptor& renderDescriptor);
     Result destroy();
-    Result encode(MTL::RenderCommandEncoder* encode);
+    Result encode(wgpu::RenderPassEncoder& renderPassEncoder);
 
  private:
-    std::shared_ptr<VertexImp<Device::Metal>> buffer;
+    std::shared_ptr<VertexImp<Device::WebGPU>> buffer;
 
-    friend class ProgramImp<Device::Metal>;
+    friend class ProgramImp<Device::WebGPU>;
 };
 
 }  // namespace Jetstream::Render
