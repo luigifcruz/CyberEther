@@ -1,9 +1,12 @@
+# TODO: Add better options for this.
 deps = [
     dependency('libusb', required: get_option('SOAPYSDR') or meson.is_cross_build()),
     dependency('soapysdr', 'SoapySDR', required: get_option('SOAPYSDR') or meson.is_cross_build()),
     dependency('soapyremote', 'SoapyRemote', required: get_option('SOAPYSDR') or meson.is_cross_build()),
     dependency('libairspy', required: get_option('SOAPYSDR') or meson.is_cross_build()),
     dependency('soapyairspy', required: get_option('SOAPYSDR') or meson.is_cross_build()),
+    dependency('librtlsdr', required: get_option('SOAPYSDR') or meson.is_cross_build()),
+    dependency('soapyrtlsdr', required: get_option('SOAPYSDR') or meson.is_cross_build()),
 ]
 
 all_deps_found = true
