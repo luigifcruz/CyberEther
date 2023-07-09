@@ -1,0 +1,10 @@
+[wrap-file]
+directory = SoapyRTLSDR-soapy-rtl-sdr-0.3.3
+source_url = https://github.com/pothosware/SoapyRTLSDR/archive/refs/tags/soapy-rtl-sdr-0.3.3.tar.gz
+source_filename = SoapyRTLSDR-soapy-rtl-sdr-0.3.3.tar.gz
+source_hash = 757c3c3bd17c5a12c7168db2f2f0fd274457e65f35e23c5ec9aec34e3ef54ece
+patch_directory = soapyrtlsdr
+wrapdb_version = 0.3.3
+
+[provide]
+soapyrtlsdr = soapyrtlsdr_dep
