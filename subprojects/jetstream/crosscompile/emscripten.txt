@@ -7,7 +7,7 @@ ar = 'emar'
 ranlib='emranlib'
 
 [built-in options]
-cpp_args = ['-O3', '-pthread', '-msimd128']
+cpp_args = ['-g', '-O3', '-pthread', '-msimd128']
 c_args = cpp_args
 
 cpp_link_args = [
@@ -20,6 +20,7 @@ cpp_link_args = [
     '-s', 'ALLOW_MEMORY_GROWTH=1',
     '-s', 'ASSERTIONS=1',
     '-s', 'ASYNCIFY',
+    '-s', 'STACK_SIZE=16MB',
     '-s', 'ASYNCIFY_STACK_SIZE=16383',
     '-s', 'DEMANGLE_SUPPORT=1',
     '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
