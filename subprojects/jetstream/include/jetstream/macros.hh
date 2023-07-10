@@ -67,6 +67,7 @@
 #define JST_CHECK_THROW(x) { \
     Result val = (x); \
     if (val != Result::SUCCESS) { \
+        printf("Function %s throwed!\n", __func__); \
         throw val; \
     } \
 }
