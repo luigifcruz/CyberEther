@@ -50,7 +50,6 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     wgpu::ShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
     wgpu::ShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
 
-
     // Enumerate the bindings of program targers.
 
     U32 bindingOffset = 0;
@@ -191,6 +190,9 @@ Result Implementation::destroy() {
     for (const auto& [buffer, _] : buffers) {
         JST_CHECK(buffer->destroy());
     }
+
+    bindings.clear();
+    bindGroupEntries.clear();
 
     return Result::SUCCESS;
 }

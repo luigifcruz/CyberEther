@@ -13,6 +13,7 @@ Result Implementation::create() {
     auto device = Backend::State<Device::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
+    bufferBindingLayout = {};
     wgpu::BufferUsage bufferUsageFlag{};
     bufferUsageFlag |= wgpu::BufferUsage::CopySrc;
     bufferUsageFlag |= wgpu::BufferUsage::CopyDst;
@@ -25,9 +26,11 @@ Result Implementation::create() {
             break;
         case Target::STORAGE:
             bufferUsageFlag |= wgpu::BufferUsage::Storage;
+            bufferBindingLayout.type = wgpu::BufferBindingType::ReadOnlyStorage;
             break;
         case Target::UNIFORM:
             bufferUsageFlag |= wgpu::BufferUsage::Uniform;
+            bufferBindingLayout.type = wgpu::BufferBindingType::Uniform;
             break;
         case Target::STORAGE_DYNAMIC:
         case Target::UNIFORM_DYNAMIC:
@@ -41,6 +44,10 @@ Result Implementation::create() {
     bufferDescriptor.usage = bufferUsageFlag;
 
     buffer = device.CreateBuffer(&bufferDescriptor);
+
+    if (config.buffer) {
+        JST_CHECK(update());
+    }
 
     return Result::SUCCESS;
 }
@@ -62,17 +69,12 @@ Result Implementation::update(const U64& offset, const U64& size) {
         return Result::SUCCESS;
     }
 
-    // TODO: Implement this.
+    auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
-    JST_ERROR("not implemented: buffer");
+    const auto& byteOffset = offset * config.elementByteSize;
+    const auto& byteSize = size * config.elementByteSize;
 
-    // const auto& byteOffset = offset * config.elementByteSize;
-    // const auto& byteSize = size * config.elementByteSize;
-
-    // if (!config.enableZeroCopy) {
-    //     uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-    //     memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
-    // }
+    device.GetQueue().WriteBuffer(buffer, byteOffset, (uint8_t*)config.buffer, byteSize);
 
     return Result::SUCCESS;
 }

@@ -63,14 +63,14 @@ foreach shader_pkg : shader_pkg_lst
             custom_target(
                 input : vert,
                 output : name + '_' + fs.stem(shader[0]) + '.wgsl',
-                command : [naga, '@INPUT@', '@OUTPUT@'],
+                command : [naga, '--keep-coordinate-space', '@INPUT@', '@OUTPUT@'],
                 build_by_default : true,
             )
 
             custom_target(
                 input : frag,
                 output : name + '_' + fs.stem(shader[1]) + '.wgsl',
-                command : [naga, '@INPUT@', '@OUTPUT@'],
+                command : [naga, '--keep-coordinate-space', '@INPUT@', '@OUTPUT@'],
                 build_by_default : true,
             )
         endif
