@@ -12,6 +12,14 @@
 #include "jetstream/viewport/base.hh"
 #include "jetstream/memory/base.hh"
 
+//
+// Platform Specific
+// 
+
+#ifdef __EMSCRIPTEN__
+#include "emscripten.h"
+#endif
+
 // 
 // Compute
 //
