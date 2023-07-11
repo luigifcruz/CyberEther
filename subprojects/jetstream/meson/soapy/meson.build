@@ -1,12 +1,14 @@
-# TODO: Add better options for this.
 deps = [
-    dependency('libusb', required: get_option('SOAPYSDR') or meson.is_cross_build()),
     dependency('soapysdr', 'SoapySDR', required: get_option('SOAPYSDR') or meson.is_cross_build()),
-    dependency('soapyremote', 'SoapyRemote', required: get_option('SOAPYSDR') or meson.is_cross_build()),
-    dependency('libairspy', required: get_option('SOAPYSDR') or meson.is_cross_build()),
-    dependency('soapyairspy', required: get_option('SOAPYSDR') or meson.is_cross_build()),
-    dependency('librtlsdr', required: get_option('SOAPYSDR') or meson.is_cross_build()),
-    dependency('soapyrtlsdr', required: get_option('SOAPYSDR') or meson.is_cross_build()),
+]
+
+opt_deps = [
+    dependency('libusb', required: meson.is_cross_build()),
+    dependency('soapyremote', 'SoapyRemote', required: meson.is_cross_build()),
+    dependency('libairspy', required: meson.is_cross_build()),
+    dependency('soapyairspy', required: meson.is_cross_build()),
+    dependency('librtlsdr', required: meson.is_cross_build()),
+    dependency('soapyrtlsdr', required: meson.is_cross_build()),  
 ]
 
 all_deps_found = true
@@ -17,6 +19,7 @@ endforeach
 if all_deps_found
     cfg_lst.set('JETSTREAM_LOADER_SOAPY_AVAILABLE', true)
     dep_lst += deps
+    dep_lst += opt_deps
 endif
 
 ldr_lst += {'SoapySDR': all_deps_found}

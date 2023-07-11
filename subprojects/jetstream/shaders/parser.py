@@ -20,11 +20,11 @@ def bin_to_header(path, stub):
 
                 with open(os.path.join(path, f'{stub}_{name}.{type}.{target}'), 'rb') as fr:
                     data = fr.read()
-                size = str(len(data))
+                size = str(len(data) + 1)
 
                 f.write('static const std::array<unsigned char, ' + size + '> ' + varname + ' = {')
                 f.write(','.join(f'0x{byte:02x}' for byte in data))
-                f.write('};\n')
+                f.write(',0x00};\n')
 
 if __name__ == '__main__':
     bin_to_header(sys.argv[1], sys.argv[2])

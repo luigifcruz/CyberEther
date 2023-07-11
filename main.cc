@@ -13,8 +13,6 @@ class UI {
     UI(const Soapy<ComputeDevice>::Config& config, Instance& instance) : instance(instance) {
         sdr = instance.addBlock<Soapy, ComputeDevice>(config, {});
 
-        JST_FATAL("{}", sdr->getOutputBuffer().shape())
-
         win = instance.addBlock<Window, ComputeDevice>({
             .shape = sdr->getOutputBuffer().shape(),
         }, {});
@@ -245,13 +243,13 @@ int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
     
     // Initialize Backends.
-    if (Backend::Initialize<Device::CPU>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize CPU backend.");
+    if (Backend::Initialize<ComputeDevice>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize compute backend.");
         return 1;
     }
 
-    if (Backend::Initialize<Device::WebGPU>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize WebGPU backend.");
+    if (Backend::Initialize<RenderDevice>({}) != Result::SUCCESS) {
+        JST_FATAL("Cannot initialize render backend.");
         return 1;
     }
 

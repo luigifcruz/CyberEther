@@ -36,7 +36,6 @@ class WindowImp<Device::Vulkan> : public Window {
     ImGuiStyle* style = nullptr;
     VkRenderPass renderPass;
     VkCommandPool commandPool;
-    VkDescriptorPool descriptorPool;
     VkCommandBufferBeginInfo commandBufferBeginInfo;
     VkCommandBuffer currentCommandBuffer;
     VkRenderPassBeginInfo renderPassBeginInfo;

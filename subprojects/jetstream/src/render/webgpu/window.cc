@@ -121,8 +121,6 @@ Result Implementation::begin() {
         JST_CHECK(beginImgui());
     }
 
-    drawDebugMessage();
-
     return Result::SUCCESS;
 }
 
