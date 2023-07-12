@@ -83,8 +83,8 @@ Result Implementation::createSwapchain() {
     wgpu::SwapChainDescriptor swapchainDesc{};
     swapchainDesc.usage = wgpu::TextureUsage::RenderAttachment;
     swapchainDesc.format = wgpu::TextureFormat::BGRA8Unorm;
-    swapchainDesc.width = swapchainSize.width;// * getPixelRatio();
-    swapchainDesc.height = swapchainSize.height;// * getPixelRatio();
+    swapchainDesc.width = swapchainSize.width * getPixelRatio();
+    swapchainDesc.height = swapchainSize.height * getPixelRatio();
     swapchainDesc.presentMode = wgpu::PresentMode::Fifo;
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
