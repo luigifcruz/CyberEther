@@ -77,6 +77,7 @@ Result Constellation<D, T>::createPresent(Render::Window& window) {
     programCfg.shaders = {
        {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
+       {Device::WebGPU, {signal_wgsl_vert_shader, signal_wgsl_frag_shader}},
     };
     programCfg.draw = drawVertex;
     programCfg.textures = {binTexture, lutTexture};
