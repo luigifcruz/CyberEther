@@ -74,7 +74,7 @@ Result Implementation::update(const U64& offset, const U64& size) {
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
-    device.GetQueue().WriteBuffer(buffer, byteOffset, (uint8_t*)config.buffer, byteSize);
+    device.GetQueue().WriteBuffer(buffer, byteOffset, (uint8_t*)config.buffer+byteOffset, byteSize);
 
     return Result::SUCCESS;
 }
