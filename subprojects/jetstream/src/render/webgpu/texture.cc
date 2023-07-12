@@ -10,27 +10,36 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating texture.");
 
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
+
     textureFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
+        
+    wgpu::TextureDescriptor textureDescriptor{};
+    textureDescriptor.size = wgpu::Extent3D{static_cast<U32>(config.size.width),
+                                            static_cast<U32>(config.size.height)};
+    textureDescriptor.format = textureFormat;
+    textureDescriptor.usage = wgpu::TextureUsage::RenderAttachment |
+                              wgpu::TextureUsage::CopyDst | 
+                              wgpu::TextureUsage::TextureBinding;
+    texture = device.CreateTexture(&textureDescriptor);
 
+    wgpu::TextureViewDescriptor viewDescriptor{};
+    viewDescriptor.format = textureFormat;
+    viewDescriptor.dimension = wgpu::TextureViewDimension::e2D;
+    textureView = texture.CreateView(&viewDescriptor);
+
+    wgpu::SamplerDescriptor samplerDescriptor{};
+    samplerDescriptor.magFilter = wgpu::FilterMode::Linear;
+    samplerDescriptor.minFilter = wgpu::FilterMode::Linear;
+    sampler = device.CreateSampler(&samplerDescriptor);
+
+    textureBindingLayout = {};
+    textureBindingLayout.sampleType = wgpu::TextureSampleType::Float;
+    textureBindingLayout.viewDimension = wgpu::TextureViewDimension::e2D;
+
+    samplerBindingLayout = {};
+    samplerBindingLayout.type = wgpu::SamplerBindingType::Filtering;
     
-
-    auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
-            pixelFormat, config.size.width, config.size.height, false);
-    JST_ASSERT(textureDesc);
-
-    textureDesc->setUsage(MTL::TextureUsagePixelFormatView | 
-                          MTL::TextureUsageRenderTarget |
-                          MTL::TextureUsageShaderRead);
-    auto device = Backend::State<Device::Metal>()->getDevice();
-    texture = device->newTexture(textureDesc); 
-    JST_ASSERT(texture);
-
-    auto samplerDesc = MTL::SamplerDescriptor::alloc()->init();
-    samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
-    samplerDesc->setMagFilter(MTL::SamplerMinMagFilterLinear);
-    samplerState = device->newSamplerState(samplerDesc);
-    samplerDesc->release();
-
     if (config.buffer) {
         JST_CHECK(fill());
     }
@@ -41,7 +50,7 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying texture.");
 
-    texture->Destroy();
+    texture.Destroy();
 
     return Result::SUCCESS;
 }
@@ -68,14 +77,21 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    // TODO: implement this.
+    auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
-    JST_ERROR("not implemented: texture")
+    wgpu::TextureDataLayout layout;
+    layout.bytesPerRow = config.size.width * GetPixelByteSize(textureFormat);
+    layout.rowsPerImage = config.size.height;
 
-    // auto region = MTL::Region::Make2D(0, y, config.size.width, height);
-    // auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
-    // auto bufferByteOffset = rowByteSize * y;
-    // texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
+    wgpu::Extent3D extent;
+    extent.width = config.size.width;
+    extent.height = height;
+
+    wgpu::ImageCopyTexture copyTexture;
+    copyTexture.origin = {0, static_cast<U32>(y), 0};
+    copyTexture.texture = texture;
+        
+    device.GetQueue().WriteTexture(&copyTexture, (uint8_t*)config.buffer, layout.bytesPerRow * layout.rowsPerImage, &layout, &extent);
 
     return Result::SUCCESS;
 }
