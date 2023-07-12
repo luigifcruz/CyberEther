@@ -644,6 +644,11 @@ static void ImGui_ImplGlfw_UpdateMouseData()
             {
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
+#ifdef __EMSCRIPTEN__
+// CYBERETHER_MOD
+                mouse_x = mouse_x / io.DisplayFramebufferScale.x;
+                mouse_y = mouse_y / io.DisplayFramebufferScale.y;
+#endif
                 if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
                 {
                     // Single viewport mode: mouse position in client window coordinates (io.MousePos is (0,0) when the mouse is on the upper-left corner of the app window)
@@ -799,6 +804,14 @@ static void ImGui_ImplGlfw_UpdateMonitors()
     bd->WantUpdateMonitors = false;
 }
 
+#ifdef __EMSCRIPTEN__
+// CYBERETHER_MOD
+#include <emscripten.h>
+EM_JS(int, em_get_pixel_ratio, (), {
+    return Module.canvas.width / Module.canvas.widthNative;
+});
+#endif
+
 void ImGui_ImplGlfw_NewFrame()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -806,6 +819,14 @@ void ImGui_ImplGlfw_NewFrame()
     IM_ASSERT(bd != nullptr && "Did you call ImGui_ImplGlfw_InitForXXX()?");
 
     // Setup display size (every frame to accommodate for window resizing)
+#ifdef __EMSCRIPTEN__
+// CYBERETHER_MOD
+    int pixel_ratio = em_get_pixel_ratio();
+    io.DisplayFramebufferScale = ImVec2(pixel_ratio, pixel_ratio);
+    int w, h;
+    glfwGetWindowSize(bd->Window, &w, &h);
+    io.DisplaySize = ImVec2(w, h);
+#else
     int w, h;
     int display_w, display_h;
     glfwGetWindowSize(bd->Window, &w, &h);
@@ -813,6 +834,7 @@ void ImGui_ImplGlfw_NewFrame()
     io.DisplaySize = ImVec2((float)w, (float)h);
     if (w > 0 && h > 0)
         io.DisplayFramebufferScale = ImVec2((float)display_w / (float)w, (float)display_h / (float)h);
+#endif
     if (bd->WantUpdateMonitors)
         ImGui_ImplGlfw_UpdateMonitors();
 

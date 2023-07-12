@@ -1,15 +1,15 @@
 #include "jetstream/viewport/platforms/glfw/webgpu.hh"
 
-EM_JS(int, getCanvasWidth, (), {
-    return Module.canvas.width;
+EM_JS(int, getWindowWidth, (), {
+    return window.innerWidth;
 });
 
-EM_JS(int, getCanvasHeight, (), {
-    return Module.canvas.height;
+EM_JS(int, getWindowHeight, (), {
+    return window.innerHeight;
 });
 
-EM_JS(void, resizeCanvas, (), {
-    js_resizeCanvas();
+EM_JS(int, getPixelRatio, (), {
+    return window.devicePixelRatio;
 });
 
 static void PrintGLFWError(int error, const char* description) {
@@ -22,11 +22,6 @@ using Implementation = GLFW<Device::WebGPU>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
     JST_DEBUG("[WebGPU] Creating GLFW viewport.");
-
-    resizeCanvas();
-    int width = getCanvasWidth();
-    int height = getCanvasHeight();
-    swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};
 };
 
 Implementation::~GLFW() {
@@ -42,6 +37,11 @@ Result Implementation::create() {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    swapchainSize = {
+        static_cast<U64>(getWindowWidth()),
+        static_cast<U64>(getWindowHeight())
+    };
 
     window = glfwCreateWindow(swapchainSize.width, swapchainSize.height, config.title.c_str(), nullptr, nullptr);
 
@@ -83,8 +83,8 @@ Result Implementation::createSwapchain() {
     wgpu::SwapChainDescriptor swapchainDesc{};
     swapchainDesc.usage = wgpu::TextureUsage::RenderAttachment;
     swapchainDesc.format = wgpu::TextureFormat::BGRA8Unorm;
-    swapchainDesc.width = swapchainSize.width;
-    swapchainDesc.height = swapchainSize.height;
+    swapchainDesc.width = swapchainSize.width;// * getPixelRatio();
+    swapchainDesc.height = swapchainSize.height;// * getPixelRatio();
     swapchainDesc.presentMode = wgpu::PresentMode::Fifo;
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
@@ -117,12 +117,12 @@ Result Implementation::nextDrawable() {
 }
 
 Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
-    int width = getCanvasWidth();
-    int height = getCanvasHeight();
+    int width = getWindowWidth();
+    int height = getWindowHeight();
 
     if (width != swapchainSize.width or height != swapchainSize.height) {
-        swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};
-        return Result::RECREATE;
+       swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};
+       return Result::RECREATE;
     }
 
     framebufferTexture = swapchain.GetCurrentTextureView();
