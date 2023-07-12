@@ -61,7 +61,7 @@ Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
     colorAttachment.clearValue.r = 0.0f;
     colorAttachment.clearValue.g = 0.0f;
     colorAttachment.clearValue.b = 0.0f;
-    colorAttachment.clearValue.a = 1.0f;
+    colorAttachment.clearValue.a = 0.0f;
 
     wgpu::RenderPassDescriptor renderPass{};
     renderPass.colorAttachmentCount = 1;
