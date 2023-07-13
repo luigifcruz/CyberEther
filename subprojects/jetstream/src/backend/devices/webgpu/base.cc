@@ -17,7 +17,7 @@ static void WebGPUErrorCallback(WGPUErrorType error_type, const char* message, v
 namespace Jetstream::Backend {
 
 EM_JS(WGPUAdapter, wgpuInstanceRequestAdapterSync, (), {
-    return Module['preinitializedWebGPUAdapter'];
+    return Module["preinitializedWebGPUAdapter"];
 });
 
 WebGPU::WebGPU(const Config& _config) : config(_config), cache({}) {
@@ -42,23 +42,6 @@ WebGPU::WebGPU(const Config& _config) : config(_config), cache({}) {
     JST_INFO("Physical Memory: {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("Staging Buffer:  {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / (1024*1024));
     JST_INFO("—————————————————————————————————————————————————————");
-}
-
-WebGPU::~WebGPU() {
-    // vkDestroyCommandPool(device, transferCommandPool, nullptr);
-    // vkDestroyBuffer(device, stagingBuffer, nullptr);
-    // vkFreeMemory(device, stagingBufferMemory, nullptr);
-    // vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-
-    // if (debugReportCallback != VK_NULL_HANDLE) {
-    //     PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
-    //             reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
-    //                 vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"));
-    //     vkDestroyDebugReportCallbackEXT(instance, debugReportCallback, nullptr);
-    // }
-
-    // vkDestroyDevice(device, nullptr);
-    // vkDestroyInstance(instance, nullptr);
 }
 
 std::string WebGPU::getDeviceName() const {

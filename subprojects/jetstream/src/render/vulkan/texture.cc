@@ -281,7 +281,7 @@ VkFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
         return VK_FORMAT_R8G8B8A8_UNORM;
     }
 
-    JST_FATAL("Can't convert pixel format.");
+    JST_FATAL("[VULKAN] Can't convert pixel format.");
 
     return VK_FORMAT_UNDEFINED;
 }

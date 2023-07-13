@@ -28,17 +28,18 @@ Result Implementation::create() {
     viewDescriptor.dimension = wgpu::TextureViewDimension::e2D;
     textureView = texture.CreateView(&viewDescriptor);
 
+    // Using Nearest because 'float32-filterable' is not yet widely supported.
     wgpu::SamplerDescriptor samplerDescriptor{};
-    samplerDescriptor.magFilter = wgpu::FilterMode::Linear;
-    samplerDescriptor.minFilter = wgpu::FilterMode::Linear;
+    samplerDescriptor.magFilter = wgpu::FilterMode::Nearest;
+    samplerDescriptor.minFilter = wgpu::FilterMode::Nearest;
     sampler = device.CreateSampler(&samplerDescriptor);
 
     textureBindingLayout = {};
-    textureBindingLayout.sampleType = wgpu::TextureSampleType::Float;
+    textureBindingLayout.sampleType = wgpu::TextureSampleType::UnfilterableFloat;
     textureBindingLayout.viewDimension = wgpu::TextureViewDimension::e2D;
 
     samplerBindingLayout = {};
-    samplerBindingLayout.type = wgpu::SamplerBindingType::Filtering;
+    samplerBindingLayout.type = wgpu::SamplerBindingType::NonFiltering;
     
     if (config.buffer) {
         JST_CHECK(fill());
@@ -114,7 +115,7 @@ wgpu::TextureFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
         return wgpu::TextureFormat::RGBA8Unorm;
     }
 
-    JST_FATAL("Can't convert pixel format.");
+    JST_FATAL("[WebGPU] Can't convert pixel format.");
     throw Result::ERROR;
 }
 
@@ -129,7 +130,7 @@ U64 Implementation::GetPixelByteSize(const wgpu::TextureFormat& pfmt) {
         case wgpu::TextureFormat::RGBA8Unorm:
             return 4;
         default:
-            JST_FATAL("Pixel format not implemented yet.");
+            JST_FATAL("[WebGPU] Pixel format not implemented yet.");
             throw Result::ERROR;
     }
 }

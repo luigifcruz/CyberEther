@@ -19,6 +19,7 @@ src_lst = [
   'common/SoapyRPCPacker.cpp',
   'common/SoapyHTTPUtils.cpp',
   'common/SoapyIfAddrs.cpp',
+  'common/SoapyIfAddrsUnix.cpp',
   'common/SoapyInfoUtils.in.cpp',
   'common/SoapyRPCSocket.cpp',
   'common/SoapyRPCUnpacker.cpp',

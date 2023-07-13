@@ -162,9 +162,22 @@ Result Implementation::createImgui() {
 }
 
 F32 Implementation::calculateScale(const F32& scale) {
+    I32 w_width, w_height;
+    glfwGetWindowSize(window, &w_width, &w_height);
+
+    I32 f_width, f_height;
+    glfwGetFramebufferSize(window, &f_width, &f_height);
+
     F32 x, y;
     glfwGetWindowContentScale(window, &x, &y);
-    return scale * x;
+
+    // This is a Linux/Windows fix. If the Framebuffer and Window sizes are the same
+    // but the Scale is different than 1, it means HIDPI is necessary.
+    if ((w_width == f_width) and (x > 1.0)) {
+        return scale * x;
+    } else {
+        return scale;
+    }
 }
 
 Result Implementation::destroyImgui() {
@@ -266,7 +279,7 @@ VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPrese
 }
 
 VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-        int width, height;
+        I32 width, height;
         glfwGetFramebufferSize(window, &width, &height);
 
         VkExtent2D actualExtent = {

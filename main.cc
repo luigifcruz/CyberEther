@@ -58,8 +58,8 @@ class UI {
 
         lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
         wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-     //   spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-     //   cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
+        spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
+        cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
 
         JST_CHECK_THROW(instance.create());
 
@@ -141,8 +141,8 @@ class UI {
 
         JST_CHECK_THROW(lpt.draw());
         JST_CHECK_THROW(wtf.draw());
-    //    JST_CHECK_THROW(spc.draw());
-    //    JST_CHECK_THROW(cst.draw());
+        JST_CHECK_THROW(spc.draw());
+        JST_CHECK_THROW(cst.draw());
 
         {
             ImGui::Begin("FIR Filter Control");
@@ -181,8 +181,8 @@ class UI {
 
             JST_CHECK_THROW(lpt.drawControl());
             JST_CHECK_THROW(wtf.drawControl());
-    //        JST_CHECK_THROW(spc.drawControl());
-    //        JST_CHECK_THROW(cst.drawControl());
+            JST_CHECK_THROW(spc.drawControl());
+            JST_CHECK_THROW(cst.drawControl());
 
             ImGui::End();
         }
@@ -226,8 +226,8 @@ class UI {
 
             JST_CHECK_THROW(lpt.drawInfo());
             JST_CHECK_THROW(wtf.drawInfo());
-    //        JST_CHECK_THROW(spc.drawInfo());
-    //        JST_CHECK_THROW(cst.drawInfo());
+            JST_CHECK_THROW(spc.drawInfo());
+            JST_CHECK_THROW(cst.drawInfo());
 
             ImGui::End();
         }

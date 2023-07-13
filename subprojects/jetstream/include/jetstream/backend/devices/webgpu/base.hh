@@ -19,7 +19,6 @@ namespace Jetstream::Backend {
 class WebGPU {
  public:
     explicit WebGPU(const Config& config);
-    ~WebGPU();
 
     std::string getDeviceName() const;
     std::string getApiVersion() const;

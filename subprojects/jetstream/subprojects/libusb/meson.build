@@ -26,4 +26,6 @@ libusb_dep = declare_dependency(
   link_with: libusb_lib,
 )
 
-meson.override_dependency('libusb', libusb_dep)
+if target_machine.system() == 'emscripten'
+  meson.override_dependency('libusb', libusb_dep)
+endif

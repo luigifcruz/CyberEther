@@ -19,7 +19,7 @@ def bin_to_header(path, stub):
 
         targets = set()
         names = set()
-        types = set(('vert', 'frag'))
+        types = ('vert', 'frag')
 
         for file in glob.glob(os.path.join(path, f'{stub}_*.vert.*')):
             target = file.split('.')[-1]
