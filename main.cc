@@ -86,7 +86,7 @@ class UI {
     ~UI() {
         streaming = false;
         computeWorker.join();
-#ifdef __EMSCRIPTEN__
+#ifndef __EMSCRIPTEN__
         graphicalWorker.join();
 #endif
         instance.destroy();

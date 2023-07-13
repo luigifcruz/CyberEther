@@ -88,9 +88,9 @@ Result Implementation::create() {
     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
     samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
-    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerCreateInfo.anisotropyEnable = VK_FALSE;
     samplerCreateInfo.maxAnisotropy = 1.0f;
     samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
