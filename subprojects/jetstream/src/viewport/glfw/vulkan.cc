@@ -161,6 +161,12 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
+F32 Implementation::calculateScale(const F32& scale) {
+    F32 x, y;
+    glfwGetWindowContentScale(window, &x, &y);
+    return scale * x;
+}
+
 Result Implementation::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
 
@@ -260,9 +266,6 @@ VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPrese
 }
 
 VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-    if (capabilities.currentExtent.width != UINT32_MAX) {
-        return capabilities.currentExtent;
-    } else {
         int width, height;
         glfwGetFramebufferSize(window, &width, &height);
 
@@ -277,7 +280,6 @@ VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
                                        std::min(capabilities.maxImageExtent.height, actualExtent.height));
 
         return actualExtent;
-    }        
 }
 
 void Implementation::framebufferResizeCallback(GLFWwindow *window, int, int) {

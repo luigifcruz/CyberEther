@@ -187,14 +187,13 @@ Result Implementation::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
-    this->ApplyImGuiTheme(config.scale);
-
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     
     JST_CHECK(viewport->createImgui());
+    ApplyImGuiTheme(viewport->calculateScale(config.scale));
 
     auto& backend = Backend::State<Device::Vulkan>();
     

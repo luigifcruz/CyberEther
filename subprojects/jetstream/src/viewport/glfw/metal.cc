@@ -57,6 +57,10 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
+F32 Implementation::calculateScale(const F32& scale) {
+    return scale;
+}
+
 Result Implementation::destroyImgui() {
     ImGui_ImplGlfw_Shutdown();
 

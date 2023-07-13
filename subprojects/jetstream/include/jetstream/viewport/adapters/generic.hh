@@ -29,6 +29,7 @@ class Generic {
 
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
+    virtual F32 calculateScale(const F32& scale) = 0;
 
     virtual Result pollEvents() = 0;
     virtual bool keepRunning() = 0;
