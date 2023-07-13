@@ -80,13 +80,23 @@ Result Implementation::create(VkRenderPass& renderPass,
     }
 
     for (U64 i = 0; i < textures.size(); i++) {
-        VkDescriptorSetLayoutBinding binding{};
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;  // TODO: Make this as separate image and sampler.
-        binding.descriptorCount = 1;
-        binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        binding.binding = bindingOffset++;
+        {
+            VkDescriptorSetLayoutBinding binding{};
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            binding.descriptorCount = 1;
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            binding.binding = bindingOffset++;
+            bindings.push_back(binding);
+        }
 
-        bindings.push_back(binding);
+        {
+            VkDescriptorSetLayoutBinding binding{};
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+            binding.descriptorCount = 1;
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            binding.binding = bindingOffset++;
+            bindings.push_back(binding);
+        }
     }
 
     if (!bindings.empty()) {
@@ -134,21 +144,38 @@ Result Implementation::create(VkRenderPass& renderPass,
     for (U64 i = 0; i < textures.size(); i++) {
         auto& texture = textures[i];
 
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageView = texture->getViewHandle();
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.sampler = texture->getSamplerHandler();
+        {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageView = texture->getViewHandle();
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        VkWriteDescriptorSet descriptorWriteBuffer{};
-        descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWriteBuffer.dstSet = descriptorSet;
-        descriptorWriteBuffer.dstBinding = bindingOffset++;
-        descriptorWriteBuffer.dstArrayElement = 0;
-        descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWriteBuffer.descriptorCount = 1;
-        descriptorWriteBuffer.pImageInfo = &imageInfo;
+            VkWriteDescriptorSet descriptorWriteBuffer{};
+            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWriteBuffer.dstSet = descriptorSet;
+            descriptorWriteBuffer.dstBinding = bindingOffset++;
+            descriptorWriteBuffer.dstArrayElement = 0;
+            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            descriptorWriteBuffer.descriptorCount = 1;
+            descriptorWriteBuffer.pImageInfo = &imageInfo;
 
-        vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+        }
+
+        {
+            VkDescriptorImageInfo samplerInfo{};
+            samplerInfo.sampler = texture->getSamplerHandler();
+
+            VkWriteDescriptorSet descriptorWriteBuffer{};
+            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWriteBuffer.dstSet = descriptorSet;
+            descriptorWriteBuffer.dstBinding = bindingOffset++;
+            descriptorWriteBuffer.dstArrayElement = 0;
+            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+            descriptorWriteBuffer.descriptorCount = 1;
+            descriptorWriteBuffer.pImageInfo = &samplerInfo;
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+        }
     }
 
     // Attach Vertex buffers.
