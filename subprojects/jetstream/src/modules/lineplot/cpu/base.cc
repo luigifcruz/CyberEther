@@ -29,7 +29,7 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-// TODO: Remove in favor of module manifest.
+
 template class Lineplot<Device::CPU, F64>;
 template class Lineplot<Device::CPU, F32>;
     

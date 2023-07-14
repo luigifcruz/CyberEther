@@ -36,7 +36,7 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-// TODO: Remove in favor of module manifest.
+
 template class Amplitude<Device::CPU, CF32>;
 template class Amplitude<Device::CPU, CF64>;
     

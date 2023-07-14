@@ -35,7 +35,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-// TODO: Remove in favor of module manifest.
+
 template class Spectrogram<Device::CPU, F64>;
 template class Spectrogram<Device::CPU, F32>;
 

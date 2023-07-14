@@ -76,7 +76,7 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-// TODO: Remove in favor of module manifest.
+
 template class FFT<Device::Metal, CF32>;
     
 }  // namespace Jetstream

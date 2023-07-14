@@ -23,7 +23,6 @@
 
 namespace Jetstream {
 
-// TODO: Fix input/output template arguments.
 template<Device D, typename T = CF32>
 class FFT : public Module, public Compute {
  public:
