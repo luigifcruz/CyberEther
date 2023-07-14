@@ -142,9 +142,3 @@ The original idea behind Samurai was to provide a better C++ interface than Soap
 
 ### September 13, 2022
 Some refactoring has been recently made to support other compute APIs like Vulkan and Metal. As of now, only the Metal implementation works out-of-the-box, but a CUDA implementation from before the refactor is available and should be ported to the current upstream in the coming weeks.
-
-## Short-Term To-Do List 
-
-- TODO: Add runtime graph programming.
-- TODO: Add in-place modules.
-- TODO: Add CUDA compute logic.

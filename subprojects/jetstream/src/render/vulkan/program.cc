@@ -184,7 +184,6 @@ Result Implementation::create(VkRenderPass& renderPass,
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 
-    // TODO: Change this to the same pattern as WebGPU implemenation.
     JST_CHECK(draw->create(bindingDescription,
                            attributeDescriptions,
                            inputAssembly));
