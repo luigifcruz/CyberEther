@@ -8,6 +8,9 @@
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #endif
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+#include "jetstream/viewport/platforms/glfw/webgpu.hh"
+#endif
 #endif
 
 #ifdef JETSTREAM_VIEWPORT_IOS_AVAILABLE
@@ -15,5 +18,6 @@
 #include "jetstream/viewport/platforms/ios/metal.hh"
 #endif
 #endif
+
 
 #endif

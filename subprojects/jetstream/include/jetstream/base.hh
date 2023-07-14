@@ -12,6 +12,14 @@
 #include "jetstream/viewport/base.hh"
 #include "jetstream/memory/base.hh"
 
+//
+// Platform Specific
+// 
+
+#ifdef __EMSCRIPTEN__
+#include "emscripten.h"
+#endif
+
 // 
 // Compute
 //
@@ -71,6 +79,12 @@
     defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
 #include "jetstream/modules/spectrogram.hh"
 #include "jetstream/bundle/spectrogram.hh"
+#endif
+
+#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
+#include "jetstream/modules/constellation.hh"
+#include "jetstream/bundle/constellation.hh"
 #endif
 
 #if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \

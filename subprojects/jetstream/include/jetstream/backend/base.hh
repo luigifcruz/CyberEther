@@ -17,6 +17,10 @@
 #include "jetstream/backend/devices/vulkan/base.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+#include "jetstream/backend/devices/webgpu/base.hh"
+#endif
+
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 #include "jetstream/backend/devices/cpu/base.hh"
 #endif
@@ -37,6 +41,13 @@ struct GetBackend<Device::Metal> {
 template<>
 struct GetBackend<Device::Vulkan> {
     using Type = Vulkan;  
+};
+#endif
+
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+template<>
+struct GetBackend<Device::WebGPU> {
+    using Type = WebGPU;
 };
 #endif
 
@@ -85,10 +96,12 @@ class JETSTREAM_API Instance {
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
         destroy<Device::Vulkan>();
 #endif
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+        destroy<Device::WebGPU>();
+#endif
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         destroy<Device::CPU>();
 #endif
-        
     }
 
  private:
@@ -98,6 +111,9 @@ class JETSTREAM_API Instance {
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
         std::unique_ptr<Vulkan>,
+#endif
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+        std::unique_ptr<WebGPU>,
 #endif
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         std::unique_ptr<CPU>

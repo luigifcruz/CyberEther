@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_MODULES_SOAPY_HH
 #define JETSTREAM_MODULES_SOAPY_HH
 
+#include <thread>
+
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
@@ -10,9 +12,11 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 #include <SoapySDR/Formats.hpp>
+#include <SoapySDR/Modules.hpp>
 
 namespace Jetstream {
 
+// TODO: Fix input/output template arguments.
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {
  public:

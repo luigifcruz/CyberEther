@@ -274,11 +274,6 @@ Result Instance::create() {
         return Result::ERROR;
     }
 
-    if (blocks.size() < 1) {
-        JST_ERROR("No blocks were added to this instance.");
-        return Result::ERROR;
-    }
-
     // This code will take the raw graph defined by the user and break into execution graphs.
     // 1. Identify which blocks are compute and graphical.
     // 2. Filter Vectors that aren't connected inside graph (external, constants, etc).

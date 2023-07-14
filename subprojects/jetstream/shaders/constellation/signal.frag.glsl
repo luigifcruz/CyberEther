@@ -12,10 +12,13 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float zoom;
 } uniforms;
 
-layout(set = 0, binding = 1) uniform sampler2D data;
-layout(set = 0, binding = 2) uniform sampler2D lut;
+layout(set = 0, binding = 1) uniform texture2D dataTex;
+layout(set = 0, binding = 2) uniform sampler dataSam;
+
+layout(set = 0, binding = 3) uniform texture2D lutTex;
+layout(set = 0, binding = 4) uniform sampler lutSam;
 
 void main() {
-    vec2 color = texture(data, inTexcoord).rb;
-    outColor = texture(lut, color);
+    vec2 color = texture(sampler2D(dataTex, dataSam), inTexcoord).rg;
+    outColor = texture(sampler2D(lutTex, lutSam), color);
 }

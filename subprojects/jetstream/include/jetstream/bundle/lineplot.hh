@@ -23,8 +23,12 @@ class LineplotUI {
         ImGui::Begin("Lineplot");
         
         auto [x, y] = ImGui::GetContentRegionAvail();
-        auto [width, height] = module->viewSize({(U64)x, (U64)y});
-        ImGui::Image(module->getTexture().raw(), ImVec2(width, height));
+        auto scale = ImGui::GetIO().DisplayFramebufferScale;
+        auto [width, height] = module->viewSize({
+            static_cast<U64>(x*scale.x),
+            static_cast<U64>(y*scale.y)
+        });
+        ImGui::Image(module->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
 
         ImGui::End();
 

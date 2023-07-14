@@ -9,6 +9,7 @@
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/tools/imnodes.h"
 
 namespace Jetstream::Render {
 
@@ -52,6 +53,11 @@ class Window {
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
             case Device::Vulkan:
                 member = T::template Factory<Device::Vulkan>(config); 
+                break;
+#endif
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+            case Device::WebGPU:
+                member = T::template Factory<Device::WebGPU>(config); 
                 break;
 #endif
             default:

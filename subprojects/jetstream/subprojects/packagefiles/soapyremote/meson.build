@@ -1,16 +1,15 @@
-project('soapyremote', 'cpp', version: '0.8.1', license: 'BSD', default_options: ['cpp_std=c++11'])
+project('soapyremote', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11'])
 
 private_cpp_args = []
 interface_cpp_args = []
 private_cpp_args += ['-DSTRERROR_R_XSI']
 interface_cpp_args += []
 
-soapyremote_dep = [
+deps = [
   dependency('soapysdr')
 ]
 
-soapyremote_lib = library(
-  'SoapyRemote',
+src_lst = [
   'client/Streaming.cpp',
   'client/ClientStreamData.cpp',
   'client/DiscoverServers.cpp',
@@ -20,22 +19,33 @@ soapyremote_lib = library(
   'common/SoapyRPCPacker.cpp',
   'common/SoapyHTTPUtils.cpp',
   'common/SoapyIfAddrs.cpp',
+  'common/SoapyIfAddrsUnix.cpp',
   'common/SoapyInfoUtils.in.cpp',
-  'common/SoapyMDNSEndpointApple.cpp',
   'common/SoapyRPCSocket.cpp',
   'common/SoapyRPCUnpacker.cpp',
   'common/SoapySSDPEndpoint.cpp',
   'common/SoapyStreamEndpoint.cpp',
   'common/SoapyURLUtils.cpp',
+]
+
+if target_machine.system() == 'ios'
+  src_lst += [
+    'common/SoapyMDNSEndpointApple.cpp',
+  ]
+endif
+
+soapyremote_lib = library(
+  'SoapyRemote',
+  src_lst,
   cpp_args: private_cpp_args,
-  dependencies: soapyremote_dep,
-  include_directories: 'common',
+  dependencies: deps,
+  include_directories: ['common', 'client'],
   install: true,
 )
 
 soapyremote_dep = declare_dependency(
-  include_directories: 'common',
+  include_directories: ['common', 'client'],
   compile_args: interface_cpp_args,
-  dependencies: soapyremote_dep,
+  dependencies: deps,
   link_with: soapyremote_lib,
 )

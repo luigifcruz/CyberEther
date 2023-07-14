@@ -74,10 +74,7 @@ Result Spectrogram<D, T>::createPresent(Render::Window& window) {
     JST_CHECK(window.build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
-    programCfg.shaders = {
-        {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
-        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
-    };
+    programCfg.shaders = ShadersPackage["signal"];
     programCfg.draw = drawVertex;
     programCfg.textures = {binTexture, lutTexture};
     programCfg.buffers = {

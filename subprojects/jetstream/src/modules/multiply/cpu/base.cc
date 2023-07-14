@@ -17,6 +17,7 @@ Result Multiply<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class Multiply<Device::CPU, CF32>;
 template class Multiply<Device::CPU, F32>;
     

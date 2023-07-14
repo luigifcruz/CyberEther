@@ -30,6 +30,7 @@ class GLFW<Device::Metal> : public Adapter<Device::Metal> {
 
     Result createImgui();
     Result destroyImgui();
+    F32 calculateScale(const F32& scale);
 
     void* nextDrawable();
     

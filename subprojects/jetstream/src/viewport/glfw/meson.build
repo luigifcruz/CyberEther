@@ -23,6 +23,12 @@ if all_deps_found
             'vulkan.cc',
         ])
     endif
+
+    if cfg_lst.get('JETSTREAM_BACKEND_WEBGPU_AVAILABLE', false)
+        src_lst += files([
+            'webgpu.cc',
+        ])
+    endif
 endif
 
 sum_lst += {'GLFW': all_deps_found}

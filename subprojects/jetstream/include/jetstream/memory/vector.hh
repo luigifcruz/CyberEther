@@ -159,7 +159,7 @@ class VectorImpl : public VectorShape<Dimensions> {
     }
 
     explicit VectorImpl(const VectorImpl& other)
-             : VectorShape<Dimensions>(other._shape),
+             : VectorShape<Dimensions>(other),
                _pos(other._pos),
                _data(other._data),
                _refs(other._refs),

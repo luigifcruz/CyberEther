@@ -77,7 +77,7 @@ inline VkShaderModule LoadShader(const std::span<const U8>& data, VkDevice devic
     VkShaderModule shaderModule;
     VkShaderModuleCreateInfo moduleCreateInfo{};
     moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    moduleCreateInfo.codeSize = data.size_bytes();
+    moduleCreateInfo.codeSize = data.size_bytes() - 1;  // -1 to remove terminator
     moduleCreateInfo.pCode = reinterpret_cast<const U32*>(data.data());
 
     JST_VK_CHECK_THROW(vkCreateShaderModule(device, &moduleCreateInfo, nullptr, &shaderModule), [&]{

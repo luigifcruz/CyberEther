@@ -25,16 +25,12 @@ class iOS<Device::Metal> : public Adapter<Device::Metal> {
 
     Result createImgui();
     Result destroyImgui();
+    F32 calculateScale(const F32& scale);
 
     void* nextDrawable();
     
     Result pollEvents();
     bool keepRunning();
-
-    static std::shared_ptr<iOS> Factory(const Config& config, 
-                                        CA::MetalLayer* layer) {
-        return std::make_shared<iOS>(config, layer);
-    }
 
  private:
     CA::MetalLayer* swapchain;

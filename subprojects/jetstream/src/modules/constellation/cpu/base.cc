@@ -50,6 +50,7 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
+// TODO: Remove in favor of module manifest.
 template class Constellation<Device::CPU, CF32>;
 
 }  // namespace Jetstream
