@@ -17,22 +17,22 @@
 ### Devices
 |               Device             |     Metal    |        Vulkan        |      WebGPU    |
 |----------------------------------|--------------|----------------------|----------------|
-| macOS (Apple Silicon)            | ✅ (Native)   | ✅ (via MoltenVK)    | ❌ (Future)     |
-| iOS/iPadOS                       | ✅ (Native)   | ✅ (via MoltenVK)    | ❌ (Future)     |
-| Linux (NVIDIA/AMD/Intel)         | N/A          | ✅ (Native)          | ❌ (Future)     |
-| Windows (NVIDIA/AMD/Intel)       | N/A          | ✅ (Native*)         | ❌ (Future)     |
-| Android                          | N/A          | ✅ (Native*)          | ❌ (Future)     |
-| Browser (WebKit/Chrome/Firefox)  | N/A          | N/A                  | ❌ (Future)     |
+| macOS (Apple Silicon)            | ✅ (Native)   | ✅ (via MoltenVK)    | ✅ (Dawn*)     |
+| iOS/iPadOS                       | ✅ (Native)   | ✅ (via MoltenVK)    | N/A            |
+| Linux (NVIDIA/AMD/Intel)         | N/A          | ✅ (Native)           | ✅ (Dawn*)     |
+| Windows (NVIDIA/AMD/Intel)       | N/A          | ✅ (Native*)          | ✅ (Dawn*)     |
+| Android                          | N/A          | ✅ (Native*)          | ✅ (Dawn*)     |
+| Browser (WebKit/Chrome/Firefox)  | N/A          | N/A                  | ✅ (Chrome)     |
 
 `*` Not validated yet.
  
 ### Graphical Modules
 |     Module    |     Metal    |      Vulkan      |      WebGPU        |    CPU+Render     |
 |---------------|--------------|------------------|--------------------|--------------------|
-| Lineplot      | ✅ (Full)     | ✅ (Graphical)   |  ❌ (Future)        | ✅ (Full)           |
-| Waterfall     | ✅ (Full)     | ✅ (Graphical)   |  ❌ (Future)        | ✅ (Full)           |
-| Spectrogram   | ✅ (Full)     | ✅ (Graphical)   |  ❌ (Future)        | ✅ (Slow but full)  |
-| Constellation | ❌ (Porting)  | ❌ (Porting)     |  ❌ (Future)        | ✅ (Slow but full)  |
+| Lineplot      | ✅ (Full)     | ✅ (Graphical)   |  ✅ (Graphical)    | ✅ (Full)           |
+| Waterfall     | ✅ (Full)     | ✅ (Graphical)   |  ✅ (Graphical)    | ✅ (Full)           |
+| Spectrogram   | ✅ (Full)     | ✅ (Graphical)   |  ✅ (Graphical)    | ✅ (Slow but full)  |
+| Constellation | ❌ (Porting)  | ❌ (Porting)     |  ❌ (Porting)       | ✅ (Slow but full)  |
 
 ### Compute Modules
 |   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |          Description           |
