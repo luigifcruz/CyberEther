@@ -71,8 +71,6 @@ Result Implementation::createImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
-    this->ApplyImGuiTheme(config.scale);
-
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
@@ -82,6 +80,7 @@ Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     
     JST_CHECK(viewport->createImgui());
+    this->ApplyImGuiTheme(viewport->calculateScale(config.scale));
 
     ImGui_ImplMetal_Init(dev);
 

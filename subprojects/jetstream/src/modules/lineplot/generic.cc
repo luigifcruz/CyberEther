@@ -112,18 +112,12 @@ Result Lineplot<D, T>::createPresent(Render::Window& window) {
     JST_CHECK(window.build(lutTexture, lutTextureCfg));
 
     Render::Program::Config gridProgramCfg;
-    gridProgramCfg.shaders = {
-        {Device::Metal,  {grid_msl_vert_shader, grid_msl_frag_shader}},
-        {Device::Vulkan, {grid_spv_vert_shader, grid_spv_frag_shader}},
-    };
+    gridProgramCfg.shaders = ShadersPackage["grid"];
     gridProgramCfg.draw = drawGridVertex;
     JST_CHECK(window.build(gridProgram, gridProgramCfg));
 
     Render::Program::Config signalProgramCfg;
-    signalProgramCfg.shaders = {
-        {Device::Metal,  {signal_msl_vert_shader, signal_msl_frag_shader}},
-        {Device::Vulkan, {signal_spv_vert_shader, signal_spv_frag_shader}},
-    };
+    signalProgramCfg.shaders = ShadersPackage["signal"];
     signalProgramCfg.draw = drawLineVertex;
     signalProgramCfg.textures = {lutTexture};
     JST_CHECK(window.build(signalProgram, signalProgramCfg));

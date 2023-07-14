@@ -1,5 +1,6 @@
 #include "jetstream/render/vulkan/buffer.hh"
 #include "jetstream/render/vulkan/vertex.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -18,19 +19,19 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
 }
 
 Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                              std::vector<VkVertexInputAttributeDescription>& attributeDescrition) {
+                              std::vector<VkVertexInputAttributeDescription>& attributeDescription) {
     JST_DEBUG("[VULKAN] Creating vertex.");
 
     U32 bindingCount = 0;
+    bindingDescription.resize(buffers.size());
+    attributeDescription.resize(buffers.size());
     for (const auto& [buffer, stride] : buffers) {
         JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
 
-        VkVertexInputBindingDescription _bindingDescription{};
-        _bindingDescription.binding = bindingCount;
-        _bindingDescription.stride = stride * sizeof(F32);
-        _bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        bindingDescription.push_back(_bindingDescription);
+        bindingDescription[bindingCount].binding = bindingCount;
+        bindingDescription[bindingCount].stride = stride * sizeof(F32);
+        bindingDescription[bindingCount].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
         VkFormat bindingFormat = VK_FORMAT_UNDEFINED;
         
@@ -49,12 +50,10 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
                 break;       
         }
 
-        VkVertexInputAttributeDescription _attributeDescription{};
-        _attributeDescription.binding = bindingCount;
-        _attributeDescription.location = bindingCount;
-        _attributeDescription.format = bindingFormat;
-        _attributeDescription.offset = 0;
-        attributeDescrition.push_back(_attributeDescription);
+        attributeDescription[bindingCount].binding = bindingCount;
+        attributeDescription[bindingCount].location = bindingCount;
+        attributeDescription[bindingCount].format = bindingFormat;
+        attributeDescription[bindingCount].offset = 0;
 
         bindingCount += 1;
     }

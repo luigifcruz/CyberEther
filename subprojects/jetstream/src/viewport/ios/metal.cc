@@ -33,6 +33,11 @@ Result Implementation::createImgui() {
 
     return Result::SUCCESS;
 }
+
+F32 Implementation::calculateScale(const F32& scale) {
+    return scale;
+}
+
 Result Implementation::destroyImgui() {
 
     return Result::SUCCESS;
@@ -40,8 +45,10 @@ Result Implementation::destroyImgui() {
 
 void* Implementation::nextDrawable() {
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize.x = swapchain->drawableSize().width;
-    io.DisplaySize.y = swapchain->drawableSize().height;
+    io.DisplaySize.x = swapchain->drawableSize().width / 2.0;
+    io.DisplaySize.y = swapchain->drawableSize().height / 2.0;
+    io.DisplayFramebufferScale.x = 2.0;
+    io.DisplayFramebufferScale.y = 2.0;
     
     return static_cast<void*>(swapchain->nextDrawable());
 }

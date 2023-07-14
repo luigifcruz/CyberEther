@@ -13,7 +13,7 @@ class VertexImp<Device::Vulkan> : public Vertex {
 
  protected:
    Result create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                 std::vector<VkVertexInputAttributeDescription>& attributeDescrition);
+                 std::vector<VkVertexInputAttributeDescription>& attributeDescription);
     Result encode(VkCommandBuffer& commandBuffer);
     Result destroy();
 

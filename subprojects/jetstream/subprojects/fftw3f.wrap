@@ -3,7 +3,7 @@ directory = fftw-3.3.10
 source_url = http://www.fftw.org/fftw-3.3.10.tar.gz
 source_filename = fftw-3.3.10.tar.gz
 source_hash = 56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467
-patch_directory = fftw-ios
+patch_directory = fftw
 wrapdb_version = 3.3.10-1
 
 [provide]

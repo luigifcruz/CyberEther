@@ -10,7 +10,7 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
 }
 
 Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                              std::vector<VkVertexInputAttributeDescription>& attributeDescrition,
+                              std::vector<VkVertexInputAttributeDescription>& attributeDescription,
                               VkPipelineInputAssemblyStateCreateInfo& inputAssembly) {
     JST_DEBUG("[VULKAN] Creating draw.");
 
@@ -38,7 +38,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     inputAssembly.topology = topology;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-    JST_CHECK(buffer->create(bindingDescription, attributeDescrition));
+    JST_CHECK(buffer->create(bindingDescription, attributeDescription));
 
     return Result::SUCCESS;
 }

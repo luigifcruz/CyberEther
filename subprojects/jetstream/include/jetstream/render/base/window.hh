@@ -55,6 +55,11 @@ class Window {
                 member = T::template Factory<Device::Vulkan>(config); 
                 break;
 #endif
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+            case Device::WebGPU:
+                member = T::template Factory<Device::WebGPU>(config); 
+                break;
+#endif
             default:
                 JST_FATAL("Backend not supported yet.");
                 return Result::ERROR;

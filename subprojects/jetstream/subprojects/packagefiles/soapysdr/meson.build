@@ -1,4 +1,4 @@
-project('soapysdr', 'cpp', version: '0.8.1', license: 'BSD', default_options: ['cpp_std=c++11'])
+project('soapysdr', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11'])
 
 private_cpp_args = []
 interface_cpp_args = []
@@ -37,7 +37,7 @@ soapysdr_lib = library(
 soapysdr_dep = declare_dependency(
   include_directories: 'include',
   compile_args: interface_cpp_args,
-  link_with: lib,
+  link_with: soapysdr_lib,
 )
 
 install_subdir('include/SoapySDR', install_dir: get_option('includedir'))

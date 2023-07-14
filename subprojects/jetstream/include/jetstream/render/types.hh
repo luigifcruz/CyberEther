@@ -5,18 +5,18 @@
 
 namespace Jetstream::Render {
 
-enum class PixelFormat : uint {
+enum class PixelFormat : uint32_t {
     RGBA,
     RED,
 };
 
-enum class DataFormat : uint {
+enum class DataFormat : uint32_t {
     RGBA,
     UI8,
     F32,
 };
 
-enum class PixelType : uint {
+enum class PixelType : uint32_t {
     UI8,
     F32,
 };

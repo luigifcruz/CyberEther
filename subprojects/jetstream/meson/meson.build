@@ -9,5 +9,6 @@ subdir('metal')
 subdir('glfw')
 subdir('soapy')
 subdir('vulkan')
+subdir('webgpu')
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

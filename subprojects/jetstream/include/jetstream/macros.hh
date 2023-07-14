@@ -5,6 +5,10 @@
 
 #include "jetstream_config.hh"
 
+#ifdef __EMSCRIPTEN__
+#define JETSTREAM_STATIC
+#endif
+
 #ifndef JETSTREAM_API
 #define JETSTREAM_API __attribute__((visibility("default")))
 #endif  // JETSTREAM_API
@@ -63,6 +67,7 @@
 #define JST_CHECK_THROW(x) { \
     Result val = (x); \
     if (val != Result::SUCCESS) { \
+        printf("Function %s throwed!\n", __func__); \
         throw val; \
     } \
 }

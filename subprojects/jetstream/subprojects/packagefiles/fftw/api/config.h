@@ -223,7 +223,11 @@
 /* #undef HAVE_MPI */
 
 /* Define to enable ARM NEON optimizations. */
+#ifdef __EMSCRIPTEN__
+#define HAVE_NEON 0
+#else
 #define HAVE_NEON 1
+#endif
 #ifndef SIMD_HEADER 
 #define SIMD_HEADER "simd-neon.h"
 #endif
