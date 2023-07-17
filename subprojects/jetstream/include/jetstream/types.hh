@@ -24,11 +24,6 @@ enum class Result : uint8_t {
     ERROR_BEYOND_CAPACITY,
 };
 
-enum class Direction : int8_t {
-    Forward = 0,
-    Backward = 1,
-};
-
 }  // namespace Jetstream
 
 #endif

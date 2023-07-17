@@ -65,7 +65,7 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     launchParams.commandBuffer = runtime.commandBuffer;
     launchParams.commandEncoder = runtime.commandBuffer->computeCommandEncoder();
 
-    const int inverse = static_cast<int>(config.direction);
+    const int inverse = static_cast<int>(config.forward);
     if (auto res = VkFFTAppend(assets.app, inverse, &launchParams); res != VKFFT_SUCCESS) {
         JST_FATAL("Failed to append to VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;

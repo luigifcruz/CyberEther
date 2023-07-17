@@ -27,7 +27,7 @@ template<Device D, typename T = CF32>
 class FFT : public Module, public Compute {
  public:
     struct Config {
-        Direction direction = Direction::Forward;
+        bool forward = true;
     };
 
     struct Input {
@@ -62,7 +62,8 @@ class FFT : public Module, public Compute {
     static Result Factory(std::unordered_map<std::string, std::any>& config,
                           std::unordered_map<std::string, std::any>& input,
                           std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<FFT<D, T>>& module);
+                          std::shared_ptr<FFT<D, T>>& module,
+                          const bool& castFromString = false);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;

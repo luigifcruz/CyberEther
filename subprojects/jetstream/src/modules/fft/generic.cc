@@ -14,19 +14,20 @@ FFT<D, T>::FFT(const Config& config,
 
 template<Device D, typename T>
 void FFT<D, T>::summary() const {
-    JST_INFO("    Direction: {}", static_cast<I64>(config.direction));
+    JST_INFO("    Forward: {}", config.forward ? "YES" : "NO");
 }
 
 template<Device D, typename T>
 Result FFT<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                           std::unordered_map<std::string, std::any>& inputMap,
                           std::unordered_map<std::string, std::any>& outputMap,
-                          std::shared_ptr<FFT<D, T>>& module) {
+                          std::shared_ptr<FFT<D, T>>& module, 
+                          const bool& castFromString) {
     using Module = FFT<D, T>;
 
     Module::Config config{};
 
-    JST_CHECK(Module::BindVariable(configMap, "direction", config.direction));
+    JST_CHECK(Module::BindVariable(configMap, "forward", config.forward, castFromString));
 
     Module::Input input{};
 

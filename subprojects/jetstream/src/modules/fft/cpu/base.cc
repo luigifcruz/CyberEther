@@ -11,7 +11,7 @@ Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
 
     const I32 M = input.buffer.shape()[0];
     const I32 N = input.buffer.shape()[1];
-    auto direction = (config.direction == Direction::Forward) ? FFTW_FORWARD : FFTW_BACKWARD;
+    auto direction = (config.forward) ? FFTW_FORWARD : FFTW_BACKWARD;
 
     int rank     = 1;      // Number of dimensions
     int n[]      = { N };  // Size of each dimension
