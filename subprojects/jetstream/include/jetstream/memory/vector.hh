@@ -46,7 +46,7 @@ struct VectorShape {
 };
 
 template<typename Type, U64 Dimensions>
-class VectorImpl : public VectorShape<Dimensions> {
+class VectorImpl {
  public:
     using DataType = Type;
 
@@ -59,12 +59,12 @@ class VectorImpl : public VectorShape<Dimensions> {
     }
 
     constexpr const VectorShape<Dimensions>& shape() const noexcept {
-        return *this;
+        return _shape;
     }
 
     constexpr U64 size() const noexcept {
         U64 _size = 1;
-        for (const auto& dim : this->_shape) {
+        for (const auto& dim : _shape) {
             _size *= dim;
         }
         return _size; 
@@ -101,7 +101,7 @@ class VectorImpl : public VectorShape<Dimensions> {
         for (U64 i = 0; i < Dimensions; i++) {
             U64 product = shape[i];
             for (U64 j = i + 1; j < Dimensions; j++) {
-                product *= this->_shape[j];
+                product *= _shape[j];
             }
             offset += product;
         }
@@ -144,13 +144,14 @@ class VectorImpl : public VectorShape<Dimensions> {
     VectorImpl& operator=(VectorImpl&&) = delete;
 
  protected:
+    VectorShape<Dimensions> _shape; 
     U64* _pos;
     DataType* _data;
     U64* _refs;
     std::vector<std::function<void()>>* _destructors;
 
     VectorImpl()
-             : VectorShape<Dimensions>({0}),
+             : _shape({0}),
                _pos(nullptr),
                _data(nullptr),
                _refs(nullptr), 
@@ -159,7 +160,7 @@ class VectorImpl : public VectorShape<Dimensions> {
     }
 
     explicit VectorImpl(const VectorImpl& other)
-             : VectorShape<Dimensions>(other),
+             : _shape(other._shape),
                _pos(other._pos),
                _data(other._data),
                _refs(other._refs),
@@ -174,7 +175,7 @@ class VectorImpl : public VectorShape<Dimensions> {
 
         decreaseRefCount();
             
-        this->_shape = other._shape;
+        _shape = other._shape;
         _data = other._data;
         _pos = other._pos;
         _refs = other._refs;
@@ -186,7 +187,7 @@ class VectorImpl : public VectorShape<Dimensions> {
     }
 
     explicit VectorImpl(void* ptr, const VectorShape<Dimensions>& shape)
-             : VectorShape<Dimensions>(shape),
+             : _shape(shape),
                _pos(nullptr),
                _data(static_cast<DataType*>(ptr)),
                _refs(nullptr), 
@@ -224,17 +225,12 @@ class VectorImpl : public VectorShape<Dimensions> {
     }
 
     void reset() {
-        this->_shape = {0};
+        _shape = {0};
         _data = nullptr;
         _refs = nullptr;
         _pos = nullptr;
         _destructors = nullptr;
     }
-
- private:
-    using VectorShape<Dimensions>::operator[];
-    using VectorShape<Dimensions>::begin;
-    using VectorShape<Dimensions>::end;
 };
 
 }  // namespace Jetstream
