@@ -67,7 +67,7 @@
 #define JST_CHECK_THROW(x) { \
     Result val = (x); \
     if (val != Result::SUCCESS) { \
-        printf("Function %s throwed!\n", __func__); \
+        printf("Function %s (%s@%d) throwed!\n", __func__, __FILE__, __LINE__); \
         throw val; \
     } \
 }
@@ -86,6 +86,7 @@
 #define JST_ASSERT_THROW(x) { \
     bool val = (x); \
     if (val != true) { \
+        printf("Function %s (%s@%d) throwed!\n", __func__, __FILE__, __LINE__); \
         throw Result::ASSERTION_ERROR; \
     } \
 }
