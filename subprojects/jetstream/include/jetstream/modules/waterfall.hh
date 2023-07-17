@@ -71,7 +71,8 @@ class Waterfall : public Module, public Compute, public Present {
     static Result Factory(std::unordered_map<std::string, std::any>& config,
                           std::unordered_map<std::string, std::any>& input,
                           std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Waterfall<D, T>>& module);
+                          std::shared_ptr<Waterfall<D, T>>& module,
+                          const bool& castFromString = false);
 
  protected:
     Config config;

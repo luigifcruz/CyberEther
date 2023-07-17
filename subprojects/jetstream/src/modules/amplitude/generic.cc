@@ -22,7 +22,8 @@ template<Device D, typename IT, typename OT>
 Result Amplitude<D, IT, OT>::Factory(std::unordered_map<std::string, std::any>&,
                                      std::unordered_map<std::string, std::any>& inputMap,
                                      std::unordered_map<std::string, std::any>& outputMap,
-                                     std::shared_ptr<Amplitude<D, IT, OT>>& module) {
+                                     std::shared_ptr<Amplitude<D, IT, OT>>& module, 
+                                     const bool&) {
     using Module = Amplitude<D, IT, OT>;
 
     Module::Config config{};

@@ -163,14 +163,15 @@ template<Device D, typename T>
 Result Lineplot<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                                std::unordered_map<std::string, std::any>& inputMap,
                                std::unordered_map<std::string, std::any>&,
-                               std::shared_ptr<Lineplot<D, T>>& module) {
+                               std::shared_ptr<Lineplot<D, T>>& module, 
+                               const bool& castFromString) {
     using Module = Lineplot<D, T>;
 
     Module::Config config{};
 
-    JST_CHECK(Module::BindVariable(configMap, "numberOfVerticalLines", config.numberOfVerticalLines));
-    JST_CHECK(Module::BindVariable(configMap, "numberOfHorizontalLines", config.numberOfHorizontalLines));
-    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+    JST_CHECK(Module::BindVariable(configMap, "numberOfVerticalLines", config.numberOfVerticalLines, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "numberOfHorizontalLines", config.numberOfHorizontalLines, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize, castFromString));
 
     Module::Input input{};
 

@@ -18,7 +18,7 @@ Soapy<D, T>::Soapy(const Config& config,
                    const Input& input) 
          : config(config),
            input(input),
-           buffer(config.batchSize * config.outputBufferSize * config.bufferMultiplier) {
+           buffer(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier) {
     JST_DEBUG("Initializing Soapy module.");
 
     streaming = true;
@@ -26,7 +26,7 @@ Soapy<D, T>::Soapy(const Config& config,
     deviceHardwareKey = "None";
 
     // Initialize output.
-    JST_CHECK_THROW(Module::initOutput(this->output.buffer, {config.batchSize, config.outputBufferSize}));
+    JST_CHECK_THROW(Module::initOutput(this->output.buffer, config.outputShape));
 
     // Initialize thread for ingest.
     producer = std::thread([&]{ soapyThreadLoop(); });
@@ -106,9 +106,7 @@ void Soapy<D, T>::summary() const {
     JST_INFO("     Device String:      {}", config.deviceString);
     JST_INFO("     Frequency:          {:.2f} MHz", config.frequency / (1000*1000));
     JST_INFO("     Sample Rate:        {:.2f} MHz", config.sampleRate / (1000*1000));
-    JST_INFO("     Buffer Multiplier:  {}", config.bufferMultiplier);
-    JST_INFO("     Batch Size:         {}", config.batchSize);
-    JST_INFO("     Output Buffer Size: {}", config.outputBufferSize);
+    JST_INFO("     Output Shape:       {}", config.outputShape);
 }
 
 template<Device D, typename T>
@@ -151,18 +149,26 @@ Result Soapy<D, T>::compute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename T>
-Result Soapy<D, T>::Factory(std::unordered_map<std::string, std::any>&,
+Result Soapy<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                             std::unordered_map<std::string, std::any>&,
                             std::unordered_map<std::string, std::any>& outputMap,
-                            std::shared_ptr<Soapy<D, T>>& module) {
+                            std::shared_ptr<Soapy<D, T>>& module, 
+                            const bool& castFromString) {
     using Module = Soapy<D, T>;
 
     Module::Config config{};
+
+    JST_CHECK(Module::BindVariable(configMap, "deviceString", config.deviceString, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "frequency", config.frequency, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "sampleRate", config.sampleRate, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "outputShape", config.outputShape, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "bufferMultiplier", config.bufferMultiplier, castFromString));
+
     Module::Input input{};
 
     module = std::make_shared<Module>(config, input);
 
-    JST_CHECK(Module::RegisterVariable(outputMap, "output", module->getOutputBuffer()));
+    JST_CHECK(Module::RegisterVariable(outputMap, "buffer", module->getOutputBuffer()));
 
     return Result::SUCCESS;
 }

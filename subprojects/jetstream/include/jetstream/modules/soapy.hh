@@ -23,8 +23,7 @@ class Soapy : public Module, public Compute {
         std::string deviceString;
         F32 frequency;
         F32 sampleRate;
-        U64 batchSize;
-        U64 outputBufferSize;
+        VectorShape<2> outputShape;
         U64 bufferMultiplier = 4;
     };
 
@@ -74,7 +73,8 @@ class Soapy : public Module, public Compute {
     static Result Factory(std::unordered_map<std::string, std::any>& config,
                           std::unordered_map<std::string, std::any>& input,
                           std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Soapy<D, T>>& module);
+                          std::shared_ptr<Soapy<D, T>>& module,
+                          const bool& castFromString = false);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;

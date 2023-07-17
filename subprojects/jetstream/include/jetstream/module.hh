@@ -1,9 +1,13 @@
 #ifndef JETSTREAM_MODULE_HH
 #define JETSTREAM_MODULE_HH
 
+#include <string>
+#include <algorithm>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/helpers.hh"
 #include "jetstream/metadata.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/memory/base.hh"
@@ -110,23 +114,61 @@ class JETSTREAM_API Module {
     template<typename T>
     static Result BindVariable(std::unordered_map<std::string, std::any>& map,
                                const std::string& name,
-                               const T& variable) {
+                               const T& variable,
+                               const bool& castFromString = false) {
         if (map.count(name) == 0) {
-            JST_FATAL("Varible name not found inside map.");
+            JST_FATAL("Varible name ({}) not found inside map.", name);
             return Result::ERROR;
         }
 
         auto& anyVar = map[name];
 
         if (!anyVar.has_value()) {
-            JST_ERROR("Variable not initialized.");
+            JST_ERROR("Variable ({}) not initialized.", name);
             return Result::ERROR;
         }
 
         try {
-            const_cast<T&>(variable) = std::any_cast<T>(anyVar);
+            if (!castFromString) {
+                const_cast<T&>(variable) = std::any_cast<T>(anyVar);
+            } else if constexpr (std::is_same<T, std::string>::value) {
+                JST_TRACE("BindVariable: Converting std::string to std::string.");
+                const_cast<T&>(variable) = std::any_cast<std::string>(anyVar);
+            } else if constexpr (std::is_same<T, U64>::value) {
+                JST_TRACE("BindVariable: Converting std::string to U64.");
+                const_cast<T&>(variable) = std::stoull(std::any_cast<std::string>(anyVar));
+            } else if constexpr (std::is_same<T, F32>::value) {
+                JST_TRACE("BindVariable: Converting std::string to F32.");
+                const_cast<T&>(variable) = std::stof(std::any_cast<std::string>(anyVar));
+            } else if constexpr (std::is_same<T, F64>::value) {
+                JST_TRACE("BindVariable: Converting std::string to F64.");
+                const_cast<T&>(variable) = std::stod(std::any_cast<std::string>(anyVar));
+            } else if constexpr (std::is_same<T, bool>::value) {
+                JST_TRACE("BindVariable: Converting std::string to BOOL.");
+                std::string lower_s = std::any_cast<std::string>(anyVar);
+                std::transform(lower_s.begin(), lower_s.end(), lower_s.begin(), ::tolower);
+                const_cast<T&>(variable) = lower_s == "true" || lower_s == "1";
+            } else if constexpr (std::is_same<T, VectorShape<2>>::value) {
+                JST_TRACE("BindVariable: Converting std::string to VectorShape<2>.");
+                const auto values = Helper::SplitString(std::any_cast<std::string>(anyVar), ", ");
+                JST_ASSERT_THROW(values.size() == 2);
+                const_cast<T&>(variable) = VectorShape<2>{std::stoull(values[0]), std::stoull(values[1])};
+            } else if constexpr (std::is_same<T, Range<F32>>::value) {
+                JST_TRACE("BindVariable: Converting std::string to Range<F32>.");
+                const auto values = Helper::SplitString(std::any_cast<std::string>(anyVar), ", ");
+                JST_ASSERT_THROW(values.size() == 2);
+                const_cast<T&>(variable) = Range<F32>{std::stof(values[0]), std::stof(values[1])};
+            } else if constexpr (std::is_same<T, Render::Size2D<U64>>::value) {
+                JST_TRACE("BindVariable: Converting std::string to BOOL.");
+                const auto values = Helper::SplitString(std::any_cast<std::string>(anyVar), ", ");
+                JST_ASSERT_THROW(values.size() == 2);
+                const_cast<T&>(variable) = Render::Size2D<U64>{std::stoull(values[0]), std::stoull(values[1])};
+            } else {
+                JST_FATAL("Can't find cast operator for variable ({}).", name);
+                JST_CHECK_THROW(Result::ERROR);
+            }
         } catch (const std::bad_any_cast& e) {
-            JST_ERROR("Failed to cast from any.");
+            JST_ERROR("Variable ({}) failed to cast from any: {}", name, e.what());
             return Result::ERROR;
         }
 

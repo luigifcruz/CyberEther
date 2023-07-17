@@ -22,12 +22,13 @@ template<Device D, typename T>
 Result Scale<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                             std::unordered_map<std::string, std::any>& inputMap,
                             std::unordered_map<std::string, std::any>& outputMap,
-                            std::shared_ptr<Scale<D, T>>& module) {
+                            std::shared_ptr<Scale<D, T>>& module, 
+                            const bool& castFromString) {
     using Module = Scale<D, T>;
 
     Module::Config config{};
 
-    JST_CHECK(Module::BindVariable(configMap, "range", config.range));
+    JST_CHECK(Module::BindVariable(configMap, "range", config.range, castFromString));
 
     Module::Input input{};
 

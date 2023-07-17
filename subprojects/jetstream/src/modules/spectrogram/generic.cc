@@ -132,13 +132,14 @@ template<Device D, typename T>
 Result Spectrogram<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                                   std::unordered_map<std::string, std::any>& inputMap,
                                   std::unordered_map<std::string, std::any>&,
-                                  std::shared_ptr<Spectrogram<D, T>>& module) {
+                                  std::shared_ptr<Spectrogram<D, T>>& module, 
+                                  const bool& castFromString) {
     using Module = Spectrogram<D, T>;
 
     Module::Config config{};
 
-    JST_CHECK(Module::BindVariable(configMap, "height", config.height));
-    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
+    JST_CHECK(Module::BindVariable(configMap, "height", config.height, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize, castFromString));
 
     Module::Input input{};
 

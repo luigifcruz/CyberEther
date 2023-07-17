@@ -33,12 +33,13 @@ template<Device D, typename T>
 Result Window<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                              std::unordered_map<std::string, std::any>&,
                              std::unordered_map<std::string, std::any>& outputMap,
-                             std::shared_ptr<Window<D, T>>& module) {
+                             std::shared_ptr<Window<D, T>>& module, 
+                             const bool& castFromString) {
     using Module = Window<D, T>;
 
     Module::Config config{};
 
-    JST_CHECK(Module::BindVariable(configMap, "shape", config.shape));
+    JST_CHECK(Module::BindVariable(configMap, "shape", config.shape, castFromString));
 
     Module::Input input{};
 

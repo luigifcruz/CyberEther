@@ -32,7 +32,8 @@ template<Device D, typename T>
 Result Multiply<D, T>::Factory(std::unordered_map<std::string, std::any>&,
                                std::unordered_map<std::string, std::any>& inputMap,
                                std::unordered_map<std::string, std::any>& outputMap,
-                               std::shared_ptr<Multiply<D, T>>& module) {
+                               std::shared_ptr<Multiply<D, T>>& module, 
+                               const bool&) {
     using Module = Multiply<D, T>;
 
     Module::Config config{};

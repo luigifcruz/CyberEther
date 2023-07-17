@@ -142,16 +142,18 @@ template<Device D, typename T>
 Result Filter<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                              std::unordered_map<std::string, std::any>&,
                              std::unordered_map<std::string, std::any>& outputMap,
-                             std::shared_ptr<Filter<D, T>>& module) {
+                             std::shared_ptr<Filter<D, T>>& module, 
+                             const bool& castFromString) {
     using Module = Filter<D, T>;
 
     Module::Config config{};
 
-    JST_CHECK(Module::BindVariable(configMap, "signalSampleRate", config.signalSampleRate));
-    JST_CHECK(Module::BindVariable(configMap, "filterSampleRate", config.filterSampleRate));
-    JST_CHECK(Module::BindVariable(configMap, "filterCenter", config.filterCenter));
-    JST_CHECK(Module::BindVariable(configMap, "numberOfTaps", config.shape));
-    JST_CHECK(Module::BindVariable(configMap, "linearFrequency", config.linearFrequency));
+    JST_CHECK(Module::BindVariable(configMap, "signalSampleRate", config.signalSampleRate, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "filterSampleRate", config.filterSampleRate, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "filterCenter", config.filterCenter, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "numberOfTaps", config.numberOfTaps, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "shape", config.shape, castFromString));
+    JST_CHECK(Module::BindVariable(configMap, "linearFrequency", config.linearFrequency, castFromString));
 
     Module::Input input{};
 
