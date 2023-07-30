@@ -75,7 +75,6 @@ An important goal of this project is to be as portable as possible. This require
 // Initialize Render
 Render::Window::Config renderCfg;
 renderCfg.size = {3130, 1140};
-renderCfg.resizable = true;
 renderCfg.imgui = true;
 renderCfg.vsync = true;
 renderCfg.title = "CyberEther";
@@ -110,7 +109,7 @@ Sometimes, some data processing is required to display a signal. Like the render
 fft = Block<FFT, Device::CPU>({
     .size = stream.size(),
 }, {
-    .buffer = mul->getProductBuffer(),
+    .buffer = mul->getOutputProduct(),
 });
 
 // Performing the implementation with the CUDA implementation.
@@ -118,7 +117,7 @@ fft = Block<FFT, Device::CPU>({
 fft = Block<FFT, Device::CUDA>({
     .size = stream.size(),
 }, {
-    .buffer = mul->getProductBuffer(),
+    .buffer = mul->getOutputProduct(),
 });
 ```
 

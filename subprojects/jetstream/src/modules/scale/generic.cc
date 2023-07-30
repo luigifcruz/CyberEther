@@ -15,30 +15,7 @@ Scale<D, T>::Scale(const Config& config,
 
 template<Device D, typename T>
 void Scale<D, T>::summary() const {
-    JST_INFO("    Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
-}
-
-template<Device D, typename T>
-Result Scale<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                            std::unordered_map<std::string, std::any>& inputMap,
-                            std::unordered_map<std::string, std::any>& outputMap,
-                            std::shared_ptr<Scale<D, T>>& module, 
-                            const bool& castFromString) {
-    using Module = Scale<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "range", config.range, castFromString));
-
-    Module::Input input{};
-
-    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
-
-    module = std::make_shared<Module>(config, input);
-
-    JST_CHECK(Module::RegisterVariable(outputMap, "buffer", module->getOutputBuffer()));
-
-    return Result::SUCCESS;
+    JST_INFO("  Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
 }
     
 }  // namespace Jetstream

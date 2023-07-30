@@ -1,4 +1,4 @@
-#include "jetstream/graph/metal.hh"
+#include "jetstream/compute/graph/metal.hh"
 
 namespace Jetstream {
 

@@ -39,7 +39,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
 
     // Load shaders from memory.
 
-    if (config.shaders.count(Device::WebGPU) == 0) {
+    if (config.shaders.contains(Device::WebGPU) == 0) {
         JST_FATAL("[WebGPU] Module doesn't have necessary shader.");       
         JST_CHECK(Result::ERROR);
     }

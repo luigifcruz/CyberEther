@@ -4,58 +4,87 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/render/extras.hh"
-#include "jetstream/graph/base.hh"
+#include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T = F32>
 class Lineplot : public Module, public Compute, public Present {
  public:
+    // Configuration 
+
     struct Config {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        Render::Size2D<U64> viewSize = {1024, 512};
+        Size2D<U64> viewSize = {1024, 512};
+
+        JST_SERDES(
+            JST_SERDES_VAL("numberOfVerticalLines", numberOfVerticalLines);
+            JST_SERDES_VAL("numberOfHorizontalLines", numberOfHorizontalLines);
+            JST_SERDES_VAL("viewSize", viewSize);
+        );
     };
+
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
+        JST_SERDES();
     };
 
-    explicit Lineplot(const Config& config,
-                      const Input& input);
+    constexpr const Output& getOutput() const {
+        return output;
+    }
+
+    // Taint & Housekeeping
 
     constexpr Device device() const {
         return D;
     }
 
-    const std::string name() const {
+    constexpr std::string name() const {
+        return "lineplot";
+    }
+
+    constexpr std::string prettyName() const {
         return "Lineplot";
     }
 
-    void summary() const final;
+    void summary() const final; 
 
-    constexpr Config getConfig() const {
-        return config;
-    }
+    // Constructor
 
-    constexpr const Render::Size2D<U64>& viewSize() const {
+    explicit Lineplot(const Config& config, const Input& input);
+
+    // Miscellaneous
+
+    constexpr const Size2D<U64>& viewSize() const {
         return config.viewSize;
     }
-    const Render::Size2D<U64>& viewSize(const Render::Size2D<U64>& viewSize);
+    const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
 
     Render::Texture& getTexture();
-
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Lineplot<D, T>>& module,
-                          const bool& castFromString = false);
 
  protected:
     Config config;

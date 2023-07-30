@@ -13,7 +13,7 @@ Spectrogram<D, T>::Spectrogram(const Config& config,
 
 template<Device D, typename T>
 void Spectrogram<D, T>::summary() const {
-    JST_INFO("     Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_INFO("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
@@ -110,7 +110,7 @@ Result Spectrogram<D, T>::present(Render::Window&) {
 }
 
 template<Device D, typename T>
-const Render::Size2D<U64>& Spectrogram<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
+const Size2D<U64>& Spectrogram<D, T>::viewSize(const Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         JST_TRACE("Spectrogram size changed from [{}, {}] to [{}, {}].", 
                 config.viewSize.width, 
@@ -127,27 +127,5 @@ template<Device D, typename T>
 Render::Texture& Spectrogram<D, T>::getTexture() {
     return *texture;
 };
-
-template<Device D, typename T>
-Result Spectrogram<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                                  std::unordered_map<std::string, std::any>& inputMap,
-                                  std::unordered_map<std::string, std::any>&,
-                                  std::shared_ptr<Spectrogram<D, T>>& module, 
-                                  const bool& castFromString) {
-    using Module = Spectrogram<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "height", config.height, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize, castFromString));
-
-    Module::Input input{};
-
-    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
-
-    module = std::make_shared<Module>(config, input);
-
-    return Result::SUCCESS;
-}
 
 }  // namespace Jetstream

@@ -4,8 +4,9 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
-#include "jetstream/graph/base.hh"
+#include "jetstream/compute/graph/base.hh"
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
 #include <fftw3.h>
@@ -26,44 +27,71 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class FFT : public Module, public Compute {
  public:
+    // Configuration 
+
     struct Config {
         bool forward = true;
+
+        JST_SERDES(
+            JST_SERDES_VAL("forward", forward);
+        );
     };
+
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
 
     struct Input {
         const Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
         Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
 
-    explicit FFT(const Config& config, 
-                 const Input& input); 
-
-    constexpr Device device() const {
-        return D;
+    constexpr const Output& getOutput() const {
+        return output;
     }
-
-    const std::string name() const {
-        return "Fast-Fourier Transform";
-    }
-
-    void summary() const final;
 
     constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
-    constexpr Config getConfig() const {
-        return config;
+    // Taint & Housekeeping
+
+    constexpr Device device() const {
+        return D;
     }
 
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<FFT<D, T>>& module,
-                          const bool& castFromString = false);
+    constexpr std::string name() const {
+        return "fft";
+    }
+
+    constexpr std::string prettyName() const {
+        return "Fast-Fourier Transform";
+    }
+
+    void summary() const final;
+
+    // Constructor
+
+    explicit FFT(const Config& config, const Input& input);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;

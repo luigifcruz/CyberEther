@@ -26,28 +26,7 @@ Window<D, T>::Window(const Config& config,
 
 template<Device D, typename T>
 void Window<D, T>::summary() const {
-    JST_INFO("    Window Shape: {}", this->config.shape);
-}
-
-template<Device D, typename T>
-Result Window<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                             std::unordered_map<std::string, std::any>&,
-                             std::unordered_map<std::string, std::any>& outputMap,
-                             std::shared_ptr<Window<D, T>>& module, 
-                             const bool& castFromString) {
-    using Module = Window<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "shape", config.shape, castFromString));
-
-    Module::Input input{};
-
-    module = std::make_shared<Module>(config, input);
-
-    JST_CHECK(Module::RegisterVariable(outputMap, "window", module->getWindowBuffer()));
-
-    return Result::SUCCESS;
+    JST_INFO("  Window Shape: {}", this->config.shape);
 }
 
 }  // namespace Jetstream

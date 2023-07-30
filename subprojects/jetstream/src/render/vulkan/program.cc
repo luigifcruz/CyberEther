@@ -33,7 +33,7 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     // Load shaders from buffers.
 
-    if (config.shaders.count(Device::Vulkan) == 0) {
+    if (config.shaders.contains(Device::Vulkan) == 0) {
         JST_FATAL("[VULKAN] Module doesn't have necessary shader.");       
         JST_CHECK(Result::ERROR);
     }

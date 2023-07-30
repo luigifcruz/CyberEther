@@ -14,8 +14,12 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
     explicit GLFW(const Config& config);
     virtual ~GLFW();
 
-    const std::string name() const {
+    constexpr std::string prettyName() const {
         return "GLFW (Vulkan)";
+    }
+
+    constexpr std::string name() const {
+        return "glfw";
     }
 
     constexpr Device device() const {

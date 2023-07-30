@@ -45,8 +45,10 @@ struct VectorShape {
     }
 };
 
+class VectorType {};
+
 template<typename Type, U64 Dimensions>
-class VectorImpl {
+class VectorImpl : public VectorType {
  public:
     using DataType = Type;
 
@@ -224,6 +226,11 @@ class VectorImpl {
         *_refs += 1;
     }
 
+    void increasePosCount() {
+        JST_TRACE("Increasing positional counter to {}.", *_pos + 1);
+        *_pos += 1;
+    }
+
     void reset() {
         _shape = {0};
         _data = nullptr;
@@ -231,6 +238,8 @@ class VectorImpl {
         _pos = nullptr;
         _destructors = nullptr;
     }
+
+    friend class Module;
 };
 
 }  // namespace Jetstream

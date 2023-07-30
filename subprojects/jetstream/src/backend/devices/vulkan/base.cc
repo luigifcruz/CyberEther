@@ -71,7 +71,7 @@ bool Vulkan::checkValidationLayerSupport() {
     std::set<std::string> requiredLayers(validationLayers.begin(), validationLayers.end());
 
     for (const auto& layer : availableLayers) {
-        if (requiredLayers.count(layer.layerName) && config.validationEnabled) {
+        if (requiredLayers.contains(layer.layerName) && config.validationEnabled) {
             JST_DEBUG("[VULKAN] Required layer found: {}", layer.layerName);
         }
         requiredLayers.erase(layer.layerName);
@@ -89,7 +89,7 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
     std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 
     for (const auto& extension : availableExtensions) {
-        if (requiredExtensions.count(extension.extensionName) && config.validationEnabled) {
+        if (requiredExtensions.contains(extension.extensionName) && config.validationEnabled) {
             JST_DEBUG("[VULKAN] Device supports required extension: {}", extension.extensionName);
         }
         requiredExtensions.erase(extension.extensionName);
@@ -173,7 +173,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             JST_CHECK_THROW(Result::VULKAN_ERROR);
         }
         if (physicalDeviceCount <= config.deviceId) {
-            JST_FATAL("[VULKAN] Can't find desired device ID.");
+            JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId);
             JST_CHECK_THROW(Result::VULKAN_ERROR);
         }
 

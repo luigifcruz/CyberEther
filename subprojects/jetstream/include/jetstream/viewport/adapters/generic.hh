@@ -4,6 +4,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/tools/imgui.h"
 
@@ -11,9 +12,14 @@ namespace Jetstream::Viewport {
 
 struct Config {
     bool vsync = true;
-    bool resizable = false;
     std::string title = "Render";
-    Render::Size2D<U64> size = {1280, 720};
+    Size2D<U64> size = {1280, 720};
+
+    JST_SERDES(
+        JST_SERDES_VAL("vsync", vsync);
+        JST_SERDES_VAL("title", title);
+        JST_SERDES_VAL("size", size);
+    );
 };
 
 class Generic {
@@ -21,7 +27,8 @@ class Generic {
     explicit Generic(const Config& config);   
     virtual ~Generic() = default;
 
-    virtual const std::string name() const = 0;
+    virtual std::string prettyName() const = 0;
+    virtual std::string name() const = 0;
     virtual Device device() const = 0;
 
     virtual Result create() = 0;

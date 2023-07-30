@@ -1,0 +1,111 @@
+#ifndef JETSTREAM_BUNDLES_LINEPLOT_BASE_HH
+#define JETSTREAM_BUNDLES_LINEPLOT_BASE_HH
+
+#include "jetstream/bundle.hh"
+#include "jetstream/instance.hh"
+#include "jetstream/modules/lineplot.hh"
+
+namespace Jetstream::Bundles {
+
+template<Device D, typename T = F32>
+class Lineplot : public Bundle {
+ public:
+    // Configuration 
+
+    struct Config {
+        U64 numberOfVerticalLines = 20;
+        U64 numberOfHorizontalLines = 5;
+        Size2D<U64> viewSize = {1024, 512};
+
+        JST_SERDES(
+            JST_SERDES_VAL("numberOfVerticalLines", numberOfVerticalLines);
+            JST_SERDES_VAL("numberOfHorizontalLines", numberOfHorizontalLines);
+            JST_SERDES_VAL("viewSize", viewSize);
+        );
+    };
+
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
+
+    struct Input {
+        const Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
+    };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
+
+    struct Output {
+        JST_SERDES();
+    };
+
+    constexpr const Output& getOutput() const {
+        return output;
+    }
+
+    // Housekeeping
+
+    constexpr Device device() const {
+        return D;
+    }
+
+    constexpr std::string name() const {
+        return "lineplot-view";
+    }
+
+    constexpr std::string prettyName() const {
+        return "Lineplot View";
+    }
+
+    // Constructor
+
+    Lineplot(Instance& instance, const std::string& name, const Config& config, const Input& input)
+         : config(config), input(input) {
+        lineplot = instance.addModule<Jetstream::Lineplot, D, T>(name + "-ui", {
+            .numberOfVerticalLines = config.numberOfVerticalLines,
+            .numberOfHorizontalLines = config.numberOfHorizontalLines,
+            .viewSize = config.viewSize,
+        }, {
+            .buffer = input.buffer,
+        }, true);
+    }
+    virtual ~Lineplot() = default;
+
+    // Miscellaneous
+
+    Result drawView() {
+        ImGui::Begin("Lineplot");
+        
+        auto [x, y] = ImGui::GetContentRegionAvail();
+        auto scale = ImGui::GetIO().DisplayFramebufferScale;
+        auto [width, height] = lineplot->viewSize({
+            static_cast<U64>(x*scale.x),
+            static_cast<U64>(y*scale.y)
+        });
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+
+        ImGui::End();
+
+        return Result::SUCCESS;       
+    }
+
+ private:
+    Config config;
+    Input input;
+    Output output;
+
+    std::shared_ptr<Jetstream::Lineplot<D, T>> lineplot;
+};
+
+}  // namespace Jetstream::Bundles
+
+#endif

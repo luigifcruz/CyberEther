@@ -4,6 +4,7 @@
 #include <fmt/ostream.h>
 
 #include "jetstream/types.hh"
+#include "jetstream/parser.hh"
 
 namespace Jetstream::Backend {
 
@@ -41,6 +42,12 @@ struct Config {
     U64 deviceId;
     bool validationEnabled = true;
     U64 stagingBufferSize = 32*1024*1024;
+
+    JST_SERDES(
+        JST_SERDES_VAL("deviceId", deviceId);
+        JST_SERDES_VAL("validationEnabled", validationEnabled);
+        JST_SERDES_VAL("stagingBufferSize", stagingBufferSize);
+    );
 };
 
 }  // namespace Jetstream::Backend

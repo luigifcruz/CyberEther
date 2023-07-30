@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 #include <complex>
+#include <unordered_map>
 
 #include <fmt/ranges.h>
 #include <fmt/ostream.h>
@@ -13,12 +14,6 @@
 #include "jetstream/macros.hh"
 
 namespace Jetstream {
-
-inline std::string GetTypeName(const auto& type) {
-    std::ostringstream oss;
-    oss << type;
-    return oss.str();
-}
 
 //
 // Device
@@ -41,27 +36,32 @@ inline constexpr Device operator&(Device lhs, Device rhs) {
     return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
 }
 
+inline const char* GetDeviceName(const Device& device) {
+    static const std::unordered_map<Device, const char*> deviceNames = {
+        {Device::None, "none"},
+        {Device::CPU, "cpu"},
+        {Device::CUDA, "cuda"},
+        {Device::Metal, "metal"},
+        {Device::Vulkan, "vulkan"},
+        {Device::WebGPU, "webgpu"}
+    };
+    return deviceNames.at(device);
+}
+
+inline const char* GetDevicePrettyName(const Device& device) {
+    static const std::unordered_map<Device, const char*> deviceNames = {
+        {Device::None, "None"},
+        {Device::CPU, "CPU"},
+        {Device::CUDA, "CUDA"},
+        {Device::Metal, "Metal"},
+        {Device::Vulkan, "Vulkan"},
+        {Device::WebGPU, "WebGPU"}
+    };
+    return deviceNames.at(device);
+}
+
 inline std::ostream& operator<<(std::ostream& os, const Device& device) {
-    switch(device) {
-        case Device::None: os << "None"; break;
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE 
-        case Device::CPU: os << "CPU"; break;
-#endif
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
-        case Device::CUDA: os << "CUDA"; break;
-#endif
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE 
-        case Device::Metal: os << "Metal"; break;
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
-        case Device::Vulkan: os << "Vulkan"; break;
-#endif
-#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE 
-        case Device::WebGPU: os << "WebGPU"; break;
-#endif
-        default: os.setstate(std::ios_base::failbit);
-    }
-    return os;
+    return os << GetDevicePrettyName(device);
 }
 
 //

@@ -103,10 +103,10 @@ void Soapy<D, T>::soapyThreadLoop() {
 
 template<Device D, typename T>
 void Soapy<D, T>::summary() const {
-    JST_INFO("     Device String:      {}", config.deviceString);
-    JST_INFO("     Frequency:          {:.2f} MHz", config.frequency / (1000*1000));
-    JST_INFO("     Sample Rate:        {:.2f} MHz", config.sampleRate / (1000*1000));
-    JST_INFO("     Output Shape:       {}", config.outputShape);
+    JST_INFO("  Device String:      {}", config.deviceString);
+    JST_INFO("  Frequency:          {:.2f} MHz", config.frequency / (1000*1000));
+    JST_INFO("  Sample Rate:        {:.2f} MHz", config.sampleRate / (1000*1000));
+    JST_INFO("  Output Shape:       {}", config.outputShape);
 }
 
 template<Device D, typename T>
@@ -149,26 +149,10 @@ Result Soapy<D, T>::compute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename T>
-Result Soapy<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                            std::unordered_map<std::string, std::any>&,
-                            std::unordered_map<std::string, std::any>& outputMap,
-                            std::shared_ptr<Soapy<D, T>>& module, 
-                            const bool& castFromString) {
-    using Module = Soapy<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "deviceString", config.deviceString, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "frequency", config.frequency, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "sampleRate", config.sampleRate, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "outputShape", config.outputShape, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "bufferMultiplier", config.bufferMultiplier, castFromString));
-
-    Module::Input input{};
-
-    module = std::make_shared<Module>(config, input);
-
-    JST_CHECK(Module::RegisterVariable(outputMap, "buffer", module->getOutputBuffer()));
+Result Soapy<D, T>::computeReady() {
+    if (buffer.getOccupancy() < output.buffer.size()) {
+        return buffer.waitBufferOccupancy(output.buffer.size());
+    }
 
     return Result::SUCCESS;
 }

@@ -70,6 +70,7 @@ Result Implementation::createImgui() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImNodes::CreateContext();
 
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
@@ -92,6 +93,7 @@ Result Implementation::destroyImgui() {
 
     ImGui_ImplMetal_Shutdown();
     JST_CHECK(viewport->destroyImgui());
+    ImNodes::DestroyContext();
     ImGui::DestroyContext();
 
     return Result::SUCCESS;

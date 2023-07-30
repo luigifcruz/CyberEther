@@ -5,6 +5,7 @@
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
@@ -17,7 +18,12 @@ class Window {
  public:
     struct Config {
         float scale = 1.0;
-        bool imgui = false;
+        bool imgui = true;
+
+        JST_SERDES(
+            JST_SERDES_VAL("scale", scale);
+            JST_SERDES_VAL("imgui", imgui);
+        );
     };
 
     struct Stats {

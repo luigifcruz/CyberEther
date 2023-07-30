@@ -12,8 +12,12 @@ class iOS<Device::Metal> : public Adapter<Device::Metal> {
     explicit iOS(const Config& config, CA::MetalLayer* layer);
     virtual ~iOS();
 
-    const std::string name() const {
+    constexpr std::string prettyName() const {
         return "iOS (Native)";
+    }
+
+    constexpr std::string name() const {
+        return "ios";
     }
 
     constexpr Device device() const {

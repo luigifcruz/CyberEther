@@ -130,38 +130,12 @@ Filter<D, T>::Filter(const Config& config,
 
 template<Device D, typename T>
 void Filter<D, T>::summary() const {
-    JST_INFO("    Signal Sample Rate: {}", config.signalSampleRate);
-    JST_INFO("    Filter Sample Rate: {}", config.filterSampleRate);
-    JST_INFO("    Filter Center:      {}", config.filterCenter);
-    JST_INFO("    Number Of Taps:     {}", config.numberOfTaps);
-    JST_INFO("    Linear Frequency:   {}", config.linearFrequency ? "YES" : "NO");
-    JST_INFO("    Filter Shape:       {}", config.shape);
-}
-
-template<Device D, typename T>
-Result Filter<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                             std::unordered_map<std::string, std::any>&,
-                             std::unordered_map<std::string, std::any>& outputMap,
-                             std::shared_ptr<Filter<D, T>>& module, 
-                             const bool& castFromString) {
-    using Module = Filter<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "signalSampleRate", config.signalSampleRate, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "filterSampleRate", config.filterSampleRate, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "filterCenter", config.filterCenter, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "numberOfTaps", config.numberOfTaps, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "shape", config.shape, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "linearFrequency", config.linearFrequency, castFromString));
-
-    Module::Input input{};
-
-    module = std::make_shared<Module>(config, input);
-
-    JST_CHECK(Module::RegisterVariable(outputMap, "coeffs", module->getCoeffsBuffer()));
-
-    return Result::SUCCESS;
+    JST_INFO("  Signal Sample Rate: {}", config.signalSampleRate);
+    JST_INFO("  Filter Sample Rate: {}", config.filterSampleRate);
+    JST_INFO("  Filter Center:      {}", config.filterCenter);
+    JST_INFO("  Number Of Taps:     {}", config.numberOfTaps);
+    JST_INFO("  Linear Frequency:   {}", config.linearFrequency ? "YES" : "NO");
+    JST_INFO("  Filter Shape:       {}", config.shape);
 }
 
 }  // namespace Jetstream

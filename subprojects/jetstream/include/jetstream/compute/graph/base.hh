@@ -1,13 +1,13 @@
-#ifndef JETSTREAM_GRAPH_BASE_HH
-#define JETSTREAM_GRAPH_BASE_HH
+#ifndef JETSTREAM_COMPUTE_GRAPH_BASE_HH
+#define JETSTREAM_COMPUTE_GRAPH_BASE_HH
 
-#include "jetstream/graph/generic.hh"
+#include "jetstream/compute/graph/generic.hh"
 
 #ifdef JETSTREAM_GRAPH_CPU_AVAILABLE
-#include "jetstream/graph/cpu.hh"
+#include "jetstream/compute/graph/cpu.hh"
 #endif
 #ifdef JETSTREAM_GRAPH_METAL_AVAILABLE
-#include "jetstream/graph/metal.hh"
+#include "jetstream/compute/graph/metal.hh"
 #endif
 
 namespace Jetstream {

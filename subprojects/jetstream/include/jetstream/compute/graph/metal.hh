@@ -1,8 +1,8 @@
-#ifndef JETSTREAM_GRAPH_METAL_HH
-#define JETSTREAM_GRAPH_METAL_HH
+#ifndef JETSTREAM_COMPUTE_GRAPH_METAL_HH
+#define JETSTREAM_COMPUTE_GRAPH_METAL_HH
 
 #include "jetstream/memory/base.hh"
-#include "jetstream/graph/generic.hh"
+#include "jetstream/compute/graph/generic.hh"
 
 namespace Jetstream {
 

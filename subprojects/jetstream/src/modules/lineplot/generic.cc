@@ -137,7 +137,7 @@ Result Lineplot<D, T>::createPresent(Render::Window& window) {
 
 template<Device D, typename T>
 void Lineplot<D, T>::summary() const {
-    JST_INFO("     Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_INFO("  Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
@@ -147,7 +147,7 @@ Result Lineplot<D, T>::present(Render::Window&) {
 }
 
 template<Device D, typename T>
-const Render::Size2D<U64>& Lineplot<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
+const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         this->config.viewSize = surface->size();
     }
@@ -158,28 +158,5 @@ template<Device D, typename T>
 Render::Texture& Lineplot<D, T>::getTexture() {
     return *texture;
 };
-
-template<Device D, typename T>
-Result Lineplot<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                               std::unordered_map<std::string, std::any>& inputMap,
-                               std::unordered_map<std::string, std::any>&,
-                               std::shared_ptr<Lineplot<D, T>>& module, 
-                               const bool& castFromString) {
-    using Module = Lineplot<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "numberOfVerticalLines", config.numberOfVerticalLines, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "numberOfHorizontalLines", config.numberOfHorizontalLines, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize, castFromString));
-
-    Module::Input input{};
-
-    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
-
-    module = std::make_shared<Module>(config, input);
-
-    return Result::SUCCESS;
-}
 
 }  // namespace Jetstream

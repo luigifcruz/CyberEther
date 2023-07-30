@@ -1,0 +1,132 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+name: Spectrum Analyzer
+creator: Luigi
+license: MIT
+
+engine:
+  backends:
+    cpu:
+    vulkan:
+  render:
+    device: vulkan
+    config:
+      scale: 0.90
+  viewport:
+    platform: glfw
+    config:
+      title: CyberEther
+      size: [2048, 960]
+
+computeDevice: cpu
+
+graph:
+  soapy:
+    module: soapy-ui
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      deviceString: driver=lime
+      frequency: 96.9e6
+      sampleRate: 10e6
+      outputShape: [16, 2048]
+      bufferMultiplier: 512
+
+  win:
+    module: window
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      shape: ${graph.soapy.config.outputShape}
+
+  flt:
+    module: filter
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      signalSampleRate: ${graph.soapy.config.sampleRate}
+      filterSampleRate: 5e6
+      filterCenter: 0.0
+      shape: ${graph.soapy.config.outputShape}
+      numberOfTaps: 101
+      linearFrequency: true
+
+  win_mul:
+    module: multiply
+    device: ${computeDevice}
+    dataType: CF32
+    input:
+      factorA: ${graph.soapy.output.buffer}
+      factorB: ${graph.win.output.window}
+
+  fft:
+    module: fft
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.win_mul.output.product}
+
+  flt_mul:
+    module: multiply
+    device: ${computeDevice}
+    dataType: CF32
+    input:
+      factorA: ${graph.fft.output.buffer}
+      factorB: ${graph.flt.output.coeffs}
+
+  amp:
+    module: amplitude
+    device: ${computeDevice}
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.flt_mul.output.product}
+
+  scl:
+    module: scale
+    device: ${computeDevice}
+    dataType: F32
+    config:
+      range: [-100.0, 0.0]
+    input:
+      buffer: ${graph.amp.output.buffer}
+
+  ifft:
+    module: fft
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      forward: false
+    input:
+      buffer: ${graph.flt_mul.output.product}
+
+  lpt:
+    module: lineplot-ui
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl.output.buffer}
+
+  wtf:
+    module: waterfall-ui
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl.output.buffer}
+
+  spc:
+    module: spectrogram-ui
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl.output.buffer}
+
+  cst:
+    module: constellation-ui
+    device: ${computeDevice}
+    dataType: CF32
+    input:
+      buffer: ${graph.ifft.output.buffer}

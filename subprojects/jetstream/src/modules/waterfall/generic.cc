@@ -14,11 +14,11 @@ Waterfall<D, T>::Waterfall(const Config& config,
 
 template<Device D, typename T>
 void Waterfall<D, T>::summary() const {
-    JST_INFO("    Offset:       {}", config.offset);
-    JST_INFO("    Zoom:         {}", config.zoom);
-    JST_INFO("    Interpolate:  {}", config.interpolate ? "YES" : "NO");
-    JST_INFO("    Height:       {}", config.height);
-    JST_INFO("    Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_INFO("  Offset:       {}", config.offset);
+    JST_INFO("  Zoom:         {}", config.zoom);
+    JST_INFO("  Interpolate:  {}", config.interpolate ? "YES" : "NO");
+    JST_INFO("  Height:       {}", config.height);
+    JST_INFO("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
@@ -169,7 +169,7 @@ const I32& Waterfall<D, T>::offset(const I32& offset) {
 }
 
 template<Device D, typename T>
-const Render::Size2D<U64>& Waterfall<D, T>::viewSize(const Render::Size2D<U64>& viewSize) {
+const Size2D<U64>& Waterfall<D, T>::viewSize(const Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         JST_DEBUG("Waterfall size changed from [{}, {}] to [{}, {}].", 
                 config.viewSize.width, 
@@ -186,30 +186,5 @@ template<Device D, typename T>
 Render::Texture& Waterfall<D, T>::getTexture() {
     return *texture;
 };
-
-template<Device D, typename T>
-Result Waterfall<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
-                                std::unordered_map<std::string, std::any>& inputMap,
-                                std::unordered_map<std::string, std::any>&,
-                                std::shared_ptr<Waterfall<D, T>>& module, 
-                                const bool& castFromString) {
-    using Module = Waterfall<D, T>;
-
-    Module::Config config{};
-
-    JST_CHECK(Module::BindVariable(configMap, "zoom", config.zoom, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "offset", config.offset, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "height", config.height, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "interpolate", config.interpolate, castFromString));
-    JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize, castFromString));
-
-    Module::Input input{};
-
-    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
-
-    module = std::make_shared<Module>(config, input);
-
-    return Result::SUCCESS;
-}
 
 }  // namespace Jetstream

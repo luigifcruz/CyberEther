@@ -25,28 +25,7 @@ Multiply<D, T>::Multiply(const Config& config,
 
 template<Device D, typename T>
 void Multiply<D, T>::summary() const {
-    JST_INFO("     None");
-}
-
-template<Device D, typename T>
-Result Multiply<D, T>::Factory(std::unordered_map<std::string, std::any>&,
-                               std::unordered_map<std::string, std::any>& inputMap,
-                               std::unordered_map<std::string, std::any>& outputMap,
-                               std::shared_ptr<Multiply<D, T>>& module, 
-                               const bool&) {
-    using Module = Multiply<D, T>;
-
-    Module::Config config{};
-    Module::Input input{};
-
-    JST_CHECK(Module::BindVariable(inputMap, "factorA", input.factorA));
-    JST_CHECK(Module::BindVariable(inputMap, "factorB", input.factorB));
-
-    module = std::make_shared<Module>(config, input);
-
-    JST_CHECK(Module::RegisterVariable(outputMap, "product", module->getProductBuffer()));
-
-    return Result::SUCCESS;
+    JST_INFO("  None");
 }
 
 }  // namespace Jetstream

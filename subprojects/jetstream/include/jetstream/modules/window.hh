@@ -4,6 +4,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
 
 namespace Jetstream {
@@ -11,43 +12,67 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Window : public Module {
  public:
+    // Configuration 
+
     struct Config {
         VectorShape<2> shape;
+
+        JST_SERDES(
+            JST_SERDES_VAL("shape", shape);
+        );
     };
 
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
+
     struct Input {
+        JST_SERDES();
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
         Vector<D, T, 2> window;
+
+        JST_SERDES(
+            JST_SERDES_VAL("window", window);
+        );
     };
 
-    explicit Window(const Config& config,
-                    const Input& input);
-
-    constexpr Device device() const {
-        return D;
+    constexpr const Output& getOutput() const {
+        return output;
     }
-
-    const std::string name() const {
-        return "Window";
-    }
-
-    void summary() const final;
 
     constexpr const Vector<D, T, 2>& getWindowBuffer() const {
         return this->output.window;
     }
 
-    constexpr Config getConfig() const {
-        return config;
+    // Taint & Housekeeping
+
+    constexpr Device device() const {
+        return D;
     }
 
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Window<D, T>>& module,
-                          const bool& castFromString = false);
+    constexpr std::string name() const {
+        return "window";
+    }
+
+    constexpr std::string prettyName() const {
+        return "Window";
+    }
+
+    void summary() const final;
+
+    // Constructor
+
+    explicit Window(const Config& config, const Input& input);
 
  private:
     const Config config;

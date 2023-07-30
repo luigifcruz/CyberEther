@@ -5,61 +5,72 @@
 using namespace Jetstream;
 
 constexpr static Device ComputeDevice = Device::CPU;
-constexpr static Device RenderDevice  = Device::WebGPU;
+constexpr static Device RenderDevice  = Device::Vulkan;
 using Platform = Viewport::GLFW<RenderDevice>;
 
 class UI {
  public:
     UI(const Soapy<ComputeDevice>::Config& config, Instance& instance) : instance(instance) {
-        sdr = instance.addBlock<Soapy, ComputeDevice>(config, {});
+        sdr = instance.addModule<Soapy, ComputeDevice>("soapy", config, {});
 
-        win = instance.addBlock<Window, ComputeDevice>({
+        win = instance.addModule<Window, ComputeDevice>("win", {
             .shape = sdr->getOutputBuffer().shape(),
         }, {});
 
-        flt = instance.addBlock<Filter, ComputeDevice>({
+        flt = instance.addModule<Filter, ComputeDevice>("flt", {
             .signalSampleRate = sdr->getConfig().sampleRate,
             .filterSampleRate = 5e6,
             .filterCenter = -5e6,
             .shape = sdr->getOutputBuffer().shape(),
         }, {});
 
-        win_mul = instance.addBlock<Multiply, ComputeDevice>({}, {
+        win_mul = instance.addModule<Multiply, ComputeDevice>("win_mul", {}, {
             .factorA = sdr->getOutputBuffer(),
             .factorB = win->getWindowBuffer(),
         });
 
-        fft = instance.addBlock<FFT, ComputeDevice>({
-            .direction = Direction::Forward,
+        fft = instance.addModule<FFT, ComputeDevice>("fft", {
+            .forward = true,
         }, {
-            .buffer = win_mul->getProductBuffer(),
+            .buffer = win_mul->getOutputProduct(),
         });
 
-        flt_mul = instance.addBlock<Multiply, ComputeDevice>({}, {
+        flt_mul = instance.addModule<Multiply, ComputeDevice>("flt_mul", {}, {
             .factorA = fft->getOutputBuffer(),
-            .factorB = flt->getCoeffsBuffer(),
+            .factorB = flt->getOutputCoeffs(),
         });
 
-        amp = instance.addBlock<Amplitude, ComputeDevice>({}, {
-            .buffer = flt_mul->getProductBuffer(),
+        amp = instance.addModule<Amplitude, ComputeDevice>("amp", {}, {
+            .buffer = flt_mul->getOutputProduct(),
         });
 
-        scl = instance.addBlock<Scale, ComputeDevice>({
+        scl = instance.addModule<Scale, ComputeDevice>("scl", {
             .range = {-100.0, 0.0},
         }, {
             .buffer = amp->getOutputBuffer(),
         });
 
-        ifft = instance.addBlock<FFT, ComputeDevice>({
-            .direction = Direction::Backward,
+        ifft = instance.addModule<FFT, ComputeDevice>("ifft", {
+            .forward = false,
         }, {
-            .buffer = flt_mul->getProductBuffer(),
+            .buffer = flt_mul->getOutputProduct(),
         });
 
-        lpt.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-        wtf.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-        spc.init(instance, {}, { .buffer = scl->getOutputBuffer(), });
-        cst.init(instance, {}, { .buffer = ifft->getOutputBuffer(), });
+        lpt = instance.addModule<Bundles::Lineplot, ComputeDevice>("lpt", {}, {
+            .buffer = scl->getOutputBuffer(),
+        });
+
+        wtf = instance.addModule<Bundles::Waterfall, ComputeDevice>("wtf", {}, {
+            .buffer = scl->getOutputBuffer(),
+        });
+
+        spc = instance.addModule<Bundles::Spectrogram, ComputeDevice>("spc", {}, {
+            .buffer = scl->getOutputBuffer(),
+        });
+
+        cst = instance.addModule<Bundles::Constellation, ComputeDevice>("cst", {}, {
+            .buffer = ifft->getOutputBuffer(),
+        });
 
         JST_CHECK_THROW(instance.create());
 
@@ -112,10 +123,10 @@ class UI {
     std::shared_ptr<Filter<ComputeDevice>> flt;
     std::shared_ptr<Multiply<ComputeDevice>> flt_mul;
 
-    Bundle::LineplotUI<ComputeDevice> lpt;
-    Bundle::WaterfallUI<ComputeDevice> wtf;
-    Bundle::SpectrogramUI<ComputeDevice> spc;
-    Bundle::ConstellationUI<Device::CPU> cst;
+    std::shared_ptr<Bundles::Lineplot<ComputeDevice>> lpt;
+    std::shared_ptr<Bundles::Waterfall<ComputeDevice>> wtf;
+    std::shared_ptr<Bundles::Spectrogram<ComputeDevice>> spc;
+    std::shared_ptr<Bundles::Constellation<Device::CPU>> cst;
 
     void computeThreadLoop() {
         if (sdr->getCircularBuffer().getOccupancy() < sdr->getOutputBuffer().size()) {
@@ -139,10 +150,10 @@ class UI {
 
         ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
-        JST_CHECK_THROW(lpt.draw());
-        JST_CHECK_THROW(wtf.draw());
-        JST_CHECK_THROW(spc.draw());
-        JST_CHECK_THROW(cst.draw());
+        JST_CHECK_THROW(lpt->drawView());
+        JST_CHECK_THROW(wtf->drawView());
+        JST_CHECK_THROW(spc->drawView());
+        JST_CHECK_THROW(cst->drawView());
 
         {
             ImGui::Begin("FIR Filter Control");
@@ -179,10 +190,10 @@ class UI {
                 scl->range({min, max});
             }
 
-            JST_CHECK_THROW(lpt.drawControl());
-            JST_CHECK_THROW(wtf.drawControl());
-            JST_CHECK_THROW(spc.drawControl());
-            JST_CHECK_THROW(cst.drawControl());
+            JST_CHECK_THROW(lpt->drawControl());
+            JST_CHECK_THROW(wtf->drawControl());
+            JST_CHECK_THROW(spc->drawControl());
+            JST_CHECK_THROW(cst->drawControl());
 
             ImGui::End();
         }
@@ -205,14 +216,14 @@ class UI {
             }
 
             if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Text("Data Shape: (%llu, %llu)", sdr->getConfig().batchSize, sdr->getConfig().outputBufferSize);
-                ImGui::Text("Compute Device: %s", GetTypeName(ComputeDevice).c_str());
+                ImGui::Text("Data Shape: (%llu, %llu)", sdr->getConfig().outputShape[0], sdr->getConfig().outputShape[1]);
+                ImGui::Text("Compute Device: %s", GetDevicePrettyName(ComputeDevice));
             }
 
             if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
-                instance.getRender().drawDebugMessage();
-                ImGui::Text("Viewport Device: %s", instance.getViewport().name().c_str());
-                ImGui::Text("Render Device: %s", GetTypeName(RenderDevice).c_str());
+                instance.window().drawDebugMessage();
+                ImGui::Text("Viewport Device: %s", instance.viewport().name().c_str());
+                ImGui::Text("Render Device: %s", GetDevicePrettyName(RenderDevice));
                 ImGui::Text("Dropped Frames: %llu", instance.window().stats().droppedFrames);
             }
 
@@ -224,10 +235,10 @@ class UI {
                 ImGui::Text("RF Bandwidth: %.1f MHz", sdr->getConfig().sampleRate / (1000 * 1000));
             }
 
-            JST_CHECK_THROW(lpt.drawInfo());
-            JST_CHECK_THROW(wtf.drawInfo());
-            JST_CHECK_THROW(spc.drawInfo());
-            JST_CHECK_THROW(cst.drawInfo());
+            JST_CHECK_THROW(lpt->drawInfo());
+            JST_CHECK_THROW(wtf->drawInfo());
+            JST_CHECK_THROW(spc->drawInfo());
+            JST_CHECK_THROW(cst->drawInfo());
 
             ImGui::End();
         }
@@ -259,7 +270,6 @@ int main() {
     // Initialize Viewport.
     Viewport::Config viewportCfg;
     viewportCfg.vsync = true;
-    viewportCfg.resizable = true;
     viewportCfg.size = {3130, 1140};
     viewportCfg.title = "CyberEther";
     JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg));
@@ -268,15 +278,14 @@ int main() {
     Render::Window::Config renderCfg;
     renderCfg.imgui = true;
     renderCfg.scale = 1.0;
-    JST_CHECK_THROW(instance.buildWindow<RenderDevice>(renderCfg));
+    JST_CHECK_THROW(instance.buildRender<RenderDevice>(renderCfg));
 
     {
         const Soapy<ComputeDevice>::Config& config {
             .deviceString = "driver=airspy",
             .frequency = 96.9e6,
             .sampleRate = 2.5e6,
-            .batchSize = 8,
-            .outputBufferSize = 2 << 10,
+            .outputShape = {8, 2 << 10},
             .bufferMultiplier = 512,
         }; 
         auto ui = UI(config, instance);

@@ -15,27 +15,7 @@ Amplitude<D, IT, OT>::Amplitude(const Config& config,
 
 template<Device D, typename IT, typename OT>
 void Amplitude<D, IT, OT>::summary() const {
-    JST_INFO("    None");
-}
-
-template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::Factory(std::unordered_map<std::string, std::any>&,
-                                     std::unordered_map<std::string, std::any>& inputMap,
-                                     std::unordered_map<std::string, std::any>& outputMap,
-                                     std::shared_ptr<Amplitude<D, IT, OT>>& module, 
-                                     const bool&) {
-    using Module = Amplitude<D, IT, OT>;
-
-    Module::Config config{};
-    Module::Input input{};
-
-    JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
-
-    module = std::make_shared<Module>(config, input);
-
-    JST_CHECK(Module::RegisterVariable(outputMap, "buffer", module->getOutputBuffer()));
-
-    return Result::SUCCESS;
+    JST_INFO("  None");
 }
 
 }  // namespace Jetstream

@@ -24,6 +24,26 @@ enum class Result : uint8_t {
     ERROR_BEYOND_CAPACITY,
 };
 
+template<typename T = U64>
+struct Size2D {
+    T width;
+    T height;
+
+    bool operator==(const Size2D<T>& a) const {
+        return (width == a.width && height == a.height);
+    }
+
+    bool operator!=(const Size2D<T>& a) const {
+        return (width != a.width || height != a.height);
+    }
+
+    bool operator<=(const Size2D<T>& a) const {
+        return (width <= a.width || height <= a.height);
+    }
+};
+
+inline Size2D<U64> NullSize = {0, 0};
+
 }  // namespace Jetstream
 
 #endif

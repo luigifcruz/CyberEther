@@ -14,8 +14,12 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     explicit GLFW(const Config& config);
     virtual ~GLFW();
 
-    const std::string name() const {
+    constexpr std::string prettyName() const {
         return "GLFW (WebGPU)";
+    }
+
+    constexpr std::string name() const {
+        return "glfw";
     }
 
     constexpr Device device() const {
@@ -42,7 +46,7 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     GLFWwindow* window;
     wgpu::Surface surface;
     wgpu::SwapChain swapchain;
-    Render::Size2D<U64> swapchainSize;
+    Size2D<U64> swapchainSize;
 
     static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 };

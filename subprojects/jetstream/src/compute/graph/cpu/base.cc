@@ -1,4 +1,4 @@
-#include "jetstream/graph/cpu.hh"
+#include "jetstream/compute/graph/cpu.hh"
 
 namespace Jetstream {
 

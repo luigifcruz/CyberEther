@@ -17,8 +17,12 @@ class GLFW<Device::Metal> : public Adapter<Device::Metal> {
     explicit GLFW(const Config& config);
     virtual ~GLFW();
 
-    const std::string name() const {
+    constexpr std::string prettyName() const {
         return "GLFW (Metal)";
+    }
+
+    constexpr std::string name() const {
+        return "glfw";
     }
 
     constexpr Device device() const {

@@ -4,46 +4,82 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
-#include "jetstream/graph/base.hh"
+#include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T = F32>
 class Scale : public Module, public Compute {
  public:
+    // Configuration 
+
     struct Config {
         Range<T> range = {-1.0, +1.0};
+
+        JST_SERDES(
+            JST_SERDES_VAL("range", range);
+        );
     };
+
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
 
     struct Input {
         const Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
         Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
 
-    explicit Scale(const Config& config,
-                   const Input& input);
-
-    constexpr Device device() const {
-        return D;
+    constexpr const Output& getOutput() const {
+        return output;
     }
-
-    const std::string name() const {
-        return "Scale";
-    }
-
-    void summary() const final;
 
     constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
-    constexpr Config getConfig() const {
-        return this->config;
+    // Taint & Housekeeping
+
+    constexpr Device device() const {
+        return D;
     }
+
+    constexpr std::string name() const {
+        return "scale";
+    }
+
+    constexpr std::string prettyName() const {
+        return "Scale";
+    }
+
+    void summary() const final;
+
+    // Constructor
+
+    explicit Scale(const Config& config, const Input& input);
+    
+    // Miscellaneous
 
     constexpr const Range<T>& range() const {
         return this->config.range;
@@ -53,12 +89,6 @@ class Scale : public Module, public Compute {
         this->config.range = range;
         return range;
     }
-
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Scale<D, T>>& module,
-                          const bool& castFromString = false);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;

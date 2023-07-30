@@ -6,8 +6,9 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
-#include "jetstream/graph/base.hh"
+#include "jetstream/compute/graph/base.hh"
 
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
@@ -19,42 +20,78 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {
  public:
+    // Configuration 
+
     struct Config {
         std::string deviceString;
         F32 frequency;
         F32 sampleRate;
         VectorShape<2> outputShape;
         U64 bufferMultiplier = 4;
+
+        JST_SERDES(
+            JST_SERDES_VAL("deviceString", deviceString);
+            JST_SERDES_VAL("frequency", frequency);
+            JST_SERDES_VAL("sampleRate", sampleRate);
+            JST_SERDES_VAL("outputShape", outputShape);
+            JST_SERDES_VAL("bufferMultiplier", bufferMultiplier);
+        );
     };
 
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
+
     struct Input {
+        JST_SERDES();
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
         Vector<D, T, 2> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
 
-    explicit Soapy(const Config& config,
-                   const Input& input);
-    ~Soapy();
-
-    constexpr Device device() const {
-        return D;
+    constexpr const Output& getOutput() const {
+        return output;
     }
-
-    const std::string name() const {
-        return "Soapy";
-    }
-
-    void summary() const final;
 
     constexpr const Vector<D, T, 2>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
-    constexpr Config getConfig() const {
-        return config;
+    // Taint & Housekeeping
+
+    constexpr Device device() const {
+        return D;
     }
+
+    constexpr std::string name() const {
+        return "soapy";
+    }
+
+    constexpr std::string prettyName() const {
+        return "Soapy";
+    }
+
+    void summary() const final;
+
+    // Constructor
+
+    explicit Soapy(const Config& config, const Input& input);
+    ~Soapy();
+
+    // Miscellaneous
 
     constexpr Memory::CircularBuffer<T>& getCircularBuffer() {
         return buffer;
@@ -70,15 +107,10 @@ class Soapy : public Module, public Compute {
 
     F32 setTunerFrequency(const F32& frequency);
 
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Soapy<D, T>>& module,
-                          const bool& castFromString = false);
-
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
+    Result computeReady() final;
 
  private:
     Config config;

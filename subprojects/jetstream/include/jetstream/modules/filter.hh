@@ -6,13 +6,17 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
 
 namespace Jetstream {
 
+// TODO: Copy coeffs only when compute.
 template<Device D, typename T = CF32>
 class Filter : public Module {
  public:
+    // Configuration 
+
     struct Config {
         F32 signalSampleRate;
         F32 filterSampleRate = 1e6;
@@ -20,35 +24,70 @@ class Filter : public Module {
         VectorShape<2> shape;
         U64 numberOfTaps = 101;
         bool linearFrequency = true;
+
+        JST_SERDES(
+            JST_SERDES_VAL("signalSampleRate", signalSampleRate);
+            JST_SERDES_VAL("filterSampleRate", filterSampleRate);
+            JST_SERDES_VAL("filterCenter", filterCenter);
+            JST_SERDES_VAL("shape", shape);
+            JST_SERDES_VAL("numberOfTaps", numberOfTaps);
+            JST_SERDES_VAL("linearFrequency", linearFrequency);
+        );
     };
 
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
+
     struct Input {
+        JST_SERDES();
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
         Vector<D, T, 2> coeffs;
+
+        JST_SERDES(
+            JST_SERDES_VAL("coeffs", coeffs);
+        );
     };
 
-    explicit Filter(const Config& config,
-                    const Input& input);
+    constexpr const Output& getOutput() const {
+        return output;
+    }
+
+    constexpr const Vector<D, T, 2>& getOutputCoeffs() const {
+        return this->output.coeffs;
+    }
+
+    // Taint & Housekeeping
 
     constexpr Device device() const {
         return D;
     }
 
-    const std::string name() const {
+    constexpr std::string name() const {
+        return "filter";
+    }
+
+    constexpr std::string prettyName() const {
         return "Filter";
     }
 
     void summary() const final;
 
-    constexpr const Vector<D, T, 2>& getCoeffsBuffer() const {
-        return this->output.coeffs;
-    }
+    // Constructor
 
-    constexpr const Config getConfig() const {
-        return config;
-    }
+    explicit Filter(const Config& config, const Input& input);
+
+    // Miscellaneous
 
     constexpr const F32& filterSampleRate() const {
         return this->config.filterSampleRate;
@@ -87,14 +126,6 @@ class Filter : public Module {
         JST_CHECK_THROW(bakeFilter());
         return numberOfTaps;
     }
-
-    // TODO: Copy only when compute.
-
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Filter<D, T>>& module,
-                          const bool& castFromString = false);
 
  private:
     Config config;

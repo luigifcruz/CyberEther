@@ -8,7 +8,6 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-
     cfg_lst.set('JETSTREAM_MODULE_FFT_METAL_AVAILABLE', true)
     src_lst += files([
         'base.cc',

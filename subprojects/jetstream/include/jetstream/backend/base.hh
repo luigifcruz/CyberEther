@@ -63,7 +63,7 @@ class JETSTREAM_API Instance {
     template<Device DeviceId>
     Result initialize(const Config& config) {
         using BackendType = typename GetBackend<DeviceId>::Type;
-        if (!backends.count(DeviceId)) {
+        if (!backends.contains(DeviceId)) {
             JST_DEBUG("Initializing {} backend.", DeviceId);
             backends[DeviceId] = std::make_unique<BackendType>(config);
         }
@@ -72,7 +72,7 @@ class JETSTREAM_API Instance {
 
     template<Device DeviceId>
     Result destroy() {
-        if (backends.count(DeviceId)) {
+        if (backends.contains(DeviceId)) {
             JST_DEBUG("Destroying {} backend.", DeviceId);
             backends.erase(DeviceId);
         }
@@ -82,26 +82,11 @@ class JETSTREAM_API Instance {
     template<Device DeviceId>
     const auto& state() {
         using BackendType = typename GetBackend<DeviceId>::Type;
-        if (!backends.count(DeviceId)) {
+        if (!backends.contains(DeviceId)) {
             JST_DEBUG("The {} backend is not initialized.", DeviceId);
             JST_CHECK_THROW(Result::ERROR);
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
-    }
-
-    ~Instance() {
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-        destroy<Device::Metal>();
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-        destroy<Device::Vulkan>();
-#endif
-#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
-        destroy<Device::WebGPU>();
-#endif
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-        destroy<Device::CPU>();
-#endif
     }
 
  private:

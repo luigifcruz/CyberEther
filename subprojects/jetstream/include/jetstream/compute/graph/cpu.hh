@@ -1,7 +1,7 @@
-#ifndef JETSTREAM_GRAPH_CPU_HH
-#define JETSTREAM_GRAPH_CPU_HH
+#ifndef JETSTREAM_COMPUTE_GRAPH_CPU_HH
+#define JETSTREAM_COMPUTE_GRAPH_CPU_HH
 
-#include "jetstream/graph/generic.hh"
+#include "jetstream/compute/graph/generic.hh"
 
 namespace Jetstream {
 

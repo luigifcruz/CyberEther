@@ -20,7 +20,7 @@ dep_lst = [
 ]
 
 executable(
-    'cyberether', 'main.cc',
+    'cyberether', 'runtime.cc',
     dependencies: dep_lst,
     install: true,
 )

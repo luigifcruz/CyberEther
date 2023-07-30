@@ -102,4 +102,21 @@
 }
 #endif  // JST_CATCH
 
+
+#ifndef JST_SERDES
+#define JST_SERDES(...) \
+    Result serdes_function(const Parser::SerDesOp& op, Parser::RecordMap& data) const { (void)op; (void)data; __VA_ARGS__ return Result::SUCCESS; } \
+    Result operator<<(Parser::RecordMap& data) const { return serdes_function(Parser::SerDesOp::Deserialize, data); } \
+    Result operator>>(Parser::RecordMap& data) const { return serdes_function(Parser::SerDesOp::Serialize, data); }
+#endif  // JST_SERDES
+
+#ifndef JST_SERDES_VAL
+#define JST_SERDES_VAL(fieldName, fieldVar) JST_CHECK(Parser::SerDes(data, fieldName, fieldVar, op));
+#endif  // JST_SERDES_VAL
+
+template <typename... Args>
+struct CountArgs {
+    static constexpr int value = sizeof...(Args);
+};
+
 #endif

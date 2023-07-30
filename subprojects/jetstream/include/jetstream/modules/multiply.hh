@@ -4,52 +4,78 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
+
 #include "jetstream/memory/base.hh"
-#include "jetstream/graph/base.hh"
+#include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T = CF32>
 class Multiply : public Module, public Compute {
  public:
+    // Configuration 
+
     struct Config {
+        JST_SERDES();
     };
+
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
 
     struct Input {
         const Vector<D, T, 2> factorA;
         const Vector<D, T, 2> factorB;
+
+        JST_SERDES(
+            JST_SERDES_VAL("factorA", factorA);
+            JST_SERDES_VAL("factorB", factorB);
+        );
     };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
 
     struct Output {
         Vector<D, T, 2> product;
+
+        JST_SERDES(
+            JST_SERDES_VAL("product", product);
+        );
     };
 
-    explicit Multiply(const Config& config,
-                      const Input& input);
+    constexpr const Output& getOutput() const {
+        return output;
+    }
+
+    constexpr const Vector<D, T, 2>& getOutputProduct() const {
+        return this->output.product;
+    }
+
+    // Taint & Housekeeping
 
     constexpr Device device() const {
         return D;
     }
 
-    const std::string name() const {
+    constexpr std::string name() const {
+        return "multiply";
+    }
+
+    constexpr std::string prettyName() const {
         return "Multiply";
     }
 
     void summary() const final;
 
-    constexpr const Vector<D, T, 2>& getProductBuffer() const {
-        return this->output.product;
-    }
+    // Constructor
 
-    constexpr Config getConfig() const {
-        return config;
-    }
-
-    static Result Factory(std::unordered_map<std::string, std::any>& config,
-                          std::unordered_map<std::string, std::any>& input,
-                          std::unordered_map<std::string, std::any>& output,
-                          std::shared_ptr<Multiply<D, T>>& module,
-                          const bool& castFromString = false);
+    explicit Multiply(const Config& config, const Input& input);
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
