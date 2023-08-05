@@ -71,7 +71,7 @@ class Soapy : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Soapy View";
+        return "Soapy Device View";
     }
 
     // Constructor
@@ -92,45 +92,45 @@ class Soapy : public Bundle {
     }
     virtual ~Soapy() = default;
 
-    // Miscellaneous
+    // Interface
 
-    Result drawInfo() {
-        if (ImGui::CollapsingHeader("SDR Buffer Health", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const auto& buffer = soapy->getCircularBuffer();
+    void drawInfo() {
+        const auto& buffer = soapy->getCircularBuffer();
 
-            F32 bufferThroughputMB = (buffer.getThroughput() / (1024 * 1024));
-            ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+        ImGui::Text("Device Name: %s", soapy->getDeviceName().c_str());
+        ImGui::Text("Hardware Key: %s", soapy->getDeviceHardwareKey().c_str());
+        F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * 8) / (1024 * 1024));
+        ImGui::Text("Data Throughput %.0f MB/s", sdrThroughputMB);
+        ImGui::Text("RF Bandwidth: %.1f MHz", soapy->getConfig().sampleRate / (1000 * 1000));
 
-            F32 bufferCapacityMB = ((F32)buffer.getCapacity() * sizeof(CF32) / (1024 * 1024));
-            ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
+        ImGui::Separator();
 
-            ImGui::Text("Overflows %llu", buffer.getOverflows());
+        F32 bufferThroughputMB = (buffer.getThroughput() / (1024 * 1024));
+        ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
 
-            F32 bufferUsageRatio = (F32)buffer.getOccupancy() / buffer.getCapacity();
-            ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
-        }
+        F32 bufferCapacityMB = ((F32)buffer.getCapacity() * sizeof(CF32) / (1024 * 1024));
+        ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
 
-        if (ImGui::CollapsingHeader("SDR Connection", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("Device Name: %s", soapy->getDeviceName().c_str());
-            ImGui::Text("Hardware Key: %s", soapy->getDeviceHardwareKey().c_str());
-            float sdrThroughputMB = ((soapy->getConfig().sampleRate * 8) / (1024 * 1024));
-            ImGui::Text("Data Throughput %.0f MB/s", sdrThroughputMB);
-            ImGui::Text("RF Bandwidth: %.1f MHz", soapy->getConfig().sampleRate / (1000 * 1000));
-        }
+        ImGui::Text("Overflows %lu", buffer.getOverflows());
 
-        return Result::SUCCESS;
+        F32 bufferUsageRatio = (F32)buffer.getOccupancy() / buffer.getCapacity();
+        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
     }
 
-    Result drawControl() {
-        if (ImGui::CollapsingHeader("SDR", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::InputFloat("Frequency (MHz)", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
-            if (ImGui::IsItemEdited()) { 
-                frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6; 
-            }
-            ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");
-        }
+    constexpr bool shouldDrawInfo() const {
+        return true;
+    }
 
-        return Result::SUCCESS;       
+    void drawControl() {
+        ImGui::InputFloat("Frequency (MHz)", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
+        if (ImGui::IsItemEdited()) { 
+            frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6; 
+        }
+        ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");    
+    }
+
+    constexpr bool shouldDrawControl() const {
+        return true;
     }
 
  private:

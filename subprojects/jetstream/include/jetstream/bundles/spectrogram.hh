@@ -67,8 +67,8 @@ class Spectrogram : public Bundle {
     // Constructor
 
     Spectrogram(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input), _name(name) {
-        spectrogram = instance.addModule<Jetstream::Spectrogram, D, T>(_name + "-ui", {
+         : config(config), input(input) {
+        spectrogram = instance.addModule<Jetstream::Spectrogram, D, T>(name + "-ui", {
             .height = config.height,
             .viewSize = config.viewSize,
         }, {
@@ -77,34 +77,38 @@ class Spectrogram : public Bundle {
     }
     virtual ~Spectrogram() = default;
 
-    // Miscellaneous
+    // Interface
 
-    Result drawNode() {
-        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(512, 256));
-        return Result::SUCCESS;
+    void drawPreview(const F32& maxWidth) {
+        const auto& size = spectrogram->viewSize();
+        const auto& ratio = size.ratio();
+        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
+        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width, width/ratio));
     }
 
-    Result drawView() {
-        ImGui::Begin(_name.c_str());
+    constexpr bool shouldDrawPreview() const {
+        return true;
+    }
 
+    void drawView() {
         auto [x, y] = ImGui::GetContentRegionAvail();
         auto scale = ImGui::GetIO().DisplayFramebufferScale;
         auto [width, height] = spectrogram->viewSize({
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));    
+    }
 
-        ImGui::End();
-
-        return Result::SUCCESS;       
+    constexpr bool shouldDrawView() const {
+        return true;
     }
 
  private:
     Config config;
     Input input;
     Output output;
-    std::string _name;
 
     std::shared_ptr<Jetstream::Spectrogram<D, T>> spectrogram;
 };

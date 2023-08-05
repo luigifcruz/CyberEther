@@ -99,7 +99,8 @@ ryml::ConstNodeRef Parser::SolvePlaceholder(const ryml::ConstNodeRef& root, cons
 
 std::unordered_map<std::string, ryml::ConstNodeRef> Parser::GatherNodes(const ryml::ConstNodeRef& root,
                                                                         const ryml::ConstNodeRef& node,
-                                                                        const std::vector<std::string>& keys) {
+                                                                        const std::vector<std::string>& keys,
+                                                                        const bool& acceptLess) {
     std::unordered_map<std::string, ryml::ConstNodeRef> values;
 
     if (!node.is_map()) {
@@ -116,7 +117,7 @@ std::unordered_map<std::string, ryml::ConstNodeRef> Parser::GatherNodes(const ry
         }
     }
 
-    if (values.size() != keys.size()) {
+    if (values.size() != keys.size() && !acceptLess) {
         JST_FATAL("[PARSER] Failed to parse configuration file due to missing keys: {}",
                   GetMissingKeys(values, keys));
         JST_CHECK_THROW(Result::ERROR);
@@ -247,7 +248,15 @@ std::any Parser::SolveLocalPlaceholder(Instance& instance, const ryml::ConstNode
         return module.data.outputMap[elementKey].object;
     }
 
-    JST_FATAL("[PARSER] Invalid module array {}. It should be either 'input' or 'output'.", key);
+    if (!arrayKey.compare("interface")) {
+        if (!module.data.interfaceMap.contains(elementKey)) {
+            JST_FATAL("[PARSER] Interface element from the variable {} not found.", key);
+            JST_CHECK_THROW(Result::ERROR);
+        }
+        return module.data.interfaceMap[elementKey].object;
+    }
+
+    JST_FATAL("[PARSER] Invalid module array {}. It should be 'input', 'output', or 'interface'.", key);
     throw Result::ERROR;
 }
 

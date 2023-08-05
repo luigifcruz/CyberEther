@@ -17,7 +17,12 @@ namespace Jetstream {
 Scheduler::Scheduler(std::shared_ptr<Render::Window>& window,
                      std::unordered_map<std::string, BlockState>& blockStates,
                      std::unordered_map<U64, std::string>& blockStateMap)
-     : blockStates(blockStates), blockStateMap(blockStateMap), window(window) {
+     : blockStates(blockStates),
+       blockStateMap(blockStateMap), 
+       window(window),
+       _computeBlockCount(0),
+       _presentBlockCount(0),
+       _graphCount(0) {
     JST_DEBUG("[SCHEDULER] Creating compute graph.");
 
     
@@ -36,6 +41,7 @@ Scheduler::Scheduler(std::shared_ptr<Render::Window>& window,
     for (const auto& [_, block] : blockStates) {
         if (block.present) {
             JST_CHECK_THROW(block.present->createPresent(*window));
+            _presentBlockCount += 1;
         }
     }
 }
@@ -130,14 +136,14 @@ Result Scheduler::printGraphSummary() {
                 JST_INFO("    None")
             }
             for (const auto& [name, meta] : inputs) {
-                JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: {} | Hash: 0x{:016x} | Pos: {:02} | [{}]", inputCount++,
-                                                                                                                   meta.vector.type,
-                                                                                                                   meta.vector.shape,
-                                                                                                                   meta.vector.device,
-                                                                                                                   fmt::ptr(meta.vector.ptr),
-                                                                                                                   meta.vector.hash, 
-                                                                                                                   meta.vector.phash - meta.vector.hash,
-                                                                                                                   name);
+                JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | Pos: {:02} | [{}]", inputCount++,
+                                                                                                                          meta.vector.type,
+                                                                                                                          meta.vector.shape,
+                                                                                                                          meta.vector.device,
+                                                                                                                          reinterpret_cast<uintptr_t>(meta.vector.ptr),
+                                                                                                                          meta.vector.hash, 
+                                                                                                                          meta.vector.phash - meta.vector.hash,
+                                                                                                                          name);
             }
 
             U64 outputCount = 0;
@@ -147,14 +153,14 @@ Result Scheduler::printGraphSummary() {
                 JST_INFO("    None")
             }
             for (const auto& [name, meta] : outputs) {
-                JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: {} | Hash: 0x{:016x} | Pos: {:02} | [{}]", outputCount++,
-                                                                                                                   meta.vector.type,
-                                                                                                                   meta.vector.shape,
-                                                                                                                   meta.vector.device,
-                                                                                                                   fmt::ptr(meta.vector.ptr),
-                                                                                                                   meta.vector.hash, 
-                                                                                                                   meta.vector.phash - meta.vector.hash,
-                                                                                                                   name);
+                JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | Pos: {:02} | [{}]", outputCount++,
+                                                                                                                          meta.vector.type,
+                                                                                                                          meta.vector.shape,
+                                                                                                                          meta.vector.device,
+                                                                                                                          reinterpret_cast<uintptr_t>(meta.vector.ptr),
+                                                                                                                          meta.vector.hash, 
+                                                                                                                          meta.vector.phash - meta.vector.hash,
+                                                                                                                          name);
             }
         }
     }
@@ -178,6 +184,8 @@ Result Scheduler::filterStaleIo() {
         for (auto& [_, meta] : block.record.data.outputMap) {
             valid[meta.vector.hash]++;
         }
+
+        _computeBlockCount += 1;
     }
     for (auto& [key, val] : valid) {
         if (val <= 1) {
@@ -329,6 +337,9 @@ Result Scheduler::createComputeGraphs() {
             graph->setModule(block.compute);
         }
         graphs.push_back(std::move(graph));
+
+        _computeDevices.emplace(device);
+        _graphCount += 1;
     }
 
     JST_DEBUG("[SCHEDULER] Creating dependency list between graphs.");

@@ -46,7 +46,7 @@ graph:
     dataType: CF32
     config:
       signalSampleRate: ${graph.soapy.config.sampleRate}
-      filterSampleRate: 5e6
+      filterSampleRate: 10e6
       filterCenter: 0.0
       shape: ${graph.soapy.config.outputShape}
       numberOfTaps: 101

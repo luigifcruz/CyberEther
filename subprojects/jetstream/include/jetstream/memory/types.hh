@@ -7,9 +7,6 @@
 #include <complex>
 #include <unordered_map>
 
-#include <fmt/ranges.h>
-#include <fmt/ostream.h>
-
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 

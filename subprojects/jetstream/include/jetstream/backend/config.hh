@@ -1,8 +1,7 @@
 #ifndef JETSTREAM_BACKEND_CONFIG_HH
 #define JETSTREAM_BACKEND_CONFIG_HH
 
-#include <fmt/ostream.h>
-
+#include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 #include "jetstream/parser.hh"
 

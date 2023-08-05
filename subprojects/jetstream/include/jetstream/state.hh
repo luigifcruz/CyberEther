@@ -28,6 +28,7 @@ struct BackendState {
 
 struct BlockState {
     Parser::ModuleRecord record;
+    // TODO: Maybe move this to inside scheduler.
     std::unordered_set<std::string> activeInputs;
     std::unordered_set<std::string> activeOutputs;
     std::shared_ptr<Module> module;

@@ -4,6 +4,8 @@
 
 using namespace Jetstream;
 
+// TODO: Move file to examples.
+
 constexpr static Device ComputeDevice = Device::CPU;
 constexpr static Device RenderDevice  = Device::Vulkan;
 using Platform = Viewport::GLFW<RenderDevice>;

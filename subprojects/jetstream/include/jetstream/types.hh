@@ -29,6 +29,10 @@ struct Size2D {
     T width;
     T height;
 
+    F32 ratio() const {
+        return static_cast<F32>(width) / height;
+    }
+
     bool operator==(const Size2D<T>& a) const {
         return (width == a.width && height == a.height);
     }

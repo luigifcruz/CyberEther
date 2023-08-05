@@ -80,22 +80,32 @@ class Lineplot : public Bundle {
     }
     virtual ~Lineplot() = default;
 
-    // Miscellaneous
+    // Interface
 
-    Result drawView() {
-        ImGui::Begin("Lineplot");
-        
+    void drawPreview(const F32& maxWidth) {
+        const auto& size = lineplot->viewSize();
+        const auto& ratio = size.ratio();
+        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, width/ratio));
+    }
+
+    constexpr bool shouldDrawPreview() const {
+        return true;
+    }
+
+    void drawView() {
         auto [x, y] = ImGui::GetContentRegionAvail();
         auto scale = ImGui::GetIO().DisplayFramebufferScale;
         auto [width, height] = lineplot->viewSize({
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));      
+    }
 
-        ImGui::End();
-
-        return Result::SUCCESS;       
+    constexpr bool shouldDrawView() const {
+        return true;
     }
 
  private:

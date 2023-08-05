@@ -91,19 +91,21 @@ Result Parser::printAll() {
     JST_INFO("————————————————————————— GRAPH ——————————————————————————");
 
     for (const auto& node : GetNode(root, root, "graph")) {
-        auto mainValues = GatherNodes(root, node, {"module", "device"});
+        auto values = GatherNodes(root, node, {"module", 
+                                               "device",
+                                               "dataType",
+                                               "inputDataType",
+                                               "outputDataType"}, true);
 
         JST_INFO("[{}]:", ResolveReadableKey(node));
-        JST_INFO("  Module:            {}", ResolveReadable(mainValues["module"]));
-        JST_INFO("  Device:            {}", ResolveReadable(mainValues["device"]));
+        JST_INFO("  Module:            {}", ResolveReadable(values["module"]));
+        JST_INFO("  Device:            {}", ResolveReadable(values["device"]));
 
-        if (HasNode(root, node, "dataType")) {
-            auto typeValues = GatherNodes(root, node, {"dataType"});
-            JST_INFO("  Data Type:         {}", ResolveReadable(typeValues["dataType"]));
+        if (values.find("dataType") != values.end()) {
+            JST_INFO("  Data Type:         {}", ResolveReadable(values["dataType"]));
         } else {
-            auto typeValues = GatherNodes(root, node, {"inputDataType", "outputDataType"});
-            JST_INFO("  Data Type:         {} -> {}", ResolveReadable(typeValues["inputDataType"]),
-                                                      ResolveReadable(typeValues["outputDataType"]));
+            JST_INFO("  Data Type:         {} -> {}", ResolveReadable(values["inputDataType"]),
+                                                      ResolveReadable(values["outputDataType"]));
         }
 
         if (HasNode(root, node, "config")) {
@@ -116,6 +118,13 @@ Result Parser::printAll() {
         if (HasNode(root, node, "input")) {
             JST_INFO("  Input:");
             for (const auto& element : GetNode(root, node, "input")) {
+                JST_INFO("    {} = {}", ResolveReadableKey(element), ResolveReadable(SolvePlaceholder(root, element)));
+            }
+        }
+
+        if (HasNode(root, node, "interface")) {
+            JST_INFO("  Interface:");
+            for (const auto& element : GetNode(root, node, "interface")) {
                 JST_INFO("    {} = {}", ResolveReadableKey(element), ResolveReadable(SolvePlaceholder(root, element)));
             }
         }
@@ -164,6 +173,12 @@ Result Parser::createViewport(Instance& instance) {
         }
     }
 
+    if (Store::Viewports().find(record.id) == Store::Viewports().end()) {
+        JST_FATAL("[PARSER] Can't find viewport with such a signature ({}).", record.id);
+        std::cout << record.id << std::endl;
+        return Result::ERROR;
+    }
+
     return Store::Viewports().at(record.id)(instance, record);
 }
 
@@ -203,9 +218,12 @@ Result Parser::createRender(Instance& instance) {
         }
     }
 
-    return Store::Renders().at(record.id)(instance, record);
+    if (Store::Renders().find(record.id) == Store::Renders().end()) {
+        JST_FATAL("[PARSER] Can't find render with such a signature ({}).", record.id);
+        return Result::ERROR;
+    }
 
-    return Result::SUCCESS;
+    return Store::Renders().at(record.id)(instance, record);
 }
 
 Result Parser::createBackends(Instance& instance) {
@@ -237,6 +255,11 @@ Result Parser::createBackends(Instance& instance) {
             record.data.configMap[ResolveReadableKey(element)] = {SolveLocalPlaceholder(instance, localPlaceholder), {}};
         }
 
+        if (Store::Backends().find(record.id) == Store::Backends().end()) {
+            JST_FATAL("[PARSER] Can't find backend with such a signature ({}).", record.id);
+            return Result::ERROR;
+        }
+
         JST_CHECK(Store::Backends().at(record.id)(instance, record));
     }
 
@@ -257,17 +280,14 @@ Result Parser::createModules(Instance& instance) {
         ModuleRecord record;
         record.name = nodeKey;
 
-        auto mainValues = GatherNodes(root, node, {"module", "device"});
-        record.id.module = ResolveReadable(mainValues["module"]);
-        record.id.device = ResolveReadable(mainValues["device"]);
-
-        if (HasNode(root, node, "dataType")) {
-            auto typeValues = GatherNodes(root, node, {"dataType"});
-            record.id.dataType = ResolveReadable(typeValues["dataType"]);
+        auto values = GatherNodes(root, node, {"module", "device", "dataType", "inputDataType", "outputDataType"}, true);
+        record.id.module = ResolveReadable(values["module"]);
+        record.id.device = ResolveReadable(values["device"]);
+        if (values.find("dataType") != values.end()) {
+            record.id.dataType = ResolveReadable(values["dataType"]);
         } else {
-            auto typeValues = GatherNodes(root, node, {"inputDataType", "outputDataType"});
-            record.id.inputDataType = ResolveReadable(typeValues["inputDataType"]);
-            record.id.outputDataType = ResolveReadable(typeValues["outputDataType"]);
+            record.id.inputDataType = ResolveReadable(values["inputDataType"]);
+            record.id.outputDataType = ResolveReadable(values["outputDataType"]);
         }
 
         if (HasNode(root, node, "config")) {
@@ -282,6 +302,18 @@ Result Parser::createModules(Instance& instance) {
                 auto localPlaceholder = SolvePlaceholder(root, element);
                 record.data.inputMap[ResolveReadableKey(element)] = {SolveLocalPlaceholder(instance, localPlaceholder), {}};
             }
+        }
+
+        if (HasNode(root, node, "interface")) {
+            for (const auto& element : GetNode(root, node, "interface")) {
+                auto localPlaceholder = SolvePlaceholder(root, element);
+                record.data.interfaceMap[ResolveReadableKey(element)] = {SolveLocalPlaceholder(instance, localPlaceholder), {}};
+            }
+        }
+
+        if (Store::Modules().find(record.id) == Store::Modules().end()) {
+            JST_FATAL("[PARSER] Can't find module with such a signature ({}).", record.id);
+            return Result::ERROR;
         }
 
         Store::Modules().at(record.id)(instance, record);

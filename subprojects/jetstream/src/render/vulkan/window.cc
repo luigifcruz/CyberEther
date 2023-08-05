@@ -195,6 +195,7 @@ Result Implementation::createImgui() {
     
     JST_CHECK(viewport->createImgui());
     ApplyImGuiTheme(viewport->calculateScale(config.scale));
+    ApplyImNodesTheme();
 
     auto& backend = Backend::State<Device::Vulkan>();
     
@@ -406,7 +407,7 @@ void Implementation::drawDebugMessage() const {
     ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
     ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
     ImGui::Text("Physical Memory: %.00f GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::Text("Processor Count: %llu", backend->getTotalProcessorCount());
+    ImGui::Text("Processor Count: %lu", backend->getTotalProcessorCount());
 }
 
 const Window::Stats& Implementation::stats() const {

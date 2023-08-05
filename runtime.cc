@@ -4,9 +4,17 @@
 
 using namespace Jetstream;
 
+// TODO: Cleanup logic.
+// TODO: Add arguments for configuration file path.
+
 class UI {
  public:
     UI(Instance& instance) : instance(instance) {
+        // Initialize Parser.
+        Parser parser("/home/luigi/sandbox/CyberEther/spectrum_analyzer.yml");
+        JST_CHECK_THROW(parser.printAll());
+        JST_CHECK_THROW(parser.importFromFile(instance));
+
         streaming = true;
         JST_CHECK_THROW(instance.create());
 
@@ -85,11 +93,6 @@ int main() {
 
     // Initialize Instance.
     Instance instance;
-
-    // Initialize Parser.
-    Parser parser("/home/luigi/sandbox/CyberEther/multi-device.yml");
-    parser.printAll();
-    parser.importFromFile(instance);
 
     {
         auto ui = UI(instance);

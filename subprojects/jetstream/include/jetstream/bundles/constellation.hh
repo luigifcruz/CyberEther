@@ -75,22 +75,20 @@ class Constellation : public Bundle {
     }
     virtual ~Constellation() = default;
 
-    // Miscellaneous
+    // Interface
 
-    Result drawView() {
-        ImGui::Begin("Constellation");
-
+    void drawView() {
         auto [x, y] = ImGui::GetContentRegionAvail();
         auto scale = ImGui::GetIO().DisplayFramebufferScale;
         auto [width, height] = constellation->viewSize({
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(constellation->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(constellation->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));  
+    }
 
-        ImGui::End();
-
-        return Result::SUCCESS;       
+    constexpr bool shouldDrawView() const {
+        return true;
     }
 
  private:

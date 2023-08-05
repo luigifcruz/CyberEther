@@ -71,7 +71,9 @@ Result Implementation::createImgui() {
     ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
     
     JST_CHECK(viewport->createImgui());
-    this->ApplyImGuiTheme(viewport->calculateScale(config.scale));
+    ApplyImGuiTheme(viewport->calculateScale(config.scale));
+    ApplyImNodesTheme();
+
     ImGui_ImplWGPU_CreateDeviceObjects();
     
     return Result::SUCCESS;

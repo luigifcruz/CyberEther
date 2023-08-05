@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #ifndef JST_PAGESIZE
 #define JST_PAGESIZE() getpagesize()

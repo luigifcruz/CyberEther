@@ -5,6 +5,8 @@
 
 #include <fmt/format.h>
 #include <fmt/color.h>
+#include <fmt/ostream.h>
+#include <fmt/ranges.h>
 
 #define _JST_LOG_SINK          std::cout
 #define _JST_LOG_ENDL          std::endl;

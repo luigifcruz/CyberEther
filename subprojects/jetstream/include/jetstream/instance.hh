@@ -105,7 +105,8 @@ class JETSTREAM_API Instance {
     std::shared_ptr<T<D, C...>> addModule(const std::string& name,
                                           const typename T<D, C...>::Config& config,
                                           const typename T<D, C...>::Input& input,
-                                          const bool& internalModule = false) {
+                                          const bool& internalModule = false,
+                                          const Interface::Config& interfaceConfig = {}) {
         using Module = T<D, C...>;
 
         if (commited) {
@@ -148,6 +149,7 @@ class JETSTREAM_API Instance {
 
         if (!internalModule) {
             blockState.interface = rawBlock;
+            blockState.interface->config = interfaceConfig;
         }
 
         blockState.getConfigFunc = [&](){
@@ -204,11 +206,13 @@ class JETSTREAM_API Instance {
 
         typename Module::Config config{};
         typename Module::Input input{};
+        Interface::Config interfaceConfig{};
 
         JST_CHECK_THROW(config<<record.data.configMap);
         JST_CHECK_THROW(input<<record.data.inputMap);
+        JST_CHECK_THROW(interfaceConfig<<record.data.interfaceMap);
 
-        return addModule<T, D, C...>(record.name, config, input, internalModule);
+        return addModule<T, D, C...>(record.name, config, input, internalModule, interfaceConfig);
     }
 
     // TODO: Add removeModule.
@@ -288,12 +292,13 @@ class JETSTREAM_API Instance {
     struct NodeState {
         std::string name;
         std::string title;
-        std::vector<std::pair<U64, std::string>> inputs;
-        std::vector<std::pair<U64, std::string>> outputs;
+        std::unordered_map<U64, std::string> inputs;
+        std::unordered_map<U64, std::string> outputs;
     };
 
+    I32 nodeDragId;
     std::unordered_map<U64, NodeState> nodeStates;
-    std::vector<std::pair<U64, U64>> nodeConnections;
+    std::vector<std::tuple<U64, U64, U64>> nodeConnections;
 
     bool commited;
 };

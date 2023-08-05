@@ -86,11 +86,21 @@ class Waterfall : public Bundle {
     }
     virtual ~Waterfall() = default;
 
-    // Miscellaneous
+    // Interface
 
-    Result drawView() {
-        ImGui::Begin("Waterfall");
+    void drawPreview(const F32& maxWidth) {
+        const auto& size = waterfall->viewSize();
+        const auto& ratio = size.ratio();
+        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
+        ImGui::Image(waterfall->getTexture().raw(), ImVec2(width, width/ratio));
+    }
 
+    constexpr bool shouldDrawPreview() const {
+        return true;
+    }
+
+    void drawView() {
         auto [x, y] = ImGui::GetContentRegionAvail();
         auto scale = ImGui::GetIO().DisplayFramebufferScale;
         auto [width, height] = waterfall->viewSize({
@@ -107,40 +117,31 @@ class Waterfall : public Bundle {
         } else {
             position = 0;
         }
-
-        ImGui::End();
-
-        return Result::SUCCESS;       
     }
 
-    Result drawNodeControl() {
+    constexpr bool shouldDrawView() const {
+        return true;
+    }
+
+    void drawControl() {
         auto interpolate = waterfall->interpolate();
-        if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
+        
+        ImGui::Text("Interpolate");
+        ImGui::SameLine(200);
+        if (ImGui::Checkbox("##WaterfallInterpolate", &interpolate)) {
             waterfall->interpolate(interpolate);
         }
 
+        ImGui::Text("Zoom");
+        ImGui::SameLine(200);
         auto zoom = waterfall->zoom();
-        if (ImGui::DragFloat("Waterfall Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
+        if (ImGui::DragFloat("##WaterfallZoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
             waterfall->zoom(zoom);
-        }
-            
-        return Result::SUCCESS;       
+        } 
     }
 
-    Result drawControl() {
-        if (ImGui::CollapsingHeader("Waterfall", ImGuiTreeNodeFlags_DefaultOpen)) {
-            auto interpolate = waterfall->interpolate();
-            if (ImGui::Checkbox("Interpolate Waterfall", &interpolate)) {
-                waterfall->interpolate(interpolate);
-            }
-
-            auto zoom = waterfall->zoom();
-            if (ImGui::DragFloat("Waterfall Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
-                waterfall->zoom(zoom);
-            }
-        }
-            
-        return Result::SUCCESS;       
+    constexpr bool shouldDrawControl() const {
+        return true;
     }
 
  private:

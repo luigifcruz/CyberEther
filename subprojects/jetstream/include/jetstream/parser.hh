@@ -54,6 +54,10 @@ class Parser {
                 return m1.device == m2.device;
             }
         };
+
+        friend std::ostream& operator<<(std::ostream& os, const BackendIdentifier& m) {
+            return os << fmt::format("device: {}", m.device);
+        }
     };
 
     struct BackendData {
@@ -85,6 +89,10 @@ class Parser {
                     && m1.platform == m2.platform;
             }
         };
+
+        friend std::ostream& operator<<(std::ostream& os, const ViewportIdentifier& m) {
+            return os << fmt::format("device: {}, platform: {}", m.device, m.platform);
+        }
     };
 
     struct ViewportData {
@@ -125,12 +133,23 @@ class Parser {
                     && m1.outputDataType == m2.outputDataType;
             }
         };
+
+        friend std::ostream& operator<<(std::ostream& os, const ModuleIdentifier& m) {
+            os << fmt::format("device: {}, module: {} ", m.device, m.module);
+            if (!m.dataType.empty()) {
+                os << fmt::format("dataType: {}", m.dataType);
+            } else {
+                os << fmt::format("inputDataType: {}, outputDataType: {}", m.inputDataType, m.outputDataType);
+            }
+            return os;
+        }
     };
 
     struct ModuleData {
         RecordMap configMap;
         RecordMap inputMap;
         RecordMap outputMap;
+        RecordMap interfaceMap;
     };
 
     struct ModuleRecord {
@@ -155,6 +174,10 @@ class Parser {
                 return m1.device == m2.device;
             }
         };
+
+        friend std::ostream& operator<<(std::ostream& os, const RenderIdentifier& m) {
+            return os << fmt::format("device: {}", m.device);
+        }
     };
 
     struct RenderData {
@@ -298,7 +321,8 @@ class Parser {
     static ryml::ConstNodeRef SolvePlaceholder(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node);
     static std::unordered_map<std::string, ryml::ConstNodeRef> GatherNodes(const ryml::ConstNodeRef& root,
                                                                            const ryml::ConstNodeRef& node,
-                                                                           const std::vector<std::string>& keys);
+                                                                           const std::vector<std::string>& keys,
+                                                                           const bool& acceptLess = false);
     static ryml::ConstNodeRef GetNode(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node, const std::string& key);
     static bool HasNode(const ryml::ConstNodeRef&, const ryml::ConstNodeRef& node, const std::string& key);
     static std::string ResolveReadable(const ryml::ConstNodeRef& var);
@@ -308,5 +332,10 @@ class Parser {
 };
 
 }  // namespace Jetstream
+
+template <> struct fmt::formatter<Jetstream::Parser::RenderIdentifier> : ostream_formatter {};
+template <> struct fmt::formatter<Jetstream::Parser::BackendIdentifier> : ostream_formatter {};
+template <> struct fmt::formatter<Jetstream::Parser::ViewportIdentifier> : ostream_formatter {};
+template <> struct fmt::formatter<Jetstream::Parser::ModuleIdentifier> : ostream_formatter {};
 
 #endif

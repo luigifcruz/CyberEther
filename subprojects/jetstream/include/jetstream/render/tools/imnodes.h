@@ -1,5 +1,8 @@
 #pragma once
 
+// UPDATE-ME: https://github.com/Nelarius/imnodes/pull/186
+// UPDATE-ME: https://github.com/Nelarius/imnodes/tree/is-node-hovered-fix
+
 #include <stddef.h>
 #include "imgui.h"
 
@@ -393,6 +396,11 @@ bool IsAnyAttributeActive(int* attribute_id = NULL);
 
 // Use the following functions to query a change of state for an existing link, or new link. Call
 // these after EndNodeEditor().
+
+// Returns true if the user just started dragging a node
+bool IsNodesDragStarted(int *num_selected_nodes);
+// Returns true if the user just stopped (released) the node after dragging it
+bool IsNodesDragStopped(int *num_selected_nodes);
 
 // Did the user start dragging a new link from a pin?
 bool IsLinkStarted(int* started_at_attribute_id);
