@@ -15,8 +15,8 @@ namespace Jetstream {
 class JETSTREAM_API Scheduler {
  public:
     Scheduler(std::shared_ptr<Render::Window>& window,
-              std::unordered_map<std::string, BlockState>& blockStates,
-              std::unordered_map<U64, std::string>& blockStateMap);
+              const std::unordered_map<std::string, BlockState>& blockStates,
+              const std::vector<std::string>& blockStateOrder);
     ~Scheduler();
 
     Result create();
@@ -24,45 +24,46 @@ class JETSTREAM_API Scheduler {
     Result present();
     Result destroy();
 
-    constexpr const U64& getNumberOfGraphs() const {
-        return _graphCount;
+    U64 getNumberOfGraphs() const {
+        return graphs.size();
     }
 
-    constexpr const U64& getNumberOfComputeBlocks() const {
-        return _computeBlockCount;
+    U64 getNumberOfComputeBlocks() const {
+        return computeModuleStates.size();
     }
 
-    constexpr const U64& getNumberOfPresentBlocks() const {
-        return _presentBlockCount;
-    }
-
-    constexpr const std::unordered_set<Device>& getComputeDevices() const {
-        return _computeDevices;
+    U64 getNumberOfPresentBlocks() const {
+        return presentModuleStates.size();
     }
 
  private:
-    std::unordered_map<std::string, BlockState>& blockStates;
-    std::unordered_map<U64, std::string>& blockStateMap;
-    std::shared_ptr<Render::Window>& window;
+    typedef std::vector<std::string> ExecutionOrder;
+    typedef std::vector<std::pair<Device, ExecutionOrder>> DeviceExecutionOrder;
+
+    struct ComputeModuleState {
+        const BlockState* block;
+        U64 clusterId;
+        std::unordered_map<std::string, const Parser::VectorMetadata*> activeInputs;
+        std::unordered_map<std::string, const Parser::VectorMetadata*> activeOutputs;
+    };
+
+    struct PresentModuleState {
+        const BlockState* block;
+    };
 
     std::atomic_flag computeSync{false};
     std::atomic_flag presentSync{false};
 
-    std::vector<std::string> executionOrder;
-    std::vector<std::pair<Device, std::vector<std::string>>> deviceExecutionOrder;
-
+    std::shared_ptr<Render::Window>& window;
     std::vector<std::shared_ptr<Graph>> graphs;
+    std::unordered_map<std::string, ComputeModuleState> computeModuleStates;
+    std::unordered_map<std::string, PresentModuleState> presentModuleStates;
 
-    Result printGraphSummary();
-    Result filterStaleIo();
-    Result applyTopologicalSort();
-    Result createComputeGraphs();
-    Result assertInplaceCorrectness();
-
-    U64 _computeBlockCount;
-    U64 _presentBlockCount;
-    U64 _graphCount;
-    std::unordered_set<Device> _computeDevices;
+    Result removeInactive();
+    Result arrangeDependencyOrder(ExecutionOrder& executionOrder,
+                                  DeviceExecutionOrder& deviceExecutionOrder);
+    Result checkSequenceValidity(ExecutionOrder& executionOrder);
+    Result createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrder);
 };
 
 }  // namespace Jetstream

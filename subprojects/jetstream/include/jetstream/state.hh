@@ -28,16 +28,15 @@ struct BackendState {
 
 struct BlockState {
     Parser::ModuleRecord record;
-    // TODO: Maybe move this to inside scheduler.
-    std::unordered_set<std::string> activeInputs;
-    std::unordered_set<std::string> activeOutputs;
-    std::shared_ptr<Module> module;
-    std::shared_ptr<Interface> interface;
-    std::shared_ptr<Compute> compute;
-    std::shared_ptr<Present> present;
     std::function<Parser::RecordMap()> getConfigFunc;
     std::function<Parser::RecordMap()> getInputFunc;
     std::function<Parser::RecordMap()> getOutputFunc;
+
+    std::shared_ptr<Module> module;
+    std::shared_ptr<Compute> compute;
+    std::shared_ptr<Present> present;
+
+    std::shared_ptr<Interface> interface;
 };
 
 }  // namespace Jetstream
