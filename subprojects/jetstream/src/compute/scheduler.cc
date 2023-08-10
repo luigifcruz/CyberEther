@@ -15,6 +15,8 @@ namespace Jetstream {
 //    - Externally Wired: When a Vector is connected with another graph.
 // 9. Assert that an In-Place Module is not sharing a branched input Vector.
 
+// TODO: Automatically add copy module if in-place check fails.
+
 Scheduler::Scheduler(std::shared_ptr<Render::Window>& window,
                      const std::unordered_map<std::string, BlockState>& blockStates,
                      const std::vector<std::string>& blockStateOrder) : window(window) {
@@ -289,7 +291,7 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
     U64 clusterCount = 0;
     std::unordered_set<std::string> visited;
     for (const auto& [name, state] : computeModuleStates) {
-        if (visited.find(name) == visited.end()) {
+        if (!visited.contains(name)) {
             std::stack<std::string> stack;
             stack.push(name);
 
@@ -298,12 +300,12 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
                 stack.pop();
 
                 for (const auto& neighbor : moduleEdgesCache[current]) {
-                    if (visited.find(neighbor) == visited.end()) {
+                    if (!visited.contains(neighbor)) {
                         stack.push(neighbor);
                     }
                 }
 
-                if (visited.find(current) == visited.end()) {
+                if (!visited.contains(current)) {
                     visited.insert(current);
                     computeModuleStates[current].clusterId = clusterCount;
                 }

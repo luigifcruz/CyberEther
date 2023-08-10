@@ -267,10 +267,15 @@ class Parser {
                     JST_ASSERT_THROW(values.size() == 2);
                     const_cast<T&>(variable) = Range<F32>{std::stof(values[0]), std::stof(values[1])};
                 } else if constexpr (std::is_same<T, Size2D<U64>>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to BOOL.");
+                    JST_TRACE("BindVariable: Converting std::string to Size2D<U64>.");
                     const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
                     JST_ASSERT_THROW(values.size() == 2);
                     const_cast<T&>(variable) = Size2D<U64>{std::stoull(values[0]), std::stoull(values[1])};
+                } else if constexpr (std::is_same<T, Size2D<F32>>::value) {
+                    JST_TRACE("BindVariable: Converting std::string to Size2D<F32>.");
+                    const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
+                    JST_ASSERT_THROW(values.size() == 2);
+                    const_cast<T&>(variable) = Size2D<F32>{std::stof(values[0]), std::stof(values[1])};
                 } else {
                     const_cast<T&>(variable) = std::any_cast<T>(anyVar);
                 }

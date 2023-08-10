@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
+#include <unordered_set>
 #include <unordered_map>
 
 #include "jetstream/state.hh"
@@ -19,7 +20,11 @@ namespace Jetstream {
 
 class JETSTREAM_API Instance {
  public:
-    Instance() : renderState({}), viewportState({}), commited(false) {};
+    Instance()
+         : renderState({}), 
+           viewportState({}), 
+           commited(false), 
+           graphSpatiallyOrganized(false) {};
 
     template<Device D>
     Result buildBackend(const Backend::Config& config) {
@@ -124,6 +129,7 @@ class JETSTREAM_API Instance {
             JST_CHECK_THROW(Result::ERROR);
         }
         auto& blockState = blockStates[name];
+        blockStateOrder.push_back(name);
 
         std::shared_ptr<Module> rawBlock;
 
@@ -191,8 +197,6 @@ class JETSTREAM_API Instance {
             .outputMap = blockState.getOutputFunc(),
         };
         blockState.record.name = name;
-
-        blockStateMap[blockStateMap.size()] = name;
 
         // TODO: Reload engine.
 
@@ -279,28 +283,34 @@ class JETSTREAM_API Instance {
     friend class Parser;
 
  private:
+    struct InterfaceState {
+        BlockState* block;
+        U64 clusterId;
+        std::string name;
+        std::string title;
+        std::unordered_map<U64, std::pair<std::string, Parser::VectorMetadata*>> inputs;
+        std::unordered_map<U64, std::pair<std::string, Parser::VectorMetadata*>> outputs;
+    };
+
     RenderState renderState;
     ViewportState viewportState;
     std::unordered_map<std::string, BackendState> backendStates;
     std::unordered_map<std::string, BlockState> blockStates;
-    std::unordered_map<U64, std::string> blockStateMap;
+    std::vector<std::string> blockStateOrder;
 
     std::shared_ptr<Scheduler> _scheduler;
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
 
-    struct NodeState {
-        std::string name;
-        std::string title;
-        std::unordered_map<U64, std::string> inputs;
-        std::unordered_map<U64, std::string> outputs;
-    };
-
     I32 nodeDragId;
-    std::unordered_map<U64, NodeState> nodeStates;
-    std::vector<std::tuple<U64, U64, U64>> nodeConnections;
+    
+    std::vector<std::vector<std::vector<U64>>> topological;
+    std::unordered_map<U64, InterfaceState> interfaceStates;
+    std::unordered_map<U64, std::pair<std::pair<U64, InterfaceState*>, 
+                                      std::pair<U64, InterfaceState*>>> nodeConnections;
 
     bool commited;
+    bool graphSpatiallyOrganized;
 };
 
 }  // namespace Jetstream

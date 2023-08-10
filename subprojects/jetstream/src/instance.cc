@@ -3,49 +3,164 @@
 namespace Jetstream {
 
 Result Instance::create() {
-    JST_DEBUG("Creating instance.");
+    JST_DEBUG("[INSTANCE] Creating instance.");
 
-    // Check if instance isn't commited.
     if (commited) {
-        JST_FATAL("The instance was already commited.");
+        JST_FATAL("[INSTANCE] The instance was already commited.");
         return Result::ERROR;
     }
 
-    std::vector<std::pair<U64, U64>> nodeInputMap;
-    std::unordered_map<U64, std::tuple<U64, U64>> nodeOutputMap;
+    // Create output and input cache and populate interface states.
+    std::unordered_map<U64, std::vector<std::pair<U64, U64>>> inputCache;
+    std::unordered_map<U64, std::pair<U64, U64>> outputCache;
 
     U64 id = 1;
-    for (const auto& [name, block] : blockStates) {
-        if (!block.interface) {
+    for (auto& [blockName, blockState] : blockStates) {
+        if (!blockState.interface) {
             continue;
         }
 
         const U64 nodeId = id++;
-        auto& state = nodeStates[nodeId];
+        auto& state = interfaceStates[nodeId];
 
-        state.name = name;
-        state.title = fmt::format("{} ({})", block.interface->prettyName(), name);
+        state.name = blockName;
+        state.block = &blockState;
+        state.title = fmt::format("{} ({})", blockState.interface->prettyName(), blockName);
 
-        for (const auto& [inputName, inputMeta] : block.record.data.inputMap) {
-            nodeInputMap.push_back({inputMeta.vector.phash, id});
-            state.inputs[id++] = inputName;
+        if (blockState.interface->config.nodePos != Size2D<F32>{0.0f, 0.0f}) {
+            graphSpatiallyOrganized = true;
+        }
+        
+        for (auto& [inputName, inputMeta] : blockState.record.data.inputMap) {
+            inputCache[inputMeta.vector.phash].push_back({nodeId, id});
+            state.inputs[id++] = {inputName, &inputMeta.vector};
         }
 
-        for (const auto& [outputName, outputMeta] : block.record.data.outputMap) {
-            nodeOutputMap[outputMeta.vector.phash] = {nodeId, id};
-            state.outputs[id++] = outputName;
+        for (auto& [outputName, outputMeta] : blockState.record.data.outputMap) {
+            outputCache[outputMeta.vector.phash] = {nodeId, id};
+            state.outputs[id++] = {outputName, &outputMeta.vector};
         }
     }
 
-    for (const auto& [inputHash, inputId] : nodeInputMap) {
-        const auto& [nodeId, outputId] = nodeOutputMap[inputHash];
-        nodeConnections.push_back({inputId, outputId, nodeId});
+    // Create node edge cache.
+    std::unordered_map<U64, std::unordered_set<U64>> edgesCache;
+
+    U64 linkId = 0;
+    for (auto& [nodeId, nodeState] : interfaceStates) {
+        auto& edges = edgesCache[nodeId];
+
+        for (const auto& [_1, input] : nodeState.inputs) {
+            const auto& [outputNodeId, _2] = outputCache[input.second->phash];
+            edges.insert(outputNodeId);
+        }
+
+        for (const auto& [outputId, output] : nodeState.outputs) {
+            for (const auto& [inputNodeId, inputId] : inputCache[output.second->phash]) {
+                edges.insert(inputNodeId);
+
+                nodeConnections[linkId++] = {
+                    {inputId, &interfaceStates[inputNodeId]},
+                    {outputId, &nodeState}
+                };
+            }
+        }
     }
     
-    // TODO: Implement graph layout algorithm.
+    // Separate graph in sub-graphs if applicable.
+    U64 clusterCount = 0;
+    std::unordered_set<U64> visited;
+
+    for (auto& [nodeId, node] : interfaceStates) {
+        if (visited.contains(nodeId)) {
+            continue;
+        }
+
+        std::stack<U64> stack;
+        stack.push(nodeId);
+
+        while (!stack.empty()) {
+            U64 current = stack.top();
+            stack.pop();
+
+            if (visited.contains(current)) {
+                continue;
+            }
+
+            visited.insert(current);
+            interfaceStates[current].clusterId = clusterCount;
+
+            for (const auto& neighbor : edgesCache[current]) {
+                if (!visited.contains(neighbor)) {
+                    stack.push(neighbor);
+                }
+            }
+        }
+        clusterCount += 1;
+    }
+
+    // Create automatic graph layout.
+    U64 columnId = 0;
+    std::unordered_set<U64> S;
+
+    for (const auto& [id, state] : interfaceStates) {
+        if (state.inputs.size() == 0) {
+            S.insert(id);
+        }
+    }
+
+    while (!S.empty()) {
+        std::unordered_map<U64, std::unordered_set<U64>> nodeMatches;
+
+        // Build the matches map.
+        for (const auto& sourceNodeId : S) {
+            for (const auto& [_, output] : interfaceStates[sourceNodeId].outputs) {
+                for (const auto& [targetNodeId, _] : inputCache[output.second->phash]) {
+                    nodeMatches[targetNodeId].insert(sourceNodeId);
+                }
+            }
+        }
+
+        U64 previousSetSize = S.size();
+        std::unordered_set<U64> nodesToInsert;
+        std::unordered_set<U64> nodesToExclude;
+
+        // Determine which nodes to insert and which to exclude.
+        for (const auto& [targetNodeId, sourceNodes] : nodeMatches) {
+            if (interfaceStates[targetNodeId].inputs.size() == sourceNodes.size()) {
+                S.insert(targetNodeId);
+                nodesToInsert.insert(sourceNodes.begin(), sourceNodes.end());
+            } else {
+                nodesToExclude.insert(sourceNodes.begin(), sourceNodes.end());
+            }
+        }
+
+        // Exclude nodes from the nodesToInsert set.
+        for (const auto& node : nodesToExclude) {
+            nodesToInsert.erase(node);
+        }
+
+        // If no new nodes were added to S, insert all nodes from S into nodesToInsert.
+        if (previousSetSize == S.size()) {
+            nodesToInsert.insert(S.begin(), S.end());
+        }
+
+        for (const auto& node : nodesToInsert) {
+            const U64& clusterId = interfaceStates[node].clusterId;
+            if (topological.size() <= clusterId) {
+                topological.resize(clusterId + 1);
+            }
+            if (topological[clusterId].size() <= columnId) {
+                topological[clusterId].resize(columnId + 1);
+            }
+            topological[clusterId][columnId].push_back(node);
+            S.erase(node);
+        }
+
+        columnId += 1;
+    }
 
     // Create scheduler.
-    _scheduler = std::make_shared<Scheduler>(_window, blockStates, blockStateMap);
+    _scheduler = std::make_shared<Scheduler>(_window, blockStates, blockStateOrder);
 
     // Initialize instance window.
     if (_window && _viewport) {
@@ -60,7 +175,7 @@ Result Instance::create() {
 }
 
 Result Instance::destroy() {
-    JST_DEBUG("Destroying instance.");
+    JST_DEBUG("[INSTANCE] Destroying instance.");
 
     // Check if instance is commited.
     if (!commited) {
@@ -119,16 +234,14 @@ Result Instance::end() {
     // View Render
     //
 
-    for (auto& [_, nodeState] : nodeStates) {
-        auto& blockState = blockStates[nodeState.name];
-
-        if (!blockState.interface->config.viewEnabled ||
-            !blockState.interface->shouldDrawView()) {
+    for (const auto& [_, state] : interfaceStates) {
+        if (!state.block->interface->config.viewEnabled ||
+            !state.block->interface->shouldDrawView()) {
             continue;
         }
 
-        ImGui::Begin(nodeState.title.c_str(), &blockState.interface->config.viewEnabled);
-        blockState.interface->drawView();
+        ImGui::Begin(state.title.c_str(), &state.block->interface->config.viewEnabled);
+        state.block->interface->drawView();
         ImGui::End();
     }
 
@@ -137,15 +250,13 @@ Result Instance::end() {
     //
 
     ImGui::Begin("Control");
-    for (auto& [_, nodeState] : nodeStates) {
-        const auto& blockState = blockStates[nodeState.name];
-
-        if (!blockState.interface->shouldDrawControl()) {
+    for (auto& [_, state] : interfaceStates) {
+        if (!state.block->interface->shouldDrawControl()) {
             continue;
         }
 
-        if (ImGui::CollapsingHeader(nodeState.title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            blockState.interface->drawControl();
+        if (ImGui::CollapsingHeader(state.title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            state.block->interface->drawControl();
         }
     }
     ImGui::End();
@@ -160,8 +271,7 @@ Result Instance::end() {
         ImGui::Text("Graphs: %lu", _scheduler->getNumberOfGraphs());
         ImGui::Text("Present Blocks: %lu", _scheduler->getNumberOfPresentBlocks());
         ImGui::Text("Compute Blocks: %lu", _scheduler->getNumberOfComputeBlocks());
-        const auto computeDevices = fmt::format("{}", _scheduler->getComputeDevices());
-        ImGui::Text("Compute Devices: %s", computeDevices.c_str());
+        // TODO: Add printout of compute devices here.
     }
 
     if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -171,15 +281,13 @@ Result Instance::end() {
         ImGui::Text("Viewport Platform: %s", _viewport->prettyName().c_str());
     }
 
-    for (auto& [_, nodeState] : nodeStates) {
-        const auto& blockState = blockStates[nodeState.name];
-
-        if (!blockState.interface->shouldDrawInfo()) {
+    for (auto& [_, state] : interfaceStates) {
+        if (!state.block->interface->shouldDrawInfo()) {
             continue;
         }
 
-        if (ImGui::CollapsingHeader(nodeState.title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            blockState.interface->drawInfo();
+        if (ImGui::CollapsingHeader(state.title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            state.block->interface->drawInfo();
         }
     }
 
@@ -194,17 +302,15 @@ Result Instance::end() {
     ImNodes::BeginNodeEditor();
     ImNodes::MiniMap(0.2f, ImNodesMiniMapLocation_TopRight);
 
-    for (auto& [id, nodeState] : nodeStates) {
-        auto& blockState = blockStates[nodeState.name];
-
-        F32& nodeWidth = blockState.interface->config.nodeWidth;
-        const F32 titleWidth = ImGui::CalcTextSize(nodeState.title.c_str()).x;
-        const F32 controlWidth = blockState.interface->shouldDrawControl() ? 500.0f : 0.0f;
-        const F32 previewWidth = blockState.interface->shouldDrawPreview() ? 500.0f : 0.0f;
+    for (auto& [id, state] : interfaceStates) {
+        F32& nodeWidth = state.block->interface->config.nodeWidth;
+        const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x;
+        const F32 controlWidth = state.block->interface->shouldDrawControl() ? 500.0f : 0.0f;
+        const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 500.0f : 0.0f;
         nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
 
         // Push node-specific style.
-        switch (blockState.interface->device()) {
+        switch (state.block->interface->device()) {
             case Device::CPU:
                 ImNodes::PushColorStyle(ImNodesCol_TitleBar,         CpuColor);
                 ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  CpuColor);
@@ -248,28 +354,30 @@ Result Instance::end() {
 
         // Draw node title.
         ImNodes::BeginNodeTitleBar();
-        ImGui::TextUnformatted(nodeState.title.c_str());
+        ImGui::TextUnformatted(state.title.c_str());
         ImNodes::EndNodeTitleBar();
 
         // Draw node control.
-        if (blockState.interface->shouldDrawControl()) {
+        if (state.block->interface->shouldDrawControl()) {
             ImGui::Spacing();
             ImGui::PushItemWidth(nodeWidth - 200.0f);
-            blockState.interface->drawControl();
+            state.block->interface->drawControl();
             ImGui::PopItemWidth();
         }
 
         // Draw node input and output pins.
-        if (!nodeState.inputs.empty() || !nodeState.outputs.empty()) {
+        if (!state.inputs.empty() || !state.outputs.empty()) {
             ImGui::Spacing();
 
-            for (const auto& [inputId, inputName] : nodeState.inputs) {
+            for (const auto& [inputId, input] : state.inputs) {
+                const auto& [inputName, _] = input;
                 ImNodes::BeginInputAttribute(inputId);
                 ImGui::TextUnformatted(inputName.c_str());
                 ImNodes::EndInputAttribute();
             }
 
-            for (const auto& [outputId, outputName] : nodeState.outputs) {
+            for (const auto& [outputId, output] : state.outputs) {
+                const auto& [outputName, _] = output;
                 ImNodes::BeginOutputAttribute(outputId);
                 const F32 textWidth = ImGui::CalcTextSize(outputName.c_str()).x;
                 ImGui::Indent(nodeWidth - textWidth);
@@ -279,29 +387,29 @@ Result Instance::end() {
         }
 
         // Draw node preview.
-        if (blockState.interface->shouldDrawPreview() &&
-            blockState.interface->config.previewEnabled) {
+        if (state.block->interface->shouldDrawPreview() &&
+            state.block->interface->config.previewEnabled) {
             ImGui::Spacing();
-            blockState.interface->drawPreview(nodeWidth);
+            state.block->interface->drawPreview(nodeWidth);
         }
 
         // Ensure minimum width set by the internal state.
         ImGui::Dummy(ImVec2(nodeWidth, 0.0f));
 
         // Draw interfacing options.
-        if (blockState.interface->shouldDrawView() || blockState.interface->shouldDrawPreview()) {
+        if (state.block->interface->shouldDrawView() || state.block->interface->shouldDrawPreview()) {
             ImGui::Spacing();
 
-            if (blockState.interface->shouldDrawView()) {
-                ImGui::Checkbox("Window", &blockState.interface->config.viewEnabled);
+            if (state.block->interface->shouldDrawView()) {
+                ImGui::Checkbox("Window", &state.block->interface->config.viewEnabled);
 
-                if (blockState.interface->shouldDrawPreview()) {
+                if (state.block->interface->shouldDrawPreview()) {
                     ImGui::SameLine();
                 }
             }
 
-            if (blockState.interface->shouldDrawPreview()) {
-                ImGui::Checkbox("Preview", &blockState.interface->config.previewEnabled);
+            if (state.block->interface->shouldDrawPreview()) {
+                ImGui::Checkbox("Preview", &state.block->interface->config.previewEnabled);
                 ImGui::SameLine();
 
                 const auto& nodeOrigin = ImNodes::GetNodeScreenSpacePos(id);
@@ -327,14 +435,66 @@ Result Instance::end() {
         ImNodes::PopColorStyle(); // PinHovered
 
         // Set node position according to the internal state.
-        const auto& [x, y] = blockState.interface->config.nodePos;
+        const auto& [x, y] = state.block->interface->config.nodePos;
         ImNodes::SetNodeGridSpacePos(id, ImVec2(x, y));
     }
 
+    // Spatially organize graph.
+    if (!graphSpatiallyOrganized) {
+        JST_INFO("{}", topological)
+        F32 previousClustersHeight = 0.0f;
+        
+        for (const auto& cluster : topological) {
+            F32 largestColumnHeight = 0.0f;
+            F32 previousColumnsWidth = 0.0f;
+            
+            for (const auto& column : cluster) {
+                F32 largestNodeWidth = 0.0f;
+                F32 previousNodesHeight = 0.0f;
+
+                for (const auto& node : column) {
+                    auto& [x, y] = interfaceStates[node].block->interface->config.nodePos;
+                    x = previousColumnsWidth;
+                    y = previousNodesHeight + previousClustersHeight;
+                    ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
+
+                    const auto& dims = ImNodes::GetNodeDimensions(node);
+                    previousNodesHeight += dims.y + 50.0f;
+                    largestNodeWidth = std::max({
+                        dims.x,
+                        largestNodeWidth,
+                    });
+                }
+
+                // Extra pass to add left padding to nodes in the same column.
+                for (const auto& node : column) {
+                    const auto& dims = ImNodes::GetNodeDimensions(node);
+                    auto& [x, y] = interfaceStates[node].block->interface->config.nodePos;
+                    x += (largestNodeWidth - dims.x);
+                    ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
+                }
+
+                largestColumnHeight = std::max({
+                    previousNodesHeight,
+                    largestColumnHeight,
+                });
+
+                previousColumnsWidth += largestNodeWidth + 150.0f;
+            }
+
+            previousClustersHeight += largestColumnHeight + 25.0f;
+        }
+
+        graphSpatiallyOrganized = true;
+    }
+
     // Draw node links.
-    U64 nodeConnectionId = 0;
-    for (const auto& [a, b, nodeId] : nodeConnections) {
-        switch (blockStates[nodeStates[nodeId].name].interface->device()) {
+    for (const auto& [id, connection] : nodeConnections) {
+        const auto& [input, output] = connection;
+        const auto& [inputId, _] = input;
+        const auto& [outputId, outputState] = output;
+
+        switch (outputState->block->interface->device()) {
             case Device::CPU:
                 ImNodes::PushColorStyle(ImNodesCol_Link,         CpuColor);
                 ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  CpuColor);
@@ -364,7 +524,7 @@ Result Instance::end() {
                 break;
         }
 
-        ImNodes::Link(nodeConnectionId++, a, b);
+        ImNodes::Link(id, inputId, outputId);
 
         ImNodes::PopColorStyle(); // Link
         ImNodes::PopColorStyle(); // LinkHovered
@@ -379,7 +539,7 @@ Result Instance::end() {
 
         for (const auto& id : selectedNodes) {
             const auto& [x, y] = ImNodes::GetNodeGridSpacePos(id);
-            blockStates[nodeStates[id].name].interface->config.nodePos = {x, y};
+            interfaceStates[id].block->interface->config.nodePos = {x, y};
         }
     }
 
@@ -388,14 +548,13 @@ Result Instance::end() {
     // Render underlying buffer information about the link.
     I32 linkId;
     if (ImNodes::IsLinkHovered(&linkId)) {
-        const auto& [_, outputId, nodeId] = nodeConnections[linkId];
-        auto& nodeState = nodeStates[nodeId];
-        const auto& outputName = nodeState.outputs[outputId];
-        const auto& vec = blockStates[nodeState.name].record.data.outputMap[outputName].vector;
+        const auto& [_, output] = nodeConnections[linkId];
+        const auto& [outputId, outputState] = output;
+        const auto& [outputName, vec] = outputState->outputs[outputId];
 
         const auto firstLine = fmt::format("Vector ({})", outputName);
-        const auto secondLine = fmt::format("[{}] {} [Device::{}] [{:02}]", vec.type, vec.shape, vec.device, vec.phash - vec.hash);
-        const auto thirdLine = fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(vec.ptr), vec.hash);
+        const auto secondLine = fmt::format("[{}] {} [Device::{}] [{:02}]", vec->type, vec->shape, vec->device, vec->phash - vec->hash);
+        const auto thirdLine = fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(vec->ptr), vec->hash);
 
         ImGui::BeginTooltip();
         ImGui::TextUnformatted(firstLine.c_str());
@@ -414,15 +573,14 @@ Result Instance::end() {
     if (ImNodes::IsLinkCreated(&startId, &endId)) {
         // TODO: Add link creation.
     }
-    
+
     // Resize node by dragging interface logic.
     I32 nodeId;
     if (ImNodes::IsNodeHovered(&nodeId)) {
         const auto nodeDims = ImNodes::GetNodeDimensions(nodeId);
         const auto nodeOrigin = ImNodes::GetNodeScreenSpacePos(nodeId);
 
-        auto& blockState = blockStates[nodeStates[nodeId].name];
-        F32& nodeWidth = blockState.interface->config.nodeWidth;
+        F32& nodeWidth = interfaceStates[nodeId].block->interface->config.nodeWidth;
 
         bool isNearRightEdge = 
             std::abs((nodeOrigin.x + nodeDims.x) - ImGui::GetMousePos().x) < 10.0f &&

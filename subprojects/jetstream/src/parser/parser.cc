@@ -101,7 +101,7 @@ Result Parser::printAll() {
         JST_INFO("  Module:            {}", ResolveReadable(values["module"]));
         JST_INFO("  Device:            {}", ResolveReadable(values["device"]));
 
-        if (values.find("dataType") != values.end()) {
+        if (values.contains("dataType")) {
             JST_INFO("  Data Type:         {}", ResolveReadable(values["dataType"]));
         } else {
             JST_INFO("  Data Type:         {} -> {}", ResolveReadable(values["inputDataType"]),
@@ -173,7 +173,7 @@ Result Parser::createViewport(Instance& instance) {
         }
     }
 
-    if (Store::Viewports().find(record.id) == Store::Viewports().end()) {
+    if (!Store::Viewports().contains(record.id)) {
         JST_FATAL("[PARSER] Can't find viewport with such a signature ({}).", record.id);
         std::cout << record.id << std::endl;
         return Result::ERROR;
@@ -218,7 +218,7 @@ Result Parser::createRender(Instance& instance) {
         }
     }
 
-    if (Store::Renders().find(record.id) == Store::Renders().end()) {
+    if (!Store::Renders().contains(record.id)) {
         JST_FATAL("[PARSER] Can't find render with such a signature ({}).", record.id);
         return Result::ERROR;
     }
@@ -255,7 +255,7 @@ Result Parser::createBackends(Instance& instance) {
             record.data.configMap[ResolveReadableKey(element)] = {SolveLocalPlaceholder(instance, localPlaceholder), {}};
         }
 
-        if (Store::Backends().find(record.id) == Store::Backends().end()) {
+        if (!Store::Backends().contains(record.id)) {
             JST_FATAL("[PARSER] Can't find backend with such a signature ({}).", record.id);
             return Result::ERROR;
         }
@@ -283,7 +283,7 @@ Result Parser::createModules(Instance& instance) {
         auto values = GatherNodes(root, node, {"module", "device", "dataType", "inputDataType", "outputDataType"}, true);
         record.id.module = ResolveReadable(values["module"]);
         record.id.device = ResolveReadable(values["device"]);
-        if (values.find("dataType") != values.end()) {
+        if (values.contains("dataType")) {
             record.id.dataType = ResolveReadable(values["dataType"]);
         } else {
             record.id.inputDataType = ResolveReadable(values["inputDataType"]);
@@ -311,7 +311,7 @@ Result Parser::createModules(Instance& instance) {
             }
         }
 
-        if (Store::Modules().find(record.id) == Store::Modules().end()) {
+        if (!Store::Modules().contains(record.id)) {
             JST_FATAL("[PARSER] Can't find module with such a signature ({}).", record.id);
             return Result::ERROR;
         }
