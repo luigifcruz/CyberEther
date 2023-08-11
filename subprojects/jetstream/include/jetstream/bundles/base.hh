@@ -23,11 +23,6 @@
 #include "jetstream/bundles/constellation.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
-#include "jetstream/bundles/constellation.hh"
-#endif
-
 #if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE) || \
     defined(JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE)
 #include "jetstream/bundles/soapy.hh"

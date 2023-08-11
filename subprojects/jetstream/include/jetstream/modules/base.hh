@@ -70,9 +70,4 @@
 #include "jetstream/modules/constellation.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
-#include "jetstream/modules/constellation.hh"
-#endif
-
 #endif
