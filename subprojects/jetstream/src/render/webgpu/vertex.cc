@@ -83,11 +83,11 @@ Result Implementation::destroy() {
 Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
     U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
-        renderPassEncoder.SetVertexBuffer(bindingCount++, buffer->getHandle());
+        renderPassEncoder.SetVertexBuffer(bindingCount++, buffer->getHandle(), 0, buffer->byteSize());
     }
 
     if (indices) {
-        renderPassEncoder.SetIndexBuffer(indices->getHandle(), wgpu::IndexFormat::Uint32);
+        renderPassEncoder.SetIndexBuffer(indices->getHandle(), wgpu::IndexFormat::Uint32, 0, indices->byteSize());
     }
 
     return Result::SUCCESS;

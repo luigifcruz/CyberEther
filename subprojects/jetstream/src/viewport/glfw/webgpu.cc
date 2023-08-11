@@ -58,7 +58,9 @@ Result Implementation::create() {
     wgpu::SurfaceDescriptor surface_desc{};
     surface_desc.nextInChain = &html_surface_desc;
 
-    wgpu::Instance instance{};
+    wgpu::InstanceDescriptor instanceDesc{};
+    instance = wgpu::CreateInstance(&instanceDesc);
+
     surface = instance.CreateSurface(&surface_desc);
 
     JST_CHECK(createSwapchain());
