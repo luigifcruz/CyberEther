@@ -179,13 +179,13 @@ void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::WebGPU>();
     ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::Text("FPS: %.1f Hz", io.Framerate);
-    ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
-    ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
-    ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::Text("Physical Memory: %.00f GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
-    ImGui::Text("Processor Count: %llu", backend->getTotalProcessorCount());
+    ImGui::TextFormatted("FPS: {:.1f} Hz", io.Framerate);
+    ImGui::TextFormatted("Device Name: {}", backend->getDeviceName());
+    ImGui::TextFormatted("Low Power Mode: {}", backend->getLowPowerStatus() ? "YES" : "NO");
+    ImGui::TextFormatted("Has Unified Memory: {}", backend->hasUnifiedMemory() ? "YES" : "NO");
+    ImGui::TextFormatted("Physical Memory: {:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
+    ImGui::TextFormatted("Thermal State: {}/3", backend->getThermalState());
+    ImGui::TextFormatted("Processor Count: {}", backend->getTotalProcessorCount());
 }
 
 const Window::Stats& Implementation::stats() const {

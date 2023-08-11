@@ -268,17 +268,17 @@ Result Instance::end() {
     ImGui::Begin("Info");
 
     if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Text("Graphs: %lu", _scheduler->getNumberOfGraphs());
-        ImGui::Text("Present Blocks: %lu", _scheduler->getNumberOfPresentBlocks());
-        ImGui::Text("Compute Blocks: %lu", _scheduler->getNumberOfComputeBlocks());
+        ImGui::TextFormatted("Graphs: {}", _scheduler->getNumberOfGraphs());
+        ImGui::TextFormatted("Present Blocks: {}", _scheduler->getNumberOfPresentBlocks());
+        ImGui::TextFormatted("Compute Blocks: {}", _scheduler->getNumberOfComputeBlocks());
         // TODO: Add printout of compute devices here.
     }
 
     if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
         _window->drawDebugMessage();
-        ImGui::Text("Dropped Frames: %lu", _window->stats().droppedFrames);
-        ImGui::Text("Render Device: %s", GetDevicePrettyName(_window->device()));
-        ImGui::Text("Viewport Platform: %s", _viewport->prettyName().c_str());
+        ImGui::TextFormatted("Dropped Frames: {}", _window->stats().droppedFrames);
+        ImGui::TextFormatted("Render Device: {}", GetDevicePrettyName(_window->device()));
+        ImGui::TextFormatted("Viewport Platform: {}", _viewport->prettyName());
     }
 
     for (auto& [_, state] : interfaceStates) {

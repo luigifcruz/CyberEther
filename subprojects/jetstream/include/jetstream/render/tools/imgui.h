@@ -50,6 +50,9 @@ Index of this file:
 
 #pragma once
 
+// UPDATE-ME: Add fmt formatted Text.
+#include <fmt/format.h>
+
 // Configuration file with compile-time options
 // (edit imconfig.h or '#define IMGUI_USER_CONFIG "myfilename.h" from your build system')
 #ifdef IMGUI_USER_CONFIG
@@ -984,6 +987,8 @@ namespace ImGui
     IMGUI_API ImGuiViewport*    FindViewportByID(ImGuiID id);                                   // this is a helper for backends.
     IMGUI_API ImGuiViewport*    FindViewportByPlatformHandle(void* platform_handle);            // this is a helper for backends. the type platform_handle is decided by the backend (e.g. HWND, MyWindow*, GLFWwindow* etc.)
 
+    // UPDATE-ME: Add fmt formatted Text.
+    #define TextFormatted(text, ...) TextUnformatted(fmt::format(text, ##__VA_ARGS__).c_str())
 } // namespace ImGui
 
 //-----------------------------------------------------------------------------

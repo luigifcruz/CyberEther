@@ -97,21 +97,21 @@ class Soapy : public Bundle {
     void drawInfo() {
         const auto& buffer = soapy->getCircularBuffer();
 
-        ImGui::Text("Device Name: %s", soapy->getDeviceName().c_str());
-        ImGui::Text("Hardware Key: %s", soapy->getDeviceHardwareKey().c_str());
+        ImGui::TextFormatted("Device Name: {}", soapy->getDeviceName());
+        ImGui::TextFormatted("Hardware Key: {}", soapy->getDeviceHardwareKey());
         F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * 8) / (1024 * 1024));
-        ImGui::Text("Data Throughput %.0f MB/s", sdrThroughputMB);
-        ImGui::Text("RF Bandwidth: %.1f MHz", soapy->getConfig().sampleRate / (1000 * 1000));
+        ImGui::TextFormatted("Data Throughput {:.0f} MB/s", sdrThroughputMB);
+        ImGui::TextFormatted("RF Bandwidth: {:.1f} MHz", soapy->getConfig().sampleRate / (1000 * 1000));
 
         ImGui::Separator();
 
         F32 bufferThroughputMB = (buffer.getThroughput() / (1024 * 1024));
-        ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+        ImGui::TextFormatted("Buffer Throughput {:.0f} MB/s", bufferThroughputMB);
 
         F32 bufferCapacityMB = ((F32)buffer.getCapacity() * sizeof(CF32) / (1024 * 1024));
-        ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
+        ImGui::TextFormatted("Capacity {:.0f} MB", bufferCapacityMB);
 
-        ImGui::Text("Overflows %lu", buffer.getOverflows());
+        ImGui::TextFormatted("Overflows {}", buffer.getOverflows());
 
         F32 bufferUsageRatio = (F32)buffer.getOccupancy() / buffer.getCapacity();
         ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
