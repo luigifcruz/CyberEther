@@ -22,7 +22,7 @@ public:
     bool isFull() const;
 
     Result get(T*, U64);
-    Result put(T*, U64);
+    Result put(const T*, U64);
     Result reset();
 
     Result waitBufferOccupancy(U64);

@@ -73,7 +73,7 @@ exception:
 }
 
 template<class T>
-Result CircularBuffer<T>::put(T* buf, U64 size) {
+Result CircularBuffer<T>::put(const T* buf, U64 size) {
     if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
