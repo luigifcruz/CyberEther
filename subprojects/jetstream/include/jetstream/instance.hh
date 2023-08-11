@@ -2,6 +2,7 @@
 #define JETSTREAM_INSTANCE_HH
 
 #include <tuple>
+#include <stack>
 #include <memory>
 #include <vector>
 #include <algorithm>

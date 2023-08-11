@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPUTE_SCHEDULER_HH
 
 #include <memory>
+#include <stack>
 #include <ranges>
 #include <vector>
 #include <algorithm>
