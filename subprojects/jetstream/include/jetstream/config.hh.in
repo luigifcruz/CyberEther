@@ -71,6 +71,7 @@
 
 // AUDIO
 #mesondefine JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE
+#mesondefine JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE
 
 //
 // Graphical Modules

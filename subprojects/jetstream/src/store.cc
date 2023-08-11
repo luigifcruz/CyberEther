@@ -141,7 +141,7 @@ ModuleStore& Store::defaultModules() {
         { {"soapy",         "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Soapy, Device::Metal, CF32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE
-        // TODO: Add Metal Audio.
+        { {"audio",         "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Audio, Device::Metal, CF32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
         { {"lineplot",      "metal",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Lineplot, Device::Metal, F32>(r); } },

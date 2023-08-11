@@ -1,4 +1,3 @@
-#define MINIAUDIO_IMPLEMENTATION
 #include "jetstream/modules/audio.hh"
 
 namespace Jetstream { 
@@ -49,23 +48,21 @@ void Audio<D, T>::summary() const {
 
 template<Device D, typename T>
 void Audio<D, T>::callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    printf("called :)\n");
-
     auto* audio = reinterpret_cast<Audio<D, T>*>(pDevice->pUserData);
 
     if (frameCount < audio->buffer.getOccupancy()) {
         audio->buffer.get((float*)pOutput, frameCount);
     }
-    JST_INFO("{}", audio->buffer.getOccupancy())
 }
 
-double phase(const CF32& c) {
+inline F32 phase(const CF32& c) {
     return atan2(c.imag(), c.real());
 }
 
 template<Device D, typename T>
-std::vector<F32> fmDemodulate(const Vector<D, T, 2>& iq) {
+inline std::vector<F32> fmDemodulate(const Vector<D, T, 2>& iq) {
     std::vector<F32> demodulated;
+    demodulated.reserve(iq.size());
     double prevPhase = phase(iq[0]);
 
     for (size_t i = 1; i < iq.size(); ++i) {
@@ -83,10 +80,13 @@ std::vector<F32> fmDemodulate(const Vector<D, T, 2>& iq) {
     return demodulated;
 }
 
-std::vector<F32> resample(const std::vector<F32>& signal, int upFactor, int downFactor) {
+inline std::vector<F32> resample(const std::vector<F32>& signal, int upFactor, int downFactor) {
     std::vector<F32> upsampled;
+    upsampled.reserve(signal.size());
     std::vector<F32> filtered;
+    filtered.reserve(signal.size());
     std::vector<F32> downsampled;
+    downsampled.reserve(signal.size());
 
     // Upsampling
     for (double val : signal) {
@@ -123,10 +123,11 @@ Result Audio<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Audio<D, T>::compute(const RuntimeMetadata&) {
     const auto& demodulated = fmDemodulate(input.buffer);
-    const auto& resampled = resample(demodulated, 49, 240);
+    const auto& resampled = resample(demodulated, 1, 5);
 
     buffer.put(resampled.data(), resampled.size());
-    JST_INFO(">> {}", buffer.getOccupancy())
+
+    //buffer.put((F32*)input.buffer.data(), (U64)input.buffer.shape()[1]/5);
 
     return Result::SUCCESS;
 }
