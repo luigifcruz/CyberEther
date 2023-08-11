@@ -80,6 +80,7 @@ ModuleStore& Store::defaultModules() {
         { {"window",    "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Window,    Device::CPU, CF32>(r); } },
         { {"amplitude", "cpu",     "", "CF32",  "F32"}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Amplitude, Device::CPU, CF32,  F32>(r); } },
         { {"scale",     "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Scale,     Device::CPU,  F32>(r); } },
+        { {"audio",     "cpu",  "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Audio,     Device::CPU,  CF32>(r); } },
 
         { {"constellation-ui", "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Bundles::Constellation, Device::CPU, CF32>(r); } },
         { {"lineplot-ui",      "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { instance.addModule<Bundles::Lineplot,      Device::CPU,  F32>(r); } },

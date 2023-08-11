@@ -42,6 +42,11 @@
 #include "jetstream/modules/soapy.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE)
+#include "jetstream/modules/audio.hh"
+#endif
+
 //
 // Graphical
 // 
