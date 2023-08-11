@@ -50,7 +50,6 @@ Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
 template class FFT<Device::CPU, CF32>;
     
 }  // namespace Jetstream

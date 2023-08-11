@@ -36,8 +36,6 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
 template class Amplitude<Device::CPU, CF32>;
-template class Amplitude<Device::CPU, CF64>;
     
 }  // namespace Jetstream

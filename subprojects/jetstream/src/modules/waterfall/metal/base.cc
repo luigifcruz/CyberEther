@@ -24,7 +24,6 @@ Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-
 template class Waterfall<Device::Metal, F32>;
     
 }  // namespace Jetstream

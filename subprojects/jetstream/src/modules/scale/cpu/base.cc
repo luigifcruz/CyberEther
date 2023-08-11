@@ -25,7 +25,6 @@ Result Scale<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
 template class Scale<Device::CPU, F32>;
     
 }  // namespace Jetstream

@@ -61,7 +61,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-
 template class Lineplot<Device::Metal, F32>;
     
 }  // namespace Jetstream

@@ -29,8 +29,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
-template class Lineplot<Device::CPU, F64>;
 template class Lineplot<Device::CPU, F32>;
     
 }  // namespace Jetstream

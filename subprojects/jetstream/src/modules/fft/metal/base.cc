@@ -76,7 +76,6 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-
 template class FFT<Device::Metal, CF32>;
     
 }  // namespace Jetstream

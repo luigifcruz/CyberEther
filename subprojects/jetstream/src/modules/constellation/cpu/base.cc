@@ -50,7 +50,6 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
 template class Constellation<Device::CPU, CF32>;
 
 }  // namespace Jetstream

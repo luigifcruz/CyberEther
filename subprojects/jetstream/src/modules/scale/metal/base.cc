@@ -55,7 +55,6 @@ Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-
 template class Scale<Device::Metal, F32>;
     
 }  // namespace Jetstream

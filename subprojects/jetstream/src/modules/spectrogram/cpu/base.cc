@@ -35,8 +35,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
-template class Spectrogram<Device::CPU, F64>;
 template class Spectrogram<Device::CPU, F32>;
 
 }  // namespace Jetstream

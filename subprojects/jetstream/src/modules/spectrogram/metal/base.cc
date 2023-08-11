@@ -97,7 +97,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-
 template class Spectrogram<Device::Metal, F32>;
 
 }  // namespace Jetstream

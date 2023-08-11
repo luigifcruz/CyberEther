@@ -17,7 +17,6 @@ Result Multiply<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
 template class Multiply<Device::CPU, CF32>;
 template class Multiply<Device::CPU, F32>;
     
