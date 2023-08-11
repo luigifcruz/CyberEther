@@ -441,7 +441,6 @@ Result Instance::end() {
 
     // Spatially organize graph.
     if (!graphSpatiallyOrganized) {
-        JST_INFO("{}", topological)
         F32 previousClustersHeight = 0.0f;
         
         for (const auto& cluster : topological) {
