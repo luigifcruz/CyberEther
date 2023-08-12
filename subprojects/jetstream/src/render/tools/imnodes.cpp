@@ -732,17 +732,16 @@ void BeginCanvasInteraction(ImNodesEditorContext& editor)
         return;
     }
 
-    const bool started_panning = GImNodes->AltMouseClicked;
-
-    if (started_panning)
-    {
-        editor.ClickInteraction.Type = ImNodesClickInteractionType_Panning;
-    }
-    else if (GImNodes->LeftMouseClicked)
+    // UPDATE-ME: Invert Alt and Left for Grid.
+    if (GImNodes->AltMouseClicked || (ImGui::GetIO().KeyShift && GImNodes->LeftMouseClicked))
     {
         editor.ClickInteraction.Type = ImNodesClickInteractionType_BoxSelection;
         editor.ClickInteraction.BoxSelector.Rect.Min =
             ScreenSpaceToGridSpace(editor, GImNodes->MousePos);
+    }
+    else if (GImNodes->LeftMouseClicked)
+    {
+        editor.ClickInteraction.Type = ImNodesClickInteractionType_Panning;
     }
 }
 
@@ -1109,7 +1108,8 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
     break;
     case ImNodesClickInteractionType_Panning:
     {
-        const bool dragging = GImNodes->AltMouseDragging;
+        // UPDATE-ME: Invert Alt and Left for Grid.
+        const bool dragging = GImNodes->LeftMouseDragging;
 
         if (dragging)
         {
