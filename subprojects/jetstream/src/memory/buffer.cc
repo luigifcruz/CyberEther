@@ -5,7 +5,7 @@ using namespace std::chrono_literals;
 namespace Jetstream::Memory {
 
 template<class T>
-CircularBuffer<T>::CircularBuffer(U64 capacity)
+CircularBuffer<T>::CircularBuffer(const U64& capacity)
      : transfers(0),
        throughput(0.0),
        capacity(capacity),
@@ -22,7 +22,7 @@ CircularBuffer<T>::~CircularBuffer() {
 }
 
 template<class T>
-Result CircularBuffer<T>::waitBufferOccupancy(U64 size) {
+Result CircularBuffer<T>::waitBufferOccupancy(const U64& size) {
     std::unique_lock<std::mutex> sync(sync_mtx);
     while (getOccupancy() < size) {
         if (semaphore.wait_for(sync, 5s) == std::cv_status::timeout)
@@ -32,7 +32,7 @@ Result CircularBuffer<T>::waitBufferOccupancy(U64 size) {
 }
 
 template<class T>
-Result CircularBuffer<T>::get(T* buf, U64 size) {
+Result CircularBuffer<T>::get(T* buf, const U64& size) {
     if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
@@ -60,7 +60,7 @@ Result CircularBuffer<T>::get(T* buf, U64 size) {
         std::chrono::duration<double> elapsed = now - lastGet;
 
         if (elapsed.count() > 0.5) {
-            throughput = (transfers * sizeof(T)) / elapsed.count();
+            throughput = static_cast<F32>(transfers) / elapsed.count();
             transfers = 0.0;
             lastGet = std::chrono::system_clock::now();
         }
@@ -73,7 +73,7 @@ exception:
 }
 
 template<class T>
-Result CircularBuffer<T>::put(const T* buf, U64 size) {
+Result CircularBuffer<T>::put(const T* buf, const U64& size) {
     if (getCapacity() < size) {
         return Result::ERROR_BEYOND_CAPACITY;
     }
@@ -116,16 +116,6 @@ Result CircularBuffer<T>::reset() {
 
     semaphore.notify_all();
     return Result::SUCCESS;
-}
-
-template<class T>
-U64 CircularBuffer<T>::getCapacity() const {
-    return this->capacity;
-}
-
-template<class T>
-U64 CircularBuffer<T>::getOccupancy() const {
-    return this->occupancy;
 }
 
 template<class T>
