@@ -9,7 +9,6 @@ void Window::ApplyImGuiTheme(const F32& scale) {
     // Theme By:
     // https://github.com/ocornut/imgui/issues/707#issuecomment-917151020
 
-    // TODO: Fix red colors.
     auto &colors = style.Colors;
     colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
     colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
@@ -51,10 +50,10 @@ void Window::ApplyImGuiTheme(const F32& scale) {
     colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
     colors[ImGuiCol_DockingPreview]         = ImVec4(0.33f, 0.67f, 0.86f, 1.00f);
     colors[ImGuiCol_DockingEmptyBg]         = ImVec4(0.05f, 0.05f, 0.05f, 0.54f);
-    colors[ImGuiCol_PlotLines]              = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    colors[ImGuiCol_PlotHistogram]          = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.86f, 0.33f, 0.33f, 1.00f);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(0.92f, 0.40f, 0.40f, 1.00f);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.23f, 0.65f, 0.58f, 1.00f);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(0.92f, 0.40f, 0.40f, 1.00f);
     colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.00f, 0.00f, 0.00f, 0.52f);
     colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.00f, 0.00f, 0.00f, 0.52f);
     colors[ImGuiCol_TableBorderLight]       = ImVec4(0.28f, 0.28f, 0.28f, 0.29f);
@@ -90,6 +89,8 @@ void Window::ApplyImGuiTheme(const F32& scale) {
     style.LogSliderDeadzone                 = 4;
     style.TabRounding                       = 4;
 
+    style.CellPadding = ImVec2(3.0f, 4.0f);
+
     style.ScaleAllSizes(scale);
 
     auto& io = ImGui::GetIO();
@@ -118,7 +119,7 @@ void Window::ApplyImNodesTheme(const F32& scale) {
     auto &colors = style.Colors;
     colors[ImNodesCol_NodeBackground]         = IM_COL32(30, 30, 30, 255);
     colors[ImNodesCol_NodeBackgroundHovered]  = IM_COL32(30, 30, 30, 255);
-    colors[ImNodesCol_NodeBackgroundSelected] = IM_COL32(30, 30, 30, 255);
+    colors[ImNodesCol_NodeBackgroundSelected] = IM_COL32(35, 35, 35, 255);
     colors[ImNodesCol_NodeOutline]            = IM_COL32(20, 20, 20, 255);
 }
 
@@ -126,13 +127,14 @@ void Window::ApplyImNodesScale() {
     auto& style = ImNodes::GetStyle();
     const auto& scalingFactor = ImGui::GetIO().DisplayFramebufferScale.x;
 
-    style.NodePadding         = ImVec2(8.0f / scalingFactor, 8.0f / scalingFactor);
-    style.PinCircleRadius     = 4.0f  / scalingFactor;
-    style.GridSpacing         = 40.0f / scalingFactor;
-    style.NodeBorderThickness = 1.0f  / scalingFactor;
-    style.NodeCornerRounding  = 4.0f  / scalingFactor;
-    style.LinkThickness       = 3.0f  / scalingFactor;
-    style.PinLineThickness    = 1.0f  / scalingFactor;
+    style.NodePadding               = ImVec2(8.0f / scalingFactor, 8.0f / scalingFactor);
+    style.PinCircleRadius           = 4.0f  / scalingFactor;
+    style.GridSpacing               = 40.0f / scalingFactor;
+    style.NodeBorderThickness       = 1.0f  / scalingFactor;
+    style.NodeCornerRounding        = 4.0f  / scalingFactor;
+    style.LinkThickness             = 3.0f  / scalingFactor;
+    style.PinLineThickness          = 1.0f  / scalingFactor;
+    style.LinkLineSegmentsPerLength = 0.1f  * scalingFactor;
 }
 
 }  // namespace Jetstream::Render

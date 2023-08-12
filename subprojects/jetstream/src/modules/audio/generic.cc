@@ -63,11 +63,11 @@ template<Device D, typename T>
 inline std::vector<F32> fmDemodulate(const Vector<D, T, 2>& iq) {
     std::vector<F32> demodulated;
     demodulated.reserve(iq.size());
-    double prevPhase = phase(iq[0]);
+    F32 prevPhase = phase(iq[0]);
 
     for (size_t i = 1; i < iq.size(); ++i) {
-        double currPhase = phase(iq[i]);
-        double phaseDiff = currPhase - prevPhase;
+        F32 currPhase = phase(iq[i]);
+        F32 phaseDiff = currPhase - prevPhase;
 
         // Adjust phase difference to be between -pi and pi
         while (phaseDiff > M_PI) phaseDiff -= 2 * M_PI;
@@ -89,7 +89,7 @@ inline std::vector<F32> resample(const std::vector<F32>& signal, int upFactor, i
     downsampled.reserve(signal.size());
 
     // Upsampling
-    for (double val : signal) {
+    for (F32 val : signal) {
         upsampled.push_back(val);
         for (int i = 1; i < upFactor; ++i) {
             upsampled.push_back(0.0);
@@ -99,7 +99,7 @@ inline std::vector<F32> resample(const std::vector<F32>& signal, int upFactor, i
     // Filtering (using a simple boxcar filter)
     int filterSize = upFactor;
     for (size_t i = 0; i < upsampled.size() - filterSize; ++i) {
-        double sum = 0.0;
+        F32 sum = 0.0;
         for (int j = 0; j < filterSize; ++j) {
             sum += upsampled[i + j];
         }

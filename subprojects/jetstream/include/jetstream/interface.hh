@@ -14,12 +14,14 @@ class JETSTREAM_API Interface {
         F32 nodeWidth = 0.0f;
         bool viewEnabled = false;
         bool previewEnabled = false;
+        bool controlEnabled = false;
         Size2D<F32> nodePos = {0.0f, 0.0f};
 
         JST_SERDES(
             JST_SERDES_VAL("nodeWidth", nodeWidth);
             JST_SERDES_VAL("viewEnabled", viewEnabled);
             JST_SERDES_VAL("previewEnabled", previewEnabled);
+            JST_SERDES_VAL("controlEnabled", controlEnabled);
             JST_SERDES_VAL("nodePos", nodePos);
         );
     };

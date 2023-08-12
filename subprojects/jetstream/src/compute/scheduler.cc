@@ -98,12 +98,11 @@ Scheduler::Scheduler(std::shared_ptr<Render::Window>& window,
     
     // Process modules into graph.
     ExecutionOrder executionOrder;
-    DeviceExecutionOrder deviceExecutionOrder;
     
     JST_CHECK_THROW(removeInactive());
-    JST_CHECK_THROW(arrangeDependencyOrder(executionOrder, deviceExecutionOrder));
+    JST_CHECK_THROW(arrangeDependencyOrder(executionOrder));
     JST_CHECK_THROW(checkSequenceValidity(executionOrder));
-    JST_CHECK_THROW(createExecutionGraphs(deviceExecutionOrder));
+    JST_CHECK_THROW(createExecutionGraphs());
 
     // Initialize compute logic from modules.
     for (const auto& graph : graphs) {
@@ -212,8 +211,7 @@ Result Scheduler::removeInactive() {
     return Result::SUCCESS;
 }
 
-Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
-                                         DeviceExecutionOrder& deviceExecutionOrder) {
+Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder) {
     JST_DEBUG("[SCHEDULER] Calculating module degrees.");
     std::unordered_set<std::string> queue;
     std::unordered_map<std::string, U64> degrees;
@@ -406,7 +404,7 @@ Result Scheduler::checkSequenceValidity(ExecutionOrder& executionOrder) {
     return Result::SUCCESS;
 }
 
-Result Scheduler::createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrder) {
+Result Scheduler::createExecutionGraphs() {
     JST_DEBUG("[SCHEDULER] Instantiating compute graphs and adding wired Vectors.");
     for (const auto& [device, blocksNames] : deviceExecutionOrder) {
         auto graph = NewGraph(device);
@@ -448,6 +446,42 @@ Result Scheduler::createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrd
     }
  
     return Result::SUCCESS;
+}
+
+void Scheduler::drawDebugMessage() const {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Pipeline:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextFormatted("{} graph(s)", graphs.size());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Present:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextFormatted("{} block(s)", presentModuleStates.size());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Compute:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{} block(s)", computeModuleStates.size());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextFormatted("Graph List:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextUnformatted("");
+
+    U64 count = 0;
+    for (const auto& [device, blocks] : deviceExecutionOrder) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("[{}] {}: {} blocks", count, GetDevicePrettyName(device), blocks.size());
+    }
 }
 
 }  // namespace Jetstream

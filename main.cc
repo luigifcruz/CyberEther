@@ -223,7 +223,6 @@ class UI {
             }
 
             if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
-                instance.window().drawDebugMessage();
                 ImGui::TextFormatted("Viewport Device: {}", instance.viewport().name());
                 ImGui::TextFormatted("Render Device: {}", GetDevicePrettyName(RenderDevice));
                 ImGui::TextFormatted("Dropped Frames: {}", instance.window().stats().droppedFrames);

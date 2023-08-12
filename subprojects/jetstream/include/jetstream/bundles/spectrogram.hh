@@ -61,7 +61,7 @@ class Spectrogram : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Spectrogram View";
+        return "Spectrogram";
     }
 
     // Constructor

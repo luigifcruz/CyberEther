@@ -71,7 +71,7 @@ class Soapy : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Soapy Device View";
+        return "Soapy";
     }
 
     // Constructor
@@ -97,24 +97,51 @@ class Soapy : public Bundle {
     void drawInfo() {
         const auto& buffer = soapy->getCircularBuffer();
 
-        ImGui::TextFormatted("Device Name: {}", soapy->getDeviceName());
-        ImGui::TextFormatted("Hardware Key: {}", soapy->getDeviceHardwareKey());
-        F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * 8) / (1024 * 1024));
-        ImGui::TextFormatted("Data Throughput {:.0f} MB/s", sdrThroughputMB);
-        ImGui::TextFormatted("RF Bandwidth: {:.1f} MHz", soapy->getConfig().sampleRate / (1000 * 1000));
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Device Name:");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("{} ({})", soapy->getDeviceName(), soapy->getDeviceHardwareKey());
 
-        ImGui::Separator();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Bandwidth:");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("{:.1f} MHz", soapy->getConfig().sampleRate / (1000 * 1000));
 
-        F32 bufferThroughputMB = (buffer.getThroughput() / (1024 * 1024));
-        ImGui::TextFormatted("Buffer Throughput {:.0f} MB/s", bufferThroughputMB);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Overflows:");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("{}", buffer.getOverflows());
 
-        F32 bufferCapacityMB = ((F32)buffer.getCapacity() * sizeof(CF32) / (1024 * 1024));
-        ImGui::TextFormatted("Capacity {:.0f} MB", bufferCapacityMB);
+        const F32& bufferOccupancy = buffer.getOccupancy();
+        const F32 bufferOccupancyMB = (bufferOccupancy * sizeof(CF32) / (1024 * 1024));
+        
+        const F32& bufferCapacity = buffer.getCapacity();
+        const F32 bufferCapacityMB = (bufferCapacity * sizeof(CF32) / (1024 * 1024));
 
-        ImGui::TextFormatted("Overflows {}", buffer.getOverflows());
+        const F32& bufferThroughput = buffer.getThroughput();
+        const F32 bufferThroughputMB = (bufferThroughput * sizeof(CF32) / (1024 * 1024));
 
-        F32 bufferUsageRatio = (F32)buffer.getOccupancy() / buffer.getCapacity();
-        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Buffer Health:");
+        ImGui::TableSetColumnIndex(1);
+        const F32 bufferUsageRatio = bufferOccupancy / bufferCapacity;
+        const auto bufferOverlay = fmt::format("{:.0f}/{:.0f} MB", bufferOccupancyMB, bufferCapacityMB);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), bufferOverlay.c_str());
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Throughput:");
+        ImGui::TableSetColumnIndex(1);
+        const F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * sizeof(CF32)) / (1024 * 1024));
+        const F32 throughputRatio = (bufferThroughputMB / sdrThroughputMB) * 0.5f;
+        const auto throughputOverlay = fmt::format("{:.0f}/{:.0f} MB/s", bufferThroughputMB, sdrThroughputMB);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::ProgressBar(throughputRatio, ImVec2(0.0f, 0.0f), throughputOverlay.c_str());
     }
 
     constexpr bool shouldDrawInfo() const {
@@ -122,11 +149,22 @@ class Soapy : public Bundle {
     }
 
     void drawControl() {
-        ImGui::InputFloat("Frequency (MHz)", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Frequency (MHz)");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
         if (ImGui::IsItemEdited()) { 
-            frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6; 
+            frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6;
         }
-        ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");    
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Step Size (MHz)");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputFloat("##StepSize", &stepSize, 1.0f, 5.0f, "%.3f MHz");
     }
 
     constexpr bool shouldDrawControl() const {

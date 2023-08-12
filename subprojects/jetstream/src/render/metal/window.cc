@@ -170,16 +170,34 @@ Result Implementation::end() {
 
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Metal>();
-    ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::TextFormatted("FPS: {:.1f} Hz", io.Framerate);
-    ImGui::TextFormatted("Device Name: {}", backend->getDeviceName());
-    ImGui::TextFormatted("Low Power Mode: {}", backend->getLowPowerStatus() ? "YES" : "NO");
-    ImGui::TextFormatted("Has Unified Memory: {}", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::TextFormatted("Physical Memory: {:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::TextFormatted("Thermal State: {}/3", backend->getThermalState());
-    ImGui::TextFormatted("Processor Count: {}/{}", backend->getActiveProcessorCount(),
-                                                   backend->getTotalProcessorCount());
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Device Name:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getDeviceName());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Low Power Mode:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getLowPowerStatus() ? "YES" : "NO");
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Physical Memory:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Thermal State:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}/3", backend->getThermalState());
 }
 
 const Window::Stats& Implementation::stats() const {

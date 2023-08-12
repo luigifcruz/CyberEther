@@ -63,7 +63,7 @@ class Lineplot : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Lineplot View";
+        return "Lineplot";
     }
 
     // Constructor

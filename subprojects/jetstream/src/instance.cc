@@ -218,7 +218,10 @@ Result Instance::present() {
 
 Result Instance::end() {
     const auto& scalingFactor = ImGui::GetIO().DisplayFramebufferScale.x;
-    const auto& style = ImNodes::GetStyle();
+    const auto& nodeStyle = ImNodes::GetStyle();
+    const auto& guiStyle = ImGui::GetStyle();
+
+    const F32 variableSize = 200.0f / scalingFactor;
 
     static const U32 CpuColor            = IM_COL32(224, 146,   0, 255);
     static const U32 CpuColorSelected    = IM_COL32(184, 119,   0, 255);
@@ -241,7 +244,11 @@ Result Instance::end() {
             continue;
         }
 
-        ImGui::Begin(state.title.c_str(), &state.block->interface->config.viewEnabled);
+        if (!ImGui::Begin(fmt::format("Preview - {}", state.title).c_str(), 
+                          &state.block->interface->config.viewEnabled)) {
+            ImGui::End();
+            continue;
+        }
         state.block->interface->drawView();
         ImGui::End();
     }
@@ -250,49 +257,116 @@ Result Instance::end() {
     // Control Render
     //
 
-    ImGui::Begin("Control");
-    for (auto& [_, state] : interfaceStates) {
-        if (!state.block->interface->shouldDrawControl()) {
+    for (const auto& [_, state] : interfaceStates) {
+        if (!state.block->interface->config.controlEnabled ||
+            !state.block->interface->shouldDrawControl()) {
             continue;
         }
 
-        if (ImGui::CollapsingHeader(state.title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            state.block->interface->drawControl();
+        if (!ImGui::Begin(fmt::format("Control - {}", state.title).c_str(), 
+                          &state.block->interface->config.controlEnabled)) {
+            ImGui::End();
+            continue;
         }
+
+        ImGui::BeginTable("##ControlTable", 2, ImGuiTableFlags_None);
+        ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+        ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, ImGui::GetWindowWidth() - variableSize - 
+                                                                             (guiStyle.CellPadding.x * 2.0f));
+        state.block->interface->drawControl();
+        ImGui::EndTable();
+
+        if (ImGui::TreeNode("Info")) {
+            ImGui::BeginTable("##InfoTableAttached", 2, ImGuiTableFlags_None);
+            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, ImGui::GetWindowWidth() - variableSize - 
+                                                                              (guiStyle.CellPadding.x * 2.0f));
+            state.block->interface->drawInfo();
+            ImGui::EndTable();
+            ImGui::TreePop();
+        }
+
+        ImGui::End();
     }
-    ImGui::End();
 
     //
     // Info Render
     //
 
-    ImGui::Begin("Info");
-
-    if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::TextFormatted("Graphs: {}", _scheduler->getNumberOfGraphs());
-        ImGui::TextFormatted("Present Blocks: {}", _scheduler->getNumberOfPresentBlocks());
-        ImGui::TextFormatted("Compute Blocks: {}", _scheduler->getNumberOfComputeBlocks());
-        // TODO: Add printout of compute devices here.
-    }
-
-    if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
-        _window->drawDebugMessage();
-        ImGui::TextFormatted("Dropped Frames: {}", _window->stats().droppedFrames);
-        ImGui::TextFormatted("Render Device: {}", GetDevicePrettyName(_window->device()));
-        ImGui::TextFormatted("Viewport Platform: {}", _viewport->prettyName());
-    }
-
-    for (auto& [_, state] : interfaceStates) {
-        if (!state.block->interface->shouldDrawInfo()) {
-            continue;
+    [&](){
+        if (!ImGui::Begin("Info")) {
+            ImGui::End();
+            return;
         }
 
-        if (ImGui::CollapsingHeader(state.title.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            state.block->interface->drawInfo();
-        }
-    }
+        if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
+            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, ImGui::GetWindowWidth() - variableSize - 
+                                                                              (guiStyle.CellPadding.x * 2.0f));
 
-    ImGui::End();
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("FPS:");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextFormatted("{:.1f} Hz", ImGui::GetIO().Framerate);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Dropped Frames:");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextFormatted("{}", _window->stats().droppedFrames);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Render Backend:");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1);
+            ImGui::TextFormatted("{}", GetDevicePrettyName(_window->device()));
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Viewport:");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1);
+            ImGui::TextFormatted("{}", _viewport->prettyName());
+
+            _window->drawDebugMessage();
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
+            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, ImGui::GetWindowWidth() - variableSize - 
+                                                                              (guiStyle.CellPadding.x * 2.0f));
+
+            _scheduler->drawDebugMessage();
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::CollapsingHeader("Blocks")) {
+            for (auto& [_, state] : interfaceStates) {
+                if (!state.block->interface->shouldDrawInfo()) {
+                    continue;
+                }
+
+                if (ImGui::TreeNode(state.title.c_str())) {
+                    ImGui::BeginTable("##InfoTable", 2, ImGuiTableFlags_None);
+                    ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+                    ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, ImGui::GetWindowWidth() - variableSize - 
+                                                                                      (guiStyle.CellPadding.x * 2.0f));
+                    state.block->interface->drawInfo();
+                    ImGui::EndTable();
+                    ImGui::TreePop();
+                }
+            }
+        }
+
+        ImGui::End();
+    }();
 
     //
     // Flowgraph Render
@@ -301,13 +375,13 @@ Result Instance::end() {
     ImGui::Begin("Flowgraph");
     
     ImNodes::BeginNodeEditor();
-    ImNodes::MiniMap(0.2f, ImNodesMiniMapLocation_TopRight);
+    ImNodes::MiniMap(0.30f / scalingFactor, ImNodesMiniMapLocation_TopRight);
 
     for (auto& [id, state] : interfaceStates) {
         F32& nodeWidth = state.block->interface->config.nodeWidth;
         const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x;
-        const F32 controlWidth = state.block->interface->shouldDrawControl() ? 500.0f / scalingFactor : 0.0f;
-        const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 500.0f / scalingFactor : 0.0f;
+        const F32 controlWidth = state.block->interface->shouldDrawControl() ? 550.0f / scalingFactor : 0.0f;
+        const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 550.0f / scalingFactor : 0.0f;
         nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
 
         // Push node-specific style.
@@ -358,12 +432,24 @@ Result Instance::end() {
         ImGui::TextUnformatted(state.title.c_str());
         ImNodes::EndNodeTitleBar();
 
+        // Draw node info.
+        if (state.block->interface->shouldDrawInfo()) {
+            ImGui::BeginTable("##NodeInfoTable", 2, ImGuiTableFlags_None);
+            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableSize - 
+                                                                              (guiStyle.CellPadding.x * 2.0f));
+            state.block->interface->drawInfo();
+            ImGui::EndTable();
+        }
+
         // Draw node control.
         if (state.block->interface->shouldDrawControl()) {
-            ImGui::Spacing();
-            ImGui::PushItemWidth(nodeWidth - (200.0f / scalingFactor));
+            ImGui::BeginTable("##NodeControlTable", 2, ImGuiTableFlags_None);
+            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+            ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableSize - 
+                                                                                 (guiStyle.CellPadding.x * 2.0f));
             state.block->interface->drawControl();
-            ImGui::PopItemWidth();
+            ImGui::EndTable();
         }
 
         // Draw node input and output pins.
@@ -398,12 +484,35 @@ Result Instance::end() {
         ImGui::Dummy(ImVec2(nodeWidth, 0.0f));
 
         // Draw interfacing options.
-        if (state.block->interface->shouldDrawView() || state.block->interface->shouldDrawPreview()) {
-            ImGui::Spacing();
+        if (state.block->interface->shouldDrawView() || 
+            state.block->interface->shouldDrawPreview() ||
+            state.block->interface->shouldDrawControl() ||
+            state.block->interface->shouldDrawInfo()) {
+            ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None);
+            const F32 buttonSize = 40.0f / scalingFactor;
+            ImGui::TableSetupColumn("Switches", ImGuiTableColumnFlags_WidthFixed, nodeWidth - (buttonSize * 2.0f) - 
+                                                                                  (guiStyle.CellPadding.x * 4.0f));
+            ImGui::TableSetupColumn("Minus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
+            ImGui::TableSetupColumn("Plus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
+            ImGui::TableNextRow();
+
+            // Switches
+            ImGui::TableSetColumnIndex(0);
 
             if (state.block->interface->shouldDrawView()) {
                 ImGui::Checkbox("Window", &state.block->interface->config.viewEnabled);
 
+                if (state.block->interface->shouldDrawControl() ||
+                    state.block->interface->shouldDrawInfo() || 
+                    state.block->interface->shouldDrawPreview()) {
+                    ImGui::SameLine();
+                }
+            }
+
+            if (state.block->interface->shouldDrawControl() ||
+                state.block->interface->shouldDrawInfo()) {
+                ImGui::Checkbox("Control", &state.block->interface->config.controlEnabled);
+           
                 if (state.block->interface->shouldDrawPreview()) {
                     ImGui::SameLine();
                 }
@@ -411,19 +520,23 @@ Result Instance::end() {
 
             if (state.block->interface->shouldDrawPreview()) {
                 ImGui::Checkbox("Preview", &state.block->interface->config.previewEnabled);
-                ImGui::SameLine();
-
-                const auto& nodeOrigin = ImNodes::GetNodeScreenSpacePos(id);
-                ImGui::SetCursorPosX(nodeOrigin.x + nodeWidth - (100.0f / scalingFactor));
-
-                if (ImGui::Button(" - ", ImVec2(40.0f / scalingFactor, 0.0f))) {
-                    nodeWidth -= 50.0f / scalingFactor;
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(" + ", ImVec2(40.0f / scalingFactor, 0.0f))) {
-                    nodeWidth += 50.0f / scalingFactor;
-                }
             }
+
+            // Minus Button
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Button(" - ", ImVec2(40.0f / scalingFactor, 0.0f))) {
+                nodeWidth -= 50.0f / scalingFactor;
+            }
+
+            // Plus Button
+            ImGui::TableSetColumnIndex(2);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Button(" + ", ImVec2(40.0f / scalingFactor, 0.0f))) {
+                nodeWidth += 50.0f / scalingFactor;
+            }
+
+            ImGui::EndTable();
         }
 
         ImNodes::EndNode();
@@ -479,7 +592,7 @@ Result Instance::end() {
                     largestColumnHeight,
                 });
 
-                previousColumnsWidth += largestNodeWidth + (100.0f / scalingFactor);
+                previousColumnsWidth += largestNodeWidth + (75.0f / scalingFactor);
             }
 
             previousClustersHeight += largestColumnHeight + (25.0f / scalingFactor);
@@ -593,7 +706,7 @@ Result Instance::end() {
         }
 
         if (nodeDragId) {
-            nodeWidth = (ImGui::GetMousePos().x - nodeOrigin.x) - (style.NodePadding.x * 2.0f);
+            nodeWidth = (ImGui::GetMousePos().x - nodeOrigin.x) - (nodeStyle.NodePadding.x * 2.0f);
         }
 
         if (isNearRightEdge || nodeDragId) {

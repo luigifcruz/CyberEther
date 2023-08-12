@@ -183,15 +183,13 @@ Result Implementation::end() {
 
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::WebGPU>();
-    ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::TextFormatted("FPS: {:.1f} Hz", io.Framerate);
-    ImGui::TextFormatted("Device Name: {}", backend->getDeviceName());
-    ImGui::TextFormatted("Low Power Mode: {}", backend->getLowPowerStatus() ? "YES" : "NO");
-    ImGui::TextFormatted("Has Unified Memory: {}", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::TextFormatted("Physical Memory: {:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::TextFormatted("Thermal State: {}/3", backend->getThermalState());
-    ImGui::TextFormatted("Processor Count: {}", backend->getTotalProcessorCount());
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Device Name:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getDeviceName());
 }
 
 const Window::Stats& Implementation::stats() const {

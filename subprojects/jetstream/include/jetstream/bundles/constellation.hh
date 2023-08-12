@@ -60,7 +60,7 @@ class Constellation : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Constellation View";
+        return "Constellation";
     }
 
     // Constructor

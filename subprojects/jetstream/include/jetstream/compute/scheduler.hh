@@ -25,17 +25,7 @@ class JETSTREAM_API Scheduler {
     Result present();
     Result destroy();
 
-    U64 getNumberOfGraphs() const {
-        return graphs.size();
-    }
-
-    U64 getNumberOfComputeBlocks() const {
-        return computeModuleStates.size();
-    }
-
-    U64 getNumberOfPresentBlocks() const {
-        return presentModuleStates.size();
-    }
+    void drawDebugMessage() const;
 
  private:
     typedef std::vector<std::string> ExecutionOrder;
@@ -59,12 +49,12 @@ class JETSTREAM_API Scheduler {
     std::vector<std::shared_ptr<Graph>> graphs;
     std::unordered_map<std::string, ComputeModuleState> computeModuleStates;
     std::unordered_map<std::string, PresentModuleState> presentModuleStates;
+    DeviceExecutionOrder deviceExecutionOrder;
 
     Result removeInactive();
-    Result arrangeDependencyOrder(ExecutionOrder& executionOrder,
-                                  DeviceExecutionOrder& deviceExecutionOrder);
+    Result arrangeDependencyOrder(ExecutionOrder& executionOrder);
     Result checkSequenceValidity(ExecutionOrder& executionOrder);
-    Result createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrder);
+    Result createExecutionGraphs();
 };
 
 }  // namespace Jetstream

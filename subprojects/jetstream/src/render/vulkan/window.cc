@@ -407,13 +407,20 @@ Result Implementation::destroySynchronizationObjects() {
 
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Vulkan>();
-    ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::TextFormatted("FPS: {:.1f} Hz", io.Framerate);
-    ImGui::TextFormatted("Device Name: {}", backend->getDeviceName());
-    ImGui::TextFormatted("Has Unified Memory: {}", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::TextFormatted("Physical Memory: {:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::TextFormatted("Processor Count: {}", backend->getTotalProcessorCount());
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Device Name:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getDeviceName());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Physical Memory:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
 }
 
 const Window::Stats& Implementation::stats() const {

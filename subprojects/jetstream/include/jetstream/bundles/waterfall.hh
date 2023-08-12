@@ -67,7 +67,7 @@ class Waterfall : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Waterfall View";
+        return "Waterfall";
     }
 
     // Constructor
@@ -124,18 +124,23 @@ class Waterfall : public Bundle {
     }
 
     void drawControl() {
-        auto interpolate = waterfall->interpolate();
-        
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
         ImGui::Text("Interpolate");
-        ImGui::SameLine(200);
-        if (ImGui::Checkbox("##WaterfallInterpolate", &interpolate)) {
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        auto interpolate = waterfall->interpolate();
+        if (ImGui::Checkbox("##Interpolate", &interpolate)) {
             waterfall->interpolate(interpolate);
         }
 
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
         ImGui::Text("Zoom");
-        ImGui::SameLine(200);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
         auto zoom = waterfall->zoom();
-        if (ImGui::DragFloat("##WaterfallZoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
+        if (ImGui::DragFloat("##Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
             waterfall->zoom(zoom);
         } 
     }
