@@ -78,7 +78,9 @@ class Window {
     Config config;
 
     static void ApplyImGuiTheme(const F32& scale);
-    static void ApplyImNodesTheme();
+    static void ApplyImGuiScale();
+    static void ApplyImNodesTheme(const F32& scale);
+    static void ApplyImNodesScale();
 };
 
 }  // namespace Jetstream::Render

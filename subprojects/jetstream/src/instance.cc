@@ -217,6 +217,7 @@ Result Instance::present() {
 }
 
 Result Instance::end() {
+    const auto& scalingFactor = ImGui::GetIO().DisplayFramebufferScale.x;
     const auto& style = ImNodes::GetStyle();
 
     static const U32 CpuColor            = IM_COL32(224, 146,   0, 255);
@@ -305,8 +306,8 @@ Result Instance::end() {
     for (auto& [id, state] : interfaceStates) {
         F32& nodeWidth = state.block->interface->config.nodeWidth;
         const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x;
-        const F32 controlWidth = state.block->interface->shouldDrawControl() ? 500.0f : 0.0f;
-        const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 500.0f : 0.0f;
+        const F32 controlWidth = state.block->interface->shouldDrawControl() ? 500.0f / scalingFactor : 0.0f;
+        const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 500.0f / scalingFactor : 0.0f;
         nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
 
         // Push node-specific style.
@@ -360,7 +361,7 @@ Result Instance::end() {
         // Draw node control.
         if (state.block->interface->shouldDrawControl()) {
             ImGui::Spacing();
-            ImGui::PushItemWidth(nodeWidth - 200.0f);
+            ImGui::PushItemWidth(nodeWidth - (200.0f / scalingFactor));
             state.block->interface->drawControl();
             ImGui::PopItemWidth();
         }
@@ -413,14 +414,14 @@ Result Instance::end() {
                 ImGui::SameLine();
 
                 const auto& nodeOrigin = ImNodes::GetNodeScreenSpacePos(id);
-                ImGui::SetCursorPosX(nodeOrigin.x + nodeWidth - 100.0f);
+                ImGui::SetCursorPosX(nodeOrigin.x + nodeWidth - (100.0f / scalingFactor));
 
-                if (ImGui::Button(" - ", ImVec2(40.0f, 0.0f))) {
-                    nodeWidth -= 50.0f;
+                if (ImGui::Button(" - ", ImVec2(40.0f / scalingFactor, 0.0f))) {
+                    nodeWidth -= 50.0f / scalingFactor;
                 }
                 ImGui::SameLine();
-                if (ImGui::Button(" + ", ImVec2(40.0f, 0.0f))) {
-                    nodeWidth += 50.0f;
+                if (ImGui::Button(" + ", ImVec2(40.0f / scalingFactor, 0.0f))) {
+                    nodeWidth += 50.0f / scalingFactor;
                 }
             }
         }
@@ -458,7 +459,7 @@ Result Instance::end() {
                     ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
 
                     const auto& dims = ImNodes::GetNodeDimensions(node);
-                    previousNodesHeight += dims.y + 50.0f;
+                    previousNodesHeight += dims.y + (50.0f / scalingFactor);
                     largestNodeWidth = std::max({
                         dims.x,
                         largestNodeWidth,
@@ -478,10 +479,10 @@ Result Instance::end() {
                     largestColumnHeight,
                 });
 
-                previousColumnsWidth += largestNodeWidth + 150.0f;
+                previousColumnsWidth += largestNodeWidth + (100.0f / scalingFactor);
             }
 
-            previousClustersHeight += largestColumnHeight + 25.0f;
+            previousClustersHeight += largestColumnHeight + (25.0f / scalingFactor);
         }
 
         graphSpatiallyOrganized = true;

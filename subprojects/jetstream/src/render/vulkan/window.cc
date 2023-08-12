@@ -194,8 +194,10 @@ Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     
     JST_CHECK(viewport->createImgui());
-    ApplyImGuiTheme(viewport->calculateScale(config.scale));
-    ApplyImNodesTheme();
+
+    const auto& scale = viewport->calculateScale(config.scale);
+    ApplyImGuiTheme(scale);
+    ApplyImNodesTheme(scale);
 
     auto& backend = Backend::State<Device::Vulkan>();
     
@@ -244,6 +246,10 @@ Result Implementation::destroyImgui() {
 
 Result Implementation::beginImgui() {
     ImGui_ImplVulkan_NewFrame();
+
+    ApplyImGuiScale();
+    ApplyImNodesScale();
+
     ImGui::NewFrame();
 
     return Result::SUCCESS;

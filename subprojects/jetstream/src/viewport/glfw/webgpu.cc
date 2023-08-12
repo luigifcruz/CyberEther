@@ -108,6 +108,7 @@ Result Implementation::createImgui() {
 }
 
 F32 Implementation::calculateScale(const F32& scale) {
+    // No scaling needed. ImGui was modified to handle HiDPI. 
     return scale;
 }
 

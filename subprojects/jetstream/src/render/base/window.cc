@@ -4,7 +4,6 @@
 namespace Jetstream::Render {
 
 void Window::ApplyImGuiTheme(const F32& scale) {
-    auto& io = ImGui::GetIO();
     auto& style = ImGui::GetStyle();
 
     // Theme By:
@@ -93,6 +92,8 @@ void Window::ApplyImGuiTheme(const F32& scale) {
 
     style.ScaleAllSizes(scale);
 
+    auto& io = ImGui::GetIO();
+
     ImFontConfig font_config;
     font_config.OversampleH = 5;
     font_config.OversampleV = 5;
@@ -102,23 +103,36 @@ void Window::ApplyImGuiTheme(const F32& scale) {
     io.Fonts->AddFontFromMemoryCompressedTTF(
         jbmm_compressed_data, 
         jbmm_compressed_size,
-        15.0f * scale, 
-        &font_config, 
+        15.0f * scale,
+        &font_config,
         nullptr);
 }
 
-void Window::ApplyImNodesTheme() {
+void Window::ApplyImGuiScale() {
+    // Scaling done during the initialization.
+}
+
+void Window::ApplyImNodesTheme(const F32& scale) {
     auto& style = ImNodes::GetStyle();
-    style.PinCircleRadius = 5.0f;
-    style.NodeCornerRounding = 9.0f;
-    style.GridSpacing = 40.0f;
-    style.NodeBorderThickness = 1.0f;
 
     auto &colors = style.Colors;
-    colors[ImNodesCol_NodeBackground] = IM_COL32(30, 30, 30, 255);
-    colors[ImNodesCol_NodeBackgroundHovered] = IM_COL32(30, 30, 30, 255);
+    colors[ImNodesCol_NodeBackground]         = IM_COL32(30, 30, 30, 255);
+    colors[ImNodesCol_NodeBackgroundHovered]  = IM_COL32(30, 30, 30, 255);
     colors[ImNodesCol_NodeBackgroundSelected] = IM_COL32(30, 30, 30, 255);
-    colors[ImNodesCol_NodeOutline] = IM_COL32(0, 0, 0, 255);
+    colors[ImNodesCol_NodeOutline]            = IM_COL32(20, 20, 20, 255);
+}
+
+void Window::ApplyImNodesScale() {
+    auto& style = ImNodes::GetStyle();
+    const auto& scalingFactor = ImGui::GetIO().DisplayFramebufferScale.x;
+
+    style.NodePadding         = ImVec2(8.0f / scalingFactor, 8.0f / scalingFactor);
+    style.PinCircleRadius     = 4.0f  / scalingFactor;
+    style.GridSpacing         = 40.0f / scalingFactor;
+    style.NodeBorderThickness = 1.0f  / scalingFactor;
+    style.NodeCornerRounding  = 4.0f  / scalingFactor;
+    style.LinkThickness       = 3.0f  / scalingFactor;
+    style.PinLineThickness    = 1.0f  / scalingFactor;
 }
 
 }  // namespace Jetstream::Render
