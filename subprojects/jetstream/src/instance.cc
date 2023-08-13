@@ -208,6 +208,15 @@ Result Instance::begin() {
     }
 
     ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+    
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("Help")) {
+            if (ImGui::MenuItem("About CyberEther")) {
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
 
     return Result::SUCCESS;
 }
@@ -372,356 +381,361 @@ Result Instance::end() {
     // Flowgraph Render
     //
 
-    ImGui::Begin("Flowgraph");
-    
-    ImNodes::BeginNodeEditor();
-    ImNodes::MiniMap(0.30f / scalingFactor, ImNodesMiniMapLocation_TopRight);
-
-    for (auto& [id, state] : interfaceStates) {
-        F32& nodeWidth = state.block->interface->config.nodeWidth;
-        const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x;
-        const F32 controlWidth = state.block->interface->shouldDrawControl() ? 550.0f / scalingFactor : 0.0f;
-        const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 550.0f / scalingFactor : 0.0f;
-        nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
-
-        // Push node-specific style.
-        switch (state.block->interface->device()) {
-            case Device::CPU:
-                ImNodes::PushColorStyle(ImNodesCol_TitleBar,         CpuColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  CpuColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, CpuColorSelected);
-                ImNodes::PushColorStyle(ImNodesCol_Pin,              CpuColor);
-                ImNodes::PushColorStyle(ImNodesCol_PinHovered,       CpuColorSelected);
-                break;    
-            case Device::CUDA:
-                ImNodes::PushColorStyle(ImNodesCol_TitleBar,         CudaColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  CudaColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, CudaColorSelected);
-                ImNodes::PushColorStyle(ImNodesCol_Pin,              CudaColor);
-                ImNodes::PushColorStyle(ImNodesCol_PinHovered,       CudaColorSelected);
-                break;    
-            case Device::Metal:
-                ImNodes::PushColorStyle(ImNodesCol_TitleBar,         MetalColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  MetalColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, MetalColorSelected);
-                ImNodes::PushColorStyle(ImNodesCol_Pin,              MetalColor);
-                ImNodes::PushColorStyle(ImNodesCol_PinHovered,       MetalColorSelected);
-                break;    
-            case Device::Vulkan:
-                ImNodes::PushColorStyle(ImNodesCol_TitleBar,         VulkanColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  VulkanColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, VulkanColorSelected);
-                ImNodes::PushColorStyle(ImNodesCol_Pin,              VulkanColor);
-                ImNodes::PushColorStyle(ImNodesCol_PinHovered,       VulkanColorSelected);
-                break;    
-            case Device::WebGPU:
-                ImNodes::PushColorStyle(ImNodesCol_TitleBar,         WebGPUColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  WebGPUColor);
-                ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, WebGPUColorSelected);
-                ImNodes::PushColorStyle(ImNodesCol_Pin,              WebGPUColor);
-                ImNodes::PushColorStyle(ImNodesCol_PinHovered,       WebGPUColorSelected);
-                break;    
-            case Device::None:
-                break;
+    [&](){
+        if (!ImGui::Begin("Flowgraph")) {
+            ImGui::End();
+            return;
         }
+        
+        ImNodes::BeginNodeEditor();
+        ImNodes::MiniMap(0.30f / scalingFactor, ImNodesMiniMapLocation_TopRight);
 
-        ImNodes::BeginNode(id);
+        for (auto& [id, state] : interfaceStates) {
+            F32& nodeWidth = state.block->interface->config.nodeWidth;
+            const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x;
+            const F32 controlWidth = state.block->interface->shouldDrawControl() ? 550.0f / scalingFactor : 0.0f;
+            const F32 previewWidth = state.block->interface->shouldDrawPreview() ? 550.0f / scalingFactor : 0.0f;
+            nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
 
-        // Draw node title.
-        ImNodes::BeginNodeTitleBar();
-        ImGui::TextUnformatted(state.title.c_str());
-        ImNodes::EndNodeTitleBar();
-
-        // Draw node info.
-        if (state.block->interface->shouldDrawInfo()) {
-            ImGui::BeginTable("##NodeInfoTable", 2, ImGuiTableFlags_None);
-            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
-            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableSize - 
-                                                                              (guiStyle.CellPadding.x * 2.0f));
-            state.block->interface->drawInfo();
-            ImGui::EndTable();
-        }
-
-        // Draw node control.
-        if (state.block->interface->shouldDrawControl()) {
-            ImGui::BeginTable("##NodeControlTable", 2, ImGuiTableFlags_None);
-            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
-            ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableSize - 
-                                                                                 (guiStyle.CellPadding.x * 2.0f));
-            state.block->interface->drawControl();
-            ImGui::EndTable();
-        }
-
-        // Draw node input and output pins.
-        if (!state.inputs.empty() || !state.outputs.empty()) {
-            ImGui::Spacing();
-
-            for (const auto& [inputId, input] : state.inputs) {
-                const auto& [inputName, _] = input;
-                ImNodes::BeginInputAttribute(inputId);
-                ImGui::TextUnformatted(inputName.c_str());
-                ImNodes::EndInputAttribute();
+            // Push node-specific style.
+            switch (state.block->interface->device()) {
+                case Device::CPU:
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBar,         CpuColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  CpuColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, CpuColorSelected);
+                    ImNodes::PushColorStyle(ImNodesCol_Pin,              CpuColor);
+                    ImNodes::PushColorStyle(ImNodesCol_PinHovered,       CpuColorSelected);
+                    break;    
+                case Device::CUDA:
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBar,         CudaColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  CudaColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, CudaColorSelected);
+                    ImNodes::PushColorStyle(ImNodesCol_Pin,              CudaColor);
+                    ImNodes::PushColorStyle(ImNodesCol_PinHovered,       CudaColorSelected);
+                    break;    
+                case Device::Metal:
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBar,         MetalColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  MetalColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, MetalColorSelected);
+                    ImNodes::PushColorStyle(ImNodesCol_Pin,              MetalColor);
+                    ImNodes::PushColorStyle(ImNodesCol_PinHovered,       MetalColorSelected);
+                    break;    
+                case Device::Vulkan:
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBar,         VulkanColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  VulkanColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, VulkanColorSelected);
+                    ImNodes::PushColorStyle(ImNodesCol_Pin,              VulkanColor);
+                    ImNodes::PushColorStyle(ImNodesCol_PinHovered,       VulkanColorSelected);
+                    break;    
+                case Device::WebGPU:
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBar,         WebGPUColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,  WebGPUColor);
+                    ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, WebGPUColorSelected);
+                    ImNodes::PushColorStyle(ImNodesCol_Pin,              WebGPUColor);
+                    ImNodes::PushColorStyle(ImNodesCol_PinHovered,       WebGPUColorSelected);
+                    break;    
+                case Device::None:
+                    break;
             }
 
-            for (const auto& [outputId, output] : state.outputs) {
-                const auto& [outputName, _] = output;
-                ImNodes::BeginOutputAttribute(outputId);
-                const F32 textWidth = ImGui::CalcTextSize(outputName.c_str()).x;
-                ImGui::Indent(nodeWidth - textWidth);
-                ImGui::TextUnformatted(outputName.c_str());
-                ImNodes::EndInputAttribute();
+            ImNodes::BeginNode(id);
+
+            // Draw node title.
+            ImNodes::BeginNodeTitleBar();
+            ImGui::TextUnformatted(state.title.c_str());
+            ImNodes::EndNodeTitleBar();
+
+            // Draw node info.
+            if (state.block->interface->shouldDrawInfo()) {
+                ImGui::BeginTable("##NodeInfoTable", 2, ImGuiTableFlags_None);
+                ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+                ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableSize - 
+                                                                                (guiStyle.CellPadding.x * 2.0f));
+                state.block->interface->drawInfo();
+                ImGui::EndTable();
             }
-        }
 
-        // Draw node preview.
-        if (state.block->interface->shouldDrawPreview() &&
-            state.block->interface->config.previewEnabled) {
-            ImGui::Spacing();
-            state.block->interface->drawPreview(nodeWidth);
-        }
+            // Draw node control.
+            if (state.block->interface->shouldDrawControl()) {
+                ImGui::BeginTable("##NodeControlTable", 2, ImGuiTableFlags_None);
+                ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableSize);
+                ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableSize - 
+                                                                                    (guiStyle.CellPadding.x * 2.0f));
+                state.block->interface->drawControl();
+                ImGui::EndTable();
+            }
 
-        // Ensure minimum width set by the internal state.
-        ImGui::Dummy(ImVec2(nodeWidth, 0.0f));
+            // Draw node input and output pins.
+            if (!state.inputs.empty() || !state.outputs.empty()) {
+                ImGui::Spacing();
 
-        // Draw interfacing options.
-        if (state.block->interface->shouldDrawView() || 
-            state.block->interface->shouldDrawPreview() ||
-            state.block->interface->shouldDrawControl() ||
-            state.block->interface->shouldDrawInfo()) {
-            ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None);
-            const F32 buttonSize = 40.0f / scalingFactor;
-            ImGui::TableSetupColumn("Switches", ImGuiTableColumnFlags_WidthFixed, nodeWidth - (buttonSize * 2.0f) - 
-                                                                                  (guiStyle.CellPadding.x * 4.0f));
-            ImGui::TableSetupColumn("Minus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
-            ImGui::TableSetupColumn("Plus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
-            ImGui::TableNextRow();
+                for (const auto& [inputId, input] : state.inputs) {
+                    const auto& [inputName, _] = input;
+                    ImNodes::BeginInputAttribute(inputId);
+                    ImGui::TextUnformatted(inputName.c_str());
+                    ImNodes::EndInputAttribute();
+                }
 
-            // Switches
-            ImGui::TableSetColumnIndex(0);
+                for (const auto& [outputId, output] : state.outputs) {
+                    const auto& [outputName, _] = output;
+                    ImNodes::BeginOutputAttribute(outputId);
+                    const F32 textWidth = ImGui::CalcTextSize(outputName.c_str()).x;
+                    ImGui::Indent(nodeWidth - textWidth);
+                    ImGui::TextUnformatted(outputName.c_str());
+                    ImNodes::EndInputAttribute();
+                }
+            }
 
-            if (state.block->interface->shouldDrawView()) {
-                ImGui::Checkbox("Window", &state.block->interface->config.viewEnabled);
+            // Draw node preview.
+            if (state.block->interface->shouldDrawPreview() &&
+                state.block->interface->config.previewEnabled) {
+                ImGui::Spacing();
+                state.block->interface->drawPreview(nodeWidth);
+            }
+
+            // Ensure minimum width set by the internal state.
+            ImGui::Dummy(ImVec2(nodeWidth, 0.0f));
+
+            // Draw interfacing options.
+            if (state.block->interface->shouldDrawView() || 
+                state.block->interface->shouldDrawPreview() ||
+                state.block->interface->shouldDrawControl() ||
+                state.block->interface->shouldDrawInfo()) {
+                ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None);
+                const F32 buttonSize = 40.0f / scalingFactor;
+                ImGui::TableSetupColumn("Switches", ImGuiTableColumnFlags_WidthFixed, nodeWidth - (buttonSize * 2.0f) - 
+                                                                                    (guiStyle.CellPadding.x * 4.0f));
+                ImGui::TableSetupColumn("Minus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
+                ImGui::TableSetupColumn("Plus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
+                ImGui::TableNextRow();
+
+                // Switches
+                ImGui::TableSetColumnIndex(0);
+
+                if (state.block->interface->shouldDrawView()) {
+                    ImGui::Checkbox("Window", &state.block->interface->config.viewEnabled);
+
+                    if (state.block->interface->shouldDrawControl() ||
+                        state.block->interface->shouldDrawInfo() || 
+                        state.block->interface->shouldDrawPreview()) {
+                        ImGui::SameLine();
+                    }
+                }
 
                 if (state.block->interface->shouldDrawControl() ||
-                    state.block->interface->shouldDrawInfo() || 
-                    state.block->interface->shouldDrawPreview()) {
-                    ImGui::SameLine();
-                }
-            }
-
-            if (state.block->interface->shouldDrawControl() ||
-                state.block->interface->shouldDrawInfo()) {
-                ImGui::Checkbox("Control", &state.block->interface->config.controlEnabled);
-           
-                if (state.block->interface->shouldDrawPreview()) {
-                    ImGui::SameLine();
-                }
-            }
-
-            if (state.block->interface->shouldDrawPreview()) {
-                ImGui::Checkbox("Preview", &state.block->interface->config.previewEnabled);
-            }
-
-            // Minus Button
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::Button(" - ", ImVec2(40.0f / scalingFactor, 0.0f))) {
-                nodeWidth -= 50.0f / scalingFactor;
-            }
-
-            // Plus Button
-            ImGui::TableSetColumnIndex(2);
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::Button(" + ", ImVec2(40.0f / scalingFactor, 0.0f))) {
-                nodeWidth += 50.0f / scalingFactor;
-            }
-
-            ImGui::EndTable();
-        }
-
-        ImNodes::EndNode();
-
-        // Pop node-specific style.
-        ImNodes::PopColorStyle(); // TitleBar
-        ImNodes::PopColorStyle(); // TitleBarHovered
-        ImNodes::PopColorStyle(); // TitleBarSelected
-        ImNodes::PopColorStyle(); // Pin
-        ImNodes::PopColorStyle(); // PinHovered
-
-        // Set node position according to the internal state.
-        const auto& [x, y] = state.block->interface->config.nodePos;
-        ImNodes::SetNodeGridSpacePos(id, ImVec2(x, y));
-    }
-
-    // Spatially organize graph.
-    if (!graphSpatiallyOrganized) {
-        F32 previousClustersHeight = 0.0f;
-        
-        for (const auto& cluster : topological) {
-            F32 largestColumnHeight = 0.0f;
-            F32 previousColumnsWidth = 0.0f;
+                    state.block->interface->shouldDrawInfo()) {
+                    ImGui::Checkbox("Control", &state.block->interface->config.controlEnabled);
             
-            for (const auto& column : cluster) {
-                F32 largestNodeWidth = 0.0f;
-                F32 previousNodesHeight = 0.0f;
-
-                for (const auto& node : column) {
-                    auto& [x, y] = interfaceStates[node].block->interface->config.nodePos;
-                    x = previousColumnsWidth;
-                    y = previousNodesHeight + previousClustersHeight;
-                    ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
-
-                    const auto& dims = ImNodes::GetNodeDimensions(node);
-                    previousNodesHeight += dims.y + (50.0f / scalingFactor);
-                    largestNodeWidth = std::max({
-                        dims.x,
-                        largestNodeWidth,
-                    });
+                    if (state.block->interface->shouldDrawPreview()) {
+                        ImGui::SameLine();
+                    }
                 }
 
-                // Extra pass to add left padding to nodes in the same column.
-                for (const auto& node : column) {
-                    const auto& dims = ImNodes::GetNodeDimensions(node);
-                    auto& [x, y] = interfaceStates[node].block->interface->config.nodePos;
-                    x += (largestNodeWidth - dims.x);
-                    ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
+                if (state.block->interface->shouldDrawPreview()) {
+                    ImGui::Checkbox("Preview", &state.block->interface->config.previewEnabled);
                 }
 
-                largestColumnHeight = std::max({
-                    previousNodesHeight,
-                    largestColumnHeight,
-                });
+                // Minus Button
+                ImGui::TableSetColumnIndex(1);
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::Button(" - ", ImVec2(40.0f / scalingFactor, 0.0f))) {
+                    nodeWidth -= 50.0f / scalingFactor;
+                }
 
-                previousColumnsWidth += largestNodeWidth + (75.0f / scalingFactor);
+                // Plus Button
+                ImGui::TableSetColumnIndex(2);
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::Button(" + ", ImVec2(40.0f / scalingFactor, 0.0f))) {
+                    nodeWidth += 50.0f / scalingFactor;
+                }
+
+                ImGui::EndTable();
             }
 
-            previousClustersHeight += largestColumnHeight + (25.0f / scalingFactor);
+            ImNodes::EndNode();
+
+            // Pop node-specific style.
+            ImNodes::PopColorStyle(); // TitleBar
+            ImNodes::PopColorStyle(); // TitleBarHovered
+            ImNodes::PopColorStyle(); // TitleBarSelected
+            ImNodes::PopColorStyle(); // Pin
+            ImNodes::PopColorStyle(); // PinHovered
+
+            // Set node position according to the internal state.
+            const auto& [x, y] = state.block->interface->config.nodePos;
+            ImNodes::SetNodeGridSpacePos(id, ImVec2(x, y));
         }
 
-        graphSpatiallyOrganized = true;
-    }
+        // Spatially organize graph.
+        if (!graphSpatiallyOrganized) {
+            F32 previousClustersHeight = 0.0f;
+            
+            for (const auto& cluster : topological) {
+                F32 largestColumnHeight = 0.0f;
+                F32 previousColumnsWidth = 0.0f;
+                
+                for (const auto& column : cluster) {
+                    F32 largestNodeWidth = 0.0f;
+                    F32 previousNodesHeight = 0.0f;
 
-    // Draw node links.
-    for (const auto& [id, connection] : nodeConnections) {
-        const auto& [input, output] = connection;
-        const auto& [inputId, _] = input;
-        const auto& [outputId, outputState] = output;
+                    for (const auto& node : column) {
+                        auto& [x, y] = interfaceStates[node].block->interface->config.nodePos;
+                        x = previousColumnsWidth;
+                        y = previousNodesHeight + previousClustersHeight;
+                        ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
 
-        switch (outputState->block->interface->device()) {
-            case Device::CPU:
-                ImNodes::PushColorStyle(ImNodesCol_Link,         CpuColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  CpuColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkSelected, CpuColorSelected);
-                break;    
-            case Device::CUDA:
-                ImNodes::PushColorStyle(ImNodesCol_Link,         CudaColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  CudaColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkSelected, CudaColorSelected);
-                break;    
-            case Device::Metal:
-                ImNodes::PushColorStyle(ImNodesCol_Link,         MetalColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  MetalColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkSelected, MetalColorSelected);
-                break;    
-            case Device::Vulkan:
-                ImNodes::PushColorStyle(ImNodesCol_Link,         VulkanColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  VulkanColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkSelected, VulkanColorSelected);
-                break;    
-            case Device::WebGPU:
-                ImNodes::PushColorStyle(ImNodesCol_Link,         WebGPUColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  WebGPUColor);
-                ImNodes::PushColorStyle(ImNodesCol_LinkSelected, WebGPUColorSelected);
-                break;    
-            case Device::None:
-                break;
+                        const auto& dims = ImNodes::GetNodeDimensions(node);
+                        previousNodesHeight += dims.y + (50.0f / scalingFactor);
+                        largestNodeWidth = std::max({
+                            dims.x,
+                            largestNodeWidth,
+                        });
+                    }
+
+                    // Extra pass to add left padding to nodes in the same column.
+                    for (const auto& node : column) {
+                        const auto& dims = ImNodes::GetNodeDimensions(node);
+                        auto& [x, y] = interfaceStates[node].block->interface->config.nodePos;
+                        x += (largestNodeWidth - dims.x);
+                        ImNodes::SetNodeGridSpacePos(node, ImVec2(x, y));
+                    }
+
+                    largestColumnHeight = std::max({
+                        previousNodesHeight,
+                        largestColumnHeight,
+                    });
+
+                    previousColumnsWidth += largestNodeWidth + (75.0f / scalingFactor);
+                }
+
+                previousClustersHeight += largestColumnHeight + (25.0f / scalingFactor);
+            }
+
+            graphSpatiallyOrganized = true;
         }
 
-        ImNodes::Link(id, inputId, outputId);
+        // Draw node links.
+        for (const auto& [id, connection] : nodeConnections) {
+            const auto& [input, output] = connection;
+            const auto& [inputId, _] = input;
+            const auto& [outputId, outputState] = output;
 
-        ImNodes::PopColorStyle(); // Link
-        ImNodes::PopColorStyle(); // LinkHovered
-        ImNodes::PopColorStyle(); // LinkSelected
-    }
+            switch (outputState->block->interface->device()) {
+                case Device::CPU:
+                    ImNodes::PushColorStyle(ImNodesCol_Link,         CpuColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  CpuColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, CpuColorSelected);
+                    break;    
+                case Device::CUDA:
+                    ImNodes::PushColorStyle(ImNodesCol_Link,         CudaColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  CudaColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, CudaColorSelected);
+                    break;    
+                case Device::Metal:
+                    ImNodes::PushColorStyle(ImNodesCol_Link,         MetalColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  MetalColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, MetalColorSelected);
+                    break;    
+                case Device::Vulkan:
+                    ImNodes::PushColorStyle(ImNodesCol_Link,         VulkanColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  VulkanColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, VulkanColorSelected);
+                    break;    
+                case Device::WebGPU:
+                    ImNodes::PushColorStyle(ImNodesCol_Link,         WebGPUColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  WebGPUColor);
+                    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, WebGPUColorSelected);
+                    break;    
+                case Device::None:
+                    break;
+            }
 
-    // Update internal state node position via drag callback. 
-    I32 numSelectedNodes;
-    if (ImNodes::IsNodesDragStopped(&numSelectedNodes)) {
-        std::vector<I32> selectedNodes(numSelectedNodes);
-        ImNodes::GetSelectedNodes(selectedNodes.data());
+            ImNodes::Link(id, inputId, outputId);
 
-        for (const auto& id : selectedNodes) {
-            const auto& [x, y] = ImNodes::GetNodeGridSpacePos(id);
-            interfaceStates[id].block->interface->config.nodePos = {x, y};
-        }
-    }
-
-    ImNodes::EndNodeEditor();
-
-    // Render underlying buffer information about the link.
-    I32 linkId;
-    if (ImNodes::IsLinkHovered(&linkId)) {
-        const auto& [_, output] = nodeConnections[linkId];
-        const auto& [outputId, outputState] = output;
-        const auto& [outputName, vec] = outputState->outputs[outputId];
-
-        const auto firstLine = fmt::format("Vector ({})", outputName);
-        const auto secondLine = fmt::format("[{}] {} [Device::{}] [{:02}]", vec->type, vec->shape, vec->device, vec->phash - vec->hash);
-        const auto thirdLine = fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(vec->ptr), vec->hash);
-
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(firstLine.c_str());
-        ImGui::TextUnformatted(secondLine.c_str());
-        ImGui::TextUnformatted(thirdLine.c_str());
-        ImGui::EndTooltip();
-    }
-
-    // Update the internal state when a link is deleted.
-    if (ImNodes::IsLinkDestroyed(&linkId)) {
-        // TODO: Add link deletion.
-    }
-
-    // Update the internal state when a link is created.
-    I32 startId, endId;
-    if (ImNodes::IsLinkCreated(&startId, &endId)) {
-        // TODO: Add link creation.
-    }
-
-    // Resize node by dragging interface logic.
-    I32 nodeId;
-    if (ImNodes::IsNodeHovered(&nodeId)) {
-        const auto nodeDims = ImNodes::GetNodeDimensions(nodeId);
-        const auto nodeOrigin = ImNodes::GetNodeScreenSpacePos(nodeId);
-
-        F32& nodeWidth = interfaceStates[nodeId].block->interface->config.nodeWidth;
-
-        bool isNearRightEdge = 
-            std::abs((nodeOrigin.x + nodeDims.x) - ImGui::GetMousePos().x) < 10.0f &&
-            ImGui::GetMousePos().y >= nodeOrigin.y &&
-            ImGui::GetMousePos().y <= (nodeOrigin.y + nodeDims.y);
-
-        if (isNearRightEdge && ImGui::IsMouseDown(0) && !nodeDragId) {
-            ImNodes::SetNodeDraggable(nodeId, false);
-            nodeDragId = nodeId;
+            ImNodes::PopColorStyle(); // Link
+            ImNodes::PopColorStyle(); // LinkHovered
+            ImNodes::PopColorStyle(); // LinkSelected
         }
 
-        if (nodeDragId) {
-            nodeWidth = (ImGui::GetMousePos().x - nodeOrigin.x) - (nodeStyle.NodePadding.x * 2.0f);
+        // Update internal state node position via drag callback. 
+        I32 numSelectedNodes;
+        if (ImNodes::IsNodesDragStopped(&numSelectedNodes)) {
+            std::vector<I32> selectedNodes(numSelectedNodes);
+            ImNodes::GetSelectedNodes(selectedNodes.data());
+
+            for (const auto& id : selectedNodes) {
+                const auto& [x, y] = ImNodes::GetNodeGridSpacePos(id);
+                interfaceStates[id].block->interface->config.nodePos = {x, y};
+            }
         }
 
-        if (isNearRightEdge || nodeDragId) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-        }
-    }
+        ImNodes::EndNodeEditor();
 
-    if (ImGui::IsMouseReleased(0)) {
-        if (nodeDragId) {
-            ImNodes::SetNodeDraggable(nodeDragId, true);
-            nodeDragId = 0;
-        }
-    }
+        // Render underlying buffer information about the link.
+        I32 linkId;
+        if (ImNodes::IsLinkHovered(&linkId)) {
+            const auto& [_, output] = nodeConnections[linkId];
+            const auto& [outputId, outputState] = output;
+            const auto& [outputName, vec] = outputState->outputs[outputId];
 
-    ImGui::End();
+            const auto firstLine = fmt::format("Vector ({})", outputName);
+            const auto secondLine = fmt::format("[{}] {} [Device::{}] [{:02}]", vec->type, vec->shape, vec->device, vec->phash - vec->hash);
+            const auto thirdLine = fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(vec->ptr), vec->hash);
+
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(firstLine.c_str());
+            ImGui::TextUnformatted(secondLine.c_str());
+            ImGui::TextUnformatted(thirdLine.c_str());
+            ImGui::EndTooltip();
+        }
+
+        // Update the internal state when a link is deleted.
+        if (ImNodes::IsLinkDestroyed(&linkId)) {
+            // TODO: Add link deletion.
+        }
+
+        // Update the internal state when a link is created.
+        I32 startId, endId;
+        if (ImNodes::IsLinkCreated(&startId, &endId)) {
+            // TODO: Add link creation.
+        }
+
+        // Resize node by dragging interface logic.
+        I32 nodeId;
+        if (ImNodes::IsNodeHovered(&nodeId)) {
+            const auto nodeDims = ImNodes::GetNodeDimensions(nodeId);
+            const auto nodeOrigin = ImNodes::GetNodeScreenSpacePos(nodeId);
+
+            F32& nodeWidth = interfaceStates[nodeId].block->interface->config.nodeWidth;
+
+            bool isNearRightEdge = 
+                std::abs((nodeOrigin.x + nodeDims.x) - ImGui::GetMousePos().x) < 10.0f &&
+                ImGui::GetMousePos().y >= nodeOrigin.y &&
+                ImGui::GetMousePos().y <= (nodeOrigin.y + nodeDims.y);
+
+            if (isNearRightEdge && ImGui::IsMouseDown(0) && !nodeDragId) {
+                ImNodes::SetNodeDraggable(nodeId, false);
+                nodeDragId = nodeId;
+            }
+
+            if (nodeDragId) {
+                nodeWidth = (ImGui::GetMousePos().x - nodeOrigin.x) - (nodeStyle.NodePadding.x * 2.0f);
+            }
+
+            if (isNearRightEdge || nodeDragId) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            }
+        }
+
+        if (ImGui::IsMouseReleased(0)) {
+            if (nodeDragId) {
+                ImNodes::SetNodeDraggable(nodeDragId, true);
+                nodeDragId = 0;
+            }
+        }
+
+        ImGui::End();
+    }();
 
     if (_window) {
         JST_CHECK(_window->end());

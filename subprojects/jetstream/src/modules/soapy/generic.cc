@@ -85,6 +85,7 @@ void Soapy<D, T>::soapyThreadLoop() {
     CF32 tmp[8192];
     void *tmp_buffers[] = { tmp };
 
+    // TODO: Replace with zero-copy Soapy API.
     streaming = true;
     while (streaming) {
         int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
