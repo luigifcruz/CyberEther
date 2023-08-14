@@ -229,63 +229,30 @@ class Parser {
         }
 
         auto& anyVar = map[name].object;
-
         if (!anyVar.has_value()) {
             JST_ERROR("Variable ({}) not initialized.", name);
             return Result::ERROR;
         }
 
         try {
-            const_cast<T&>(variable) = std::any_cast<T>(anyVar);
-        } catch (const std::bad_any_cast& e) {
+            DesOpGeneric(anyVar, variable);
+            return Result::SUCCESS;
+        } catch (const std::bad_any_cast&) {};
+
+        if constexpr (is_vector<T>::value) {
             try {
-                if constexpr (std::is_same<T, std::string>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to std::string.");
-                    const_cast<T&>(variable) = std::any_cast<std::string>(anyVar);
-                } else if constexpr (std::is_same<T, U64>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to U64.");
-                    const_cast<T&>(variable) = std::stoull(std::any_cast<std::string>(anyVar));
-                } else if constexpr (std::is_same<T, F32>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to F32.");
-                    const_cast<T&>(variable) = std::stof(std::any_cast<std::string>(anyVar));
-                } else if constexpr (std::is_same<T, F64>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to F64.");
-                    const_cast<T&>(variable) = std::stod(std::any_cast<std::string>(anyVar));
-                } else if constexpr (std::is_same<T, bool>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to BOOL.");
-                    std::string lower_s = std::any_cast<std::string>(anyVar);
-                    std::transform(lower_s.begin(), lower_s.end(), lower_s.begin(), ::tolower);
-                    const_cast<T&>(variable) = lower_s == "true" || lower_s == "1";
-                } else if constexpr (std::is_same<T, VectorShape<2>>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to VectorShape<2>.");
-                    const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                    JST_ASSERT_THROW(values.size() == 2);
-                    const_cast<T&>(variable) = VectorShape<2>{std::stoull(values[0]), std::stoull(values[1])};
-                } else if constexpr (std::is_same<T, Range<F32>>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to Range<F32>.");
-                    const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                    JST_ASSERT_THROW(values.size() == 2);
-                    const_cast<T&>(variable) = Range<F32>{std::stof(values[0]), std::stof(values[1])};
-                } else if constexpr (std::is_same<T, Size2D<U64>>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to Size2D<U64>.");
-                    const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                    JST_ASSERT_THROW(values.size() == 2);
-                    const_cast<T&>(variable) = Size2D<U64>{std::stoull(values[0]), std::stoull(values[1])};
-                } else if constexpr (std::is_same<T, Size2D<F32>>::value) {
-                    JST_TRACE("BindVariable: Converting std::string to Size2D<F32>.");
-                    const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                    JST_ASSERT_THROW(values.size() == 2);
-                    const_cast<T&>(variable) = Size2D<F32>{std::stof(values[0]), std::stof(values[1])};
-                } else {
-                    const_cast<T&>(variable) = std::any_cast<T>(anyVar);
-                }
-            } catch (const std::bad_any_cast& e) {
-                JST_ERROR("Variable ({}) failed to cast from any. Exhausted cast operators.", name);
-                return Result::ERROR;
-            }
+                DesOpVector(anyVar, variable);
+                return Result::SUCCESS;
+            } catch (const std::bad_any_cast&) {};
+        } else {
+            try {
+                DesOpString(anyVar, variable);
+                return Result::SUCCESS;
+            } catch (const std::bad_any_cast&) {};
         }
 
-        return Result::SUCCESS;
+        JST_ERROR("Variable ({}) failed to cast from any. Exhausted cast operators.", name);
+        return Result::CAST_ERROR;
     }
 
     template<typename T>
@@ -334,6 +301,106 @@ class Parser {
     static std::string ResolveReadableKey(const ryml::ConstNodeRef& var);
     static std::any SolveLocalPlaceholder(Instance& instance, const ryml::ConstNodeRef& node);
     static std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);
+
+    //
+    // SerDes Operators
+    // 
+
+    template <typename T>
+    struct is_vector : std::false_type {};
+
+    template <Device DeviceId, typename DataType, U64 Dimensions>
+    struct is_vector<Vector<DeviceId, DataType, Dimensions>> : std::true_type {};
+
+    template<typename T>
+    static void DesOpGeneric(std::any& anyVar, const T& variable) {
+        const_cast<T&>(variable) = std::any_cast<T>(anyVar);
+    }
+
+    template<Device DeviceId, typename DataType, U64 Dimensions>
+    static void DesOpVector(std::any& anyVar, const Vector<DeviceId, DataType, Dimensions>& variable) {
+        using T = Vector<DeviceId, DataType, Dimensions>;
+
+        if constexpr (DeviceId == Device::CPU) {
+            try {
+                JST_TRACE("BindVariable: Trying to convert Vector<Metal> into Vector<CPU>.");
+                const_cast<T&>(variable) = std::move(T(std::any_cast<Vector<Device::Metal, DataType, Dimensions>>(anyVar)));
+                return;
+            } catch (const std::bad_any_cast&) {};
+        } else if constexpr (DeviceId == Device::Metal) {
+            try {
+                JST_TRACE("BindVariable: Trying to convert Vector<CPU> into Vector<Metal>.");
+                const_cast<T&>(variable) = std::move(T(std::any_cast<Vector<Device::CPU, DataType, Dimensions>>(anyVar)));
+                return;
+            } catch (const std::bad_any_cast&) {};
+        }
+    }
+
+    // TODO: Maybe add move to all of these?
+    template<typename T>
+    static void DesOpString(std::any& anyVar, const T& variable) {
+        if constexpr (std::is_same<T, std::string>::value) {
+            JST_TRACE("BindVariable: Converting std::string to std::string.");
+            const_cast<T&>(variable) = std::any_cast<std::string>(anyVar);
+        } else if constexpr (std::is_same<T, U64>::value) {
+            JST_TRACE("BindVariable: Converting std::string to U64.");
+            const_cast<T&>(variable) = std::stoull(std::any_cast<std::string>(anyVar));
+        } else if constexpr (std::is_same<T, F32>::value) {
+            JST_TRACE("BindVariable: Converting std::string to F32.");
+            const_cast<T&>(variable) = std::stof(std::any_cast<std::string>(anyVar));
+        } else if constexpr (std::is_same<T, F64>::value) {
+            JST_TRACE("BindVariable: Converting std::string to F64.");
+            const_cast<T&>(variable) = std::stod(std::any_cast<std::string>(anyVar));
+        } else if constexpr (std::is_same<T, bool>::value) {
+            JST_TRACE("BindVariable: Converting std::string to BOOL.");
+            std::string lower_s = std::any_cast<std::string>(anyVar);
+            std::transform(lower_s.begin(), lower_s.end(), lower_s.begin(), ::tolower);
+            const_cast<T&>(variable) = lower_s == "true" || lower_s == "1";
+        } else if constexpr (std::is_same<T, VectorShape<2>>::value) {
+            JST_TRACE("BindVariable: Converting std::string to VectorShape<2>.");
+            const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
+            JST_ASSERT_THROW(values.size() == 2);
+            const_cast<T&>(variable) = VectorShape<2>{std::stoull(values[0]), std::stoull(values[1])};
+        } else if constexpr (std::is_same<T, Range<F32>>::value) {
+            JST_TRACE("BindVariable: Converting std::string to Range<F32>.");
+            const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
+            JST_ASSERT_THROW(values.size() == 2);
+            const_cast<T&>(variable) = Range<F32>{std::stof(values[0]), std::stof(values[1])};
+        } else if constexpr (std::is_same<T, Size2D<U64>>::value) {
+            JST_TRACE("BindVariable: Converting std::string to Size2D<U64>.");
+            const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
+            JST_ASSERT_THROW(values.size() == 2);
+            const_cast<T&>(variable) = Size2D<U64>{std::stoull(values[0]), std::stoull(values[1])};
+        } else if constexpr (std::is_same<T, Size2D<F32>>::value) {
+            JST_TRACE("BindVariable: Converting std::string to Size2D<F32>.");
+            const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
+            JST_ASSERT_THROW(values.size() == 2);
+            const_cast<T&>(variable) = Size2D<F32>{std::stof(values[0]), std::stof(values[1])};
+        } else if constexpr (std::is_same<T, CF32>::value) {
+            JST_TRACE("BindVariable: Converting std::string to CF32.");
+            const_cast<T&>(variable) = StringToComplex<T>(std::any_cast<std::string>(anyVar));
+        }
+    }
+
+    template<typename T>
+    static T StringToComplex(const std::string& s) {
+        using ST = typename NumericTypeInfo<T>::subtype;
+
+        ST real = 0.0;
+        ST imag = 0.0;
+        char op = '+';
+        
+        std::stringstream ss(s);
+        ss >> real;      // Extract real part
+        ss >> op;        // Extract '+' or '-'
+        ss >> imag;      // Extract imaginary part
+
+        if (op == '-') {
+            imag = -imag;
+        }
+
+        return T(real, imag);
+    }
 };
 
 }  // namespace Jetstream

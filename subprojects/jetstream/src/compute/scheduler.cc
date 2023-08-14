@@ -265,6 +265,10 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder) {
                 break;
             }
         }
+        if (nextName.empty()) {
+            lastDevice = Device::None;
+            continue;
+        }
         JST_ASSERT(!nextName.empty());
         queue.erase(queue.find(nextName));
         executionOrder.push_back(nextName);

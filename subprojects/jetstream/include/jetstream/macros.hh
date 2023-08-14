@@ -102,7 +102,6 @@
 }
 #endif  // JST_CATCH
 
-
 #ifndef JST_SERDES
 #define JST_SERDES(...) \
     Result serdes_function(const Parser::SerDesOp& op, Parser::RecordMap& data) const { (void)op; (void)data; __VA_ARGS__ return Result::SUCCESS; } \

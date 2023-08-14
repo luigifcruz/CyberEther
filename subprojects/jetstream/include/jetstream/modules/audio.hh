@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-template<Device D, typename T = CF32>
+template<Device D, typename T = F32>
 class Audio : public Module, public Compute {
  public:
     // Configuration 

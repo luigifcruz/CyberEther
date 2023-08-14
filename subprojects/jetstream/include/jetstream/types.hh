@@ -22,6 +22,7 @@ enum class Result : uint8_t {
     ASSERTION_ERROR,
     ERROR_TIMEOUT,
     ERROR_BEYOND_CAPACITY,
+    CAST_ERROR,
 };
 
 template<typename T = U64>

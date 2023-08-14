@@ -24,7 +24,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     explicit Vector(const Vector<Device::CPU, DataType, Dimensions>& other)
              : VectorType(other) {
-        allocateExtras();     
+        allocateExtras();
     }
 #endif
 
@@ -78,6 +78,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
     }
 
     // Expose overloads for Vector<Device::CPU>.
+    // TODO: Check if really necessary.
 
     operator const Vector<Device::CPU, DataType, Dimensions>&() const {
         return this->_cpu;

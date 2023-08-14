@@ -51,33 +51,8 @@ void Audio<D, T>::callback(ma_device* pDevice, void* pOutput, const void* pInput
     auto* audio = reinterpret_cast<Audio<D, T>*>(pDevice->pUserData);
 
     if (frameCount < audio->buffer.getOccupancy()) {
-        audio->buffer.get((float*)pOutput, frameCount);
+        audio->buffer.get(reinterpret_cast<F32*>(pOutput), frameCount);
     }
-}
-
-inline F32 phase(const CF32& c) {
-    return atan2(c.imag(), c.real());
-}
-
-template<Device D, typename T>
-inline std::vector<F32> fmDemodulate(const Vector<D, T, 2>& iq) {
-    std::vector<F32> demodulated;
-    demodulated.reserve(iq.size());
-    F32 prevPhase = phase(iq[0]);
-
-    for (size_t i = 1; i < iq.size(); ++i) {
-        F32 currPhase = phase(iq[i]);
-        F32 phaseDiff = currPhase - prevPhase;
-
-        // Adjust phase difference to be between -pi and pi
-        while (phaseDiff > M_PI) phaseDiff -= 2 * M_PI;
-        while (phaseDiff < -M_PI) phaseDiff += 2 * M_PI;
-
-        demodulated.push_back(phaseDiff);
-        prevPhase = currPhase;
-    }
-
-    return demodulated;
 }
 
 inline std::vector<F32> resample(const std::vector<F32>& signal, int upFactor, int downFactor) {
@@ -122,12 +97,8 @@ Result Audio<D, T>::createCompute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 Result Audio<D, T>::compute(const RuntimeMetadata&) {
-    const auto& demodulated = fmDemodulate(input.buffer);
-    const auto& resampled = resample(demodulated, 1, 5);
-
-    buffer.put(resampled.data(), resampled.size());
-
-    //buffer.put((F32*)input.buffer.data(), (U64)input.buffer.shape()[1]/5);
+    // TODO: Replace with zero-copy ring-buffer from miniaudio.
+    buffer.put(input.buffer.data(), input.buffer.size());
 
     return Result::SUCCESS;
 }
