@@ -110,6 +110,12 @@ typedef std::complex<U16> CU16;
 typedef std::complex<U32> CU32;
 typedef std::complex<U64> CU64;
 
+template <typename T>
+struct IsComplex : std::false_type {};
+
+template <typename T>
+struct IsComplex<std::complex<T>> : std::true_type {};
+
 template <typename T = void>
 struct JETSTREAM_API NumericTypeInfo;
 

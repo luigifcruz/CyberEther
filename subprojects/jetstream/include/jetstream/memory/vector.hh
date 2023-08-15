@@ -242,6 +242,12 @@ class VectorImpl : public VectorType {
     friend class Module;
 };
 
+template <typename T>
+struct IsVector : std::false_type {};
+
+template <Device DeviceId, typename DataType, U64 Dimensions>
+struct IsVector<Vector<DeviceId, DataType, Dimensions>> : std::true_type {};
+
 }  // namespace Jetstream
 
 #endif

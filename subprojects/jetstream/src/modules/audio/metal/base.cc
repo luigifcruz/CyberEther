@@ -2,6 +2,6 @@
 
 namespace Jetstream {
 
-template class Audio<Device::Metal, CF32>;
+template class Audio<Device::Metal, F32>;
     
 }  // namespace Jetstream

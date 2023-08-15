@@ -2,6 +2,6 @@
 
 namespace Jetstream {
 
-template class Audio<Device::CPU, CF32>;
+template class Audio<Device::CPU, F32>;
     
 }  // namespace Jetstream

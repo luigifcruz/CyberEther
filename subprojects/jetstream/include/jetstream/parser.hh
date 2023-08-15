@@ -239,7 +239,7 @@ class Parser {
             return Result::SUCCESS;
         } catch (const std::bad_any_cast&) {};
 
-        if constexpr (is_vector<T>::value) {
+        if constexpr (IsVector<T>::value) {
             try {
                 DesOpVector(anyVar, variable);
                 return Result::SUCCESS;
@@ -304,13 +304,7 @@ class Parser {
 
     //
     // SerDes Operators
-    // 
-
-    template <typename T>
-    struct is_vector : std::false_type {};
-
-    template <Device DeviceId, typename DataType, U64 Dimensions>
-    struct is_vector<Vector<DeviceId, DataType, Dimensions>> : std::true_type {};
+    //
 
     template<typename T>
     static void DesOpGeneric(std::any& anyVar, const T& variable) {

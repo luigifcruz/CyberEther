@@ -55,7 +55,7 @@ void Audio<D, T>::callback(ma_device* pDevice, void* pOutput, const void* pInput
     }
 }
 
-inline std::vector<F32> resample(const std::vector<F32>& signal, int upFactor, int downFactor) {
+inline std::vector<F32> resample(const Vector<Device::CPU, F32, 2>& signal, int upFactor, int downFactor) {
     std::vector<F32> upsampled;
     upsampled.reserve(signal.size());
     std::vector<F32> filtered;
@@ -97,8 +97,9 @@ Result Audio<D, T>::createCompute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 Result Audio<D, T>::compute(const RuntimeMetadata&) {
-    // TODO: Replace with zero-copy ring-buffer from miniaudio.
-    buffer.put(input.buffer.data(), input.buffer.size());
+    const auto& resampled = resample(input.buffer, 1, 5);
+
+    buffer.put(resampled.data(), resampled.size());
 
     return Result::SUCCESS;
 }
