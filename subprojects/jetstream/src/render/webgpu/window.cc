@@ -13,9 +13,17 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("[WebGPU] Binding surface to window.");
 
-    surfaces.push_back(
-        std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface)
-    );
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    surfaces.push_back(_surface);
+    return _surface->create();
+}
+
+Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[WebGPU] Unbinding surface to window.");
+
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    JST_CHECK(_surface->destroy());
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
@@ -26,10 +34,6 @@ Result Implementation::create() {
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
     queue = device.GetQueue();    
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->create());
-    }
 
     if (config.imgui) {
         JST_CHECK(createImgui());

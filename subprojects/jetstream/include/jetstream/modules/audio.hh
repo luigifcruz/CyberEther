@@ -17,10 +17,12 @@ class Audio : public Module, public Compute {
     // Configuration 
 
     struct Config {
-        F32 sampleRate = 48e3;
+        F32 inSampleRate = 48e3;
+        F32 outSampleRate = 48e3;
 
         JST_SERDES(
-            JST_SERDES_VAL("sampleRate", sampleRate);
+            JST_SERDES_VAL("inSampleRate", inSampleRate);
+            JST_SERDES_VAL("outSampleRate", outSampleRate);
         );
     };
 
@@ -31,7 +33,7 @@ class Audio : public Module, public Compute {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -70,23 +72,25 @@ class Audio : public Module, public Compute {
 
     // Constructor
 
-    explicit Audio(const Config& config, const Input& input);
-    ~Audio();
+    Result create();
+    Result destroy();
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    const Config config;
-    const Input input;
-    Output output;
-
     ma_device_config deviceConfig;
     ma_device deviceCtx;
+    ma_resampler_config resamplerConfig;
+    ma_resampler resamplerCtx;
+
     Memory::CircularBuffer<F32> buffer;
+    std::vector<F32> tmp;
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

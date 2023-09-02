@@ -154,7 +154,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
         if (!vkCreateDebugReportCallbackEXT) {
             JST_FATAL("[VULKAN] Failed to create validation.");
-            JST_CHECK_THROW(Result::VULKAN_ERROR);       
+            JST_CHECK_THROW(Result::FATAL);       
         }
         JST_VK_CHECK_THROW(vkCreateDebugReportCallbackEXT(instance, &debugReportCreateInfo, nullptr, &debugReportCallback), [&]{
             JST_FATAL("[VULKAN] Failed to create validation.");
@@ -170,11 +170,11 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         });
         if (physicalDeviceCount == 0) {
             JST_FATAL("[VULKAN] No physical devices found.");
-            JST_CHECK_THROW(Result::VULKAN_ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
         if (physicalDeviceCount <= config.deviceId) {
             JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId);
-            JST_CHECK_THROW(Result::VULKAN_ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
 
         std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
@@ -188,11 +188,11 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
         if (validPhysicalDevices.size() == 0) {
             JST_FATAL("[VULKAN] No valid physical devices found.");
-            JST_CHECK_THROW(Result::VULKAN_ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
         if (validPhysicalDevices.size() <= config.deviceId) {
             JST_FATAL("[VULKAN] Can't find desired device ID.");
-            JST_CHECK_THROW(Result::VULKAN_ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
         physicalDevice = validPhysicalDevices[config.deviceId];
 

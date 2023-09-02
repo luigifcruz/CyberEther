@@ -5,6 +5,15 @@ using namespace std::chrono_literals;
 namespace Jetstream::Memory {
 
 template<class T>
+CircularBuffer<T>::CircularBuffer()
+     : transfers(0),
+       throughput(0.0),
+       capacity(0),
+       overflows(0) {
+    this->reset();
+}
+
+template<class T>
 CircularBuffer<T>::CircularBuffer(const U64& capacity)
      : transfers(0),
        throughput(0.0),
@@ -26,7 +35,7 @@ Result CircularBuffer<T>::waitBufferOccupancy(const U64& size) {
     std::unique_lock<std::mutex> sync(sync_mtx);
     while (getOccupancy() < size) {
         if (semaphore.wait_for(sync, 5s) == std::cv_status::timeout)
-            return Result::ERROR_TIMEOUT;
+            return Result::TIMEOUT;
     }
     return Result::SUCCESS;
 }
@@ -34,7 +43,7 @@ Result CircularBuffer<T>::waitBufferOccupancy(const U64& size) {
 template<class T>
 Result CircularBuffer<T>::get(T* buf, const U64& size) {
     if (getCapacity() < size) {
-        return Result::ERROR_BEYOND_CAPACITY;
+        return Result::ERROR;
     }
 
     Result res = waitBufferOccupancy(size);
@@ -75,7 +84,7 @@ exception:
 template<class T>
 Result CircularBuffer<T>::put(const T* buf, const U64& size) {
     if (getCapacity() < size) {
-        return Result::ERROR_BEYOND_CAPACITY;
+        return Result::ERROR;
     }
 
     {
@@ -115,6 +124,14 @@ Result CircularBuffer<T>::reset() {
     }
 
     semaphore.notify_all();
+    return Result::SUCCESS;
+}
+
+template<class T>
+Result CircularBuffer<T>::resize(const U64& capacity) {
+    this->reset();
+    this->capacity = capacity;
+    this->buffer = std::unique_ptr<T[]>(new T[getCapacity()]);
     return Result::SUCCESS;
 }
 

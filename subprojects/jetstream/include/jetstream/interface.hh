@@ -1,6 +1,9 @@
 #ifndef JETSTREAM_INTERFACE_HH
 #define JETSTREAM_INTERFACE_HH
 
+#include <unordered_map>
+#include <unordered_set>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
@@ -10,6 +13,8 @@ namespace Jetstream {
 
 class JETSTREAM_API Interface {
  public:
+    virtual ~Interface() = default;
+
     struct Config {
         F32 nodeWidth = 0.0f;
         bool viewEnabled = false;
@@ -30,6 +35,10 @@ class JETSTREAM_API Interface {
     virtual constexpr std::string name() const = 0;
     virtual constexpr std::string prettyName() const = 0;
 
+    std::string title() const {
+        return fmt::format("{} ({})", prettyName(), locale);
+    }
+
     virtual void drawPreview(const F32&) {}
     virtual constexpr bool shouldDrawPreview() const {
         return false;
@@ -39,7 +48,7 @@ class JETSTREAM_API Interface {
     virtual constexpr bool shouldDrawView() const {
         return false;
     }
-    
+
     virtual void drawControl() {}
     virtual constexpr bool shouldDrawControl() const {
         return false;
@@ -52,8 +61,10 @@ class JETSTREAM_API Interface {
 
  protected:
     Config config;
+    Locale locale;
 
-    friend class Instance;
+    friend Instance;
+    friend class Compositor;
 };
 
 }  // namespace Jetstream

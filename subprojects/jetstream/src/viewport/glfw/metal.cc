@@ -14,6 +14,7 @@ Implementation::~GLFW() {
 
 Result Implementation::create() {
     if (!glfwInit()) {
+        JST_ERROR("[Metal] Failed to initialize GLFW.");
         return Result::ERROR;
     }
 
@@ -26,6 +27,7 @@ Result Implementation::create() {
 
     if (!window) {
         glfwTerminate();
+        JST_ERROR("[Metal] Failed to create window with GLFW.");
         return Result::ERROR;
     }
 

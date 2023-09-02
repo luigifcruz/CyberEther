@@ -19,5 +19,5 @@ Result MultiplyConstant<D, T>::compute(const RuntimeMetadata&) {
 
 template class MultiplyConstant<Device::CPU, CF32>;
 template class MultiplyConstant<Device::CPU, F32>;
-    
+
 }  // namespace Jetstream

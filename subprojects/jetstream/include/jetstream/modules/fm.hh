@@ -28,7 +28,7 @@ class FM : public Module, public Compute {
     // Input
 
     struct Input {
-        const Vector<D, IT, 2> buffer;
+        Vector<D, IT, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -71,16 +71,13 @@ class FM : public Module, public Compute {
 
     // Constructor
 
-    explicit FM(const Config& config, const Input& input);
+    Result create();
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
 
- private:
-    const Config config;
-    const Input input;
-    Output output;
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

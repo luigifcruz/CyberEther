@@ -28,5 +28,10 @@
 #include "jetstream/bundles/soapy.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
+#include "jetstream/bundles/scale.hh"
+#endif
+
 
 #endif

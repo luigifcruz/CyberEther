@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "jetstream/state.hh"
 #include "jetstream/compute/graph/base.hh"
@@ -15,12 +16,8 @@ namespace Jetstream {
 
 class JETSTREAM_API Scheduler {
  public:
-    Scheduler(std::shared_ptr<Render::Window>& window,
-              const std::unordered_map<std::string, BlockState>& blockStates,
-              const std::vector<std::string>& blockStateOrder);
-    ~Scheduler();
-
-    Result create();
+    Result addModule(const Locale& locale, const std::shared_ptr<BlockState>& block);
+    Result removeModule(const Locale& locale);
     Result compute();
     Result present();
     Result destroy();
@@ -32,29 +29,39 @@ class JETSTREAM_API Scheduler {
     typedef std::vector<std::pair<Device, ExecutionOrder>> DeviceExecutionOrder;
 
     struct ComputeModuleState {
-        const BlockState* block;
+        std::shared_ptr<BlockState> block;
         U64 clusterId;
-        std::unordered_map<std::string, const Parser::VectorMetadata*> activeInputs;
-        std::unordered_map<std::string, const Parser::VectorMetadata*> activeOutputs;
+        std::unordered_map<std::string, const Parser::Record*> activeInputs;
+        std::unordered_map<std::string, const Parser::Record*> activeOutputs;
     };
 
     struct PresentModuleState {
-        const BlockState* block;
+        std::shared_ptr<BlockState> block;
     };
 
     std::atomic_flag computeSync{false};
     std::atomic_flag presentSync{false};
+    std::atomic_flag computeWait{false};
+    std::atomic_flag computeHalt{true};
+    std::atomic_flag presentHalt{true};
 
-    std::shared_ptr<Render::Window>& window;
-    std::vector<std::shared_ptr<Graph>> graphs;
     std::unordered_map<std::string, ComputeModuleState> computeModuleStates;
     std::unordered_map<std::string, PresentModuleState> presentModuleStates;
+
+    std::unordered_map<std::string, ComputeModuleState> validComputeModuleStates;
+    std::unordered_map<std::string, PresentModuleState> validPresentModuleStates;
+
+    std::vector<std::shared_ptr<Graph>> graphs;
+    ExecutionOrder executionOrder;
     DeviceExecutionOrder deviceExecutionOrder;
 
     Result removeInactive();
-    Result arrangeDependencyOrder(ExecutionOrder& executionOrder);
-    Result checkSequenceValidity(ExecutionOrder& executionOrder);
+    Result arrangeDependencyOrder();
+    Result checkSequenceValidity();
     Result createExecutionGraphs();
+
+    void lock();
+    void unlock();
 };
 
 }  // namespace Jetstream

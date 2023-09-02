@@ -19,7 +19,7 @@ Result Filter<D, T>::generateSincFunction() {
             sincCoeffs[{b, i}] = sinc(2 * filterWidth * (i - (config.numberOfTaps - 1) / 2.0));
         }
     }
-        
+
     return Result::SUCCESS;
 }
 
@@ -32,7 +32,7 @@ Result Filter<D, T>::generateWindow() {
             windowCoeffs[{b, i}] = 0.54 - 0.46 * cos(2 * M_PI * i / (config.numberOfTaps - 1));
         }
     }
-        
+
     return Result::SUCCESS;
 }
 
@@ -46,7 +46,7 @@ Result Filter<D, T>::generateUpconvert() {
             upconvertCoeffs[{b, i}] = std::exp(j * 2.0f * (float)M_PI * n(config.numberOfTaps, i) * filterOffset);
         }
     }
-        
+
     return Result::SUCCESS;
 }
 
@@ -67,17 +67,15 @@ Result Filter<D, T>::bakeFilter() {
             scratchCoeffs[{b, i}] = ((i % 2) == 0 and config.linearFrequency) ? coeff : -coeff;
         }
     }
-    
+
     // Convert filter to the frequency domain.
     fftwf_execute(plan);
-        
+
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Filter<D, T>::Filter(const Config& config, 
-                     const Input& input)
-         : config(config), input(input) {
+Result Filter<D, T>::create() {
     JST_DEBUG("Initializing Filter module.");
 
     // Allocate internal data.
@@ -87,15 +85,17 @@ Filter<D, T>::Filter(const Config& config,
     scratchCoeffs = Vector<D, T, 2>(config.shape);
 
     // Initialize output.
-    JST_CHECK_THROW(Module::initOutput(this->output.coeffs, config.shape));
+    JST_INIT(
+        JST_INIT_OUTPUT("coeffs", output.coeffs, config.shape);
+    );
 
     // Calculate fractions.
-    JST_CHECK_THROW(calculateFractions());
+    JST_CHECK(calculateFractions());
 
     // Generate all coefficients.
-    JST_CHECK_THROW(generateSincFunction());
-    JST_CHECK_THROW(generateWindow());
-    JST_CHECK_THROW(generateUpconvert());
+    JST_CHECK(generateSincFunction());
+    JST_CHECK(generateWindow());
+    JST_CHECK(generateUpconvert());
 
     // Create FFT plan for baking.
     auto inBuf = reinterpret_cast<fftwf_complex*>(scratchCoeffs.data());
@@ -114,18 +114,27 @@ Filter<D, T>::Filter(const Config& config,
     int *inembed = n;      // Pointer to array of dimensions for input
     int *onembed = n;      // Pointer to array of dimensions for output
 
-    plan = fftwf_plan_many_dft(rank, n, howmany, 
+    plan = fftwf_plan_many_dft(rank, n, howmany,
                                inBuf, inembed, istride, idist,
                                outBuf, onembed, ostride, odist,
                                FFTW_FORWARD, FFTW_ESTIMATE);
 
     if (!plan) {
-        JST_FATAL("Failed to create FFT plan.");
-        JST_CHECK_THROW(Result::ERROR);
+        JST_ERROR("Failed to create FFT plan.");
+        return Result::ERROR;
     }
 
     // Finalize filter.
-    JST_CHECK_THROW(bakeFilter());
+    JST_CHECK(bakeFilter());
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result Filter<D, T>::destroy() {
+    fftwf_destroy_plan(plan);
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>

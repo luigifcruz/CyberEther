@@ -6,82 +6,12 @@
 #include <vector>
 #include <complex>
 #include <unordered_map>
+#include <functional>
 
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 
 namespace Jetstream {
-
-//
-// Device
-//
-
-enum class JETSTREAM_API Device : uint8_t {
-    None    = 1 << 0,
-    CPU     = 1 << 1,
-    CUDA    = 1 << 2,
-    Metal   = 1 << 3,
-    Vulkan  = 1 << 4,
-    WebGPU  = 1 << 5,
-};
-
-inline constexpr Device operator|(Device lhs, Device rhs) {
-    return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
-}
-
-inline constexpr Device operator&(Device lhs, Device rhs) {
-    return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
-}
-
-inline const char* GetDeviceName(const Device& device) {
-    static const std::unordered_map<Device, const char*> deviceNames = {
-        {Device::None, "none"},
-        {Device::CPU, "cpu"},
-        {Device::CUDA, "cuda"},
-        {Device::Metal, "metal"},
-        {Device::Vulkan, "vulkan"},
-        {Device::WebGPU, "webgpu"}
-    };
-    return deviceNames.at(device);
-}
-
-inline const char* GetDevicePrettyName(const Device& device) {
-    static const std::unordered_map<Device, const char*> deviceNames = {
-        {Device::None, "None"},
-        {Device::CPU, "CPU"},
-        {Device::CUDA, "CUDA"},
-        {Device::Metal, "Metal"},
-        {Device::Vulkan, "Vulkan"},
-        {Device::WebGPU, "WebGPU"}
-    };
-    return deviceNames.at(device);
-}
-
-inline std::ostream& operator<<(std::ostream& os, const Device& device) {
-    return os << GetDevicePrettyName(device);
-}
-
-//
-// Range
-//
-
-template<typename T>
-struct JETSTREAM_API Range {
-    T min;
-    T max;
-
-    bool operator==(const Range<T>& a) const {
-        return (min == a.min && max == a.max);
-    }
-
-    bool operator!=(const Range<T>& a) const {
-        return (min != a.min || max != a.max);
-    }
-
-    bool operator<=(const Range<T>& a) const {
-        return (min <= a.min || max <= a.max);
-    }
-};
 
 //
 // Numeric Types
@@ -287,8 +217,160 @@ struct JETSTREAM_API NumericTypeInfo<CU64> {
     inline static const char* name = "CU64";
 };
 
+//
+// Device
+//
+
+enum class JETSTREAM_API Device : uint8_t {
+    None    = 1 << 0,
+    CPU     = 1 << 1,
+    CUDA    = 1 << 2,
+    Metal   = 1 << 3,
+    Vulkan  = 1 << 4,
+    WebGPU  = 1 << 5,
+};
+
+inline constexpr Device operator|(Device lhs, Device rhs) {
+    return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+}
+
+inline constexpr Device operator&(Device lhs, Device rhs) {
+    return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+}
+
+inline constexpr bool operator==(Device lhs, Device rhs) {
+    return (static_cast<uint8_t>(lhs) == static_cast<uint8_t>(rhs));
+}
+
+inline const char* GetDeviceName(const Device& device) {
+    static const std::unordered_map<Device, const char*> deviceNames = {
+        {Device::None,   "none"},
+        {Device::CPU,    "cpu"},
+        {Device::CUDA,   "cuda"},
+        {Device::Metal,  "metal"},
+        {Device::Vulkan, "vulkan"},
+        {Device::WebGPU, "webgpu"}
+    };
+    return deviceNames.at(device);
+}
+
+inline const char* GetDevicePrettyName(const Device& device) {
+    static const std::unordered_map<Device, const char*> deviceNames = {
+        {Device::None,   "None"},
+        {Device::CPU,    "CPU"},
+        {Device::CUDA,   "CUDA"},
+        {Device::Metal,  "Metal"},
+        {Device::Vulkan, "Vulkan"},
+        {Device::WebGPU, "WebGPU"}
+    };
+    return deviceNames.at(device);
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Device& device) {
+    return os << GetDevicePrettyName(device);
+}
+
+//
+// Locale
+//
+
+struct Locale {
+    std::string id;
+    std::string subId;
+    std::string pinId;
+
+    // TODO: Remove
+    std::string str() const {
+        return id + subId + pinId;
+    }
+
+    Locale idOnly() const {
+        return Locale{id};
+    }
+
+    Locale idSub() const {
+        return Locale{id, subId};
+    }
+
+    Locale idPin() const {
+        return Locale{id, "", pinId};
+    }
+
+    Locale pinOnly() const {
+        return Locale{id, "", pinId};
+    }
+
+    bool empty() const {
+        return id.empty() && subId.empty() && pinId.empty();
+    }
+
+    bool internal() const {
+        return !subId.empty();
+    }
+
+    bool operator==(const Locale& other) const {
+        return id == other.id &&
+               subId == other.subId &&
+               pinId == other.pinId;
+    }
+
+    std::size_t hash() const {
+        return Hasher()(*this);
+    }
+
+    struct Hasher {
+        std::size_t operator()(const Locale& locale) const {
+            std::hash<std::string> string_hasher;
+            std::size_t h1 = string_hasher(locale.id);
+            std::size_t h2 = string_hasher(locale.subId);
+            std::size_t h3 = string_hasher(locale.pinId);
+            return h1 ^ (h2 << 1) ^ (h3 << 2);
+        }
+    };
+};
+
+inline std::ostream& operator<<(std::ostream& os, const Locale& locale) {
+    if (!locale.id.empty() && !locale.subId.empty()) {
+        os << fmt::format("{}-", locale.id);
+    } else {
+        os << fmt::format("{}", locale.id);
+    }
+    if (!locale.subId.empty()) {
+        os << fmt::format("{}", locale.subId);
+    }
+    if (!locale.pinId.empty()) {
+        os << fmt::format(".{}", locale.pinId);
+    }
+    return os;
+}
+
+//
+// Range
+//
+
+template<typename T>
+struct JETSTREAM_API Range {
+    T min;
+    T max;
+
+    bool operator==(const Range<T>& a) const {
+        return (min == a.min && max == a.max);
+    }
+
+    bool operator!=(const Range<T>& a) const {
+        return (min != a.min || max != a.max);
+    }
+
+    bool operator<=(const Range<T>& a) const {
+        return (min <= a.min || max <= a.max);
+    }
+};
+
+// TODO Add print for Range.
+
 }  // namespace Jetstream
 
 template <> struct fmt::formatter<Jetstream::Device> : ostream_formatter {};
+template <> struct fmt::formatter<Jetstream::Locale> : ostream_formatter {};
 
 #endif

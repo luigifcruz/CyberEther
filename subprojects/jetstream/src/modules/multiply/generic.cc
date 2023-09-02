@@ -1,26 +1,28 @@
 #include "jetstream/modules/multiply.hh"
 
-namespace Jetstream { 
+namespace Jetstream {
 
 template<Device D, typename T>
-Multiply<D, T>::Multiply(const Config& config, 
-                         const Input& input) 
-         : config(config), input(input) {
+Result Multiply<D, T>::create() {
     JST_DEBUG("Initializing Multiply module.");
-    
+
     // Initialize output.
-    JST_CHECK_THROW(Module::initInput(this->input.factorA));
-    JST_CHECK_THROW(Module::initInput(this->input.factorB));
-    JST_CHECK_THROW(Module::initOutput(this->output.product, this->input.factorA.shape()));
+    JST_INIT(
+        JST_INIT_INPUT("factorA", input.factorA);
+        JST_INIT_INPUT("factorB", input.factorB);
+        JST_INIT_OUTPUT("product", output.product, input.factorA.shape());
+    );
 
     // Check parameters.
-    if (this->input.factorA.shape()[1] != this->input.factorB.shape()[1]) {
-        JST_FATAL("Input A shape ({}) is different than the" \
+    if (input.factorA.shape()[1] != input.factorB.shape()[1]) {
+        JST_ERROR("Input A shape ({}) is different than the " \
             "Input B shape ({}).",
-            this->input.factorA.shape(),
-            this->input.factorB.shape());
-        JST_CHECK_THROW(Result::ERROR);
+            input.factorA.shape(),
+            input.factorB.shape());
+        return Result::ERROR;
     }
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>

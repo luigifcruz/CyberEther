@@ -68,7 +68,7 @@ inline U32 FindMemoryType(const VkPhysicalDevice& device, const U32& typeFilter,
     }
 
     JST_FATAL("[VULKAN] Failed to find suitable memory type!");
-    JST_CHECK_THROW(Result::ERROR);
+    JST_CHECK_THROW(Result::FATAL);
 
     return 0;
 }
@@ -99,7 +99,7 @@ inline Result ExecuteOnce(VkDevice& device,
 
     VkCommandBuffer commandBuffer;
     JST_VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer), [&]{
-        JST_FATAL("[VULKAN] Can't create execute once command buffers.");
+        JST_ERROR("[VULKAN] Can't create execute once command buffers.");
     });
   
     VkCommandBufferBeginInfo cmdBeginInfo = {};
@@ -107,13 +107,13 @@ inline Result ExecuteOnce(VkDevice& device,
     cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     JST_VK_CHECK(vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo), [&]{
-        JST_FATAL("[VULKAN] Failed to begin one time command buffer.");    
+        JST_ERROR("[VULKAN] Failed to begin one time command buffer.");    
     });
 
     JST_CHECK(func(commandBuffer));
 
     JST_VK_CHECK(vkEndCommandBuffer(commandBuffer), [&]{
-        JST_FATAL("[VULKAN] Failed to end one time command buffer.");   
+        JST_ERROR("[VULKAN] Failed to end one time command buffer.");   
     });
 
     VkSubmitInfo submitInfo = {};
@@ -132,11 +132,11 @@ inline Result ExecuteOnce(VkDevice& device,
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
     JST_VK_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &fence), [&]{
-        JST_FATAL("[VULKAN] Can't create one time fence.");            
+        JST_ERROR("[VULKAN] Can't create one time fence.");            
     });
 
     JST_VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), [&]{
-        JST_FATAL("[VULKAN] Can't submit one time queue.");            
+        JST_ERROR("[VULKAN] Can't submit one time queue.");            
     });
 
     vkWaitForFences(device, 1, &fence, true, UINT64_MAX);
@@ -184,8 +184,8 @@ inline Result TransitionImageLayout(VkCommandBuffer& commandBuffer,
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else {
-        JST_FATAL("[VULKAN] Unsupported layout transition!");
-        JST_CHECK(Result::SUCCESS);
+        JST_ERROR("[VULKAN] Unsupported layout transition!");
+        JST_CHECK(Result::ERROR);
     }
 
     vkCmdPipelineBarrier(

@@ -10,14 +10,14 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = F32>
 class Waterfall : public Bundle {
  public:
-   // Configuration 
+   // Configuration
 
     struct Config {
         F32 zoom = 1.0;
         I32 offset = 0;
         U64 height = 512;
         bool interpolate = true;
-        Size2D<U64> viewSize = {4096, 512};
+        Size2D<U64> viewSize = {512, 384};
 
         JST_SERDES(
             JST_SERDES_VAL("zoom", zoom);
@@ -35,7 +35,7 @@ class Waterfall : public Bundle {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -72,19 +72,28 @@ class Waterfall : public Bundle {
 
     // Constructor
 
-    Waterfall(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input) {
-        waterfall = instance.addModule<Jetstream::Waterfall, D, T>(name + "-ui", {
-            .zoom = config.zoom,
-            .offset = config.offset,
-            .height = config.height,
-            .interpolate = config.interpolate,
-            .viewSize = config.viewSize,
-        }, {
-            .buffer = input.buffer,
-        }, true);
+    Result create() {
+        JST_CHECK(instance->addModule<Jetstream::Waterfall, D, T>(
+            waterfall, "ui", {
+                .zoom = config.zoom,
+                .offset = config.offset,
+                .height = config.height,
+                .interpolate = config.interpolate,
+                .viewSize = config.viewSize,
+            }, {
+                .buffer = input.buffer,
+            },
+            this->locale.id
+        ));
+
+        return Result::SUCCESS;
     }
-    virtual ~Waterfall() = default;
+
+    Result destroy() {
+        JST_CHECK(instance->removeModule("ui", this->locale.id));
+
+        return Result::SUCCESS;
+    }
 
     // Interface
 
@@ -142,7 +151,7 @@ class Waterfall : public Bundle {
         auto zoom = waterfall->zoom();
         if (ImGui::DragFloat("##Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
             waterfall->zoom(zoom);
-        } 
+        }
     }
 
     constexpr bool shouldDrawControl() const {
@@ -150,10 +159,6 @@ class Waterfall : public Bundle {
     }
 
  private:
-    Config config;
-    Input input;
-    Output output;
-
     std::shared_ptr<Jetstream::Waterfall<D, T>> waterfall;
     I32 position;
 
@@ -163,8 +168,10 @@ class Waterfall : public Bundle {
         return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
                       mousePositionAbsolute.y - screenPositionAbsolute.y);
     }
+
+    JST_DEFINE_BUNDLE_IO();
 };
-    
+
 }  // namespace Jetstream::Bundles
 
 #endif

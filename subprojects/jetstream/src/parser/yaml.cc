@@ -20,21 +20,21 @@ std::vector<char> Parser::LoadFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
 
     if (!file) {
-        JST_FATAL("[PARSER] Can't open configuration file.");
+        JST_ERROR("[PARSER] Can't open configuration file.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
     file.read(data.data(), filesize);
 
     if (!file) {
-        JST_FATAL("[PARSER] Can't open configuration file.");
+        JST_ERROR("[PARSER] Can't open configuration file.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
     return data;
 }
 
-std::vector<std::string> Parser::GetMissingKeys(const std::unordered_map<std::string, ryml::ConstNodeRef>& m, 
+std::vector<std::string> Parser::GetMissingKeys(const std::unordered_map<std::string, ryml::ConstNodeRef>& m,
                                                 const std::vector<std::string>& v) {
     std::vector<std::string> result;
     for (const auto& vkey : v) {
@@ -60,7 +60,7 @@ std::vector<std::string> Parser::GetParameterNodes(const std::string& str) {
 
 ryml::ConstNodeRef Parser::SolvePlaceholder(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node) {
     if (!node.has_val()) {
-        return node; 
+        return node;
     }
 
     std::string key = std::string(node.val().str, node.val().len);
@@ -101,7 +101,7 @@ std::unordered_map<std::string, ryml::ConstNodeRef> Parser::GatherNodes(const ry
     std::unordered_map<std::string, ryml::ConstNodeRef> values;
 
     if (!node.is_map()) {
-        JST_FATAL("[PARSER] Node isn't a map.");
+        JST_ERROR("[PARSER] Node isn't a map.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -115,7 +115,7 @@ std::unordered_map<std::string, ryml::ConstNodeRef> Parser::GatherNodes(const ry
     }
 
     if (values.size() != keys.size() && !acceptLess) {
-        JST_FATAL("[PARSER] Failed to parse configuration file due to missing keys: {}",
+        JST_ERROR("[PARSER] Failed to parse configuration file due to missing keys: {}",
                   GetMissingKeys(values, keys));
         JST_CHECK_THROW(Result::ERROR);
     }
@@ -125,7 +125,7 @@ std::unordered_map<std::string, ryml::ConstNodeRef> Parser::GatherNodes(const ry
 
 ryml::ConstNodeRef Parser::GetNode(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node, const std::string& key) {
     if (!node.is_map()) {
-        JST_FATAL("[PARSER] Node isn't a map.");
+        JST_ERROR("[PARSER] Node isn't a map.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -135,7 +135,7 @@ ryml::ConstNodeRef Parser::GetNode(const ryml::ConstNodeRef& root, const ryml::C
         }
     }
 
-    JST_FATAL("[PARSER] Node ({}) doesn't exist.", key);
+    JST_ERROR("[PARSER] Node ({}) doesn't exist.", key);
     throw Result::ERROR;
 }
 
@@ -156,9 +156,9 @@ bool Parser::HasNode(const ryml::ConstNodeRef&, const ryml::ConstNodeRef& node, 
 // TODO: Sanitize string case.
 std::string Parser::ResolveReadable(const ryml::ConstNodeRef& var) {
     std::string readableVar;
-    
+
     if (var.is_map()) {
-        JST_FATAL("[PARSER] Node is a map.");
+        JST_ERROR("[PARSER] Node is a map.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -166,10 +166,10 @@ std::string Parser::ResolveReadable(const ryml::ConstNodeRef& var) {
         for (U64 i = 0; i < var.num_children(); i++) {
             std::string partialStr;
             if (var[i].has_val()) {
-                var[i] >> partialStr;                
+                var[i] >> partialStr;
             }
             if (i > 0) {
-                readableVar += ", "; 
+                readableVar += ", ";
             }
             readableVar += partialStr;
         }
@@ -181,7 +181,7 @@ std::string Parser::ResolveReadable(const ryml::ConstNodeRef& var) {
         return readableVar;
     }
 
-    JST_FATAL("[PARSER] Node value not readable.");
+    JST_ERROR("[PARSER] Node value not readable.");
     throw Result::ERROR;
 }
 
@@ -190,26 +190,26 @@ std::string Parser::ResolveReadableKey(const ryml::ConstNodeRef& var) {
         return std::string(var.key().str, var.key().len);
     }
 
-    JST_FATAL("[PARSER] Node key not readable.");
+    JST_ERROR("[PARSER] Node key not readable.");
     throw Result::ERROR;
 }
 
-std::any Parser::SolveLocalPlaceholder(Instance& instance, const ryml::ConstNodeRef& node) {
+Parser::Record Parser::SolveLocalPlaceholder(Instance& instance, const ryml::ConstNodeRef& node) {
     if (!node.has_val()) {
-        return ResolveReadable(node); 
+        return {ResolveReadable(node)};
     }
 
     std::string key = std::string(node.val().str, node.val().len);
 
     std::regex placeholderPattern(R"(\$\{.*\})");
     if (!std::regex_match(key, placeholderPattern)) {
-        return ResolveReadable(node);
+        return {ResolveReadable(node)};
     }
 
     std::vector<std::string> patternNodes = GetParameterNodes(GetParameterContents(key));
 
     if (patternNodes.size() != 4) {
-        JST_FATAL("[PARSER] Variable {} not found.", key);
+        JST_ERROR("[PARSER] Variable {} not found.", key);
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -219,41 +219,41 @@ std::any Parser::SolveLocalPlaceholder(Instance& instance, const ryml::ConstNode
     const auto& elementKey = patternNodes[3];
 
     if (graphKey.compare("graph")) {
-        JST_FATAL("[PARSER] Invalid variable {}.", key);
+        JST_ERROR("[PARSER] Invalid variable {}.", key);
         JST_CHECK_THROW(Result::ERROR);
     }
 
-    if (instance.countBlockState(moduleKey) == 0) {
-        JST_FATAL("[PARSER] Module from the variable {} not found.", key);
+    if (instance.countBlockState({moduleKey}) == 0) {
+        JST_ERROR("[PARSER] Module from the variable {} not found.", key);
         JST_CHECK_THROW(Result::ERROR);
     }
     auto& module = instance.getBlockState(moduleKey).record;
 
     if (!arrayKey.compare("input")) {
-        if (!module.data.inputMap.contains(elementKey)) {
-            JST_FATAL("[PARSER] Input element from the variable {} not found.", key);
+        if (!module.inputMap.contains(elementKey)) {
+            JST_ERROR("[PARSER] Input element from the variable {} not found.", key);
             JST_CHECK_THROW(Result::ERROR);
         }
-        return module.data.inputMap[elementKey].object;
+        return {module.inputMap[elementKey].object};
     }
-    
+
     if (!arrayKey.compare("output")) {
-        if (!module.data.outputMap.contains(elementKey)) {
-            JST_FATAL("[PARSER] Output element from the variable {} not found.", key);
+        if (!module.outputMap.contains(elementKey)) {
+            JST_ERROR("[PARSER] Output element from the variable {} not found.", key);
             JST_CHECK_THROW(Result::ERROR);
         }
-        return module.data.outputMap[elementKey].object;
+        return {module.outputMap[elementKey].object};
     }
 
     if (!arrayKey.compare("interface")) {
-        if (!module.data.interfaceMap.contains(elementKey)) {
-            JST_FATAL("[PARSER] Interface element from the variable {} not found.", key);
+        if (!module.interfaceMap.contains(elementKey)) {
+            JST_ERROR("[PARSER] Interface element from the variable {} not found.", key);
             JST_CHECK_THROW(Result::ERROR);
         }
-        return module.data.interfaceMap[elementKey].object;
+        return {module.interfaceMap[elementKey].object};
     }
 
-    JST_FATAL("[PARSER] Invalid module array {}. It should be 'input', 'output', or 'interface'.", key);
+    JST_ERROR("[PARSER] Invalid module array {}. It should be 'input', 'output', or 'interface'.", key);
     throw Result::ERROR;
 }
 

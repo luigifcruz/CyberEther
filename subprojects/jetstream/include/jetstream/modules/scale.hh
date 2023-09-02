@@ -30,7 +30,7 @@ class Scale : public Module, public Compute {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -77,7 +77,7 @@ class Scale : public Module, public Compute {
 
     // Constructor
 
-    explicit Scale(const Config& config, const Input& input);
+    Result create();
     
     // Miscellaneous
 
@@ -95,10 +95,6 @@ class Scale : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    Config config;
-    const Input input;
-    Output output;
-
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
         F32 min;
@@ -110,6 +106,8 @@ class Scale : public Module, public Compute {
         Vector<Device::Metal, U8> constants;
     } metal;
 #endif
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

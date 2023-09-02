@@ -146,3 +146,4 @@ Some refactoring has been recently made to support other compute APIs like Vulka
 
 - [] Cleanup header includes.
 - [] Simplify backend support table.
+- [] Implement better sub-graph scheduler (`computeReady()`).

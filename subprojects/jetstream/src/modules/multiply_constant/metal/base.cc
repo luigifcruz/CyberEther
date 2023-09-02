@@ -17,9 +17,9 @@ static const char shadersSrc[] = R"""(
                                  device float *product [[ buffer(2) ]],
                                  uint id[[ thread_position_in_grid ]]) {
         const uint index = id * 2;
-        product[index + 0] = (factor[index + 0] * constants.constantReal) - 
+        product[index + 0] = (factor[index + 0] * constants.constantReal) -
                              (factor[index + 1] * constants.constantImage);
-        product[index + 1] = (factor[index + 0] * constants.constantImage) + 
+        product[index + 1] = (factor[index + 0] * constants.constantImage) +
                              (factor[index + 1] * constants.constantReal);
     }
 
@@ -54,7 +54,7 @@ template<Device D, typename T>
 Result MultiplyConstant<D, T>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
-    
+
     auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(assets.state);
     cmdEncoder->setBuffer(assets.constants, 0, 0);
@@ -69,5 +69,5 @@ Result MultiplyConstant<D, T>::compute(const RuntimeMetadata& meta) {
 
 template class MultiplyConstant<Device::Metal, CF32>;
 template class MultiplyConstant<Device::Metal, F32>;
-    
+
 }  // namespace Jetstream

@@ -10,11 +10,11 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = F32>
 class Spectrogram : public Bundle {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         U64 height = 256;
-        Size2D<U64> viewSize = {2048, 512};
+        Size2D<U64> viewSize = {512, 384};
 
         JST_SERDES(
             JST_SERDES_VAL("height", height);
@@ -29,7 +29,7 @@ class Spectrogram : public Bundle {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -66,16 +66,25 @@ class Spectrogram : public Bundle {
 
     // Constructor
 
-    Spectrogram(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input) {
-        spectrogram = instance.addModule<Jetstream::Spectrogram, D, T>(name + "-ui", {
-            .height = config.height,
-            .viewSize = config.viewSize,
-        }, {
-            .buffer = input.buffer,
-        }, true);
+    Result create() {
+        JST_CHECK(instance->addModule<Jetstream::Spectrogram, D, T>(
+            spectrogram, "ui", {
+                .height = config.height,
+                .viewSize = config.viewSize,
+            }, {
+                .buffer = input.buffer,
+            },
+            this->locale.id
+        ));
+
+        return Result::SUCCESS;
     }
-    virtual ~Spectrogram() = default;
+
+    Result destroy() {
+        JST_CHECK(instance->removeModule("ui", this->locale.id));
+
+        return Result::SUCCESS;
+    }
 
     // Interface
 
@@ -98,7 +107,7 @@ class Spectrogram : public Bundle {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));    
+        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
     }
 
     constexpr bool shouldDrawView() const {
@@ -106,11 +115,9 @@ class Spectrogram : public Bundle {
     }
 
  private:
-    Config config;
-    Input input;
-    Output output;
-
     std::shared_ptr<Jetstream::Spectrogram<D, T>> spectrogram;
+
+    JST_DEFINE_BUNDLE_IO();
 };
 
 }  // namespace Jetstream::Bundles

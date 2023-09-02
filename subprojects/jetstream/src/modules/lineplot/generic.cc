@@ -4,22 +4,20 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Lineplot<D, T>::Lineplot(const Config& config,
-                         const Input& input) 
-         : config(config), input(input) {
+Result Lineplot<D, T>::create() {
     JST_DEBUG("Initializing Lineplot module.");
-    JST_CHECK_THROW(Module::initInput(input.buffer));
-}
 
-template<Device D, typename T>
-Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
-    JST_TRACE("Create Lineplot compute core using CPU backend.");
-    
+    // Initialize Input & Output memory.
+    JST_INIT(
+        JST_INIT_INPUT("buffer", input.buffer);
+    );
+
+    // Allocate internal buffers.
     {
         // Generate Grid coordinates.
         const U64 num_cols = config.numberOfVerticalLines;
         const U64 num_rows = config.numberOfHorizontalLines;
-        
+
         grid = Vector<D, F32, 3>({num_cols + num_rows, 2, 3});
 
         const F32 x_step  = +2.0f / (num_cols - 1);
@@ -31,7 +29,7 @@ Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 
         for (U64 row = 0; row < num_rows; row++) {
             const F32 y = y_start + row * y_step;
-            
+
             grid[{row, 0, 0}] = x_start;
             grid[{row, 0, 1}] = y;
 
@@ -41,7 +39,7 @@ Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 
         for (U64 col = 0; col < num_cols; col++) {
             const F32 x = x_start + col * x_step;
-            
+
             grid[{col + num_rows, 0, 0}] = x;
             grid[{col + num_rows, 0, 1}] = y_start;
 
@@ -61,77 +59,6 @@ Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
         }
     }
 
-    JST_CHECK(underlyingCreateCompute(meta));
-    
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-Result Lineplot<D, T>::createPresent(Render::Window& window) {
-    Render::Buffer::Config gridVerticesConf;
-    gridVerticesConf.buffer = grid.data();
-    gridVerticesConf.elementByteSize = sizeof(grid[0]);
-    gridVerticesConf.size = grid.size();
-    gridVerticesConf.target = Render::Buffer::Target::VERTEX;
-    gridVerticesConf.enableZeroCopy = true;
-    JST_CHECK(window.build(gridVerticesBuffer, gridVerticesConf));
-
-    Render::Vertex::Config gridVertexCfg;
-    gridVertexCfg.buffers = {
-        {gridVerticesBuffer, 3},
-    };
-    JST_CHECK(window.build(gridVertex, gridVertexCfg));
-
-    Render::Draw::Config drawGridVertexCfg;
-    drawGridVertexCfg.buffer = gridVertex;
-    drawGridVertexCfg.mode = Render::Draw::Mode::LINES;
-    JST_CHECK(window.build(drawGridVertex, drawGridVertexCfg));
-
-    Render::Buffer::Config lineVerticesConf;
-    lineVerticesConf.buffer = plot.data();
-    lineVerticesConf.elementByteSize = sizeof(plot[0]);
-    lineVerticesConf.size = plot.size();
-    lineVerticesConf.target = Render::Buffer::Target::VERTEX;
-    lineVerticesConf.enableZeroCopy = true;
-    JST_CHECK(window.build(lineVerticesBuffer, lineVerticesConf));
-
-    Render::Vertex::Config lineVertexCfg;
-    lineVertexCfg.buffers = {
-        {lineVerticesBuffer, 3},
-    };
-    JST_CHECK(window.build(lineVertex, lineVertexCfg));
-
-    Render::Draw::Config drawLineVertexCfg;
-    drawLineVertexCfg.buffer = lineVertex;
-    drawLineVertexCfg.mode = Render::Draw::Mode::LINE_STRIP;
-    JST_CHECK(window.build(drawLineVertex, drawLineVertexCfg));
-
-    Render::Texture::Config lutTextureCfg;
-    lutTextureCfg.size = {256, 1};
-    lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    JST_CHECK(window.build(lutTexture, lutTextureCfg));
-
-    Render::Program::Config gridProgramCfg;
-    gridProgramCfg.shaders = ShadersPackage["grid"];
-    gridProgramCfg.draw = drawGridVertex;
-    JST_CHECK(window.build(gridProgram, gridProgramCfg));
-
-    Render::Program::Config signalProgramCfg;
-    signalProgramCfg.shaders = ShadersPackage["signal"];
-    signalProgramCfg.draw = drawLineVertex;
-    signalProgramCfg.textures = {lutTexture};
-    JST_CHECK(window.build(signalProgram, signalProgramCfg));
-
-    Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize;
-    JST_CHECK(window.build(texture, textureCfg));
-
-    Render::Surface::Config surfaceCfg;
-    surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {gridProgram, signalProgram};
-    JST_CHECK(window.build(surface, surfaceCfg));
-    JST_CHECK(window.bind(surface));
-
     return Result::SUCCESS;
 }
 
@@ -141,7 +68,83 @@ void Lineplot<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-Result Lineplot<D, T>::present(Render::Window&) {
+Result Lineplot<D, T>::createPresent() {
+    Render::Buffer::Config gridVerticesConf;
+    gridVerticesConf.buffer = grid.data();
+    gridVerticesConf.elementByteSize = sizeof(grid[0]);
+    gridVerticesConf.size = grid.size();
+    gridVerticesConf.target = Render::Buffer::Target::VERTEX;
+    gridVerticesConf.enableZeroCopy = true;
+    JST_CHECK(window->build(gridVerticesBuffer, gridVerticesConf));
+
+    Render::Vertex::Config gridVertexCfg;
+    gridVertexCfg.buffers = {
+        {gridVerticesBuffer, 3},
+    };
+    JST_CHECK(window->build(gridVertex, gridVertexCfg));
+
+    Render::Draw::Config drawGridVertexCfg;
+    drawGridVertexCfg.buffer = gridVertex;
+    drawGridVertexCfg.mode = Render::Draw::Mode::LINES;
+    JST_CHECK(window->build(drawGridVertex, drawGridVertexCfg));
+
+    Render::Buffer::Config lineVerticesConf;
+    lineVerticesConf.buffer = plot.data();
+    lineVerticesConf.elementByteSize = sizeof(plot[0]);
+    lineVerticesConf.size = plot.size();
+    lineVerticesConf.target = Render::Buffer::Target::VERTEX;
+    lineVerticesConf.enableZeroCopy = true;
+    JST_CHECK(window->build(lineVerticesBuffer, lineVerticesConf));
+
+    Render::Vertex::Config lineVertexCfg;
+    lineVertexCfg.buffers = {
+        {lineVerticesBuffer, 3},
+    };
+    JST_CHECK(window->build(lineVertex, lineVertexCfg));
+
+    Render::Draw::Config drawLineVertexCfg;
+    drawLineVertexCfg.buffer = lineVertex;
+    drawLineVertexCfg.mode = Render::Draw::Mode::LINE_STRIP;
+    JST_CHECK(window->build(drawLineVertex, drawLineVertexCfg));
+
+    Render::Texture::Config lutTextureCfg;
+    lutTextureCfg.size = {256, 1};
+    lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+    JST_CHECK(window->build(lutTexture, lutTextureCfg));
+
+    Render::Program::Config gridProgramCfg;
+    gridProgramCfg.shaders = ShadersPackage["grid"];
+    gridProgramCfg.draw = drawGridVertex;
+    JST_CHECK(window->build(gridProgram, gridProgramCfg));
+
+    Render::Program::Config signalProgramCfg;
+    signalProgramCfg.shaders = ShadersPackage["signal"];
+    signalProgramCfg.draw = drawLineVertex;
+    signalProgramCfg.textures = {lutTexture};
+    JST_CHECK(window->build(signalProgram, signalProgramCfg));
+
+    Render::Texture::Config textureCfg;
+    textureCfg.size = config.viewSize;
+    JST_CHECK(window->build(texture, textureCfg));
+
+    Render::Surface::Config surfaceCfg;
+    surfaceCfg.framebuffer = texture;
+    surfaceCfg.programs = {gridProgram, signalProgram};
+    JST_CHECK(window->build(surface, surfaceCfg));
+    JST_CHECK(window->bind(surface));
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result Lineplot<D, T>::destroyPresent() {
+    JST_CHECK(window->unbind(surface));
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result Lineplot<D, T>::present() {
     lineVerticesBuffer->update();
     return Result::SUCCESS;
 }
@@ -149,7 +152,7 @@ Result Lineplot<D, T>::present(Render::Window&) {
 template<Device D, typename T>
 const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
-        this->config.viewSize = surface->size();
+        config.viewSize = surface->size();
     }
     return this->viewSize();
 }

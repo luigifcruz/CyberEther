@@ -30,7 +30,7 @@ class MultiplyConstant : public Module, public Compute {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> factor;
+        Vector<D, T, 2> factor;
 
         JST_SERDES(
             JST_SERDES_VAL("factor", factor);
@@ -77,17 +77,13 @@ class MultiplyConstant : public Module, public Compute {
 
     // Constructor
 
-    explicit MultiplyConstant(const Config& config, const Input& input);
+    Result create();
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    const Config config;
-    const Input input;
-    Output output;
-
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
         F32 constantReal;
@@ -99,6 +95,8 @@ class MultiplyConstant : public Module, public Compute {
         Vector<Device::Metal, U8> constants;
     } metal;
 #endif
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

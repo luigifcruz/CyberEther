@@ -11,7 +11,7 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = CF32>
 class Constellation : public Bundle {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         Size2D<U64> viewSize = {512, 512};
@@ -28,7 +28,7 @@ class Constellation : public Bundle {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -65,15 +65,24 @@ class Constellation : public Bundle {
 
     // Constructor
 
-    Constellation(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input) {
-        constellation = instance.addModule<Jetstream::Constellation, D, T>(name + "-ui", {
-            .viewSize = config.viewSize,
-        }, {
-            .buffer = input.buffer,
-        }, true);
+    Result create() {
+        JST_CHECK(instance->addModule<Jetstream::Constellation, D, T>(
+            constellation, "ui", {
+                .viewSize = config.viewSize,
+            }, {
+                .buffer = input.buffer,
+            },
+            this->locale.id
+        ));
+
+        return Result::SUCCESS;
     }
-    virtual ~Constellation() = default;
+
+    Result destroy() {
+        JST_CHECK(instance->removeModule("ui", this->locale.id));
+
+        return Result::SUCCESS;
+    }
 
     // Interface
 
@@ -84,7 +93,7 @@ class Constellation : public Bundle {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(constellation->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));  
+        ImGui::Image(constellation->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
     }
 
     constexpr bool shouldDrawView() const {
@@ -92,11 +101,9 @@ class Constellation : public Bundle {
     }
 
  private:
-    Config config;
-    Input input;
-    Output output;
-
     std::shared_ptr<Jetstream::Constellation<D, T>> constellation;
+
+    JST_DEFINE_BUNDLE_IO();
 };
 
 }  // namespace Jetstream::Bundles

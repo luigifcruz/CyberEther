@@ -10,10 +10,11 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = CF32>
 class Soapy : public Bundle {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         std::string deviceString;
+        std::string streamString = "";
         F32 frequency;
         F32 sampleRate;
         VectorShape<2> outputShape;
@@ -21,6 +22,7 @@ class Soapy : public Bundle {
 
         JST_SERDES(
             JST_SERDES_VAL("deviceString", deviceString);
+            JST_SERDES_VAL("streamString", streamString);
             JST_SERDES_VAL("frequency", frequency);
             JST_SERDES_VAL("sampleRate", sampleRate);
             JST_SERDES_VAL("outputShape", outputShape);
@@ -76,21 +78,31 @@ class Soapy : public Bundle {
 
     // Constructor
 
-    Soapy(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input) {
-        soapy = instance.addModule<Jetstream::Soapy, D, T>(name + "-ui", {
-            .deviceString = config.deviceString,
-            .frequency = config.frequency,
-            .sampleRate = config.sampleRate,
-            .outputShape = config.outputShape,
-            .bufferMultiplier = config.bufferMultiplier,
-        }, {}, true);
+    Result create() {
+        JST_CHECK(instance->addModule<Jetstream::Soapy, D, T>(
+            soapy, "ui", {
+                .deviceString = config.deviceString,
+                .streamString = config.streamString,
+                .frequency = config.frequency,
+                .sampleRate = config.sampleRate,
+                .outputShape = config.outputShape,
+                .bufferMultiplier = config.bufferMultiplier,
+            }, {},
+            this->locale.id
+        ));
 
-        output.buffer = soapy->getOutputBuffer();
+        JST_CHECK(this->linkOutput("buffer", output.buffer, soapy->getOutputBuffer()));
 
         frequency = soapy->getConfig().frequency / 1e6;
+
+        return Result::SUCCESS;
     }
-    virtual ~Soapy() = default;
+
+    Result destroy() {
+        JST_CHECK(instance->removeModule("ui", this->locale.id));
+
+        return Result::SUCCESS;
+    }
 
     // Interface
 
@@ -117,7 +129,7 @@ class Soapy : public Bundle {
 
         const F32& bufferOccupancy = buffer.getOccupancy();
         const F32 bufferOccupancyMB = (bufferOccupancy * sizeof(CF32) / (1024 * 1024));
-        
+
         const F32& bufferCapacity = buffer.getCapacity();
         const F32 bufferCapacityMB = (bufferCapacity * sizeof(CF32) / (1024 * 1024));
 
@@ -155,7 +167,7 @@ class Soapy : public Bundle {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
-        if (ImGui::IsItemEdited()) { 
+        if (ImGui::IsItemEdited()) {
             frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6;
         }
 
@@ -172,14 +184,12 @@ class Soapy : public Bundle {
     }
 
  private:
-    Config config;
-    Input input;
-    Output output;
-
     F32 stepSize = 10.0f;
     F32 frequency = 10.0f;
 
     std::shared_ptr<Jetstream::Soapy<D, T>> soapy;
+
+    JST_DEFINE_BUNDLE_IO();
 };
 
 }  // namespace Jetstream::Bundles

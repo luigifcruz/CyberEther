@@ -1,6 +1,8 @@
 src_lst += files([
    'instance.cc',
+   'compositor.cc',
    'store.cc',
+   'logger.cc',
 ])
 
 subdir('memory')

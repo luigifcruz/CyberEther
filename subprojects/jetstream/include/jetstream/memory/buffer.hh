@@ -15,6 +15,7 @@ namespace Jetstream::Memory {
 template <class T>
 class CircularBuffer {
 public:
+    CircularBuffer();
     CircularBuffer(const U64& capacity);
     ~CircularBuffer();
 
@@ -24,6 +25,7 @@ public:
     Result get(T*, const U64& size);
     Result put(const T*, const U64& size);
     Result reset();
+    Result resize(const U64& capacity);
 
     Result waitBufferOccupancy(const U64& occupancy);
 

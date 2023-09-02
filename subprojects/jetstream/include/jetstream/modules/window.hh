@@ -72,12 +72,9 @@ class Window : public Module {
 
     // Constructor
 
-    explicit Window(const Config& config, const Input& input);
+    Result create();
 
- private:
-    const Config config;
-    const Input input;
-    Output output;
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

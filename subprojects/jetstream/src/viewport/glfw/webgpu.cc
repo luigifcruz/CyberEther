@@ -32,8 +32,8 @@ Result Implementation::create() {
     glfwSetErrorCallback(&PrintGLFWError);
 
     if (!glfwInit()) {
-        JST_FATAL("[WebGPU] Failed to initialize GLFW.");
-        JST_CHECK_THROW(Result::ERROR);
+        JST_ERROR("[WebGPU] Failed to initialize GLFW.");
+        return Result::ERROR;
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -47,8 +47,8 @@ Result Implementation::create() {
 
     if (!window) {
         glfwTerminate();
-        JST_FATAL("[WebGPU] Failed to create window with GLFW.");
-        JST_CHECK_THROW(Result::ERROR);
+        JST_ERROR("[WebGPU] Failed to create window with GLFW.");
+        return Result::ERROR;
     }
     glfwMakeContextCurrent(window);
 

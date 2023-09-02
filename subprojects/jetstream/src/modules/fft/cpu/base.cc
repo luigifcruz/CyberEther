@@ -6,12 +6,16 @@ template<>
 Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create FFT compute core using CPU backend.");
 
-    auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
+    auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data()) + config.offset;
     auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
 
-    const I32 M = input.buffer.shape()[0];
-    const I32 N = input.buffer.shape()[1];
+    I32 M = input.buffer.shape()[0];
+    I32 N = input.buffer.shape()[1];
     auto direction = (config.forward) ? FFTW_FORWARD : FFTW_BACKWARD;
+
+    if (config.offset != 0 || config.size != 0) {
+        N = config.size;
+    }
 
     int rank     = 1;      // Number of dimensions
     int n[]      = { N };  // Size of each dimension
@@ -23,14 +27,14 @@ Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
     int *inembed = n;      // Pointer to array of dimensions for input
     int *onembed = n;      // Pointer to array of dimensions for output
 
-    cpu.fftPlanCF32 = fftwf_plan_many_dft(rank, n, howmany, 
+    cpu.fftPlanCF32 = fftwf_plan_many_dft(rank, n, howmany,
                                           inBuf, inembed, istride, idist,
                                           outBuf, onembed, ostride, odist,
                                           direction, FFTW_ESTIMATE);
 
     if (!cpu.fftPlanCF32) {
-        JST_FATAL("Failed to create FFT plan.");
-        JST_CHECK_THROW(Result::ERROR);   
+        JST_ERROR("Failed to create FFT plan.");
+        return Result::ERROR;
     }
 
     return Result::SUCCESS;
@@ -38,7 +42,9 @@ Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
 
 template<>
 Result FFT<Device::CPU, CF32>::destroyCompute(const RuntimeMetadata&) {
-    JST_TRACE("Destroy FFT compute core using CPU backend.");
+    JST_TRACE("Destroy FFT compute core using CPU backend. {}", fmt::ptr(cpu.fftPlanCF32));
+
+    fftwf_destroy_plan(cpu.fftPlanCF32);
 
     return Result::SUCCESS;
 }
@@ -51,5 +57,5 @@ Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata&) {
 }
 
 template class FFT<Device::CPU, CF32>;
-    
+
 }  // namespace Jetstream

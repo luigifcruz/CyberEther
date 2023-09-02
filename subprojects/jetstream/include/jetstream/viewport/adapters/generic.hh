@@ -45,7 +45,7 @@ class Generic {
     Result addMouseButtonEvent(U64 button, bool down);
 
  protected:
-    const Config config;
+    Config config;
 };
 
 template<Device DeviceId>

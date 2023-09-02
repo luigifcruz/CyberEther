@@ -6,6 +6,8 @@
 
 namespace Jetstream {
 
+// TODO: Refactor memory allocation and deallocation.
+
 template<typename DataType, U64 Dimensions>
 class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
@@ -35,12 +37,12 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         void* memoryAddr = nullptr;
         const auto pageSize = JST_PAGESIZE();
         const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(this->size_bytes());
-        const auto result = posix_memalign(&memoryAddr, 
+        const auto result = posix_memalign(&memoryAddr,
                                            pageSize,
                                            alignedSizeBytes);
         if (result < 0 || (this->_data = static_cast<DataType*>(memoryAddr)) == nullptr) {
             JST_FATAL("Failed to allocate CPU memory.");
-            JST_CHECK_THROW(Result::ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
         this->_destructors->push_back([ptr = this->_data]() { free(ptr); });
 
@@ -65,10 +67,6 @@ class JETSTREAM_API Vector<Device::CPU, DataType, Dimensions> : public VectorImp
         if (!this->_refs) {
             this->_refs = new U64(1);
             this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
-        }
-        if (!this->_pos) {
-            this->_pos = new U64(0);
-            this->_destructors->push_back([ptr = this->_pos]() { free(ptr); });
         }
     }
 };

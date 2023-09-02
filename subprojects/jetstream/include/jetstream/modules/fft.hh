@@ -31,9 +31,13 @@ class FFT : public Module, public Compute {
 
     struct Config {
         bool forward = true;
+        U64 offset = 0;
+        U64 size = 0;
 
         JST_SERDES(
             JST_SERDES_VAL("forward", forward);
+            JST_SERDES_VAL("offset", offset);
+            JST_SERDES_VAL("size", size);
         );
     };
 
@@ -44,7 +48,7 @@ class FFT : public Module, public Compute {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -91,7 +95,7 @@ class FFT : public Module, public Compute {
 
     // Constructor
 
-    explicit FFT(const Config& config, const Input& input);
+    Result create();
 
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
@@ -99,10 +103,6 @@ class FFT : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    const Config config;
-    const Input input;
-    Output output;
-
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
     struct {
         fftwf_plan fftPlanCF32;
@@ -118,6 +118,8 @@ class FFT : public Module, public Compute {
         MTL::Buffer* output;
     } metal;
 #endif
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

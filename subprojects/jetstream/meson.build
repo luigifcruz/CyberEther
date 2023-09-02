@@ -22,6 +22,8 @@ inc_lst = [
     include_directories('include/jetstream/render/tools'),
 ]
 
+cfg_lst.set('buildtype', get_option('buildtype'))
+
 subdir('meson')
 subdir('shaders')
 subdir('src')

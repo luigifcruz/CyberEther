@@ -36,7 +36,7 @@ Result Implementation::create() {
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &texture), [&]{
-        JST_FATAL("[VULKAN] Failed to create texture.");   
+        JST_ERROR("[VULKAN] Failed to create texture.");   
     });
 
     // Allocate backing memory.
@@ -52,11 +52,11 @@ Result Implementation::create() {
                                                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
-        JST_FATAL("[VULKAN] Failed to allocate texture memory.");
+        JST_ERROR("[VULKAN] Failed to allocate texture memory.");
     });
 
     JST_VK_CHECK(vkBindImageMemory(device, texture, memory, 0), [&]{
-        JST_FATAL("[VULKAN] Failed to bind memory to the texture.");
+        JST_ERROR("[VULKAN] Failed to bind memory to the texture.");
     });
 
     // Create image view.
@@ -79,7 +79,7 @@ Result Implementation::create() {
     createInfo.subresourceRange.layerCount = 1;
 
     JST_VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &imageView), [&]{
-        JST_FATAL("[VULKAN] Failed to create image view."); 
+        JST_ERROR("[VULKAN] Failed to create image view."); 
     });
 
     // Create sampler.
@@ -103,7 +103,7 @@ Result Implementation::create() {
     samplerCreateInfo.maxLod = 1.0f;
 
     JST_VK_CHECK(vkCreateSampler(device, &samplerCreateInfo, nullptr, &sampler), [&]{
-        JST_FATAL("[VULKAN] Can't create texture sampler.")     
+        JST_ERROR("[VULKAN] Can't create texture sampler.")     
     });
 
     // Register descriptor for ImGui attachment.
@@ -122,7 +122,7 @@ Result Implementation::create() {
     info.pBindings = &binding;
 
     JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
-        JST_FATAL("[VULKAN] Can't create descriptor set layout.");
+        JST_ERROR("[VULKAN] Can't create descriptor set layout.");
     });
 
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -132,7 +132,7 @@ Result Implementation::create() {
     allocInfo.pSetLayouts = &descriptorSetLayout;
 
     JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
-        JST_FATAL("[VULKAN] Failed to allocate descriptor set.");
+        JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
     });
 
     VkDescriptorImageInfo descImage{};
@@ -209,7 +209,7 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
 
     auto& stagingBufferMemory = backend->getStagingBufferMemory();
     JST_VK_CHECK(vkMapMemory(backend->getDevice(), stagingBufferMemory, 0, bufferByteSize, 0, &mappedData), [&]{
-        JST_FATAL("[VULKAN] Can't map staging buffer memory.");
+        JST_ERROR("[VULKAN] Can't map staging buffer memory.");
     });
     memcpy(mappedData, (uint8_t*)config.buffer + bufferByteOffset, bufferByteSize);
     vkUnmapMemory(backend->getDevice(), stagingBufferMemory);
@@ -281,8 +281,7 @@ VkFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
         return VK_FORMAT_R8G8B8A8_UNORM;
     }
 
-    JST_FATAL("[VULKAN] Can't convert pixel format.");
-
+    JST_ERROR("[VULKAN] Can't convert pixel format.");
     return VK_FORMAT_UNDEFINED;
 }
 
@@ -298,7 +297,7 @@ U64 Implementation::GetPixelByteSize(const VkFormat& pfmt) {
             return 4;
         default:
             JST_FATAL("[VULKAN] Pixel format not implemented yet.");
-            JST_CHECK_THROW(Result::ERROR);
+            JST_CHECK_THROW(Result::FATAL);
             return 0;
     }
 }

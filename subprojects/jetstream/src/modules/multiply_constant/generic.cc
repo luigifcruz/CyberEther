@@ -1,16 +1,18 @@
 #include "jetstream/modules/multiply_constant.hh"
 
-namespace Jetstream { 
+namespace Jetstream {
 
 template<Device D, typename T>
-MultiplyConstant<D, T>::MultiplyConstant(const Config& config, 
-                                         const Input& input) 
-         : config(config), input(input) {
+Result MultiplyConstant<D, T>::create() {
     JST_DEBUG("Initializing Multiply Constant module.");
-    
+
     // Initialize output.
-    JST_CHECK_THROW(Module::initInput(this->input.factor));
-    JST_CHECK_THROW(Module::initOutput(this->output.product, this->input.factor.shape()));
+    JST_INIT(
+        JST_INIT_INPUT("factor", input.factor);
+        JST_INIT_OUTPUT("product", output.product, input.factor.shape());
+    );
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>

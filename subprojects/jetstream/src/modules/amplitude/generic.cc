@@ -1,16 +1,18 @@
 #include "jetstream/modules/amplitude.hh"
 
-namespace Jetstream { 
+namespace Jetstream {
 
 template<Device D, typename IT, typename OT>
-Amplitude<D, IT, OT>::Amplitude(const Config& config,
-                                const Input& input)
-         : config(config), input(input) {
+Result Amplitude<D, IT, OT>::create() {
     JST_DEBUG("Initializing Amplitude module.");
-    
+
     // Initialize output.
-    JST_CHECK_THROW(Module::initInput(this->input.buffer));
-    JST_CHECK_THROW(Module::initOutput(this->output.buffer, this->input.buffer.shape()));
+    JST_INIT(
+        JST_INIT_INPUT("buffer", input.buffer);
+        JST_INIT_OUTPUT("buffer", output.buffer, input.buffer.shape());
+    );
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>

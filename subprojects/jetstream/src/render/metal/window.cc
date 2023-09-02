@@ -13,9 +13,17 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("Binding Metal surface to window.");
 
-    surfaces.push_back(
-        std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface)
-    );
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    surfaces.push_back(_surface);
+    return _surface->create();
+}
+
+Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("Unbinding Metal surface to window.");
+
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    JST_CHECK(_surface->destroy());
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
@@ -32,10 +40,6 @@ Result Implementation::create() {
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     JST_ASSERT(renderPassDescriptor);
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->create());
-    }
 
     if (config.imgui) {
         JST_CHECK(createImgui());

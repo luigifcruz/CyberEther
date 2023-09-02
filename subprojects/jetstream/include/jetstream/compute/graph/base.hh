@@ -31,7 +31,7 @@ inline std::unique_ptr<Graph> NewGraph(const Device& device) {
             return std::make_unique<Metal>();
 #endif
         default:
-            JST_FATAL("[GRAPH] Backend not supported yet.");
+            JST_ERROR("[GRAPH] Backend not supported yet.");
             throw Result::ERROR;
     };
 }

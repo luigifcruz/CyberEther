@@ -40,6 +40,14 @@ struct VectorShape {
         return _shape.end();
     }
 
+    constexpr auto empty() const {
+        bool empty = true;
+        for (const auto& dim : _shape) {
+            empty &= (dim == 0);
+        }
+        return empty;
+    }
+
     constexpr std::vector<U64> native() const noexcept {
         return std::vector<U64>(_shape.begin(), _shape.end());
     }
@@ -69,7 +77,7 @@ class VectorImpl : public VectorType {
         for (const auto& dim : _shape) {
             _size *= dim;
         }
-        return _size; 
+        return _size;
     }
 
     constexpr U64 refs() const noexcept {
@@ -86,8 +94,8 @@ class VectorImpl : public VectorType {
         return HashU64(reinterpret_cast<U64>(_data));
     }
 
-    constexpr U64 phash() const noexcept {
-        return hash() + *this->_pos;
+    constexpr Locale locale() const noexcept {
+        return _locale;
     }
 
     constexpr U64 size_bytes() const noexcept {
@@ -146,24 +154,24 @@ class VectorImpl : public VectorType {
     VectorImpl& operator=(VectorImpl&&) = delete;
 
  protected:
-    VectorShape<Dimensions> _shape; 
-    U64* _pos;
+    VectorShape<Dimensions> _shape;
+    Locale _locale;
     DataType* _data;
     U64* _refs;
     std::vector<std::function<void()>>* _destructors;
 
     VectorImpl()
              : _shape({0}),
-               _pos(nullptr),
+               _locale({}),
                _data(nullptr),
-               _refs(nullptr), 
+               _refs(nullptr),
                _destructors(nullptr) {
         JST_TRACE("Empty vector created.");
     }
 
     explicit VectorImpl(const VectorImpl& other)
              : _shape(other._shape),
-               _pos(other._pos),
+               _locale(other._locale),
                _data(other._data),
                _refs(other._refs),
                _destructors(other._destructors) {
@@ -176,10 +184,10 @@ class VectorImpl : public VectorType {
         JST_TRACE("Vector copied to existing.");
 
         decreaseRefCount();
-            
+
         _shape = other._shape;
         _data = other._data;
-        _pos = other._pos;
+        _locale = other._locale;
         _refs = other._refs;
         _destructors = other._destructors;
 
@@ -190,13 +198,13 @@ class VectorImpl : public VectorType {
 
     explicit VectorImpl(void* ptr, const VectorShape<Dimensions>& shape)
              : _shape(shape),
-               _pos(nullptr),
+               _locale({}),
                _data(static_cast<DataType*>(ptr)),
-               _refs(nullptr), 
+               _refs(nullptr),
                _destructors(nullptr) {
         increaseRefCount();
     }
-    
+
     void decreaseRefCount() {
         if (!_refs) {
             return;
@@ -207,11 +215,11 @@ class VectorImpl : public VectorType {
             JST_TRACE("Deleting {} pointers.", _destructors->size());
 
             for (auto& destructor : *_destructors) {
-                destructor();                    
+                destructor();
             }
 
             delete _destructors;
-            
+
             reset();
         }
     }
@@ -226,20 +234,21 @@ class VectorImpl : public VectorType {
         *_refs += 1;
     }
 
-    void increasePosCount() {
-        JST_TRACE("Increasing positional counter to {}.", *_pos + 1);
-        *_pos += 1;
+    void updateLocale(const Locale& locale) {
+        JST_TRACE("Updating locale to '{}'.", locale);
+        _locale = locale;
     }
 
     void reset() {
         _shape = {0};
+        _locale = {};
         _data = nullptr;
         _refs = nullptr;
-        _pos = nullptr;
         _destructors = nullptr;
     }
 
     friend class Module;
+    friend class Bundle;
 };
 
 template <typename T>

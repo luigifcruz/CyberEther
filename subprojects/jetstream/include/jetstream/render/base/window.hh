@@ -11,6 +11,8 @@
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/render/tools/imgui.h"
 #include "jetstream/render/tools/imnodes.h"
+#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/imgui_notify_ext.h"
 
 namespace Jetstream::Render {
 
@@ -46,28 +48,29 @@ class Window {
     virtual constexpr Device device() const = 0;
 
     virtual Result bind(const std::shared_ptr<Surface>& surface) = 0;
+    virtual Result unbind(const std::shared_ptr<Surface>& surface) = 0;
 
     template<class T>
-    inline Result JETSTREAM_API build(std::shared_ptr<T>& member, 
+    inline Result JETSTREAM_API build(std::shared_ptr<T>& member,
                                       const auto& config) {
         switch (this->device()) {
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
             case Device::Metal:
-                member = T::template Factory<Device::Metal>(config); 
+                member = T::template Factory<Device::Metal>(config);
                 break;
 #endif
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
             case Device::Vulkan:
-                member = T::template Factory<Device::Vulkan>(config); 
+                member = T::template Factory<Device::Vulkan>(config);
                 break;
 #endif
 #ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
             case Device::WebGPU:
-                member = T::template Factory<Device::WebGPU>(config); 
+                member = T::template Factory<Device::WebGPU>(config);
                 break;
 #endif
             default:
-                JST_FATAL("Backend not supported yet.");
+                JST_ERROR("Backend not supported yet.");
                 return Result::ERROR;
         }
 

@@ -2,13 +2,6 @@
 
 namespace Jetstream {
 
-Result Graph::computeReady() {
-    for (auto& block : blocks) {
-        JST_CHECK(block->computeReady());
-    }
-    return Result::SUCCESS;
-}
-
 Result Graph::setWiredInput(const U64& input) {
     wiredInputSet.emplace(input);
     return Result::SUCCESS;

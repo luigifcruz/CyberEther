@@ -20,10 +20,11 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         std::string deviceString;
+        std::string streamString = "";
         F32 frequency;
         F32 sampleRate;
         VectorShape<2> outputShape;
@@ -31,6 +32,7 @@ class Soapy : public Module, public Compute {
 
         JST_SERDES(
             JST_SERDES_VAL("deviceString", deviceString);
+            JST_SERDES_VAL("streamString", streamString);
             JST_SERDES_VAL("frequency", frequency);
             JST_SERDES_VAL("sampleRate", sampleRate);
             JST_SERDES_VAL("outputShape", outputShape);
@@ -88,8 +90,8 @@ class Soapy : public Module, public Compute {
 
     // Constructor
 
-    explicit Soapy(const Config& config, const Input& input);
-    ~Soapy();
+    Result create();
+    Result destroy();
 
     // Miscellaneous
 
@@ -113,10 +115,6 @@ class Soapy : public Module, public Compute {
     Result computeReady() final;
 
  private:
-    Config config;
-    const Input input;
-    Output output;
-
     std::thread producer;
     bool streaming = false;
     std::string deviceName;
@@ -127,6 +125,8 @@ class Soapy : public Module, public Compute {
     SoapySDR::Stream* soapyStream;
 
     void soapyThreadLoop();
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

@@ -31,15 +31,15 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata& meta) {
+Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
     auto& assets = metal;
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->batchSize = this->input.buffer.shape()[0];
-    constants->gridSize = this->input.buffer.shape()[1];
+    constants->batchSize = input.buffer.shape()[0];
+    constants->gridSize = input.buffer.shape()[1];
 
     return Result::SUCCESS;
 }
