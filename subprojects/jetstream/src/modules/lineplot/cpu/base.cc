@@ -5,7 +5,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Lineplot<D, T>::underlyingCreateCompute(const RuntimeMetadata&) {
+Result Lineplot<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Multiply compute core using CPU backend.");
 
     return Result::SUCCESS;
@@ -29,8 +29,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-
-template class Lineplot<Device::CPU, F64>;
 template class Lineplot<Device::CPU, F32>;
     
 }  // namespace Jetstream

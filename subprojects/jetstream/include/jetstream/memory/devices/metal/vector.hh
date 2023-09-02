@@ -8,6 +8,8 @@
 
 namespace Jetstream {
 
+// TODO: Refactor memory allocation and deallocation.
+
 template<typename DataType, U64 Dimensions>
 class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorImpl<DataType, Dimensions> {
  public:
@@ -24,7 +26,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     explicit Vector(const Vector<Device::CPU, DataType, Dimensions>& other)
              : VectorType(other) {
-        allocateExtras();     
+        allocateExtras();
     }
 #endif
 
@@ -33,20 +35,24 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
         allocateExtras();
     }
 
-    explicit Vector(const VectorShape<Dimensions>& shape) 
+    explicit Vector(const VectorShape<Dimensions>& shape)
              : VectorType(nullptr, shape) {
         JST_TRACE("New Metal vector created and allocated: {}", shape);
+
+        if (shape.empty()) {
+            return;
+        }
 
         // Allocate memory.
         void* memoryAddr = nullptr;
         const auto pageSize = JST_PAGESIZE();
         const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(this->size_bytes());
-        const auto result = posix_memalign(&memoryAddr, 
+        const auto result = posix_memalign(&memoryAddr,
                                            pageSize,
                                            alignedSizeBytes);
         if (result < 0 || (this->_data = static_cast<DataType*>(memoryAddr)) == nullptr) {
             JST_FATAL("Failed to allocate CPU memory.");
-            JST_CHECK_THROW(Result::ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
         this->_destructors->push_back([ptr = this->_data]() { free(ptr); });
 
@@ -78,6 +84,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
     }
 
     // Expose overloads for Vector<Device::CPU>.
+    // TODO: Check if really necessary.
 
     operator const Vector<Device::CPU, DataType, Dimensions>&() const {
         return this->_cpu;
@@ -95,7 +102,7 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
         // Check if memory is aligned.
         if (!JST_IS_ALIGNED(this->data())) {
             JST_FATAL("Memory pointer is not aligned. Can't create vector.");
-            JST_CHECK_THROW(Result::SUCCESS);
+            JST_CHECK_THROW(Result::FATAL);
         }
 
         // Allocate reference counter.
@@ -103,20 +110,16 @@ class JETSTREAM_API Vector<Device::Metal, DataType, Dimensions> : public VectorI
             this->_refs = new U64(1);
             this->_destructors->push_back([ptr = this->_refs]() { free(ptr); });
         }
-        if (!this->_pos) {
-            this->_pos = new U64(0);
-            this->_destructors->push_back([ptr = this->_pos]() { free(ptr); });
-        }
 
         // Create MTL::Buffer.
         auto device = Backend::State<Device::Metal>()->getDevice();
         this->_metal = device->newBuffer(this->_data,
-                                         JST_PAGE_ALIGNED_SIZE(this->size_bytes()), 
+                                         JST_PAGE_ALIGNED_SIZE(this->size_bytes()),
                                          MTL::ResourceStorageModeShared,
-                                         nullptr)->retain(); 
+                                         nullptr)->retain();
         if (!this->_metal) {
             JST_FATAL("Couldn't allocate MTL::Buffer.");
-            JST_CHECK_THROW(Result::ERROR);
+            JST_CHECK_THROW(Result::FATAL);
         }
         this->_destructors->push_back([ptr = this->_metal]() { reinterpret_cast<MTL::Buffer*>(ptr)->release(); });
 

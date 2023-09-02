@@ -8,6 +8,9 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 
+std::string& JST_LOG_LAST_ERROR();
+std::string& JST_LOG_LAST_FATAL();
+
 #define _JST_LOG_SINK          std::cout
 #define _JST_LOG_ENDL          std::endl;
 
@@ -78,7 +81,8 @@
 #endif
 
 #ifndef JST_ERROR
-#define JST_ERROR(...) _JST_LOG_SINK             << \
+#define JST_ERROR(...) JST_LOG_LAST_ERROR() = _JST_LOG_DEFAULT(__VA_ARGS__); \
+                       _JST_LOG_SINK             << \
                        _JST_LOG_NAME             << \
                        _JST_LOG_ERROR            << \
                        _JST_LOG_SEPR             << \
@@ -89,7 +93,8 @@
 #endif
 
 #ifndef JST_FATAL
-#define JST_FATAL(...) _JST_LOG_SINK                 << \
+#define JST_FATAL(...) JST_LOG_LAST_FATAL() = _JST_LOG_DEFAULT(__VA_ARGS__); \
+                       _JST_LOG_SINK                 << \
                        _JST_LOG_NAME                 << \
                        _JST_LOG_FATAL                << \
                        _JST_LOG_SEPR                 << \

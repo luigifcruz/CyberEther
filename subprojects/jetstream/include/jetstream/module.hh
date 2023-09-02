@@ -15,41 +15,69 @@ class JETSTREAM_API Module : public Interface {
  public:
     virtual ~Module() = default;
 
+    virtual Result create() = 0;
+    // TODO: Validate modules lifetime.
+    virtual Result destroy() {
+        return Result::SUCCESS;
+    }
+
     virtual void summary() const = 0;
 
  protected:
     template<Device DeviceId, typename DataType, U64 Dimensions>
-    Result initInput(const Vector<DeviceId, DataType, Dimensions>& buffer) {
+    Result initInput(const std::string& name,
+                     Vector<DeviceId, DataType, Dimensions>& buffer) {
         if (buffer.empty()) {
-            JST_FATAL("Module input can't be empty.");
+            JST_ERROR("[MODULE] Input is empty during initialization.");
             return Result::ERROR;
         }
         return Result::SUCCESS;
     }
 
     template<Device DeviceId, typename DataType, U64 Dimensions>
-    Result initOutput(Vector<DeviceId, DataType, Dimensions>& buffer,
-                      const VectorShape<Dimensions>& shape) {
+    Result initOutput(const std::string& name,
+                      Vector<DeviceId, DataType, Dimensions>& buffer,
+                      const VectorShape<Dimensions>& shape,
+                      const Result& prevRes) {
+        Result res = Result::SUCCESS;
+
         if (!buffer.empty()) {
-            JST_FATAL("The output buffer should be empty on initialization.");
-            return Result::ERROR;
+            JST_ERROR("[MODULE] The output buffer should be empty during initialization.");
+            res |= Result::ERROR;
         }
 
-        buffer = Vector<DeviceId, DataType, Dimensions>(shape);
+        if (prevRes == Result::SUCCESS) {
+            buffer = Vector<DeviceId, DataType, Dimensions>(shape);
+        }
+        buffer.updateLocale({locale.id, locale.subId, name});
 
-        return Result::SUCCESS;
+        return res;
     }
 
     template<Device DeviceId, typename Type, U64 Dimensions>
-    Result initInplaceOutput(Vector<DeviceId, Type, Dimensions>& dst,
-                             const Vector<DeviceId, Type, Dimensions>& src) {
-        dst = const_cast<Vector<DeviceId, Type, Dimensions>&>(src);
-        dst.increasePosCount();
+    Result initInplaceOutput(const std::string& name,
+                             Vector<DeviceId, Type, Dimensions>& dst,
+                             Vector<DeviceId, Type, Dimensions>& src,
+                             const Result& prevRes = Result::SUCCESS) {
+        Result res = Result::SUCCESS;
 
-        return Result::SUCCESS;
+        if (!dst.empty()) {
+            JST_ERROR("[MODULE] The destination buffer should be empty during initialization.");
+            res |= Result::ERROR;
+        }
+
+        if (src.empty()) {
+            JST_ERROR("[MODULE] The source buffer shouldn't be empty during initialization.");
+            res |= Result::ERROR;
+        }
+
+        dst = src;
+        dst.updateLocale({locale.id, locale.subId, name});
+
+        return res;
     }
 
-    // TODO: Add initInplaceOutput with reshape.
+    // TODO: Add InitInplaceOutput with reshape.
 };
 
 class JETSTREAM_API Compute {
@@ -64,17 +92,23 @@ class JETSTREAM_API Compute {
     virtual constexpr Result destroyCompute(const RuntimeMetadata&) {
         return Result::SUCCESS;
     }
+
+ protected:
+    friend Instance;
 };
 
 class JETSTREAM_API Present {
  public:
     virtual ~Present() = default;
 
-    virtual constexpr Result createPresent(Render::Window& window) = 0;
-    virtual constexpr Result present(Render::Window& window) = 0;
-    virtual constexpr Result destroyPresent(Render::Window&) {
-        return Result::SUCCESS;
-    }
+    virtual constexpr Result createPresent() = 0;
+    virtual constexpr Result present() = 0;
+    virtual constexpr Result destroyPresent() = 0;
+
+ protected:
+    std::shared_ptr<Render::Window> window;
+
+    friend Instance;
 };
 
 }  // namespace Jetstream

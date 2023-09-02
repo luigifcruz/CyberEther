@@ -14,9 +14,10 @@ class Metal : public Graph {
         return Device::Metal;
     }
 
-    Result createCompute();
+    Result create();
     Result compute();
-    Result destroyCompute();
+    Result computeReady();
+    Result destroy();
 
     static Result CompileKernel(const char* shaderSrc, 
                                 const char* methodName,

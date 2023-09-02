@@ -400,13 +400,18 @@ void ImGui_ImplGlfw_WindowFocusCallback(GLFWwindow* window, int focused)
 
 void ImGui_ImplGlfw_CursorPosCallback(GLFWwindow* window, double x, double y)
 {
+// UPDATE-ME: Hi-DPI Emscripten Fix
+    ImGuiIO& io = ImGui::GetIO();
+#ifdef __EMSCRIPTEN__
+    x = x / io.DisplayFramebufferScale.x;
+    y = y / io.DisplayFramebufferScale.y;
+#endif     
     ImGui_ImplGlfw_Data* bd = ImGui_ImplGlfw_GetBackendData();
     if (bd->PrevUserCallbackCursorPos != nullptr && window == bd->Window)
         bd->PrevUserCallbackCursorPos(window, x, y);
     if (glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
         return;
 
-    ImGuiIO& io = ImGui::GetIO();
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
     {
         int window_x, window_y;
@@ -644,6 +649,11 @@ static void ImGui_ImplGlfw_UpdateMouseData()
             {
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
+// UPDATE-ME: Hi-DPI Emscripten Fix
+#ifdef __EMSCRIPTEN__
+                mouse_x = mouse_x / io.DisplayFramebufferScale.x;
+                mouse_y = mouse_y / io.DisplayFramebufferScale.y;
+#endif          
                 if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
                 {
                     // Single viewport mode: mouse position in client window coordinates (io.MousePos is (0,0) when the mouse is on the upper-left corner of the app window)
@@ -799,12 +809,28 @@ static void ImGui_ImplGlfw_UpdateMonitors()
     bd->WantUpdateMonitors = false;
 }
 
+// UPDATE-ME: Hi-DPI Emscripten Fix
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EM_JS(int, em_get_pixel_ratio, (), {
+    return Module.canvas.width / Module.canvas.widthNative;
+});
+#endif
+
 void ImGui_ImplGlfw_NewFrame()
 {
     ImGuiIO& io = ImGui::GetIO();
     ImGui_ImplGlfw_Data* bd = ImGui_ImplGlfw_GetBackendData();
     IM_ASSERT(bd != nullptr && "Did you call ImGui_ImplGlfw_InitForXXX()?");
 
+// UPDATE-ME: Hi-DPI Emscripten Fix
+#ifdef __EMSCRIPTEN__
+    int pixel_ratio = em_get_pixel_ratio();
+    io.DisplayFramebufferScale = ImVec2(pixel_ratio, pixel_ratio);
+    int w, h;
+    glfwGetWindowSize(bd->Window, &w, &h);
+    io.DisplaySize = ImVec2(w, h);
+#else
     // Setup display size (every frame to accommodate for window resizing)
     int w, h;
     int display_w, display_h;
@@ -813,6 +839,7 @@ void ImGui_ImplGlfw_NewFrame()
     io.DisplaySize = ImVec2((float)w, (float)h);
     if (w > 0 && h > 0)
         io.DisplayFramebufferScale = ImVec2((float)display_w / (float)w, (float)display_h / (float)h);
+#endif
     if (bd->WantUpdateMonitors)
         ImGui_ImplGlfw_UpdateMonitors();
 

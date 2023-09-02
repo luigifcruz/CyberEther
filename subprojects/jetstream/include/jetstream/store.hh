@@ -6,25 +6,35 @@
 
 namespace Jetstream {
 
-typedef std::unordered_map<Parser::BackendIdentifier,
+typedef std::unordered_map<Parser::BackendFingerprint,
                            std::function<Result(Instance&, Parser::BackendRecord&)>,
-                           Parser::BackendIdentifier::Hash, 
-                           Parser::BackendIdentifier::Equal> BackendStore;
+                           Parser::BackendFingerprint::Hash,
+                           Parser::BackendFingerprint::Equal> BackendStore;
 
-typedef std::unordered_map<Parser::ViewportIdentifier,
+typedef std::unordered_map<Parser::ViewportFingerprint,
                            std::function<Result(Instance&, Parser::ViewportRecord&)>,
-                           Parser::ViewportIdentifier::Hash, 
-                           Parser::ViewportIdentifier::Equal> ViewportStore;
+                           Parser::ViewportFingerprint::Hash,
+                           Parser::ViewportFingerprint::Equal> ViewportStore;
 
-typedef std::unordered_map<Parser::ModuleIdentifier,
-                           std::function<void(Instance&, Parser::ModuleRecord&)>,
-                           Parser::ModuleIdentifier::Hash, 
-                           Parser::ModuleIdentifier::Equal> ModuleStore;
+typedef std::unordered_map<Parser::ModuleFingerprint,
+                           std::function<Result(Instance&, Parser::ModuleRecord&)>,
+                           Parser::ModuleFingerprint::Hash,
+                           Parser::ModuleFingerprint::Equal> ModuleStore;
 
-typedef std::unordered_map<Parser::RenderIdentifier,
+typedef std::unordered_map<Parser::RenderFingerprint,
                            std::function<Result(Instance&, Parser::RenderRecord&)>,
-                           Parser::RenderIdentifier::Hash, 
-                           Parser::RenderIdentifier::Equal> RenderStore;
+                           Parser::RenderFingerprint::Hash,
+                           Parser::RenderFingerprint::Equal> RenderStore;
+
+struct ModuleListValueStore {
+    bool isBundle;
+    std::string title;
+    std::string small;
+    std::string detailed;
+    std::map<Device, std::vector<std::tuple<std::string, std::string, std::string>>> options;
+};
+
+typedef std::unordered_map<std::string, ModuleListValueStore> ModuleListStore;
 
 // MAYDO: Add new modules during runtime.
 class JETSTREAM_API Store {
@@ -50,18 +60,28 @@ class JETSTREAM_API Store {
         return GetInstance().modules;
     }
 
+    static ModuleListStore& ModuleList(const std::string& filter = "") {
+        return GetInstance()._moduleList(filter);
+    }
+
  private:
     Store();
 
     BackendStore backends;
     ViewportStore viewports;
     RenderStore renders;
+
     ModuleStore modules;
+    ModuleListStore moduleList;
+    ModuleListStore filteredModuleList;
 
     BackendStore& defaultBackends();
     ViewportStore& defaultViewports();
     RenderStore& defaultRenders();
     ModuleStore& defaultModules();
+    ModuleListStore& defaultModuleList();
+
+    ModuleListStore& _moduleList(const std::string& filter);
 };
 
 }  // namespace Jetstream

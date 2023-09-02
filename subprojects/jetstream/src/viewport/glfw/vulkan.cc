@@ -15,6 +15,7 @@ Implementation::~GLFW() {
 
 Result Implementation::create() {
     if (!glfwInit()) {
+        JST_ERROR("[VULKAN] Failed to initialize GLFW.");
         return Result::ERROR;
     }
 
@@ -26,6 +27,7 @@ Result Implementation::create() {
 
     if (!window) {
         glfwTerminate();
+        JST_ERROR("[VULKAN] Failed to create window with GLFW.");
         return Result::ERROR;
     }
 
@@ -34,7 +36,7 @@ Result Implementation::create() {
 
     auto& instance = Backend::State<Device::Vulkan>()->getInstance();
     JST_VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface), [&]{
-        JST_FATAL("[VULKAN] GLFW failed to create window surface.");     
+        JST_ERROR("[VULKAN] GLFW failed to create window surface.");     
     });
 
     JST_CHECK(createSwapchain());
@@ -102,7 +104,7 @@ Result Implementation::createSwapchain() {
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
     JST_VK_CHECK(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain), [&]{
-        JST_FATAL("[VULKAN] Can't create swapchain.");
+        JST_ERROR("[VULKAN] Can't create swapchain.");
     });
 
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
@@ -135,7 +137,7 @@ Result Implementation::createSwapchain() {
         createInfo.subresourceRange.layerCount = 1;
 
         JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &swapchainImageViews[i]), [&]{
-            JST_FATAL("[VULKAN] Failed to create image view."); 
+            JST_ERROR("[VULKAN] Failed to create image view."); 
         });
     }
 

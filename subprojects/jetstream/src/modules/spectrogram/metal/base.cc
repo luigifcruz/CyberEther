@@ -46,7 +46,6 @@ Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &assets.stateDecay));
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
 
-    frequencyBins = Vector<Device::Metal, F32, 2>({input.buffer.shape()[1], config.height});
     decayFactor = pow(0.999, input.buffer.shape()[0]);
 
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
@@ -96,7 +95,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
 
     return Result::SUCCESS;
 }
-
 
 template class Spectrogram<Device::Metal, F32>;
 

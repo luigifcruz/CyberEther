@@ -34,8 +34,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     // Load shaders from buffers.
 
     if (config.shaders.contains(Device::Vulkan) == 0) {
-        JST_FATAL("[VULKAN] Module doesn't have necessary shader.");       
-        JST_CHECK(Result::ERROR);
+        JST_ERROR("[VULKAN] Module doesn't have necessary shader.");       
+        return Result::ERROR;
     }
 
     const auto& shader = config.shaders[Device::Vulkan];
@@ -106,7 +106,7 @@ Result Implementation::create(VkRenderPass& renderPass,
         info.pBindings = bindings.data();
 
         JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
-            JST_FATAL("[VULKAN] Can't create descriptor set layout.");
+            JST_ERROR("[VULKAN] Can't create descriptor set layout.");
         });
 
         VkDescriptorSetAllocateInfo allocInfo{};
@@ -116,7 +116,7 @@ Result Implementation::create(VkRenderPass& renderPass,
         allocInfo.pSetLayouts = &descriptorSetLayout;
 
         JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
-            JST_FATAL("[VULKAN] Failed to allocate descriptor sets.");
+            JST_ERROR("[VULKAN] Failed to allocate descriptor sets.");
         });
     }
 
@@ -264,7 +264,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
     JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
-        JST_FATAL("[VULKAN] Failed to create pipeline layout.");
+        JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
 
     VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
@@ -285,7 +285,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
     JST_VK_CHECK(vkCreateGraphicsPipelines(device, nullptr, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
-        JST_FATAL("[VULKAN] Can't create graphics pipeline.");    
+        JST_ERROR("[VULKAN] Can't create graphics pipeline.");    
     });
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);

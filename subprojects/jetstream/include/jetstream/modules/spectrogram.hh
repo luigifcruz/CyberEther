@@ -19,7 +19,7 @@ class Spectrogram : public Module, public Compute, public Present {
 
     struct Config {
         U64 height = 256;
-        Size2D<U64> viewSize = {2048, 512};
+        Size2D<U64> viewSize = {512, 384};
 
         JST_SERDES(
             JST_SERDES_VAL("height", height);
@@ -34,7 +34,7 @@ class Spectrogram : public Module, public Compute, public Present {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -73,7 +73,7 @@ class Spectrogram : public Module, public Compute, public Present {
     
     // Constructor
 
-    explicit Spectrogram(const Config& config, const Input& input);
+    Result create();
 
     // Miscellaneous
 
@@ -85,10 +85,14 @@ class Spectrogram : public Module, public Compute, public Present {
     Render::Texture& getTexture();
 
  protected:
-    Config config;
-    const Input input;
-    Output output;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
+    Result createPresent() final;
+    Result present() final;
+    Result destroyPresent() final;
+
+ private:
     struct {
         U32 width;
         U32 height;
@@ -112,13 +116,6 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
-
-    Result createPresent(Render::Window& window) final;
-    Result present(Render::Window& window) final;
-
- private:
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
         U32 width;
@@ -133,6 +130,8 @@ class Spectrogram : public Module, public Compute, public Present {
         Vector<Device::Metal, U8> constants;
     } metal;
 #endif
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

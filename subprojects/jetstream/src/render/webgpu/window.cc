@@ -13,9 +13,17 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("[WebGPU] Binding surface to window.");
 
-    surfaces.push_back(
-        std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface)
-    );
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    surfaces.push_back(_surface);
+    return _surface->create();
+}
+
+Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[WebGPU] Unbinding surface to window.");
+
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    JST_CHECK(_surface->destroy());
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
@@ -26,10 +34,6 @@ Result Implementation::create() {
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
     queue = device.GetQueue();    
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->create());
-    }
 
     if (config.imgui) {
         JST_CHECK(createImgui());
@@ -71,8 +75,10 @@ Result Implementation::createImgui() {
     ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
     
     JST_CHECK(viewport->createImgui());
-    ApplyImGuiTheme(viewport->calculateScale(config.scale));
-    ApplyImNodesTheme();
+
+    const auto& scale = viewport->calculateScale(config.scale);
+    ApplyImGuiTheme(scale);
+    ApplyImNodesTheme(scale);
 
     ImGui_ImplWGPU_CreateDeviceObjects();
     
@@ -102,6 +108,10 @@ Result Implementation::recreate() {
 
 Result Implementation::beginImgui() {
     ImGui_ImplWGPU_NewFrame();
+
+    ApplyImGuiScale();
+    ApplyImNodesScale();
+
     ImGui::NewFrame();
 
     return Result::SUCCESS;
@@ -177,15 +187,13 @@ Result Implementation::end() {
 
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::WebGPU>();
-    ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::Text("FPS: %.1f Hz", io.Framerate);
-    ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
-    ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
-    ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::Text("Physical Memory: %.00f GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
-    ImGui::Text("Processor Count: %llu", backend->getTotalProcessorCount());
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Device Name:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getDeviceName());
 }
 
 const Window::Stats& Implementation::stats() const {

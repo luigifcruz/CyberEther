@@ -42,6 +42,21 @@
 #include "jetstream/modules/soapy.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE)
+#include "jetstream/modules/audio.hh"
+#endif
+
+#if defined(JETSTREAM_MODULE_FM_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_FM_METAL_AVAILABLE)
+#include "jetstream/modules/fm.hh"
+#endif
+
+#if defined(JETSTREAM_MODULE_MULTIPLY_CONSTANT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_MULTIPLY_CONSTANT_METAL_AVAILABLE)
+#include "jetstream/modules/multiply_constant.hh"
+#endif
+
 //
 // Graphical
 // 
@@ -59,11 +74,6 @@
 #if defined(JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE) || \
     defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
 #include "jetstream/modules/spectrogram.hh"
-#endif
-
-#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
-#include "jetstream/modules/constellation.hh"
 #endif
 
 #if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \

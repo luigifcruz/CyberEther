@@ -6,6 +6,9 @@ subdir('amplitude')
 subdir('scale')
 subdir('filter')
 subdir('soapy')
+subdir('audio')
+subdir('fm')
+subdir('multiply_constant')
 
 # Graphical
 subdir('lineplot')

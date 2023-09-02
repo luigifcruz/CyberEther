@@ -6,7 +6,6 @@ template<Device D, typename T>
 Result Constellation<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Constellation compute core using CPU backend.");
 
-    timeSamples = Vector<Device::CPU, F32, 2>({config.viewSize.width, config.viewSize.height});
     decayFactor = pow(0.999, input.buffer.shape()[0]);
 
     return Result::SUCCESS;
@@ -49,7 +48,6 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
 
     return Result::SUCCESS;
 }
-
 
 template class Constellation<Device::CPU, CF32>;
 

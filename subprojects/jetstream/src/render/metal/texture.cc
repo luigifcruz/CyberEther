@@ -94,7 +94,7 @@ MTL::PixelFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
     }
 
     JST_FATAL("Can't convert pixel format.");
-    throw Result::ERROR;
+    throw Result::FATAL;
 }
 
 U64 Implementation::GetPixelByteSize(const MTL::PixelFormat& pfmt) {
@@ -109,7 +109,7 @@ U64 Implementation::GetPixelByteSize(const MTL::PixelFormat& pfmt) {
             return 4;
         default:
             JST_FATAL("Pixel format not implemented yet.");
-            throw Result::ERROR;
+            throw Result::FATAL;
     }
 }
 

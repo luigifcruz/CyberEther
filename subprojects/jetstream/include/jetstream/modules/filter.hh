@@ -85,7 +85,8 @@ class Filter : public Module {
 
     // Constructor
 
-    explicit Filter(const Config& config, const Input& input);
+    Result create();
+    Result destroy();
 
     // Miscellaneous
 
@@ -128,10 +129,6 @@ class Filter : public Module {
     }
 
  private:
-    Config config;
-    const Input input;
-    Output output;
-
     fftwf_plan plan;
 
     Vector<D, typename T::value_type, 2> sincCoeffs;
@@ -146,6 +143,8 @@ class Filter : public Module {
     Result generateWindow();
     Result generateUpconvert();
     Result bakeFilter();
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

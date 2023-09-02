@@ -2,6 +2,8 @@
 
 #include "jetstream/backend/devices/webgpu/base.hh"
 
+namespace Jetstream::Backend {
+
 static void WebGPUErrorCallback(WGPUErrorType error_type, const char* message, void*) {
     const char* error_type_lbl = "";
     switch (error_type) {
@@ -12,9 +14,8 @@ static void WebGPUErrorCallback(WGPUErrorType error_type, const char* message, v
         default:                        error_type_lbl = "Unknown";
     }
     JST_FATAL("[WEBGPU] {} error: {}", error_type_lbl, message);
+    JST_CHECK_THROW(Result::FATAL);
 }
-
-namespace Jetstream::Backend {
 
 EM_JS(WGPUAdapter, wgpuInstanceRequestAdapterSync, (), {
     return Module["preinitializedWebGPUAdapter"];

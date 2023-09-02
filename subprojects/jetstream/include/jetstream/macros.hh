@@ -36,7 +36,7 @@
     if (val != cudaSuccess) { \
         auto err = cudaGetErrorString(val); \
         callback(); \
-        return Result::CUDA_ERROR; \
+        return Result::ERROR; \
     } \
 }
 #endif  // JST_CUDA_CHECK
@@ -49,14 +49,14 @@
     if (val != cudaSuccess) { \
         auto err = cudaGetErrorString(val); \
         callback(); \
-        throw Result::CUDA_ERROR; \
+        throw Result::ERROR; \
     } \
 }
 #endif  // JST_CUDA_CHECK_THROW
 
 #ifndef JST_CHECK
-#define JST_CHECK(x) { \
-    Result val = (x); \
+#define JST_CHECK(...) { \
+    Result val = (__VA_ARGS__); \
     if (val != Result::SUCCESS) { \
         return val; \
     } \
@@ -64,8 +64,8 @@
 #endif  // JST_CHECK
 
 #ifndef JST_CHECK_THROW
-#define JST_CHECK_THROW(x) { \
-    Result val = (x); \
+#define JST_CHECK_THROW(...) { \
+    Result val = (__VA_ARGS__); \
     if (val != Result::SUCCESS) { \
         printf("Function %s (%s@%d) throwed!\n", __func__, __FILE__, __LINE__); \
         throw val; \
@@ -74,20 +74,18 @@
 #endif  // JST_CHECK_THROW
 
 #ifndef JST_ASSERT
-#define JST_ASSERT(x) { \
-    bool val = (x); \
-    if (val != true) { \
-        return Result::ASSERTION_ERROR; \
+#define JST_ASSERT(...) { \
+    if (!(__VA_ARGS__)) { \
+        return Result::ERROR; \
     } \
 }
 #endif  // JST_ASSERT
 
 #ifndef JST_ASSERT_THROW
-#define JST_ASSERT_THROW(x) { \
-    bool val = (x); \
-    if (val != true) { \
+#define JST_ASSERT_THROW(...) { \
+    if (!(__VA_ARGS__)) { \
         printf("Function %s (%s@%d) throwed!\n", __func__, __FILE__, __LINE__); \
-        throw Result::ASSERTION_ERROR; \
+        throw Result::ERROR; \
     } \
 }
 #endif  // JST_ASSERT
@@ -102,17 +100,46 @@
 }
 #endif  // JST_CATCH
 
+// Module construction
+
+#ifndef JST_DEFINE_MODULE_IO
+#define JST_DEFINE_MODULE_IO() protected: Config config; Input input; Output output; friend Instance;
+#endif  // JST_DEFINE_MODULE_IO
+
+#ifndef JST_DEFINE_BUNDLE_IO
+#define JST_DEFINE_BUNDLE_IO() protected: Instance* instance; Config config; Input input; Output output; friend Instance;
+#endif  // JST_DEFINE_BUNDLE_IO
+
+// Struct serialize deserialize
 
 #ifndef JST_SERDES
 #define JST_SERDES(...) \
-    Result serdes_function(const Parser::SerDesOp& op, Parser::RecordMap& data) const { (void)op; (void)data; __VA_ARGS__ return Result::SUCCESS; } \
-    Result operator<<(Parser::RecordMap& data) const { return serdes_function(Parser::SerDesOp::Deserialize, data); } \
-    Result operator>>(Parser::RecordMap& data) const { return serdes_function(Parser::SerDesOp::Serialize, data); }
+    Result operator<<(Parser::RecordMap& data) { const auto op = Parser::SerDesOp::Deserialize; (void)op; (void)data; __VA_ARGS__ return Result::SUCCESS; } \
+    Result operator>>(Parser::RecordMap& data) { const auto op = Parser::SerDesOp::Serialize;   (void)op; (void)data; __VA_ARGS__ return Result::SUCCESS; }
 #endif  // JST_SERDES
 
 #ifndef JST_SERDES_VAL
 #define JST_SERDES_VAL(fieldName, fieldVar) JST_CHECK(Parser::SerDes(data, fieldName, fieldVar, op));
 #endif  // JST_SERDES_VAL
+
+// Module Buffer Initialization
+
+#ifndef JST_INIT
+#define JST_INIT(...) \
+Result res = Result::SUCCESS; \
+__VA_ARGS__ \
+JST_CHECK(res);
+#endif  // JST_INIT
+
+#ifndef JST_INIT_INPUT
+#define JST_INIT_INPUT(fieldName, fieldVar) res |= this->initInput(fieldName, fieldVar);
+#endif  // JST_INIT_INPUT
+
+#ifndef JST_INIT_OUTPUT
+#define JST_INIT_OUTPUT(fieldName, fieldVar, fieldShape) res |= this->initOutput(fieldName, fieldVar, fieldShape, res);
+#endif  // JST_INIT_OUTPUT
+
+// Miscellaneous
 
 template <typename... Args>
 struct CountArgs {

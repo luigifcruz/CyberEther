@@ -10,12 +10,12 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = F32>
 class Lineplot : public Bundle {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        Size2D<U64> viewSize = {1024, 512};
+        Size2D<U64> viewSize = {512, 384};
 
         JST_SERDES(
             JST_SERDES_VAL("numberOfVerticalLines", numberOfVerticalLines);
@@ -31,7 +31,7 @@ class Lineplot : public Bundle {
     // Input
 
     struct Input {
-        const Vector<D, T, 2> buffer;
+        Vector<D, T, 2> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -63,22 +63,31 @@ class Lineplot : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Lineplot View";
+        return "Lineplot";
     }
 
     // Constructor
 
-    Lineplot(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input) {
-        lineplot = instance.addModule<Jetstream::Lineplot, D, T>(name + "-ui", {
-            .numberOfVerticalLines = config.numberOfVerticalLines,
-            .numberOfHorizontalLines = config.numberOfHorizontalLines,
-            .viewSize = config.viewSize,
-        }, {
-            .buffer = input.buffer,
-        }, true);
+    Result create() {
+        JST_CHECK(instance->addModule<Jetstream::Lineplot, D, T>(
+            lineplot, "ui", {
+                .numberOfVerticalLines = config.numberOfVerticalLines,
+                .numberOfHorizontalLines = config.numberOfHorizontalLines,
+                .viewSize = config.viewSize,
+            }, {
+                .buffer = input.buffer,
+            },
+            this->locale.id
+        ));
+
+        return Result::SUCCESS;
     }
-    virtual ~Lineplot() = default;
+
+    Result destroy() {
+        JST_CHECK(instance->removeModule("ui", this->locale.id));
+
+        return Result::SUCCESS;
+    }
 
     // Interface
 
@@ -101,7 +110,7 @@ class Lineplot : public Bundle {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));      
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
     }
 
     constexpr bool shouldDrawView() const {
@@ -109,11 +118,9 @@ class Lineplot : public Bundle {
     }
 
  private:
-    Config config;
-    Input input;
-    Output output;
-
     std::shared_ptr<Jetstream::Lineplot<D, T>> lineplot;
+
+    JST_DEFINE_BUNDLE_IO();
 };
 
 }  // namespace Jetstream::Bundles

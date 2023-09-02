@@ -13,9 +13,17 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("Binding Metal surface to window.");
 
-    surfaces.push_back(
-        std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface)
-    );
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    surfaces.push_back(_surface);
+    return _surface->create();
+}
+
+Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("Unbinding Metal surface to window.");
+
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    JST_CHECK(_surface->destroy());
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
@@ -32,10 +40,6 @@ Result Implementation::create() {
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     JST_ASSERT(renderPassDescriptor);
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->create());
-    }
 
     if (config.imgui) {
         JST_CHECK(createImgui());
@@ -81,8 +85,10 @@ Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     
     JST_CHECK(viewport->createImgui());
-    ApplyImGuiTheme(viewport->calculateScale(config.scale));
-    ApplyImNodesTheme();
+
+    const auto& scale = viewport->calculateScale(config.scale);
+    ApplyImGuiTheme(scale);
+    ApplyImNodesTheme(scale);
 
     ImGui_ImplMetal_Init(dev);
 
@@ -102,6 +108,10 @@ Result Implementation::destroyImgui() {
 
 Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
+
+    ApplyImGuiScale();
+    ApplyImNodesScale();
+
     ImGui::NewFrame();
 
     return Result::SUCCESS;
@@ -164,16 +174,34 @@ Result Implementation::end() {
 
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Metal>();
-    ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::Text("FPS: %.1f Hz", io.Framerate);
-    ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
-    ImGui::Text("Low Power Mode: %s", backend->getLowPowerStatus() ? "YES" : "NO");
-    ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::Text("Physical Memory: %.00f GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::Text("Thermal State: %llu/3", backend->getThermalState());
-    ImGui::Text("Processor Count: %llu/%llu", backend->getActiveProcessorCount(),
-                                              backend->getTotalProcessorCount());
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Device Name:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getDeviceName());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Low Power Mode:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getLowPowerStatus() ? "YES" : "NO");
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Physical Memory:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Thermal State:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}/3", backend->getThermalState());
 }
 
 const Window::Stats& Implementation::stats() const {

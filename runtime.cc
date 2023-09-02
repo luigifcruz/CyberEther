@@ -11,17 +11,16 @@ class UI {
  public:
     UI(Instance& instance) : instance(instance) {
         // Initialize Parser.
-        Parser parser("/home/luigi/sandbox/CyberEther/spectrum_analyzer.yml");
+        Parser parser("/Users/luigi/sandbox/CyberEther/fm_simple.yml");
         JST_CHECK_THROW(parser.printAll());
         JST_CHECK_THROW(parser.importFromFile(instance));
 
         streaming = true;
-        JST_CHECK_THROW(instance.create());
 
         // TODO: Abstract threading away.
-        
+
         computeWorker = std::thread([&]{
-            while(streaming && instance.viewport().keepRunning()) {
+            while (streaming && instance.viewport().keepRunning()) {
                 this->computeThreadLoop();
             }
         });
@@ -31,7 +30,7 @@ class UI {
 #else
         graphicalWorker = std::thread([&]{
             while (streaming && instance.viewport().keepRunning()) {
-                this->graphicalThreadLoop(); 
+                this->graphicalThreadLoop();
             }
         });
 #endif
@@ -42,7 +41,7 @@ class UI {
         computeWorker.join();
 #ifndef __EMSCRIPTEN__
         graphicalWorker.join();
-#endif  
+#endif
         instance.destroy();
 
         JST_DEBUG("The UI was destructed.");
@@ -56,20 +55,18 @@ class UI {
     bool streaming = false;
 
     void computeThreadLoop() {
-        if (instance.isCommited()) {
-            const auto result = instance.compute();
+        const auto result = instance.compute();
 
-            if (result == Result::SUCCESS) {
-                return;
-            }
-            
-            if (result == Result::ERROR_TIMEOUT) {
-                JST_WARN("Compute timeout occured.");
-                return;
-            }
-
-            JST_CHECK_THROW(result);
+        if (result == Result::SUCCESS) {
+            return;
         }
+
+        if (result == Result::TIMEOUT) {
+            JST_WARN("Compute timeout occured.");
+            return;
+        }
+
+        JST_CHECK_THROW(result);
     }
 
     static void callRenderLoop(void* ui_ptr) {

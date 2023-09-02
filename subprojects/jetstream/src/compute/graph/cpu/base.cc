@@ -7,34 +7,31 @@ CPU::CPU() {
     metadata = std::make_shared<RuntimeMetadata>();
 }
 
-Result CPU::createCompute() {
+Result CPU::create() {
     for (const auto& block : blocks) {
         JST_CHECK(block->createCompute(*metadata));
     }
+    return Result::SUCCESS;
+}
 
+Result CPU::computeReady() {
+    for (const auto& block : blocks) {
+        JST_CHECK(block->computeReady());
+    }
     return Result::SUCCESS;
 }
 
 Result CPU::compute() {
-    Result err = Result::SUCCESS;
-
-    for (const auto& block : blocks) {
-        if ((err = block->compute(*metadata)) != Result::SUCCESS) {
-            if (err == Result::SKIP) {
-                return Result::SUCCESS;
-            }
-            return err;
-        }
+    for (const auto& block : blocks) { 
+        JST_CHECK(block->compute(*metadata));
     }
-
     return Result::SUCCESS;
 }
 
-Result CPU::destroyCompute() {
+Result CPU::destroy() {
     for (const auto& block : blocks) {
         JST_CHECK(block->destroyCompute(*metadata));
     }
-
     return Result::SUCCESS;
 }
 

@@ -260,6 +260,9 @@ void                  EditorContextMoveToNode(const int node_id);
 
 ImNodesIO& GetIO();
 
+// UPDATE-ME: Exposed domain conversion.
+ImVec2 ScreenSpaceToGridSpace(const ImVec2& v);
+
 // Returns the global style struct. See the struct declaration for default values.
 ImNodesStyle& GetStyle();
 // Style presets matching the dear imgui styles of the same name. If dest is NULL, the active
@@ -396,11 +399,6 @@ bool IsAnyAttributeActive(int* attribute_id = NULL);
 
 // Use the following functions to query a change of state for an existing link, or new link. Call
 // these after EndNodeEditor().
-
-// Returns true if the user just started dragging a node
-bool IsNodesDragStarted(int *num_selected_nodes);
-// Returns true if the user just stopped (released) the node after dragging it
-bool IsNodesDragStopped(int *num_selected_nodes);
 
 // Did the user start dragging a new link from a pin?
 bool IsLinkStarted(int* started_at_attribute_id);

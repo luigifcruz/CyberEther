@@ -29,7 +29,7 @@ Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     assets.configuration->buffer = &assets.output;
 
     if (auto res = initializeVkFFT(assets.app, *assets.configuration); res != VKFFT_SUCCESS) {
-        JST_FATAL("Failed to initialize VkFFT: {}", static_cast<int>(res));
+        JST_ERROR("Failed to initialize VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;
     }
 
@@ -67,7 +67,7 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
 
     const int inverse = static_cast<int>(config.forward);
     if (auto res = VkFFTAppend(assets.app, inverse, &launchParams); res != VKFFT_SUCCESS) {
-        JST_FATAL("Failed to append to VkFFT: {}", static_cast<int>(res));
+        JST_ERROR("Failed to append to VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;
     }
 
@@ -75,7 +75,6 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
 
     return Result::SUCCESS;
 }
-
 
 template class FFT<Device::Metal, CF32>;
     

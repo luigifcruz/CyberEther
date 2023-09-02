@@ -29,6 +29,7 @@ class WindowImp<Device::WebGPU> : public Window {
     };
 
     Result bind(const std::shared_ptr<Surface>& surface);
+    Result unbind(const std::shared_ptr<Surface>& surface);
 
  private:
     Stats statsData;

@@ -34,9 +34,8 @@ Result Implementation::create() {
             break;
         case Target::STORAGE_DYNAMIC:
         case Target::UNIFORM_DYNAMIC:
-            JST_FATAL("[WebGPU] Buffer usage type not supported.")
+            JST_ERROR("[WebGPU] Buffer usage type not supported.")
             return Result::ERROR;
-            break;
     }
 
     wgpu::BufferDescriptor bufferDescriptor{};

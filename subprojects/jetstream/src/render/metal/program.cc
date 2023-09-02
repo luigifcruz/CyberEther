@@ -42,7 +42,7 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     auto fragLibrary = device->newLibrary(fragSource, opts, &err);
 
     if (!vertLibrary || !fragLibrary) {
-        JST_FATAL("Library error:\n{}", err->description()->utf8String());
+        JST_ERROR("Library error:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
 
@@ -74,7 +74,7 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     renderPipelineDescriptor->colorAttachments()->object(0)->init()->setPixelFormat(pixelFormat);
     renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
     if (!renderPipelineState) {
-        JST_FATAL("Failed to create pipeline state:\n{}", err->description()->utf8String());
+        JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
 

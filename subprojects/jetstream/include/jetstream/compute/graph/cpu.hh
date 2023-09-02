@@ -13,9 +13,10 @@ class CPU : public Graph {
         return Device::CPU;
     }
 
-    Result createCompute();
+    Result create();
     Result compute();
-    Result destroyCompute();
+    Result computeReady();
+    Result destroy();
 };
 
 }  // namespace Jetstream

@@ -39,11 +39,10 @@ class Graph {
     }
 
     virtual constexpr Device device() const = 0;
-    virtual Result createCompute() = 0;
+    virtual Result create() = 0;
     virtual Result compute() = 0;
-    virtual Result destroyCompute() = 0;
-
-    Result computeReady();
+    virtual Result computeReady() = 0;
+    virtual Result destroy() = 0;
 
  protected:
     std::shared_ptr<RuntimeMetadata> metadata;

@@ -11,14 +11,10 @@
 #endif
 #endif
 
-namespace Jetstream { 
+namespace Jetstream {
 
 template<Device D, typename T>
-Soapy<D, T>::Soapy(const Config& config, 
-                   const Input& input) 
-         : config(config),
-           input(input),
-           buffer(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier) {
+Result Soapy<D, T>::create() {
     JST_DEBUG("Initializing Soapy module.");
 
     streaming = true;
@@ -26,21 +22,31 @@ Soapy<D, T>::Soapy(const Config& config,
     deviceHardwareKey = "None";
 
     // Initialize output.
-    JST_CHECK_THROW(Module::initOutput(this->output.buffer, config.outputShape));
+    JST_INIT(
+        JST_INIT_OUTPUT("buffer", output.buffer, config.outputShape);
+    );
+
+    // Initialize circular buffer.
+    buffer.resize(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier);
 
     // Initialize thread for ingest.
     producer = std::thread([&]{ soapyThreadLoop(); });
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Soapy<D, T>::~Soapy() {
+Result Soapy<D, T>::destroy() {
     streaming = false;
     producer.join();
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 void Soapy<D, T>::soapyThreadLoop() {
     SoapySDR::Kwargs args = SoapySDR::KwargsFromString(config.deviceString);
+    SoapySDR::Kwargs streamArgs = SoapySDR::KwargsFromString(config.streamString);
 
 #ifdef JETSTREAM_STATIC
     const std::string device = args["driver"];
@@ -68,12 +74,12 @@ void Soapy<D, T>::soapyThreadLoop() {
     soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
     soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
     soapyDevice->setGainMode(SOAPY_SDR_RX, 0, true);
-    
-    soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32);
+
+    soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
     if (soapyStream == nullptr) {
         JST_FATAL("Failed to setup SoapySDR stream.");
         SoapySDR::Device::unmake(soapyDevice);
-        JST_CHECK_THROW(Result::ERROR);
+        JST_CHECK_THROW(Result::FATAL);
     }
     soapyDevice->activateStream(soapyStream, 0, 0, 0);
 
@@ -85,6 +91,7 @@ void Soapy<D, T>::soapyThreadLoop() {
     CF32 tmp[8192];
     void *tmp_buffers[] = { tmp };
 
+    // TODO: Replace with zero-copy Soapy API.
     streaming = true;
     while (streaming) {
         int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
@@ -104,6 +111,7 @@ void Soapy<D, T>::soapyThreadLoop() {
 template<Device D, typename T>
 void Soapy<D, T>::summary() const {
     JST_INFO("  Device String:      {}", config.deviceString);
+    JST_INFO("  Stream String:      {}", config.streamString);
     JST_INFO("  Frequency:          {:.2f} MHz", config.frequency / (1000*1000));
     JST_INFO("  Sample Rate:        {:.2f} MHz", config.sampleRate / (1000*1000));
     JST_INFO("  Output Shape:       {}", config.outputShape);
@@ -139,7 +147,6 @@ Result Soapy<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Soapy<D, T>::compute(const RuntimeMetadata&) {
     if (buffer.getOccupancy() < output.buffer.size()) {
-        JST_DEBUG("Soapy module skipping batch because of lack of samples.");
         return Result::SKIP;
     }
 

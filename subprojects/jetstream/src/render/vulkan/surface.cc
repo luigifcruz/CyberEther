@@ -61,7 +61,7 @@ Result Implementation::create() {
     renderPassInfo.pDependencies = &dependency;
 
     JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
-        JST_FATAL("[VULKAN] Failed to create render pass.");   
+        JST_ERROR("[VULKAN] Failed to create render pass.");   
     });
 
     for (auto& program : programs) {
@@ -82,7 +82,7 @@ Result Implementation::create() {
     framebufferInfo.layers = 1;
 
     JST_VK_CHECK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebufferObject), [&]{
-        JST_FATAL("[VULKAN] Failed to create surface framebuffer.");
+        JST_ERROR("[VULKAN] Failed to create surface framebuffer.");
     });
 
     requestedSize = framebuffer->size();
@@ -111,7 +111,7 @@ Result Implementation::destroy() {
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     if (framebuffer->size(requestedSize)) {
         JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-            JST_FATAL("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
+            JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
         });
             
         JST_CHECK(destroy());

@@ -10,10 +10,11 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = CF32>
 class Soapy : public Bundle {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         std::string deviceString;
+        std::string streamString = "";
         F32 frequency;
         F32 sampleRate;
         VectorShape<2> outputShape;
@@ -21,6 +22,7 @@ class Soapy : public Bundle {
 
         JST_SERDES(
             JST_SERDES_VAL("deviceString", deviceString);
+            JST_SERDES_VAL("streamString", streamString);
             JST_SERDES_VAL("frequency", frequency);
             JST_SERDES_VAL("sampleRate", sampleRate);
             JST_SERDES_VAL("outputShape", outputShape);
@@ -71,50 +73,87 @@ class Soapy : public Bundle {
     }
 
     constexpr std::string prettyName() const {
-        return "Soapy Device View";
+        return "Soapy";
     }
 
     // Constructor
 
-    Soapy(Instance& instance, const std::string& name, const Config& config, const Input& input)
-         : config(config), input(input) {
-        soapy = instance.addModule<Jetstream::Soapy, D, T>(name + "-ui", {
-            .deviceString = config.deviceString,
-            .frequency = config.frequency,
-            .sampleRate = config.sampleRate,
-            .outputShape = config.outputShape,
-            .bufferMultiplier = config.bufferMultiplier,
-        }, {}, true);
+    Result create() {
+        JST_CHECK(instance->addModule<Jetstream::Soapy, D, T>(
+            soapy, "ui", {
+                .deviceString = config.deviceString,
+                .streamString = config.streamString,
+                .frequency = config.frequency,
+                .sampleRate = config.sampleRate,
+                .outputShape = config.outputShape,
+                .bufferMultiplier = config.bufferMultiplier,
+            }, {},
+            this->locale.id
+        ));
 
-        output.buffer = soapy->getOutputBuffer();
+        JST_CHECK(this->linkOutput("buffer", output.buffer, soapy->getOutputBuffer()));
 
         frequency = soapy->getConfig().frequency / 1e6;
+
+        return Result::SUCCESS;
     }
-    virtual ~Soapy() = default;
+
+    Result destroy() {
+        JST_CHECK(instance->removeModule("ui", this->locale.id));
+
+        return Result::SUCCESS;
+    }
 
     // Interface
 
     void drawInfo() {
         const auto& buffer = soapy->getCircularBuffer();
 
-        ImGui::Text("Device Name: %s", soapy->getDeviceName().c_str());
-        ImGui::Text("Hardware Key: %s", soapy->getDeviceHardwareKey().c_str());
-        F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * 8) / (1024 * 1024));
-        ImGui::Text("Data Throughput %.0f MB/s", sdrThroughputMB);
-        ImGui::Text("RF Bandwidth: %.1f MHz", soapy->getConfig().sampleRate / (1000 * 1000));
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Device Name:");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("{} ({})", soapy->getDeviceName(), soapy->getDeviceHardwareKey());
 
-        ImGui::Separator();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Bandwidth:");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("{:.1f} MHz", soapy->getConfig().sampleRate / (1000 * 1000));
 
-        F32 bufferThroughputMB = (buffer.getThroughput() / (1024 * 1024));
-        ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Overflows:");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("{}", buffer.getOverflows());
 
-        F32 bufferCapacityMB = ((F32)buffer.getCapacity() * sizeof(CF32) / (1024 * 1024));
-        ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
+        const F32& bufferOccupancy = buffer.getOccupancy();
+        const F32 bufferOccupancyMB = (bufferOccupancy * sizeof(CF32) / (1024 * 1024));
 
-        ImGui::Text("Overflows %lu", buffer.getOverflows());
+        const F32& bufferCapacity = buffer.getCapacity();
+        const F32 bufferCapacityMB = (bufferCapacity * sizeof(CF32) / (1024 * 1024));
 
-        F32 bufferUsageRatio = (F32)buffer.getOccupancy() / buffer.getCapacity();
-        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), "");
+        const F32& bufferThroughput = buffer.getThroughput();
+        const F32 bufferThroughputMB = (bufferThroughput * sizeof(CF32) / (1024 * 1024));
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Buffer Health:");
+        ImGui::TableSetColumnIndex(1);
+        const F32 bufferUsageRatio = bufferOccupancy / bufferCapacity;
+        const auto bufferOverlay = fmt::format("{:.0f}/{:.0f} MB", bufferOccupancyMB, bufferCapacityMB);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), bufferOverlay.c_str());
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Throughput:");
+        ImGui::TableSetColumnIndex(1);
+        const F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * sizeof(CF32)) / (1024 * 1024));
+        const F32 throughputRatio = (bufferThroughputMB / sdrThroughputMB) * 0.5f;
+        const auto throughputOverlay = fmt::format("{:.0f}/{:.0f} MB/s", bufferThroughputMB, sdrThroughputMB);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::ProgressBar(throughputRatio, ImVec2(0.0f, 0.0f), throughputOverlay.c_str());
     }
 
     constexpr bool shouldDrawInfo() const {
@@ -122,11 +161,22 @@ class Soapy : public Bundle {
     }
 
     void drawControl() {
-        ImGui::InputFloat("Frequency (MHz)", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
-        if (ImGui::IsItemEdited()) { 
-            frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6; 
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Frequency (MHz)");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
+        if (ImGui::IsItemEdited()) {
+            frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6;
         }
-        ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");    
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Step Size (MHz)");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputFloat("##StepSize", &stepSize, 1.0f, 5.0f, "%.3f MHz");
     }
 
     constexpr bool shouldDrawControl() const {
@@ -134,14 +184,12 @@ class Soapy : public Bundle {
     }
 
  private:
-    Config config;
-    Input input;
-    Output output;
-
     F32 stepSize = 10.0f;
     F32 frequency = 10.0f;
 
     std::shared_ptr<Jetstream::Soapy<D, T>> soapy;
+
+    JST_DEFINE_BUNDLE_IO();
 };
 
 }  // namespace Jetstream::Bundles

@@ -16,126 +16,188 @@ namespace Jetstream {
 // 9. Assert that an In-Place Module is not sharing a branched input Vector.
 
 // TODO: Automatically add copy module if in-place check fails.
+// TODO: Redo PHash logic with locale.
 
-Scheduler::Scheduler(std::shared_ptr<Render::Window>& window,
-                     const std::unordered_map<std::string, BlockState>& blockStates,
-                     const std::vector<std::string>& blockStateOrder) : window(window) {
-    JST_DEBUG("[SCHEDULER] Creating compute graph.");
+Result Scheduler::addModule(const Locale& locale, const std::shared_ptr<BlockState>& block) {
+    JST_DEBUG("[SCHEDULER] Adding new module '{}' to the pipeline.", locale);
 
-    // Pre-filter module into present and compute.
-    for (const auto& [name, state] : blockStates) {
-        if (state.present) {
-            presentModuleStates[name].block = &state;
-        }
-        if (state.compute) {
-            computeModuleStates[name].block = &state;
-        }
+    if (!block->module) {
+        JST_DEBUG("[SCHEDULER] Ignoring non-module block.");
+        return Result::SUCCESS;
     }
 
-    // Print modules without ordering.
+    // Print new module metadata.
     JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
-    JST_INFO("|                                         JETSTREAM INTERMEDIATE COMPUTE GRAPH                                       |")
-    for (const auto& name : blockStateOrder) {
-        const auto& block = blockStates.at(name);
+    JST_INFO("[{}] [{}] [Device::{}] [C: {}, P: {}] [Internal: {}]", block->module->prettyName(),
+                                                                     locale,
+                                                                     block->module->device(),
+                                                                     (block->compute) ? "YES" : "NO",
+                                                                     (block->present) ? "YES" : "NO",
+                                                                     (!block->interface) ? "YES" : "NO");
+    JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
 
-        if (!block.module) {
-            continue;
+    {
+        JST_INFO("Configuration:");
+        block->module->summary();
+    }
+
+    {
+        JST_INFO("Block I/O:");
+
+        U64 inputCount = 0;
+        const auto& inputs = block->record.inputMap;
+        JST_INFO("  Inputs:");
+        if (inputs.empty()) {
+            JST_INFO("    None")
         }
-                
-        JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
-        JST_INFO("[{}] [{}] [Device::{}] [C: {}, P: {}] [Internal: {}]", block.module->prettyName(),
-                                                                         name,
-                                                                         block.module->device(),
-                                                                         (block.compute) ? "YES" : "NO",
-                                                                         (block.present) ? "YES" : "NO",
-                                                                         (!block.interface) ? "YES" : "NO");
-        JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
-
-        {
-            JST_INFO("Configuration:");
-            block.module->summary();
+        for (const auto& [name, meta] : inputs) {
+            JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | [{}]", inputCount++,
+                                                                                                         meta.dataType,
+                                                                                                         meta.shape,
+                                                                                                         meta.device,
+                                                                                                         reinterpret_cast<uintptr_t>(meta.data),
+                                                                                                         meta.hash,
+                                                                                                         name);
         }
 
-        {
-            JST_INFO("Block I/O:");
-
-            U64 inputCount = 0;
-            const auto& inputs = block.record.data.inputMap;
-            JST_INFO("  Inputs:");
-            if (inputs.empty()) {
-                JST_INFO("    None")
-            }
-            for (const auto& [name, meta] : inputs) {
-                JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | Pos: {:02} | [{}]", inputCount++,
-                                                                                                                          meta.vector.type,
-                                                                                                                          meta.vector.shape,
-                                                                                                                          meta.vector.device,
-                                                                                                                          reinterpret_cast<uintptr_t>(meta.vector.ptr),
-                                                                                                                          meta.vector.hash, 
-                                                                                                                          meta.vector.phash - meta.vector.hash,
-                                                                                                                          name);
-            }
-
-            U64 outputCount = 0;
-            const auto& outputs = block.record.data.outputMap;
-            JST_INFO("  Outputs:");
-            if (outputs.empty()) {
-                JST_INFO("    None")
-            }
-            for (const auto& [name, meta] : outputs) {
-                JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | Pos: {:02} | [{}]", outputCount++,
-                                                                                                                          meta.vector.type,
-                                                                                                                          meta.vector.shape,
-                                                                                                                          meta.vector.device,
-                                                                                                                          reinterpret_cast<uintptr_t>(meta.vector.ptr),
-                                                                                                                          meta.vector.hash, 
-                                                                                                                          meta.vector.phash - meta.vector.hash,
-                                                                                                                          name);
-            }
+        U64 outputCount = 0;
+        const auto& outputs = block->record.outputMap;
+        JST_INFO("  Outputs:");
+        if (outputs.empty()) {
+            JST_INFO("    None")
+        }
+        for (const auto& [name, meta] : outputs) {
+            JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | [{}]", outputCount++,
+                                                                                                         meta.dataType,
+                                                                                                         meta.shape,
+                                                                                                         meta.device,
+                                                                                                         reinterpret_cast<uintptr_t>(meta.data),
+                                                                                                         meta.hash,
+                                                                                                         name);
         }
     }
     JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
-    
-    // Process modules into graph.
-    ExecutionOrder executionOrder;
-    DeviceExecutionOrder deviceExecutionOrder;
-    
-    JST_CHECK_THROW(removeInactive());
-    JST_CHECK_THROW(arrangeDependencyOrder(executionOrder, deviceExecutionOrder));
-    JST_CHECK_THROW(checkSequenceValidity(executionOrder));
-    JST_CHECK_THROW(createExecutionGraphs(deviceExecutionOrder));
 
-    // Initialize compute logic from modules.
-    for (const auto& graph : graphs) {
-        JST_CHECK_THROW(graph->createCompute());
-    }
-
-    // Initialize present logic from modules.
-    for (const auto& [_, state] : presentModuleStates) {
-        JST_CHECK_THROW(state.block->present->createPresent(*window));
-    }
-}
-
-Scheduler::~Scheduler() {
-    JST_DEBUG("[SCHEDULER] Destroying compute graph.");
-
-    // Destroy present logic from modules.
-    for (const auto& [_, state] : presentModuleStates) {
-        state.block->present->destroyPresent(*window);
-    }
+    // Stop execution.
+    lock();
 
     // Destroy compute logic from modules.
     for (const auto& graph : graphs) {
-        graph->destroyCompute();
+        graph->destroy();
     }
+
+    // Add module to present and/or compute.
+    if (block->present) {
+        presentModuleStates[locale.str()].block = block;
+    }
+    if (block->compute) {
+        computeModuleStates[locale.str()].block = block;
+    }
+
+    // Process modules into graph.
+    JST_CHECK(removeInactive());
+    JST_CHECK(arrangeDependencyOrder());
+    JST_CHECK(checkSequenceValidity());
+    JST_CHECK(createExecutionGraphs());
+
+    // Initialize graphs.
+    for (const auto& graph : graphs) {
+        JST_CHECK_THROW(graph->create());
+    }
+
+    // Restart execution.
+    unlock();
+
+    return Result::SUCCESS;
+}
+
+Result Scheduler::removeModule(const Locale& locale) {
+    JST_DEBUG("[SCHEDULER] Removing module '{}' from the pipeline.", locale);
+
+    // Stop execution.
+    lock();
+
+    // Destroy compute logic from modules.
+    for (const auto& graph : graphs) {
+        graph->destroy();
+    }
+
+    // Remove module from present and/or compute.
+    if (presentModuleStates.contains(locale.str())) {
+        presentModuleStates.erase(locale.str());
+    }
+    if (computeModuleStates.contains(locale.str())) {
+        computeModuleStates.erase(locale.str());
+    }
+
+    // Process modules into graph.
+    JST_CHECK(removeInactive());
+    JST_CHECK(arrangeDependencyOrder());
+    JST_CHECK(checkSequenceValidity());
+    JST_CHECK(createExecutionGraphs());
+
+    // Initialize graphs.
+    for (const auto& graph : graphs) {
+        JST_CHECK_THROW(graph->create());
+    }
+
+    // Restart execution.
+    unlock();
+
+    return Result::SUCCESS;
+}
+
+Result Scheduler::destroy() {
+    JST_DEBUG("[SCHEDULER] Destroying compute graph.");
+
+    // Stop execution.
+    lock();
+
+    // Destroy compute logic from modules.
+    for (const auto& graph : graphs) {
+        graph->destroy();
+    }
+
+    // Blanks internal memory.
+    computeModuleStates.clear();
+    presentModuleStates.clear();
+    validComputeModuleStates.clear();
+    validPresentModuleStates.clear();
+    executionOrder.clear();
+    deviceExecutionOrder.clear();
+    graphs.clear();
+
+    // Restart execution.
+    unlock();
+
+    return Result::SUCCESS;
 }
 
 Result Scheduler::compute() {
-    Result err = Result::SUCCESS;
+    if (computeHalt.test()) {
+        computeHalt.wait(true);
+        return Result::SUCCESS;
+    }
 
-    // TODO: Move this graph class internals. Remove blocking.
-    for (const auto& graph : graphs) {
-        JST_CHECK(graph->computeReady());
+    // The state cannot change while we are waiting for
+    // a module to finish computing. This is a workaround
+    // blocking the state from changing while we are waiting.
+    // TODO: Replace with something else can can cancel the wait.
+    {
+        computeWait.test_and_set();
+
+        wait:
+        for (const auto& graph : graphs) {
+            const auto& res = graph->computeReady();
+            if (res == Result::TIMEOUT) {
+                // Yes, I used a goto. Sue me.
+                goto wait;
+            }
+            JST_CHECK(res);
+        }
+
+        computeWait.clear();
+        computeWait.notify_all();
     }
 
     presentSync.wait(true);
@@ -146,78 +208,111 @@ Result Scheduler::compute() {
     }
 
     computeSync.clear();
-    computeSync.notify_one();
+    computeSync.notify_all();
 
-    return err;
+    return Result::SUCCESS;
 }
 
 Result Scheduler::present() {
-    Result err = Result::SUCCESS;
+    if (presentHalt.test()) {
+        return Result::SUCCESS;
+    }
 
     presentSync.test_and_set();
     computeSync.wait(true);
 
-    for (const auto& [_, state] : presentModuleStates) {
-        JST_CHECK(state.block->present->present(*window));
+    for (const auto& [_, state] : validPresentModuleStates) {
+        JST_CHECK(state.block->present->present());
     }
 
     presentSync.clear();
-    presentSync.notify_one();
+    presentSync.notify_all();
 
-    return err;
+    return Result::SUCCESS;
+}
+
+void Scheduler::lock() {
+    presentHalt.test_and_set();
+    computeHalt.test_and_set();
+    computeWait.wait(true);
+    presentSync.wait(true);
+    computeSync.wait(true);
+}
+
+void Scheduler::unlock() {
+    presentHalt.clear();
+    presentHalt.notify_all();
+    computeHalt.clear();
+    computeHalt.notify_all();
 }
 
 Result Scheduler::removeInactive() {
-    JST_DEBUG("[SCHEDULER] Removing inactive I/O and modules.");
+    validComputeModuleStates.clear();
+    validPresentModuleStates.clear();
+
+    JST_DEBUG("[SCHEDULER] Removing inactive I/O.");
     std::unordered_map<U64, U64> valid;
-    for (auto& [name, state] : computeModuleStates) {
-        for (const auto& [_, meta] : state.block->record.data.inputMap) {
-            valid[meta.vector.hash]++;
+    for (const auto& [name, state] : computeModuleStates) {
+        for (const auto& [_, meta] : state.block->record.inputMap) {
+            if (meta.hash) {
+                valid[meta.hash]++;
+            }
         }
-        for (const auto& [_, meta] : state.block->record.data.outputMap) {
-            valid[meta.vector.hash]++;
+        for (const auto& [_, meta] : state.block->record.outputMap) {
+            if (meta.hash) {
+                valid[meta.hash]++;
+            }
         }
     }
 
     JST_DEBUG("[SCHEDULER] Generating I/O map for each module.");
     for (auto& [name, state] : computeModuleStates) {
-        for (const auto& [inputName, meta] : state.block->record.data.inputMap) {
-            if (valid[meta.vector.hash] > 1) {
-                state.activeInputs[inputName] = &meta.vector;
+        for (const auto& [inputName, meta] : state.block->record.inputMap) {
+            if (valid[meta.hash] > 1) {
+                state.activeInputs[inputName] = &meta;
             } else {
-                JST_TRACE("Nulling '{}' input from '{}' module ({:#016x}).", inputName, name, meta.vector.hash);
+                JST_TRACE("Nulling '{}' input from '{}' module ({:#016x}).", inputName, name, meta.hash);
             }
         }
-        for (const auto& [outputName, meta] : state.block->record.data.outputMap) {
-            if (valid[meta.vector.hash] > 1) {
-                state.activeOutputs[outputName] = &meta.vector;
+        for (const auto& [outputName, meta] : state.block->record.outputMap) {
+            if (valid[meta.hash] > 1) {
+                state.activeOutputs[outputName] = &meta;
             } else {
-                JST_TRACE("Nulling '{}' output from '{}' module ({:#016x}).", outputName, name, meta.vector.hash);
+                JST_TRACE("Nulling '{}' output from '{}' module ({:#016x}).", outputName, name, meta.hash);
             }
         }
     }
 
     JST_DEBUG("[SCHEDULER] Removing stale modules.");
-    std::vector<std::string> staleModules;
+    std::unordered_set<std::string> staleModules;
     for (const auto& [name, state] : computeModuleStates) {
         if (state.activeInputs.empty() && state.activeOutputs.empty()) {
             JST_TRACE("Removing stale module '{}'.", name);
-            staleModules.push_back(name);
+            staleModules.insert(name);
         }
     }
-    for (const auto& name : staleModules) {
-        computeModuleStates.erase(name);
+    for (const auto& [name, state] : computeModuleStates) {
+        if (!staleModules.contains(name)) {
+            validComputeModuleStates[name] = state;
+        }
+    }
+    for (const auto& [name, state] : presentModuleStates) {
+        if (!staleModules.contains(name)) {
+            validPresentModuleStates[name] = state;
+        }
     }
 
     return Result::SUCCESS;
 }
 
-Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
-                                         DeviceExecutionOrder& deviceExecutionOrder) {
+Result Scheduler::arrangeDependencyOrder() {
+    executionOrder.clear();
+    deviceExecutionOrder.clear();
+
     JST_DEBUG("[SCHEDULER] Calculating module degrees.");
     std::unordered_set<std::string> queue;
     std::unordered_map<std::string, U64> degrees;
-    for (const auto& [name, state] : computeModuleStates) {
+    for (const auto& [name, state] : validComputeModuleStates) {
         degrees[name] = state.activeInputs.size();
         if (state.activeInputs.size() == 0) {
             queue.emplace(name);
@@ -230,34 +325,34 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
     std::unordered_map<std::string, std::unordered_set<std::string>> moduleEdgesCache;
     std::unordered_map<U64, std::vector<std::string>> moduleInputCache;
     std::unordered_map<U64, std::string> moduleOutputCache;
-    
-    for (const auto& [name, state] : computeModuleStates) {
+
+    for (const auto& [name, state] : validComputeModuleStates) {
         for (const auto& [_, inputMeta] : state.activeInputs) {
-            moduleInputCache[inputMeta->phash].push_back(name);
+            moduleInputCache[inputMeta->locale.hash()].push_back(name);
         }
         for (const auto& [_, outputMeta] : state.activeOutputs) {
-            moduleOutputCache[outputMeta->phash] = name;
+            moduleOutputCache[outputMeta->locale.hash()] = name;
         }
     }
 
-    for (const auto& [name, state] : computeModuleStates) {
+    for (const auto& [name, state] : validComputeModuleStates) {
         auto& edges = moduleEdgesCache[name];
 
         for (const auto& [_, inputMeta] : state.activeInputs) {
-            edges.insert(moduleOutputCache[inputMeta->phash]);
+            edges.insert(moduleOutputCache[inputMeta->locale.hash()]);
         }
         for (const auto& [_, outputMeta] : state.activeOutputs) {
-            const auto& matches = moduleInputCache[outputMeta->phash];
+            const auto& matches = moduleInputCache[outputMeta->locale.hash()];
             edges.insert(matches.begin(), matches.end());
         }
     }
-    
+
     JST_DEBUG("[SCHEDULER] Calculating primitive execution order.");
-    Device lastDevice = Device::None; 
+    Device lastDevice = Device::None;
     while (!queue.empty()) {
         std::string nextName;
         for (const auto& name : queue) {
-            const auto& module = computeModuleStates[name].block->module;
+            const auto& module = validComputeModuleStates[name].block->module;
             if (lastDevice == Device::None) {
                 lastDevice = module->device();
             }
@@ -267,22 +362,25 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
                 break;
             }
         }
+        if (nextName.empty()) {
+            lastDevice = Device::None;
+            continue;
+        }
         JST_ASSERT(!nextName.empty());
         queue.erase(queue.find(nextName));
         executionOrder.push_back(nextName);
 
-        for (const auto& [nextOutputName, nextOutputMeta] : computeModuleStates[nextName].activeOutputs) {
-            for (const auto& inputModuleName : moduleInputCache[nextOutputMeta->phash]) {
+        for (const auto& [nextOutputName, nextOutputMeta] : validComputeModuleStates[nextName].activeOutputs) {
+            for (const auto& inputModuleName : moduleInputCache[nextOutputMeta->locale.hash()]) {
                 if (--degrees[inputModuleName] == 0) {
                     queue.emplace(inputModuleName);
                 }
             }
         }
     }
-    JST_TRACE("Primitive execution order: {}", executionOrder);
-    if (executionOrder.size() != computeModuleStates.size()) {
-        JST_FATAL("[SCHEDULER] Dependency cycle detected. Expected ({}) and actual "
-                  "({}) execution order size mismatch.", computeModuleStates.size(), executionOrder.size());
+    if (executionOrder.size() != validComputeModuleStates.size()) {
+        JST_ERROR("[SCHEDULER] Dependency cycle detected. Expected ({}) and actual "
+                  "({}) execution order size mismatch.", validComputeModuleStates.size(), executionOrder.size());
         return Result::ERROR;
     }
     JST_TRACE("Primitive execution order: {}", executionOrder);
@@ -290,7 +388,7 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
     JST_DEBUG("[SCHEDULER] Spliting graph into sub-graphs.");
     U64 clusterCount = 0;
     std::unordered_set<std::string> visited;
-    for (const auto& [name, state] : computeModuleStates) {
+    for (const auto& [name, state] : validComputeModuleStates) {
         if (!visited.contains(name)) {
             std::stack<std::string> stack;
             stack.push(name);
@@ -307,7 +405,7 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
 
                 if (!visited.contains(current)) {
                     visited.insert(current);
-                    computeModuleStates[current].clusterId = clusterCount;
+                    validComputeModuleStates[current].clusterId = clusterCount;
                 }
             }
 
@@ -319,11 +417,11 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
     lastDevice = Device::None;
     U64 lastCluster = 0;
     for (const auto& name : executionOrder) {
-        const auto& module = computeModuleStates[name];
+        const auto& module = validComputeModuleStates[name];
         const auto& currentCluster = module.clusterId;
         const auto& currentDevice = module.block->module->device();
 
-        if ((currentDevice & lastDevice) != lastDevice || 
+        if ((currentDevice & lastDevice) != lastDevice ||
             currentCluster != lastCluster) {
             deviceExecutionOrder.push_back({currentDevice, {}});
         }
@@ -345,13 +443,13 @@ Result Scheduler::arrangeDependencyOrder(ExecutionOrder& executionOrder,
     return Result::SUCCESS;
 }
 
-Result Scheduler::checkSequenceValidity(ExecutionOrder& executionOrder) {
+Result Scheduler::checkSequenceValidity() {
     JST_DEBUG("[SCHEDULER] Gathering modules with inplace operations.");
     std::unordered_map<U64, std::vector<std::string>> inplaceVectorsMap;
     for (const auto& name : executionOrder) {
-        auto& state = computeModuleStates[name];
-            
-        std::unordered_set<U64> inputs; 
+        auto& state = validComputeModuleStates[name];
+
+        std::unordered_set<U64> inputs;
         for (const auto& [_, inputMeta] : state.activeInputs) {
             inputs.emplace(inputMeta->hash);
         }
@@ -373,8 +471,8 @@ Result Scheduler::checkSequenceValidity(ExecutionOrder& executionOrder) {
     JST_DEBUG("[SCHEDULER] Gathering positional memory layout.");
     std::map<std::pair<U64, U64>, std::vector<std::string>> pMap;
     for (const auto& name : executionOrder) {
-        for (const auto& [_, inputMeta] : computeModuleStates[name].activeInputs) {
-            pMap[{inputMeta->hash, inputMeta->phash}].push_back(name);
+        for (const auto& [_, inputMeta] : validComputeModuleStates[name].activeInputs) {
+            pMap[{inputMeta->hash, inputMeta->locale.hash()}].push_back(name);
         }
     }
     JST_TRACE("In-place vector map: {}", pMap)
@@ -388,14 +486,14 @@ Result Scheduler::checkSequenceValidity(ExecutionOrder& executionOrder) {
         }
 
         if (inplaceVectorsMap.count(hash) > 0) {
-            std::vector<std::string> inplaceModules; 
+            std::vector<std::string> inplaceModules;
             std::ranges::set_intersection(blocks,
                                           inplaceVectorsMap[hash],
                                           std::back_inserter(inplaceModules));
             if (inplaceModules.size() > 0) {
-                JST_FATAL("[SCHEDULER] Vector is being shared by at least two modules after a branch "
+                JST_ERROR("[SCHEDULER] Vector is being shared by at least two modules after a branch "
                           "and at least one of them is an in-place module.");
-                JST_FATAL("    Hash: 0x{:016x} | Pos: {} | Modules: {}", hash,
+                JST_ERROR("    Hash: 0x{:016x} | Pos: {} | Modules: {}", hash,
                                                                          phash - hash,
                                                                          blocks);
                 return Result::ERROR;
@@ -406,20 +504,22 @@ Result Scheduler::checkSequenceValidity(ExecutionOrder& executionOrder) {
     return Result::SUCCESS;
 }
 
-Result Scheduler::createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrder) {
+Result Scheduler::createExecutionGraphs() {
+    graphs.clear();
+
     JST_DEBUG("[SCHEDULER] Instantiating compute graphs and adding wired Vectors.");
     for (const auto& [device, blocksNames] : deviceExecutionOrder) {
         auto graph = NewGraph(device);
 
         for (const auto& blockName : blocksNames) {
-            auto& state = computeModuleStates[blockName];
+            auto& state = validComputeModuleStates[blockName];
 
             for (const auto& [_, inputMeta] : state.activeInputs) {
-                graph->setWiredInput(inputMeta->phash);
+                graph->setWiredInput(inputMeta->locale.hash());
             }
 
             for (const auto& [_, outputMeta] : state.activeOutputs) {
-                graph->setWiredOutput(outputMeta->phash);
+                graph->setWiredOutput(outputMeta->locale.hash());
             }
 
             graph->setModule(state.block->compute);
@@ -432,7 +532,7 @@ Result Scheduler::createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrd
     std::shared_ptr<Graph> previousGraph;
     for (auto& currentGraph : graphs) {
         if (!previousGraph) {
-            previousGraph = currentGraph;       
+            previousGraph = currentGraph;
             continue;
         }
 
@@ -446,8 +546,44 @@ Result Scheduler::createExecutionGraphs(DeviceExecutionOrder& deviceExecutionOrd
             currentGraph->setExternallyWiredInput(item);
         }
     }
- 
+
     return Result::SUCCESS;
+}
+
+void Scheduler::drawDebugMessage() const {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Pipeline:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextFormatted("{} graph(s)", graphs.size());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Present:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextFormatted("{} block(s)", validPresentModuleStates.size());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Compute:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{} block(s)", validComputeModuleStates.size());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextFormatted("Graph List:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::TextUnformatted("");
+
+    U64 count = 0;
+    for (const auto& [device, blocks] : deviceExecutionOrder) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextFormatted("[{}] {}: {} blocks", count, GetDevicePrettyName(device), blocks.size());
+    }
 }
 
 }  // namespace Jetstream

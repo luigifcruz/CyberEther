@@ -4,12 +4,18 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Waterfall<D, T>::Waterfall(const Config& config, 
-                           const Input& input) 
-         : config(config), input(input) {
+Result Waterfall<D, T>::create() {
     JST_DEBUG("Initializing Waterfall module.");
 
-    JST_CHECK_THROW(Module::initInput(input.buffer));
+    // Initialize Input & Output memory.
+    JST_INIT(
+        JST_INIT_INPUT("buffer", input.buffer);
+    );
+
+    // Allocate internal buffers.
+    frequencyBins = Vector<D, F32, 2>({input.buffer.shape()[1],  config.height});
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
@@ -22,36 +28,27 @@ void Waterfall<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
-    JST_TRACE("Create Waterfall compute core.");
-
-    frequencyBins = Vector<D, F32, 2>({input.buffer.shape()[1],  config.height});
-
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-Result Waterfall<D, T>::createPresent(Render::Window& window) {
+Result Waterfall<D, T>::createPresent() {
     Render::Buffer::Config fillScreenVerticesConf;
     fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
     fillScreenVerticesConf.elementByteSize = sizeof(float);
     fillScreenVerticesConf.size = 12;
     fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window.build(fillScreenVerticesBuffer, fillScreenVerticesConf));
+    JST_CHECK(window->build(fillScreenVerticesBuffer, fillScreenVerticesConf));
 
     Render::Buffer::Config fillScreenTextureVerticesConf;
     fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
     fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
     fillScreenTextureVerticesConf.size = 8;
     fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window.build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
+    JST_CHECK(window->build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
 
     Render::Buffer::Config fillScreenIndicesConf;
     fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
     fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
     fillScreenIndicesConf.size = 6;
     fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
-    JST_CHECK(window.build(fillScreenIndicesBuffer, fillScreenIndicesConf));
+    JST_CHECK(window->build(fillScreenIndicesBuffer, fillScreenIndicesConf));
 
     Render::Vertex::Config vertexCfg;
     vertexCfg.buffers = {
@@ -59,12 +56,12 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
         {fillScreenTextureVerticesBuffer, 2},
     };
     vertexCfg.indices = fillScreenIndicesBuffer;
-    JST_CHECK(window.build(vertex, vertexCfg));
+    JST_CHECK(window->build(vertex, vertexCfg));
 
     Render::Draw::Config drawVertexCfg;
     drawVertexCfg.buffer = vertex;
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(window.build(drawVertex, drawVertexCfg));
+    JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
     Render::Buffer::Config bufferCfg;
     bufferCfg.buffer = frequencyBins.data();
@@ -72,19 +69,19 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
     bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
     bufferCfg.target = Render::Buffer::Target::STORAGE;
     bufferCfg.enableZeroCopy = true;
-    JST_CHECK(window.build(binTexture, bufferCfg));
+    JST_CHECK(window->build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
     lutTextureCfg.size = {256, 1};
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    JST_CHECK(window.build(lutTexture, lutTextureCfg));
+    JST_CHECK(window->build(lutTexture, lutTextureCfg));
 
     Render::Buffer::Config uniformCfg;
     uniformCfg.buffer = &shaderUniforms;
     uniformCfg.elementByteSize = sizeof(shaderUniforms);
     uniformCfg.size = 1;
     uniformCfg.target = Render::Buffer::Target::UNIFORM;
-    JST_CHECK(window.build(uniformBuffer, uniformCfg));
+    JST_CHECK(window->build(uniformBuffer, uniformCfg));
 
     Render::Program::Config programCfg;
     programCfg.shaders = ShadersPackage["signal"];
@@ -95,30 +92,30 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
                         Render::Program::Target::FRAGMENT},
         {binTexture, Render::Program::Target::FRAGMENT},
     };
-    JST_CHECK(window.build(program, programCfg));
+    JST_CHECK(window->build(program, programCfg));
 
     Render::Texture::Config textureCfg;
     textureCfg.size = config.viewSize;
-    JST_CHECK(window.build(texture, textureCfg));
+    JST_CHECK(window->build(texture, textureCfg));
 
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {program};
-    JST_CHECK(window.build(surface, surfaceCfg));
-    JST_CHECK(window.bind(surface));
+    JST_CHECK(window->build(surface, surfaceCfg));
+    JST_CHECK(window->bind(surface));
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
-    auto res = this->underlyingCompute(meta);
-    inc = (inc + input.buffer.shape()[0]) % config.height;
-    return res;
+Result Waterfall<D, T>::destroyPresent() {
+    JST_CHECK(window->unbind(surface));
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::present(Render::Window&) {
+Result Waterfall<D, T>::present() {
     int start = last;
     int blocks = (inc - last);
 
@@ -149,15 +146,27 @@ Result Waterfall<D, T>::present(Render::Window&) {
 }
 
 template<Device D, typename T>
+Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
+    auto res = underlyingCompute(meta);
+    inc = (inc + input.buffer.shape()[0]) % config.height;
+    return res;
+}
+
+template<Device D, typename T>
 const bool& Waterfall<D, T>::interpolate(const bool& val) {
     config.interpolate = val;
-    return this->interpolate();
+    return interpolate();
 }
 
 template<Device D, typename T>
 const F32& Waterfall<D, T>::zoom(const F32& zoom) {
     config.zoom = zoom;
-    this->offset(config.offset);
+    offset(config.offset);
     return config.zoom;
 }
 
@@ -171,13 +180,13 @@ const I32& Waterfall<D, T>::offset(const I32& offset) {
 template<Device D, typename T>
 const Size2D<U64>& Waterfall<D, T>::viewSize(const Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
-        JST_DEBUG("Waterfall size changed from [{}, {}] to [{}, {}].", 
-                config.viewSize.width, 
-                config.viewSize.height, 
-                viewSize.width, 
+        JST_DEBUG("Waterfall size changed from [{}, {}] to [{}, {}].",
+                config.viewSize.width,
+                config.viewSize.height,
+                viewSize.width,
                 viewSize.height);
 
-        this->config.viewSize = surface->size();
+        config.viewSize = surface->size();
     }
     return this->viewSize();
 }

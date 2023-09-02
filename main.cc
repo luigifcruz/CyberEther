@@ -205,12 +205,12 @@ class UI {
 
             if (ImGui::CollapsingHeader("Buffer Health", ImGuiTreeNodeFlags_DefaultOpen)) {
                 float bufferThroughputMB = (sdr->getCircularBuffer().getThroughput() / (1024 * 1024));
-                ImGui::Text("Buffer Throughput %.0f MB/s", bufferThroughputMB);
+                ImGui::TextFormatted("Buffer Throughput {:.0f} MB/s", bufferThroughputMB);
 
                 float bufferCapacityMB = ((F32)sdr->getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
-                ImGui::Text("Capacity %.0f MB", bufferCapacityMB);
+                ImGui::TextFormatted("Capacity {:.0f} MB", bufferCapacityMB);
 
-                ImGui::Text("Overflows %llu", sdr->getCircularBuffer().getOverflows());
+                ImGui::TextFormatted("Overflows {}", sdr->getCircularBuffer().getOverflows());
 
                 float bufferUsageRatio = (F32)sdr->getCircularBuffer().getOccupancy() /
                                                 sdr->getCircularBuffer().getCapacity();
@@ -218,23 +218,22 @@ class UI {
             }
 
             if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Text("Data Shape: (%llu, %llu)", sdr->getConfig().outputShape[0], sdr->getConfig().outputShape[1]);
-                ImGui::Text("Compute Device: %s", GetDevicePrettyName(ComputeDevice));
+                ImGui::TextFormatted("Data Shape: ({}, {})", sdr->getConfig().outputShape[0], sdr->getConfig().outputShape[1]);
+                ImGui::TextFormatted("Compute Device: {}", GetDevicePrettyName(ComputeDevice));
             }
 
             if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
-                instance.window().drawDebugMessage();
-                ImGui::Text("Viewport Device: %s", instance.viewport().name().c_str());
-                ImGui::Text("Render Device: %s", GetDevicePrettyName(RenderDevice));
-                ImGui::Text("Dropped Frames: %llu", instance.window().stats().droppedFrames);
+                ImGui::TextFormatted("Viewport Device: {}", instance.viewport().name());
+                ImGui::TextFormatted("Render Device: {}", GetDevicePrettyName(RenderDevice));
+                ImGui::TextFormatted("Dropped Frames: {}", instance.window().stats().droppedFrames);
             }
 
             if (ImGui::CollapsingHeader("SDR", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::Text("Device Name: %s", sdr->getDeviceName().c_str());
-                ImGui::Text("Hardware Key: %s", sdr->getDeviceHardwareKey().c_str());
+                ImGui::TextFormatted("Device Name: {}", sdr->getDeviceName());
+                ImGui::TextFormatted("Hardware Key: {}", sdr->getDeviceHardwareKey());
                 float sdrThroughputMB = ((sdr->getConfig().sampleRate * 8) / (1024 * 1024));
-                ImGui::Text("Data Throughput %.0f MB/s", sdrThroughputMB);
-                ImGui::Text("RF Bandwidth: %.1f MHz", sdr->getConfig().sampleRate / (1000 * 1000));
+                ImGui::TextFormatted("Data Throughput {:.0f} MB/s", sdrThroughputMB);
+                ImGui::TextFormatted("RF Bandwidth: {:.1f} MHz", sdr->getConfig().sampleRate / (1000 * 1000));
             }
 
             JST_CHECK_THROW(lpt->drawInfo());

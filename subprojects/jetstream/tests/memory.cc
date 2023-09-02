@@ -14,12 +14,12 @@ void PrintVarDebug(const std::string& varName, const auto& a) {
 int main() {
     // Initialize the backends.
     if (Backend::Initialize<Device::CPU>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize CPU backend.");
+        JST_ERROR("Cannot initialize CPU backend.");
         return 1;
     }
 
     if (Backend::Initialize<Device::Metal>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize Metal backend.");
+        JST_ERROR("Cannot initialize Metal backend.");
         return 1;
     }
 

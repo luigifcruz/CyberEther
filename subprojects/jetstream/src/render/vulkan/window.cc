@@ -16,9 +16,17 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("[VULKAN] Binding surface to window.");
 
-    surfaces.push_back(
-        std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface)
-    );
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    surfaces.push_back(_surface);
+    return _surface->create();
+}
+
+Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[VULKAN] Unbinding surface to window.");
+
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    JST_CHECK(_surface->destroy());
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
@@ -68,7 +76,7 @@ Result Implementation::create() {
     renderPassInfo.pDependencies = &dependency;
 
     JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
-        JST_FATAL("[VULKAN] Failed to create render pass.");   
+        JST_ERROR("[VULKAN] Failed to create render pass.");   
     });
 
     // Create swapchain framebuffer.
@@ -91,7 +99,7 @@ Result Implementation::create() {
         framebufferInfo.layers = 1;
 
         JST_VK_CHECK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapchainFramebuffers[i]), [&]{
-            JST_FATAL("[VULKAN] Failed to create swapchain framebuffer.");
+            JST_ERROR("[VULKAN] Failed to create swapchain framebuffer.");
         });
     }
 
@@ -105,7 +113,7 @@ Result Implementation::create() {
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     JST_VK_CHECK(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), [&]{
-        JST_FATAL("[VULKAN] Failed to create graphics command pool.");
+        JST_ERROR("[VULKAN] Failed to create graphics command pool.");
     });
 
     // Create command buffers.
@@ -119,17 +127,13 @@ Result Implementation::create() {
     allocInfo.commandBufferCount = static_cast<U32>(commandBuffers.size());
 
     JST_VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()), [&]{
-        JST_FATAL("[VULKAN] Can't create render command buffers.");
+        JST_ERROR("[VULKAN] Can't create render command buffers.");
     });
 
     // Create children.
 
     if (config.imgui) {
         JST_CHECK(createImgui());
-    }
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->create());
     }
 
     statsData.droppedFrames = 0;
@@ -146,7 +150,7 @@ Result Implementation::destroy() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_FATAL("[VULKAN] Can't wait for graphics queue to finish for window destruction.");
+        JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for window destruction.");
     });
 
     JST_CHECK(destroySynchronizationObjects());
@@ -194,8 +198,10 @@ Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     
     JST_CHECK(viewport->createImgui());
-    ApplyImGuiTheme(viewport->calculateScale(config.scale));
-    ApplyImNodesTheme();
+
+    const auto& scale = viewport->calculateScale(config.scale);
+    ApplyImGuiTheme(scale);
+    ApplyImNodesTheme(scale);
 
     auto& backend = Backend::State<Device::Vulkan>();
     
@@ -244,6 +250,10 @@ Result Implementation::destroyImgui() {
 
 Result Implementation::beginImgui() {
     ImGui_ImplVulkan_NewFrame();
+
+    ApplyImGuiScale();
+    ApplyImNodesScale();
+
     ImGui::NewFrame();
 
     return Result::SUCCESS;
@@ -287,7 +297,7 @@ Result Implementation::begin() {
     // Refresh command buffer.
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     JST_VK_CHECK(vkBeginCommandBuffer(currentCommandBuffer, &commandBufferBeginInfo), [&]{
-        JST_FATAL("[VULKAN] Can't begin command buffer.");     
+        JST_ERROR("[VULKAN] Can't begin command buffer.");     
     });
 
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -321,7 +331,7 @@ Result Implementation::end() {
     vkCmdEndRenderPass(currentCommandBuffer);
 
     JST_VK_CHECK(vkEndCommandBuffer(currentCommandBuffer), [&]{
-        JST_FATAL("[VULKAN] Can't end command buffer.");
+        JST_ERROR("[VULKAN] Can't end command buffer.");
     });
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
@@ -345,7 +355,7 @@ Result Implementation::end() {
 
     auto& graphicsQueue = Backend::State<Device::Vulkan>()->getGraphicsQueue();
     if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
-        JST_FATAL("[VULKAN] Failed to submit draw command buffer.");
+        JST_ERROR("[VULKAN] Failed to submit draw command buffer.");
         return Result::ERROR;
     }
 
@@ -378,7 +388,7 @@ Result Implementation::createSynchronizationObjects() {
         if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
             vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
             vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
-            JST_FATAL("[VULKAN] Failed to create synchronization objects.");
+            JST_ERROR("[VULKAN] Failed to create synchronization objects.");
             return Result::ERROR;
         }
     }
@@ -401,13 +411,20 @@ Result Implementation::destroySynchronizationObjects() {
 
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Vulkan>();
-    ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::Text("FPS: %.1f Hz", io.Framerate);
-    ImGui::Text("Device Name: %s", backend->getDeviceName().c_str());
-    ImGui::Text("Has Unified Memory: %s", backend->hasUnifiedMemory() ? "YES" : "NO");
-    ImGui::Text("Physical Memory: %.00f GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
-    ImGui::Text("Processor Count: %lu", backend->getTotalProcessorCount());
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Device Name:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{}", backend->getDeviceName());
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text("Physical Memory:");
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
 }
 
 const Window::Stats& Implementation::stats() const {

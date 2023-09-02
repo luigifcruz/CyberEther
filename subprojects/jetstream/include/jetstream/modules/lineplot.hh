@@ -20,7 +20,7 @@ class Lineplot : public Module, public Compute, public Present {
     struct Config {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        Size2D<U64> viewSize = {1024, 512};
+        Size2D<U64> viewSize = {512, 384};
 
         JST_SERDES(
             JST_SERDES_VAL("numberOfVerticalLines", numberOfVerticalLines);
@@ -75,7 +75,7 @@ class Lineplot : public Module, public Compute, public Present {
 
     // Constructor
 
-    explicit Lineplot(const Config& config, const Input& input);
+    Result create();
 
     // Miscellaneous
 
@@ -87,10 +87,14 @@ class Lineplot : public Module, public Compute, public Present {
     Render::Texture& getTexture();
 
  protected:
-    Config config;
-    const Input input;
-    Output output;
+    Result createCompute(const RuntimeMetadata& meta) final;
+    Result compute(const RuntimeMetadata& meta) final;
 
+    Result createPresent() final;
+    Result present() final;
+    Result destroyPresent() final;
+
+ private:
     Vector<D, F32, 2> plot;
     Vector<D, F32, 3> grid;
 
@@ -111,13 +115,6 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
 
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result underlyingCreateCompute(const RuntimeMetadata& meta);
-    Result compute(const RuntimeMetadata& meta) final;
-
-    Result createPresent(Render::Window& window) final;
-    Result present(Render::Window& window) final;
-
 #ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
     struct MetalConstants {
         U16 batchSize;
@@ -129,6 +126,8 @@ class Lineplot : public Module, public Compute, public Present {
         Vector<Device::Metal, U8> constants;
     } metal;
 #endif
+
+    JST_DEFINE_MODULE_IO();
 };
 
 }  // namespace Jetstream

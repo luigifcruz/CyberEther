@@ -34,6 +34,11 @@
           },
           canvas: (function() {
             var canvas = document.getElementById('canvas');
+
+            canvas.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+            });
+
             return canvas;
           })(),
           setStatus: function(text) {},

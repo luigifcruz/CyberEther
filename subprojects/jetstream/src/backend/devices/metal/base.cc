@@ -14,7 +14,7 @@ Metal::Metal(const Config& config) {
     // TODO: Respect config.deviceId.
     if (!(device = MTL::CreateSystemDefaultDevice())) {
         JST_FATAL("Cannot create Metal device.");
-        JST_CHECK_THROW(Result::ERROR);
+        JST_CHECK_THROW(Result::FATAL);
     }
 
     // Import generic information.

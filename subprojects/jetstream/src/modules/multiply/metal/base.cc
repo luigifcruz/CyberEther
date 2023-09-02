@@ -47,7 +47,6 @@ Result Multiply<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-
 template class Multiply<Device::Metal, CF32>;
     
 }  // namespace Jetstream

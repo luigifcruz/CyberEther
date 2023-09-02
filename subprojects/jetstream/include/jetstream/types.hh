@@ -13,16 +13,18 @@
 namespace Jetstream {
 
 enum class Result : uint8_t {
-    SUCCESS = 0,
-    ERROR = 1,
-    SKIP = 2,
-    RECREATE = 3,
-    CUDA_ERROR,
-    VULKAN_ERROR,
-    ASSERTION_ERROR,
-    ERROR_TIMEOUT,
-    ERROR_BEYOND_CAPACITY,
+    SUCCESS     = 0,
+    ERROR       = 1,
+    FATAL       = 2,
+    SKIP        = 3,
+    RECREATE    = 4,
+    TIMEOUT     = 5,
 };
+
+inline constexpr Result& operator|=(Result& lhs, const Result& rhs) {
+    lhs = ((lhs != Result::SUCCESS) || (rhs != Result::SUCCESS)) ? Result::ERROR : Result::SUCCESS;
+    return lhs;
+}
 
 template<typename T = U64>
 struct Size2D {

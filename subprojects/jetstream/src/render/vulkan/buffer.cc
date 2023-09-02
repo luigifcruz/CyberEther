@@ -54,7 +54,7 @@ Result Implementation::create() {
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), [&]{
-        JST_FATAL("[VULKAN] Can't create memory buffer.");
+        JST_ERROR("[VULKAN] Can't create memory buffer.");
     });
 
     // Allocate backing memory.
@@ -70,11 +70,11 @@ Result Implementation::create() {
                                                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
-        JST_FATAL("[VULKAN] Failed to allocate buffer memory.");
+        JST_ERROR("[VULKAN] Failed to allocate buffer memory.");
     });
 
     JST_VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0), [&]{
-        JST_FATAL("[VULKAN] Failed to bind memory to the buffer.");
+        JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
     });
 
     // Populate memory with initial data.
@@ -118,7 +118,7 @@ Result Implementation::update(const U64& offset, const U64& size) {
 
     auto& stagingBufferMemory = backend->getStagingBufferMemory();
     JST_VK_CHECK(vkMapMemory(backend->getDevice(), stagingBufferMemory, 0, byteSize, 0, &mappedData), [&]{
-        JST_FATAL("[VULKAN] Can't map staging buffer memory.");        
+        JST_ERROR("[VULKAN] Can't map staging buffer memory.");        
     });
     memcpy(mappedData, (uint8_t*)config.buffer + byteOffset, byteSize);
     vkUnmapMemory(backend->getDevice(), stagingBufferMemory);
