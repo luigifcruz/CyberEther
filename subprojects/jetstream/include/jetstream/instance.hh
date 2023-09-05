@@ -30,6 +30,8 @@ class JETSTREAM_API Instance {
         JST_DEBUG("[INSTANCE] Started.");
     };
 
+    Result fromFile(const std::string& path);
+
     template<Device D>
     Result buildBackend(Backend::Config& config) {
         auto& state = backendStates[GetDeviceName(D)];
@@ -147,7 +149,7 @@ class JETSTREAM_API Instance {
                 return fmt::format("{}{}", moduleName.substr(0, 3), blockStates.size());
             }
 
-            return fmt::format("{}_{}{}", parts[0].substr(0, 3), parts[1], moduleName.size());
+            return fmt::format("{}_{}{}", parts[0].substr(0, 3), parts[1], blockStates.size());
         }();
 
         // Generate locale and check if it's valid.
@@ -178,7 +180,11 @@ class JETSTREAM_API Instance {
             state->complete = true;
 
             // Create bundle.
-            JST_CHECK(module->create());
+            if (module->create() != Result::SUCCESS) {
+                // If it fails, mark bundle as incomplete.
+                // This is redundant but nice to have I guess.
+                state->complete = false;
+            }
 
             // Load state.
             state->bundle = module;
@@ -302,6 +308,10 @@ class JETSTREAM_API Instance {
         return *_viewport;
     }
 
+    Parser& parser() {
+        return *_parser;
+    }
+
  protected:
     constexpr RenderState& getRenderState() {
         return renderState;
@@ -348,6 +358,7 @@ class JETSTREAM_API Instance {
 
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
+    std::shared_ptr<Parser> _parser;
 
     Result fetchDependencyTree(const Locale locale, std::vector<Locale>& storage);
 

@@ -3,6 +3,15 @@
 
 namespace Jetstream {
 
+Result Instance::fromFile(const std::string& path) {
+    _parser = std::make_shared<Parser>(path);
+
+    JST_CHECK(_parser->printAll());
+    JST_CHECK(_parser->importFromFile(*this));
+
+    return Result::SUCCESS;
+}
+
 Result Instance::removeModule(const std::string id, const std::string bundleId) {
     const auto& locale = (!id.empty() && !bundleId.empty()) ? Locale{bundleId, id} : Locale{id};
 
@@ -289,20 +298,26 @@ Result Instance::eraseModule(const Locale locale) {
 
 Result Instance::fetchDependencyTree(const Locale locale, std::vector<Locale>& storage) {
     std::stack<Locale> stack;
+    std::unordered_set<Locale, Locale::Hasher> seenLocales;
+
     stack.push(locale);
+    seenLocales.insert(locale);
 
     while (!stack.empty()) {
         Locale currentLocale = stack.top();
         stack.pop();
 
-        // TODO: This is exponential garbage. Implement cached system.
+        // TODO: This is an exponential garbage hack. Implement cached system.
         for (const auto& [outputPinId, outputRecord] : blockStates.at(currentLocale)->record.outputMap) {
             for (const auto& [inputLocale, inputState] : blockStates) {
                 for (const auto& [inputPinId, inputRecord] : inputState->record.inputMap) {
                     if (inputRecord.locale == outputRecord.locale) {
-                        Locale nextLocale = {inputLocale.id, inputLocale.subId};
-                        storage.push_back(nextLocale);
-                        stack.push(nextLocale);
+                        Locale nextLocale = inputLocale.idOnly();
+                        if (seenLocales.find(nextLocale) == seenLocales.end()) {
+                            storage.push_back(nextLocale);
+                            stack.push(nextLocale);
+                            seenLocales.insert(nextLocale);
+                        }
                     }
                 }
             }
@@ -349,6 +364,10 @@ Result Instance::destroy() {
 
     if (_viewport) {
         JST_CHECK(_viewport->destroy());
+    }
+
+    if (_parser) {
+        _parser.reset();
     }
 
     return Result::SUCCESS;

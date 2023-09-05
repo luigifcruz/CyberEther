@@ -115,12 +115,14 @@ int libusb_get_device_descriptor(libusb_device *dev, struct libusb_device_descri
 
 int LIBUSB_CALL libusb_open(libusb_device *dev, libusb_device_handle **dev_handle) {
     PRINT_DEBUG_TRACE();
-    *dev_handle = (libusb_device_handle*)dev;
+    libusb_device *dev_copy = new libusb_device(*dev);
+    *dev_handle = (libusb_device_handle*)dev_copy;
     EM_PROXY_INT(_libusb_open, dev, nullptr);
 }
 
 void LIBUSB_CALL libusb_close(libusb_device_handle *dev_handle) {
     PRINT_DEBUG_TRACE();
+    delete (libusb_device*)dev_handle;
     EM_PROXY(_libusb_close, nullptr);
 }
 

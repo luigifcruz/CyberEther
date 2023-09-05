@@ -63,6 +63,7 @@ ssize_t _libusb_get_device_list(libusb_context *ctx, libusb_device ***list) {
     int available = devices["length"].as<int>();
 
     if (available == 0) {
+        *list = nullptr;
         return LIBUSB_ERROR_NO_DEVICE;
     }
 
@@ -80,8 +81,14 @@ ssize_t _libusb_get_device_list(libusb_context *ctx, libusb_device ***list) {
 }
 
 void _libusb_free_device_list(libusb_device **list, int unref_devices) {
-    for (int i = 0; i < unref_devices + 1; i++) {
-        delete list[i];
+    if (!list) {
+        return;
+    }
+
+    if (unref_devices) {
+        for (int i = 0; list[i] != nullptr; i++) {
+           delete list[i];
+        }
     }
     delete[] list;
 }

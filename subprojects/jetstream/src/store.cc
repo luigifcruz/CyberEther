@@ -209,7 +209,7 @@ ModuleStore& Store::defaultModules() {
 #ifdef JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE
         { {"soapy-view",         "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Soapy, Device::CPU, CF32>(r); } },
 #endif
-#ifdef JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE
+#ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE
         { {"scale-view",         "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Scale, Device::CPU, F32>(r); } },
 #endif
 
@@ -230,7 +230,7 @@ ModuleStore& Store::defaultModules() {
 #ifdef JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE
         { {"soapy-view",         "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Soapy, Device::Metal, CF32>(r); } },
 #endif
-#ifdef JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE
+#ifdef JETSTREAM_MODULE_SCALE_METAL_AVAILABLE
         { {"scale-view",         "metal",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Scale, Device::Metal, F32>(r); } },
 #endif
     };

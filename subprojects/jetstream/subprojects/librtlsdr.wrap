@@ -1,10 +1,10 @@
 [wrap-file]
-directory = librtlsdr-142325a93c6ad70f851f43434acfdf75e12dfe03
-source_url = https://github.com/steve-m/librtlsdr/archive/142325a93c6ad70f851f43434acfdf75e12dfe03.zip
-source_filename = librtlsdr-142325a93c6ad70f851f43434acfdf75e12dfe03.zip
-source_hash = db0a75a02d79de543c98c05300d939f0a4f63c94fdb65992c3c7328069087f78
+directory = librtlsdr-1261fbb285297da08f4620b18871b6d6d9ec2a7b
+source_url = https://github.com/steve-m/librtlsdr/archive/1261fbb285297da08f4620b18871b6d6d9ec2a7b.zip
+source_filename = librtlsdr-1261fbb285297da08f4620b18871b6d6d9ec2a7b.zip
+source_hash = 79925da4e274b87a98e5364459e0e3faf346bd56dfcb7d38fa089e5cc6785797
 patch_directory = librtlsdr
-wrapdb_version = 0.6.0
+wrapdb_version = 0.7.0
 
 [provide]
 librtlsdr = librtlsdr_dep

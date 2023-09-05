@@ -34,6 +34,7 @@ class JETSTREAM_API Compositor {
            flowgraphEnabled(true),
            helpModalContentId(0),
            nodeContextMenuNodeId(0) {
+        stacks["Graph"] = {true, 0};
         JST_CHECK_THROW(refreshState());
     };
 
@@ -94,7 +95,7 @@ class JETSTREAM_API Compositor {
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
     std::unordered_map<Locale, std::vector<Locale>, Locale::Hasher> outputInputCache;
     std::vector<std::vector<std::vector<NodeId>>> nodeTopology;
-    std::unordered_map<std::string, bool> stacks;
+    std::unordered_map<std::string, std::pair<bool, ImGuiID>> stacks;
 
     std::unordered_map<LinkId, std::pair<Locale, Locale>> linkLocaleMap;
     std::unordered_map<Locale, PinId, Locale::Hasher> inputLocalePinMap;
@@ -112,6 +113,8 @@ class JETSTREAM_API Compositor {
     std::optional<ChangeModuleBackendMail> changeModuleBackendMailbox;
     std::optional<ChangeModuleDataTypeMail> changeModuleDataTypeMailbox;
     std::optional<ToggleModuleMail> toggleModuleMailbox;
+
+    ImGuiID mainNodeId;
 
     static const U32 CpuColor              = IM_COL32(224, 146,   0, 255);
     static const U32 CpuColorSelected      = IM_COL32(184, 119,   0, 255);

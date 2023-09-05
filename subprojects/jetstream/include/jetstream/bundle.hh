@@ -20,14 +20,16 @@ class JETSTREAM_API Bundle : public Interface {
     Result linkOutput(const std::string& name,
                       Vector<DeviceId, Type, Dimensions>& dst,
                       const Vector<DeviceId, Type, Dimensions>& src) {
+        Result res = Result::SUCCESS;
+
         if (!dst.empty()) {
             JST_ERROR("[BUNDLE] The destination buffer should be empty during initialization.");
-            return Result::ERROR;
+            res |= Result::ERROR;
         }
 
         if (src.empty()) {
             JST_ERROR("[BUNDLE] The source buffer shouldn't be empty during initialization.");
-            return Result::ERROR;
+            res |= Result::ERROR;
         }
 
         dst = src;
@@ -36,7 +38,7 @@ class JETSTREAM_API Bundle : public Interface {
         const auto& locale = src.locale();
         dst.updateLocale({locale.id, locale.subId, name});
 
-        return Result::SUCCESS;
+        return res;
     }
 };
 

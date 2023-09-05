@@ -306,6 +306,10 @@ Result Compositor::destroy() {
     outputInputCache.clear();
     nodeStates.clear();
 
+    // Add static.
+
+    stacks["Graph"] = {true, 0};
+
     return Result::SUCCESS;
 }
 
@@ -392,6 +396,12 @@ Result Compositor::processInteractions() {
 
     return Result::SUCCESS;
 }
+
+#ifdef __EMSCRIPTEN__
+EM_JS(void, openWebUsbPicker, (), {
+    openUsbDevice();
+});
+#endif
 
 Result Compositor::drawStatic() {
     // Load local variables.
@@ -544,7 +554,7 @@ Result Compositor::drawStatic() {
             ImGui::SameLine();
 
             if (ImGui::Button(ICON_FA_SQUARE_PLUS " New Stack")) {
-                stacks[fmt::format("Stack #{}", stacks.size())] = true;
+                stacks[fmt::format("Stack #{}", stacks.size())] = {true, 0};
             }
             ImGui::SameLine();
 
@@ -556,6 +566,14 @@ Result Compositor::drawStatic() {
             if (ImGui::Button(ICON_FA_FILE_CODE " Show Source")) {
                 sourceEditorEnabled = !sourceEditorEnabled;
             }
+            ImGui::SameLine();
+
+#ifdef __EMSCRIPTEN__
+            if (ImGui::Button(ICON_FA_PLUG " Connect WebUSB Device")) {
+                openWebUsbPicker();
+            }
+            ImGui::SameLine();
+#endif
 
             ImGui::PopStyleVar();
         }
@@ -582,8 +600,9 @@ Result Compositor::drawStatic() {
     ImGui::Begin("##ArenaWindow", nullptr, windowFlags);
     ImGui::PopStyleVar();
 
-    ImGuiID dockspaceId = ImGui::GetID("##Arena");
-    ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+    mainNodeId = ImGui::GetID("##Arena");
+    ImGui::DockSpace(mainNodeId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode | 
+                                                     ImGuiDockNodeFlags_AutoHideTabBar);
 
     ImGui::End();
 
@@ -609,10 +628,20 @@ Result Compositor::drawStatic() {
             return;
         }
 
+        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Source File", &sourceEditorEnabled)) {
             ImGui::End();
             return;
         }
+
+        auto& file = instance.parser().getFileData();
+
+        ImGui::InputTextMultiline("##SourceFileData", 
+                                  const_cast<char*>(file.data()), 
+                                  file.size(), 
+                                  ImGui::GetContentRegionAvail(), 
+                                  ImGuiInputTextFlags_ReadOnly |
+                                  ImGuiInputTextFlags_NoHorizontalScroll);
 
         ImGui::End();
     }();
@@ -622,18 +651,43 @@ Result Compositor::drawStatic() {
     //
 
     std::vector<std::string> stacksToRemove;
-    for (auto& [stack, enabled] : stacks) {
+    for (auto& [stack, state] : stacks) {
+        auto& [enabled, id] = state;
+
         if (!enabled) {
             stacksToRemove.push_back(stack);
             continue;
         }
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowDockID(mainNodeId, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
         ImGui::Begin(stack.c_str(), &enabled);
         ImGui::PopStyleVar();
+    
+        bool isDockNew = false;
 
-        ImGuiID dockspaceId = ImGui::GetID(stack.c_str());
-        ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+        if (!id) {
+            isDockNew = true;
+            id = ImGui::GetID(fmt::format("##Stack{}", stack).c_str());
+        }
+        
+        ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+
+        if (isDockNew && stack == "Graph") {
+            ImGuiID dock_id_left, dock_id_right;
+
+            ImGui::DockBuilderRemoveNode(id);
+            ImGui::DockBuilderAddNode(id);
+            ImGui::DockBuilderSetNodePos(id, ImVec2(viewport->Pos.x, currentHeight));
+            ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
+
+            ImGui::DockBuilderSplitNode(id, ImGuiDir_Left, 0.8f, &dock_id_left, &dock_id_right);
+            ImGui::DockBuilderDockWindow("Flowgraph", dock_id_left);
+            ImGui::DockBuilderDockWindow("Store", dock_id_right);
+
+            ImGui::DockBuilderFinish(id);
+        }
 
         ImGui::End();
     }
@@ -819,6 +873,8 @@ Result Compositor::drawGraph() {
             return;
         }
 
+        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
+        
         if (!ImGui::Begin("Flowgraph")) {
             ImGui::End();
             return;
@@ -1306,6 +1362,7 @@ Result Compositor::drawControls() {
             return;
         }
 
+        ImGui::SetNextWindowSize(ImVec2(250, 300), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Store")) {
             ImGui::End();
             return;

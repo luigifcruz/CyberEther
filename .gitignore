@@ -9,3 +9,6 @@ __pycache__
 
 subprojects/*
 !subprojects/jetstream
+
+build
+build-browser

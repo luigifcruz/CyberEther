@@ -309,6 +309,10 @@ class Parser {
     Result createBackends(Instance& instance);
     Result createModules(Instance& instance);
 
+    constexpr const std::vector<char>& getFileData() {
+        return _fileData;
+    }
+
  private:
     std::vector<char> _fileData;
     ryml::Tree _fileTree;

@@ -30,7 +30,13 @@ Result Soapy<D, T>::create() {
     buffer.resize(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier);
 
     // Initialize thread for ingest.
-    producer = std::thread([&]{ soapyThreadLoop(); });
+    producer = std::thread([&]{ 
+        try {
+            soapyThreadLoop(); 
+        } catch(...) {
+            JST_FATAL("[SOAPY] Device thread crashed.");
+        }
+    });
 
     return Result::SUCCESS;
 }
@@ -67,7 +73,7 @@ void Soapy<D, T>::soapyThreadLoop() {
 #endif
 
     if (soapyDevice == nullptr) {
-        JST_INFO("Can't open SoapySDR device.");
+        JST_FATAL("Can't open SoapySDR device.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
