@@ -298,6 +298,7 @@ class Parser {
 
     Parser();
     Parser(const std::string& path);
+    Parser(const char* data);
 
     Result printAll();
 

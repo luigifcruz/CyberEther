@@ -11,9 +11,16 @@ Parser::Parser(const std::string& path) {
     _fileTree = ryml::parse_in_place({_fileData.data(), _fileData.size()});
 }
 
+Parser::Parser(const char* data) {
+    _fileData.insert(_fileData.begin(), data, data + strlen(data));
+    _fileTree = ryml::parse_in_place({_fileData.data(), _fileData.size()});
+}
+
 Result Parser::importFromFile(Instance& instance) {
+#if !TARGET_OS_IPHONE
     JST_CHECK(createBackends(instance));
     JST_CHECK(createViewport(instance));
+#endif
     JST_CHECK(createRender(instance));
     JST_CHECK(createModules(instance));
 

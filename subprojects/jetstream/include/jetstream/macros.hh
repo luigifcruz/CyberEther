@@ -139,6 +139,10 @@ JST_CHECK(res);
 #define JST_INIT_OUTPUT(fieldName, fieldVar, fieldShape) res |= this->initOutput(fieldName, fieldVar, fieldShape, res);
 #endif  // JST_INIT_OUTPUT
 
+#ifndef JST_VOID_OUTPUT
+#define JST_VOID_OUTPUT(fieldVar) JST_CHECK(this->voidOutput(fieldVar));
+#endif  // JST_VOID_OUTPUT
+
 // Miscellaneous
 
 template <typename... Args>

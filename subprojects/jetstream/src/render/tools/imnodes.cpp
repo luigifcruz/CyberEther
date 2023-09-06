@@ -2240,8 +2240,7 @@ void BeginNodeEditor()
     GImNodes->ImNodesUIState = ImNodesUIState_None;
 
     GImNodes->MousePos = ImGui::GetIO().MousePos;
-    // UPDATE-ME: Prevent node movement after double click.
-    GImNodes->LeftMouseClicked = ImGui::IsMouseClicked(0) && !ImGui::IsMouseDoubleClicked(0);
+    GImNodes->LeftMouseClicked = ImGui::IsMouseClicked(0);
     GImNodes->LeftMouseReleased = ImGui::IsMouseReleased(0);
     GImNodes->LeftMouseDragging = ImGui::IsMouseDragging(0, 0.0f);
     GImNodes->AltMouseClicked =

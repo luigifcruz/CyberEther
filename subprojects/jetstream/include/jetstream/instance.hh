@@ -31,6 +31,7 @@ class JETSTREAM_API Instance {
     };
 
     Result fromFile(const std::string& path);
+    Result fromBlob(const char* data);
 
     template<Device D>
     Result buildBackend(Backend::Config& config) {

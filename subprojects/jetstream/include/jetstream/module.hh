@@ -77,6 +77,15 @@ class JETSTREAM_API Module : public Interface {
         return res;
     }
 
+    template<Device DeviceId, typename DataType, U64 Dimensions>
+    Result voidOutput(Vector<DeviceId, DataType, Dimensions>& buffer) {
+        const auto vectorName = buffer.locale().pinId;
+        buffer = Vector<DeviceId, DataType, Dimensions>();
+        buffer.updateLocale({locale.id, locale.subId, vectorName});
+
+        return Result::SUCCESS;
+    }
+
     // TODO: Add InitInplaceOutput with reshape.
 };
 

@@ -102,7 +102,7 @@ Result Scheduler::addModule(const Locale& locale, const std::shared_ptr<BlockSta
 
     // Initialize graphs.
     for (const auto& graph : graphs) {
-        JST_CHECK_THROW(graph->create());
+        JST_CHECK(graph->create());
     }
 
     // Restart execution.
@@ -138,7 +138,7 @@ Result Scheduler::removeModule(const Locale& locale) {
 
     // Initialize graphs.
     for (const auto& graph : graphs) {
-        JST_CHECK_THROW(graph->create());
+        JST_CHECK(graph->create());
     }
 
     // Restart execution.

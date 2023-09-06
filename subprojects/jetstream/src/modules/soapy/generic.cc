@@ -29,10 +29,59 @@ Result Soapy<D, T>::create() {
     // Initialize circular buffer.
     buffer.resize(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier);
 
+    SoapySDR::Kwargs args = SoapySDR::KwargsFromString(config.deviceString);
+    SoapySDR::Kwargs streamArgs = SoapySDR::KwargsFromString(config.streamString);
+
+    try {
+#ifdef JETSTREAM_STATIC
+        const std::string device = args["driver"];
+#ifdef ENABLE_STATIC_AIRSPY
+        if (device.compare("airspy") == 0) {
+            soapyDevice = new SoapyAirspy(args);
+        }
+#endif
+#ifdef ENABLE_STATIC_RTLSDR
+        // Static SoapyRTLSDR requires serial device number to work.
+        // Example: device=rtlsdr,serial=XXXXXXXXXX
+        if (device.compare("rtlsdr") == 0) {
+            soapyDevice = new SoapyRTLSDR(args);
+        }
+#endif
+#else
+        soapyDevice = SoapySDR::Device::make(args);
+#endif
+    } catch(...) {
+        JST_ERROR("Failed to find device.");
+        JST_VOID_OUTPUT(output.buffer);
+        return Result::ERROR;
+    }
+
+    if (soapyDevice == nullptr) {
+        JST_ERROR("Can't open SoapySDR device.");
+        JST_VOID_OUTPUT(output.buffer);
+        return Result::ERROR;
+    }
+
+    soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+    soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+    soapyDevice->setGainMode(SOAPY_SDR_RX, 0, true);
+
+    soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
+    if (soapyStream == nullptr) {
+        JST_ERROR("Failed to setup SoapySDR stream.");
+        JST_VOID_OUTPUT(output.buffer);
+        SoapySDR::Device::unmake(soapyDevice);
+        return Result::ERROR;
+    }
+    soapyDevice->activateStream(soapyStream, 0, 0, 0);
+
+    deviceName = soapyDevice->getDriverKey();
+    deviceHardwareKey = soapyDevice->getHardwareKey();
+
     // Initialize thread for ingest.
-    producer = std::thread([&]{ 
+    producer = std::thread([&]{
         try {
-            soapyThreadLoop(); 
+            soapyThreadLoop();
         } catch(...) {
             JST_FATAL("[SOAPY] Device thread crashed.");
         }
@@ -51,47 +100,6 @@ Result Soapy<D, T>::destroy() {
 
 template<Device D, typename T>
 void Soapy<D, T>::soapyThreadLoop() {
-    SoapySDR::Kwargs args = SoapySDR::KwargsFromString(config.deviceString);
-    SoapySDR::Kwargs streamArgs = SoapySDR::KwargsFromString(config.streamString);
-
-#ifdef JETSTREAM_STATIC
-    const std::string device = args["driver"];
-#ifdef ENABLE_STATIC_AIRSPY
-    if (device.compare("airspy") == 0) {
-        soapyDevice = new SoapyAirspy(args);
-    }
-#endif
-#ifdef ENABLE_STATIC_RTLSDR
-    // Static SoapyRTLSDR requires serial device number to work.
-    // Example: device=rtlsdr,serial=XXXXXXXXXX
-    if (device.compare("rtlsdr") == 0) {
-        soapyDevice = new SoapyRTLSDR(args);
-    }
-#endif
-#else
-    soapyDevice = SoapySDR::Device::make(args);
-#endif
-
-    if (soapyDevice == nullptr) {
-        JST_FATAL("Can't open SoapySDR device.");
-        JST_CHECK_THROW(Result::ERROR);
-    }
-
-    soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
-    soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
-    soapyDevice->setGainMode(SOAPY_SDR_RX, 0, true);
-
-    soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
-    if (soapyStream == nullptr) {
-        JST_FATAL("Failed to setup SoapySDR stream.");
-        SoapySDR::Device::unmake(soapyDevice);
-        JST_CHECK_THROW(Result::FATAL);
-    }
-    soapyDevice->activateStream(soapyStream, 0, 0, 0);
-
-    deviceName = soapyDevice->getDriverKey();
-    deviceHardwareKey = soapyDevice->getHardwareKey();
-
     int flags;
     long long timeNs;
     CF32 tmp[8192];

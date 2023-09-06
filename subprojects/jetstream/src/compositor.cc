@@ -1286,8 +1286,7 @@ Result Compositor::drawControls() {
 
     // Draw right-click menu for node actions.
     if (ImNodes::IsNodeHovered(&nodeContextMenuNodeId) &&
-        (ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
-         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))) {
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
         ImGui::CloseCurrentPopup();
         ImGui::OpenPopup("##node_context_menu");
     }

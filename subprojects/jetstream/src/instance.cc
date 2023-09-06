@@ -12,6 +12,15 @@ Result Instance::fromFile(const std::string& path) {
     return Result::SUCCESS;
 }
 
+Result Instance::fromBlob(const char* data) {
+    _parser = std::make_shared<Parser>(data);
+
+    JST_CHECK(_parser->printAll());
+    JST_CHECK(_parser->importFromFile(*this));
+
+    return Result::SUCCESS;
+}
+
 Result Instance::removeModule(const std::string id, const std::string bundleId) {
     const auto& locale = (!id.empty() && !bundleId.empty()) ? Locale{bundleId, id} : Locale{id};
 

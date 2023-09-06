@@ -10,5 +10,6 @@ subdir('glfw')
 subdir('soapy')
 subdir('vulkan')
 subdir('webgpu')
+subdir('audiotoolbox')
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

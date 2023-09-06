@@ -1,6 +1,12 @@
-src_lst += files([
-    'miniaudio.cc',
-])
+if target_machine.system() == 'ios'
+    src_lst += files([
+        'miniaudio.mm',
+    ])
+else
+    src_lst += files([
+        'miniaudio.cc',
+    ])
+endif
 
 sum_lst = {}
 
