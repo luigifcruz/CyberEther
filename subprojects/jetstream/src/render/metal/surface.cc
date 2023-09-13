@@ -74,10 +74,6 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     }
     renderCmdEncoder->endEncoding();
 
-    auto blitCommandEncoder = commandBuffer->blitCommandEncoder();
-    auto texture = reinterpret_cast<const MTL::Texture*>(framebuffer->raw());
-    blitCommandEncoder->synchronizeResource(texture);
-    blitCommandEncoder->endEncoding();
 
     return Result::SUCCESS;
 }
