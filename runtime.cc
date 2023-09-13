@@ -4,13 +4,13 @@
 
 using namespace Jetstream;
 
-int main() {
+int main(int argc, char* argv[]) {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
     Instance instance;
 
     // Load configuration from YAML configuration file.
-    instance.fromFile("/Users/luigi/sandbox/CyberEther/fm_simple.yml");
+    instance.fromFile(argv[1]);
 
     // Start compute thread.
 
