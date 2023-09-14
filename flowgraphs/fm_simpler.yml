@@ -1,0 +1,52 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+name: Simple FM
+creator: Luigi
+license: MIT
+
+engine:
+  backends:
+    cpu:
+    metal:
+  render:
+    device: metal
+    config:
+      scale: 0.90
+  viewport:
+    platform: glfw
+    config:
+      title: CyberEther
+      size: [2048, 960]
+
+computeDevice: cpu
+
+graph:
+  soapy:
+    module: soapy-view
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      deviceString: driver=rtlsdr,serial=00000001
+      #deviceString: driver=lime
+      frequency: 96.9e6
+      sampleRate: 240e3
+      outputShape: [1, 2048]
+      bufferMultiplier: 512
+
+  fm:
+    module: fm
+    device: ${computeDevice}
+    dataType: CF32
+    input:
+      buffer: ${graph.soapy.output.buffer}
+
+  audio:
+    module: audio
+    device: cpu
+    dataType: F32
+    config:
+      inSampleRate: 240e3
+      outSampleRate: 48e3
+    input:
+      buffer: ${graph.fm.output.buffer}

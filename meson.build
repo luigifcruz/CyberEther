@@ -1,12 +1,33 @@
 project(
-    'cyberether',
+    'CyberEther',
     ['cpp'],
-    version: '0.0.0',
+    version: '1.0.0',
     default_options: [
         'cpp_std=c++20',
-        'b_asneeded=false',
+        'buildtype=release',
+        'b_ndebug=if-release',
     ]
 )
+
+cfg_lst = configuration_data()
+src_lst = []
+dep_lst = [
+    dependency('threads'),
+    dependency('fmt'),
+]
+inc_lst = [
+    include_directories('include'),
+    include_directories('.'),
+    include_directories('include/jetstream/backend/devices/metal'),
+    include_directories('include/jetstream/render/tools'),
+]
+
+cfg_lst.set('buildtype', get_option('buildtype'))
+
+subdir('meson')
+subdir('shaders')
+subdir('src')
+subdir('include')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
@@ -14,13 +35,35 @@ summary({'cpp_std': get_option('cpp_std'),
          'crossbuild': meson.is_cross_build(),
         }, section: 'General', bool_yn: true)
 
-dep_lst = [
-    dependency('threads'),
-    subproject('jetstream').get_variable('libjetstream_dep'),
-]
-
-executable(
-    'cyberether', 'runtime.cc',
+libjetstream = library(
+    'jetstream',
+    src_lst,
+    include_directories: inc_lst,
     dependencies: dep_lst,
-    install: true,
+    install: true
 )
+
+libjetstream_dep = declare_dependency(
+    include_directories: inc_lst,
+    dependencies: dep_lst,
+    link_with: libjetstream
+)
+
+subdir('tests')
+
+pkg = import('pkgconfig')
+pkg.generate(
+  libjetstream,
+  libraries: dep_lst,
+)
+
+if target_machine.system() != 'ios' and target_machine.system() != 'android'
+    subdir('examples')
+
+    executable(
+        'cyberether', 
+        'main.cc',
+        dependencies: libjetstream_dep,
+        install: true,
+    )
+endif

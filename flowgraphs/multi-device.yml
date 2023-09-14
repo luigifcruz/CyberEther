@@ -1,0 +1,141 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+name: Spectrum Analyzer
+creator: Luigi
+license: MIT
+
+engine:
+  backends:
+    cpu:
+    vulkan:
+  render:
+    device: vulkan
+    config:
+      scale: 0.90
+  viewport:
+    platform: glfw
+    config:
+      title: CyberEther
+      size: [2048, 960]
+
+computeDevice: cpu
+
+graph:
+  soapy-1:
+    module: soapy-view
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      deviceString: driver=lime,serial=1D4249D8AEC2A9
+      frequency: 96.9e6
+      sampleRate: 30e6
+      outputShape: [16, 2048]
+      bufferMultiplier: 512
+
+  win-1:
+    module: window
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      shape: ${graph.soapy-1.config.outputShape}
+
+  win_mul-1:
+    module: multiply
+    device: ${computeDevice}
+    dataType: CF32
+    input:
+      factorA: ${graph.soapy-1.output.buffer}
+      factorB: ${graph.win-1.output.window}
+
+  fft-1:
+    module: fft
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.win_mul-1.output.product}
+
+  amp-1:
+    module: amplitude
+    device: ${computeDevice}
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.fft-1.output.buffer}
+
+  scl-1:
+    module: scale
+    device: ${computeDevice}
+    dataType: F32
+    config:
+      range: [-100.0, 0.0]
+    input:
+      buffer: ${graph.amp-1.output.buffer}
+
+  spc-1:
+    module: spectrogram-view
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl-1.output.buffer}
+
+  soapy-2:
+    module: soapy-view
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      deviceString: driver=lime,serial=1D3AD55F42C0AB
+      frequency: 96.9e6
+      sampleRate: 30e6
+      outputShape: [16, 2048]
+      bufferMultiplier: 512
+
+  win-2:
+    module: window
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      shape: ${graph.soapy-2.config.outputShape}
+
+  win_mul-2:
+    module: multiply
+    device: ${computeDevice}
+    dataType: CF32
+    input:
+      factorA: ${graph.soapy-2.output.buffer}
+      factorB: ${graph.win-2.output.window}
+
+  fft-2:
+    module: fft
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.win_mul-2.output.product}
+
+  amp-2:
+    module: amplitude
+    device: ${computeDevice}
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.fft-2.output.buffer}
+
+  scl-2:
+    module: scale
+    device: ${computeDevice}
+    dataType: F32
+    config:
+      range: [-200.0, 0.0]
+    input:
+      buffer: ${graph.amp-2.output.buffer}
+
+  spc-2:
+    module: spectrogram-view
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl-2.output.buffer}
