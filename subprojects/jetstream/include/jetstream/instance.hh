@@ -130,8 +130,8 @@ class JETSTREAM_API Instance {
     }
 
  private:
-    std::atomic_flag computeSync{false};
-    std::atomic_flag presentSync{false};
+    std::atomic_flag computeSync = ATOMIC_FLAG_INIT;
+    std::atomic_flag presentSync = ATOMIC_FLAG_INIT;
 
     std::vector<std::shared_ptr<Module>> blocks;
 

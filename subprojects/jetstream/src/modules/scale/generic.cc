@@ -25,11 +25,11 @@ Result Scale<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap
                             std::shared_ptr<Scale<D, T>>& module) {
     using Module = Scale<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "range", config.range));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
 

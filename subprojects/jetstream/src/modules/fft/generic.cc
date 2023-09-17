@@ -24,11 +24,11 @@ Result FFT<D, T>::Factory(std::unordered_map<std::string, std::any>& configMap,
                           std::shared_ptr<FFT<D, T>>& module) {
     using Module = FFT<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "direction", config.direction));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
 

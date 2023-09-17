@@ -36,11 +36,11 @@ Result Window<D, T>::Factory(std::unordered_map<std::string, std::any>& configMa
                              std::shared_ptr<Window<D, T>>& module) {
     using Module = Window<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "shape", config.shape));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     module = std::make_shared<Module>(config, input);
 

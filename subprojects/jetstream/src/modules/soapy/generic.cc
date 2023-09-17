@@ -157,8 +157,8 @@ Result Soapy<D, T>::Factory(std::unordered_map<std::string, std::any>&,
                             std::shared_ptr<Soapy<D, T>>& module) {
     using Module = Soapy<D, T>;
 
-    Module::Config config{};
-    Module::Input input{};
+    Module::template Config config{};
+    Module::template Input input{};
 
     module = std::make_shared<Module>(config, input);
 

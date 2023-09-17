@@ -35,8 +35,8 @@ Result Multiply<D, T>::Factory(std::unordered_map<std::string, std::any>&,
                                std::shared_ptr<Multiply<D, T>>& module) {
     using Module = Multiply<D, T>;
 
-    Module::Config config{};
-    Module::Input input{};
+    Module::template Config config{};
+    Module::template Input input{};
 
     JST_CHECK(Module::BindVariable(inputMap, "factorA", input.factorA));
     JST_CHECK(Module::BindVariable(inputMap, "factorB", input.factorB));

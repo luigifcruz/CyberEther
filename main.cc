@@ -5,7 +5,7 @@
 using namespace Jetstream;
 
 constexpr static Device ComputeDevice = Device::CPU;
-constexpr static Device RenderDevice  = Device::WebGPU;
+constexpr static Device RenderDevice  = Device::Vulkan;
 using Platform = Viewport::GLFW<RenderDevice>;
 
 class UI {
@@ -271,7 +271,7 @@ int main() {
     JST_CHECK_THROW(instance.buildWindow<RenderDevice>(renderCfg));
 
     {
-        const Soapy<ComputeDevice>::Config& config {
+        Soapy<ComputeDevice>::Config config {
             .deviceString = "driver=airspy",
             .frequency = 96.9e6,
             .sampleRate = 2.5e6,

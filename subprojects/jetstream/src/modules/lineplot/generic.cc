@@ -70,7 +70,7 @@ template<Device D, typename T>
 Result Lineplot<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config gridVerticesConf;
     gridVerticesConf.buffer = grid.data();
-    gridVerticesConf.elementByteSize = sizeof(grid[0]);
+    gridVerticesConf.elementByteSize = sizeof(grid.at(0));
     gridVerticesConf.size = grid.size();
     gridVerticesConf.target = Render::Buffer::Target::VERTEX;
     gridVerticesConf.enableZeroCopy = true;
@@ -89,7 +89,7 @@ Result Lineplot<D, T>::createPresent(Render::Window& window) {
 
     Render::Buffer::Config lineVerticesConf;
     lineVerticesConf.buffer = plot.data();
-    lineVerticesConf.elementByteSize = sizeof(plot[0]);
+    lineVerticesConf.elementByteSize = sizeof(plot.at(0));
     lineVerticesConf.size = plot.size();
     lineVerticesConf.target = Render::Buffer::Target::VERTEX;
     lineVerticesConf.enableZeroCopy = true;
@@ -166,13 +166,13 @@ Result Lineplot<D, T>::Factory(std::unordered_map<std::string, std::any>& config
                                std::shared_ptr<Lineplot<D, T>>& module) {
     using Module = Lineplot<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "numberOfVerticalLines", config.numberOfVerticalLines));
     JST_CHECK(Module::BindVariable(configMap, "numberOfHorizontalLines", config.numberOfHorizontalLines));
     JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
 

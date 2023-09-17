@@ -2,6 +2,7 @@
 #define JETSTREAM_MEMORY_VECTOR_HH
 
 #include <memory>
+#include <array>
 #include <functional>
 #include <unordered_map>
 
@@ -121,6 +122,14 @@ class VectorImpl : public VectorShape<Dimensions> {
     }
 
     constexpr const DataType& operator[](const U64& idx) const {
+        return _data[idx];
+    }
+
+    constexpr DataType& at(const U64& idx) {
+        return _data[idx];
+    }
+
+    constexpr const DataType& at(const U64& idx) const {
         return _data[idx];
     }
 

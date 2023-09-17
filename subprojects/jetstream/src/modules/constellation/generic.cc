@@ -135,11 +135,11 @@ Result Constellation<D, T>::Factory(std::unordered_map<std::string, std::any>& c
                                     std::shared_ptr<Constellation<D, T>>& module) {
     using Module = Constellation<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
 

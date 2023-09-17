@@ -15,7 +15,7 @@ Result Constellation<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Constellation<D, T>::compute(const RuntimeMetadata&) {
     for (U64 x = 0; x < timeSamples.size(); x++) {
-        timeSamples[x] *= decayFactor;
+        timeSamples.at(x) *= decayFactor;
     }
 
     auto& v = input.buffer;
@@ -36,10 +36,10 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
         const auto offset = input.buffer.shapeToOffset({b, 0});
 
         for (U64 x = 0; x < input.buffer.shape()[1]; x++) {
-            const CF32& sample = input.buffer[x + offset];
+            CF32 sample = input.buffer.at(x + offset);
 
-            const U64 r = ((sample.real() - min_real) / (max_real - min_real)) * timeSamples.shape()[0];
-            const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * timeSamples.shape()[0];
+            U64 r = ((sample.real() - min_real) / (max_real - min_real)) * timeSamples.shape()[0];
+            U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * timeSamples.shape()[0];
 
             if (r < timeSamples.shape()[0] and i < timeSamples.shape()[1]) {
                 timeSamples[{r, i}] += 0.02;

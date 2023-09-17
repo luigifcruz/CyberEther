@@ -19,7 +19,7 @@ Result Scale<D, T>::compute(const RuntimeMetadata&) {
     auto [min, max] = config.range;
 
     for (U64 i = 0; i < input.buffer.size(); i++) {
-        output.buffer[i] = scale<T>(input.buffer[i], min, max);
+        output.buffer.at(i) = scale<T>(input.buffer.at(i), min, max);
     }
 
     return Result::SUCCESS;

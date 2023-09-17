@@ -2,7 +2,6 @@
 #include "jetstream/memory/types.hh"
 
 namespace Jetstream {
-
 Result Instance::printGraphSummary() {
     for (const auto& block : blocks) {
         JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————");

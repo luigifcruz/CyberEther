@@ -69,7 +69,7 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config bufferCfg;
     bufferCfg.buffer = frequencyBins.data();
     bufferCfg.size = frequencyBins.size();
-    bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
+    //bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
     bufferCfg.target = Render::Buffer::Target::STORAGE;
     bufferCfg.enableZeroCopy = true;
     JST_CHECK(window.build(binTexture, bufferCfg));
@@ -194,7 +194,7 @@ Result Waterfall<D, T>::Factory(std::unordered_map<std::string, std::any>& confi
                                 std::shared_ptr<Waterfall<D, T>>& module) {
     using Module = Waterfall<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "zoom", config.zoom));
     JST_CHECK(Module::BindVariable(configMap, "offset", config.offset));
@@ -202,7 +202,7 @@ Result Waterfall<D, T>::Factory(std::unordered_map<std::string, std::any>& confi
     JST_CHECK(Module::BindVariable(configMap, "interpolate", config.interpolate));
     JST_CHECK(Module::BindVariable(configMap, "viewSize", config.viewSize));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     JST_CHECK(Module::BindVariable(inputMap, "buffer", input.buffer));
 

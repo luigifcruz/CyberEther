@@ -30,7 +30,7 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {
     const auto& fftSize = input.buffer.shape()[1];
 
     for (U64 i = 0; i < input.buffer.size(); i++) {
-        output.buffer[i] = 20.0 * log10(abs(input.buffer[i]) / fftSize);
+        output.buffer.at(i) = 20.0 * log10(abs(input.buffer.at(i)) / fftSize);
     }
 
     return Result::SUCCESS;

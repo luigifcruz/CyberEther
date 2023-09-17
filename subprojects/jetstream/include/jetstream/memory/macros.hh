@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 #ifndef JST_PAGESIZE
-#define JST_PAGESIZE() getpagesize()
+#define JST_PAGESIZE() 4096
 #endif 
 
 #ifndef JST_PAGE_ALIGNED_SIZE

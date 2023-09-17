@@ -20,6 +20,7 @@ inc_lst = [
     include_directories('.'),
     include_directories('include/jetstream/backend/devices/metal'),
     include_directories('include/jetstream/render/tools'),
+    include_directories('../libunistd/unistd'),
 ]
 
 subdir('meson')
@@ -33,7 +34,7 @@ summary({'cpp_std': get_option('cpp_std'),
          'crossbuild': meson.is_cross_build(),
         }, section: 'General', bool_yn: true)
 
-libjetstream = library(
+libjetstream = static_library(
     'jetstream',
     src_lst,
     include_directories: inc_lst,

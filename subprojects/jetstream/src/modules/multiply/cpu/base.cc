@@ -11,7 +11,7 @@ Result Multiply<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Multiply<D, T>::compute(const RuntimeMetadata&) {
     for (U64 i = 0; i < input.factorA.size(); i++) {
-        output.product[i] = input.factorA[i] * input.factorB[i];
+       output.product.at(i) = input.factorA.at(i) * input.factorB.at(i);
     }
 
     return Result::SUCCESS;

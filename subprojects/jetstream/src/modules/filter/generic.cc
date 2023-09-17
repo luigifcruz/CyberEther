@@ -145,7 +145,7 @@ Result Filter<D, T>::Factory(std::unordered_map<std::string, std::any>& configMa
                              std::shared_ptr<Filter<D, T>>& module) {
     using Module = Filter<D, T>;
 
-    Module::Config config{};
+    Module::template Config config{};
 
     JST_CHECK(Module::BindVariable(configMap, "signalSampleRate", config.signalSampleRate));
     JST_CHECK(Module::BindVariable(configMap, "filterSampleRate", config.filterSampleRate));
@@ -153,7 +153,7 @@ Result Filter<D, T>::Factory(std::unordered_map<std::string, std::any>& configMa
     JST_CHECK(Module::BindVariable(configMap, "numberOfTaps", config.shape));
     JST_CHECK(Module::BindVariable(configMap, "linearFrequency", config.linearFrequency));
 
-    Module::Input input{};
+    Module::template Input input{};
 
     module = std::make_shared<Module>(config, input);
 
