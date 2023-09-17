@@ -89,7 +89,7 @@ class JETSTREAM_API Compositor {
     U64 helpModalContentId;
     I32 nodeContextMenuNodeId;
 
-    std::atomic_flag interfaceHalt{false};
+    std::atomic_flag interfaceHalt = ATOMIC_FLAG_INIT;
 
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
     std::unordered_map<Locale, std::vector<Locale>, Locale::Hasher> outputInputCache;

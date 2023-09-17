@@ -39,11 +39,11 @@ class JETSTREAM_API Scheduler {
         std::shared_ptr<BlockState> block;
     };
 
-    std::atomic_flag computeSync{false};
-    std::atomic_flag presentSync{false};
-    std::atomic_flag computeWait{false};
-    std::atomic_flag computeHalt{true};
-    std::atomic_flag presentHalt{true};
+    std::atomic_flag computeSync = ATOMIC_FLAG_INIT;
+    std::atomic_flag presentSync = ATOMIC_FLAG_INIT;
+    std::atomic_flag computeWait = ATOMIC_FLAG_INIT;
+    std::atomic_flag computeHalt = ATOMIC_FLAG_INIT;
+    std::atomic_flag presentHalt = ATOMIC_FLAG_INIT;
 
     std::unordered_map<std::string, ComputeModuleState> computeModuleStates;
     std::unordered_map<std::string, PresentModuleState> presentModuleStates;

@@ -2,6 +2,7 @@
 #define JETSTREAM_MEMORY_VECTOR_HH
 
 #include <memory>
+#include <array>
 #include <functional>
 #include <unordered_map>
 

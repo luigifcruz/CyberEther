@@ -1,5 +1,6 @@
 #ifndef JETSTREAM_TYPE_HH
 #define JETSTREAM_TYPE_HH
+#define _USE_MATH_DEFINES
 
 #include <any>
 #include <span>
@@ -9,6 +10,15 @@
 #include <unordered_map>
 
 #include "jetstream/memory/types.hh"
+
+#ifdef _WIN32
+#undef max
+#undef min
+#undef ERROR
+#undef pow10
+#undef read
+#undef _read
+#endif
 
 namespace Jetstream {
 

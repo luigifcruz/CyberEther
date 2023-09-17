@@ -1,0 +1,3 @@
+[submodule "subprojects/libunistd"]
+	path = subprojects/libunistd
+	url = https://github.com/Paulo-D2000/libunistd-meson.git
