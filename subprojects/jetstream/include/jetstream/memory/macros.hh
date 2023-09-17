@@ -5,7 +5,11 @@
 #include <stdlib.h>
 
 #ifndef JST_PAGESIZE
-#define JST_PAGESIZE() 4096
+#ifdef _WIN32
+    #define JST_PAGESIZE() 4096
+#else
+    #define JST_PAGESIZE() getpagesize()
+#endif
 #endif 
 
 #ifndef JST_PAGE_ALIGNED_SIZE
