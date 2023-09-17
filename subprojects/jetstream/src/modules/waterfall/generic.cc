@@ -69,7 +69,7 @@ Result Waterfall<D, T>::createPresent(Render::Window& window) {
     Render::Buffer::Config bufferCfg;
     bufferCfg.buffer = frequencyBins.data();
     bufferCfg.size = frequencyBins.size();
-    //bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
+    bufferCfg.elementByteSize = sizeof(frequencyBins.at(0));
     bufferCfg.target = Render::Buffer::Target::STORAGE;
     bufferCfg.enableZeroCopy = true;
     JST_CHECK(window.build(binTexture, bufferCfg));
