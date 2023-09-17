@@ -21,9 +21,7 @@ inc_lst = [
     include_directories('include/jetstream/render/tools'),
 ]
 
-if target_machine.system() == 'windows'
-    inc_lst += subproject('libunistd').get_variable('inc_dirs')
-endif
+
 
 subdir('meson')
 subdir('shaders')
@@ -36,13 +34,26 @@ summary({'cpp_std': get_option('cpp_std'),
          'crossbuild': meson.is_cross_build(),
         }, section: 'General', bool_yn: true)
 
-libjetstream = static_library(
-    'jetstream',
-    src_lst,
-    include_directories: inc_lst,
-    dependencies: dep_lst,
-    install: true
-)
+
+if target_machine.system() == 'windows'
+    inc_lst += subproject('libunistd').get_variable('inc_dirs')
+
+    libjetstream = static_library(
+        'jetstream',
+        src_lst,
+        include_directories: inc_lst,
+        dependencies: dep_lst,
+        install: true
+    )
+else
+    libjetstream = ibrary(
+            'jetstream',
+            src_lst,
+            include_directories: inc_lst,
+            dependencies: dep_lst,
+            install: true
+        )
+endif
 
 libjetstream_dep = declare_dependency(
     include_directories: inc_lst,
