@@ -8,7 +8,6 @@ project(
         'b_ndebug=if-release',
     ]
 )
-
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
@@ -20,8 +19,11 @@ inc_lst = [
     include_directories('.'),
     include_directories('include/jetstream/backend/devices/metal'),
     include_directories('include/jetstream/render/tools'),
-    include_directories('../libunistd/unistd'),
 ]
+
+if target_machine.system() == 'windows'
+    inc_lst += subproject('libunistd').get_variable('inc_dirs')
+endif
 
 subdir('meson')
 subdir('shaders')
