@@ -1,23 +1,10 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-name: Simple FM
+title: Simple FM
+description: Simple FM receiver with RTL-SDR.
 creator: Luigi
 license: MIT
-
-engine:
-  backends:
-    cpu:
-    metal:
-  render:
-    device: metal
-    config:
-      scale: 0.90
-  viewport:
-    platform: glfw
-    config:
-      title: CyberEther
-      size: [2048, 960]
 
 computeDevice: cpu
 

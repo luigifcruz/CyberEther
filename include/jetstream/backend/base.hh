@@ -83,8 +83,8 @@ class JETSTREAM_API Instance {
     const auto& state() {
         using BackendType = typename GetBackend<DeviceId>::Type;
         if (!backends.contains(DeviceId)) {
-            JST_DEBUG("The {} backend is not initialized.", DeviceId);
-            JST_CHECK_THROW(Result::ERROR);
+            JST_WARN("The {} backend is not initialized. Initializing with default settings.", DeviceId);
+            JST_CHECK_THROW(initialize<DeviceId>({}));
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
     }

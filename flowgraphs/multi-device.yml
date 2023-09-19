@@ -1,23 +1,9 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-name: Spectrum Analyzer
+title: Spectrum Analyzer
 creator: Luigi
 license: MIT
-
-engine:
-  backends:
-    cpu:
-    vulkan:
-  render:
-    device: vulkan
-    config:
-      scale: 0.90
-  viewport:
-    platform: glfw
-    config:
-      title: CyberEther
-      size: [2048, 960]
 
 computeDevice: cpu
 

@@ -25,33 +25,21 @@ class JETSTREAM_API Instance {
     Instance()
          : _scheduler(),
            _compositor(*this),
-           renderState({}),
-           viewportState({}), 
-           enableFlowgraph(true) {
+           _parser(std::make_shared<Parser>()) {
         JST_DEBUG("[INSTANCE] Started.");
     };
 
-    Result fromFile(const std::string& path);
-    Result fromBlob(const char* data);
+    Result openFlowgraphFile(const std::string& path);
+    Result openFlowgraphBlob(const char* blob);
+    Result saveFlowgraph(const std::string& path);
+    Result resetFlowgraph();
+    Result closeFlowgraph();
+    Result newFlowgraph();
 
-    Result disableFlowgraph(const bool& disable = true) {
-        enableFlowgraph = !disable;
-        return Result::SUCCESS;
-    }
+    Result buildDefaultInterface();
 
     template<Device D>
     Result buildBackend(Backend::Config& config) {
-        auto& state = backendStates[GetDeviceName(D)];
-        state.record.fingerprint.device = GetDeviceName(D);
-        JST_CHECK(config>>state.record.configMap);
-
-        return Backend::Initialize<D>(config);
-    }
-
-    template<Device D>
-    Result buildBackend(Parser::BackendRecord& record) {
-        Backend::Config config{};
-        JST_CHECK(config<<record.configMap);
         return Backend::Initialize<D>(config);
     }
 
@@ -64,18 +52,9 @@ class JETSTREAM_API Instance {
 
         _viewport = std::make_shared<Platform>(config, args...);
 
-        viewportState.record.fingerprint.device = GetDeviceName(_viewport->device());
-        viewportState.record.fingerprint.platform = _viewport->name();
-        JST_CHECK(config>>viewportState.record.configMap);
+        JST_CHECK(_viewport->create());
 
-        return _viewport->create();
-    }
-
-    template<class Platform>
-    Result buildViewport(Parser::ViewportRecord& record) {
-        typename Viewport::Config config{};
-        JST_CHECK(config<<record.configMap);
-        return buildViewport<Platform>(config);
+        return Result::SUCCESS;
     }
 
     template<Device D>
@@ -101,13 +80,6 @@ class JETSTREAM_API Instance {
         JST_CHECK(_window->create());
 
         return Result::SUCCESS;
-    }
-
-    template<Device D>
-    Result buildRender(Parser::RenderRecord& record) {
-        Render::Window::Config config{};
-        JST_CHECK(config<<record.configMap);
-        return buildRender<D>(config);
     }
 
     template<template<Device, typename...> class T, Device D, typename... C>
@@ -320,22 +292,6 @@ class JETSTREAM_API Instance {
     }
 
  protected:
-    constexpr RenderState& getRenderState() {
-        return renderState;
-    }
-
-    bool haveRenderState() {
-        return _window != nullptr;
-    }
-
-    constexpr ViewportState& getViewportState() {
-        return viewportState;
-    }
-
-    bool haveViewportState() {
-        return _viewport != nullptr;
-    }
-
     BlockState& getBlockState(const std::string& id) {
         return *blockStates[{id}];
     }
@@ -344,30 +300,17 @@ class JETSTREAM_API Instance {
         return blockStates.count({id});
     }
 
-    BackendState& getBackendState(const std::string& key) {
-        return backendStates[key];
-    }
-
-    U64 countBackendState(const std::string& key) {
-        return backendStates.contains(key);
-    }
-
     friend class Parser;
 
  private:
     Scheduler _scheduler;
     Compositor _compositor;
 
-    RenderState renderState;
-    ViewportState viewportState;
-    std::unordered_map<std::string, BackendState> backendStates;
     std::unordered_map<Locale, std::shared_ptr<BlockState>, Locale::Hasher> blockStates;
 
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
     std::shared_ptr<Parser> _parser;
-
-    bool enableFlowgraph;
 
     Result fetchDependencyTree(const Locale locale, std::vector<Locale>& storage);
 

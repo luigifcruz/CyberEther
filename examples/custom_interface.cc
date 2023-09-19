@@ -4,8 +4,17 @@
 
 using namespace Jetstream;
 
+// Selects the compute backend to use.
 constexpr static Device ComputeDevice = Device::CPU;
+
+// Selects the graphical backend to use.
+#ifdef __EMSCRIPTEN__
+constexpr static Device RenderDevice  = Device::WebGPU;
+#else
 constexpr static Device RenderDevice  = Device::Vulkan;
+#endif
+
+// Selects the viewport platform to use.
 using Platform = Viewport::GLFW<RenderDevice>;
 
 class UI {

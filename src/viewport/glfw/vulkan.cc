@@ -6,11 +6,11 @@ namespace Jetstream::Viewport {
 using Implementation = GLFW<Device::Vulkan>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
-    JST_DEBUG("Creating Linux viewport.");
+    JST_DEBUG("[VULKAN] Creating GLFW viewport.");
 }
 
 Implementation::~GLFW() {
-    JST_DEBUG("Destroying Linux viewport.");
+    JST_DEBUG("[VULKAN] Destroying GLFW viewport.");
 }
 
 Result Implementation::create() {
