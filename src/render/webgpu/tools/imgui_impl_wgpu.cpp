@@ -447,7 +447,17 @@ void ImGui_ImplWGPU_RenderDrawData(ImDrawData* draw_data, WGPURenderPassEncoder 
                     continue;
 
                 // Apply scissor/clipping rectangle, Draw
-                wgpuRenderPassEncoderSetScissorRect(pass_encoder, (uint32_t)clip_min.x, (uint32_t)clip_min.y, (uint32_t)(clip_max.x - clip_min.x), (uint32_t)(clip_max.y - clip_min.y));
+
+                // UPDATE-ME: Out of bounds Scissor Rect on WebGPU (Chrome) fix.
+                ImGuiIO& io = ImGui::GetIO();
+                uint32_t w = clip_max.x - clip_min.x;
+                uint32_t h = clip_max.y - clip_min.y;
+                if ((io.DisplayFramebufferScale.x * io.DisplaySize.x) < w)
+                    w = (uint32_t)(io.DisplayFramebufferScale.x * io.DisplaySize.x);
+                if ((io.DisplayFramebufferScale.y * io.DisplaySize.y) < h)
+                    h = (uint32_t)(io.DisplayFramebufferScale.y * io.DisplaySize.y);
+
+                wgpuRenderPassEncoderSetScissorRect(pass_encoder, (uint32_t)clip_min.x, (uint32_t)clip_min.y, w, h);
                 wgpuRenderPassEncoderDrawIndexed(pass_encoder, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
             }
         }

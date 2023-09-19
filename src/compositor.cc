@@ -286,7 +286,7 @@ Result Compositor::destroy() {
     moduleStoreEnabled = true;
     flowgraphEnabled = true;
     infoPanelEnabled = true;
-    helpModalContentId = 0;
+    globalModalContentId = 0;
     nodeContextMenuNodeId = 0;
 
     // Reseting locks.
@@ -313,18 +313,13 @@ Result Compositor::destroy() {
     return Result::SUCCESS;
 }
 
-Result Compositor::draw(const U64& level) {
+Result Compositor::draw() {
     // Prevent state from refreshing while drawing these methods.
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
 
-    if (level >= 0) {
-        JST_CHECK(drawStatic());
-    }
-
-    if (level >= 3) {
-        JST_CHECK(drawGraph());
-    }
+    JST_CHECK(drawStatic());
+    JST_CHECK(drawGraph());
 
     interfaceHalt.clear();
     interfaceHalt.notify_one();
@@ -388,7 +383,7 @@ Result Compositor::processInteractions() {
 
     if (changeModuleDataTypeMailbox) {
         const auto& [locale, type] = *changeModuleDataTypeMailbox;
-        JST_CHECK_NOTIFY(instance.changeModuleDataType(locale, type))
+        JST_CHECK_NOTIFY(instance.changeModuleDataType(locale, type));
         changeModuleDataTypeMailbox.reset();
     }
     
@@ -396,6 +391,48 @@ Result Compositor::processInteractions() {
         // TODO: Implement.
         ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Toggling a node is not implemented yet." });
         toggleModuleMailbox.reset();
+    }
+
+    if (resetFlowgraphMailbox) {
+        JST_CHECK_NOTIFY(instance.resetFlowgraph());
+        resetFlowgraphMailbox.reset();
+    }
+
+    if (closeFlowgraphMailbox) {
+        JST_CHECK_NOTIFY(instance.closeFlowgraph());
+        closeFlowgraphMailbox.reset();
+    }
+
+    if (openFlowgraphUrlMailbox) {
+        const auto& filePath = *openFlowgraphUrlMailbox;
+        // TODO: Implement.
+        ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Remote flowgraph is not implemented yet." });
+        openFlowgraphUrlMailbox.reset();
+    }
+
+    if (openFlowgraphPathMailbox) {
+        const auto& filePath = *openFlowgraphPathMailbox;
+        JST_CHECK_NOTIFY(instance.openFlowgraphFile(filePath));
+        openFlowgraphPathMailbox.reset();
+    }
+
+    if (openFlowgraphBlobMailbox) {
+        const auto& blob = *openFlowgraphBlobMailbox;
+        ImGui::InsertNotification({ ImGuiToastType_Success, 5000, "Loading flowgraph..." });
+        JST_CHECK_NOTIFY(instance.openFlowgraphBlob(blob));
+        openFlowgraphBlobMailbox.reset();
+    }
+
+    if (saveFlowgraphMailbox) {
+        // TODO: Add real save path.
+        //JST_CHECK_NOTIFY(instance.saveFlowgraph(""));
+        ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Save Graph is not implemented yet." });
+        saveFlowgraphMailbox.reset();
+    }
+
+    if (newFlowgraphMailbox) {
+        JST_CHECK_NOTIFY(instance.newFlowgraph());
+        newFlowgraphMailbox.reset();
     }
 
     return Result::SUCCESS;
@@ -416,11 +453,12 @@ Result Compositor::drawStatic() {
     const F32 variableWidth = 200.0f / scalingFactor;
 
     //
-    // Menu Bar
+    // Menu Bar.
     //
 
     F32 currentHeight = 0.0f;
-    bool helpModalToggle = false;
+    bool globalModalToggle = false;
+    bool flowgraphLoaded = instance.parser().haveFlowgraph();
 
     if (ImGui::BeginMainMenuBar()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.75f, 0.62f, 1.0f));
@@ -428,8 +466,12 @@ Result Compositor::drawStatic() {
             ImGui::PopStyleColor();
 
             if (ImGui::MenuItem("About CyberEther")) {
-                helpModalToggle = true;
-                helpModalContentId = 0;
+                globalModalToggle = true;
+                globalModalContentId = 0;
+            }
+            if (ImGui::MenuItem("Module Backend Matrix")) {
+                globalModalToggle = true;
+                globalModalContentId = 1;
             }
 #ifndef __EMSCRIPTEN__
             ImGui::Separator();
@@ -443,18 +485,42 @@ Result Compositor::drawStatic() {
             ImGui::PopStyleColor();
         }
 
+        if (ImGui::BeginMenu("Flowgraph")) {
+            if (ImGui::MenuItem("New", nullptr, false, !flowgraphLoaded)) {
+                newFlowgraphMailbox = true;
+            }
+            if (ImGui::MenuItem("Open", nullptr, false, !flowgraphLoaded)) {
+                globalModalToggle = true;
+                globalModalContentId = 3;
+            }
+            if (ImGui::MenuItem("Save", nullptr, false, flowgraphLoaded)) {
+                // TODO: Add path dialog.
+                saveFlowgraphMailbox = true;
+            }
+            if (ImGui::MenuItem("Close", nullptr, false, flowgraphLoaded)) {
+                closeFlowgraphMailbox = true;
+            }
+            if (ImGui::MenuItem("Reset", nullptr, false, flowgraphLoaded)) {
+                resetFlowgraphMailbox = true;
+            }
+            if (ImGui::MenuItem("Show Source", nullptr, false, flowgraphLoaded)) {
+                sourceEditorEnabled = !sourceEditorEnabled;
+            }
+            ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("View")) {
-            if (ImGui::MenuItem("Show Source Editor", nullptr, &sourceEditorEnabled)) { }
             if (ImGui::MenuItem("Show Info Panel", nullptr, &infoPanelEnabled)) { }
-            if (ImGui::MenuItem("Show Module Store", nullptr, &moduleStoreEnabled)) { }
-            if (ImGui::MenuItem("Show Flowgraph", nullptr, &flowgraphEnabled)) { }
+            if (ImGui::MenuItem("Show Flowgraph Source", nullptr, &sourceEditorEnabled, flowgraphLoaded)) { }
+            if (ImGui::MenuItem("Show Flowgraph", nullptr, &flowgraphEnabled, flowgraphLoaded)) { }
+            if (ImGui::MenuItem("Show Module Store", nullptr, &moduleStoreEnabled, flowgraphLoaded && flowgraphEnabled)) { }
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Help")) {
             if (ImGui::MenuItem("Getting started")) {
-                helpModalToggle = true;
-                helpModalContentId = 1;
+                globalModalToggle = true;
+                globalModalContentId = 2;
             }
             if (ImGui::MenuItem("Documentation")) {
                 // TODO: Add URL handler.
@@ -472,68 +538,8 @@ Result Compositor::drawStatic() {
         ImGui::EndMainMenuBar();
     }
 
-    if (helpModalToggle) {
-        ImGui::OpenPopup("##help_modal");
-        helpModalToggle = false;
-    }
-
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-
-    if (ImGui::BeginPopupModal("##help_modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize |
-                                                        ImGuiWindowFlags_NoTitleBar |
-                                                        ImGuiWindowFlags_NoResize |
-                                                        ImGuiWindowFlags_NoMove|
-                                                        ImGuiWindowFlags_NoScrollbar)) {
-        if (helpModalContentId == 0) {
-            ImGui::TextUnformatted("About CyberEther");
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            ImGui::TextFormatted("Version: {}-{}", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
-            ImGui::Text("Developed by Luigi Cruz");
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            ImGui::Text("CyberEther is a state-of-the-art tool designed for graphical visualization");
-            ImGui::Text("of radio signals and computing focusing in heterogeneous systems.");
-
-            ImGui::Spacing();
-
-            ImGui::BulletText(ICON_FA_GAUGE_HIGH   " Broad compatibility including NVIDIA, Apple Silicon, Raspberry Pi, and AMD.");
-            ImGui::BulletText(ICON_FA_BATTERY_FULL " Broad graphical backend support with Vulkan, Metal, and WebGPU.");
-            ImGui::BulletText(ICON_FA_SHUFFLE      " Dynamic hardware acceleration settings for tailored performance.");
-        } else if (helpModalContentId == 1) {
-            ImGui::TextUnformatted("Getting started");
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            ImGui::Text("To get started:");
-            ImGui::BulletText("There is no start or stop button, the graph will run automatically.");
-            ImGui::BulletText("Drag and drop a module from the Module Store to the Flowgraph.");
-            ImGui::BulletText("Configure the module settings as needed.");
-            ImGui::BulletText("To connect modules, drag from the output pin of one module to the input pin of another.");
-            ImGui::BulletText("To disconnect modules, click on the input pin.");
-            ImGui::BulletText("To remove a module, right click on it and select 'Remove Module'.");
-            ImGui::Text("Ensure your device compatibility for optimal performance.");
-            ImGui::Text("Need more help? Check the 'Help' section or visit our official documentation.");
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        if (ImGui::Button("Close", ImVec2(-1, 0))) {
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SetItemDefaultFocus();
-        ImGui::Dummy(ImVec2(700.0f / scalingFactor, 0.0f));
-        ImGui::EndPopup();
-    }
-
     //
-    // Tool Bar
+    // Tool Bar.
     //
 
     ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, currentHeight));
@@ -552,24 +558,54 @@ Result Compositor::drawStatic() {
         {
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
 
-            if (ImGui::Button(ICON_FA_WINDOW_RESTORE " Auto Layout")) {
-                JST_CHECK_NOTIFY(updateAutoLayoutState());
-            }
-            ImGui::SameLine();
+            if (!flowgraphLoaded) {
+                if (ImGui::Button(ICON_FA_FILE " New")) {
+                    newFlowgraphMailbox = true;
+                }
+                ImGui::SameLine();
 
-            if (ImGui::Button(ICON_FA_SQUARE_PLUS " New Stack")) {
-                stacks[fmt::format("Stack #{}", stacks.size())] = {true, 0};
-            }
-            ImGui::SameLine();
+                if (ImGui::Button(ICON_FA_FOLDER_OPEN " Open")) {
+                    globalModalToggle = true;
+                    globalModalContentId = 3;
+                }
+                ImGui::SameLine();
+            } else {
+                if (ImGui::Button(ICON_FA_FLOPPY_DISK " Save")) {
+                    // TODO: Add path dialog.
+                    saveFlowgraphMailbox = true;
+                }
+                ImGui::SameLine();
 
-            if (ImGui::Button(ICON_FA_FLOPPY_DISK " Save Graph")) {
-                ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Save Graph is not implemented yet." });
-            }
-            ImGui::SameLine();
+                if (ImGui::Button(ICON_FA_CIRCLE_XMARK " Close")) {
+                    closeFlowgraphMailbox = true;
+                }
+                ImGui::SameLine();
 
-            if (ImGui::Button(ICON_FA_FILE_CODE " Show Source")) {
-                sourceEditorEnabled = !sourceEditorEnabled;
+                if (ImGui::Button(ICON_FA_ERASER" Reset")) {
+                    resetFlowgraphMailbox = true;
+                }
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_FILE_CODE " Source")) {
+                    sourceEditorEnabled = !sourceEditorEnabled;
+                }
+                ImGui::SameLine();
+
+                ImGui::Dummy(ImVec2(5.0f, 0.0f));
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_HAND_SPARKLES " Auto Layout")) {
+                    JST_CHECK_NOTIFY(updateAutoLayoutState());
+                }
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_LAYER_GROUP " New Stack")) {
+                    stacks[fmt::format("Stack #{}", stacks.size())] = {true, 0};
+                }
+                ImGui::SameLine();
             }
+
+            ImGui::Dummy(ImVec2(5.0f, 0.0f));
             ImGui::SameLine();
 
 #ifdef __EMSCRIPTEN__
@@ -587,7 +623,7 @@ Result Compositor::drawStatic() {
     }
 
     //
-    // Docking Arena
+    // Docking Arena.
     //
 
     const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
@@ -638,7 +674,7 @@ Result Compositor::drawStatic() {
             return;
         }
 
-        auto& file = instance.parser().getFileData();
+        auto& file = instance.parser().getFlowgraphBlob();
 
         ImGui::InputTextMultiline("##SourceFileData", 
                                   const_cast<char*>(file.data()), 
@@ -700,7 +736,7 @@ Result Compositor::drawStatic() {
     }
 
     //
-    // Info
+    // Info HUD.
     //
 
     [&](){
@@ -779,10 +815,336 @@ Result Compositor::drawStatic() {
             ImGui::TreePop();
         }
 
-        ImGui::Dummy(ImVec2(variableWidth * 2.0f, 0.0f));
+        ImGui::Dummy(ImVec2(variableWidth * 2.3f, 0.0f));
 
         ImGui::End();
     }();
+
+    //
+    // Welcome HUD.
+    //
+
+    [&](){
+        if (instance.parser().haveFlowgraph() || ImGui::IsPopupOpen("##help_modal")) {
+            return;
+        }
+
+        const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
+                                             ImGuiWindowFlags_NoDocking |
+                                             ImGuiWindowFlags_AlwaysAutoResize |
+                                             ImGuiWindowFlags_NoSavedSettings |
+                                             ImGuiWindowFlags_NoFocusOnAppearing |
+                                             ImGuiWindowFlags_NoNav |
+                                             ImGuiWindowFlags_NoMove |
+                                             ImGuiWindowFlags_Tooltip;
+
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGui::SetNextWindowBgAlpha(0.35f);
+        ImGui::Begin("Welcome", nullptr, windowFlags);
+
+        ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT " Welcome to CyberEther!");
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
+        ImGui::TextFormatted("Version: {}", JETSTREAM_VERSION_STR);
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("CyberEther is a tool designed for graphical visualization of radio");
+        ImGui::Text("signals and general computing focusing in heterogeneous systems.");
+
+        ImGui::Spacing();
+        ImGui::Spacing();
+
+        ImGui::Text("To get started, create a new flowgraph or open an existing one using");
+        ImGui::Text("the toolbar or the buttons below.");
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+
+        if (ImGui::Button(ICON_FA_FILE " New Flowgraph")) {
+            newFlowgraphMailbox = true;
+        }
+        ImGui::SameLine();
+
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN " Open Flowgraph")) {
+            globalModalToggle = true;
+            globalModalContentId = 3;
+        }
+
+        ImGui::PopStyleVar();
+
+        ImGui::Spacing();
+        ImGui::Spacing();
+
+        ImGui::Text("To learn more about CyberEther, check the Help menu.");
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+
+        if (ImGui::Button(ICON_FA_CIRCLE_QUESTION " Getting Started")) {
+            globalModalToggle = true;
+            globalModalContentId = 2;
+        }
+        ImGui::SameLine();
+
+        if (ImGui::Button(ICON_FA_CIRCLE_INFO " About CyberEther")) {
+            globalModalToggle = true;
+            globalModalContentId = 0;
+        }
+        ImGui::SameLine();
+
+        if (ImGui::Button(ICON_FA_CUBE " Module Backend Matrix")) {
+            globalModalToggle = true;
+            globalModalContentId = 1;
+        }
+        ImGui::SameLine();
+
+        ImGui::PopStyleVar();
+
+        ImGui::End();
+    }();
+
+    //
+    // Global Modal
+    //
+
+    if (globalModalToggle) {
+        ImGui::OpenPopup("##help_modal");
+        globalModalToggle = false;
+    }
+
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    if (ImGui::BeginPopupModal("##help_modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize |
+                                                        ImGuiWindowFlags_NoTitleBar |
+                                                        ImGuiWindowFlags_NoResize |
+                                                        ImGuiWindowFlags_NoMove|
+                                                        ImGuiWindowFlags_NoScrollbar)) {
+        if (globalModalContentId == 0) {
+            ImGui::TextUnformatted(ICON_FA_CIRCLE_INFO " About CyberEther");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::TextFormatted("Version: {}-{}", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
+            ImGui::Text("Developed by Luigi Cruz");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("CyberEther is a state-of-the-art tool designed for graphical visualization");
+            ImGui::Text("of radio signals and computing focusing in heterogeneous systems.");
+
+            ImGui::Spacing();
+
+            ImGui::BulletText(ICON_FA_GAUGE_HIGH   " Broad compatibility including NVIDIA, Apple Silicon, Raspberry Pi, and AMD.");
+            ImGui::BulletText(ICON_FA_BATTERY_FULL " Broad graphical backend support with Vulkan, Metal, and WebGPU.");
+            ImGui::BulletText(ICON_FA_SHUFFLE      " Dynamic hardware acceleration settings for tailored performance.");
+        } else if (globalModalContentId == 1) {
+            ImGui::TextUnformatted(ICON_FA_CUBE " Module Backend Matrix");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("A CyberEther flowgraph is composed of modules, each module has a backend and a data type:");
+            ImGui::BulletText("Backend is the hardware or software that will be used to process the data.");
+            ImGui::BulletText("Data type is the format of the data that will be processed.");
+            ImGui::Text("The following matrix shows the current installation available backends and data types.");
+
+            ImGui::Spacing();
+
+            const F32 screenHeight = io.DisplaySize.y;
+            const ImVec2 tableHeight = ImVec2(0.0f, 0.60f * screenHeight);
+            const ImGuiTableFlags tableFlags = ImGuiTableFlags_PadOuterX | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY;
+
+            if (ImGui::BeginTable("table1", 5, tableFlags, tableHeight)) {
+                static std::vector<std::tuple<const char*, float, U32, bool, Device>> columns = {
+                    {"Module Name", 0.25f,   DefaultColor, false, Device::None},
+                    {"CPU",         0.1875f, CpuColor,     true,  Device::CPU},
+                    {"Metal",       0.1875f, MetalColor,   true,  Device::Metal},
+                    {"Vulkan",      0.1875f, VulkanColor,  true,  Device::Vulkan},
+                    {"WebGPU",      0.1875f, WebGPUColor,  true,  Device::WebGPU}
+                };
+
+                ImGui::TableSetupScrollFreeze(0, 1);
+                for (int col = 0; col < columns.size(); ++col) {
+                    const auto& [name, width, _1, _2, _3] = columns[col];
+                    ImGui::TableSetupColumn(name, ImGuiTableColumnFlags_WidthStretch, width);
+                }
+
+                ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+                for (int col = 0; col < columns.size(); ++col) {
+                    const auto& [name, _1, color, cube, _2] = columns[col]; 
+                    ImGui::TableSetColumnIndex(col);
+                    if (cube) {
+                        ImGui::PushStyleColor(ImGuiCol_Text, color);
+                        ImGui::Text(ICON_FA_CUBE);
+                        ImGui::PopStyleColor();
+                        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                    }
+                    ImGui::TableHeader(name);
+                }
+
+                for (const auto& [_, store] : Store::ModuleList()) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(store.title.c_str());
+
+                    for (int col = 1; col < 5; ++col) {
+                        ImGui::TableSetColumnIndex(col);
+
+                        const auto& device = std::get<4>(columns[col]);
+                        if (!store.options.contains(device)) {
+                            ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(255, 0, 0, 90));
+                            continue;
+                        }
+
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(0, 255, 0, 30));
+                        for (const auto& [dataType, inputDataType, outputDataType] : store.options.at(device)) {
+                            const auto label = (!dataType.empty()) ? fmt::format("{}", dataType) : 
+                                                                     fmt::format("{} -> {}", inputDataType, outputDataType);
+                            ImGui::TextUnformatted(label.c_str());
+                            ImGui::SameLine();
+                        }
+                    }
+                }
+
+                ImGui::EndTable();
+            }
+        } else if (globalModalContentId == 2) {
+            ImGui::TextUnformatted(ICON_FA_CIRCLE_QUESTION " Getting started");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("To get started:");
+            ImGui::BulletText("There is no start or stop button, the graph will run automatically.");
+            ImGui::BulletText("Drag and drop a module from the Module Store to the Flowgraph.");
+            ImGui::BulletText("Configure the module settings as needed.");
+            ImGui::BulletText("To connect modules, drag from the output pin of one module to the input pin of another.");
+            ImGui::BulletText("To disconnect modules, click on the input pin.");
+            ImGui::BulletText("To remove a module, right click on it and select 'Remove Module'.");
+            ImGui::Text("Ensure your device compatibility for optimal performance.");
+            ImGui::Text("Need more help? Check the 'Help' section or visit our official documentation.");
+        } else if (globalModalContentId == 3) {
+            ImGui::TextUnformatted(ICON_FA_STORE " Flowgraph Store");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("This is the Flowgraph Store, a place where you can find and load flowgraphs.");
+            ImGui::Text("You can also create your own flowgraphs and share them with the community.");
+            ImGui::Text("To load a flowgraph, click in one of the bubbles below:");
+
+            ImGui::Spacing();
+
+            const F32 screenHeight = io.DisplaySize.y;
+            const F32 maxTableHeight = 0.40f * screenHeight;
+
+            const F32 lineHeight = ImGui::GetTextLineHeightWithSpacing();
+            const F32 textPadding = lineHeight / 3.0f;
+            const F32 rowHeight = lineHeight + (textPadding * 5.25f);
+            const F32 totalTableHeight = rowHeight * (Store::FlowgraphList().size() / 2.0f);
+
+            const F32 tableHeight = (totalTableHeight < maxTableHeight) ? totalTableHeight : maxTableHeight;
+
+            const ImGuiTableFlags tableFlags = ImGuiTableFlags_PadOuterX | 
+                                               ImGuiTableFlags_NoBordersInBody | 
+                                               ImGuiTableFlags_NoBordersInBodyUntilResize | 
+                                               ImGuiTableFlags_ScrollY;
+
+            if (ImGui::BeginTable("flowgraph_table", 2, tableFlags, ImVec2(0, tableHeight))) {
+                for (int i = 0; i < 2; ++i) {
+                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+                }
+
+                U64 cellCount = 0;
+                for (const auto& [id, flowgraph] : Store::FlowgraphList()) {
+                    if ((cellCount % 2) == 0) {
+                        ImGui::TableNextRow();
+                    }
+                    ImGui::TableSetColumnIndex(cellCount % 2);
+
+                    const ImVec2 cellMin = ImGui::GetCursorScreenPos();
+                    const ImVec2 cellSize = ImVec2(ImGui::GetColumnWidth(), lineHeight * 2 + textPadding);
+                    const ImVec2 cellMax = ImVec2(cellMin.x + cellSize.x, cellMin.y + cellSize.y);
+
+                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                    drawList->AddRectFilled(cellMin, cellMax, IM_COL32(13, 13, 13, 138), 5.0f);
+
+                    if (ImGui::InvisibleButton(("cell_button_" + id).c_str(), cellSize)) {
+                        openFlowgraphBlobMailbox = flowgraph.data;
+                        ImGui::CloseCurrentPopup();
+                    }
+
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
+                    ImGui::Text("%s", flowgraph.title.c_str());
+
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding + lineHeight));
+                    ImGui::Text("%s", flowgraph.description.c_str());
+
+                    cellCount += 1;
+                }
+
+                ImGui::EndTable();
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+
+            ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path or URL of a flowgraph file here:");
+            static char globalModalPath[1024] = "";
+            if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody | 
+                                                            ImGuiTableFlags_NoBordersInBodyUntilResize)) {
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 80.0f);
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 20.0f);
+
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(0);
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputText("##FlowgraphPath", globalModalPath, IM_ARRAYSIZE(globalModalPath));
+
+                ImGui::TableSetColumnIndex(1);
+                float buttonWidth = ImGui::GetColumnWidth() - ImGui::GetStyle().ItemSpacing.x;
+                if (ImGui::Button("Browse File", ImVec2(buttonWidth, 0.0f))) {
+                    // TODO: Implement file picker. 
+                    ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "File browser is not implemented yet." });
+                }
+
+                ImGui::EndTable();
+            }
+
+            if (ImGui::Button(ICON_FA_PLAY " Load", ImVec2(0, 50.0f / scalingFactor))) {
+                if (strlen(globalModalPath) == 0) {
+                    ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
+                } else if (strstr(globalModalPath, "http://") || strstr(globalModalPath, "https://")) {
+                    openFlowgraphUrlMailbox = globalModalPath;
+                    ImGui::CloseCurrentPopup();
+                } else if (std::filesystem::exists(globalModalPath)) {
+                    openFlowgraphPathMailbox = globalModalPath;
+                    ImGui::CloseCurrentPopup();
+                } else {
+                    ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "The specified path doesn't exist." });
+                }
+            }
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f / scalingFactor);
+            ImGui::Text("Make sure you trust the flowgraph source!");
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button("Close", ImVec2(-1, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::Dummy(ImVec2(700.0f / scalingFactor, 0.0f));
+        ImGui::EndPopup();
+    }
 
     return Result::SUCCESS;
 }
@@ -873,7 +1235,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!flowgraphEnabled) {
+        if (!flowgraphEnabled || !instance.parser().haveFlowgraph()) {
             return;
         }
 
@@ -1357,7 +1719,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!moduleStoreEnabled) {
+        if (!moduleStoreEnabled || !flowgraphEnabled || !instance.parser().haveFlowgraph()) {
             return;
         }
 
@@ -1368,7 +1730,9 @@ Result Compositor::drawGraph() {
         }
 
         static char filterText[256] = "";
-        ImGui::Text("Search Modules");
+        static bool showModules = false;
+
+        ImGui::Text("Search Blocks");
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -1382,11 +1746,12 @@ Result Compositor::drawGraph() {
         }
         ImGui::PushItemWidth(-1);
         ImGui::InputText("##Filter", filterText, IM_ARRAYSIZE(filterText));
+        ImGui::Checkbox("Show Modules", &showModules);
         ImGui::Spacing();
 
-        ImGui::BeginChild("Module List", ImVec2(0, 0), true);
+        ImGui::BeginChild("Block List", ImVec2(0, 0), true);
 
-        for (const auto& [id, module] : Store::ModuleList(filterText)) {
+        for (const auto& [id, module] : Store::ModuleList(filterText, showModules)) {
             ImGui::TextUnformatted(module.title.c_str());
             ImGui::SameLine();
             ImGui::TextDisabled("(?)");

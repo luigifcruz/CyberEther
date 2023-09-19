@@ -29,7 +29,7 @@ Metal::Metal(const Config& config) {
     JST_INFO("API Version:     {}", getApiVersion())
     JST_INFO("Unified Memory:  {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Processor Count: {}/{}", getActiveProcessorCount(), getTotalProcessorCount());
-    JST_INFO("Physical Memory: {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
+    JST_INFO("System Memory:   {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("—————————————————————————————————————————————————————");
 }
 

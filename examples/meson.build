@@ -2,12 +2,12 @@ executable(
     'hello_world', 
     'hello_world.cc',
     dependencies: libjetstream_dep,
-    install: true,
+    install: false,
 )
 
 executable(
-    'interface', 
-    'interface.cc',
+    'custom_interface', 
+    'custom_interface.cc',
     dependencies: libjetstream_dep,
-    install: true,
+    install: false,
 )

@@ -3,20 +3,138 @@
 
 namespace Jetstream {
 
-Result Instance::fromFile(const std::string& path) {
-    _parser = std::make_shared<Parser>(path);
+Result Instance::openFlowgraphFile(const std::string& path) {
+    if (_parser->haveFlowgraph()) {
+        JST_ERROR("[INSTANCE] Flowgraph already loaded.");
+        return Result::ERROR;
+    }
 
-    JST_CHECK(_parser->printAll());
-    JST_CHECK(_parser->importFromFile(*this));
+    if (path.empty()) {
+        JST_ERROR("[INSTANCE] Configuration path is empty.");
+        return Result::ERROR;
+    }
+    
+    JST_DEBUG("[INSTANCE] Importing flowgraph from file ({}).", path);
+
+    JST_CHECK(_parser->openFlowgraphFile(path));
+    JST_CHECK(_parser->printFlowgraph());
+    JST_CHECK(_parser->importFlowgraph(*this));
 
     return Result::SUCCESS;
 }
 
-Result Instance::fromBlob(const char* data) {
-    _parser = std::make_shared<Parser>(data);
+Result Instance::openFlowgraphBlob(const char* blob) {
+    if (_parser->haveFlowgraph()) {
+        JST_ERROR("[INSTANCE] Flowgraph already loaded.");
+        return Result::ERROR;
+    }
 
-    JST_CHECK(_parser->printAll());
-    JST_CHECK(_parser->importFromFile(*this));
+    JST_DEBUG("[INSTANCE] Importing flowgraph from blob.");
+
+    JST_CHECK(_parser->openFlowgraphBlob(blob));
+    JST_CHECK(_parser->printFlowgraph());
+    JST_CHECK(_parser->importFlowgraph(*this));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::saveFlowgraph(const std::string& path) {
+    if (!_parser->haveFlowgraph()) {
+        JST_ERROR("[INSTANCE] Flowgraph not loaded.");
+        return Result::ERROR;
+    }
+
+    JST_CHECK(_parser->exportFlowgraph(*this));
+    JST_CHECK(_parser->saveFlowgraph(path));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::resetFlowgraph() {
+    if (!_parser->haveFlowgraph()) {
+        JST_ERROR("[INSTANCE] Flowgraph not loaded.");
+        return Result::ERROR;
+    }
+
+    // TODO: Modules should be deleted in order.
+    std::vector<Locale> eraseList;
+    for (const auto& [locale, _] : blockStates) {
+        if (!locale.internal()) {
+            eraseList.push_back(locale);
+        }
+    }
+    for (const auto& locale : eraseList) {
+        JST_CHECK(eraseModule(locale));
+    }
+
+    JST_CHECK(_parser->exportFlowgraph(*this));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::closeFlowgraph() {
+    // TODO: Modules should be deleted in order.
+    std::vector<Locale> eraseList;
+    for (const auto& [locale, _] : blockStates) {
+        if (!locale.internal()) {
+            eraseList.push_back(locale);
+        }
+    }
+    for (const auto& locale : eraseList) {
+        JST_CHECK(eraseModule(locale));
+    }
+
+    JST_CHECK(_parser->closeFlowgraph());
+
+    return Result::SUCCESS;
+}
+
+Result Instance::newFlowgraph() {
+    if (_parser->haveFlowgraph()) {
+        JST_ERROR("[INSTANCE] Flowgraph already loaded.");
+        return Result::ERROR;
+    }
+
+    JST_CHECK(closeFlowgraph());
+    JST_CHECK(openFlowgraphBlob("\n"));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::buildDefaultInterface() {
+    JST_DEBUG("[INSTANCE] Building default viewport and render.");
+
+    // Default Viewport configuration.
+    Viewport::Config viewportCfg;
+    viewportCfg.vsync = true;
+    viewportCfg.size = {3130, 1140};
+    viewportCfg.title = "CyberEther";
+
+    // Default Window configuration.
+    Render::Window::Config renderCfg;
+    renderCfg.imgui = true;
+    renderCfg.scale = 1.0;
+
+    if (!_viewport && !_window) {
+#ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
+#if   defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
+        JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(viewportCfg));
+        JST_CHECK(this->buildRender<Device::Metal>(renderCfg));
+#elif defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+        JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(viewportCfg));
+        JST_CHECK(this->buildRender<Device::Vulkan>(renderCfg));
+#elif defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
+        JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(viewportCfg));
+        JST_CHECK(this->buildRender<Device::WebGPU>(renderCfg));
+#else
+        JST_ERROR("[INSTANCE] No render backend available.");
+        JST_CHECK(Result::ERROR);
+#endif
+#else
+        JST_ERROR("[INSTANCE] No viewport backend available.");
+        JST_CHECK(Result::ERROR);
+#endif
+    }
 
     return Result::SUCCESS;
 }
@@ -360,10 +478,7 @@ Result Instance::destroy() {
     }
 
     // Clear internal state memory.
-    renderState = {};
-    viewportState = {};
     blockStates.clear();
-    backendStates.clear();
 
     // Destroy window and viewport.
 
@@ -375,9 +490,7 @@ Result Instance::destroy() {
         JST_CHECK(_viewport->destroy());
     }
 
-    if (_parser) {
-        _parser.reset();
-    }
+    _parser = std::make_shared<Parser>();
 
     return Result::SUCCESS;
 }
@@ -402,7 +515,7 @@ Result Instance::present() {
 
 Result Instance::end() {
     // Draw the main interface.
-    JST_CHECK(_compositor.draw((enableFlowgraph) ? 3 : 0));
+    JST_CHECK(_compositor.draw());
 
     // Finish the render frame.
     JST_CHECK(_window->end());

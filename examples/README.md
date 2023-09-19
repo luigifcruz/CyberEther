@@ -23,5 +23,5 @@ Static mode is the traditional method of setting up a graph in CyberEther. In th
 #### Hello World
 This example provides the essentials needed to describe a flowgraph in CyberEther.
 
-#### Interface
+#### Custom Interface
 This example delves deeper, illustrating an intermediate graph that includes hand-coded interactive interface elements.

@@ -421,7 +421,7 @@ void Implementation::drawDebugMessage() const {
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Physical Memory:");
+    ImGui::Text("System Memory:");
     ImGui::TableSetColumnIndex(1);
     ImGui::SetNextItemWidth(-1);
     ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));

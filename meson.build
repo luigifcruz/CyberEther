@@ -28,6 +28,7 @@ subdir('meson')
 subdir('shaders')
 subdir('src')
 subdir('include')
+subdir('flowgraphs')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),
@@ -70,7 +71,9 @@ pkg.generate(
 )
 
 if target_machine.system() != 'ios' and target_machine.system() != 'android'
-    subdir('examples')
+    if target_machine.system() != 'emscripten'
+        subdir('examples')
+    endif
 
     executable(
         'cyberether', 

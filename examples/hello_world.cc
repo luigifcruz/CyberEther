@@ -4,9 +4,8 @@
 
 using namespace Jetstream;
 
+// Selects the compute backend to use.
 constexpr static Device ComputeDevice = Device::CPU;
-constexpr static Device RenderDevice  = Device::Vulkan;
-using Platform = Viewport::GLFW<RenderDevice>;
 
 class UI {
  public:
@@ -134,36 +133,16 @@ class UI {
 
 int main() {
     std::cout << "Welcome to CyberEther!" << std::endl;
-    
-    // Initialize Backends.
-    if (Backend::Initialize<ComputeDevice>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize compute backend.");
-        return 1;
-    }
-
-    if (Backend::Initialize<RenderDevice>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize render backend.");
-        return 1;
-    }
 
     // Initialize Instance.
     Instance instance;
 
-    // Hide the flowgraph by default. Try to comment this line and see what happens!
-    instance.disableFlowgraph();
-    
-    // Initialize Viewport.
-    Viewport::Config viewportCfg;
-    viewportCfg.vsync = true;
-    viewportCfg.size = {3130, 1140};
-    viewportCfg.title = "CyberEther";
-    JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg));
+    // Initialize Viewport and Window.
+    instance.buildDefaultInterface();
 
-    // Initialize Window.
-    Render::Window::Config renderCfg;
-    renderCfg.imgui = true;
-    renderCfg.scale = 1.0;
-    JST_CHECK_THROW(instance.buildRender<RenderDevice>(renderCfg));
+    // Hide the flowgraph by default. Try to comment these line and see what happens!
+    instance.compositor().showStore(false)
+                         .showFlowgraph(false);
 
     {
         auto ui = UI(instance);

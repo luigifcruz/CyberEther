@@ -9,9 +9,12 @@ int main(int argc, char* argv[]) {
 
     Instance instance;
 
-    // Load configuration from YAML configuration file.
-    instance.fromFile(argv[1]);
+    instance.buildDefaultInterface();
 
+    if (argc >= 2) {
+        JST_CHECK_THROW(instance.openFlowgraphFile(argv[1]));
+    }
+    
     // Start compute thread.
 
     auto computeThread = std::thread([&]{

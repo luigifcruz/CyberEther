@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <optional>
+#include <filesystem>
 #include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
@@ -32,17 +33,27 @@ class JETSTREAM_API Compositor {
            moduleStoreEnabled(true),
            infoPanelEnabled(true),
            flowgraphEnabled(true),
-           helpModalContentId(0),
+           globalModalContentId(0),
            nodeContextMenuNodeId(0) {
         stacks["Graph"] = {true, 0};
         JST_CHECK_THROW(refreshState());
     };
 
+    Compositor& showStore(const bool& enabled) {
+        moduleStoreEnabled = enabled;
+        return *this;
+    }
+
+    Compositor& showFlowgraph(const bool& enabled) {
+        flowgraphEnabled = enabled;
+        return *this;
+    }
+
     Result addModule(const Locale& locale, const std::shared_ptr<BlockState>& block);
     Result removeModule(const Locale& locale);
     Result destroy();
 
-    Result draw(const U64& level = 3);
+    Result draw();
     Result processInteractions();
 
  private:
@@ -86,7 +97,7 @@ class JETSTREAM_API Compositor {
     bool moduleStoreEnabled;
     bool infoPanelEnabled;
     bool flowgraphEnabled;
-    U64 helpModalContentId;
+    U64 globalModalContentId;
     I32 nodeContextMenuNodeId;
 
     std::atomic_flag interfaceHalt = ATOMIC_FLAG_INIT;
@@ -112,6 +123,13 @@ class JETSTREAM_API Compositor {
     std::optional<ChangeModuleBackendMail> changeModuleBackendMailbox;
     std::optional<ChangeModuleDataTypeMail> changeModuleDataTypeMailbox;
     std::optional<ToggleModuleMail> toggleModuleMailbox;
+    std::optional<bool> resetFlowgraphMailbox;
+    std::optional<bool> closeFlowgraphMailbox;
+    std::optional<const char*> openFlowgraphUrlMailbox;
+    std::optional<const char*> openFlowgraphPathMailbox;
+    std::optional<const char*> openFlowgraphBlobMailbox;
+    std::optional<bool> saveFlowgraphMailbox;
+    std::optional<bool> newFlowgraphMailbox;
 
     ImGuiID mainNodeId;
 
@@ -127,6 +145,7 @@ class JETSTREAM_API Compositor {
     static const U32 WebGPUColorSelected   = IM_COL32( 49, 135, 121, 255);
     static const U32 DisabledColor         = IM_COL32( 75,  75,  75, 255);
     static const U32 DisabledColorSelected = IM_COL32( 75,  75,  75, 255);
+    static const U32 DefaultColor          = IM_COL32(255, 255, 255, 255);
 };
 
 }  // namespace Jetstream

@@ -34,67 +34,7 @@ class Parser {
 
     typedef std::unordered_map<std::string, Record> RecordMap;
 
-    // Backend Record
-
-    struct BackendFingerprint {
-        std::string device;
-
-        struct Hash {
-            U64 operator()(const BackendFingerprint& m) const {
-                return std::hash<std::string>()(m.device);
-            }
-        };
-
-        struct Equal {
-            bool operator()(const BackendFingerprint& m1, const BackendFingerprint& m2) const {
-                return m1.device == m2.device;
-            }
-        };
-
-        friend std::ostream& operator<<(std::ostream& os, const BackendFingerprint& m) {
-            return os << fmt::format("device: {}", m.device);
-        }
-    };
-
-    struct BackendRecord {
-        BackendFingerprint fingerprint;
-
-        RecordMap configMap;
-    };
-
-    // Viewport Record
-
-    struct ViewportFingerprint {
-        std::string device;
-        std::string platform;
-
-        struct Hash {
-            U64 operator()(const ViewportFingerprint& m) const {
-                U64 h1 = std::hash<std::string>()(m.device);
-                U64 h2 = std::hash<std::string>()(m.platform);
-                return h1 ^ (h2 << 1);
-            }
-        };
-
-        struct Equal {
-            bool operator()(const ViewportFingerprint& m1, const ViewportFingerprint& m2) const {
-                return m1.device == m2.device
-                    && m1.platform == m2.platform;
-            }
-        };
-
-        friend std::ostream& operator<<(std::ostream& os, const ViewportFingerprint& m) {
-            return os << fmt::format("device: {}, platform: {}", m.device, m.platform);
-        }
-    };
-
-    struct ViewportRecord {
-        ViewportFingerprint fingerprint;
-
-        RecordMap configMap;
-    };
-
-    // Module Record
+    // Block Record
 
     struct ModuleFingerprint {
         std::string module;
@@ -188,34 +128,6 @@ class Parser {
         std::function<Result(RecordMap& map)> getInterfaceFunc;
     };
 
-    // Render Record
-
-    struct RenderFingerprint {
-        std::string device;
-
-        struct Hash {
-            U64 operator()(const RenderFingerprint& m) const {
-                return std::hash<std::string>()(m.device);
-            }
-        };
-
-        struct Equal {
-            bool operator()(const RenderFingerprint& m1, const RenderFingerprint& m2) const {
-                return m1.device == m2.device;
-            }
-        };
-
-        friend std::ostream& operator<<(std::ostream& os, const RenderFingerprint& m) {
-            return os << fmt::format("device: {}", m.device);
-        }
-    };
-
-    struct RenderRecord {
-        RenderFingerprint fingerprint;
-
-        RecordMap configMap;
-    };
-
     // Struct SerDes
 
     enum class SerDesOp : uint8_t {
@@ -297,20 +209,23 @@ class Parser {
     // Configuration File Parser
 
     Parser();
-    Parser(const std::string& path);
-    Parser(const char* data);
 
-    Result printAll();
+    Result openFlowgraphFile(const std::string& path);
+    Result openFlowgraphBlob(const char* blob);
 
-    Result importFromFile(Instance& instance);
-    Result exportToFile(Instance& instance);
+    Result printFlowgraph() const;
 
-    Result createViewport(Instance& instance);
-    Result createRender(Instance& instance);
-    Result createBackends(Instance& instance);
-    Result createModules(Instance& instance);
+    Result importFlowgraph(Instance& instance);
+    Result exportFlowgraph(Instance& instance);
 
-    constexpr const std::vector<char>& getFileData() {
+    Result saveFlowgraph(const std::string& path);
+    Result closeFlowgraph();
+
+    constexpr bool haveFlowgraph() const {
+        return !_fileData.empty();
+    }
+
+    constexpr const std::vector<char>& getFlowgraphBlob() const {
         return _fileData;
     }
 
@@ -330,7 +245,7 @@ class Parser {
                                                                            const bool& acceptLess = false);
     static ryml::ConstNodeRef GetNode(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node, const std::string& key);
     static bool HasNode(const ryml::ConstNodeRef&, const ryml::ConstNodeRef& node, const std::string& key);
-    static std::string ResolveReadable(const ryml::ConstNodeRef& var);
+    static std::string ResolveReadable(const ryml::ConstNodeRef& var, const bool& optional = false);
     static std::string ResolveReadableKey(const ryml::ConstNodeRef& var);
     static Record SolveLocalPlaceholder(Instance& instance, const ryml::ConstNodeRef& node);
     static std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);
@@ -440,9 +355,6 @@ class Parser {
 
 }  // namespace Jetstream
 
-template <> struct fmt::formatter<Jetstream::Parser::RenderFingerprint>   : ostream_formatter {};
-template <> struct fmt::formatter<Jetstream::Parser::BackendFingerprint>  : ostream_formatter {};
-template <> struct fmt::formatter<Jetstream::Parser::ViewportFingerprint> : ostream_formatter {};
 template <> struct fmt::formatter<Jetstream::Parser::ModuleFingerprint>   : ostream_formatter {};
 
 #endif

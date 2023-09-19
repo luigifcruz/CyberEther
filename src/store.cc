@@ -7,6 +7,8 @@
 #include "jetstream/viewport/base.hh"
 #include "jetstream/backend/base.hh"
 
+#include "flowgraphs.hh"
+
 namespace Jetstream {
 
 Store& Store::GetInstance() {
@@ -16,25 +18,50 @@ Store& Store::GetInstance() {
 
 Store::Store() {
     modules = defaultModules();
-    viewports = defaultViewports();
-    backends = defaultBackends();
-    renders = defaultRenders();
     moduleList = defaultModuleList();
+    flowgraphList = defaultFlowgraphList();
 }
 
-// TODO: Make this case-unsensitive.
-// TODO: Cache last query.
-ModuleListStore& Store::_moduleList(const std::string& filter) {
-    if (filter.empty()) {
+ModuleListStore& Store::_moduleList(const std::string& filter, const bool& showModules) {
+    // Return all modules if no filter is specified.
+    if (filter.empty() && showModules) {
         return moduleList;
     }
 
+    // Return if the filter is the same as last time. 
+    if (filter == lastModuleListFilter && 
+        showModules == lastModuleListShowModules &&
+        !filteredModuleList.empty()) {
+        return filteredModuleList;
+    }
+    lastModuleListFilter = filter;
+    lastModuleListShowModules = showModules;
+
+    // Apply filter logic.
     filteredModuleList.clear();
 
+    std::string filterLower = filter;
+    std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), ::tolower);
+
     for (const auto& [key, value] : moduleList) {
-        if (value.title.find(filter) != std::string::npos ||
-            value.small.find(filter) != std::string::npos ||
-            value.detailed.find(filter) != std::string::npos) {
+        // Ignore if not a bundle.
+        if (value.isBundle == showModules) {
+            continue;
+        }
+
+        std::string titleLower = value.title;
+        std::transform(titleLower.begin(), titleLower.end(), titleLower.begin(), ::tolower);
+
+        std::string smallLower = value.small;
+        std::transform(smallLower.begin(), smallLower.end(), smallLower.begin(), ::tolower);
+
+        std::string detailedLower = value.detailed;
+        std::transform(detailedLower.begin(), detailedLower.end(), detailedLower.begin(), ::tolower);
+
+        // Case-insensitive search.
+        if (titleLower.find(filterLower) != std::string::npos ||
+            smallLower.find(filterLower) != std::string::npos ||
+            detailedLower.find(filterLower) != std::string::npos) {
             filteredModuleList[key] = value;
         }
     }
@@ -42,54 +69,38 @@ ModuleListStore& Store::_moduleList(const std::string& filter) {
     return filteredModuleList;
 }
 
-BackendStore& Store::defaultBackends() {
-    static BackendStore list = {
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-        { {"metal"},  [](Instance& instance, Parser::BackendRecord& r) { return instance.buildBackend<Device::Metal>(r); } },
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-        { {"vulkan"}, [](Instance& instance, Parser::BackendRecord& r) { return instance.buildBackend<Device::Vulkan>(r); } },
-#endif
-#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
-        { {"webgpu"}, [](Instance& instance, Parser::BackendRecord& r) { return instance.buildBackend<Device::WebGPU>(r); } },
-#endif
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-        { {"cpu"},    [](Instance& instance, Parser::BackendRecord& r) { return instance.buildBackend<Device::CPU>(r);    } },
-#endif
-    };
-    return list;
+FlowgraphListStore& Store::_flowgraphList(const std::string& filter) {
+    // Return if the filter is the same as last time. 
+    if (filter == lastFlowgraphListFilter && !filteredFlowgraphList.empty()) {
+        return filteredFlowgraphList;
+    }
+    lastFlowgraphListFilter = filter;
+
+    // Apply filter logic.
+    filteredFlowgraphList.clear();
+
+    std::string filterLower = filter;
+    std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), ::tolower);
+
+    for (const auto& [key, value] : flowgraphList) {
+        std::string titleLower = value.title;
+        std::transform(titleLower.begin(), titleLower.end(), titleLower.begin(), ::tolower);
+
+        std::string descriptionLower = value.description;
+        std::transform(descriptionLower.begin(), descriptionLower.end(), descriptionLower.begin(), ::tolower);
+
+        // Case-insensitive search.
+        if (titleLower.find(filterLower) != std::string::npos ||
+            descriptionLower.find(filterLower) != std::string::npos) {
+            filteredFlowgraphList[key] = value;
+        }
+    }
+
+    return filteredFlowgraphList;
 }
 
-ViewportStore& Store::defaultViewports() {
-    static ViewportStore list = {
-#ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
-#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
-        { {"metal", "glfw"},  [](Instance& instance, Parser::ViewportRecord& r) { return instance.buildViewport<Viewport::GLFW<Device::Metal>>(r);  } },
-#endif
-#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-        { {"vulkan", "glfw"}, [](Instance& instance, Parser::ViewportRecord& r) { return instance.buildViewport<Viewport::GLFW<Device::Vulkan>>(r); } },
-#endif
-#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
-        { {"webgpu", "glfw"}, [](Instance& instance, Parser::ViewportRecord& r) { return instance.buildViewport<Viewport::GLFW<Device::WebGPU>>(r); } },
-#endif
-#endif
-    };
-    return list;
-}
-
-RenderStore& Store::defaultRenders() {
-    static RenderStore list = {
-#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
-        { {"metal"},  [](Instance& instance, Parser::RenderRecord& r) { return instance.buildRender<Device::Metal>(r);  } },
-#endif
-#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-        { {"vulkan"}, [](Instance& instance, Parser::RenderRecord& r) { return instance.buildRender<Device::Vulkan>(r); } },
-#endif
-#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
-        { {"webgpu"}, [](Instance& instance, Parser::RenderRecord& r) { return instance.buildRender<Device::WebGPU>(r); } },
-#endif
-    };
-    return list;
+FlowgraphListStore& Store::defaultFlowgraphList() {
+    return DefaultFlowgraphListStore;
 }
 
 ModuleStore& Store::defaultModules() {

@@ -154,7 +154,7 @@ bool Parser::HasNode(const ryml::ConstNodeRef&, const ryml::ConstNodeRef& node, 
 }
 
 // TODO: Sanitize string case.
-std::string Parser::ResolveReadable(const ryml::ConstNodeRef& var) {
+std::string Parser::ResolveReadable(const ryml::ConstNodeRef& var, const bool& optional) {
     std::string readableVar;
 
     if (var.is_map()) {
@@ -179,6 +179,10 @@ std::string Parser::ResolveReadable(const ryml::ConstNodeRef& var) {
     if (var.has_val()) {
         var >> readableVar;
         return readableVar;
+    }
+
+    if (optional) {
+        return "N/A";
     }
 
     JST_ERROR("[PARSER] Node value not readable.");

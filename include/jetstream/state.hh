@@ -16,18 +16,6 @@
 
 namespace Jetstream {
 
-struct RenderState {
-    Parser::RenderRecord record;
-};
-
-struct ViewportState {
-    Parser::ViewportRecord record;
-};
-
-struct BackendState {
-    Parser::BackendRecord record;
-};
-
 struct BlockState {
     bool complete;
 

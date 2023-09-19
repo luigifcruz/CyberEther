@@ -6,25 +6,10 @@
 
 namespace Jetstream {
 
-typedef std::unordered_map<Parser::BackendFingerprint,
-                           std::function<Result(Instance&, Parser::BackendRecord&)>,
-                           Parser::BackendFingerprint::Hash,
-                           Parser::BackendFingerprint::Equal> BackendStore;
-
-typedef std::unordered_map<Parser::ViewportFingerprint,
-                           std::function<Result(Instance&, Parser::ViewportRecord&)>,
-                           Parser::ViewportFingerprint::Hash,
-                           Parser::ViewportFingerprint::Equal> ViewportStore;
-
 typedef std::unordered_map<Parser::ModuleFingerprint,
                            std::function<Result(Instance&, Parser::ModuleRecord&)>,
                            Parser::ModuleFingerprint::Hash,
                            Parser::ModuleFingerprint::Equal> ModuleStore;
-
-typedef std::unordered_map<Parser::RenderFingerprint,
-                           std::function<Result(Instance&, Parser::RenderRecord&)>,
-                           Parser::RenderFingerprint::Hash,
-                           Parser::RenderFingerprint::Equal> RenderStore;
 
 struct ModuleListValueStore {
     bool isBundle;
@@ -36,6 +21,14 @@ struct ModuleListValueStore {
 
 typedef std::unordered_map<std::string, ModuleListValueStore> ModuleListStore;
 
+struct FlowgraphListValueStore {
+    std::string title;
+    std::string description;
+    const char* data;
+};
+
+typedef std::unordered_map<std::string, FlowgraphListValueStore> FlowgraphListStore;
+
 // MAYDO: Add new modules during runtime.
 class JETSTREAM_API Store {
  public:
@@ -44,44 +37,37 @@ class JETSTREAM_API Store {
 
     static Store& GetInstance();
 
-    static BackendStore& Backends() {
-        return GetInstance().backends;
-    }
-
-    static ViewportStore& Viewports() {
-        return GetInstance().viewports;
-    }
-
-    static RenderStore& Renders() {
-        return GetInstance().renders;
-    }
-
     static ModuleStore& Modules() {
         return GetInstance().modules;
     }
 
-    static ModuleListStore& ModuleList(const std::string& filter = "") {
-        return GetInstance()._moduleList(filter);
+    static ModuleListStore& ModuleList(const std::string& filter = "", const bool& showModules = true) {
+        return GetInstance()._moduleList(filter, showModules);
+    }
+
+    static FlowgraphListStore& FlowgraphList(const std::string& filter = "") {
+        return GetInstance()._flowgraphList(filter);
     }
 
  private:
     Store();
 
-    BackendStore backends;
-    ViewportStore viewports;
-    RenderStore renders;
-
     ModuleStore modules;
     ModuleListStore moduleList;
     ModuleListStore filteredModuleList;
+    std::string lastModuleListFilter;
+    bool lastModuleListShowModules;
 
-    BackendStore& defaultBackends();
-    ViewportStore& defaultViewports();
-    RenderStore& defaultRenders();
+    FlowgraphListStore flowgraphList;
+    FlowgraphListStore filteredFlowgraphList;
+    std::string lastFlowgraphListFilter;
+    
     ModuleStore& defaultModules();
     ModuleListStore& defaultModuleList();
+    FlowgraphListStore& defaultFlowgraphList();
 
-    ModuleListStore& _moduleList(const std::string& filter);
+    ModuleListStore& _moduleList(const std::string& filter, const bool& modules);
+    FlowgraphListStore& _flowgraphList(const std::string& filter);
 };
 
 }  // namespace Jetstream

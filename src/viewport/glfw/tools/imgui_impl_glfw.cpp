@@ -812,7 +812,7 @@ static void ImGui_ImplGlfw_UpdateMonitors()
 // UPDATE-ME: Hi-DPI Emscripten Fix
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-EM_JS(int, em_get_pixel_ratio, (), {
+EM_JS(float, em_get_pixel_ratio, (), {
     return Module.canvas.width / Module.canvas.widthNative;
 });
 #endif
@@ -825,7 +825,7 @@ void ImGui_ImplGlfw_NewFrame()
 
 // UPDATE-ME: Hi-DPI Emscripten Fix
 #ifdef __EMSCRIPTEN__
-    int pixel_ratio = em_get_pixel_ratio();
+    float pixel_ratio = em_get_pixel_ratio();
     io.DisplayFramebufferScale = ImVec2(pixel_ratio, pixel_ratio);
     int w, h;
     glfwGetWindowSize(bd->Window, &w, &h);

@@ -84,7 +84,6 @@ foreach shader_pkg : shader_pkg_lst
             input : input_lst,
             output : name + '_shaders.hh',
             command : [python_bin, files('parser.py'), meson.project_build_root(), name],
-            build_by_default : true,
         )
     endif
   

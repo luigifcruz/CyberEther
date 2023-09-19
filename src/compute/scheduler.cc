@@ -174,6 +174,12 @@ Result Scheduler::destroy() {
 }
 
 Result Scheduler::compute() {
+    // Return early if the compute pipeline is empty.
+    if (graphs.empty()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        return Result::SUCCESS;
+    }
+
     if (computeHalt.test()) {
         computeHalt.wait(true);
         return Result::SUCCESS;
@@ -214,6 +220,11 @@ Result Scheduler::compute() {
 }
 
 Result Scheduler::present() {
+    // Return early if the graphical pipeline is empty.
+    if (validPresentModuleStates.empty()) {
+        return Result::SUCCESS;
+    }
+
     if (presentHalt.test()) {
         return Result::SUCCESS;
     }

@@ -5,11 +5,11 @@ namespace Jetstream::Viewport {
 using Implementation = GLFW<Device::Metal>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
-    JST_DEBUG("Creating macOS viewport.");
+    JST_DEBUG("[Metal] Creating GLFW viewport.");
 }
 
 Implementation::~GLFW() {
-    JST_DEBUG("Destroying macOS viewport.");
+    JST_DEBUG("[Metal] Destroying GLFW viewport.");
 }
 
 Result Implementation::create() {
