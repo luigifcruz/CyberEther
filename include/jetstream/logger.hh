@@ -8,9 +8,7 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
+#include "jetstream_config.hh"
 
 std::string& JST_LOG_LAST_ERROR();
 std::string& JST_LOG_LAST_FATAL();
@@ -19,7 +17,7 @@ std::string& JST_LOG_LAST_FATAL();
 #define _JST_LOG_ENDL          std::endl;
 #define _JST_LOG_FORMAT        fmt::format
 
-#ifdef TARGET_OS_IPHONE
+#ifdef JST_OS_IOS
 #define _JST_LOG_TAINT(first, ...)   _JST_LOG_FORMAT(__VA_ARGS__)
 #else
 #define _JST_LOG_TAINT(...)          _JST_LOG_FORMAT(__VA_ARGS__)

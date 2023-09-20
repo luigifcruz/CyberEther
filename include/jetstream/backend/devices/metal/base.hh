@@ -4,10 +4,6 @@
 #include "jetstream/backend/devices/metal/bindings.hpp"
 #include "jetstream/backend/config.hh"
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
-
 namespace Jetstream::Backend {
 
 class Metal {

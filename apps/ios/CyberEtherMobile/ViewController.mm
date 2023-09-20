@@ -52,14 +52,19 @@
     
     [NSThread detachNewThreadSelector:@selector(computeThread) toTarget:self withObject:nil];
     
-    // Add graphical thread
+    // Add graphical thread.
+    // TODO: Update this value when on Low Power Mode to conserver power.
     timer = [CADisplayLink displayLinkWithTarget:self selector:@selector(draw)];
     timer.preferredFramesPerSecond = 120;
     [timer addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
     
-    // Add long press gesture recognizer
+    // Add long press gesture recognizer.
     UILongPressGestureRecognizer *longPressRecognizer = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     [self.view addGestureRecognizer:longPressRecognizer];
+    
+    // Add Apple Pencil hover gesture recognizer.
+    UIHoverGestureRecognizer *hoverRecognizer = [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(handleHover:)];
+    [self.view addGestureRecognizer:hoverRecognizer];
 }
 
 - (void)computeThread {
@@ -144,10 +149,22 @@
     [self updateIOWithTouchEvent:event];
 }
 
+-(void)handleHover:(UIHoverGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer.state == UIGestureRecognizerStateBegan ||
+        gestureRecognizer.state == UIGestureRecognizerStateChanged) {
+        CGPoint hoverLocation = [gestureRecognizer locationInView:gestureRecognizer.view];
+        instance.viewport().addMousePosEvent(hoverLocation.x, hoverLocation.y);
+    } else if (gestureRecognizer.state == UIGestureRecognizerStateEnded ||
+               gestureRecognizer.state == UIGestureRecognizerStateCancelled) {
+        instance.viewport().addMousePosEvent(-FLT_MAX, -FLT_MAX);
+    }
+}
+
 -(void)handleLongPress:(UILongPressGestureRecognizer *)gestureRecognizer {
     if (gestureRecognizer.state == UIGestureRecognizerStateBegan) {
         instance.viewport().addMouseButtonEvent(1, true);
-    } else if (gestureRecognizer.state == UIGestureRecognizerStateEnded || gestureRecognizer.state == UIGestureRecognizerStateCancelled) {
+    } else if (gestureRecognizer.state == UIGestureRecognizerStateEnded || 
+               gestureRecognizer.state == UIGestureRecognizerStateCancelled) {
         instance.viewport().addMouseButtonEvent(1, false);
     }
 }

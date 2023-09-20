@@ -73,7 +73,7 @@ U64 Metal::getThermalState() const {
 PhysicalDeviceType Metal::getPhysicalDeviceType() const {
     PhysicalDeviceType deviceType = PhysicalDeviceType::INTEGRATED;
 
-#ifndef TARGET_OS_IPHONE
+#ifndef JST_OS_IOS
     if (device->removable()) {
         deviceType = PhysicalDeviceType::DISCRETE;
     }
