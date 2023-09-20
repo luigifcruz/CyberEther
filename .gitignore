@@ -12,7 +12,7 @@ subprojects/*
 !subprojects/jetstream
 
 build
-build-browser
+build-*
 
 !*.wrap
 !packagefiles

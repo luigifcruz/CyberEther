@@ -8,6 +8,10 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 std::string& JST_LOG_LAST_ERROR();
 std::string& JST_LOG_LAST_FATAL();
 
