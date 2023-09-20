@@ -24,7 +24,6 @@
 		2A8E4CA62A675B7E0049C84B /* FFTW.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9D2A675B7E0049C84B /* FFTW.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		2A8E4CA72A675B7E0049C84B /* Jetstream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */; platformFilter = ios; };
 		2A8E4CA82A675B7E0049C84B /* Jetstream.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		2AEA909F2ABAA5BD00B7F33F /* BuildResources in Resources */ = {isa = PBXBuildFile; fileRef = 2AEA909E2ABAA5BD00B7F33F /* BuildResources */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -63,7 +62,6 @@
 		2A8E4C9C2A675B7E0049C84B /* FMT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FMT.framework; path = CyberEtherMobile/Library/lib/FMT.framework; sourceTree = "<group>"; };
 		2A8E4C9D2A675B7E0049C84B /* FFTW.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FFTW.framework; path = CyberEtherMobile/Library/lib/FFTW.framework; sourceTree = "<group>"; };
 		2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Jetstream.framework; path = CyberEtherMobile/Library/lib/Jetstream.framework; sourceTree = "<group>"; };
-		2AEA909E2ABAA5BD00B7F33F /* BuildResources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = BuildResources; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,7 +83,6 @@
 		2A785665293878C20012F738 = {
 			isa = PBXGroup;
 			children = (
-				2AEA909E2ABAA5BD00B7F33F /* BuildResources */,
 				2A785670293878C20012F738 /* CyberEtherMobile */,
 				2A78566F293878C20012F738 /* Products */,
 				2A78568A2938793F0012F738 /* Frameworks */,
@@ -191,7 +188,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				2A785681293878C40012F738 /* LaunchScreen.storyboard in Resources */,
-				2AEA909F2ABAA5BD00B7F33F /* BuildResources in Resources */,
 				2A78567E293878C40012F738 /* Assets.xcassets in Resources */,
 				2A78567C293878C20012F738 /* Main.storyboard in Resources */,
 			);
