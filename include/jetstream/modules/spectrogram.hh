@@ -61,11 +61,11 @@ class Spectrogram : public Module, public Compute, public Present {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "spectrogram";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Spectrogram";
     }
 

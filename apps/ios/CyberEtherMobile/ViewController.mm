@@ -7,8 +7,6 @@
 
 #import "ViewController.h"
 
-#include "demo_config.h"
-
 @interface ViewController ()
 
 @end
@@ -47,10 +45,10 @@
     JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg,
                                                      (__bridge CA::MetalLayer*)layer));
     
+    JST_CHECK_THROW(instance.buildDefaultInterface());
+    
     // Attach configured layer to view.
     [self.view.layer addSublayer:layer];
-    
-    instance.fromBlob(DemoConfigBlob);
     
     [NSThread detachNewThreadSelector:@selector(computeThread) toTarget:self withObject:nil];
     

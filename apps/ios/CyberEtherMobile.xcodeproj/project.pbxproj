@@ -45,7 +45,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		2A601C9F2AA8313800281684 /* demo_config.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = demo_config.h; sourceTree = "<group>"; };
 		2A78566E293878C20012F738 /* CyberEtherMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CyberEtherMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2A785671293878C20012F738 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		2A785672293878C20012F738 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -106,7 +105,6 @@
 				2A785674293878C20012F738 /* SceneDelegate.h */,
 				2A785675293878C20012F738 /* SceneDelegate.m */,
 				2A785677293878C20012F738 /* ViewController.h */,
-				2A601C9F2AA8313800281684 /* demo_config.h */,
 				2A785678293878C20012F738 /* ViewController.mm */,
 				2A78567A293878C20012F738 /* Main.storyboard */,
 				2A78567D293878C40012F738 /* Assets.xcassets */,
@@ -158,7 +156,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastUpgradeCheck = 1410;
+				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					2A78566D293878C20012F738 = {
 						CreatedOnToolsVersion = 14.1;
@@ -214,7 +212,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cd ${PROJECT_DIR}/CyberEtherMobile/Library/lib\n\nrm -rf Jetstream.framework\nrm -rf FMT.framework\nrm -rf SoapySDR.framework\nrm -rf SoapyRemote.framework\nrm -rf FFTW.framework\n\nlipo -create libjetstream.dylib -output Jetstream\nlipo -create libfmt.dylib -output FMT\nlipo -create libSoapySDR.dylib -output SoapySDR\nlipo -create libSoapyRemote.dylib -output SoapyRemote\nlipo -create libfftw3f.dylib -output FFTW\n\nmkdir Jetstream.framework\nmkdir FMT.framework\nmkdir SoapySDR.framework\nmkdir SoapyRemote.framework\nmkdir FFTW.framework\n\nmv Jetstream Jetstream.framework\nmv FMT FMT.framework\nmv SoapySDR SoapySDR.framework\nmv SoapyRemote SoapyRemote.framework\nmv FFTW FFTW.framework\n\nsed 's/XXX/Jetstream/g' ../resources/Info.plist > Jetstream.framework/Info.plist\nsed 's/XXX/FMT/g' ../resources/Info.plist > FMT.framework/Info.plist\nsed 's/XXX/SoapySDR/g' ../resources/Info.plist > SoapySDR.framework/Info.plist\nsed 's/XXX/SoapyRemote/g' ../resources/Info.plist > SoapyRemote.framework/Info.plist\nsed 's/XXX/FFTW/g' ../resources/Info.plist > FFTW.framework/Info.plist\n\ninstall_name_tool -id \"@executable_path/Frameworks/Jetstream.framework/Jetstream\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -id \"@executable_path/Frameworks/FMT.framework/FMT\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/FMT.framework/FMT\n\ninstall_name_tool -id \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapySDR.framework/SoapySDR\n\ninstall_name_tool -id \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n\ninstall_name_tool -id \"@executable_path/Frameworks/FFTW.framework/FFTW\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/FFTW.framework/FFTW\n\ninstall_name_tool -change \"/Users/luigi/sandbox/CyberEtherMobile/CyberEtherMobile/Library/lib/libfmt.dylib\" \"@executable_path/Frameworks/FMT.framework/FMT\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"/Users/luigi/sandbox/CyberEtherMobile/CyberEtherMobile/Library/lib/libSoapySDR.dylib\" \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"/Users/luigi/sandbox/CyberEtherMobile/CyberEtherMobile/Library/lib/libfftw3f.dylib\" \"@executable_path/Frameworks/FFTW.framework/FFTW\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"/Users/luigi/sandbox/CyberEtherMobile/CyberEtherMobile/Library/lib/libSoapyRemote.dylib\" \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n\ninstall_name_tool -change \"/Users/luigi/sandbox/CyberEtherMobile/CyberEtherMobile/Library/lib/libSoapySDR.dylib\" \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n";
+			shellScript = "cd ${PROJECT_DIR}/CyberEtherMobile/Library/lib\n\nrm -rf Jetstream.framework\nrm -rf FMT.framework\nrm -rf SoapySDR.framework\nrm -rf SoapyRemote.framework\nrm -rf FFTW.framework\n\nlipo -create libjetstream.dylib -output Jetstream\nlipo -create libfmt.dylib -output FMT\nlipo -create libSoapySDR.dylib -output SoapySDR\nlipo -create libSoapyRemote.dylib -output SoapyRemote\nlipo -create libfftw3f.dylib -output FFTW\n\nmkdir Jetstream.framework\nmkdir FMT.framework\nmkdir SoapySDR.framework\nmkdir SoapyRemote.framework\nmkdir FFTW.framework\n\nmv Jetstream Jetstream.framework\nmv FMT FMT.framework\nmv SoapySDR SoapySDR.framework\nmv SoapyRemote SoapyRemote.framework\nmv FFTW FFTW.framework\n\nsed 's/XXX/Jetstream/g' ${PROJECT_DIR}/CyberEtherMobile/resources/Info.plist > Jetstream.framework/Info.plist\nsed 's/XXX/FMT/g' ${PROJECT_DIR}/CyberEtherMobile/resources/Info.plist > FMT.framework/Info.plist\nsed 's/XXX/SoapySDR/g' ${PROJECT_DIR}/CyberEtherMobile/resources/Info.plist > SoapySDR.framework/Info.plist\nsed 's/XXX/SoapyRemote/g' ${PROJECT_DIR}/CyberEtherMobile/resources/Info.plist > SoapyRemote.framework/Info.plist\nsed 's/XXX/FFTW/g' ${PROJECT_DIR}/CyberEtherMobile/resources/Info.plist > FFTW.framework/Info.plist\n\ninstall_name_tool -id \"@executable_path/Frameworks/Jetstream.framework/Jetstream\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -id \"@executable_path/Frameworks/FMT.framework/FMT\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/FMT.framework/FMT\n\ninstall_name_tool -id \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapySDR.framework/SoapySDR\n\ninstall_name_tool -id \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n\ninstall_name_tool -id \"@executable_path/Frameworks/FFTW.framework/FFTW\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/FFTW.framework/FFTW\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libfmt.dylib\" \"@executable_path/Frameworks/FMT.framework/FMT\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapySDR.dylib\" \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapyRemote.dylib\" \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libfftw3f.dylib\" \"@executable_path/Frameworks/FFTW.framework/FFTW\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapyRemote.dylib\" \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapySDR.dylib\" \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -257,6 +255,7 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -289,6 +288,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -308,7 +308,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
-				STRIP_SWIFT_SYMBOLS = YES;
 			};
 			name = Debug;
 		};
@@ -317,6 +316,7 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -350,6 +350,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 3;
@@ -364,7 +365,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
-				STRIP_SWIFT_SYMBOLS = YES;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -383,6 +383,7 @@
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = V67PWGA5ZA;
 				EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE = NO;
+				ENABLE_MODULE_VERIFIER = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/CyberEtherMobile",
@@ -394,9 +395,11 @@
 				INFOPLIST_FILE = CyberEtherMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = CyberEther;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "${PRODUCT_NAME} uses the local network to stream data from a Software Defined Radio connected in the same network.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
@@ -409,12 +412,14 @@
 					"$(PROJECT_DIR)/CyberEtherMobile/Library/lib",
 				);
 				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu11 gnu++20";
 				PRODUCT_BUNDLE_IDENTIFIER = ltd.luigi.CyberEtherMobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = NO;
-				STRIP_SWIFT_SYMBOLS = YES;
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_ENABLE_EMIT_CONST_VALUES = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -438,6 +443,7 @@
 				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = V67PWGA5ZA;
 				EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE = NO;
+				ENABLE_MODULE_VERIFIER = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/CyberEtherMobile",
@@ -449,9 +455,11 @@
 				INFOPLIST_FILE = CyberEtherMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = CyberEther;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "${PRODUCT_NAME} uses the local network to stream data from a Software Defined Radio connected in the same network.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
@@ -464,13 +472,15 @@
 					"$(PROJECT_DIR)/CyberEtherMobile/Library/lib",
 				);
 				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu11 gnu++20";
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = ltd.luigi.CyberEtherMobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = NO;
-				STRIP_SWIFT_SYMBOLS = YES;
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_ENABLE_EMIT_CONST_VALUES = NO;
 				SWIFT_VERSION = 5.0;

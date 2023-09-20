@@ -13,14 +13,21 @@ std::string& JST_LOG_LAST_FATAL();
 
 #define _JST_LOG_SINK          std::cout
 #define _JST_LOG_ENDL          std::endl;
+#define _JST_LOG_FORMAT        fmt::format
 
-#define _JST_LOG_BOLD(...)     fmt::format(fmt::emphasis::bold, __VA_ARGS__)
-#define _JST_LOG_DEFAULT(...)  fmt::format(__VA_ARGS__)
-#define _JST_LOG_ORANGE(...)   fmt::format(fmt::fg(fmt::color::orange), __VA_ARGS__)
-#define _JST_LOG_YELLOW(...)   fmt::format(fmt::fg(fmt::color::yellow), __VA_ARGS__)
-#define _JST_LOG_CYAN(...)     fmt::format(fmt::fg(fmt::color::aqua), __VA_ARGS__)
-#define _JST_LOG_RED(...)      fmt::format(fmt::fg(fmt::color::red), __VA_ARGS__)
-#define _JST_LOG_MAGENTA(...)  fmt::format(fmt::fg(fmt::color::fuchsia), __VA_ARGS__)
+#ifdef TARGET_OS_IPHONE
+#define _JST_LOG_TAINT(first, ...)   _JST_LOG_FORMAT(__VA_ARGS__)
+#else
+#define _JST_LOG_TAINT(...)          _JST_LOG_FORMAT(__VA_ARGS__)
+#endif
+
+#define _JST_LOG_DEFAULT(...)  _JST_LOG_FORMAT(__VA_ARGS__)
+#define _JST_LOG_BOLD(...)     _JST_LOG_TAINT(fmt::emphasis::bold, __VA_ARGS__)
+#define _JST_LOG_ORANGE(...)   _JST_LOG_TAINT(fmt::fg(fmt::color::orange), __VA_ARGS__)
+#define _JST_LOG_YELLOW(...)   _JST_LOG_TAINT(fmt::fg(fmt::color::yellow), __VA_ARGS__)
+#define _JST_LOG_CYAN(...)     _JST_LOG_TAINT(fmt::fg(fmt::color::aqua), __VA_ARGS__)
+#define _JST_LOG_RED(...)      _JST_LOG_TAINT(fmt::fg(fmt::color::red), __VA_ARGS__)
+#define _JST_LOG_MAGENTA(...)  _JST_LOG_TAINT(fmt::fg(fmt::color::fuchsia), __VA_ARGS__)
 
 #define _JST_LOG_NAME          _JST_LOG_BOLD("JETSTREAM ")
 #define _JST_LOG_SEPR          _JST_LOG_BOLD("| ")

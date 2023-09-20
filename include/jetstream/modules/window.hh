@@ -60,11 +60,11 @@ class Window : public Module {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "window";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Window";
     }
 

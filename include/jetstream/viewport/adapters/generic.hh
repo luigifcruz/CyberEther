@@ -27,8 +27,8 @@ class Generic {
     explicit Generic(const Config& config);   
     virtual ~Generic() = default;
 
-    virtual std::string prettyName() const = 0;
-    virtual std::string name() const = 0;
+    virtual std::string_view prettyName() const = 0;
+    virtual std::string_view name() const = 0;
     virtual Device device() const = 0;
 
     virtual Result create() = 0;

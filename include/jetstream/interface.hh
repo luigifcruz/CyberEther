@@ -32,8 +32,8 @@ class JETSTREAM_API Interface {
     };
 
     virtual constexpr Device device() const = 0;
-    virtual constexpr std::string name() const = 0;
-    virtual constexpr std::string prettyName() const = 0;
+    virtual std::string_view name() const = 0;
+    virtual std::string_view prettyName() const = 0;
 
     std::string title() const {
         return fmt::format("{} ({})", prettyName(), locale);

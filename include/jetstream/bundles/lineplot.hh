@@ -58,11 +58,11 @@ class Lineplot : public Bundle {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "lineplot-view";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Lineplot";
     }
 

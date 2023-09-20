@@ -53,6 +53,10 @@ Result Compositor::removeModule(const Locale& locale) {
 
     JST_CHECK(refreshState());
 
+    if (nodeStates.empty()) {
+        JST_CHECK(instance.destroy());
+    }
+
     return Result::SUCCESS;
 }
 
@@ -418,7 +422,6 @@ Result Compositor::processInteractions() {
 
     if (openFlowgraphBlobMailbox) {
         const auto& blob = *openFlowgraphBlobMailbox;
-        ImGui::InsertNotification({ ImGuiToastType_Success, 5000, "Loading flowgraph..." });
         JST_CHECK_NOTIFY(instance.openFlowgraphBlob(blob));
         openFlowgraphBlobMailbox.reset();
     }
