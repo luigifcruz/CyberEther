@@ -1098,7 +1098,7 @@ Result Compositor::drawStatic() {
             ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path or URL of a flowgraph file here:");
             static char globalModalPath[1024] = "";
             if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody | 
-                                                            ImGuiTableFlags_NoBordersInBodyUntilResize)) {
+                                                             ImGuiTableFlags_NoBordersInBodyUntilResize)) {
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 80.0f);
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 20.0f);
 
@@ -1118,7 +1118,8 @@ Result Compositor::drawStatic() {
                 ImGui::EndTable();
             }
 
-            if (ImGui::Button(ICON_FA_PLAY " Load", ImVec2(0, 50.0f / scalingFactor))) {
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+            if (ImGui::Button(ICON_FA_PLAY " Load")) {
                 if (strlen(globalModalPath) == 0) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
                 } else if (strstr(globalModalPath, "http://") || strstr(globalModalPath, "https://")) {
@@ -1131,6 +1132,8 @@ Result Compositor::drawStatic() {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "The specified path doesn't exist." });
                 }
             }
+            ImGui::PopStyleVar();
+
             ImGui::SameLine();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f / scalingFactor);
