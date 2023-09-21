@@ -13,7 +13,7 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
     dependency('threads'),
-    dependency('fmt'),
+    dependency('fmt', version: '>=9.1.0'),
 ]
 inc_lst = [
     include_directories('include'),
