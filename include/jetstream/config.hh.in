@@ -15,8 +15,7 @@
 #else
 #error "Unknown Apple platform"
 #endif
-#elif defined(__linux__) || defined(__linux) ||
-      defined(__unix__)  || defined(__unix)
+#elif defined(__linux__) || defined(__linux) || defined(__unix__)  || defined(__unix)
 #define JST_OS_LINUX
 #else
 #error "System Not Supported"

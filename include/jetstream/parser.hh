@@ -221,7 +221,7 @@ class Parser {
     Result saveFlowgraph(const std::string& path);
     Result closeFlowgraph();
 
-    constexpr bool haveFlowgraph() const {
+    bool haveFlowgraph() const {
         return !_fileData.empty();
     }
 
