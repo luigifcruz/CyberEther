@@ -14,16 +14,16 @@
 #include <cstdarg>
 #include <cstdio>
 
-#define NOTIFY_MAX_MSG_LENGTH           4096        // Max message content length
-#define NOTIFY_PADDING_X                20.f        // Bottom-left X padding
-#define NOTIFY_PADDING_Y                20.f        // Bottom-left Y padding
-#define NOTIFY_PADDING_MESSAGE_Y        10.f        // Padding Y between each message
-#define NOTIFY_FADE_IN_OUT_TIME         150         // Fade in and out duration
-#define NOTIFY_DEFAULT_DISMISS          3000        // Auto dismiss after X ms (default, applied only of no data provided in constructors)
-#define NOTIFY_OPACITY                  1.0f        // 0-1 Toast opacity
+#define NOTIFY_MAX_MSG_LENGTH           (uint64_t)4096   // Max message content length
+#define NOTIFY_PADDING_X                (float)20.0f     // Bottom-left X padding
+#define NOTIFY_PADDING_Y                (float)20.0f     // Bottom-left Y padding
+#define NOTIFY_PADDING_MESSAGE_Y        (float)10.0f     // Padding Y between each message
+#define NOTIFY_FADE_IN_OUT_TIME         (uint64_t)150    // Fade in and out duration
+#define NOTIFY_DEFAULT_DISMISS          (uint64_t)3000   // Auto dismiss after X ms (default, applied only of no data provided in constructors)
+#define NOTIFY_OPACITY                  (float)1.0f      // 0-1 Toast opacity
 #define NOTIFY_TOAST_FLAGS              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_NoSavedSettings
-#define NOTIFY_NULL_OR_EMPTY(str)        (!str ||! strlen(str))
-#define NOTIFY_FORMAT(fn, format, ...)	 if (format) { va_list args; va_start(args, format); fn(format, args); va_end(args); }
+#define NOTIFY_NULL_OR_EMPTY(str)       (!str ||! strlen(str))
+#define NOTIFY_FORMAT(fn, format, ...)	if (format) { va_list args; va_start(args, format); fn(format, args); va_end(args); }
 
 typedef int ImGuiToastType;
 typedef int ImGuiToastPhase;
@@ -78,16 +78,16 @@ private:
 
 public:
 
-    inline auto set_title(const char* format, ...) -> void { NOTIFY_FORMAT(this->set_title, format); }
+    inline void set_title(const char* format, ...) { NOTIFY_FORMAT(this->set_title, format); }
 
-    inline auto set_content(const char* format, ...) -> void { NOTIFY_FORMAT(this->set_content, format); }
+    inline void set_content(const char* format, ...) { NOTIFY_FORMAT(this->set_content, format); }
 
-    inline auto set_type(const ImGuiToastType& type) -> void { IM_ASSERT(type < ImGuiToastType_COUNT); this->type = type; };
+    inline void set_type(const ImGuiToastType& type) { IM_ASSERT(type < ImGuiToastType_COUNT); this->type = type; };
 
 public:
     // Getters
 
-    inline auto get_title() -> char* { return this->title; };
+    inline const char* get_title() { return this->title; };
 
     const char* get_default_title() {
         if (!strlen(this->title))
@@ -110,7 +110,7 @@ public:
         return this->title;
     };
 
-    inline auto get_type() -> const ImGuiToastType& { return this->type; };
+    inline const ImGuiToastType& get_type() { return this->type; };
 
     inline const ImVec4& get_color()
     {
@@ -156,13 +156,13 @@ public:
         }
     }
 
-    inline auto get_content() -> char* { return this->content; };
+    inline char* get_content() { return this->content; };
 
-    inline auto get_elapsed_time() { return get_tick_count() - this->creation_time; }
+    inline uint64_t get_elapsed_time() { return get_tick_count() - this->creation_time; }
 
     inline const ImGuiToastPhase& get_phase()
     {
-        const auto elapsed = get_elapsed_time();
+        const uint64_t elapsed = get_elapsed_time();
 
         if (elapsed > NOTIFY_FADE_IN_OUT_TIME + this->dismiss_time + NOTIFY_FADE_IN_OUT_TIME)
         {
@@ -186,10 +186,10 @@ public:
         }
     }
 
-    inline auto get_fade_percent() -> const float
+    inline float get_fade_percent()
     {
-        const auto phase = get_phase();
-        const auto elapsed = get_elapsed_time();
+        const uint64_t phase = get_phase();
+        const uint64_t elapsed = get_elapsed_time();
 
         if (phase == ImGuiToastPhase_FadeIn)
         {
@@ -203,7 +203,7 @@ public:
         return 1.f * NOTIFY_OPACITY;
     }
 
-    inline static auto get_tick_count() -> const unsigned long long
+    inline static unsigned long long get_tick_count()
     {
         using namespace std::chrono;
         return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
@@ -259,7 +259,7 @@ namespace ImGui
 
         float height = 0.f;
 
-        for (auto i = 0; i < notifications.size(); i++)
+        for (uint64_t i = 0; i < notifications.size(); i++)
         {
             auto* current_toast = &notifications[i];
 
@@ -283,7 +283,7 @@ namespace ImGui
 
             // Generate new unique name for this toast
             char window_name[50];
-            snprintf(window_name, sizeof(window_name), "##TOAST%d", i);
+            snprintf(window_name, sizeof(window_name), "##TOAST%ld", i);
 
             //PushStyleColor(ImGuiCol_Text, text_color);
             SetNextWindowBgAlpha(opacity);
