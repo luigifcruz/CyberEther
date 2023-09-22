@@ -16,8 +16,9 @@ class WindowImp<Device::WebGPU> : public Window {
     explicit WindowImp(const Config& config,
                        std::shared_ptr<Viewport::Adapter<Device::WebGPU>>& viewport);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
+
     Result begin();
     Result end();
 

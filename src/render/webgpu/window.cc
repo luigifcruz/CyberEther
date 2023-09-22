@@ -31,6 +31,8 @@ Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating window.");
 
+    JST_CHECK(Window::create());
+
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
     queue = device.GetQueue();    
@@ -53,7 +55,9 @@ Result Implementation::destroy() {
 
     if (config.imgui) {
         JST_CHECK(destroyImgui());
-    } 
+    }
+
+    JST_CHECK(Window::destroy());
 
     return Result::SUCCESS;
 }
@@ -76,9 +80,7 @@ Result Implementation::createImgui() {
     
     JST_CHECK(viewport->createImgui());
 
-    const auto& scale = viewport->calculateScale(config.scale);
-    ApplyImGuiTheme(scale);
-    ApplyImNodesTheme(scale);
+    ScaleStyle(*viewport);
 
     ImGui_ImplWGPU_CreateDeviceObjects();
     
@@ -109,8 +111,7 @@ Result Implementation::recreate() {
 Result Implementation::beginImgui() {
     ImGui_ImplWGPU_NewFrame();
 
-    ApplyImGuiScale();
-    ApplyImNodesScale();
+    ScaleStyle(*viewport);
 
     ImGui::NewFrame();
 

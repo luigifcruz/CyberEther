@@ -34,6 +34,8 @@ Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating window.");
 
+    JST_CHECK(Window::create());
+
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
@@ -172,6 +174,8 @@ Result Implementation::destroy() {
     }
 
     vkDestroyRenderPass(device, renderPass, nullptr);
+
+    JST_CHECK(Window::destroy());
     
     return Result::SUCCESS;
 }
@@ -199,9 +203,7 @@ Result Implementation::createImgui() {
     
     JST_CHECK(viewport->createImgui());
 
-    const auto& scale = viewport->calculateScale(config.scale);
-    ApplyImGuiTheme(scale);
-    ApplyImNodesTheme(scale);
+    ScaleStyle(*viewport);
 
     auto& backend = Backend::State<Device::Vulkan>();
     
@@ -251,8 +253,7 @@ Result Implementation::destroyImgui() {
 Result Implementation::beginImgui() {
     ImGui_ImplVulkan_NewFrame();
 
-    ApplyImGuiScale();
-    ApplyImNodesScale();
+    ScaleStyle(*viewport);
 
     ImGui::NewFrame();
 

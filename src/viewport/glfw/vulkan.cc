@@ -163,7 +163,7 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
-F32 Implementation::calculateScale(const F32& scale) {
+F32 Implementation::scale(const F32& scale) const {
     I32 w_width, w_height;
     glfwGetWindowSize(window, &w_width, &w_height);
 
