@@ -1,6 +1,7 @@
 #include "jetstream/render/vulkan/program.hh"
 #include "jetstream/render/vulkan/texture.hh"
 #include "jetstream/render/vulkan/surface.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 

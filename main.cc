@@ -9,7 +9,7 @@ int main(int argc, char* argv[]) {
 
     Instance instance;
 
-    instance.buildDefaultInterface();
+    JST_CHECK_THROW(instance.buildDefaultInterface());
 
     if (argc >= 2) {
         JST_CHECK_THROW(instance.openFlowgraphFile(argv[1]));

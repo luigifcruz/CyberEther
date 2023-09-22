@@ -5,31 +5,8 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
-#include <vulkan/vk_enum_string_helper.h>
 
 #include "jetstream/backend/config.hh"
-
-#ifndef JST_VK_CHECK
-#define JST_VK_CHECK(f, callback) { \
-    VkResult err = (f); \
-    if (err != VK_SUCCESS) { \
-    callback(); \
-    JST_ERROR("[VULKAN] Error code: {}", string_VkResult(err)); \
-    return Result::ERROR; \
-    } \
-}
-#endif  // JST_VK_CHECK
-
-#ifndef JST_VK_CHECK_THROW
-#define JST_VK_CHECK_THROW(f, callback) { \
-    VkResult err = (f); \
-    if (err != VK_SUCCESS) { \
-    callback(); \
-    JST_FATAL("[VULKAN] Error code: {}", string_VkResult(err)); \
-    JST_CHECK_THROW(Result::FATAL); \
-    } \
-}
-#endif  // JST_VK_CHECK_THROW
 
 namespace Jetstream::Backend {
 

@@ -79,7 +79,7 @@ Result Implementation::createImgui() {
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
-#ifndef TARGET_OS_IPHONE
+#ifndef JST_OS_IOS
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 #endif
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;

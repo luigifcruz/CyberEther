@@ -62,11 +62,11 @@ class Waterfall : public Bundle {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "waterfall-view";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Waterfall";
     }
 

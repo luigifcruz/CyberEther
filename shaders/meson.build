@@ -80,10 +80,14 @@ foreach shader_pkg : shader_pkg_lst
     # Package all translations into a single header.
 
     if python_bin.found()
-        custom_target(
+        shader_obj = custom_target(
             input : input_lst,
             output : name + '_shaders.hh',
             command : [python_bin, files('parser.py'), meson.project_build_root(), name],
+        )
+
+        dep_lst += declare_dependency(
+            sources: shader_obj,
         )
     endif
   

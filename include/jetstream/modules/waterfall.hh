@@ -67,11 +67,11 @@ class Waterfall : public Module, public Compute, public Present {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "waterfall";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Waterfall";
     }
 

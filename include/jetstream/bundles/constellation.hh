@@ -55,11 +55,11 @@ class Constellation : public Bundle {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "constellation-view";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Constellation";
     }
 

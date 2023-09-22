@@ -116,7 +116,7 @@ class JETSTREAM_API Instance {
             }
 
             std::vector<std::string> parts;
-            std::string moduleName = module->name();
+            const auto moduleName = std::string(module->name());
             std::stringstream ss(moduleName);
             std::string item;
 

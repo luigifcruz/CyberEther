@@ -63,11 +63,11 @@ class Lineplot : public Module, public Compute, public Present {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "lineplot";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Lineplot";
     }
 

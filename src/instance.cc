@@ -84,6 +84,8 @@ Result Instance::closeFlowgraph() {
         JST_CHECK(eraseModule(locale));
     }
 
+    JST_CHECK(_compositor.destroy());
+
     JST_CHECK(_parser->closeFlowgraph());
 
     return Result::SUCCESS;
@@ -115,23 +117,30 @@ Result Instance::buildDefaultInterface() {
     renderCfg.imgui = true;
     renderCfg.scale = 1.0;
 
-    if (!_viewport && !_window) {
+    if (!_viewport) {
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 #if   defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
         JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(viewportCfg));
-        JST_CHECK(this->buildRender<Device::Metal>(renderCfg));
 #elif defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
         JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(viewportCfg));
-        JST_CHECK(this->buildRender<Device::Vulkan>(renderCfg));
 #elif defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
         JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(viewportCfg));
-        JST_CHECK(this->buildRender<Device::WebGPU>(renderCfg));
-#else
-        JST_ERROR("[INSTANCE] No render backend available.");
-        JST_CHECK(Result::ERROR);
 #endif
 #else
         JST_ERROR("[INSTANCE] No viewport backend available.");
+        return Result::ERROR;
+#endif
+    }
+
+    if (!_window) {
+#if   defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
+        JST_CHECK(this->buildRender<Device::Metal>(renderCfg));
+#elif defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+        JST_CHECK(this->buildRender<Device::Vulkan>(renderCfg));
+#elif defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
+        JST_CHECK(this->buildRender<Device::WebGPU>(renderCfg));
+#else
+        JST_ERROR("[INSTANCE] No render backend available.");
         JST_CHECK(Result::ERROR);
 #endif
     }

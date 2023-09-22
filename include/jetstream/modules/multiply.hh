@@ -63,11 +63,11 @@ class Multiply : public Module, public Compute {
         return D;
     }
 
-    constexpr std::string name() const {
+    std::string_view name() const {
         return "multiply";
     }
 
-    constexpr std::string prettyName() const {
+    std::string_view prettyName() const {
         return "Multiply";
     }
 
