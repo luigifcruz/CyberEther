@@ -212,7 +212,7 @@ Result Instance::unlinkModules(const Locale inputLocale, const Locale outputLoca
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(inputLocale, [&](const Locale& locale, Parser::ModuleRecord& record) {
+    JST_CHECK(moduleUpdater(inputLocale, [&](const Locale&, Parser::ModuleRecord& record) {
         // Delete link from input block inputs.
         record.inputMap.erase(inputLocale.pinId);
 
@@ -279,7 +279,7 @@ Result Instance::changeModuleBackend(const Locale input, const Device device) {
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(input, [&](const Locale& locale, Parser::ModuleRecord& record) {
+    JST_CHECK(moduleUpdater(input, [&](const Locale&, Parser::ModuleRecord& record) {
         // Change backend.
         record.fingerprint.device = GetDeviceName(device);
 
@@ -301,7 +301,7 @@ Result Instance::changeModuleDataType(const Locale input, const std::tuple<std::
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(input, [&](const Locale& locale, Parser::ModuleRecord& record) {
+    JST_CHECK(moduleUpdater(input, [&](const Locale&, Parser::ModuleRecord& record) {
         // Change data type.
         const auto& [dataType, inputDataType, outputDataType] = type;
         record.fingerprint.dataType = dataType;
