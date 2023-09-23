@@ -275,9 +275,9 @@ inline std::ostream& operator<<(std::ostream& os, const Device& device) {
 //
 
 struct Locale {
-    std::string id;
-    std::string subId;
-    std::string pinId;
+    std::string id = "";
+    std::string subId = "";
+    std::string pinId = "";
 
     // TODO: Remove
     std::string str() const {

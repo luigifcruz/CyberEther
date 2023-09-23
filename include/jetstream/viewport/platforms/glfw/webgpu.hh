@@ -31,7 +31,7 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
 
     Result createImgui();
     Result destroyImgui();
-    F32 calculateScale(const F32& scale);
+    F32 scale(const F32& scale) const;
 
     Result createSwapchain();
     Result destroySwapchain();

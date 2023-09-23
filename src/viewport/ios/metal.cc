@@ -34,7 +34,7 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
-F32 Implementation::calculateScale(const F32& scale) {
+F32 Implementation::scale(const F32& scale) const {
     return scale;
 }
 

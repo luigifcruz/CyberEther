@@ -31,6 +31,8 @@ Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
 Result Implementation::create() {
     JST_DEBUG("Creating Metal window.");
 
+    JST_CHECK(Window::create());
+
     outerPool = NS::AutoreleasePool::alloc()->init();
 
     dev = Backend::State<Device::Metal>()->getDevice();
@@ -65,6 +67,8 @@ Result Implementation::destroy() {
     commandQueue->release();
 
     outerPool->release();
+    
+    JST_CHECK(Window::destroy());
 
     return Result::SUCCESS;
 }
@@ -86,9 +90,7 @@ Result Implementation::createImgui() {
     
     JST_CHECK(viewport->createImgui());
 
-    const auto& scale = viewport->calculateScale(config.scale);
-    ApplyImGuiTheme(scale);
-    ApplyImNodesTheme(scale);
+    ScaleStyle(*viewport);
 
     ImGui_ImplMetal_Init(dev);
 
@@ -109,8 +111,7 @@ Result Implementation::destroyImgui() {
 Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
 
-    ApplyImGuiScale();
-    ApplyImNodesScale();
+    ScaleStyle(*viewport);
 
     ImGui::NewFrame();
 

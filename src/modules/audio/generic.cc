@@ -73,7 +73,7 @@ void Audio<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-void Audio<D, T>::callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+void Audio<D, T>::callback(ma_device* pDevice, void* pOutput, const void*, ma_uint32 frameCount) {
     auto* audio = reinterpret_cast<Audio<D, T>*>(pDevice->pUserData);
 
     if (frameCount < audio->buffer.getOccupancy()) {

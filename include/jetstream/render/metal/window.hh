@@ -16,20 +16,21 @@ class WindowImp<Device::Metal> : public Window {
     explicit WindowImp(const Config& config,
                        std::shared_ptr<Viewport::Adapter<Device::Metal>>& viewport);
 
-    Result create();
-    Result destroy();
-    Result begin();
-    Result end();
+    Result create() override;
+    Result destroy() override;
 
-    const Stats& stats() const;
-    void drawDebugMessage() const;
+    Result begin() override;
+    Result end() override;
 
-    constexpr Device device() const {
+    const Stats& stats() const override;
+    void drawDebugMessage() const override;
+
+    constexpr Device device() const override {
         return Device::Metal;
     };
 
-    Result bind(const std::shared_ptr<Surface>& surface);
-    Result unbind(const std::shared_ptr<Surface>& surface);
+    Result bind(const std::shared_ptr<Surface>& surface) override;
+    Result unbind(const std::shared_ptr<Surface>& surface) override;
 
  private:
     Stats statsData;

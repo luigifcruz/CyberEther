@@ -22,17 +22,12 @@ Store::Store() {
     flowgraphList = defaultFlowgraphList();
 }
 
-ModuleListStore& Store::_moduleList(const std::string& filter, const bool& showModules) {
-    // Return all modules if no filter is specified.
-    if (filter.empty() && showModules) {
-        return moduleList;
-    }
-
+Result Store::_moduleList(const std::string& filter, const bool& showModules) {
     // Return if the filter is the same as last time. 
     if (filter == lastModuleListFilter && 
         showModules == lastModuleListShowModules &&
         !filteredModuleList.empty()) {
-        return filteredModuleList;
+        return Result::SUCCESS;
     }
     lastModuleListFilter = filter;
     lastModuleListShowModules = showModules;
@@ -44,8 +39,8 @@ ModuleListStore& Store::_moduleList(const std::string& filter, const bool& showM
     std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), ::tolower);
 
     for (const auto& [key, value] : moduleList) {
-        // Ignore if not a bundle.
-        if (value.isBundle == showModules) {
+        // If showModules is false, only show bundles.
+        if (!showModules && !value.isBundle) {
             continue;
         }
 
@@ -61,18 +56,19 @@ ModuleListStore& Store::_moduleList(const std::string& filter, const bool& showM
         // Case-insensitive search.
         if (titleLower.find(filterLower) != std::string::npos ||
             smallLower.find(filterLower) != std::string::npos ||
-            detailedLower.find(filterLower) != std::string::npos) {
+            detailedLower.find(filterLower) != std::string::npos ||
+            filter.empty()) {
             filteredModuleList[key] = value;
         }
     }
 
-    return filteredModuleList;
+    return Result::SUCCESS;
 }
 
-FlowgraphListStore& Store::_flowgraphList(const std::string& filter) {
+Result Store::_flowgraphList(const std::string& filter) {
     // Return if the filter is the same as last time. 
     if (filter == lastFlowgraphListFilter && !filteredFlowgraphList.empty()) {
-        return filteredFlowgraphList;
+        return Result::SUCCESS;
     }
     lastFlowgraphListFilter = filter;
 
@@ -96,14 +92,14 @@ FlowgraphListStore& Store::_flowgraphList(const std::string& filter) {
         }
     }
 
-    return filteredFlowgraphList;
+    return Result::SUCCESS;
 }
 
-FlowgraphListStore& Store::defaultFlowgraphList() {
+const FlowgraphListStore& Store::defaultFlowgraphList() {
     return DefaultFlowgraphListStore;
 }
 
-ModuleStore& Store::defaultModules() {
+const ModuleStore& Store::defaultModules() {
     static ModuleStore list = {
 //
 // Modules
@@ -248,7 +244,7 @@ ModuleStore& Store::defaultModules() {
     return list;
 }
 
-ModuleListStore& Store::defaultModuleList() {
+const ModuleListStore& Store::defaultModuleList() {
     static ModuleListStore list = {
         //
         // Modules

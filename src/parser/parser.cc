@@ -181,7 +181,7 @@ Result Parser::exportFlowgraph(Instance&) {
     return Result::SUCCESS;
 }
 
-Result Parser::saveFlowgraph(const std::string& path) {
+Result Parser::saveFlowgraph(const std::string&) {
     // TODO: Implement.
 
     return Result::SUCCESS;

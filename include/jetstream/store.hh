@@ -42,11 +42,13 @@ class JETSTREAM_API Store {
     }
 
     static ModuleListStore& ModuleList(const std::string& filter = "", const bool& showModules = true) {
-        return GetInstance()._moduleList(filter, showModules);
+        GetInstance()._moduleList(filter, showModules);
+        return GetInstance().filteredModuleList;
     }
 
     static FlowgraphListStore& FlowgraphList(const std::string& filter = "") {
-        return GetInstance()._flowgraphList(filter);
+        GetInstance()._flowgraphList(filter);
+        return GetInstance().filteredFlowgraphList;
     }
 
  private:
@@ -62,12 +64,12 @@ class JETSTREAM_API Store {
     FlowgraphListStore filteredFlowgraphList;
     std::string lastFlowgraphListFilter;
     
-    ModuleStore& defaultModules();
-    ModuleListStore& defaultModuleList();
-    FlowgraphListStore& defaultFlowgraphList();
+    const ModuleStore& defaultModules();
+    const ModuleListStore& defaultModuleList();
+    const FlowgraphListStore& defaultFlowgraphList();
 
-    ModuleListStore& _moduleList(const std::string& filter, const bool& modules);
-    FlowgraphListStore& _flowgraphList(const std::string& filter);
+    Result _moduleList(const std::string& filter, const bool& modules);
+    Result _flowgraphList(const std::string& filter);
 };
 
 }  // namespace Jetstream

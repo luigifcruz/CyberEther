@@ -24,12 +24,12 @@ class Parser {
  public:
     struct Record {
         std::any object;
-        U64 hash;
-        void* data;
-        Locale locale;
-        Device device;
-        std::string dataType;
-        std::vector<U64> shape;
+        U64 hash = 0;
+        void* data = nullptr;
+        Locale locale = {};
+        Device device = Device::None;
+        std::string dataType = "";
+        std::vector<U64> shape = {};
     };
 
     typedef std::unordered_map<std::string, Record> RecordMap;

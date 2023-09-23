@@ -1,16 +1,42 @@
 #include "jetstream/render/base/window.hh"
+
 #include "jetstream/render/tools/compressed_jbmm.hh"
 #include "jetstream/render/tools/compressed_fa.hh"
 
 namespace Jetstream::Render {
 
-void Window::ApplyImGuiTheme(const F32& scale) {
-    auto& style = ImGui::GetStyle();
+Result Window::create() {
+    _scalingFactor = 0.0f;
+    _previousScalingFactor = 0.0f;
 
-    // Theme By:
-    // https://github.com/ocornut/imgui/issues/707#issuecomment-917151020
+    return Result::SUCCESS;
+}
 
-    auto &colors = style.Colors;
+Result Window::destroy() {
+    return Result::SUCCESS;
+}
+
+void Window::ScaleStyle(const Viewport::Generic& viewport) {
+    if (_previousScalingFactor == 0.0f) {
+        _scalingFactor = viewport.scale(config.scale);
+
+        ImGuiStyleSetup();
+        ImNodesStyleSetup();
+    }
+
+    if (_scalingFactor != _previousScalingFactor) {
+        ImGuiStyleScale();
+        ImNodesStyleScale();
+    }
+
+    _previousScalingFactor = _scalingFactor;
+}
+
+void Window::ImGuiStyleSetup() {
+    // Setup Theme
+    // Inspired from: https://github.com/ocornut/imgui/issues/707#issuecomment-917151020
+
+    auto &colors = ImGui::GetStyle().Colors;
     colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
     colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
     colors[ImGuiCol_WindowBg]               = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
@@ -67,12 +93,57 @@ void Window::ApplyImGuiTheme(const F32& scale) {
     colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
     colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.10f, 0.10f, 0.10f, 0.65f);
 
+    // Setup Fonts
+
+    auto& io = ImGui::GetIO();
+
+    ImFontConfig font_config;
+    font_config.OversampleH = 5;
+    font_config.OversampleV = 5;
+    font_config.FontBuilderFlags = 1;
+    io.Fonts->Clear();
+
+    io.Fonts->AddFontFromMemoryCompressedTTF(
+        jbmm_compressed_data,
+        jbmm_compressed_size,
+        15.0f * _scalingFactor,
+        &font_config,
+        nullptr);
+
+    ImFontConfig icon_font_config;
+    icon_font_config.OversampleH = 5;
+    icon_font_config.OversampleV = 5;
+    icon_font_config.FontBuilderFlags = 1;
+    icon_font_config.MergeMode = true;
+    icon_font_config.GlyphMinAdvanceX = 15.0f * _scalingFactor;
+    icon_font_config.GlyphOffset = { 0.0f, 1.0f };
+
+    static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+
+    io.Fonts->AddFontFromMemoryCompressedTTF(far_compressed_data,
+                                             far_compressed_size,
+                                             15.0f * _scalingFactor,
+                                             &icon_font_config,
+                                             icon_ranges);
+
+    io.Fonts->AddFontFromMemoryCompressedTTF(fas_compressed_data,
+                                             fas_compressed_size,
+                                             15.0f * _scalingFactor,
+                                             &icon_font_config,
+                                             icon_ranges);
+}
+
+void Window::ImGuiStyleScale() {
+    auto& style = ImGui::GetStyle();
+
+    // Rewrite Style Values.
     style.WindowPadding                     = ImVec2(8.00f, 8.00f);
     style.FramePadding                      = ImVec2(5.00f, 2.00f);
     style.CellPadding                       = ImVec2(6.00f, 6.00f);
     style.ItemSpacing                       = ImVec2(6.00f, 6.00f);
     style.ItemInnerSpacing                  = ImVec2(6.00f, 6.00f);
     style.TouchExtraPadding                 = ImVec2(0.00f, 0.00f);
+    style.CellPadding                       = ImVec2(3.00f, 4.00f);
     style.IndentSpacing                     = 25;
     style.ScrollbarSize                     = 15;
     style.GrabMinSize                       = 10;
@@ -90,58 +161,13 @@ void Window::ApplyImGuiTheme(const F32& scale) {
     style.LogSliderDeadzone                 = 4;
     style.TabRounding                       = 4;
 
-    style.CellPadding = ImVec2(3.0f, 4.0f);
-
-    style.ScaleAllSizes(scale);
-
-    auto& io = ImGui::GetIO();
-
-    ImFontConfig font_config;
-    font_config.OversampleH = 5;
-    font_config.OversampleV = 5;
-    font_config.FontBuilderFlags = 1;
-    io.Fonts->Clear();
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(
-        jbmm_compressed_data,
-        jbmm_compressed_size,
-        15.0f * scale,
-        &font_config,
-        nullptr);
-
-    ImFontConfig icon_font_config;
-    icon_font_config.OversampleH = 5;
-    icon_font_config.OversampleV = 5;
-    icon_font_config.FontBuilderFlags = 1;
-    icon_font_config.MergeMode = true;
-    icon_font_config.GlyphMinAdvanceX = 15.0f * scale;
-    icon_font_config.GlyphOffset = { 0.0f, 1.0f };
-
-    static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(
-            far_compressed_data,
-            far_compressed_size,
-            15.0f * scale,
-            &icon_font_config,
-            icon_ranges);
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(
-            fas_compressed_data,
-            fas_compressed_size,
-            15.0f * scale,
-            &icon_font_config,
-            icon_ranges);
+    style.ScaleAllSizes(_scalingFactor);
 }
 
-void Window::ApplyImGuiScale() {
-    // Scaling done during the initialization.
-}
+void Window::ImNodesStyleSetup() {
+    // Setup Theme
 
-void Window::ApplyImNodesTheme(const F32& scale) {
-    auto& style = ImNodes::GetStyle();
-
-    auto &colors = style.Colors;
+    auto &colors = ImNodes::GetStyle().Colors;
     colors[ImNodesCol_NodeBackground]         = IM_COL32(30, 30, 30, 255);
     colors[ImNodesCol_NodeBackgroundHovered]  = IM_COL32(30, 30, 30, 255);
     colors[ImNodesCol_NodeBackgroundSelected] = IM_COL32(35, 35, 35, 255);
@@ -151,18 +177,17 @@ void Window::ApplyImNodesTheme(const F32& scale) {
     colors[ImNodesCol_LinkSelected]           = IM_COL32(75, 75, 75, 255);
 }
 
-void Window::ApplyImNodesScale() {
+void Window::ImNodesStyleScale() {
     auto& style = ImNodes::GetStyle();
-    const auto& scalingFactor = ImGui::GetIO().DisplayFramebufferScale.x;
 
-    style.NodePadding               = ImVec2(8.0f / scalingFactor, 8.0f / scalingFactor);
-    style.PinCircleRadius           = 4.0f  / scalingFactor;
-    style.GridSpacing               = 40.0f / scalingFactor;
-    style.NodeBorderThickness       = 1.0f  / scalingFactor;
-    style.NodeCornerRounding        = 4.0f  / scalingFactor;
-    style.LinkThickness             = 3.0f  / scalingFactor;
-    style.PinLineThickness          = 1.0f  / scalingFactor;
-    style.LinkLineSegmentsPerLength = 0.1f  * scalingFactor;
+    style.NodePadding               = ImVec2(4.0f * _scalingFactor, 4.0f * _scalingFactor);
+    style.PinCircleRadius           = 2.0f  * _scalingFactor;
+    style.GridSpacing               = 20.0f * _scalingFactor;
+    style.NodeBorderThickness       = 0.5f  * _scalingFactor;
+    style.NodeCornerRounding        = 2.0f  * _scalingFactor;
+    style.LinkThickness             = 1.5f  * _scalingFactor;
+    style.PinLineThickness          = 0.5f  * _scalingFactor;
+    style.LinkLineSegmentsPerLength = 0.2f  / _scalingFactor;
 }
 
 }  // namespace Jetstream::Render

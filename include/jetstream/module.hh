@@ -25,8 +25,7 @@ class JETSTREAM_API Module : public Interface {
 
  protected:
     template<Device DeviceId, typename DataType, U64 Dimensions>
-    Result initInput(const std::string& name,
-                     Vector<DeviceId, DataType, Dimensions>& buffer) {
+    Result initInput(const std::string&, Vector<DeviceId, DataType, Dimensions>& buffer) {
         if (buffer.empty()) {
             JST_ERROR("[MODULE] Input is empty during initialization.");
             return Result::ERROR;

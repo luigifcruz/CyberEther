@@ -334,7 +334,7 @@ Result Compositor::draw() {
 Result Compositor::processInteractions() {
     if (createModuleMailbox) {
         const auto& [module, device] = *createModuleMailbox;
-        const auto& moduleEntry = Store::ModuleList().at(module);
+        const auto moduleEntry = Store::ModuleList().at(module);
         if (moduleEntry.options.at(device).empty()) {
             ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "No compatible data types for this module." });
             createModuleMailbox.reset();
@@ -408,7 +408,7 @@ Result Compositor::processInteractions() {
     }
 
     if (openFlowgraphUrlMailbox) {
-        const auto& filePath = *openFlowgraphUrlMailbox;
+        //const auto& filePath = *openFlowgraphUrlMailbox;
         // TODO: Implement.
         ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Remote flowgraph is not implemented yet." });
         openFlowgraphUrlMailbox.reset();
@@ -451,9 +451,9 @@ Result Compositor::drawStatic() {
     // Load local variables.
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const auto& io = ImGui::GetIO();
-    const auto& scalingFactor = io.DisplayFramebufferScale.x;
+    const auto& scalingFactor = instance.window().scalingFactor();
 
-    const F32 variableWidth = 200.0f / scalingFactor;
+    const F32 variableWidth = 100.0f * scalingFactor;
 
     //
     // Menu Bar.
@@ -559,7 +559,7 @@ Result Compositor::drawStatic() {
         ImGui::PopStyleVar();
 
         {
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 6.0f, scalingFactor * 6.0f));
 
             if (!flowgraphLoaded) {
                 if (ImGui::Button(ICON_FA_FILE " New")) {
@@ -653,7 +653,7 @@ Result Compositor::drawStatic() {
     // Draw notifications.
     //
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, scalingFactor * 5.0f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(43.0f  / 255.0f,
                                                     43.0f  / 255.0f,
                                                     43.0f  / 255.0f,
@@ -671,7 +671,7 @@ Result Compositor::drawStatic() {
             return;
         }
 
-        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Source File", &sourceEditorEnabled)) {
             ImGui::End();
             return;
@@ -704,7 +704,7 @@ Result Compositor::drawStatic() {
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowDockID(mainNodeId, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         ImGui::Begin(stack.c_str(), &enabled);
         ImGui::PopStyleVar();
     
@@ -756,7 +756,7 @@ Result Compositor::drawStatic() {
                                              ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_Tooltip;
 
-        const F32 windowPad = 12.0f * scalingFactor;
+        const F32 windowPad = 6.0f * scalingFactor;
         ImVec2 workPos = viewport->WorkPos;
         ImVec2 workSize = viewport->WorkSize;
         ImVec2 windowPos, windowPosPivot;
@@ -865,7 +865,7 @@ Result Compositor::drawStatic() {
         ImGui::Text("To get started, create a new flowgraph or open an existing one using");
         ImGui::Text("the toolbar or the buttons below.");
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 6.0f, scalingFactor * 6.0f));
 
         if (ImGui::Button(ICON_FA_FILE " New Flowgraph")) {
             newFlowgraphMailbox = true;
@@ -884,7 +884,7 @@ Result Compositor::drawStatic() {
 
         ImGui::Text("To learn more about CyberEther, check the Help menu.");
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 6.0f, scalingFactor * 6.0f));
 
         if (ImGui::Button(ICON_FA_CIRCLE_QUESTION " Getting Started")) {
             globalModalToggle = true;
@@ -972,13 +972,13 @@ Result Compositor::drawStatic() {
                 };
 
                 ImGui::TableSetupScrollFreeze(0, 1);
-                for (int col = 0; col < columns.size(); ++col) {
+                for (U64 col = 0; col < columns.size(); ++col) {
                     const auto& [name, width, _1, _2, _3] = columns[col];
                     ImGui::TableSetupColumn(name, ImGuiTableColumnFlags_WidthStretch, width);
                 }
 
                 ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
-                for (int col = 0; col < columns.size(); ++col) {
+                for (U64 col = 0; col < columns.size(); ++col) {
                     const auto& [name, _1, color, cube, _2] = columns[col]; 
                     ImGui::TableSetColumnIndex(col);
                     if (cube) {
@@ -995,7 +995,7 @@ Result Compositor::drawStatic() {
                     ImGui::TableSetColumnIndex(0);
                     ImGui::TextUnformatted(store.title.c_str());
 
-                    for (int col = 1; col < 5; ++col) {
+                    for (U64 col = 1; col < 5; ++col) {
                         ImGui::TableSetColumnIndex(col);
 
                         const auto& device = std::get<4>(columns[col]);
@@ -1057,7 +1057,7 @@ Result Compositor::drawStatic() {
                                                ImGuiTableFlags_ScrollY;
 
             if (ImGui::BeginTable("flowgraph_table", 2, tableFlags, ImVec2(0, tableHeight))) {
-                for (int i = 0; i < 2; ++i) {
+                for (U64 i = 0; i < 2; ++i) {
                     ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 0.5f);
                 }
 
@@ -1118,7 +1118,7 @@ Result Compositor::drawStatic() {
                 ImGui::EndTable();
             }
 
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 6.0f, scalingFactor * 6.0f));
             if (ImGui::Button(ICON_FA_PLAY " Load")) {
                 if (strlen(globalModalPath) == 0) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
@@ -1136,7 +1136,7 @@ Result Compositor::drawStatic() {
 
             ImGui::SameLine();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f / scalingFactor);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (3.0f * scalingFactor));
             ImGui::Text("Make sure you trust the flowgraph source!");
             ImGui::PopStyleColor();
         }
@@ -1148,7 +1148,7 @@ Result Compositor::drawStatic() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::SetItemDefaultFocus();
-        ImGui::Dummy(ImVec2(700.0f / scalingFactor, 0.0f));
+        ImGui::Dummy(ImVec2(350.0f * scalingFactor, 0.0f));
         ImGui::EndPopup();
     }
 
@@ -1157,12 +1157,12 @@ Result Compositor::drawStatic() {
 
 Result Compositor::drawGraph() {
     // Load local variables.
-    const auto& scalingFactor = ImGui::GetIO().DisplayFramebufferScale.x;
+    const auto& scalingFactor = instance.window().scalingFactor();
     const auto& nodeStyle = ImNodes::GetStyle();
     const auto& guiStyle = ImGui::GetStyle();
 
-    const F32 windowMinWidth = 550.0f / scalingFactor;
-    const F32 variableWidth = 200.0f / scalingFactor;
+    const F32 windowMinWidth = 275.0f * scalingFactor;
+    const F32 variableWidth = 100.0f * scalingFactor;
 
     //
     // View Render
@@ -1245,7 +1245,7 @@ Result Compositor::drawGraph() {
             return;
         }
 
-        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         
         if (!ImGui::Begin("Flowgraph")) {
             ImGui::End();
@@ -1259,7 +1259,7 @@ Result Compositor::drawGraph() {
         }
 
         ImNodes::BeginNodeEditor();
-        ImNodes::MiniMap(0.30f / scalingFactor, ImNodesMiniMapLocation_TopRight);
+        ImNodes::MiniMap(0.15f * scalingFactor, ImNodesMiniMapLocation_TopRight);
 
         for (const auto& [locale, state] : nodeStates) {
             const auto& block = state.block;
@@ -1330,7 +1330,7 @@ Result Compositor::drawGraph() {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.35f));
             ImGui::Text("(?)");
             ImGui::PopStyleColor();
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 4.0f, scalingFactor * 4.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 8.0f, scalingFactor * 8.0f));
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::BeginTooltip();
                 ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
@@ -1410,7 +1410,7 @@ Result Compositor::drawGraph() {
                 interface->shouldDrawControl() ||
                 interface->shouldDrawInfo()) {
                 ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None);
-                const F32 buttonSize = 40.0f / scalingFactor;
+                const F32 buttonSize = 25.0f * scalingFactor;
                 ImGui::TableSetupColumn("Switches", ImGuiTableColumnFlags_WidthFixed, nodeWidth - (buttonSize * 2.0f) -
                                                                                       (guiStyle.CellPadding.x * 4.0f));
                 ImGui::TableSetupColumn("Minus", ImGuiTableColumnFlags_WidthFixed, buttonSize);
@@ -1443,19 +1443,23 @@ Result Compositor::drawGraph() {
                     ImGui::Checkbox("Preview", &interface->config.previewEnabled);
                 }
 
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 2.0f, scalingFactor * 1.0f));
+
                 // Minus Button
                 ImGui::TableSetColumnIndex(1);
                 ImGui::SetNextItemWidth(-1);
-                if (ImGui::Button(" - ", ImVec2(40.0f / scalingFactor, 0.0f))) {
-                    nodeWidth -= 50.0f / scalingFactor;
+                if (ImGui::Button(" - ")) {
+                    nodeWidth -= 25.0f * scalingFactor;
                 }
 
                 // Plus Button
                 ImGui::TableSetColumnIndex(2);
                 ImGui::SetNextItemWidth(-1);
-                if (ImGui::Button(" + ", ImVec2(40.0f / scalingFactor, 0.0f))) {
-                    nodeWidth += 50.0f / scalingFactor;
+                if (ImGui::Button(" + ")) {
+                    nodeWidth += 25.0f * scalingFactor;
                 }
+
+                ImGui::PopStyleVar();
 
                 ImGui::EndTable();
             }
@@ -1554,7 +1558,7 @@ Result Compositor::drawGraph() {
                         // Add previous clusters and rows vertical offset.
                         y = previousNodesHeight + previousClustersHeight;
 
-                        previousNodesHeight += dims.y + (50.0f / scalingFactor);
+                        previousNodesHeight += dims.y + (25.0f * scalingFactor);
                         largestNodeWidth = std::max({
                             dims.x,
                             largestNodeWidth,
@@ -1571,10 +1575,10 @@ Result Compositor::drawGraph() {
                         largestColumnHeight,
                     });
 
-                    previousColumnsWidth += largestNodeWidth + (75.0f / scalingFactor);
+                    previousColumnsWidth += largestNodeWidth + (37.5f * scalingFactor);
                 }
 
-                previousClustersHeight += largestColumnHeight + (25.0f / scalingFactor);
+                previousClustersHeight += largestColumnHeight + (12.5f * scalingFactor);
             }
 
             graphSpatiallyOrganized = true;
@@ -1664,7 +1668,7 @@ Result Compositor::drawGraph() {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& block = nodeStates.at(locale.idOnly()).block;
         const auto& fingerprint = block->record.fingerprint;
-        const auto& moduleEntry = Store::ModuleList().at(fingerprint.module);
+        const auto moduleEntry = Store::ModuleList().at(fingerprint.module);
 
         ImGui::Text("Node ID: %d", nodeContextMenuNodeId);
         ImGui::Separator();
@@ -1729,7 +1733,7 @@ Result Compositor::drawGraph() {
             return;
         }
 
-        ImGui::SetNextWindowSize(ImVec2(250, 300), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(250.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Store")) {
             ImGui::End();
             return;

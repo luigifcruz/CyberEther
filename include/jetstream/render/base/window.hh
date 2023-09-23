@@ -6,6 +6,7 @@
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/viewport/base.hh"
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
@@ -20,7 +21,7 @@ namespace Jetstream::Render {
 class Window {
  public:
     struct Config {
-        float scale = 1.0;
+        F32 scale = 1.0f;
         bool imgui = true;
 
         JST_SERDES(
@@ -38,8 +39,9 @@ class Window {
     }
     virtual ~Window() = default;
 
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
+    virtual Result create();
+    virtual Result destroy();
+
     virtual Result begin() = 0;
     virtual Result end() = 0;
 
@@ -78,13 +80,23 @@ class Window {
         return Result::SUCCESS;
     }
 
+    constexpr const F32& scalingFactor() const {
+        return _scalingFactor;
+    }
+
  protected:
     Config config;
 
-    static void ApplyImGuiTheme(const F32& scale);
-    static void ApplyImGuiScale();
-    static void ApplyImNodesTheme(const F32& scale);
-    static void ApplyImNodesScale();
+    F32 _scalingFactor;
+    F32 _previousScalingFactor;
+
+    void ScaleStyle(const Viewport::Generic& viewport);
+
+ private:
+    void ImGuiStyleSetup();
+    void ImGuiStyleScale();
+    void ImNodesStyleSetup();
+    void ImNodesStyleScale();
 };
 
 }  // namespace Jetstream::Render
