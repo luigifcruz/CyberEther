@@ -23,12 +23,6 @@ Store::Store() {
 }
 
 Result Store::_moduleList(const std::string& filter, const bool& showModules) {
-    // Return all modules if no filter is specified.
-    if (filter.empty() && showModules) {
-        filteredModuleList = moduleList;
-        return Result::SUCCESS;
-    }
-
     // Return if the filter is the same as last time. 
     if (filter == lastModuleListFilter && 
         showModules == lastModuleListShowModules &&
@@ -62,7 +56,8 @@ Result Store::_moduleList(const std::string& filter, const bool& showModules) {
         // Case-insensitive search.
         if (titleLower.find(filterLower) != std::string::npos ||
             smallLower.find(filterLower) != std::string::npos ||
-            detailedLower.find(filterLower) != std::string::npos) {
+            detailedLower.find(filterLower) != std::string::npos ||
+            filter.empty()) {
             filteredModuleList[key] = value;
         }
     }
