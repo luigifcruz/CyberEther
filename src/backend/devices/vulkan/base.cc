@@ -11,20 +11,24 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
     extensions.push_back("VK_KHR_get_physical_device_properties2");
     extensions.push_back("VK_KHR_surface");
 
-#if defined(__linux__)
+#if defined(JST_OS_LINUX)
     extensions.push_back("VK_KHR_xcb_surface");
     extensions.push_back("VK_KHR_wayland_surface");
 #endif
-#if defined(__APPLE__)
+#if defined(JST_OS_MAC)
     extensions.push_back("VK_MVK_macos_surface");
+#endif
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
     extensions.push_back("VK_EXT_metal_surface");
 #endif
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32)
+#if defined(JST_OS_WINDOWS)
     extensions.push_back("VK_KHR_win32_surface");
 #endif
-#if defined(__ANDROID__)
+#if defined(JST_OS_ANDROID)
     extensions.push_back("VK_KHR_android_surface");
 #endif
+
+    JST_DEBUG("[VULKAN] Required extensions: {}", extensions);
 
     if (config.validationEnabled) {
         extensions.push_back("VK_EXT_debug_report");

@@ -1,6 +1,10 @@
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
+static void PrintGLFWError(int error, const char* description) {
+    JST_FATAL("[VULKAN] GLFW error: {}", description);
+}
+
 namespace Jetstream::Viewport {
 
 using Implementation = GLFW<Device::Vulkan>;
@@ -18,6 +22,8 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to initialize GLFW.");
         return Result::ERROR;
     }
+
+    glfwSetErrorCallback(&PrintGLFWError);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 

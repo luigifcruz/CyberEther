@@ -2,6 +2,10 @@
 
 namespace Jetstream::Viewport {
 
+static void PrintGLFWError(int error, const char* description) {
+    JST_FATAL("[Metal] GLFW error: {}", description);
+}
+
 using Implementation = GLFW<Device::Metal>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
@@ -17,6 +21,8 @@ Result Implementation::create() {
         JST_ERROR("[Metal] Failed to initialize GLFW.");
         return Result::ERROR;
     }
+
+    glfwSetErrorCallback(&PrintGLFWError);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
