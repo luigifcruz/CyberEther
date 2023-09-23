@@ -334,7 +334,7 @@ Result Compositor::draw() {
 Result Compositor::processInteractions() {
     if (createModuleMailbox) {
         const auto& [module, device] = *createModuleMailbox;
-        const auto& moduleEntry = Store::ModuleList().at(module);
+        const auto moduleEntry = Store::ModuleList().at(module);
         if (moduleEntry.options.at(device).empty()) {
             ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "No compatible data types for this module." });
             createModuleMailbox.reset();
@@ -408,7 +408,7 @@ Result Compositor::processInteractions() {
     }
 
     if (openFlowgraphUrlMailbox) {
-        const auto& filePath = *openFlowgraphUrlMailbox;
+        //const auto& filePath = *openFlowgraphUrlMailbox;
         // TODO: Implement.
         ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Remote flowgraph is not implemented yet." });
         openFlowgraphUrlMailbox.reset();
@@ -1668,7 +1668,7 @@ Result Compositor::drawGraph() {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& block = nodeStates.at(locale.idOnly()).block;
         const auto& fingerprint = block->record.fingerprint;
-        const auto& moduleEntry = Store::ModuleList().at(fingerprint.module);
+        const auto moduleEntry = Store::ModuleList().at(fingerprint.module);
 
         ImGui::Text("Node ID: %d", nodeContextMenuNodeId);
         ImGui::Separator();
