@@ -19,18 +19,18 @@ class WindowImp<Device::Vulkan> : public Window {
     Result create() override;
     Result destroy() override;
 
-    Result begin();
-    Result end();
+    Result begin() override;
+    Result end() override;
 
-    const Stats& stats() const;
-    void drawDebugMessage() const;
+    const Stats& stats() const override;
+    void drawDebugMessage() const override;
 
-    constexpr Device device() const {
+    constexpr Device device() const override {
         return Device::Vulkan;
     };
 
-    Result bind(const std::shared_ptr<Surface>& surface);
-    Result unbind(const std::shared_ptr<Surface>& surface);
+    Result bind(const std::shared_ptr<Surface>& surface) override;
+    Result unbind(const std::shared_ptr<Surface>& surface) override;
 
  private:
     Stats statsData;
