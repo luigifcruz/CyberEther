@@ -1,4 +1,4 @@
-if target_machine.system() == 'ios'
+if target_machine.system() == 'ios' or target_machine.system() == 'darwin'
     src_lst += files([
         'miniaudio.mm',
     ])

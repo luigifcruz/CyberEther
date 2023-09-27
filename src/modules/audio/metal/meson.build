@@ -2,7 +2,7 @@ deps = [
     'JETSTREAM_BACKEND_METAL_AVAILABLE',
 ]
 
-if target_machine.system() == 'ios'
+if target_machine.system() == 'ios' or target_machine.system() == 'darwin'
     deps += 'JETSTREAM_LOADER_AUDIOTOOLBOX_AVAILABLE'
 endif
 
