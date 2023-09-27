@@ -57,6 +57,11 @@
 #include "jetstream/modules/multiply_constant.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_CAST_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_CAST_METAL_AVAILABLE)
+#include "jetstream/modules/cast.hh"
+#endif
+
 //
 // Graphical
 // 

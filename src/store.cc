@@ -151,6 +151,9 @@ const ModuleStore& Store::defaultModules() {
 #ifdef JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE
         { {"constellation",     "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Constellation, Device::CPU, CF32>(r); } },
 #endif
+#ifdef JETSTREAM_MODULE_CAST_CPU_AVAILABLE
+        { {"cast",              "cpu",     "",  "F32",  "I16"}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Cast, Device::CPU, F32, I16>(r); } },
+#endif
 
 // Device::Metal
 
@@ -244,6 +247,7 @@ const ModuleStore& Store::defaultModules() {
     return list;
 }
 
+// TODO: Write better block descriptions.
 const ModuleListStore& Store::defaultModuleList() {
     static ModuleListStore list = {
         //
@@ -494,6 +498,24 @@ const ModuleListStore& Store::defaultModuleList() {
 #endif
 #ifdef JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE
                         {Device::Metal, {{"CF32", "", ""}}},
+#endif
+                    }
+                }
+            }
+        },
+        {"cast",
+            {
+                false,
+                "Cast",
+                "Converts one number format to another.",
+                "Converts one number format to another by scaling and casting.",
+                { 
+                    {
+#ifdef JETSTREAM_MODULE_CAST_CPU_AVAILABLE
+                        {Device::CPU, {{"", "F32", "I16"}}},
+#endif
+#ifdef JETSTREAM_MODULE_CAST_METAL_AVAILABLE
+                        {Device::Metal, {{"", "F32", "I16"}}},
 #endif
                     }
                 }
