@@ -48,7 +48,6 @@ std::vector<const char*> Vulkan::getRequiredValidationLayers() {
 std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     std::vector<const char*> extensions;
 
-    extensions.push_back("VK_EXT_memory_budget");
     extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
     return extensions;
