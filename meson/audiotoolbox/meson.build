@@ -2,6 +2,7 @@ audiotoolbox_fmrk = [
     'Foundation',
     'AVFoundation',
     'AudioToolbox',
+    'CoreFoundation',
 ]
 
 deps = [
