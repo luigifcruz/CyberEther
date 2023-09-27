@@ -47,11 +47,19 @@ class Audio : public Module, public Compute {
     // Output
 
     struct Output {
-        JST_SERDES();
+        Vector<D, T, 1> buffer;
+
+        JST_SERDES(
+            JST_SERDES_VAL("buffer", buffer);
+        );
     };
 
     constexpr const Output& getOutput() const {
         return output;
+    }
+
+    constexpr const Vector<D, T, 1>& getOutputBuffer() const {
+        return this->output.buffer;
     }
 
     // Taint & Housekeeping
@@ -86,7 +94,6 @@ class Audio : public Module, public Compute {
     ma_resampler resamplerCtx;
 
     Memory::CircularBuffer<F32> buffer;
-    std::vector<F32> tmp;
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
 

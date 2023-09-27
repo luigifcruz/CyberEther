@@ -6,9 +6,12 @@ template<Device D, typename T>
 Result Audio<D, T>::create() {
     JST_DEBUG("Initializing Audio module.");
 
+    const U64 outputSize = input.buffer.size() * (config.outSampleRate / config.inSampleRate);
+
     // Initialize input/output.
     JST_INIT(
         JST_INIT_INPUT("buffer", input.buffer);
+        JST_INIT_OUTPUT("buffer", output.buffer, {outputSize});
     );
 
     // Initialize circular buffer.
@@ -24,8 +27,6 @@ Result Audio<D, T>::create() {
     );
     resamplerConfig.linear.lpfOrder = 8;
 
-    tmp.resize( input.buffer.size() * (config.outSampleRate / config.inSampleRate));
-
     if (ma_resampler_init(&resamplerConfig, nullptr, &resamplerCtx) != MA_SUCCESS) {
         JST_ERROR("Failed to create audio resampler.");
         JST_CHECK(Result::ERROR);
@@ -34,12 +35,12 @@ Result Audio<D, T>::create() {
     // Configure audio device.
     deviceConfig = ma_device_config_init(ma_device_type_playback);
     // TODO: Implement support for more audio formats.
-    deviceConfig.playback.format   = ma_format_f32;
+    deviceConfig.playback.format    = ma_format_f32;
     // TODO: Implement support for more channels.
-    deviceConfig.playback.channels = 1;
-    deviceConfig.sampleRate        = static_cast<U32>(config.outSampleRate);
-    deviceConfig.dataCallback      = callback;
-    deviceConfig.pUserData         = this;
+    deviceConfig.playback.channels  = 1;
+    deviceConfig.sampleRate         = static_cast<U32>(config.outSampleRate);
+    deviceConfig.dataCallback       = callback;
+    deviceConfig.pUserData          = this;
 
     if (ma_device_init(nullptr, &deviceConfig, &deviceCtx) != MA_SUCCESS) {
         JST_ERROR("Failed to open audio device.");
@@ -90,16 +91,18 @@ Result Audio<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Audio<D, T>::compute(const RuntimeMetadata&) {
     ma_uint64 frameCountIn  = input.buffer.size();
-    ma_uint64 frameCountOut = tmp.size();
+    ma_uint64 frameCountOut = output.buffer.size();
 
-    // TODO: Remove copy.
-    ma_result result = ma_resampler_process_pcm_frames(&resamplerCtx, input.buffer.data(), &frameCountIn, tmp.data(), &frameCountOut);
+    // TODO: Create standalone resampler module.
+    ma_result result = ma_resampler_process_pcm_frames(&resamplerCtx, input.buffer.data(), &frameCountIn, output.buffer.data(), &frameCountOut);
     if (result != MA_SUCCESS) {
         JST_ERROR("Failed to resample signal.");
         return Result::ERROR;
     }
 
-    buffer.put(tmp.data(), frameCountOut);
+    JST_ASSERT(frameCountOut == output.buffer.size());
+
+    buffer.put(output.buffer.data(), frameCountOut);
 
     return Result::SUCCESS;
 }
