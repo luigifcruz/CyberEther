@@ -26,6 +26,11 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     JST_DEBUG("Creating Metal program.");
 
+    if (config.shaders.contains(Device::Metal) == 0) {
+        JST_ERROR("[Metal] Module doesn't have necessary shader.");       
+        return Result::ERROR;
+    }
+
     NS::Error* err = nullptr;
     const auto& shaders = config.shaders[Device::Metal];
     auto device = Backend::State<Device::Metal>()->getDevice();
