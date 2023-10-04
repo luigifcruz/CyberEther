@@ -1,7 +1,8 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-title: Spectrum Analyzer
+title: Multi Device Spectrum Analyzer
+description: Multi SDR waterfall and lineplot.
 creator: Luigi
 license: MIT
 

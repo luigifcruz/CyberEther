@@ -1,7 +1,8 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-title: Simple FM
+title: Multi FM Receiver
+description: Multi radio station receiver.
 creator: Luigi
 license: MIT
 
@@ -13,9 +14,9 @@ graph:
     device: ${computeDevice}
     dataType: CF32
     config:
-      deviceString: driver=lime
-      frequency: 94.5e6
-      sampleRate: 2.5e6
+      deviceString: driver=rtlsdr,serial=00000001
+      frequency: 94.9e6
+      sampleRate: 240e3
       outputShape: [1, 2048]
       bufferMultiplier: 512
 
@@ -65,7 +66,7 @@ graph:
     device: ${computeDevice}
     dataType: CF32
     config:
-      signalSampleRate: 2.5e6
+      signalSampleRate: 240e3
       filterSampleRate: 200e3
       filterCenter: 0.0
       shape: ${graph.soapy.config.outputShape}
@@ -103,8 +104,6 @@ graph:
     dataType: CF32
     config:
       forward: false
-      offset: 942
-      size: 164
     input:
       buffer: ${graph.flt_mul.output.product}
 
@@ -114,13 +113,39 @@ graph:
     dataType: CF32
     input:
       buffer: ${graph.ifft.output.buffer}
+
+  fft-3:
+    module: fft
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.ifft.output.buffer}
+
+  amp-3:
+    module: amplitude
+    device: ${computeDevice}
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.fft-3.output.buffer}
+
+  scl-3:
+    module: scale-view
+    device: ${computeDevice}
+    dataType: F32
+    config:
+      range: [-100.0, 0.0]
+    input:
+      buffer: ${graph.amp-3.output.buffer}
   
   audio:
     module: audio
     device: cpu
     dataType: F32
     config:
-      inSampleRate: 200e3
+      inSampleRate: 240e3
       outSampleRate: 48e3
     input:
       buffer: ${graph.fm.output.buffer}
@@ -134,6 +159,15 @@ graph:
       interface:
         previewEnabled: true
 
+  wtf-2:
+      module: waterfall-view
+      device: ${computeDevice}
+      dataType: F32
+      input:
+        buffer: ${graph.scl-3.output.buffer}
+      interface:
+        previewEnabled: true
+
   wtf-3:
       module: waterfall-view
       device: ${computeDevice}
@@ -142,3 +176,4 @@ graph:
         buffer: ${graph.scl.output.buffer}
       interface:
         previewEnabled: true
+

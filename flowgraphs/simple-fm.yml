@@ -1,7 +1,8 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-title: Simple FM
+title: Simple FM Receiver
+description: Radio receiver with RTLSDR.
 creator: Luigi
 license: MIT
 
@@ -14,8 +15,7 @@ graph:
     dataType: CF32
     config:
       deviceString: driver=rtlsdr,serial=00000001
-      #deviceString: driver=lime
-      frequency: 96.9e6
+      frequency: 94.9e6
       sampleRate: 240e3
       outputShape: [1, 2048]
       bufferMultiplier: 512

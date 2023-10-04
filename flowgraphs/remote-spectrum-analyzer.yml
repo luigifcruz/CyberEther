@@ -1,11 +1,12 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-title: Simple FM
+title: Remote Spectrum Analyzer
+description: SoapySDR Remote Spectrum Analyzer.
 creator: Luigi
 license: MIT
 
-computeDevice: metal
+computeDevice: cpu
 
 graph:
   soapy:
@@ -13,10 +14,11 @@ graph:
     device: ${computeDevice}
     dataType: CF32
     config:
-      deviceString: driver=lime
-      frequency: 881e6
-      sampleRate: 32e6
-      outputShape: [64, 2048]
+      deviceString: driver=remote,remote:driver=airspy,remote=11.11.5.1
+      streamString: remote:mtu=4000,remote:window=1000000000,remote:prot=udp
+      frequency: 94.9e6
+      sampleRate: 2e6
+      outputShape: [16, 2048]
       bufferMultiplier: 512
 
   win:
@@ -59,12 +61,28 @@ graph:
       range: [-100.0, 0.0]
     input:
       buffer: ${graph.amp.output.buffer}
-  
+
+  lpt:
+    module: lineplot-view
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl.output.buffer}
+
   wtf:
-      module: waterfall-view
-      device: ${computeDevice}
-      dataType: F32
-      input:
-        buffer: ${graph.scl.output.buffer}
-      interface:
-        previewEnabled: true
+    module: waterfall-view
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl.output.buffer}
+    interface:
+      previewEnabled: true
+
+  spc:
+    module: spectrogram-view
+    device: ${computeDevice}
+    dataType: F32
+    input:
+      buffer: ${graph.scl.output.buffer}
+    interface:
+      previewEnabled: true
