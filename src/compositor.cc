@@ -1047,7 +1047,7 @@ Result Compositor::drawStatic() {
             const F32 lineHeight = ImGui::GetTextLineHeightWithSpacing();
             const F32 textPadding = lineHeight / 3.0f;
             const F32 rowHeight = lineHeight + (textPadding * 5.25f);
-            const F32 totalTableHeight = rowHeight * (Store::FlowgraphList().size() / 2.0f);
+            const F32 totalTableHeight = rowHeight * std::ceil(Store::FlowgraphList().size() / 2.0f);
 
             const F32 tableHeight = (totalTableHeight < maxTableHeight) ? totalTableHeight : maxTableHeight;
 
@@ -1791,7 +1791,7 @@ Result Compositor::drawGraph() {
                     case Device::WebGPU:
                         ImGui::PushStyleColor(ImGuiCol_Text, WebGPUColor);
                         break;
-                    case Device::None:
+                    default:
                         continue;
                 }
                 ImGui::Text(ICON_FA_CUBE " ");
