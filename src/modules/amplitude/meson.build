@@ -1,9 +1,9 @@
 src_lst += files([
 ])
 
-sum_lst = {}
+backend_lst = []
 
 subdir('cpu')
 subdir('metal')
 
-summary(sum_lst, section: 'Amplitude Module', bool_yn: true)
+sum_lst += {'Amplitude': backend_lst}

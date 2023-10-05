@@ -18,4 +18,4 @@ if all_deps_found
     ])
 endif
 
-sum_lst += {'Metal': all_deps_found}
+backend_lst += 'METAL'

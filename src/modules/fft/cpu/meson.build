@@ -14,4 +14,4 @@ if all_deps_found
     ])
 endif
 
-sum_lst += {'CPU (FFTW)': all_deps_found}
+backend_lst += 'CPU'

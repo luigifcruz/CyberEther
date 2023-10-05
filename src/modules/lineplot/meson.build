@@ -1,10 +1,9 @@
 src_lst += files([
 ])
 
-sum_lst = {}
+backend_lst = []
 
 subdir('cpu')
 subdir('metal')
 
-summary(sum_lst, section: 'Lineplot Module', bool_yn: true)
-
+sum_lst += {'Lineplot': backend_lst}

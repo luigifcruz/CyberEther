@@ -1,8 +1,8 @@
 src_lst += files([
 ])
 
-sum_lst = {}
+backend_lst = []
 
 subdir('cpu')
 
-summary(sum_lst, section: 'Constellation Module', bool_yn: true)
+sum_lst += {'Constellation': backend_lst}

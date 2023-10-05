@@ -8,9 +8,9 @@ else
     ])
 endif
 
-sum_lst = {}
+backend_lst = []
 
 subdir('cpu')
 subdir('metal')
 
-summary(sum_lst, section: 'Audio Module', bool_yn: true)
+sum_lst += {'Audio': backend_lst}
