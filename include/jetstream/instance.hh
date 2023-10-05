@@ -264,6 +264,7 @@ class JETSTREAM_API Instance {
     Result removeModule(const std::string id, const std::string bundleId = "");
     Result changeModuleBackend(const Locale input, const Device device);
     Result changeModuleDataType(const Locale input, const std::tuple<std::string, std::string, std::string> type);
+    Result clearModules();
 
     Result destroy();
     Result compute();

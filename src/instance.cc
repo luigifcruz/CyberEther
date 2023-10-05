@@ -56,16 +56,7 @@ Result Instance::resetFlowgraph() {
         return Result::ERROR;
     }
 
-    // TODO: Modules should be deleted in order.
-    std::vector<Locale> eraseList;
-    for (const auto& [locale, _] : blockStates) {
-        if (!locale.internal()) {
-            eraseList.push_back(locale);
-        }
-    }
-    for (const auto& locale : eraseList) {
-        JST_CHECK(eraseModule(locale));
-    }
+    JST_CHECK(clearModules());
 
     JST_CHECK(_parser->exportFlowgraph(*this));
 
@@ -73,18 +64,7 @@ Result Instance::resetFlowgraph() {
 }
 
 Result Instance::closeFlowgraph() {
-    // TODO: Modules should be deleted in order.
-    std::vector<Locale> eraseList;
-    for (const auto& [locale, _] : blockStates) {
-        if (!locale.internal()) {
-            eraseList.push_back(locale);
-        }
-    }
-    for (const auto& locale : eraseList) {
-        JST_CHECK(eraseModule(locale));
-    }
-
-    JST_CHECK(_compositor.destroy());
+    JST_CHECK(clearModules());
 
     JST_CHECK(_parser->closeFlowgraph());
 
@@ -463,8 +443,8 @@ Result Instance::fetchDependencyTree(const Locale locale, std::vector<Locale>& s
     return Result::SUCCESS;
 }
 
-Result Instance::destroy() {
-    JST_DEBUG("[INSTANCE] Destroying instance.");
+Result Instance::clearModules() {
+    JST_DEBUG("[INSTANCE] Clearing modules from instance.");
 
     // Destroying compositor and scheduler.
     JST_CHECK(_compositor.destroy());
@@ -480,14 +460,24 @@ Result Instance::destroy() {
 
     // Destroy all modules.
     for (auto& [_, state] : blockStates) {
+        // TODO: This ignores bundles. Is this right?
         if (!state->module) {
             continue;
         }
-       JST_CHECK(state->module->destroy());
+        JST_CHECK(state->module->destroy());
     }
 
     // Clear internal state memory.
     blockStates.clear();
+
+    return Result::SUCCESS;
+}
+
+Result Instance::destroy() {
+    JST_DEBUG("[INSTANCE] Destroying instance.");
+
+    // Clear modules.
+    JST_CHECK(clearModules());
 
     // Destroy window and viewport.
 
