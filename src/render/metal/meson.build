@@ -1,5 +1,6 @@
 deps = [
     'JETSTREAM_BACKEND_METAL_AVAILABLE',
+    'JETSTREAM_SHADERS_METAL_AVAILABLE',
 ]
 
 all_deps_found = true

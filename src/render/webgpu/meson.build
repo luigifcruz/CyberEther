@@ -1,5 +1,6 @@
 deps = [
     'JETSTREAM_BACKEND_WEBGPU_AVAILABLE',
+    'JETSTREAM_SHADERS_WEBGPU_AVAILABLE',
 ]
 
 all_deps_found = true

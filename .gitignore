@@ -9,7 +9,9 @@ __pycache__
 
 *.zip
 subprojects/*
-!subprojects/jetstream
+!subprojects/*.wrap
+!subprojects/libusb
+!subprojects/packagefiles
 
 build
 build-*

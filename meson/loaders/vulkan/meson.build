@@ -3,8 +3,6 @@ deps = [
 ]
 
 progs = [
-    find_program('glslangValidator', required: false),
-    find_program('python3', 'python', required: false),
 ]
 
 all_deps_found = true

@@ -1,5 +1,6 @@
 deps = [
     'JETSTREAM_BACKEND_VULKAN_AVAILABLE',
+    'JETSTREAM_SHADERS_VULKAN_AVAILABLE',
 ]
 
 all_deps_found = true
