@@ -422,7 +422,13 @@ Result Compositor::processInteractions() {
 
     if (openFlowgraphBlobMailbox) {
         const auto& blob = *openFlowgraphBlobMailbox;
-        JST_CHECK_NOTIFY(instance.openFlowgraphBlob(blob));
+
+        ImGui::InsertNotification({ ImGuiToastType_Success, 5000, "Loading flowgraph..." });
+        std::thread([&]() {
+            JST_CHECK_NOTIFY(instance.openFlowgraphBlob(blob));
+            JST_CHECK_NOTIFY(updateAutoLayoutState());
+        }).detach();
+        
         openFlowgraphBlobMailbox.reset();
     }
 

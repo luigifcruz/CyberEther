@@ -14,7 +14,7 @@ graph:
     device: ${computeDevice}
     dataType: CF32
     config:
-      deviceString: driver=rtlsdr
+      deviceString: driver=rtlsdr,serial=00000001
       frequency: 94.9e6
       sampleRate: 2.0e6
       outputShape: [16, 2048]

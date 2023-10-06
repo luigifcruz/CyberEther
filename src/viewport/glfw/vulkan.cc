@@ -1,7 +1,7 @@
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
-static void PrintGLFWError(int error, const char* description) {
+static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
 

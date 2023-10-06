@@ -93,7 +93,10 @@ Result Soapy<D, T>::create() {
 template<Device D, typename T>
 Result Soapy<D, T>::destroy() {
     streaming = false;
-    producer.join();
+
+    if (producer.joinable()) {
+        producer.join();
+    }
 
     return Result::SUCCESS;
 }
