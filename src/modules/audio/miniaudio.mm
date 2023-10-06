@@ -1,6 +1,10 @@
-#ifndef NDEBUG
+#include "jetstream/logger.hh"
+
+#ifdef JST_DEBUG_MODE
 #define MA_DEBUG_OUTPUT
-#define MA_NO_RUNTIME_LINKING
 #endif
+
+#define MA_NO_RUNTIME_LINKING
+
 #define MINIAUDIO_IMPLEMENTATION
 #include "jetstream/tools/miniaudio.h"

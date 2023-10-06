@@ -8,31 +8,29 @@ namespace Jetstream::Backend {
 std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
     std::vector<const char*> extensions;
 
-    extensions.push_back("VK_KHR_get_physical_device_properties2");
-    extensions.push_back("VK_KHR_surface");
+    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
 
 #if defined(JST_OS_LINUX)
-    extensions.push_back("VK_KHR_xcb_surface");
-    extensions.push_back("VK_KHR_wayland_surface");
-#endif
-#if defined(JST_OS_MAC)
-    extensions.push_back("VK_MVK_macos_surface");
+    extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
-    extensions.push_back("VK_EXT_metal_surface");
+    extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 #endif
 #if defined(JST_OS_WINDOWS)
-    extensions.push_back("VK_KHR_win32_surface");
+    extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(JST_OS_ANDROID)
-    extensions.push_back("VK_KHR_android_surface");
+    extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
 #endif
 
-    JST_DEBUG("[VULKAN] Required extensions: {}", extensions);
-
     if (config.validationEnabled) {
-        extensions.push_back("VK_EXT_debug_report");
+        extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
+
+    JST_DEBUG("[VULKAN] Required extensions: {}", extensions);
 
     return extensions;
 }
@@ -49,6 +47,10 @@ std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     std::vector<const char*> extensions;
 
     extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+    extensions.push_back("VK_KHR_portability_subset");
+#endif
 
     return extensions;
 }
@@ -123,6 +125,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         VkInstanceCreateInfo instanceCreateInfo{};
         instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instanceCreateInfo.pApplicationInfo = &appInfo;
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+        instanceCreateInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
 
         if (config.validationEnabled && !checkValidationLayerSupport()) {
             JST_WARN("[VULKAN] Couldn't find validation layers. Disabling Vulkan debug.");

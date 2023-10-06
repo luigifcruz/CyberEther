@@ -2,6 +2,7 @@
 #define JETSTREAM_BUILD_TYPE "@buildtype@"
 
 // System Identification
+
 #if defined(_WIN64)
 #define JST_OS_WINDOWS
 #elif defined(__ANDROID__)
@@ -21,6 +22,14 @@
 #error "System Not Supported"
 #endif
 
+#ifndef NDEBUG
+#define JST_DEBUG_MODE
+#else
+#ifdef JST_DEBUG_MODE
+#undef JST_DEBUG_MODE
+#endif
+#endif
+
 // Loaders
 #define JETSTREAM_LOADER_CPU_AVAILABLE
 #mesondefine JETSTREAM_LOADER_CUDA_AVAILABLE
@@ -30,6 +39,7 @@
 #mesondefine JETSTREAM_LOADER_SOAPY_AVAILABLE
 #mesondefine JETSTREAM_LOADER_WEBGPU_AVAILABLE
 #mesondefine JETSTREAM_LOADER_AUDIOTOOLBOX_AVAILABLE
+#mesondefine JETSTREAM_LOADER_WHISPERCPP_AVAILABLE
 
 // Backend
 #mesondefine JETSTREAM_BACKEND_CPU_AVAILABLE

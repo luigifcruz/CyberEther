@@ -41,7 +41,7 @@ std::string& JST_LOG_LAST_FATAL();
 #define _JST_LOG_FATAL         _JST_LOG_BOLD("[FATAL] ")
 
 #ifndef JST_TRACE
-#ifndef NDEBUG
+#ifdef JST_DEBUG_MODE
 #define JST_TRACE(...) if (getenv("TRACE"))           { \
                        _JST_LOG_SINK                 << \
                        _JST_LOG_NAME                 << \
@@ -55,7 +55,7 @@ std::string& JST_LOG_LAST_FATAL();
 #endif
 
 #ifndef JST_DEBUG
-#ifndef NDEBUG
+#ifdef JST_DEBUG_MODE
 #define JST_DEBUG(...) _JST_LOG_SINK                << \
                        _JST_LOG_NAME                << \
                        _JST_LOG_DEBUG               << \

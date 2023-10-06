@@ -39,7 +39,11 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
 
 struct Config {
     U64 deviceId;
+#ifdef JST_DEBUG_MODE
     bool validationEnabled = true;
+#else
+    bool validationEnabled = false;
+#endif
     U64 stagingBufferSize = 32*1024*1024;
 
     JST_SERDES(
