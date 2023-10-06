@@ -5,6 +5,11 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+#if defined(JST_OS_LINUX)
+#include <xcb/xcb.h>
+#include <vulkan/vulkan_xcb.h>
+#include <vulkan/vulkan_wayland.h>
+#endif
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 #include <vulkan/vulkan_metal.h>
 #endif
