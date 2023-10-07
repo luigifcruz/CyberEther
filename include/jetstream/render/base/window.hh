@@ -92,11 +92,16 @@ class Window {
 
     void ScaleStyle(const Viewport::Generic& viewport);
 
+    void lock();
+    void unlock();
+
  private:
     void ImGuiStyleSetup();
     void ImGuiStyleScale();
     void ImNodesStyleSetup();
     void ImNodesStyleScale();
+
+    std::atomic_flag interfaceHalt{false};
 };
 
 }  // namespace Jetstream::Render

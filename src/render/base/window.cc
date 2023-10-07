@@ -116,7 +116,7 @@ void Window::ImGuiStyleSetup() {
     icon_font_config.FontBuilderFlags = 1;
     icon_font_config.MergeMode = true;
     icon_font_config.GlyphMinAdvanceX = 15.0f * _scalingFactor;
-    icon_font_config.GlyphOffset = { 0.0f, 1.0f };
+    icon_font_config.GlyphOffset = { 0.0f, 2.0f };
 
     static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
 
@@ -188,6 +188,16 @@ void Window::ImNodesStyleScale() {
     style.LinkThickness             = 1.5f  * _scalingFactor;
     style.PinLineThickness          = 0.5f  * _scalingFactor;
     style.LinkLineSegmentsPerLength = 0.2f  / _scalingFactor;
+}
+
+void Window::lock() {
+    interfaceHalt.wait(true);
+    interfaceHalt.test_and_set();
+}
+
+void Window::unlock() {
+    interfaceHalt.clear();
+    interfaceHalt.notify_one();
 }
 
 }  // namespace Jetstream::Render
