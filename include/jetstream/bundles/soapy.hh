@@ -189,7 +189,7 @@ class Soapy : public Bundle {
 
     std::shared_ptr<Jetstream::Soapy<D, T>> soapy;
 
-    JST_DEFINE_BUNDLE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Bundles

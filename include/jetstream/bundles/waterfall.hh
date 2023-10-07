@@ -169,7 +169,7 @@ class Waterfall : public Bundle {
                       mousePositionAbsolute.y - screenPositionAbsolute.y);
     }
 
-    JST_DEFINE_BUNDLE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Bundles

@@ -131,7 +131,7 @@ class Spectrogram : public Module, public Compute, public Present {
     } metal;
 #endif
 
-    JST_DEFINE_MODULE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream

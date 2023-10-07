@@ -102,13 +102,9 @@
 
 // Module construction
 
-#ifndef JST_DEFINE_MODULE_IO
-#define JST_DEFINE_MODULE_IO() protected: Config config; Input input; Output output; friend Instance;
-#endif  // JST_DEFINE_MODULE_IO
-
-#ifndef JST_DEFINE_BUNDLE_IO
-#define JST_DEFINE_BUNDLE_IO() protected: Instance* instance; Config config; Input input; Output output; friend Instance;
-#endif  // JST_DEFINE_BUNDLE_IO
+#ifndef JST_DEFINE_IO
+#define JST_DEFINE_IO() protected: Config config; Input input; Output output; friend Instance;
+#endif  // JST_DEFINE_IO
 
 // Struct serialize deserialize
 

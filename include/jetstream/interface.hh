@@ -62,6 +62,7 @@ class JETSTREAM_API Interface {
  protected:
     Config config;
     Locale locale;
+    Instance* instance;
 
     friend Instance;
     friend class Compositor;

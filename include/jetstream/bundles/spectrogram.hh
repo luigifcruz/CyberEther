@@ -117,7 +117,7 @@ class Spectrogram : public Bundle {
  private:
     std::shared_ptr<Jetstream::Spectrogram<D, T>> spectrogram;
 
-    JST_DEFINE_BUNDLE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Bundles

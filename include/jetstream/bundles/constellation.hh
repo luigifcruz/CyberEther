@@ -103,7 +103,7 @@ class Constellation : public Bundle {
  private:
     std::shared_ptr<Jetstream::Constellation<D, T>> constellation;
 
-    JST_DEFINE_BUNDLE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Bundles

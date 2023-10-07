@@ -97,7 +97,7 @@ class Audio : public Module, public Compute {
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
 
-    JST_DEFINE_MODULE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream

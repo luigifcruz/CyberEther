@@ -77,7 +77,7 @@ class FM : public Module, public Compute {
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
 
-    JST_DEFINE_MODULE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream

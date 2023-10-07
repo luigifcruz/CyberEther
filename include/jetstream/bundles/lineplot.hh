@@ -120,7 +120,7 @@ class Lineplot : public Bundle {
  private:
     std::shared_ptr<Jetstream::Lineplot<D, T>> lineplot;
 
-    JST_DEFINE_BUNDLE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Bundles

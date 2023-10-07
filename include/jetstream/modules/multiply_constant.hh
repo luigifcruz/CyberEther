@@ -96,7 +96,7 @@ class MultiplyConstant : public Module, public Compute {
     } metal;
 #endif
 
-    JST_DEFINE_MODULE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream

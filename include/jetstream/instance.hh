@@ -148,10 +148,7 @@ class JETSTREAM_API Instance {
         module->locale = locale;
         module->config = config;
         module->input = input;
-
-        if constexpr (std::is_base_of<Bundle, Block>::value) {
-            module->instance = this;
-        }
+        module->instance = this;
 
         // Create module and load state.
         if constexpr (std::is_base_of<Bundle, Block>::value) {

@@ -126,7 +126,7 @@ class Soapy : public Module, public Compute {
 
     void soapyThreadLoop();
 
-    JST_DEFINE_MODULE_IO();
+    JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream
