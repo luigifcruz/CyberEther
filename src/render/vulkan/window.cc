@@ -16,17 +16,46 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("[VULKAN] Binding surface to window.");
 
+    // Prevent encode from happening.
+    lock();
+
+    // Cast generic Surface.
     auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+
+    // Create Surface.
+    JST_CHECK(_surface->create());
+
+    // Add Surface to window.
     surfaces.push_back(_surface);
-    return _surface->create();
+
+    // Resume encoding.
+    unlock();
+
+    return Result::SUCCESS;
 }
 
 Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("[VULKAN] Unbinding surface to window.");
 
+    // Prevent encode from happening.
+    lock();
+
+    // Synchronize all outstanding command buffers.
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for queue to complete.");
+    });
+
+    // Cast generic Surface.
     auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+
+    // Destroy the Surface.
     JST_CHECK(_surface->destroy());
+
+    // Remove Surface from window.
     surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+
+    // Resume encoding.
+    unlock();
 
     return Result::SUCCESS;
 }
@@ -270,7 +299,7 @@ Result Implementation::endImgui() {
 Result Implementation::begin() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
-    // Wait for frame to be available.
+    // Wait for a frame to be available.
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     // Get next viewport framebuffer.
@@ -290,12 +319,16 @@ Result Implementation::begin() {
     if (imagesInFlight[viewport->currentDrawableIndex()] != VK_NULL_HANDLE) {
         vkWaitForFences(device, 1, &imagesInFlight[viewport->currentDrawableIndex()], VK_TRUE, UINT64_MAX);
     }
-    imagesInFlight[viewport->currentDrawableIndex()] = inFlightFences[currentFrame]; 
+    imagesInFlight[viewport->currentDrawableIndex()] = inFlightFences[currentFrame];
+
+    // Lock state to prevent changes during draw call.
+    lock();
 
     // Set current command buffer.
     currentCommandBuffer = commandBuffers[viewport->currentDrawableIndex()];
 
-    // Refresh command buffer.
+    // Refresh command buffer and begin new render pass.
+
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     JST_VK_CHECK(vkBeginCommandBuffer(currentCommandBuffer, &commandBufferBeginInfo), [&]{
         JST_ERROR("[VULKAN] Can't begin command buffer.");     
@@ -317,6 +350,8 @@ Result Implementation::begin() {
 
     vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+    // Begin secondary renders.
+
     if (config.imgui) {
         JST_CHECK(beginImgui());
     }
@@ -325,15 +360,21 @@ Result Implementation::begin() {
 }
 
 Result Implementation::end() {
+    // End secondary renders.
+
     if (config.imgui) {
         JST_CHECK(endImgui());
     }
+
+    // End render pass and command buffer.
 
     vkCmdEndRenderPass(currentCommandBuffer);
 
     JST_VK_CHECK(vkEndCommandBuffer(currentCommandBuffer), [&]{
         JST_ERROR("[VULKAN] Can't end command buffer.");
     });
+
+    // Reset synchronization fences and submit to queue.
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
@@ -361,6 +402,11 @@ Result Implementation::end() {
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    // Release state.
+    unlock();
+
+    // Commit framebuffer to viewport.
 
     const auto& result = viewport->commitDrawable(signalSemaphores);
     if (result == Result::RECREATE) {
