@@ -23,12 +23,12 @@ class JETSTREAM_API Bundle : public Interface {
         Result res = Result::SUCCESS;
 
         if (!dst.empty()) {
-            JST_ERROR("[BUNDLE] The destination buffer should be empty during initialization.");
+            JST_ERROR("The destination buffer should be empty during initialization.");
             res |= Result::ERROR;
         }
 
         if (src.empty()) {
-            JST_ERROR("[BUNDLE] The source buffer shouldn't be empty during initialization.");
+            JST_ERROR("The source buffer shouldn't be empty during initialization.");
             res |= Result::ERROR;
         }
 

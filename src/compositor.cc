@@ -1167,7 +1167,7 @@ Result Compositor::drawGraph() {
     const auto& nodeStyle = ImNodes::GetStyle();
     const auto& guiStyle = ImGui::GetStyle();
 
-    const F32 windowMinWidth = 275.0f * scalingFactor;
+    const F32 windowMinWidth = 285.0f * scalingFactor;
     const F32 variableWidth = 100.0f * scalingFactor;
 
     //
@@ -1265,14 +1265,16 @@ Result Compositor::drawGraph() {
         }
 
         ImNodes::BeginNodeEditor();
-        ImNodes::MiniMap(0.15f * scalingFactor, ImNodesMiniMapLocation_TopRight);
+        ImNodes::MiniMap(0.075f * scalingFactor, ImNodesMiniMapLocation_TopRight);
 
         for (const auto& [locale, state] : nodeStates) {
             const auto& block = state.block;
             const auto& interface = block->interface;
 
             F32& nodeWidth = interface->config.nodeWidth;
-            const F32 titleWidth = ImGui::CalcTextSize(interface->title().c_str()).x + ImGui::CalcTextSize(" (?)").x;
+            const F32 titleWidth = ImGui::CalcTextSize(interface->title().c_str()).x +
+                                   ImGui::CalcTextSize(" " ICON_FA_CIRCLE_QUESTION).x +
+                                   ((!block->complete) ? ImGui::CalcTextSize(" " ICON_FA_TRIANGLE_EXCLAMATION).x : 0);
             const F32 controlWidth = interface->shouldDrawControl() ? windowMinWidth: 0.0f;
             const F32 previewWidth = interface->shouldDrawPreview() ? windowMinWidth : 0.0f;
             nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
@@ -1332,9 +1334,10 @@ Result Compositor::drawGraph() {
             ImNodes::BeginNodeTitleBar();
 
             ImGui::TextUnformatted(interface->title().c_str());
+
             ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.35f));
-            ImGui::Text("(?)");
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+            ImGui::Text(ICON_FA_CIRCLE_QUESTION);
             ImGui::PopStyleColor();
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 8.0f, scalingFactor * 8.0f));
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -1346,17 +1349,30 @@ Result Compositor::drawGraph() {
             }
             ImGui::PopStyleVar();
 
-            ImNodes::EndNodeTitleBar();
+            if (!block->complete) {
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+                ImGui::Text(ICON_FA_TRIANGLE_EXCLAMATION);
+                ImGui::PopStyleColor();
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 8.0f, scalingFactor * 8.0f));
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                    ImGui::BeginTooltip();
+                    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+                    ImGui::TextWrapped("%s", block->error.c_str());
+                    ImGui::PopTextWrapPos();
+                    ImGui::EndTooltip();
+                }
+                ImGui::PopStyleVar();
+            }
 
-            // Disable info and control if node is incomplete.
-            ImGui::BeginDisabled(!block->complete);
+            ImNodes::EndNodeTitleBar();
 
             // Draw node info.
             if (interface->shouldDrawInfo()) {
                 ImGui::BeginTable("##NodeInfoTable", 2, ImGuiTableFlags_None);
                 ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
                 ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableWidth -
-                                                                                (guiStyle.CellPadding.x * 2.0f));
+                                                                                  (guiStyle.CellPadding.x * 2.0f));
                 block->interface->drawInfo();
                 ImGui::EndTable();
             }
@@ -1366,13 +1382,10 @@ Result Compositor::drawGraph() {
                 ImGui::BeginTable("##NodeControlTable", 2, ImGuiTableFlags_None);
                 ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
                 ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableWidth -
-                                                                                    (guiStyle.CellPadding.x * 2.0f));
+                                                                                     (guiStyle.CellPadding.x * 2.0f));
                 block->interface->drawControl();
                 ImGui::EndTable();
             }
-
-            // Disable info and control if node is incomplete.
-            ImGui::EndDisabled();
 
             // Draw node input and output pins.
             if (!state.inputs.empty() || !state.outputs.empty()) {
@@ -1750,7 +1763,7 @@ Result Compositor::drawGraph() {
 
         ImGui::Text("Search Blocks");
         ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
+        ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::BeginTooltip();
             ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
@@ -1770,7 +1783,7 @@ Result Compositor::drawGraph() {
         for (const auto& [id, module] : Store::ModuleList(filterText, showModules)) {
             ImGui::TextUnformatted(module.title.c_str());
             ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
+            ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::BeginTooltip();
                 ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);

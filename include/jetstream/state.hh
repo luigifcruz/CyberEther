@@ -18,6 +18,7 @@ namespace Jetstream {
 
 struct BlockState {
     bool complete;
+    std::string error;
 
     Parser::ModuleRecord record;
 

@@ -168,9 +168,17 @@ class JETSTREAM_API Instance {
             if (!(state->complete = module->create() == Result::SUCCESS)) {
                 JST_DEBUG("[INSTANCE] Module '{}' is incomplete.", locale);
 
-                // If module is internal, mark its bundle as incomplete.
                 if (locale.internal()) {
-                    blockStates.at(locale.idOnly())->complete = false;
+                    auto& bundleState = blockStates.at(locale.idOnly());
+
+                    // If module is internal, mark its bundle as incomplete.
+                    bundleState->complete = false;
+
+                    // Save module error in bundle state.
+                    bundleState->error += fmt::format("[{}] {}\n", locale, JST_LOG_LAST_ERROR());
+                } else {
+                    // Save module error in state.
+                    state->error = JST_LOG_LAST_ERROR();
                 }
             }
             state->module = module;

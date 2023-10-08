@@ -27,7 +27,7 @@ class JETSTREAM_API Module : public Interface {
     template<Device DeviceId, typename DataType, U64 Dimensions>
     Result initInput(const std::string&, Vector<DeviceId, DataType, Dimensions>& buffer) {
         if (buffer.empty()) {
-            JST_ERROR("[MODULE] Input is empty during initialization.");
+            JST_ERROR("Input is empty during initialization.");
             return Result::ERROR;
         }
         return Result::SUCCESS;
@@ -41,7 +41,7 @@ class JETSTREAM_API Module : public Interface {
         Result res = Result::SUCCESS;
 
         if (!buffer.empty()) {
-            JST_ERROR("[MODULE] The output buffer should be empty during initialization.");
+            JST_ERROR("The output buffer should be empty during initialization.");
             res |= Result::ERROR;
         }
 
@@ -61,12 +61,12 @@ class JETSTREAM_API Module : public Interface {
         Result res = Result::SUCCESS;
 
         if (!dst.empty()) {
-            JST_ERROR("[MODULE] The destination buffer should be empty during initialization.");
+            JST_ERROR("The destination buffer should be empty during initialization.");
             res |= Result::ERROR;
         }
 
         if (src.empty()) {
-            JST_ERROR("[MODULE] The source buffer shouldn't be empty during initialization.");
+            JST_ERROR("The source buffer shouldn't be empty during initialization.");
             res |= Result::ERROR;
         }
 
