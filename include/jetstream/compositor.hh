@@ -3,6 +3,8 @@
 
 #include <tuple>
 #include <stack>
+#include <future>
+#include <chrono>  
 #include <memory>
 #include <vector>
 #include <optional>
@@ -101,6 +103,8 @@ class JETSTREAM_API Compositor {
     I32 nodeContextMenuNodeId;
 
     std::atomic_flag interfaceHalt{false};
+
+    std::future<Result> openFlowgraphAsyncTask;
 
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
     std::unordered_map<Locale, std::vector<Locale>, Locale::Hasher> outputInputCache;

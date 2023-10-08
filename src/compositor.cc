@@ -25,10 +25,16 @@ Result Compositor::addModule(const Locale& locale, const std::shared_ptr<BlockSt
         return Result::ERROR;
     }
 
+    // Prevent drawMainInterface from running.
+    lock();
+
     // Save module in node state.
     nodeStates[locale].block = block;
 
     JST_CHECK(refreshState());
+
+    // Resume drawMainInterface.
+    unlock();
 
     return Result::SUCCESS;
 }
@@ -48,6 +54,9 @@ Result Compositor::removeModule(const Locale& locale) {
         return Result::ERROR;
     }
 
+    // Prevent drawMainInterface from running.
+    lock();
+
     // Save module in node state.
     nodeStates.erase(locale);
 
@@ -57,14 +66,14 @@ Result Compositor::removeModule(const Locale& locale) {
         JST_CHECK(instance.destroy());
     }
 
+    // Resume drawMainInterface.
+    unlock();
+
     return Result::SUCCESS;
 }
 
 Result Compositor::refreshState() {
     JST_DEBUG("[COMPOSITOR] Refreshing interface state.");
-
-    // Prevent drawMainInterface from running during refresh.
-    lock();
 
     // Create interface state, input, output and pin cache.
     pinLocaleMap.clear();
@@ -149,9 +158,6 @@ Result Compositor::refreshState() {
     if (!graphSpatiallyOrganized) {
         JST_CHECK(updateAutoLayoutState());
     }
-
-    // Resume drawMainInterface.
-    unlock();
 
     return Result::SUCCESS;
 }
@@ -421,15 +427,28 @@ Result Compositor::processInteractions() {
     }
 
     if (openFlowgraphBlobMailbox) {
-        const auto& blob = *openFlowgraphBlobMailbox;
+        // If the async task hasn't started, initiate it.
+        if (!openFlowgraphAsyncTask.valid()) {
+            openFlowgraphAsyncTask = std::async(std::launch::async, [&](){
+                // Notify user of flowgraph loading.
+                ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "Loading flowgraph..." });
 
-        ImGui::InsertNotification({ ImGuiToastType_Success, 5000, "Loading flowgraph..." });
-        std::thread([&]() {
-            JST_CHECK_NOTIFY(instance.openFlowgraphBlob(blob));
-            JST_CHECK_NOTIFY(updateAutoLayoutState());
-        }).detach();
-        
-        openFlowgraphBlobMailbox.reset();
+                // Load the flowgraph and update layout.
+                JST_CHECK(instance.openFlowgraphBlob(*openFlowgraphBlobMailbox));
+                JST_CHECK(updateAutoLayoutState());
+
+                return Result::SUCCESS;
+            });
+        } 
+        // If the async task is complete, handle the result.
+        else if (openFlowgraphAsyncTask.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            // Get the result and notify if necessary.
+            JST_CHECK_NOTIFY(openFlowgraphAsyncTask.get());
+            
+            // Reset the future and the mailbox for the next iteration.
+            openFlowgraphAsyncTask = {};
+            openFlowgraphBlobMailbox.reset();
+        }
     }
 
     if (saveFlowgraphMailbox) {
