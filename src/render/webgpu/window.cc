@@ -10,20 +10,38 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[WebGPU] Binding surface to window.");
+Result Implementation::processSurfaceQueues() {
+    while (!surfaceUnbindQueue.empty()) {
+        JST_DEBUG("[WebGPU] Unbinding surface from window.");
 
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
-    surfaces.push_back(_surface);
-    return _surface->create();
-}
+        // Cast generic Surface.
+        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surfaceUnbindQueue.front());
 
-Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[WebGPU] Unbinding surface to window.");
+        // Remove generic Surface from queue.
+        surfaceUnbindQueue.pop();
 
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
-    JST_CHECK(_surface->destroy());
-    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+        // Destroy the Surface.
+        JST_CHECK(_surface->destroy());
+
+        // Remove Surface from window.
+        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+    }
+
+    while (!surfaceBindQueue.empty()) {
+        JST_DEBUG("[WebGPU] Binding surface to window.");
+
+        // Cast generic Surface.
+        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surfaceBindQueue.front());
+
+        // Remove generic Surface from queue.
+        surfaceBindQueue.pop();
+
+        // Create the Surface.
+        JST_CHECK(_surface->create());
+
+        // Add Surface to window.
+        surfaces.push_back(_surface);
+    }
 
     return Result::SUCCESS;
 }
@@ -56,8 +74,6 @@ Result Implementation::destroy() {
     if (config.imgui) {
         JST_CHECK(destroyImgui());
     }
-
-    JST_CHECK(Window::destroy());
 
     return Result::SUCCESS;
 }
@@ -129,6 +145,8 @@ Result Implementation::endImgui() {
 }
 
 Result Implementation::begin() {
+    JST_CHECK(Window::begin());
+
     JST_CHECK(viewport->nextDrawable());
         
     if (config.imgui) {

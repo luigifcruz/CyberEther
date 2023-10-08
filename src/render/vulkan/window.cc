@@ -13,49 +13,43 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[VULKAN] Binding surface to window.");
+Result Implementation::processSurfaceQueues() {
+    while (!surfaceUnbindQueue.empty()) {
+        JST_DEBUG("[VULKAN] Unbinding surface from window.");
 
-    // Prevent encode from happening.
-    lock();
+        // Synchronize all outstanding command buffers.
+        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+            JST_ERROR("[VULKAN] Can't wait for queue to complete.");
+        });
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+        // Cast generic Surface.
+        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surfaceUnbindQueue.front());
 
-    // Create Surface.
-    JST_CHECK(_surface->create());
+        // Remove generic Surface from queue.
+        surfaceUnbindQueue.pop();
 
-    // Add Surface to window.
-    surfaces.push_back(_surface);
+        // Destroy the Surface.
+        JST_CHECK(_surface->destroy());
 
-    // Resume encoding.
-    unlock();
+        // Remove Surface from window.
+        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+    }
 
-    return Result::SUCCESS;
-}
+    while (!surfaceBindQueue.empty()) {
+        JST_DEBUG("[VULKAN] Binding surface to window.");
 
-Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[VULKAN] Unbinding surface to window.");
+        // Cast generic Surface.
+        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surfaceBindQueue.front());
 
-    // Prevent encode from happening.
-    lock();
+        // Remove generic Surface from queue.
+        surfaceBindQueue.pop();
 
-    // Synchronize all outstanding command buffers.
-    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_ERROR("[VULKAN] Can't wait for queue to complete.");
-    });
+        // Create the Surface.
+        JST_CHECK(_surface->create());
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
-
-    // Destroy the Surface.
-    JST_CHECK(_surface->destroy());
-
-    // Remove Surface from window.
-    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
-
-    // Resume encoding.
-    unlock();
+        // Add Surface to window.
+        surfaces.push_back(_surface);
+    }
 
     return Result::SUCCESS;
 }
@@ -203,8 +197,6 @@ Result Implementation::destroy() {
     }
 
     vkDestroyRenderPass(device, renderPass, nullptr);
-
-    JST_CHECK(Window::destroy());
     
     return Result::SUCCESS;
 }
@@ -299,6 +291,8 @@ Result Implementation::endImgui() {
 Result Implementation::begin() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
+    JST_CHECK(Window::begin());
+
     // Wait for a frame to be available.
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -320,9 +314,6 @@ Result Implementation::begin() {
         vkWaitForFences(device, 1, &imagesInFlight[viewport->currentDrawableIndex()], VK_TRUE, UINT64_MAX);
     }
     imagesInFlight[viewport->currentDrawableIndex()] = inFlightFences[currentFrame];
-
-    // Lock state to prevent changes during draw call.
-    lock();
 
     // Set current command buffer.
     currentCommandBuffer = commandBuffers[viewport->currentDrawableIndex()];
@@ -402,9 +393,6 @@ Result Implementation::end() {
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
-    // Release state.
-    unlock();
 
     // Commit framebuffer to viewport.
 

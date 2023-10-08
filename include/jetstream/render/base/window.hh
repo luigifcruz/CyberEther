@@ -1,7 +1,9 @@
 #ifndef JETSTREAM_RENDER_BASE_WINDOW_HH
 #define JETSTREAM_RENDER_BASE_WINDOW_HH
 
+#include <queue>
 #include <memory>
+#include <thread>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -40,9 +42,9 @@ class Window {
     virtual ~Window() = default;
 
     virtual Result create();
-    virtual Result destroy();
+    virtual Result destroy() = 0;
 
-    virtual Result begin() = 0;
+    virtual Result begin();
     virtual Result end() = 0;
 
     virtual const Stats& stats() const = 0;
@@ -50,8 +52,8 @@ class Window {
 
     virtual constexpr Device device() const = 0;
 
-    virtual Result bind(const std::shared_ptr<Surface>& surface) = 0;
-    virtual Result unbind(const std::shared_ptr<Surface>& surface) = 0;
+    Result bind(const std::shared_ptr<Surface>& surface);
+    Result unbind(const std::shared_ptr<Surface>& surface);
 
     template<class T>
     inline Result JETSTREAM_API build(std::shared_ptr<T>& member,
@@ -92,16 +94,19 @@ class Window {
 
     void ScaleStyle(const Viewport::Generic& viewport);
 
-    void lock();
-    void unlock();
+    virtual Result processSurfaceQueues() = 0;
+
+    std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
+    std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;
 
  private:
+    bool graphicalLoopThreadStarted;
+    std::thread::id graphicalLoopThreadId;
+
     void ImGuiStyleSetup();
     void ImGuiStyleScale();
     void ImNodesStyleSetup();
     void ImNodesStyleScale();
-
-    std::atomic_flag interfaceHalt{false};
 };
 
 }  // namespace Jetstream::Render

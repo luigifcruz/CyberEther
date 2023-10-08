@@ -29,8 +29,8 @@ class WindowImp<Device::Vulkan> : public Window {
         return Device::Vulkan;
     };
 
-    Result bind(const std::shared_ptr<Surface>& surface) override;
-    Result unbind(const std::shared_ptr<Surface>& surface) override;
+ protected:
+    Result processSurfaceQueues() override;
 
  private:
     Stats statsData;

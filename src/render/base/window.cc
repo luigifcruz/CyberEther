@@ -9,10 +9,54 @@ Result Window::create() {
     _scalingFactor = 0.0f;
     _previousScalingFactor = 0.0f;
 
+    graphicalLoopThreadStarted = false;
+
     return Result::SUCCESS;
 }
 
-Result Window::destroy() {
+Result Window::begin() {
+    // Process surface bind and unbind queue.
+    JST_CHECK(processSurfaceQueues());
+
+    // Record graphical thread ID.
+    graphicalLoopThreadStarted = true;
+    graphicalLoopThreadId = std::this_thread::get_id();
+
+    return Result::SUCCESS;
+}
+
+Result Window::bind(const std::shared_ptr<Surface>& surface) {
+    // Push new surface to the bind queue.
+    surfaceBindQueue.push(surface);
+
+    // This is overcomplicated because of Emscripten.
+    // The browser won't allow calling WebGPU function from other thread. 
+    // So we need to find a way to make it work for everyone.
+
+    // If graphical loop didn't start yet. Call the function directly.
+    if (!graphicalLoopThreadStarted) {
+        JST_CHECK(processSurfaceQueues());
+    } 
+    // Wait for graphical loop to process queue if current thread is different.
+    else if (graphicalLoopThreadId != std::this_thread::get_id()) {
+        while (!surfaceBindQueue.empty()) {
+            std::this_thread::yield();
+        }
+    }
+    // Call the fucntion directly as fallback.
+    else {
+        JST_CHECK(processSurfaceQueues());
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Window::unbind(const std::shared_ptr<Surface>& surface) {
+    // Push new surface to the unbind queue.
+    surfaceUnbindQueue.push(surface);
+
+    // Return immediately.
+
     return Result::SUCCESS;
 }
 
@@ -188,16 +232,6 @@ void Window::ImNodesStyleScale() {
     style.LinkThickness             = 1.5f  * _scalingFactor;
     style.PinLineThickness          = 0.5f  * _scalingFactor;
     style.LinkLineSegmentsPerLength = 0.2f  / _scalingFactor;
-}
-
-void Window::lock() {
-    interfaceHalt.wait(true);
-    interfaceHalt.test_and_set();
-}
-
-void Window::unlock() {
-    interfaceHalt.clear();
-    interfaceHalt.notify_one();
 }
 
 }  // namespace Jetstream::Render

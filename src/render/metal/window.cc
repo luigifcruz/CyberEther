@@ -10,44 +10,38 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("Binding Metal surface to window.");
+Result Implementation::processSurfaceQueues() {
+    while (!surfaceUnbindQueue.empty()) {
+        JST_DEBUG("[Metal] Unbinding surface from window.");
 
-    // Prevent encode from happening.
-    lock();
+        // Cast generic Surface.
+        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surfaceUnbindQueue.front());
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+        // Remove generic Surface from queue.
+        surfaceUnbindQueue.pop();
 
-    // Create Surface.
-    JST_CHECK(_surface->create());
+        // Destroy the Surface.
+        JST_CHECK(_surface->destroy());
 
-    // Add Surface to window.
-    surfaces.push_back(_surface);
+        // Remove Surface from window.
+        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+    }
 
-    // Resume encoding.
-    unlock();
+    while (!surfaceBindQueue.empty()) {
+        JST_DEBUG("[Metal] Binding surface to window.");
 
-    return Result::SUCCESS;
-}
+        // Cast generic Surface.
+        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surfaceBindQueue.front());
 
-Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("Unbinding Metal surface to window.");
+        // Remove generic Surface from queue.
+        surfaceBindQueue.pop();
 
-    // Prevent encode from happening.
-    lock();
+        // Create the Surface.
+        JST_CHECK(_surface->create());
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
-
-    // Destroy the Surface.
-    JST_CHECK(_surface->destroy());
-
-    // Remove Surface from window.
-    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
-
-    // Resume encoding.
-    unlock();
+        // Add Surface to window.
+        surfaces.push_back(_surface);
+    }
 
     return Result::SUCCESS;
 }
@@ -91,8 +85,6 @@ Result Implementation::destroy() {
     commandQueue->release();
 
     outerPool->release();
-    
-    JST_CHECK(Window::destroy());
 
     return Result::SUCCESS;
 }
@@ -157,15 +149,14 @@ Result Implementation::endImgui() {
 Result Implementation::begin() {
     innerPool = NS::AutoreleasePool::alloc()->init();
 
+    JST_CHECK(Window::begin());
+
     drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
 
     if (!drawable) {
         statsData.droppedFrames += 1;
         return Result::SKIP;
     }
-
-    // Lock state to prevent changes during draw call.
-    lock();
 
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0)->init();
     colorAttachDescriptor->setTexture(drawable->texture());
@@ -196,9 +187,6 @@ Result Implementation::end() {
     commandBuffer->waitUntilCompleted();
 
     innerPool->release();
-
-    // Release state.
-    unlock();
 
     return Result::SUCCESS;
 }
