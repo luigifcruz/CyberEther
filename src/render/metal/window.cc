@@ -13,17 +13,41 @@ Implementation::WindowImp(const Config& config,
 Result Implementation::bind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("Binding Metal surface to window.");
 
+    // Prevent encode from happening.
+    lock();
+
+    // Cast generic Surface.
     auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+
+    // Create Surface.
+    JST_CHECK(_surface->create());
+
+    // Add Surface to window.
     surfaces.push_back(_surface);
-    return _surface->create();
+
+    // Resume encoding.
+    unlock();
+
+    return Result::SUCCESS;
 }
 
 Result Implementation::unbind(const std::shared_ptr<Surface>& surface) {
     JST_DEBUG("Unbinding Metal surface to window.");
 
+    // Prevent encode from happening.
+    lock();
+
+    // Cast generic Surface.
     auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+
+    // Destroy the Surface.
     JST_CHECK(_surface->destroy());
+
+    // Remove Surface from window.
     surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+
+    // Resume encoding.
+    unlock();
 
     return Result::SUCCESS;
 }
@@ -140,6 +164,9 @@ Result Implementation::begin() {
         return Result::SKIP;
     }
 
+    // Lock state to prevent changes during draw call.
+    lock();
+
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0)->init();
     colorAttachDescriptor->setTexture(drawable->texture());
     colorAttachDescriptor->setLoadAction(MTL::LoadActionClear);
@@ -169,6 +196,9 @@ Result Implementation::end() {
     commandBuffer->waitUntilCompleted();
 
     innerPool->release();
+
+    // Release state.
+    unlock();
 
     return Result::SUCCESS;
 }
