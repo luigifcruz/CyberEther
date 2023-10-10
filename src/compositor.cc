@@ -375,7 +375,7 @@ Result Compositor::processInteractions() {
 
     if (reloadModuleMailbox) {
         JST_DISPATCH_ASYNC([&, locale = *reloadModuleMailbox](){
-            ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "Reloading module..." });
+            ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading module..." });
             JST_CHECK_NOTIFY(instance.reloadModule(locale));
         });
         reloadModuleMailbox.reset();
@@ -436,7 +436,7 @@ Result Compositor::processInteractions() {
 
     if (openFlowgraphBlobMailbox) {
         JST_DISPATCH_ASYNC([&, blob = *openFlowgraphBlobMailbox](){
-            ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "Loading flowgraph..." });
+            ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
 
             Result res = Result::SUCCESS;
             res |= instance.openFlowgraphBlob(blob);
