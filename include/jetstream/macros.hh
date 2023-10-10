@@ -141,6 +141,12 @@ JST_CHECK(res);
 
 // Miscellaneous
 
+#include <thread>
+
+#ifndef JST_DISPATCH_ASYNC
+#define JST_DISPATCH_ASYNC(...) std::thread(__VA_ARGS__).detach();
+#endif  // JST_DISPATCH_ASYNC
+
 template <typename... Args>
 struct CountArgs {
     static constexpr int value = sizeof...(Args);

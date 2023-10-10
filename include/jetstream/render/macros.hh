@@ -14,6 +14,6 @@
         ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "" }); \
     } \
 }
-#endif  // JST_CHECK
+#endif  // JST_CHECK_NOTIFY
 
 #endif

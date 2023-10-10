@@ -3,8 +3,6 @@
 
 #include <tuple>
 #include <stack>
-#include <future>
-#include <chrono>  
 #include <memory>
 #include <vector>
 #include <optional>
@@ -65,6 +63,7 @@ class JETSTREAM_API Compositor {
     typedef std::pair<Locale, Locale> LinkMail;
     typedef std::pair<Locale, Locale> UnlinkMail;
     typedef Locale DeleteModuleMail;
+    typedef Locale ReloadModuleMail;
     typedef std::pair<Locale, std::string> RenameModuleMail;
     typedef std::pair<Locale, Device> ChangeModuleBackendMail;
     typedef std::pair<Locale, std::tuple<std::string, std::string, std::string>> ChangeModuleDataTypeMail;
@@ -104,8 +103,6 @@ class JETSTREAM_API Compositor {
 
     std::atomic_flag interfaceHalt{false};
 
-    std::future<Result> openFlowgraphAsyncTask;
-
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
     std::unordered_map<Locale, std::vector<Locale>, Locale::Hasher> outputInputCache;
     std::vector<std::vector<std::vector<NodeId>>> nodeTopology;
@@ -123,6 +120,7 @@ class JETSTREAM_API Compositor {
     std::optional<UnlinkMail> unlinkMailbox;
     std::optional<CreateModuleMail> createModuleMailbox;
     std::optional<DeleteModuleMail> deleteModuleMailbox;
+    std::optional<ReloadModuleMail> reloadModuleMailbox;
     std::optional<RenameModuleMail> renameModuleMailbox;
     std::optional<ChangeModuleBackendMail> changeModuleBackendMailbox;
     std::optional<ChangeModuleDataTypeMail> changeModuleDataTypeMailbox;

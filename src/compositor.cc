@@ -373,6 +373,14 @@ Result Compositor::processInteractions() {
         renameModuleMailbox.reset();
     }
 
+    if (reloadModuleMailbox) {
+        JST_DISPATCH_ASYNC([&, locale = *reloadModuleMailbox](){
+            ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "Reloading module..." });
+            JST_CHECK_NOTIFY(instance.reloadModule(locale));
+        });
+        reloadModuleMailbox.reset();
+    }
+
     if (linkMailbox) {
         const auto& [inputLocale, outputLocale] = *linkMailbox;
         JST_CHECK_NOTIFY(instance.linkModules(inputLocale, outputLocale));
@@ -427,28 +435,15 @@ Result Compositor::processInteractions() {
     }
 
     if (openFlowgraphBlobMailbox) {
-        // If the async task hasn't started, initiate it.
-        if (!openFlowgraphAsyncTask.valid()) {
-            openFlowgraphAsyncTask = std::async(std::launch::async, [&](){
-                // Notify user of flowgraph loading.
-                ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "Loading flowgraph..." });
+        JST_DISPATCH_ASYNC([&, blob = *openFlowgraphBlobMailbox](){
+            ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "Loading flowgraph..." });
 
-                // Load the flowgraph and update layout.
-                JST_CHECK(instance.openFlowgraphBlob(*openFlowgraphBlobMailbox));
-                JST_CHECK(updateAutoLayoutState());
-
-                return Result::SUCCESS;
-            });
-        } 
-        // If the async task is complete, handle the result.
-        else if (openFlowgraphAsyncTask.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            // Get the result and notify if necessary.
-            JST_CHECK_NOTIFY(openFlowgraphAsyncTask.get());
-            
-            // Reset the future and the mailbox for the next iteration.
-            openFlowgraphAsyncTask = {};
-            openFlowgraphBlobMailbox.reset();
-        }
+            Result res = Result::SUCCESS;
+            res |= instance.openFlowgraphBlob(blob);
+            res |= updateAutoLayoutState();
+            JST_CHECK_NOTIFY(res);
+        });
+        openFlowgraphBlobMailbox.reset();
     }
 
     if (saveFlowgraphMailbox) {
@@ -1231,9 +1226,6 @@ Result Compositor::drawGraph() {
             continue;
         }
 
-        // Disable control if node is incomplete.
-        ImGui::BeginDisabled(!block->complete);
-
         ImGui::BeginTable("##ControlTable", 2, ImGuiTableFlags_None);
         ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
         ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, ImGui::GetWindowWidth() - variableWidth -
@@ -1252,9 +1244,6 @@ Result Compositor::drawGraph() {
                 ImGui::TreePop();
             }
         }
-
-        // Disable control if node is incomplete.
-        ImGui::EndDisabled();
 
         ImGui::Dummy(ImVec2(windowMinWidth, 0.0f));
 
@@ -1725,6 +1714,11 @@ Result Compositor::drawGraph() {
         // Enable/disable node toggle.
         if (ImGui::MenuItem("Enable Node", nullptr, block->complete)) {
             toggleModuleMailbox = {locale, !block->complete};
+        }
+
+        // Reload node.
+        if (ImGui::MenuItem("Reload Node")) {
+            reloadModuleMailbox = locale;
         }
 
         // Device backend options.

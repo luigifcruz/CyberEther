@@ -128,6 +128,21 @@ Result Instance::buildDefaultInterface() {
     return Result::SUCCESS;
 }
 
+Result Instance::reloadModule(const Locale locale) {
+    JST_DEBUG("[INSTANCE] Reloading module '{}'.", locale);
+
+    if (!blockStates.contains(locale)) {
+        JST_ERROR("[INSTANCE] Module '{}' doesn't exist.", locale);
+        return Result::ERROR;
+    }
+
+    JST_CHECK(moduleUpdater(locale, [](const Locale&, Parser::ModuleRecord&){
+        return Result::SUCCESS;
+    }));
+
+    return Result::SUCCESS;
+}
+
 Result Instance::removeModule(const std::string id, const std::string bundleId) {
     const auto& locale = (!id.empty() && !bundleId.empty()) ? Locale{bundleId, id} : Locale{id};
 

@@ -270,6 +270,7 @@ class JETSTREAM_API Instance {
     Result changeModuleBackend(const Locale input, const Device device);
     Result changeModuleDataType(const Locale input, const std::tuple<std::string, std::string, std::string> type);
     Result clearModules();
+    Result reloadModule(const Locale locale);
 
     Result destroy();
     Result compute();
