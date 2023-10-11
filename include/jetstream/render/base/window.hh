@@ -13,6 +13,7 @@
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/tools/imgui_stdlib.h"
 #include "jetstream/render/tools/imgui_internal.h"
 #include "jetstream/render/tools/imnodes.h"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
