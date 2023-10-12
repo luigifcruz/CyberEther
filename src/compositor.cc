@@ -1181,7 +1181,7 @@ Result Compositor::drawGraph() {
     const auto& nodeStyle = ImNodes::GetStyle();
     const auto& guiStyle = ImGui::GetStyle();
 
-    const F32 windowMinWidth = 285.0f * scalingFactor;
+    const F32 windowMinWidth = 300.0f * scalingFactor;
     const F32 variableWidth = 100.0f * scalingFactor;
 
     //
@@ -1375,6 +1375,10 @@ Result Compositor::drawGraph() {
 
             ImNodes::EndNodeTitleBar();
 
+            // Suspend ImNodes default styling.
+            ImGui::PopStyleVar();
+            ImGui::PopStyleVar();
+
             // Draw node info.
             if (interface->shouldDrawInfo()) {
                 ImGui::BeginTable("##NodeInfoTable", 2, ImGuiTableFlags_None);
@@ -1394,6 +1398,10 @@ Result Compositor::drawGraph() {
                 block->interface->drawControl();
                 ImGui::EndTable();
             }
+
+            // Restore ImNodes default styling.
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1.0f, 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
             // Draw node input and output pins.
             if (!state.inputs.empty() || !state.outputs.empty()) {
