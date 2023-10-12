@@ -10,21 +10,27 @@ namespace Jetstream::Bundles {
 template<Device D, typename T = CF32>
 class Soapy : public Bundle {
  public:
+    using SoapyModule = Jetstream::Soapy<D, T>;
+
     // Configuration
 
     struct Config {
-        std::string deviceString;
+        std::string hintString = "";
+        std::string deviceString = "";
         std::string streamString = "";
-        F32 frequency;
-        F32 sampleRate;
+        F32 frequency = 96.9e6;
+        F32 sampleRate = 2.0e6;
+        bool automaticGain = true;
         VectorShape<2> outputShape;
         U64 bufferMultiplier = 4;
 
         JST_SERDES(
+            JST_SERDES_VAL("hintString", hintString);
             JST_SERDES_VAL("deviceString", deviceString);
             JST_SERDES_VAL("streamString", streamString);
             JST_SERDES_VAL("frequency", frequency);
             JST_SERDES_VAL("sampleRate", sampleRate);
+            JST_SERDES_VAL("automaticGain", automaticGain);
             JST_SERDES_VAL("outputShape", outputShape);
             JST_SERDES_VAL("bufferMultiplier", bufferMultiplier);
         );
@@ -79,21 +85,40 @@ class Soapy : public Bundle {
     // Constructor
 
     Result create() {
+        // Preload configuration device string.
+        std::string deviceString = config.deviceString;
+
+        // Gather list of available devices according to the hint string.
+        availableDeviceList = SoapyModule::ListAvailableDevices(config.hintString);
+
+        // Load the first device if device string is empty and there are devices available.
+        if (deviceString.empty() && !availableDeviceList.empty()) {
+            const auto& [_, device] = *availableDeviceList.begin();
+            deviceString = device.toString();
+        }
+
+        // Starting sub-modules.
+
         JST_CHECK(instance->addModule<Jetstream::Soapy, D, T>(
             soapy, "ui", {
-                .deviceString = config.deviceString,
+                .deviceString = deviceString,
                 .streamString = config.streamString,
                 .frequency = config.frequency,
                 .sampleRate = config.sampleRate,
+                .automaticGain = config.automaticGain,
                 .outputShape = config.outputShape,
                 .bufferMultiplier = config.bufferMultiplier,
             }, {},
             this->locale.id
         ));
 
+        // Connecting sub-modules outputs.
+
         JST_CHECK(this->linkOutput("buffer", output.buffer, soapy->getOutputBuffer()));
 
-        frequency = soapy->getConfig().frequency / 1e6;
+        // Fetching configuration.
+
+        currentDevice = soapy->getDeviceLabel();
 
         return Result::SUCCESS;
     }
@@ -111,21 +136,9 @@ class Soapy : public Bundle {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Device Name:");
+        ImGui::TextUnformatted("Device Name");
         ImGui::TableSetColumnIndex(1);
         ImGui::TextFormatted("{} ({})", soapy->getDeviceName(), soapy->getDeviceHardwareKey());
-
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Bandwidth:");
-        ImGui::TableSetColumnIndex(1);
-        ImGui::TextFormatted("{:.1f} MHz", soapy->getConfig().sampleRate / (1000 * 1000));
-
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Overflows:");
-        ImGui::TableSetColumnIndex(1);
-        ImGui::TextFormatted("{}", buffer.getOverflows());
 
         const F32& bufferOccupancy = buffer.getOccupancy();
         const F32 bufferOccupancyMB = (bufferOccupancy * sizeof(CF32) / (1024 * 1024));
@@ -138,10 +151,10 @@ class Soapy : public Bundle {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Buffer Health:");
+        ImGui::TextUnformatted("Buffer Health");
         ImGui::TableSetColumnIndex(1);
         const F32 bufferUsageRatio = bufferOccupancy / bufferCapacity;
-        const auto bufferOverlay = fmt::format("{:.0f}/{:.0f} MB", bufferOccupancyMB, bufferCapacityMB);
+        const auto bufferOverlay = fmt::format("{:.0f}/{:.0f} MB ({})", bufferOccupancyMB, bufferCapacityMB, buffer.getOverflows());
         ImGui::SetNextItemWidth(-1);
         ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), bufferOverlay.c_str());
 
@@ -163,12 +176,77 @@ class Soapy : public Bundle {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Sample Rate (MHz)");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        static float sampleRate = config.sampleRate / 1e6f;
+        ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_None);
+        if (ImGui::IsItemEdited()) {
+            config.sampleRate = soapy->setSampleRate(sampleRate * 1e6f);
+        }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Automatic Gain");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Checkbox("##AutomaticGain", &config.automaticGain)) {
+            config.automaticGain = soapy->setAutomaticGain(config.automaticGain);
+        }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Device Hint");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##DeviceHintInput", &config.hintString);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Device List");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        static const char* noDeviceMessage = "No device found";
+        if (ImGui::BeginCombo("##DeviceList", availableDeviceList.empty() ? noDeviceMessage : currentDevice.c_str())) {
+            for (const auto& [label, device] : availableDeviceList) {
+                bool isSelected = (currentDevice == label);
+                if (ImGui::Selectable(label.c_str(), isSelected)) {
+                    currentDevice = label;
+                    config.deviceString = device.toString();
+
+                    JST_DISPATCH_ASYNC([&](){
+                        ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading module..." });
+                        JST_CHECK_NOTIFY(instance->reloadModule(Locale{this->locale.id}));
+                    });
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TableSetColumnIndex(1);
+        const F32 fullWidth = ImGui::GetContentRegionAvail().x;
+        if (ImGui::Button("Reload Device List", ImVec2(fullWidth, 0))) {
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading device list..." });
+                availableDeviceList = SoapyModule::ListAvailableDevices(config.hintString);
+                JST_CHECK_NOTIFY(Result::SUCCESS);
+            });
+        }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
         ImGui::Text("Frequency (MHz)");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
+        static float frequency = config.frequency / 1e6f;
         ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
         if (ImGui::IsItemEdited()) {
-            frequency = soapy->setTunerFrequency(frequency * 1e6) / 1e6;
+            config.frequency = soapy->setTunerFrequency(frequency * 1e6f);
         }
 
         ImGui::TableNextRow();
@@ -185,9 +263,10 @@ class Soapy : public Bundle {
 
  private:
     F32 stepSize = 10.0f;
-    F32 frequency = 10.0f;
-
-    std::shared_ptr<Jetstream::Soapy<D, T>> soapy;
+    std::string currentDevice;
+    SoapyModule::DeviceList availableDeviceList;
+    
+    std::shared_ptr<SoapyModule> soapy;
 
     JST_DEFINE_IO();
 };

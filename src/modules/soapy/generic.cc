@@ -29,8 +29,12 @@ Result Soapy<D, T>::create() {
     // Initialize circular buffer.
     buffer.resize(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier);
 
+    // Convert requested device and stream strings into arguments.
+
     SoapySDR::Kwargs args = SoapySDR::KwargsFromString(config.deviceString);
     SoapySDR::Kwargs streamArgs = SoapySDR::KwargsFromString(config.streamString);
+
+    // Try opening device.
 
     try {
 #ifdef JETSTREAM_STATIC
@@ -48,10 +52,16 @@ Result Soapy<D, T>::create() {
         }
 #endif
 #else
-        soapyDevice = SoapySDR::Device::make(args);
+        const auto devices = SoapySDR::Device::enumerate(args);
+        deviceLabel = devices.at(0).at("label");
+        soapyDevice = SoapySDR::Device::make(devices.at(0));
 #endif
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to open device. Reason: {}", e.what());
+        JST_VOID_OUTPUT(output.buffer);
+        return Result::ERROR;
     } catch(...) {
-        JST_ERROR("Failed to find device.");
+        JST_ERROR("Failed to open device.");
         JST_VOID_OUTPUT(output.buffer);
         return Result::ERROR;
     }
@@ -62,9 +72,32 @@ Result Soapy<D, T>::create() {
         return Result::ERROR;
     }
 
+    // Gather device ranges.
+
+    sampleRateRanges = soapyDevice->getSampleRateRange(SOAPY_SDR_RX, 0);
+    frequencyRanges = soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
+
+    // Check if requested configuration is supported.
+
+    if (!CheckValidRange(sampleRateRanges, config.sampleRate)) {
+        JST_ERROR("Sample rate requested ({}) is not supported by the device.", config.sampleRate);
+        JST_VOID_OUTPUT(output.buffer);
+        SoapySDR::Device::unmake(soapyDevice);
+        return Result::ERROR;
+    }
+
+    if (!CheckValidRange(frequencyRanges, config.frequency)) {
+        JST_ERROR("Frequency requested ({}) is not supported by the device.", config.frequency);
+        JST_VOID_OUTPUT(output.buffer);
+        SoapySDR::Device::unmake(soapyDevice);
+        return Result::ERROR;
+    }
+
+    // Apply requested configuration.
+
     soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
     soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
-    soapyDevice->setGainMode(SOAPY_SDR_RX, 0, true);
+    soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
 
     soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
     if (soapyStream == nullptr) {
@@ -136,23 +169,32 @@ void Soapy<D, T>::summary() const {
 
 template<Device D, typename T>
 F32 Soapy<D, T>::setTunerFrequency(const F32& frequency) {
-    SoapySDR::RangeList freqRange = soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
-    float minFreq = freqRange.front().minimum();
-    float maxFreq = freqRange.back().maximum();
-
-    config.frequency = frequency;
-
-    if (frequency < minFreq) {
-        config.frequency = minFreq;
+    if (CheckValidRange(frequencyRanges, frequency)) {
+        config.frequency = frequency;
+        soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+        return config.frequency;
     }
-
-    if (frequency > maxFreq) {
-        config.frequency = maxFreq;
-    }
-
-    soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
 
     return config.frequency;
+}
+
+template<Device D, typename T>
+F32 Soapy<D, T>::setSampleRate(const F32& sampleRate) {
+    if (CheckValidRange(sampleRateRanges, sampleRate)) {
+        config.sampleRate = sampleRate;
+        soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+        return config.sampleRate;
+    }
+
+    return config.sampleRate;
+}
+
+template<Device D, typename T>
+bool Soapy<D, T>::setAutomaticGain(const bool& automaticGain) {
+    config.automaticGain = automaticGain;
+    soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+
+    return config.automaticGain;
 }
 
 template<Device D, typename T>
@@ -179,6 +221,32 @@ Result Soapy<D, T>::computeReady() {
     }
 
     return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Soapy<D, T>::DeviceList Soapy<D, T>::ListAvailableDevices(const std::string& filter) {
+    DeviceList deviceMap;
+    const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
+
+    for (const auto& device : SoapySDR::Device::enumerate(args)) {
+        deviceMap[device.at("label")] = device;
+    }
+
+    return deviceMap;
+}
+
+template<Device D, typename T>
+bool Soapy<D, T>::CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val) {
+    bool isSampleRateSupported = false;
+
+    for (const auto& range : ranges) {
+        if (val >= range.minimum() and val <= range.maximum()) {
+            isSampleRateSupported = true;
+            break;
+        }
+    }
+
+    return isSampleRateSupported;
 }
 
 }  // namespace Jetstream
