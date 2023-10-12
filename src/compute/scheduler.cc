@@ -33,7 +33,7 @@ Result Scheduler::addModule(const Locale& locale, const std::shared_ptr<BlockSta
                                                                      block->module->device(),
                                                                      (block->compute) ? "YES" : "NO",
                                                                      (block->present) ? "YES" : "NO",
-                                                                     (!block->interface) ? "YES" : "NO");
+                                                                     (locale.internal()) ? "YES" : "NO");
     JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
 
     {

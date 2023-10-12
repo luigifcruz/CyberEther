@@ -140,47 +140,46 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        // Create new state for module.
+        // Create new state for module and load interface.
+
         auto& state = blockStates[locale] = std::make_shared<BlockState>();
+
+        state->interface = module;
 
         // Load generic data.
 
-        module->locale = locale;
+        module->setLocale(locale);
+        module->setInstance(this);
+        module->setComplete(true);
+        module->setInterfaceConfig(interfaceConfig);
+
         module->config = config;
         module->input = input;
-        module->instance = this;
 
         // Create module and load state.
         if constexpr (std::is_base_of<Bundle, Block>::value) {
-            // Assume bundle is complete. Failed internal modules will mark this bundle incomplete.
-            state->complete = true;
-
-            // Create bundle.
             if (module->create() != Result::SUCCESS) {
                 // If it fails, mark bundle as incomplete.
                 // This is redundant but nice to have I guess.
-                state->complete = false;
+                module->setComplete(false);
             }
 
-            // Load state.
             state->bundle = module;
         } else {
-            if (!(state->complete = module->create() == Result::SUCCESS)) {
+            if (module->create() != Result::SUCCESS) {
                 JST_DEBUG("[INSTANCE] Module '{}' is incomplete.", locale);
 
+                // If module is internal, mark its bundle as incomplete.
                 if (locale.internal()) {
-                    auto& bundleState = blockStates.at(locale.idOnly());
-
-                    // If module is internal, mark its bundle as incomplete.
-                    bundleState->complete = false;
-
-                    // Save module error in bundle state.
-                    bundleState->error += fmt::format("[{}] {}\n", locale, JST_LOG_LAST_ERROR());
-                } else {
-                    // Save module error in state.
-                    state->error = JST_LOG_LAST_ERROR();
+                    auto& bundle = blockStates.at(locale.idOnly())->interface;
+                    bundle->setComplete(false);
+                    bundle->pushError(fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
                 }
+
+                module->setComplete(false);
+                module->pushError(JST_LOG_LAST_ERROR());
             }
+
             state->module = module;
         }
 
@@ -191,17 +190,11 @@ class JETSTREAM_API Instance {
 
         // Load state for present.
         if constexpr (std::is_base_of<Present, Block>::value) {
-            if (state->complete) {
+            if (module->complete()) {
                 state->present = module;
                 state->present->window = _window;
                 JST_CHECK(state->present->createPresent());
             }
-        }
-
-        // Load state for interface.
-        if (!locale.internal()) {
-            state->interface = module;
-            state->interface->config = interfaceConfig;
         }
 
         // Populate state record fingerprint.
@@ -228,13 +221,13 @@ class JETSTREAM_API Instance {
         state->record.setInputEndpoint(module->input);
         state->record.setOutputEndpoint(module->output);
         if (!locale.internal()) {
-            state->record.setInterfaceEndpoint(state->interface->config);
+            state->record.setInterfaceEndpoint(module->getInterfaceConfig());
         }
 
         JST_CHECK(state->record.updateMaps());
 
         // Add block to the schedule.
-        if (state->complete) {
+        if (module->complete()) {
             JST_CHECK(_scheduler.addModule(locale, state));
         }
 

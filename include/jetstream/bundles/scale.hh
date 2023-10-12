@@ -73,13 +73,13 @@ class Scale : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance->addModule<Jetstream::Scale, D, T>(
+        JST_CHECK(instance().addModule<Jetstream::Scale, D, T>(
             scale, "ui", {
                 .range = config.range,
             }, {
                 .buffer = input.buffer,
             },
-            this->locale.id
+            locale().id
         ));
 
         JST_CHECK(this->linkOutput("buffer", output.buffer, scale->getOutputBuffer()));
@@ -88,7 +88,7 @@ class Scale : public Bundle {
     }
 
     Result destroy() {
-        JST_CHECK(instance->removeModule("ui", this->locale.id));
+        JST_CHECK(instance().removeModule("ui", locale().id));
 
         return Result::SUCCESS;
     }

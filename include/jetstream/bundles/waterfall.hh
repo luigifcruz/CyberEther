@@ -73,7 +73,7 @@ class Waterfall : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance->addModule<Jetstream::Waterfall, D, T>(
+        JST_CHECK(instance().addModule<Jetstream::Waterfall, D, T>(
             waterfall, "ui", {
                 .zoom = config.zoom,
                 .offset = config.offset,
@@ -83,14 +83,14 @@ class Waterfall : public Bundle {
             }, {
                 .buffer = input.buffer,
             },
-            this->locale.id
+            locale().id
         ));
 
         return Result::SUCCESS;
     }
 
     Result destroy() {
-        JST_CHECK(instance->removeModule("ui", this->locale.id));
+        JST_CHECK(instance().removeModule("ui", locale().id));
 
         return Result::SUCCESS;
     }

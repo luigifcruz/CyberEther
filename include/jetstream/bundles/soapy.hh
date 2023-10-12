@@ -99,7 +99,7 @@ class Soapy : public Bundle {
 
         // Starting sub-modules.
 
-        JST_CHECK(instance->addModule<Jetstream::Soapy, D, T>(
+        JST_CHECK(instance().addModule<Jetstream::Soapy, D, T>(
             soapy, "ui", {
                 .deviceString = deviceString,
                 .streamString = config.streamString,
@@ -109,7 +109,7 @@ class Soapy : public Bundle {
                 .outputShape = config.outputShape,
                 .bufferMultiplier = config.bufferMultiplier,
             }, {},
-            this->locale.id
+            locale().id
         ));
 
         // Connecting sub-modules outputs.
@@ -124,7 +124,7 @@ class Soapy : public Bundle {
     }
 
     Result destroy() {
-        JST_CHECK(instance->removeModule("ui", this->locale.id));
+        JST_CHECK(instance().removeModule("ui", locale().id));
 
         return Result::SUCCESS;
     }

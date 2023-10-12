@@ -92,7 +92,7 @@ Result Compositor::refreshState() {
         nodeLocaleMap[id++] = locale;
 
         // Check if the graph is already organized.
-        if (interface->config.nodePos != Size2D<F32>{0.0f, 0.0f}) {
+        if (interface->getConfig().nodePos != Size2D<F32>{0.0f, 0.0f}) {
             graphSpatiallyOrganized = true;
         }
 
@@ -1189,17 +1189,16 @@ Result Compositor::drawGraph() {
     //
 
     for (const auto& [_, state] : nodeStates) {
-        const auto& block = state.block;
-        const auto& interface = block->interface;
+        const auto& interface = state.block->interface;
 
-        if (!interface->config.viewEnabled ||
+        if (!interface->getConfig().viewEnabled ||
             !interface->shouldDrawView() ||
-            !block->complete) {
+            !interface->complete()) {
             continue;
         }
 
         if (!ImGui::Begin(fmt::format("View - {}", interface->title()).c_str(),
-                          &interface->config.viewEnabled)) {
+                          &interface->getConfig().viewEnabled)) {
             ImGui::End();
             continue;
         }
@@ -1212,16 +1211,15 @@ Result Compositor::drawGraph() {
     //
 
     for (const auto& [_, state] : nodeStates) {
-        const auto& block = state.block;
-        const auto& interface = block->interface;
+        const auto& interface = state.block->interface;
 
-        if (!interface->config.controlEnabled ||
+        if (!interface->getConfig().controlEnabled ||
             !interface->shouldDrawControl()) {
             continue;
         }
 
         if (!ImGui::Begin(fmt::format("Control - {}", interface->title()).c_str(),
-                          &interface->config.controlEnabled)) {
+                          &interface->getConfig().controlEnabled)) {
             ImGui::End();
             continue;
         }
@@ -1268,7 +1266,7 @@ Result Compositor::drawGraph() {
 
         // Set node position according to the internal state.
         for (const auto& [locale, state] : nodeStates) {
-            const auto& [x, y] = state.block->interface->config.nodePos;
+            const auto& [x, y] = state.block->interface->getConfig().nodePos;
             ImNodes::SetNodeGridSpacePos(state.id, ImVec2(x, y));
         }
 
@@ -1279,16 +1277,16 @@ Result Compositor::drawGraph() {
             const auto& block = state.block;
             const auto& interface = block->interface;
 
-            F32& nodeWidth = interface->config.nodeWidth;
+            F32& nodeWidth = interface->getConfig().nodeWidth;
             const F32 titleWidth = ImGui::CalcTextSize(interface->title().c_str()).x +
                                    ImGui::CalcTextSize(" " ICON_FA_CIRCLE_QUESTION).x +
-                                   ((!block->complete) ? ImGui::CalcTextSize(" " ICON_FA_TRIANGLE_EXCLAMATION).x : 0);
+                                   ((!interface->complete()) ? ImGui::CalcTextSize(" " ICON_FA_TRIANGLE_EXCLAMATION).x : 0);
             const F32 controlWidth = interface->shouldDrawControl() ? windowMinWidth: 0.0f;
             const F32 previewWidth = interface->shouldDrawPreview() ? windowMinWidth : 0.0f;
             nodeWidth = std::max({titleWidth, nodeWidth, controlWidth, previewWidth});
 
             // Push node-specific style.
-            if (block->complete) {
+            if (interface->complete()) {
                 switch (interface->device()) {
                     case Device::CPU:
                         ImNodes::PushColorStyle(ImNodesCol_TitleBar,         CpuColor);
@@ -1357,7 +1355,7 @@ Result Compositor::drawGraph() {
             }
             ImGui::PopStyleVar();
 
-            if (!block->complete) {
+            if (!interface->complete()) {
                 ImGui::SameLine();
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
                 ImGui::Text(ICON_FA_TRIANGLE_EXCLAMATION);
@@ -1366,7 +1364,7 @@ Result Compositor::drawGraph() {
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                     ImGui::BeginTooltip();
                     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-                    ImGui::TextWrapped("%s", block->error.c_str());
+                    ImGui::TextWrapped("%s", interface->error().c_str());
                     ImGui::PopTextWrapPos();
                     ImGui::EndTooltip();
                 }
@@ -1385,7 +1383,7 @@ Result Compositor::drawGraph() {
                 ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
                 ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableWidth -
                                                                                   (guiStyle.CellPadding.x * 2.0f));
-                block->interface->drawInfo();
+                interface->drawInfo();
                 ImGui::EndTable();
             }
 
@@ -1395,7 +1393,7 @@ Result Compositor::drawGraph() {
                 ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
                 ImGui::TableSetupColumn("Control", ImGuiTableColumnFlags_WidthFixed, nodeWidth -  variableWidth -
                                                                                      (guiStyle.CellPadding.x * 2.0f));
-                block->interface->drawControl();
+                interface->drawControl();
                 ImGui::EndTable();
             }
 
@@ -1429,9 +1427,9 @@ Result Compositor::drawGraph() {
             }
 
             // Draw node preview.
-            if (block->complete &&
+            if (interface->complete() &&
                 interface->shouldDrawPreview() &&
-                interface->config.previewEnabled) {
+                interface->getConfig().previewEnabled) {
                 ImGui::Spacing();
                 interface->drawPreview(nodeWidth);
             }
@@ -1456,7 +1454,7 @@ Result Compositor::drawGraph() {
                 ImGui::TableSetColumnIndex(0);
 
                 if (interface->shouldDrawView()) {
-                    ImGui::Checkbox("Window", &interface->config.viewEnabled);
+                    ImGui::Checkbox("Window", &interface->getConfig().viewEnabled);
 
                     if (interface->shouldDrawControl() ||
                         interface->shouldDrawInfo()    ||
@@ -1465,17 +1463,17 @@ Result Compositor::drawGraph() {
                     }
                 }
 
-                if (block->interface->shouldDrawControl() ||
-                    block->interface->shouldDrawInfo()) {
-                    ImGui::Checkbox("Control", &block->interface->config.controlEnabled);
+                if (interface->shouldDrawControl() ||
+                    interface->shouldDrawInfo()) {
+                    ImGui::Checkbox("Control", &interface->getConfig().controlEnabled);
 
-                    if (block->interface->shouldDrawPreview()) {
+                    if (interface->shouldDrawPreview()) {
                         ImGui::SameLine();
                     }
                 }
 
                 if (interface->shouldDrawPreview()) {
-                    ImGui::Checkbox("Preview", &interface->config.previewEnabled);
+                    ImGui::Checkbox("Preview", &interface->getConfig().previewEnabled);
                 }
 
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 2.0f, scalingFactor * 1.0f));
@@ -1514,10 +1512,10 @@ Result Compositor::drawGraph() {
             const auto& [inputLocale, outputLocale] = locales;
             const auto& inputPinId = inputLocalePinMap.at(inputLocale);
             const auto& outputPinId = outputLocalePinMap.at(outputLocale);
-            const auto& outputBlock = nodeStates.at(outputLocale.idOnly()).block;
+            const auto& outputInterface = nodeStates.at(outputLocale.idOnly()).block->interface;
 
-            if (outputBlock->complete) {
-                switch (outputBlock->interface->device()) {
+            if (outputInterface->complete()) {
+                switch (outputInterface->device()) {
                     case Device::CPU:
                         ImNodes::PushColorStyle(ImNodesCol_Link,         CpuColor);
                         ImNodes::PushColorStyle(ImNodesCol_LinkHovered,  CpuColor);
@@ -1586,7 +1584,7 @@ Result Compositor::drawGraph() {
                     for (const auto& nodeId : column) {
                         const auto& dims = ImNodes::GetNodeDimensions(nodeId);
                         auto& block = nodeStates.at(nodeLocaleMap.at(nodeId)).block;
-                        auto& [x, y] = block->interface->config.nodePos;
+                        auto& [x, y] = block->interface->getConfig().nodePos;
 
                         // Add previous columns horizontal offset.
                         x = previousColumnsWidth;
@@ -1622,7 +1620,7 @@ Result Compositor::drawGraph() {
         // Update internal state node position.
         for (const auto& [locale, state] : nodeStates) {
             const auto& [x, y] = ImNodes::GetNodeGridSpacePos(state.id);
-            state.block->interface->config.nodePos = {x, y};
+            state.block->interface->getConfig().nodePos = {x, y};
         }
 
         // Render underlying buffer information about the link.
@@ -1648,7 +1646,7 @@ Result Compositor::drawGraph() {
             const auto nodeDims = ImNodes::GetNodeDimensions(nodeId);
             const auto nodeOrigin = ImNodes::GetNodeScreenSpacePos(nodeId);
 
-            F32& nodeWidth = nodeStates.at(nodeLocaleMap.at(nodeId)).block->interface->config.nodeWidth;
+            F32& nodeWidth = nodeStates.at(nodeLocaleMap.at(nodeId)).block->interface->getConfig().nodeWidth;
 
             bool isNearRightEdge =
                 std::abs((nodeOrigin.x + nodeDims.x) - ImGui::GetMousePos().x) < 10.0f &&
@@ -1702,6 +1700,7 @@ Result Compositor::drawGraph() {
     if (ImGui::BeginPopup("##node_context_menu")) {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& block = nodeStates.at(locale.idOnly()).block;
+        const auto& interface = block->interface;
         const auto& fingerprint = block->record.fingerprint;
         const auto moduleEntry = Store::ModuleList().at(fingerprint.module);
 
@@ -1720,8 +1719,8 @@ Result Compositor::drawGraph() {
         }
 
         // Enable/disable node toggle.
-        if (ImGui::MenuItem("Enable Node", nullptr, block->complete)) {
-            toggleModuleMailbox = {locale, !block->complete};
+        if (ImGui::MenuItem("Enable Node", nullptr, interface->complete())) {
+            toggleModuleMailbox = {locale, !interface->complete()};
         }
 
         // Reload node.
@@ -1732,7 +1731,7 @@ Result Compositor::drawGraph() {
         // Device backend options.
         if (ImGui::BeginMenu("Backend Device")) {
             for (const auto& [device, _] : moduleEntry.options) {
-                const auto enabled = (block->interface->device() == device);
+                const auto enabled = (interface->device() == device);
                 if (ImGui::MenuItem(GetDevicePrettyName(device), nullptr, enabled)) {
                     changeModuleBackendMailbox = {locale, device};
                 }
@@ -1742,7 +1741,7 @@ Result Compositor::drawGraph() {
 
         // Data type options.
         if (ImGui::BeginMenu("Data Type")) {
-            for (const auto& types : moduleEntry.options.at(block->interface->device())) {
+            for (const auto& types : moduleEntry.options.at(interface->device())) {
                 const auto& [dataType, inputDataType, outputDataType] = types;
                 const auto enabled = fingerprint.dataType == dataType &&
                                      fingerprint.inputDataType == inputDataType &&

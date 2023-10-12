@@ -48,7 +48,7 @@ class JETSTREAM_API Module : public Interface {
         if (prevRes == Result::SUCCESS) {
             buffer = Vector<DeviceId, DataType, Dimensions>(shape);
         }
-        buffer.updateLocale({locale.id, locale.subId, name});
+        buffer.updateLocale({locale().id, locale().subId, name});
 
         return res;
     }
@@ -71,7 +71,7 @@ class JETSTREAM_API Module : public Interface {
         }
 
         dst = src;
-        dst.updateLocale({locale.id, locale.subId, name});
+        dst.updateLocale({locale().id, locale().subId, name});
 
         return res;
     }
@@ -80,7 +80,7 @@ class JETSTREAM_API Module : public Interface {
     Result voidOutput(Vector<DeviceId, DataType, Dimensions>& buffer) {
         const auto vectorName = buffer.locale().pinId;
         buffer = Vector<DeviceId, DataType, Dimensions>();
-        buffer.updateLocale({locale.id, locale.subId, vectorName});
+        buffer.updateLocale({locale().id, locale().subId, vectorName});
 
         return Result::SUCCESS;
     }

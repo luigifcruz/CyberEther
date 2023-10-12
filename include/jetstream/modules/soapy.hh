@@ -153,6 +153,7 @@ class Soapy : public Module, public Compute {
     SoapySDR::Stream* soapyStream;
 
     void soapyThreadLoop();
+
     static bool CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val); 
 
     JST_DEFINE_IO();

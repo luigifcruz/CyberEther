@@ -17,9 +17,6 @@
 namespace Jetstream {
 
 struct BlockState {
-    bool complete;
-    std::string error;
-
     Parser::ModuleRecord record;
 
     std::shared_ptr<Bundle> bundle;

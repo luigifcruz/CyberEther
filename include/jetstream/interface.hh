@@ -31,13 +31,37 @@ class JETSTREAM_API Interface {
         );
     };
 
+    constexpr const Config& getConfig() const {
+        return _config;
+    }
+
+    constexpr const Config& getInterfaceConfig() const {
+        return _config;
+    }
+
+    // Metadata Methods
+
+    constexpr const bool& complete() const {
+        return _complete;
+    }
+
+    constexpr const std::string& error() const {
+        return _error;
+    }
+
+    constexpr const Locale& locale() const {
+        return _locale;
+    }
+
     virtual constexpr Device device() const = 0;
     virtual std::string_view name() const = 0;
     virtual std::string_view prettyName() const = 0;
 
     std::string title() const {
-        return fmt::format("{} ({})", prettyName(), locale);
+        return fmt::format("{} ({})", prettyName(), locale());
     }
+
+    // Graphical Methods
 
     virtual void drawPreview(const F32&) {}
     virtual constexpr bool shouldDrawPreview() const {
@@ -60,12 +84,49 @@ class JETSTREAM_API Interface {
     }
 
  protected:
-    Config config;
-    Locale locale;
-    Instance* instance;
+    constexpr Instance& instance() {
+        return *_instance;
+    }
+
+    void setInterfaceConfig(const Config& config) {
+        _config = config;
+    }
+
+    void setLocale(const Locale& locale) {
+        _locale = locale;
+    }
+
+    void setComplete(const bool& complete) {
+        _complete = complete;
+    }
+
+    void pushError(const std::string& error) {
+        _error += ((!_error.empty()) ? "\n" : "") + error;
+    }
+
+    void setInstance(Instance* instance) {
+        _instance = instance;
+    }
+
+    constexpr Config& getConfig() {
+        return _config;
+    }
+
+    constexpr Config& getInterfaceConfig() {
+        return _config;
+    }
 
     friend Instance;
     friend class Compositor;
+
+ private:
+    Config _config;
+    Locale _locale;
+    
+    bool _complete;
+    std::string _error;
+
+    Instance* _instance;
 };
 
 }  // namespace Jetstream

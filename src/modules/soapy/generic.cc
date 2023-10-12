@@ -27,7 +27,7 @@ Result Soapy<D, T>::create() {
     );
 
     // Initialize circular buffer.
-    buffer.resize(config.outputShape[0] * config.outputShape[1] * config.bufferMultiplier);
+    buffer.resize(config.outputShape.size() * config.bufferMultiplier);
 
     // Convert requested device and stream strings into arguments.
 

@@ -66,20 +66,20 @@ class Constellation : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance->addModule<Jetstream::Constellation, D, T>(
+        JST_CHECK(instance().addModule<Jetstream::Constellation, D, T>(
             constellation, "ui", {
                 .viewSize = config.viewSize,
             }, {
                 .buffer = input.buffer,
             },
-            this->locale.id
+            locale().id
         ));
 
         return Result::SUCCESS;
     }
 
     Result destroy() {
-        JST_CHECK(instance->removeModule("ui", this->locale.id));
+        JST_CHECK(instance().removeModule("ui", locale().id));
 
         return Result::SUCCESS;
     }

@@ -48,6 +48,14 @@ struct VectorShape {
         return empty;
     }
 
+    constexpr U64 size() const noexcept {
+        U64 _size = 1;
+        for (const auto& dim : _shape) {
+            _size *= dim;
+        }
+        return _size;
+    }
+
     constexpr std::vector<U64> native() const noexcept {
         return std::vector<U64>(_shape.begin(), _shape.end());
     }
@@ -73,11 +81,7 @@ class VectorImpl : public VectorType {
     }
 
     constexpr U64 size() const noexcept {
-        U64 _size = 1;
-        for (const auto& dim : _shape) {
-            _size *= dim;
-        }
-        return _size;
+        return _shape.size();
     }
 
     constexpr U64 refs() const noexcept {

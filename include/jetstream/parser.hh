@@ -85,6 +85,8 @@ class Parser {
         RecordMap outputMap;
         RecordMap interfaceMap;
 
+        // TODO: Check if endpoints can be constant values.
+
         void setConfigEndpoint(auto& endpoint) {
             getConfigFunc = [&](RecordMap& map){ return endpoint>>map; };
         }

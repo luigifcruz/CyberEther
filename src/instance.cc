@@ -403,7 +403,7 @@ Result Instance::eraseModule(const Locale locale) {
     auto state = blockStates.extract(locale).mapped();
 
     // Remove block from schedule.
-    if (state->complete) {
+    if (state->interface->complete()) {
         JST_CHECK(_scheduler.removeModule(locale));
     }
 
