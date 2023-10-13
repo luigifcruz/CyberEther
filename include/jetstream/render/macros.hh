@@ -10,6 +10,8 @@
         ImGui::InsertNotification({ ImGuiToastType_Error, 5000, JST_LOG_LAST_ERROR().c_str() }); \
     } else if (val == Result::FATAL) { \
         ImGui::InsertNotification({ ImGuiToastType_Error, 5000, JST_LOG_LAST_FATAL().c_str() }); \
+    } else if (val == Result::WARNING) { \
+        ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, JST_LOG_LAST_WARNING().c_str() }); \
     } else if (val == Result::SUCCESS) { \
         ImGui::InsertNotification({ ImGuiToastType_Success, 1000, "" }); \
     } \

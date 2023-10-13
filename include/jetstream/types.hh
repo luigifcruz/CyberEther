@@ -15,10 +15,12 @@ namespace Jetstream {
 enum class Result : uint8_t {
     SUCCESS     = 0,
     ERROR       = 1,
-    FATAL       = 2,
-    SKIP        = 3,
-    RECREATE    = 4,
-    TIMEOUT     = 5,
+    WARNING     = 2,
+    FATAL       = 3,
+    SKIP        = 4,
+    RELOAD      = 5,
+    RECREATE    = 6,
+    TIMEOUT     = 7,
 };
 
 inline constexpr Result& operator|=(Result& lhs, const Result& rhs) {

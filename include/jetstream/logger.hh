@@ -10,6 +10,7 @@
 
 #include "jetstream_config.hh"
 
+std::string& JST_LOG_LAST_WARNING();
 std::string& JST_LOG_LAST_ERROR();
 std::string& JST_LOG_LAST_FATAL();
 
@@ -67,17 +68,6 @@ std::string& JST_LOG_LAST_FATAL();
 #endif
 #endif
 
-#ifndef JST_WARN
-#define JST_WARN(...) _JST_LOG_SINK                << \
-                      _JST_LOG_NAME                << \
-                      _JST_LOG_WARN                << \
-                      _JST_LOG_SEPR                << \
-                      _JST_LOG_YELLOW(__VA_ARGS__) << \
-                      _JST_LOG_ENDL;
-#else
-#define JST_WARN(...)
-#endif
-
 #ifndef JST_INFO
 #define JST_INFO(...) _JST_LOG_SINK              << \
                       _JST_LOG_NAME              << \
@@ -87,6 +77,18 @@ std::string& JST_LOG_LAST_FATAL();
                       _JST_LOG_ENDL;
 #else
 #define JST_INFO(...)
+#endif
+
+#ifndef JST_WARN
+#define JST_WARN(...) JST_LOG_LAST_WARNING() = _JST_LOG_DEFAULT(__VA_ARGS__); \
+                      _JST_LOG_SINK                << \
+                      _JST_LOG_NAME                << \
+                      _JST_LOG_WARN                << \
+                      _JST_LOG_SEPR                << \
+                      _JST_LOG_YELLOW(__VA_ARGS__) << \
+                      _JST_LOG_ENDL;
+#else
+#define JST_WARN(...)
 #endif
 
 #ifndef JST_ERROR
