@@ -73,11 +73,19 @@ class Vulkan {
     }
 
     constexpr const U64& getStagingBufferSize() {
-         return config.stagingBufferSize;       
+        return config.stagingBufferSize;       
     }
 
-    constexpr VkCommandPool& getTransferCommandPool() {
-         return transferCommandPool;
+    constexpr VkFence& getDefaultFence() {
+        return defaultFence;
+    }
+
+    constexpr VkCommandPool& getDefaultCommandPool() {
+        return defaultCommandPool;
+    }
+
+    constexpr VkCommandBuffer& getDefaultCommandBuffer() {
+        return defaultCommandBuffer;
     }
 
  private:
@@ -91,7 +99,9 @@ class Vulkan {
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
     void* stagingBufferMappedMemory;
-    VkCommandPool transferCommandPool;
+    VkFence defaultFence;
+    VkCommandBuffer defaultCommandBuffer;
+    VkCommandPool defaultCommandPool;
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;

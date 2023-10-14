@@ -263,7 +263,8 @@ Result Implementation::createImgui() {
 
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
                                    backend->getComputeQueue(),
-                                   backend->getTransferCommandPool(),
+                                   backend->getDefaultFence(),
+                                   backend->getDefaultCommandBuffer(),
         [&](VkCommandBuffer& commandBuffer){
             ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
 

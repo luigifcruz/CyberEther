@@ -395,7 +395,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         });
     }
 
-    // Create transfer pool.
+    // Create default command pool.
 
     {
         Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
@@ -406,8 +406,33 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT |
                          VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
 
-        JST_VK_CHECK_THROW(vkCreateCommandPool(device, &poolInfo, nullptr, &transferCommandPool), [&]{
-            JST_FATAL("[VULKAN] Failed to create transfer command pool.");
+        JST_VK_CHECK_THROW(vkCreateCommandPool(device, &poolInfo, nullptr, &defaultCommandPool), [&]{
+            JST_FATAL("[VULKAN] Failed to create default command pool.");
+        });
+    }
+
+    // Create default command buffer.
+
+    {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = defaultCommandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = 1;
+
+        JST_VK_CHECK_THROW(vkAllocateCommandBuffers(device, &allocInfo, &defaultCommandBuffer), [&]{
+            JST_ERROR("[VULKAN] Failed to create default command buffer.");
+        });
+    }
+
+    // Create default fence.
+
+    {
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+        JST_VK_CHECK_THROW(vkCreateFence(device, &fenceInfo, nullptr, &defaultFence), [&]{
+            JST_ERROR("[VULKAN] Failed to create default fence.");            
         });
     }
 
@@ -427,7 +452,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 }
 
 Vulkan::~Vulkan() {
-    vkDestroyCommandPool(device, transferCommandPool, nullptr);
+    vkDestroyFence(device, defaultFence, nullptr);
+    vkFreeCommandBuffers(device, defaultCommandPool, 1, &defaultCommandBuffer);
+    vkDestroyCommandPool(device, defaultCommandPool, nullptr);
     vkUnmapMemory(device, stagingBufferMemory);
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);

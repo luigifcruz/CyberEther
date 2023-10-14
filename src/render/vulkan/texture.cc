@@ -229,7 +229,8 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
     // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
                                    backend->getComputeQueue(),
-                                   backend->getTransferCommandPool(),
+                                   backend->getDefaultFence(),
+                                   backend->getDefaultCommandBuffer(),
         [&](VkCommandBuffer& commandBuffer){
             JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
                                                      texture, 
