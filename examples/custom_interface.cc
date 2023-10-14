@@ -201,8 +201,10 @@ class UI {
         {
             ImGui::Begin("Control");
 
-            ImGui::InputFloat("Frequency (MHz)", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
-            if (ImGui::IsItemEdited()) { frequency = sdr->setTunerFrequency(frequency * 1e6) / 1e6; }
+            float freq = frequency / 1e6;
+            ImGui::InputFloat("Frequency (MHz)", &freq, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
+            frequency = freq * 1e6;
+            if (ImGui::IsItemEdited()) { sdr->setTunerFrequency(freq); }
             ImGui::InputFloat("Step Size (MHz)", &stepSize, 1.0f, 5.0f, "%.3f MHz");
 
             auto [min, max] = scl->range();
