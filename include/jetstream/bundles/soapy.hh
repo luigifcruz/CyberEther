@@ -160,7 +160,7 @@ class Soapy : public Bundle {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Throughput:");
+        ImGui::TextUnformatted("Throughput");
         ImGui::TableSetColumnIndex(1);
         const F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * sizeof(CF32)) / (1024 * 1024));
         const F32 throughputRatio = (bufferThroughputMB / sdrThroughputMB) * 0.5f;
@@ -176,13 +176,13 @@ class Soapy : public Bundle {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Sample Rate (MHz)");
+        ImGui::Text("Sample Rate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        static float sampleRate = config.sampleRate / 1e6f;
-        ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_None);
-        if (ImGui::IsItemEdited()) {
-            config.sampleRate = soapy->setSampleRate(sampleRate * 1e6f);
+        float sampleRate = config.sampleRate / 1e6f;
+        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            config.sampleRate = sampleRate * 1e6;
+            JST_MODULE_UPDATE(soapy, setSampleRate(config.sampleRate));
         }
 
         ImGui::TableNextRow();
@@ -191,7 +191,7 @@ class Soapy : public Bundle {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::Checkbox("##AutomaticGain", &config.automaticGain)) {
-            config.automaticGain = soapy->setAutomaticGain(config.automaticGain);
+            JST_MODULE_UPDATE(soapy, setAutomaticGain(config.automaticGain));
         }
 
         ImGui::TableNextRow();
@@ -216,7 +216,7 @@ class Soapy : public Bundle {
 
                     JST_DISPATCH_ASYNC([&](){
                         ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading module..." });
-                        JST_CHECK_NOTIFY(instance->reloadModule(Locale{this->locale.id}));
+                        JST_CHECK_NOTIFY(instance().reloadModule(soapy->locale()));
                     });
                 }
                 if (isSelected) {
@@ -240,18 +240,18 @@ class Soapy : public Bundle {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Frequency (MHz)");
+        ImGui::Text("Frequency");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        static float frequency = config.frequency / 1e6f;
-        ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_None);
-        if (ImGui::IsItemEdited()) {
-            config.frequency = soapy->setTunerFrequency(frequency * 1e6f);
+        float frequency = config.frequency / 1e6f;
+        if (ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            config.frequency = frequency * 1e6f;
+            JST_MODULE_UPDATE(soapy, setTunerFrequency(config.frequency));
         }
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Step Size (MHz)");
+        ImGui::Text("Step Size");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         ImGui::InputFloat("##StepSize", &stepSize, 1.0f, 5.0f, "%.3f MHz");

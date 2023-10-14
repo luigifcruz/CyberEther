@@ -127,9 +127,9 @@ class Soapy : public Module, public Compute {
         return deviceLabel;
     }
 
-    F32 setTunerFrequency(const F32& frequency);
-    F32 setSampleRate(const F32& sampleRate);
-    bool setAutomaticGain(const bool& automaticGain);
+    Result setTunerFrequency(F32& frequency);
+    Result setSampleRate(F32& sampleRate);
+    Result setAutomaticGain(bool& automaticGain);
 
     static DeviceList ListAvailableDevices(const std::string& filter = "");
 

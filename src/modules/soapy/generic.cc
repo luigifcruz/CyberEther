@@ -168,38 +168,68 @@ void Soapy<D, T>::summary() const {
 }
 
 template<Device D, typename T>
-F32 Soapy<D, T>::setTunerFrequency(const F32& frequency) {
-    if (CheckValidRange(frequencyRanges, frequency)) {
-        config.frequency = frequency;
-        soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
-        return config.frequency;
+Result Soapy<D, T>::setTunerFrequency(F32& frequency) {
+    if (!CheckValidRange(frequencyRanges, frequency)) {
+        JST_WARN("Frequency requested ({:.2f} MHz) is not supported by the device.", frequency / (1000*1000));
+        frequency = config.frequency;
+        return Result::WARNING;
     }
 
-    return config.frequency;
+    config.frequency = frequency;
+
+    if (!complete()) {
+        return Result::RELOAD;
+    }
+
+    soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-F32 Soapy<D, T>::setSampleRate(const F32& sampleRate) {
-    if (CheckValidRange(sampleRateRanges, sampleRate)) {
-        config.sampleRate = sampleRate;
-        soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
-        return config.sampleRate;
+Result Soapy<D, T>::setSampleRate(F32& sampleRate) {
+    if (!CheckValidRange(sampleRateRanges, sampleRate)) {
+        JST_WARN("Sample rate requested ({:.2f} MHz) is not supported by the device.", sampleRate / (1000*1000));
+        sampleRate = config.sampleRate;
+        return Result::WARNING;
     }
 
-    return config.sampleRate;
+    config.sampleRate = sampleRate;
+
+    if (!complete()) {
+        return Result::RELOAD;
+    }
+
+    soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-bool Soapy<D, T>::setAutomaticGain(const bool& automaticGain) {
+Result Soapy<D, T>::setAutomaticGain(bool& automaticGain) {
     config.automaticGain = automaticGain;
+
+    if (!complete()) {
+        return Result::RELOAD;
+    }
+
     soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
 
-    return config.automaticGain;
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Soapy<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create SoapySDR compute core.");
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result Soapy<D, T>::computeReady() {
+    if (buffer.getOccupancy() < output.buffer.size()) {
+        return buffer.waitBufferOccupancy(output.buffer.size());
+    }
+
     return Result::SUCCESS;
 }
 
@@ -210,15 +240,6 @@ Result Soapy<D, T>::compute(const RuntimeMetadata&) {
     }
 
     buffer.get(output.buffer.data(), output.buffer.size());
-
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-Result Soapy<D, T>::computeReady() {
-    if (buffer.getOccupancy() < output.buffer.size()) {
-        return buffer.waitBufferOccupancy(output.buffer.size());
-    }
 
     return Result::SUCCESS;
 }
