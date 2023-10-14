@@ -110,10 +110,8 @@ Result Implementation::destroyImgui() {
 }
 
 Result Implementation::recreate() {
-    JST_CHECK(destroy());
     JST_CHECK(viewport->destroySwapchain());
     JST_CHECK(viewport->createSwapchain());
-    JST_CHECK(create());
 
     return Result::SUCCESS;
 }
@@ -141,18 +139,7 @@ Result Implementation::endImgui() {
 Result Implementation::begin() {
     JST_CHECK(Window::begin());
 
-    JST_CHECK(viewport->nextDrawable());
-        
-    if (config.imgui) {
-        JST_CHECK(beginImgui());
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::end() {
-    wgpu::TextureView framebufferTexture;
-    const Result& result = viewport->commitDrawable(framebufferTexture);
+    const auto& result = viewport->nextDrawable();
 
     if (result == Result::SKIP) {
         statsData.droppedFrames += 1;
@@ -163,6 +150,17 @@ Result Implementation::end() {
     } else if (result != Result::SUCCESS) {
         return result;
     }
+        
+    if (config.imgui) {
+        JST_CHECK(beginImgui());
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::end() {
+    wgpu::TextureView framebufferTexture;
+    JST_CHECK(viewport->commitDrawable(framebufferTexture));
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 

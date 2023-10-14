@@ -119,12 +119,6 @@ Result Implementation::destroyImgui() {
 }
 
 Result Implementation::nextDrawable() {
-    ImGui_ImplGlfw_NewFrame();
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
     int width = getWindowWidth();
     int height = getWindowHeight();
 
@@ -133,6 +127,12 @@ Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
        return Result::RECREATE;
     }
 
+    ImGui_ImplGlfw_NewFrame();
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
     framebufferTexture = swapchain.GetCurrentTextureView();
     
     return Result::SUCCESS;
