@@ -67,7 +67,7 @@ class Spectrogram : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().addModule<Jetstream::Spectrogram, D, T>(
+        JST_CHECK(instance().template addModule<Jetstream::Spectrogram, D, T>(
             spectrogram, "ui", {
                 .height = config.height,
                 .viewSize = config.viewSize,

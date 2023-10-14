@@ -63,8 +63,6 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::createSwapchain() {
-    JST_DEBUG("Creating swapchain.");
-
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
@@ -151,8 +149,6 @@ Result Implementation::createSwapchain() {
 }
 
 Result Implementation::destroySwapchain() {
-    JST_DEBUG("Destroying swapchain.");
-
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     for (auto& swapchainImageView : swapchainImageViews) {

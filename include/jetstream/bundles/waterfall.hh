@@ -73,7 +73,7 @@ class Waterfall : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().addModule<Jetstream::Waterfall, D, T>(
+        JST_CHECK(instance().template addModule<Jetstream::Waterfall, D, T>(
             waterfall, "ui", {
                 .zoom = config.zoom,
                 .offset = config.offset,

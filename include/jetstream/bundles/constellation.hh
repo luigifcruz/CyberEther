@@ -66,7 +66,7 @@ class Constellation : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().addModule<Jetstream::Constellation, D, T>(
+        JST_CHECK(instance().template addModule<Jetstream::Constellation, D, T>(
             constellation, "ui", {
                 .viewSize = config.viewSize,
             }, {

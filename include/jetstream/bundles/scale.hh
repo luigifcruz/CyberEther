@@ -73,7 +73,7 @@ class Scale : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().addModule<Jetstream::Scale, D, T>(
+        JST_CHECK(instance().template addModule<Jetstream::Scale, D, T>(
             scale, "ui", {
                 .range = config.range,
             }, {

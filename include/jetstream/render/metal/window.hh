@@ -30,7 +30,8 @@ class WindowImp<Device::Metal> : public Window {
     };
 
  protected:
-    Result processSurfaceQueues() override;
+    Result bindSurface(const std::shared_ptr<Surface>& surface) override;
+    Result unbindSurface(const std::shared_ptr<Surface>& surface) override;
 
  private:
     Stats statsData;

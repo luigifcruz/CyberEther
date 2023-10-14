@@ -13,43 +13,37 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::processSurfaceQueues() {
-    while (!surfaceUnbindQueue.empty()) {
-        JST_DEBUG("[VULKAN] Unbinding surface from window.");
+Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[VULKAN] Binding surface to window.");
 
-        // Synchronize all outstanding command buffers.
-        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-            JST_ERROR("[VULKAN] Can't wait for queue to complete.");
-        });
+    // Cast generic Surface.
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
 
-        // Cast generic Surface.
-        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surfaceUnbindQueue.front());
+    // Create the Surface.
+    JST_CHECK(_surface->create());
 
-        // Remove generic Surface from queue.
-        surfaceUnbindQueue.pop();
+    // Add Surface to window.
+    surfaces.push_back(_surface);
 
-        // Destroy the Surface.
-        JST_CHECK(_surface->destroy());
+    return Result::SUCCESS;
+}
 
-        // Remove Surface from window.
-        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
-    }
+Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[VULKAN] Unbinding surface from window.");
 
-    while (!surfaceBindQueue.empty()) {
-        JST_DEBUG("[VULKAN] Binding surface to window.");
+    // Synchronize all outstanding command buffers.
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for queue to complete.");
+    });
 
-        // Cast generic Surface.
-        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surfaceBindQueue.front());
+    // Cast generic Surface.
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
 
-        // Remove generic Surface from queue.
-        surfaceBindQueue.pop();
+    // Destroy the Surface.
+    JST_CHECK(_surface->destroy());
 
-        // Create the Surface.
-        JST_CHECK(_surface->create());
-
-        // Add Surface to window.
-        surfaces.push_back(_surface);
-    }
+    // Remove Surface from window.
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
@@ -57,10 +51,18 @@ Result Implementation::processSurfaceQueues() {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating window.");
 
-    JST_CHECK(Window::create());
-
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
+
+    // Create base window class.
+
+    JST_CHECK(Window::create());
+
+    // Reseting internal variables.
+ 
+    statsData.droppedFrames = 0;
+    renderPassBeginInfo = {};
+    commandBufferBeginInfo = {};
 
     // Create Render Pass.
 
@@ -104,7 +106,86 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create render pass.");   
     });
 
-    // Create swapchain framebuffer.
+    // Create command pool.
+
+    Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
+
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = indices.graphicFamily.value();
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+    JST_VK_CHECK(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), [&]{
+        JST_ERROR("[VULKAN] Failed to create graphics command pool.");
+    });
+
+    // Create command buffers.
+
+    commandBuffers.resize(viewport->getSwapchainImageViews().size());
+
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = static_cast<U32>(commandBuffers.size());
+
+    JST_VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()), [&]{
+        JST_ERROR("[VULKAN] Can't create render command buffers.");
+    });
+
+    // Create submodules.
+
+    if (config.imgui) {
+        JST_CHECK(createImgui());
+    }
+    JST_CHECK(createFramebuffer());
+    JST_CHECK(createSynchronizationObjects());
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::destroy() {
+    JST_DEBUG("[VULKAN] Destroying window.");
+
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for graphics queue to destroy window.");
+    });
+
+    if (config.imgui) {
+        JST_CHECK(destroyImgui());
+    }
+
+    for (auto& surface : surfaces) {
+        JST_CHECK(surface->destroy());
+    }
+    surfaces.clear();
+
+    JST_CHECK(destroySynchronizationObjects());
+
+    vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
+
+    vkDestroyCommandPool(device, commandPool, nullptr);
+
+    vkDestroyRenderPass(device, renderPass, nullptr);
+
+    JST_CHECK(destroyFramebuffer());
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::recreate() {
+    JST_CHECK(destroyFramebuffer());
+    JST_CHECK(viewport->destroySwapchain());
+    JST_CHECK(viewport->createSwapchain());
+    JST_CHECK(createFramebuffer());
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::createFramebuffer() {
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     auto& swapchainImageViews = viewport->getSwapchainImageViews();
     const auto& swapchainExtent = viewport->getSwapchainExtent();
@@ -128,84 +209,19 @@ Result Implementation::create() {
         });
     }
 
-    // Create command pool.
-
-    Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
-
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = indices.graphicFamily.value();
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-
-    JST_VK_CHECK(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), [&]{
-        JST_ERROR("[VULKAN] Failed to create graphics command pool.");
-    });
-
-    // Create command buffers.
-
-    commandBuffers.resize(swapchainFramebuffers.size());
-
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = static_cast<U32>(commandBuffers.size());
-
-    JST_VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()), [&]{
-        JST_ERROR("[VULKAN] Can't create render command buffers.");
-    });
-
-    // Create children.
-
-    if (config.imgui) {
-        JST_CHECK(createImgui());
-    }
-
-    statsData.droppedFrames = 0;
-    renderPassBeginInfo = {};
-    commandBufferBeginInfo = {};
-    JST_CHECK(createSynchronizationObjects());
-
     return Result::SUCCESS;
 }
 
-Result Implementation::destroy() {
-    JST_DEBUG("[VULKAN] Destroying window.");
-
+Result Implementation::destroyFramebuffer() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for window destruction.");
+        JST_ERROR("[VULKAN] Can't wait for graphics queue to destroy framebuffer.");
     });
-
-    JST_CHECK(destroySynchronizationObjects());
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->destroy());
-    }
-
-    if (config.imgui) {
-        JST_CHECK(destroyImgui());
-    } 
-
-    vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
-
-    vkDestroyCommandPool(device, commandPool, nullptr);
 
     for (auto framebuffer : swapchainFramebuffers) {
         vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
-
-    vkDestroyRenderPass(device, renderPass, nullptr);
-    
-    return Result::SUCCESS;
-}
-
-Result Implementation::recreate() {
-    JST_CHECK(destroy());
-    JST_CHECK(viewport->destroySwapchain());
-    JST_CHECK(viewport->createSwapchain());
-    JST_CHECK(create());
 
     return Result::SUCCESS;
 }
@@ -237,8 +253,8 @@ Result Implementation::createImgui() {
         .PipelineCache = {},
         .DescriptorPool = backend->getDescriptorPool(),
         .Subpass = {},
-        .MinImageCount = static_cast<U32>(swapchainFramebuffers.size()),
-        .ImageCount = static_cast<U32>(swapchainFramebuffers.size()),
+        .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViews().size()),
+        .ImageCount = static_cast<U32>(viewport->getSwapchainImageViews().size()),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .Allocator = {},
         .CheckVkResultFn = nullptr

@@ -30,7 +30,8 @@ class WindowImp<Device::Vulkan> : public Window {
     };
 
  protected:
-    Result processSurfaceQueues() override;
+    Result bindSurface(const std::shared_ptr<Surface>& surface) override;
+    Result unbindSurface(const std::shared_ptr<Surface>& surface) override;
 
  private:
     Stats statsData;
@@ -54,6 +55,8 @@ class WindowImp<Device::Vulkan> : public Window {
 
     Result createImgui();
     Result destroyImgui();
+    Result createFramebuffer();
+    Result destroyFramebuffer();
     Result beginImgui();
     Result endImgui();
     Result recreate();

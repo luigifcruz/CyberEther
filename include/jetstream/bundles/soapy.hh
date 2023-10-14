@@ -99,7 +99,7 @@ class Soapy : public Bundle {
 
         // Starting sub-modules.
 
-        JST_CHECK(instance().addModule<Jetstream::Soapy, D, T>(
+        JST_CHECK(instance().template addModule<Jetstream::Soapy, D, T>(
             soapy, "ui", {
                 .deviceString = deviceString,
                 .streamString = config.streamString,

@@ -95,14 +95,18 @@ class Window {
 
     void ScaleStyle(const Viewport::Generic& viewport);
 
-    virtual Result processSurfaceQueues() = 0;
-
-    std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
-    std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;
+    virtual Result bindSurface(const std::shared_ptr<Surface>& surface) = 0;
+    virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
 
  private:
     bool graphicalLoopThreadStarted;
     std::thread::id graphicalLoopThreadId;
+
+    Result processSurfaceBindQueue();
+    Result processSurfaceUnbindQueue();
+
+    std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
+    std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;
 
     void ImGuiStyleSetup();
     void ImGuiStyleScale();

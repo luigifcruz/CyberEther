@@ -16,7 +16,8 @@ Result Window::create() {
 
 Result Window::begin() {
     // Process surface bind and unbind queue.
-    JST_CHECK(processSurfaceQueues());
+    JST_CHECK(processSurfaceUnbindQueue());
+    JST_CHECK(processSurfaceBindQueue());
 
     // Record graphical thread ID.
     graphicalLoopThreadStarted = true;
@@ -35,7 +36,7 @@ Result Window::bind(const std::shared_ptr<Surface>& surface) {
 
     // If graphical loop didn't start yet. Call the function directly.
     if (!graphicalLoopThreadStarted) {
-        JST_CHECK(processSurfaceQueues());
+        JST_CHECK(processSurfaceBindQueue());
     } 
     // Wait for graphical loop to process queue if current thread is different.
     else if (graphicalLoopThreadId != std::this_thread::get_id()) {
@@ -43,9 +44,9 @@ Result Window::bind(const std::shared_ptr<Surface>& surface) {
             std::this_thread::yield();
         }
     }
-    // Call the fucntion directly as fallback.
+    // Call the function directly as fallback.
     else {
-        JST_CHECK(processSurfaceQueues());
+        JST_CHECK(processSurfaceBindQueue());
     }
 
     return Result::SUCCESS;
@@ -56,6 +57,24 @@ Result Window::unbind(const std::shared_ptr<Surface>& surface) {
     surfaceUnbindQueue.push(surface);
 
     // Return immediately.
+
+    return Result::SUCCESS;
+}
+
+Result Window::processSurfaceBindQueue() {
+    while (!surfaceBindQueue.empty()) {
+        JST_CHECK(bindSurface(surfaceBindQueue.front()));
+        surfaceBindQueue.pop();
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Window::processSurfaceUnbindQueue() {
+    while (!surfaceUnbindQueue.empty()) {
+        JST_CHECK(unbindSurface(surfaceUnbindQueue.front()));
+        surfaceUnbindQueue.pop();
+    }
 
     return Result::SUCCESS;
 }

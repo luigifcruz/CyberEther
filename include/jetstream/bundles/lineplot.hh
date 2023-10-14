@@ -69,7 +69,7 @@ class Lineplot : public Bundle {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().addModule<Jetstream::Lineplot, D, T>(
+        JST_CHECK(instance().template addModule<Jetstream::Lineplot, D, T>(
             lineplot, "ui", {
                 .numberOfVerticalLines = config.numberOfVerticalLines,
                 .numberOfHorizontalLines = config.numberOfHorizontalLines,

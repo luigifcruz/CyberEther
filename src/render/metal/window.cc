@@ -10,38 +10,32 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::processSurfaceQueues() {
-    while (!surfaceUnbindQueue.empty()) {
-        JST_DEBUG("[Metal] Unbinding surface from window.");
+Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[Metal] Binding surface to window.");
 
-        // Cast generic Surface.
-        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surfaceUnbindQueue.front());
+    // Cast generic Surface.
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
 
-        // Remove generic Surface from queue.
-        surfaceUnbindQueue.pop();
+    // Create the Surface.
+    JST_CHECK(_surface->create());
 
-        // Destroy the Surface.
-        JST_CHECK(_surface->destroy());
+    // Add Surface to window.
+    surfaces.push_back(_surface);
 
-        // Remove Surface from window.
-        surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
-    }
+    return Result::SUCCESS;
+}
 
-    while (!surfaceBindQueue.empty()) {
-        JST_DEBUG("[Metal] Binding surface to window.");
+Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
+    JST_DEBUG("[Metal] Unbinding surface from window.");
 
-        // Cast generic Surface.
-        auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surfaceBindQueue.front());
+    // Cast generic Surface.
+    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
 
-        // Remove generic Surface from queue.
-        surfaceBindQueue.pop();
+    // Destroy the Surface.
+    JST_CHECK(_surface->destroy());
 
-        // Create the Surface.
-        JST_CHECK(_surface->create());
-
-        // Add Surface to window.
-        surfaces.push_back(_surface);
-    }
+    // Remove Surface from window.
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
 
     return Result::SUCCESS;
 }
