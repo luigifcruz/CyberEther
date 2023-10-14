@@ -209,8 +209,12 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    void* mappedData;
+    // TODO: Implement zero-copy option.
+
     auto& backend = Backend::State<Device::Vulkan>();
+
+    uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
+    const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);
     const auto rowByteSize = config.size.width * GetPixelByteSize(pixelFormat);
     const auto bufferByteOffset = rowByteSize * y;
     const auto bufferByteSize = rowByteSize * height;
@@ -220,12 +224,7 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::ERROR;
     }
 
-    auto& stagingBufferMemory = backend->getStagingBufferMemory();
-    JST_VK_CHECK(vkMapMemory(backend->getDevice(), stagingBufferMemory, 0, bufferByteSize, 0, &mappedData), [&]{
-        JST_ERROR("[VULKAN] Can't map staging buffer memory.");
-    });
-    memcpy(mappedData, (uint8_t*)config.buffer + bufferByteOffset, bufferByteSize);
-    vkUnmapMemory(backend->getDevice(), stagingBufferMemory);
+    memcpy(mappedData, hostData + bufferByteOffset, bufferByteSize);
 
     // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),

@@ -106,8 +106,11 @@ Result Implementation::update(const U64& offset, const U64& size) {
     }
 
     // TODO: Implement zero-copy option.
-    void* mappedData;
+
     auto& backend = Backend::State<Device::Vulkan>();
+
+    uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
+    const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
@@ -116,12 +119,7 @@ Result Implementation::update(const U64& offset, const U64& size) {
         return Result::ERROR;
     }
 
-    auto& stagingBufferMemory = backend->getStagingBufferMemory();
-    JST_VK_CHECK(vkMapMemory(backend->getDevice(), stagingBufferMemory, 0, byteSize, 0, &mappedData), [&]{
-        JST_ERROR("[VULKAN] Can't map staging buffer memory.");        
-    });
-    memcpy(mappedData, (uint8_t*)config.buffer + byteOffset, byteSize);
-    vkUnmapMemory(backend->getDevice(), stagingBufferMemory);
+    memcpy(mappedData, hostData + byteOffset, byteSize);
 
     // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),

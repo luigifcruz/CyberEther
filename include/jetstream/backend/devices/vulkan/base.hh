@@ -60,6 +60,10 @@ class Vulkan {
         return descriptorPool;
     }
 
+    constexpr void* getStagingBufferMappedMemory() {
+        return stagingBufferMappedMemory;       
+    }
+
     constexpr VkDeviceMemory& getStagingBufferMemory() {
         return stagingBufferMemory;       
     }
@@ -86,6 +90,7 @@ class Vulkan {
     VkDescriptorPool descriptorPool;
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
+    void* stagingBufferMappedMemory;
     VkCommandPool transferCommandPool;
     VkQueue graphicsQueue;
     VkQueue computeQueue;

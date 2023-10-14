@@ -389,6 +389,10 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         JST_VK_CHECK_THROW(vkBindBufferMemory(device, stagingBuffer, stagingBufferMemory, 0), [&]{
             JST_FATAL("[VULKAN] Failed to bind memory to staging buffer.");
         });
+        
+        JST_VK_CHECK_THROW(vkMapMemory(device, stagingBufferMemory, 0, config.stagingBufferSize, 0, &stagingBufferMappedMemory), [&]{
+            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");        
+        });
     }
 
     // Create transfer pool.
@@ -424,6 +428,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
 Vulkan::~Vulkan() {
     vkDestroyCommandPool(device, transferCommandPool, nullptr);
+    vkUnmapMemory(device, stagingBufferMemory);
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
