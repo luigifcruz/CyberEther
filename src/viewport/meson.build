@@ -6,6 +6,7 @@ sum_lst = {}
 
 subdir('glfw')
 subdir('ios')
+subdir('headless')
 
 some_viewport_found = false
 foreach x_viewport : sum_lst.keys()

@@ -364,11 +364,12 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = config.stagingBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer), [&]{
-            JST_FATAL("[VULKAN] Failed to create staging buffer.");     
+            JST_FATAL("[VULKAN] Failed to create staging buffer.");
         });
 
         VkMemoryRequirements memRequirements;

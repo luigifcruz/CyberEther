@@ -15,10 +15,14 @@ struct Config {
     std::string title = "Render";
     Size2D<U64> size = {1280, 720};
 
+    bool headless = false;
+    
+
     JST_SERDES(
         JST_SERDES_VAL("vsync", vsync);
         JST_SERDES_VAL("title", title);
         JST_SERDES_VAL("size", size);
+        JST_SERDES_VAL("headless", headless);
     );
 };
 
