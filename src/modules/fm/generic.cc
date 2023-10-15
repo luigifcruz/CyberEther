@@ -12,12 +12,17 @@ Result FM<D, T>::create() {
         JST_INIT_OUTPUT("buffer", output.buffer, input.buffer.shape());
     );
 
+    // Initialize constant coefficients.
+
+    kf = 100e3 / 240e3;
+    ref = 1.0f / (2 * M_PI * kf);
+
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 void FM<D, T>::summary() const {
-    JST_INFO("  None");
+    JST_INFO("  Sample Rate: {:.2f} MHz", config.sampleRate / (1000*1000));
 }
 
 }  // namespace Jetstream

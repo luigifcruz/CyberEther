@@ -18,7 +18,11 @@ class FM : public Module, public Compute {
     // Configuration 
 
     struct Config {
-        JST_SERDES();
+        F32 sampleRate = 240e3f;
+
+        JST_SERDES(
+            JST_SERDES_VAL("sampleRate", sampleRate);
+        );
     };
 
     constexpr const Config& getConfig() const {
@@ -76,6 +80,10 @@ class FM : public Module, public Compute {
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
+
+ private:
+    float kf;
+    float ref;
 
     JST_DEFINE_IO();
 };
