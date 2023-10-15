@@ -136,7 +136,7 @@ Result Implementation::destroyImgui() {
     return Result::SUCCESS;
 }
 
-Result Implementation::nextDrawable(VkSemaphore& semaphore) {
+Result Implementation::nextDrawable(VkSemaphore&) {
     // Dump framebuffer image to disk.
 
     auto& backend = Backend::State<Device::Vulkan>();
@@ -215,10 +215,8 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     return Result::SUCCESS;
 }
 
-Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
-    // Synchronization.
-
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+Result Implementation::commitDrawable(std::vector<VkSemaphore>&) {
+    // TODO: Add synchronization.
 
     return Result::SUCCESS;
 }
