@@ -52,6 +52,11 @@
 #include "jetstream/modules/fm.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_INVERT_CPU_AVAILABLE) || \
+    defined(JETSTREAM_MODULE_INVERT_METAL_AVAILABLE)
+#include "jetstream/modules/invert.hh"
+#endif
+
 #if defined(JETSTREAM_MODULE_MULTIPLY_CONSTANT_CPU_AVAILABLE) || \
     defined(JETSTREAM_MODULE_MULTIPLY_CONSTANT_METAL_AVAILABLE)
 #include "jetstream/modules/multiply_constant.hh"

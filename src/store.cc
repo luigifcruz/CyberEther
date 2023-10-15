@@ -133,26 +133,29 @@ const ModuleStore& Store::defaultModules() {
         { {"audio",             "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Audio, Device::CPU, F32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_FM_CPU_AVAILABLE
-        { {"fm",                "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<FM, Device::CPU, CF32>(r); } },
+        { {"fm",                 "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<FM, Device::CPU, CF32>(r); } },
+#endif
+#ifdef JETSTREAM_MODULE_FM_CPU_AVAILABLE
+        { {"invert",             "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Invert, Device::CPU, CF32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_MULTIPLY_CONSTANT_CPU_AVAILABLE
-        { {"multiply-constant", "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<MultiplyConstant, Device::CPU,  F32>(r); } },
-        { {"multiply-constant", "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<MultiplyConstant, Device::CPU, CF32>(r); } },
+        { {"multiply-constant",  "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<MultiplyConstant, Device::CPU,  F32>(r); } },
+        { {"multiply-constant",  "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<MultiplyConstant, Device::CPU, CF32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
-        { {"lineplot",          "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Lineplot, Device::CPU, F32>(r); } },
+        { {"lineplot",           "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Lineplot, Device::CPU, F32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
-        { {"waterfall",         "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Waterfall, Device::CPU, F32>(r); } },
+        { {"waterfall",          "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Waterfall, Device::CPU, F32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
-        { {"spectrogram",       "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Spectrogram, Device::CPU, F32>(r); } },
+        { {"spectrogram",        "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Spectrogram, Device::CPU, F32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE
-        { {"constellation",     "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Constellation, Device::CPU, CF32>(r); } },
+        { {"constellation",      "cpu", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Constellation, Device::CPU, CF32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_CAST_CPU_AVAILABLE
-        { {"cast",              "cpu",     "",  "F32",  "I16"}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Cast, Device::CPU, F32, I16>(r); } },
+        { {"cast",               "cpu",     "",  "F32",  "I16"}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Cast, Device::CPU, F32, I16>(r); } },
 #endif
 
 // Device::Metal
@@ -407,6 +410,21 @@ const ModuleListStore& Store::defaultModuleList() {
                 {
                     {
 #ifdef JETSTREAM_MODULE_FM_CPU_AVAILABLE
+                        {Device::CPU, {{"CF32", "", ""}}},
+#endif
+                    }
+                }
+            }
+        },
+        {"invert",
+            {
+                false,
+                "Invert",
+                "Inverts the IQ signal.",
+                "The Invert module inverts the complex-valued input IQ signal.",
+                {
+                    {
+#ifdef JETSTREAM_MODULE_INVERT_CPU_AVAILABLE
                         {Device::CPU, {{"CF32", "", ""}}},
 #endif
                     }

@@ -11,6 +11,7 @@ subdir('filter')
 subdir('soapy')
 subdir('audio')
 subdir('fm')
+subdir('invert')
 subdir('multiply_constant')
 
 # Graphical
