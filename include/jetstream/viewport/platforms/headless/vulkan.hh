@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 
+#include <fstream>
+
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"
 
@@ -54,6 +56,7 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
     U32 _currentDrawableIndex;
+    std::ofstream framebufferPipe;
 };
 
 }  // namespace Jetstream::Viewport

@@ -19,6 +19,8 @@ Result Implementation::create() {
 
     JST_CHECK(createSwapchain());
 
+    framebufferPipe = std::ofstream("/tmp/cefb", std::ios::binary | std::ios::out);
+
     return Result::SUCCESS;
 }
 
@@ -192,25 +194,17 @@ Result Implementation::nextDrawable(VkSemaphore&) {
 
     // Save staging buffer memory to disk.
 
-    std::filesystem::path path = "/home/luigi/Downloads/framebuffer.raw";
-
-    std::ofstream file(path, std::ios::out | std::ios::binary);
-    if (!file.is_open()) {
-        return Result::ERROR;
-    }
-
     void* data = backend->getStagingBufferMappedMemory();
-    file.write(static_cast<char*>(data), config.size.width * config.size.height * 4);
-
-    file.close();
-
-
+    framebufferPipe.write(static_cast<char*>(data), config.size.width * config.size.height * 4);
+    
     // Block execution for 16ms.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    std::this_thread::sleep_for(std::chrono::milliseconds(14));
 
     // Update ImGui state.
     
     ImGui::GetIO().DisplaySize = ImVec2(config.size.width, config.size.height);
+
+    JST_INFO("FRAME!");
 
     return Result::SUCCESS;
 }
