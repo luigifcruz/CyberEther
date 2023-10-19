@@ -121,7 +121,6 @@ Result Implementation::update(const U64& offset, const U64& size) {
 
     memcpy(mappedData, hostData + byteOffset, byteSize);
 
-    // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
                                    backend->getComputeQueue(),
                                    backend->getDefaultFence(),

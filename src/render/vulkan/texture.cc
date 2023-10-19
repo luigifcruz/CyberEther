@@ -226,7 +226,6 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
 
     memcpy(mappedData, hostData + bufferByteOffset, bufferByteSize);
 
-    // TODO: Maybe worth investigating if creating a command buffer every loop is a good idea.
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
                                    backend->getComputeQueue(),
                                    backend->getDefaultFence(),
