@@ -62,10 +62,6 @@ Result Compositor::removeModule(const Locale& locale) {
 
     JST_CHECK(refreshState());
 
-    if (nodeStates.empty()) {
-        JST_CHECK(instance.destroy());
-    }
-
     // Resume drawMainInterface.
     unlock();
 
