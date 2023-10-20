@@ -11,7 +11,7 @@ except ImportError:
     YAML_AVAILABLE = False
 
 def yml_to_header(path):
-    with open(os.path.join(path, 'flowgraphs.hh'), 'w') as f:
+    with open(os.path.join(path, 'flowgraphs', 'data.hh'), 'w') as f:
         f.write('#pragma once\n\n')
 
         f.write('#include <tuple>\n')

@@ -25,10 +25,11 @@ inc_lst = [
 cfg_lst.set('buildtype', get_option('buildtype'))
 
 subdir('meson')
+
+subdir('flowgraphs')
 subdir('shaders')
 subdir('src')
 subdir('include')
-subdir('flowgraphs')
 
 summary({'cpp_std': get_option('cpp_std'),
          'prefix': get_option('prefix'),

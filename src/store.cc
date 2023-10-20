@@ -7,7 +7,7 @@
 #include "jetstream/viewport/base.hh"
 #include "jetstream/backend/base.hh"
 
-#include "flowgraphs.hh"
+#include "flowgraphs/data.hh"
 
 namespace Jetstream {
 

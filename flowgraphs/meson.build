@@ -1,6 +1,14 @@
 if python_bin.found()
     flowchart = custom_target(
-        output : 'flowgraphs.hh',
+        input : files([
+            'multi-device.yml',
+            'multi-fm.yml',
+            'simple-fm.yml',
+            'remote-spectrum-analyzer.yml',
+            'spectrum-analyzer.yml',
+            'speech-recognition-fm.yml',
+        ]),
+        output : ['data.hh'],
         command : [python_bin, files('parser.py'), meson.project_build_root()],
     )
 
