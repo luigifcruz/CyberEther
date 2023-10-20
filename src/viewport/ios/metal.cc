@@ -44,11 +44,18 @@ Result Implementation::destroyImgui() {
 }
 
 void* Implementation::nextDrawable() {
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+    lastTime = currentTime;
+
+    // Update ImGui state.
+
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize.x = swapchain->drawableSize().width / 2.0;
     io.DisplaySize.y = swapchain->drawableSize().height / 2.0;
     io.DisplayFramebufferScale.x = 2.0;
     io.DisplayFramebufferScale.y = 2.0;
+    io.DeltaTime = deltaTime;
     
     return static_cast<void*>(swapchain->nextDrawable());
 }

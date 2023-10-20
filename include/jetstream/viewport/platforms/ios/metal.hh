@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_IOS_METAL_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_IOS_METAL_HH
 
+#include <chrono>
+
 #include "jetstream/viewport/adapters/metal.hh"
 #include "jetstream/viewport/platforms/ios/generic.hh"
 
@@ -38,6 +40,8 @@ class iOS<Device::Metal> : public Adapter<Device::Metal> {
 
  private:
     CA::MetalLayer* swapchain;
+
+    std::chrono::high_resolution_clock::time_point lastTime;
 };
 
 }  // namespace Jetstream::Viewport
