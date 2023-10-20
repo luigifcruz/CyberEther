@@ -16,7 +16,8 @@ Result Window<D, T>::create() {
         for (U64 i = 0; i < config.shape[1]; i++) {
             F64 tap;
 
-            tap = 0.5 * (1 - cos(2 * M_PI * i / (config.shape[1] - 1)));
+            tap = 0.42 - 0.50 * cos(2.0 * M_PI * i / (config.shape[1] - 1)) + \
+                  0.08 * cos(4.0 * M_PI * i / (config.shape[1] - 1));
             tap = (i % 2) == 0 ? tap : -tap;
 
             output.window[{b, i}] = T(tap, 0.0);

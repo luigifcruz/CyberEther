@@ -16,7 +16,7 @@ Result Filter<D, T>::generateSincFunction() {
 
     for (U64 b = 0; b < config.shape[0]; b++) {
         for (U64 i = 0; i < config.numberOfTaps; i++) {
-            sincCoeffs[{b, i}] = sinc(2 * filterWidth * (i - (config.numberOfTaps - 1) / 2.0));
+            sincCoeffs[{b, i}] = sinc(2.0 * filterWidth * (i - (config.numberOfTaps - 1) / 2.0));
         }
     }
 
@@ -29,7 +29,8 @@ Result Filter<D, T>::generateWindow() {
 
     for (U64 b = 0; b < config.shape[0]; b++) {
         for (U64 i = 0; i < config.numberOfTaps; i++) {
-            windowCoeffs[{b, i}] = 0.54 - 0.46 * cos(2 * M_PI * i / (config.numberOfTaps - 1));
+            windowCoeffs[{b, i}] = 0.42 - 0.50 * cos(2.0 * M_PI * i / (config.numberOfTaps - 1)) + \
+                                   0.08 * cos(4.0 * M_PI * i / (config.numberOfTaps - 1));
         }
     }
 
