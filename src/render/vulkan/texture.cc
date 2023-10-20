@@ -15,13 +15,20 @@ Result Implementation::create() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
+    // Create extent.
+
+    extent = VkExtent2D {
+        static_cast<U32>(config.size.width),
+        static_cast<U32>(config.size.height),
+    };
+
     // Create image.
 
     VkImageCreateInfo imageCreateInfo = {};
     imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageCreateInfo.extent.width = config.size.width;
-    imageCreateInfo.extent.height = config.size.height;
+    imageCreateInfo.extent.width = extent.width;
+    imageCreateInfo.extent.height = extent.height;
     imageCreateInfo.extent.depth = 1;
     imageCreateInfo.mipLevels = 1;
     imageCreateInfo.arrayLayers = 1;
@@ -31,6 +38,7 @@ Result Implementation::create() {
     // TODO: Review these.
     imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | 
+                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                             VK_IMAGE_USAGE_SAMPLED_BIT;
     imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -248,11 +256,9 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
                     static_cast<I32>(y),
                     0
                 };
-            region.imageExtent = {
-                    static_cast<U32>(config.size.width),
-                    static_cast<U32>(height),
-                    1
-                }; 
+            region.imageExtent.width = config.size.width;
+            region.imageExtent.height = height;
+            region.imageExtent.depth = 1;
 
             vkCmdCopyBufferToImage(
                 commandBuffer,

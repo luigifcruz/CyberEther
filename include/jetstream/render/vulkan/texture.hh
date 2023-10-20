@@ -23,7 +23,6 @@ class TextureImp<Device::Vulkan> : public Texture {
         return descriptorSet;
     }
 
- protected:
     Result create();
     Result destroy();
 
@@ -43,6 +42,10 @@ class TextureImp<Device::Vulkan> : public Texture {
         return sampler;
     }
 
+    constexpr const VkExtent2D& getExtent() const {
+        return extent;
+    }
+
     static VkFormat ConvertPixelFormat(const PixelFormat&, 
                                        const PixelType&);
     static U64 GetPixelByteSize(const VkFormat&);
@@ -55,9 +58,7 @@ class TextureImp<Device::Vulkan> : public Texture {
     VkDescriptorSetLayout descriptorSetLayout;
     VkFormat pixelFormat;
     VkDeviceMemory memory;
-
-    friend class SurfaceImp<Device::Vulkan>;
-    friend class ProgramImp<Device::Vulkan>;
+    VkExtent2D extent;
 };
 
 }  // namespace Jetstream::Render
