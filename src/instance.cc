@@ -89,7 +89,7 @@ Result Instance::buildDefaultInterface() {
     // Default Viewport configuration.
     Viewport::Config viewportCfg;
     viewportCfg.vsync = true;
-    viewportCfg.size = {3000, 2000};
+    viewportCfg.size = {1920, 1080};
     viewportCfg.title = "CyberEther";
 
     // Default Window configuration.
