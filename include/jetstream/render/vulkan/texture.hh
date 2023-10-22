@@ -23,6 +23,7 @@ class TextureImp<Device::Vulkan> : public Texture {
         return descriptorSet;
     }
 
+ protected:
     Result create();
     Result destroy();
 
@@ -59,6 +60,9 @@ class TextureImp<Device::Vulkan> : public Texture {
     VkFormat pixelFormat;
     VkDeviceMemory memory;
     VkExtent2D extent;
+
+    friend class SurfaceImp<Device::Vulkan>;
+    friend class ProgramImp<Device::Vulkan>;
 };
 
 }  // namespace Jetstream::Render
