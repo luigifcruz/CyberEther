@@ -138,11 +138,11 @@ int main() {
     Instance instance;
 
     // Initialize Viewport and Window.
-    instance.buildDefaultInterface();
+    JST_CHECK_THROW(instance.buildDefaultInterface());
 
-    // Hide the flowgraph by default. Try to comment these line and see what happens!
+    // Try to comment these line and see what happens!
     instance.compositor().showStore(false)
-                         .showFlowgraph(false);
+                         .showFlowgraph(true);
 
     {
         auto ui = UI(instance);
