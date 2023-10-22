@@ -11,5 +11,6 @@ subdir('soapy')
 subdir('vulkan')
 subdir('webgpu')
 subdir('audiotoolbox')
+subdir('gstreamer')
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)
