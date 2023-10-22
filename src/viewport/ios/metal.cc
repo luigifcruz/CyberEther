@@ -19,6 +19,8 @@ Result Implementation::create() {
     swapchain->setDevice(device);
     swapchain->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     swapchain->setFramebufferOnly(true);
+
+    lastTime = std::chrono::high_resolution_clock::now();
     
     return Result::SUCCESS;
 }
