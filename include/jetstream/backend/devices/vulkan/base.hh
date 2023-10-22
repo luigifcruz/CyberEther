@@ -32,6 +32,10 @@ class Vulkan {
     bool getLowPowerStatus() const;
     U64 getThermalState() const;
 
+    constexpr const bool& headless() const {
+        return config.headless;
+    }
+
     constexpr VkDevice& getDevice() {
         return device;
     }

@@ -184,7 +184,9 @@ inline Result ExecuteOnce(VkDevice& device,
                           VkQueue& queue,
                           VkFence& fence,
                           VkCommandBuffer& commandBuffer,
-                          std::function<Result(VkCommandBuffer&)> func) {
+                          std::function<Result(VkCommandBuffer&)> func,
+                          const std::vector<VkSemaphore>& waitSemaphores = {},
+                          const std::vector<VkPipelineStageFlags>& waitSemaphoresStageMasks = {}) {
     VkCommandBufferBeginInfo cmdBeginInfo = {};
     cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -199,12 +201,14 @@ inline Result ExecuteOnce(VkDevice& device,
         JST_ERROR("[VULKAN] Failed to end one time command buffer.");   
     });
 
+    JST_ASSERT(waitSemaphores.size() == waitSemaphoresStageMasks.size());
+
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.pNext = nullptr;
-    submitInfo.waitSemaphoreCount = 0;
-    submitInfo.pWaitSemaphores = nullptr;
-    submitInfo.pWaitDstStageMask = nullptr;
+    submitInfo.waitSemaphoreCount = waitSemaphores.size();
+    submitInfo.pWaitSemaphores = waitSemaphores.data();
+    submitInfo.pWaitDstStageMask = waitSemaphoresStageMasks.data();
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
     submitInfo.signalSemaphoreCount = 0;

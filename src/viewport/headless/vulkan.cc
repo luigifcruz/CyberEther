@@ -14,17 +14,20 @@ Implementation::~Headless() {
 }
 
 Result Implementation::create() {
-    swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    JST_ASSERT(Backend::State<Device::Vulkan>()->headless());
+
     _currentDrawableIndex = 0;
+    swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    lastTime = std::chrono::high_resolution_clock::now();
 
+    JST_CHECK(endpoint.create(config));
     JST_CHECK(createSwapchain());
-
-    framebufferPipe = std::ofstream("/tmp/cefb", std::ios::binary | std::ios::out);
 
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
+    JST_CHECK(endpoint.destroy());
     JST_CHECK(destroySwapchain());
 
     return Result::SUCCESS;
@@ -86,7 +89,7 @@ Result Implementation::createSwapchain() {
 
     // Create image view.
 
-    swapchainImageViews.resize(1);
+    swapchainImageViews.resize(2);
 
     VkImageViewCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -108,6 +111,8 @@ Result Implementation::createSwapchain() {
     JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &swapchainImageViews[0]), [&]{
         JST_ERROR("[VULKAN] Failed to create swapchain image view."); 
     });
+
+    swapchainImageViews[1] = swapchainImageViews[0];
 
     return Result::SUCCESS;
 }
@@ -138,21 +143,57 @@ Result Implementation::destroyImgui() {
     return Result::SUCCESS;
 }
 
-Result Implementation::nextDrawable(VkSemaphore&) {
+Result Implementation::nextDrawable(VkSemaphore& semaphore) {
+    // Ensure that we don't run too fast.
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    auto deltaTime = std::chrono::duration<F32>(currentTime - lastTime).count();
+    
+    const F32 targetDeltaTime = (1.0f / config.framerate);
+    if (deltaTime < targetDeltaTime) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>((targetDeltaTime - deltaTime) * 1000)));
+        currentTime = std::chrono::high_resolution_clock::now();
+        deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+    }
+
+    lastTime = currentTime;
+
+    // Update ImGui state.
+    
+    auto& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(config.size.width, config.size.height);
+    io.DeltaTime = deltaTime;
+
+    // Dummy signal semaphore.
+
+    const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = nullptr;
+    submitInfo.pWaitDstStageMask = &waitStage;
+    submitInfo.commandBufferCount = 0;
+    submitInfo.pCommandBuffers = nullptr;
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &semaphore;
+
+    auto& graphicsQueue = Backend::State<Device::Vulkan>()->getGraphicsQueue();
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, nullptr);
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     // Dump framebuffer image to disk.
 
     auto& backend = Backend::State<Device::Vulkan>();
 
     JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
-                                   backend->getComputeQueue(),
+                                   backend->getGraphicsQueue(),
                                    backend->getDefaultFence(),
                                    backend->getDefaultCommandBuffer(),
         [&](VkCommandBuffer& commandBuffer){
-            JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
-                                                     swapchainImage, 
-                                                     VK_IMAGE_LAYOUT_UNDEFINED,
-                                                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL));
-
             // Copy image to staging buffer.
 
             VkBufferImageCopy region{};
@@ -183,34 +224,18 @@ Result Implementation::nextDrawable(VkSemaphore&) {
                 &region
             );
 
-            JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
-                                                     swapchainImage, 
-                                                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-
             return Result::SUCCESS;
-        }
+        }, semaphores, { VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT }
     ));
 
-    // Save staging buffer memory to disk.
+    // Send frame to endpoint.
 
     void* data = backend->getStagingBufferMappedMemory();
-    framebufferPipe.write(static_cast<char*>(data), config.size.width * config.size.height * 4);
-    
-    // Block execution for 16ms.
-    std::this_thread::sleep_for(std::chrono::milliseconds(14));
+    JST_CHECK(endpoint.newFrameHost(static_cast<uint8_t*>(data)));
 
-    // Update ImGui state.
-    
-    ImGui::GetIO().DisplaySize = ImVec2(config.size.width, config.size.height);
+    // Update Viewport state. 
 
-    JST_INFO("FRAME!");
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::commitDrawable(std::vector<VkSemaphore>&) {
-    // TODO: Add synchronization.
+    _currentDrawableIndex = (_currentDrawableIndex + 1) % 2;
 
     return Result::SUCCESS;
 }

@@ -18,6 +18,8 @@ Implementation::~GLFW() {
 }
 
 Result Implementation::create() {
+    JST_ASSERT(!Backend::State<Device::Vulkan>()->headless());
+
     if (!glfwInit()) {
         JST_ERROR("[VULKAN] Failed to initialize GLFW.");
         return Result::ERROR;

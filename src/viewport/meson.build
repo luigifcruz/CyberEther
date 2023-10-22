@@ -8,6 +8,8 @@ subdir('glfw')
 subdir('ios')
 subdir('headless')
 
+subdir('plugins')
+
 some_viewport_found = false
 foreach x_viewport : sum_lst.keys()
     some_viewport_found = some_viewport_found or sum_lst.get(x_viewport, false)
