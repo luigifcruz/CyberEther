@@ -8,23 +8,34 @@ namespace Jetstream::Backend {
 std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
     std::vector<const char*> extensions;
 
-    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-    extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    // System extensions.
 
-#if defined(JST_OS_LINUX)
-    extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-    extensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
-#endif
+    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
-    extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 #endif
+
+    // Headed extensions.
+
+    if (!config.headless) {
+        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+
+#if defined(JST_OS_LINUX)
+        extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+#endif
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+        extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+#endif
 #if defined(JST_OS_WINDOWS)
-    extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(JST_OS_ANDROID)
-    extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+        extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
 #endif
+    }
+
+    // Validation extensions.
 
     if (config.validationEnabled) {
         extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
@@ -46,7 +57,9 @@ std::vector<const char*> Vulkan::getRequiredValidationLayers() {
 std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     std::vector<const char*> extensions;
 
-    extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    if (!config.headless) {
+        extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    }
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
     extensions.push_back("VK_KHR_portability_subset");
