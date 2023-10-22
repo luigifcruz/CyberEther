@@ -266,6 +266,24 @@ inline const char* GetDevicePrettyName(const Device& device) {
     return deviceNames.at(device);
 }
 
+inline Device StringToDevice(const std::string& device) {
+    std::string device_l = device;
+    std::transform(device_l.begin(), device_l.end(), device_l.begin(), ::tolower);
+    static const std::unordered_map<std::string, Device> deviceNames = {
+        {"none",   Device::None},
+        {"cpu",    Device::CPU},
+        {"cuda",   Device::CUDA},
+        {"metal",  Device::Metal},
+        {"vulkan", Device::Vulkan},
+        {"webgpu", Device::WebGPU}
+    };
+    if (deviceNames.find(device_l) == deviceNames.end()) {
+        JST_ERROR("Invalid device name: {}", device);
+        throw Device::None;
+    }
+    return deviceNames.at(device);
+}
+
 inline std::ostream& operator<<(std::ostream& os, const Device& device) {
     return os << GetDevicePrettyName(device);
 }

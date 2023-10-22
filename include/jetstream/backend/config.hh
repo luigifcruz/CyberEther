@@ -38,18 +38,20 @@ inline std::ostream& operator<<(std::ostream& os, const PhysicalDeviceType& type
 }
 
 struct Config {
-    U64 deviceId;
+    U64 deviceId = 0;
 #ifdef JST_DEBUG_MODE
     bool validationEnabled = true;
 #else
     bool validationEnabled = false;
 #endif
-    U64 stagingBufferSize = 32*1024*1024;
+    U64 stagingBufferSize = 64*1024*1024;
+    bool headless = false;
 
     JST_SERDES(
         JST_SERDES_VAL("deviceId", deviceId);
         JST_SERDES_VAL("validationEnabled", validationEnabled);
         JST_SERDES_VAL("stagingBufferSize", stagingBufferSize);
+        JST_SERDES_VAL("headless", headless);
     );
 };
 

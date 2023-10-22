@@ -83,49 +83,77 @@ Result Instance::newFlowgraph() {
     return Result::SUCCESS;
 }
 
-Result Instance::buildDefaultInterface() {
+Result Instance::buildDefaultInterface(const Device& preferredDevice,
+                                       const Backend::Config& backendConfig,
+                                       const Viewport::Config& viewportConfig,
+                                       const Render::Window::Config& renderConfig) {
     JST_DEBUG("[INSTANCE] Building default viewport and render.");
 
-    // Default Viewport configuration.
-    Viewport::Config viewportCfg;
-    viewportCfg.vsync = true;
-    viewportCfg.size = {1920, 1080};
-    viewportCfg.title = "CyberEther";
+    if (_viewport || _window) {
+        JST_ERROR("[INSTANCE] Viewport or render already built.");
+        return Result::ERROR;
+    }
 
-    // Default Window configuration.
-    Render::Window::Config renderCfg;
-    renderCfg.imgui = true;
-    renderCfg.scale = 1.0;
+    std::vector<Device> devicePriority = {
+        preferredDevice,
+        Device::Metal,
+        Device::Vulkan,
+        Device::WebGPU,
+    };
 
-    if (!_viewport) {
-#ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
-#if   defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
-        JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(viewportCfg));
-#elif defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
-        JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(viewportCfg));
-#elif defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
-        JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(viewportCfg));
+    if (backendConfig.headless) {
+        for (const auto& device : devicePriority) {
+            switch (device) {
+#ifdef JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE
+#if   defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+                case Device::Vulkan:
+                    JST_CHECK(Backend::Initialize<Device::Vulkan>(backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::Headless<Device::Vulkan>>(viewportConfig));
+                    JST_CHECK(this->buildRender<Device::Vulkan>(renderConfig));
+                    return Result::SUCCESS;
 #endif
-#else
+#endif
+                default:
+                    continue;
+            }
+        }
+
+        JST_ERROR("[INSTANCE] No headless viewport backend available.");
+        return Result::ERROR;
+    } else {
+        for (const auto& device : devicePriority) {
+            switch (device) {
+#ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+                case Device::Metal:
+                    JST_CHECK(Backend::Initialize<Device::Metal>(backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(viewportConfig));
+                    JST_CHECK(this->buildRender<Device::Metal>(renderConfig));
+                    return Result::SUCCESS;
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+                case Device::Vulkan:
+                    JST_CHECK(Backend::Initialize<Device::Vulkan>(backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(viewportConfig));
+                    JST_CHECK(this->buildRender<Device::Vulkan>(renderConfig));
+                    return Result::SUCCESS;
+#endif
+#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+                case Device::WebGPU:
+                    JST_CHECK(Backend::Initialize<Device::WebGPU>(backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(viewportConfig));
+                    JST_CHECK(this->buildRender<Device::WebGPU>(renderConfig));
+                    return Result::SUCCESS;
+#endif
+#endif
+                default:
+                    continue;
+            }
+        }
+
         JST_ERROR("[INSTANCE] No viewport backend available.");
         return Result::ERROR;
-#endif
     }
-
-    if (!_window) {
-#if   defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
-        JST_CHECK(this->buildRender<Device::Metal>(renderCfg));
-#elif defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
-        JST_CHECK(this->buildRender<Device::Vulkan>(renderCfg));
-#elif defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
-        JST_CHECK(this->buildRender<Device::WebGPU>(renderCfg));
-#else
-        JST_ERROR("[INSTANCE] No render backend available.");
-        JST_CHECK(Result::ERROR);
-#endif
-    }
-
-    return Result::SUCCESS;
 }
 
 Result Instance::reloadModule(const Locale locale) {

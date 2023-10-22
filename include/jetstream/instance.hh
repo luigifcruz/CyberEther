@@ -36,15 +36,18 @@ class JETSTREAM_API Instance {
     Result closeFlowgraph();
     Result newFlowgraph();
 
-    Result buildDefaultInterface();
+    Result buildDefaultInterface(const Device& preferredDevice = Device::None,
+                                 const Backend::Config& backendConfig = {},
+                                 const Viewport::Config& viewportConfig = {},
+                                 const Render::Window::Config& renderConfig = {});
 
     template<Device D>
-    Result buildBackend(Backend::Config& config) {
+    Result buildBackend(const Backend::Config& config) {
         return Backend::Initialize<D>(config);
     }
 
     template<class Platform, typename... Args>
-    Result buildViewport(typename Viewport::Config& config, Args... args) {
+    Result buildViewport(const typename Viewport::Config& config, Args... args) {
         if (_viewport) {
             JST_ERROR("[INSTANCE] A viewport was already created.");
             return Result::ERROR;

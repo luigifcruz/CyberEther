@@ -7,12 +7,134 @@ using namespace Jetstream;
 int main(int argc, char* argv[]) {
     std::cout << "Welcome to CyberEther!" << std::endl;
 
+    // Parse command line arguments.
+
+    Backend::Config backendConfig;
+    Viewport::Config viewportConfig;
+    Render::Window::Config renderConfig;
+    std::string flowgraphPath;
+    Device prefferedBackend;
+
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = std::string(argv[i]);
+
+        if (arg == "--headless") {
+            backendConfig.headless = true;
+
+            if (i + 1 < argc) {
+                viewportConfig.endpoint = argv[++i];
+            }
+
+            continue;
+        }
+
+        if (arg == "--backend") {
+            if (i + 1 < argc) {
+                prefferedBackend = StringToDevice(argv[++i]);
+            }
+
+            continue;
+        }
+
+        if (arg == "--no-validation") {
+            backendConfig.validationEnabled = false;
+
+            continue;
+        }
+
+        if (arg == "--no-vsync") {
+            viewportConfig.vsync = true;
+
+            continue;
+        }
+
+        if (arg == "--framerate") {
+            if (i + 1 < argc) {
+                viewportConfig.framerate = std::stoul(argv[++i]);
+            }
+
+            continue;
+        }
+
+        if (arg == "--size") {
+            if (i + 2 < argc) {
+                viewportConfig.size.width = std::stoul(argv[++i]);
+                viewportConfig.size.height = std::stoul(argv[++i]);
+            }
+
+            continue;
+        }
+
+        if (arg == "--codec") {
+            if (i + 1 < argc) {
+                viewportConfig.codec = Render::StringToVideoCodec(argv[++i]);
+            }
+
+            continue;
+        }
+
+        if (arg == "--device-id") {
+            if (i + 1 < argc) {
+                backendConfig.deviceId = std::stoul(argv[++i]);
+            }
+
+            continue;
+        }
+
+        if (arg == "--staging-buffer") {
+            if (i + 1 < argc) {
+                backendConfig.stagingBufferSize = std::stoul(argv[++i])*1024*1024;
+            }
+
+            continue;
+        }
+
+        if (arg == "--scale") {
+            if (i + 1 < argc) {
+                renderConfig.scale = std::stof(argv[++i]);
+            }
+
+            continue;
+        }
+
+        if (arg == "--help" || arg == "-h") {
+            std::cout << "Usage: " << argv[0] << " [options] [flowgraph]" << std::endl;
+            std::cout << "Options:" << std::endl;
+            std::cout << "  --headless [endpoint]   Run in headless mode (`udp://1.1.1.1:8000`, `./vid.mp4`, etc). Default: `/tmp/cyberether`" << std::endl;
+            std::cout << "  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`)." << std::endl;
+            std::cout << "  --framerate [value]     Set the framerate of the headless viewport (FPS). Default: `60`" << std::endl;
+            std::cout << "  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`" << std::endl;
+            std::cout << "  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`" << std::endl;
+            std::cout << "  --scale [scale]         Set the scale of the render window. Default: `1.0`" << std::endl;
+            std::cout << "Other Options:" << std::endl;
+            std::cout << "  --staging-buffer [size] Set the staging buffer size (MB). Default: `32`" << std::endl;
+            std::cout << "  --device-id [id]        Set the physical device ID. Default: `0`" << std::endl;
+            std::cout << "  --no-validation         Disable Vulkan validation layers." << std::endl;
+            std::cout << "  --no-vsync              Disable vsync." << std::endl;
+            std::cout << "  --help, -h              Print this help message." << std::endl;
+            std::cout << "  --version, -v           Print the version." << std::endl;
+            return 0;
+        }
+
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "CyberEther v" << JETSTREAM_VERSION_STR << "-" << JETSTREAM_BUILD_TYPE << std::endl;
+            return 0;
+        }
+
+        flowgraphPath = arg;
+    }
+
+    // Instance creation.
+
     Instance instance;
 
-    JST_CHECK_THROW(instance.buildDefaultInterface());
+    JST_CHECK_THROW(instance.buildDefaultInterface(prefferedBackend,
+                                                   backendConfig,
+                                                   viewportConfig,
+                                                   renderConfig));
 
-    if (argc >= 2) {
-        JST_CHECK_THROW(instance.openFlowgraphFile(argv[1]));
+    if (!flowgraphPath.empty()) {
+        JST_CHECK_THROW(instance.openFlowgraphFile(flowgraphPath));
     }
     
     // Start compute thread.

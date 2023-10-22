@@ -11,18 +11,31 @@
 namespace Jetstream::Viewport {
 
 struct Config {
+    /// @brief Whether vertical synchronization (vsync) is enabled. Only applicable to headed viewports.
     bool vsync = true;
-    std::string title = "Render";
-    Size2D<U64> size = {1280, 720};
 
-    bool headless = false;
-    
+    /// @brief The title of the application or window.
+    std::string title = "CyberEther";
+
+    /// @brief The size of the application or window.
+    Size2D<U64> size = {1920, 1080};
+
+    /// @brief The framerate of the headless viewport.
+    U64 framerate = 60;
+
+    /// @brief The endpoint of the headless viewport.
+    std::string endpoint = "/tmp/cyberether";
+
+    /// @brief The video codec of the headless viewport.
+    Render::VideoCodec codec = Render::VideoCodec::FFV1;
 
     JST_SERDES(
         JST_SERDES_VAL("vsync", vsync);
         JST_SERDES_VAL("title", title);
         JST_SERDES_VAL("size", size);
-        JST_SERDES_VAL("headless", headless);
+        JST_SERDES_VAL("framerate", framerate);
+        JST_SERDES_VAL("endpoint", endpoint);
+        JST_SERDES_VAL("codec", codec);
     );
 };
 
