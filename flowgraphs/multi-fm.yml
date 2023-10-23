@@ -15,9 +15,9 @@ graph:
     dataType: CF32
     config:
       deviceString: driver=rtlsdr,serial=00000001
-      frequency: 94.9e6
+      frequency: 96.9e6
       sampleRate: 240e3
-      outputShape: [1, 2048]
+      outputShape: [1, 24000]
       bufferMultiplier: 512
 
   win:
@@ -107,12 +107,21 @@ graph:
     input:
       buffer: ${graph.flt_mul.output.product}
 
-  fm:
-    module: fm
+  invert:
+    module: invert
     device: ${computeDevice}
     dataType: CF32
     input:
       buffer: ${graph.ifft.output.buffer}
+
+  fm:
+    module: fm
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      sampleRate: 240e3
+    input:
+      buffer: ${graph.invert.output.buffer}
 
   fft-3:
     module: fft
