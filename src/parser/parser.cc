@@ -78,7 +78,7 @@ Result Parser::printFlowgraph() const {
 
         if (values.contains("dataType")) {
             JST_INFO("  Data Type:         {}", ResolveReadable(values["dataType"]));
-        } else {
+        } else if (values.contains("inputDataType") && values.contains("outputDataType")) {
             JST_INFO("  Data Type:         {} -> {}", ResolveReadable(values["inputDataType"]),
                                                       ResolveReadable(values["outputDataType"]));
         }
@@ -134,7 +134,7 @@ Result Parser::importFlowgraph(Instance& instance) {
         record.fingerprint.device = ResolveReadable(values["device"]);
         if (values.contains("dataType")) {
             record.fingerprint.dataType = ResolveReadable(values["dataType"]);
-        } else {
+        } else if (values.contains("inputDataType") && values.contains("outputDataType")) {
             record.fingerprint.inputDataType = ResolveReadable(values["inputDataType"]);
             record.fingerprint.outputDataType = ResolveReadable(values["outputDataType"]);
         }
