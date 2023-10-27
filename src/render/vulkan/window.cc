@@ -123,7 +123,7 @@ Result Implementation::create() {
 
     // Create command buffers.
 
-    commandBuffers.resize(viewport->getSwapchainImageViews().size());
+    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -189,13 +189,12 @@ Result Implementation::recreate() {
 Result Implementation::createFramebuffer() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
-    auto& swapchainImageViews = viewport->getSwapchainImageViews();
     const auto& swapchainExtent = viewport->getSwapchainExtent();
 
-    swapchainFramebuffers.resize(swapchainImageViews.size());
+    swapchainFramebuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-    for (size_t i = 0; i < swapchainImageViews.size(); i++) {
-        VkImageView attachments[] = { swapchainImageViews[i] };
+    for (size_t i = 0; i < swapchainFramebuffers.size(); i++) {
+        VkImageView attachments[] = {  viewport->getSwapchainImageView(i) };
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -255,8 +254,8 @@ Result Implementation::createImgui() {
         .PipelineCache = {},
         .DescriptorPool = backend->getDescriptorPool(),
         .Subpass = {},
-        .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViews().size()),
-        .ImageCount = static_cast<U32>(viewport->getSwapchainImageViews().size()),
+        .MinImageCount = static_cast<U32>(MAX_FRAMES_IN_FLIGHT),
+        .ImageCount = static_cast<U32>(MAX_FRAMES_IN_FLIGHT),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .Allocator = {},
         .CheckVkResultFn = nullptr

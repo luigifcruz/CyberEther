@@ -1,20 +1,30 @@
+#include "jetstream/viewport/plugins/endpoint.hh"
+
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
+#include <gst/app/gstappsrc.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#endif
 
 #include <map>
 #include <regex>
 #include <string>
 
-#include <gst/app/gstappsrc.h>
-
-#include "jetstream/viewport/plugins/endpoint.hh"
-
 namespace Jetstream::Viewport {
 
 Endpoint::Type Endpoint::DetermineEndpointType(const std::string& endpoint) {
     // Check for socket.
-    std::regex ip_pattern(R"((?:\w+://)?\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d{1,5})?)");
+    std::regex ip_pattern(R"((?:\w+://)?(?:[a-zA-Z0-9.-]+|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::\d{1,5})?)");
     if (std::regex_match(endpoint, ip_pattern)) {
         return Endpoint::Type::Socket;
     }
@@ -37,7 +47,11 @@ Endpoint::Type Endpoint::DetermineEndpointType(const std::string& endpoint) {
 Result Endpoint::create(const Viewport::Config& _config) {
     JST_DEBUG("[ENDPOINT] Initializing plugin.");
 
+    // Set variables.
+
     config = _config;
+    socketConnected = false;
+    brokerEndpointRunning = false;
 
     // Check if endpoint is valid.
 
@@ -82,6 +96,8 @@ Result Endpoint::create(const Viewport::Config& _config) {
 Result Endpoint::destroy() {
     JST_DEBUG("[ENDPOINT] Destroying plugin.");
 
+    // Destroy endpoints.
+
     if (type == Endpoint::Type::Pipe) {
         JST_CHECK(destroyPipeEndpoint());
     }
@@ -95,6 +111,12 @@ Result Endpoint::destroy() {
         JST_CHECK(destroySocketEndpoint());
     }
 #endif
+
+    // Reset variables.
+
+    brokerEndpointRunning = false;
+    socketConnected = false;
+    config = {};
 
     return Result::SUCCESS;
 }
@@ -145,6 +167,314 @@ Result Endpoint::destroyPipeEndpoint() {
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
 
+Result Endpoint::createSocketEndpoint() {
+    JST_DEBUG("[ENDPOINT] Creating socket endpoint ({}).", config.endpoint);
+
+    // Get broker address and port with regex.
+
+    std::smatch matches;
+    std::regex pattern(R"(([\w.-]+|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5}))");
+    if (std::regex_match(config.endpoint, matches, pattern)) {
+        if (matches.size() == 3) {
+            brokerAddress = matches[1].str();
+            brokerPort = std::stoi(matches[2].str());
+        }
+    } else {
+        JST_ERROR("[ENDPOINT] Invalid endpoint format. Expected `address:port`. Example: `10.10.1.1:5000`.");
+        return Result::ERROR;
+    }
+
+    // Create TCP socket server.
+
+    brokerEndpointFileDescriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (brokerEndpointFileDescriptor < 0) {
+        JST_ERROR("[ENDPOINT] Failed to create broker endpoint.");
+        return Result::ERROR;
+    }
+
+    // Set socket options.
+
+    int keepalive = 1;
+    if (setsockopt(brokerEndpointFileDescriptor, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive)) < 0) {
+        JST_ERROR("[ENDPOINT] Failed to set socket keep-alive option on broker endpoint.");
+        return Result::ERROR;
+    }
+
+    int reuse = 1;
+    if (setsockopt(brokerEndpointFileDescriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        JST_ERROR("[ENDPOINT] Failed to set socket reuse option on broker endpoint.");
+        return Result::ERROR;
+    }
+
+    // Bind socket to port.
+
+    struct sockaddr_in brokerEndpointAddress = {};
+    brokerEndpointAddress.sin_family = AF_INET;
+    brokerEndpointAddress.sin_addr.s_addr = inet_addr(brokerAddress.c_str());
+    brokerEndpointAddress.sin_port = htons(brokerPort);
+
+    if (bind(brokerEndpointFileDescriptor, (struct sockaddr*)&brokerEndpointAddress, sizeof(brokerEndpointAddress)) < 0) {
+        JST_ERROR("[ENDPOINT] Failed to bind broker endpoint.");
+        return Result::ERROR;
+    }
+
+    // Listen for connections.
+
+    if (listen(brokerEndpointFileDescriptor, 5) < 0) {
+        JST_ERROR("[ENDPOINT] Failed to listen for connections on broker endpoint.");
+        return Result::ERROR;
+    }
+
+    brokerEndpointRunning = true;
+    brokerEndpointThread = std::thread([&]() {
+        while (brokerEndpointRunning) {
+            // Accept connection.
+
+            brokerClientFileDescriptor = accept(brokerEndpointFileDescriptor, nullptr, nullptr);
+            if (brokerClientFileDescriptor < 0) {
+                continue;
+            }
+
+            while (true) {
+                // Read data.
+
+                char buffer[1024] = {0};
+                
+                if (read(brokerClientFileDescriptor, buffer, sizeof(buffer)) < 0) {
+                    break;
+                }
+
+                std::string line;
+                std::istringstream lineStream(buffer);
+                while (std::getline(lineStream, line)) {
+                    // Parse command `ping`.
+
+                    if (line.compare(0, 4, "ping") == 0) {
+                        auto response = fmt::format("pong\n");
+                        send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                        continue;
+                    }
+
+                    JST_TRACE("[ENDPOINT] Received message from client: `{}`.", line);
+
+                    // Parse command `hid:mouse:pos:{x},{y}`.
+
+                    if (line.compare(0, 13, "hid:mouse:pos") == 0) {
+                        const auto x = std::stoi(line.substr(14, 19));
+                        const auto y = std::stoi(line.substr(20, 25));
+                        JST_TRACE("[ENDPOINT] Received `hid:mouse:pos` from client: `x={}, y={}`.", x, y);
+
+                        // TODO: This should be submitted before the frame begin.
+                        ImGui::GetIO().AddMousePosEvent(x, y);
+
+                        continue;
+                    }
+
+                    // Parse command `hid:mouse:btn:{btn},{down}`.
+
+                    if (line.compare(0, 13, "hid:mouse:btn") == 0) {
+                        const auto button = std::stoi(line.substr(14, 15));
+                        const auto down = std::stoi(line.substr(16, 17));
+                        JST_TRACE("[ENDPOINT] Received `hid:mouse:btn` from client: `button={}, down={}`.", button, down);
+
+                        // TODO: This should be submitted before the frame begin.
+                        ImGui::GetIO().AddMouseButtonEvent(button, down);
+
+                        continue;
+                    }
+
+                    // Parse command `hid:mouse:scroll:{x},{y}`.
+
+                    if (line.compare(0, 16, "hid:mouse:scroll") == 0) {
+                        const auto x = std::stoi(line.substr(17, 23)) / 100.0f;
+                        const auto y = std::stoi(line.substr(24, 29)) / 100.0f;
+                        JST_TRACE("[ENDPOINT] Received `hid:mouse:scroll` from client: `x={}, y={}`.", x, y);
+
+                        // TODO: This should be submitted before the frame begin.
+                        ImGui::GetIO().MouseWheel = x;
+                        ImGui::GetIO().MouseWheelH = y;
+
+                        continue;
+                    }
+
+                    // Parse command `hid:key:{id},{pressed}`.
+
+                    if (line.compare(0, 7, "hid:key") == 0) {
+                        const auto id = std::stoi(line.substr(8, 12));
+                        const auto pressed = std::stoi(line.substr(13, 14));
+                        JST_TRACE("[ENDPOINT] Received `hid:key` from client: `id={}, pressed={}`.", id, pressed);
+
+                        // TODO: This should be submitted before the frame begin.
+                        ImGui::GetIO().AddKeyEvent(static_cast<ImGuiKey>(id), pressed);
+
+                        continue;
+                    }
+
+                    // Parse command `hid:char:{key}`.
+
+                    if (line.compare(0, 8, "hid:char") == 0) {
+                        const char key = line.substr(9, 10).c_str()[0];
+                        JST_TRACE("[ENDPOINT] Received `hid:char` from client: `key={}`.", key);
+
+                        // TODO: This should be submitted before the frame begin.
+                        ImGui::GetIO().AddInputCharacter(key);
+
+                        continue;
+                    }
+
+                    // Parse command `cmd`.
+
+                    if (line.compare(0, 3, "cmd") == 0) {
+                        // Parse command `cmd:connect`.
+
+                        if (line.compare(0, 11, "cmd:connect") == 0) {
+                            // Check if socket is already connected.
+
+                            if (socketConnected) {
+                                JST_ERROR("[ENDPOINT] Socket is already connected.");
+                                auto response = fmt::format("err:Socket is already connected.\n");
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                                continue;
+                            }
+
+                            // Get client address.
+
+                            struct sockaddr_in brokerEndpointClientAddress = {};
+                            socklen_t brokerEndpointClientAddressLength = sizeof(brokerEndpointClientAddress);
+                            if (getpeername(brokerClientFileDescriptor, (struct sockaddr*)&brokerEndpointClientAddress, &brokerEndpointClientAddressLength) < 0) {
+                                JST_ERROR("[ENDPOINT] Failed to get client address from broker endpoint.");
+                                auto response = fmt::format("err:Failed to get client address.\n");
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                                continue;
+                            }
+
+                            // Get client address string.
+
+                            char brokerEndpointClientAddressString[INET_ADDRSTRLEN];
+                            inet_ntop(AF_INET, &brokerEndpointClientAddress.sin_addr, brokerEndpointClientAddressString, INET_ADDRSTRLEN);
+                            socketAddress = brokerEndpointClientAddressString;
+                            socketPort = brokerPort + 1;
+                            socketConnected = true;
+
+                            // Send response.
+
+                            {
+                                auto response = fmt::format("ok:connect\n");
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                            }
+
+                            // Create Gstreamer endpoint.
+
+                            if (createGstreamerEndpoint() != Result::SUCCESS) {
+                                auto response = fmt::format("err:{}\n", JST_LOG_LAST_ERROR());
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                                continue;
+                            }
+
+                            continue;
+                        }
+
+                        // Parse command `cmd:disconnect`.
+
+                        if (line.compare(0, 14, "cmd:disconnect") == 0) {
+                            // Check if socket is already disconnected.
+
+                            if (!socketConnected) {
+                                JST_ERROR("[ENDPOINT] Socket is already disconnected.");
+                                auto response = fmt::format("err:Socket is already disconnected.\n");
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                                continue;
+                            }
+
+                            // Send response.
+
+                            {
+                                auto response = fmt::format("ok:disconnect\n", socketAddress, socketPort);
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                            }
+
+                            close(brokerClientFileDescriptor);
+                            break;
+                        }
+
+                        // Parse command `cmd:fbsize`.
+
+                        if (line.compare(0, 10, "cmd:fbsize") == 0) {
+                            auto response = fmt::format("ok:fbsize:{:05},{:05}\n", config.size.width, config.size.height);
+                            send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+
+                            continue;
+                        }
+
+                        // Parse command `cmd:framerate`.
+
+                        if (line.compare(0, 13, "cmd:framerate") == 0) {
+                            auto response = fmt::format("ok:framerate:{}\n", config.framerate);
+                            send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+
+                            continue;
+                        }
+                    }
+
+                    // Parse command `err`.
+
+                    if (line.compare(0, 3, "err") == 0) {
+                        JST_ERROR("[ENDPOINT] Received `err` from client: `{}`.", line);
+                        continue;
+                    }
+
+                    // Parse command `ok`.
+
+                    if (line.compare(0, 2, "ok") == 0) {
+                        JST_DEBUG("[ENDPOINT] Received `ok` from client: `{}`.", line);
+                        continue;
+                    }
+
+                    // Reply for unrecognized message.
+
+                    {
+                        JST_ERROR("[ENDPOINT] Received unrecognized message from client: `{}`.", line);
+                        auto response = fmt::format("err:Unrecognized message.\n");
+                        send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+                        continue;
+                    }
+                }
+            }
+
+            // Close client socket.
+            
+            JST_INFO("[ENDPOINT] Client disconnected. Closing socket.");
+            close(brokerClientFileDescriptor);
+            socketConnected = false;
+            destroyGstreamerEndpoint();
+        }
+    });
+
+    return Result::SUCCESS;
+}
+
+Result Endpoint::destroySocketEndpoint() {
+    JST_DEBUG("[ENDPOINT] Destroying socket endpoint.");
+
+    if (socketConnected) {
+        auto response = fmt::format("err:Server is closing down.\n");
+        send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+        JST_CHECK(destroyGstreamerEndpoint());
+        close(brokerClientFileDescriptor);
+    }
+
+    if (brokerEndpointRunning) {
+        brokerEndpointRunning = false;
+        shutdown(brokerEndpointFileDescriptor, SHUT_RD);
+        close(brokerEndpointFileDescriptor);
+        if (brokerEndpointThread.joinable()) {
+            brokerEndpointThread.join();
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Endpoint::createGstreamerEndpoint() {
     JST_DEBUG("[ENDPOINT] Creating gstreamer endpoint.");
 
@@ -161,33 +491,33 @@ Result Endpoint::createGstreamerEndpoint() {
         "rawparse",
         "videoconvertscale",
         "coreelements",
-        "matroska",
     };
 
-    // Inject TCP or UDP plugin.
+    // Inject socket endpoint plugins.
 
     if (type == Endpoint::Type::Socket) {
-        if (socketType == "tcp") {
-            plugins.push_back("tcp");
-        }
+        plugins.push_back("rtp");
+        plugins.push_back("udp");
+    }
 
-        if (socketType == "udp") {
-            plugins.push_back("udp");
-        }
+    // Inject file endpoint plugins.
+
+    if (type == Endpoint::Type::File) {
+        plugins.push_back("matroska");
     }
 
     // Inject codec plugins.
-
-    if (config.codec == Render::VideoCodec::FFV1) {
-        plugins.push_back("libav");
-    }
 
     if (config.codec == Render::VideoCodec::H264) {
         plugins.push_back("x264");
     }
 
-    if (config.codec == Render::VideoCodec::HEVC) {
-        plugins.push_back("x265");
+    if (config.codec == Render::VideoCodec::FFV1) {
+        plugins.push_back("libav");
+    }
+
+    if (config.codec == Render::VideoCodec::VP8) {
+        plugins.push_back("vpx");
     }
 
     if (config.codec == Render::VideoCodec::VP9) {
@@ -195,7 +525,7 @@ Result Endpoint::createGstreamerEndpoint() {
     }
 
     if (config.codec == Render::VideoCodec::AV1) {
-        plugins.push_back("aom");
+        plugins.push_back("rav1e");
     }
 
     for (const auto& plugin : plugins) {
@@ -219,7 +549,9 @@ Result Endpoint::createGstreamerEndpoint() {
     std::map<std::string, GstElement*> elements;
     std::vector<std::string> elementOrder = {
         "source",
+        "queue",
         "parser",
+        "rate",
         "convert",
         "encoder",
         "muxer",
@@ -227,19 +559,23 @@ Result Endpoint::createGstreamerEndpoint() {
     };
 
     elements["source"] = source = gst_element_factory_make("appsrc", "source");
+    elements["queue"] = gst_element_factory_make("queue", "queue");
     elements["parser"] = gst_element_factory_make("rawvideoparse", "parser");
+    elements["rate"] = gst_element_factory_make("videorate", "rate");
     elements["convert"] = gst_element_factory_make("videoconvert", "convert");
 
-    if (config.codec == Render::VideoCodec::FFV1) {
-        elements["encoder"] = gst_element_factory_make("avenc_ffv1", "encoder");
-    }
+    // TODO: Add framerate compensator `videorate`.
 
     if (config.codec == Render::VideoCodec::H264) {
         elements["encoder"] = gst_element_factory_make("x264enc", "encoder");
     }
 
-    if (config.codec == Render::VideoCodec::HEVC) {
-        elements["encoder"] = gst_element_factory_make("x265enc", "encoder");
+    if (config.codec == Render::VideoCodec::FFV1) {
+        elements["encoder"] = gst_element_factory_make("avenc_ffv1", "encoder");
+    }
+
+    if (config.codec == Render::VideoCodec::VP8) {
+        elements["encoder"] = gst_element_factory_make("vp8enc", "encoder");
     }
 
     if (config.codec == Render::VideoCodec::VP9) {
@@ -247,22 +583,18 @@ Result Endpoint::createGstreamerEndpoint() {
     }
 
     if (config.codec == Render::VideoCodec::AV1) {
-        elements["encoder"] = gst_element_factory_make("av1enc", "encoder");
+        elements["encoder"] = gst_element_factory_make("rav1enc", "encoder");
     }
 
-    elements["muxer"] = gst_element_factory_make("matroskamux", "muxer");
-
     if (type == Endpoint::Type::Socket) {
-        if (socketType == "tcp") {
-            elements["sink"] = gst_element_factory_make("tcpserversink", "sink");
-        }
-
-        if (socketType == "udp") {
-            elements["sink"] = gst_element_factory_make("udpsink", "sink");
-        }
+        elements["muxer"] = gst_element_factory_make("rtpgstpay", "muxer");
+        elements["sink"] = gst_element_factory_make("udpsink", "sink");
     }
 
     if (type == Endpoint::Type::File) {
+        if (fileExtension == "mkv") {
+            elements["muxer"] = gst_element_factory_make("matroskamux", "muxer");
+        }
         elements["sink"] = gst_element_factory_make("filesink", "sink");
     }
     
@@ -276,13 +608,34 @@ Result Endpoint::createGstreamerEndpoint() {
 
     // Configure elements.
 
-    g_object_set(elements["source"], "block", true, nullptr);
-    g_object_set(elements["source"], "max-bytes", 32*1024*1024, nullptr);
+    if (type == Endpoint::Type::Socket) {
+        if (config.codec == Render::VideoCodec::H264) {
+            g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
+            g_object_set(elements["encoder"], "tune", 4, nullptr);
+            g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+        }
+
+        if (config.codec == Render::VideoCodec::AV1) {
+            g_object_set(elements["encoder"], "low-latency", true, nullptr);
+            g_object_set(elements["encoder"], "speed-preset", 10, nullptr);
+            g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
+        }
+
+        if (config.codec == Render::VideoCodec::VP8 ||
+            config.codec == Render::VideoCodec::VP9) {
+            g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
+        }
+
+        g_object_set(elements["muxer"], "config-interval", 1, nullptr);
+    }
+    
+    g_object_set(elements["queue"], "leaky", 2, nullptr);
+    g_object_set(elements["queue"], "max-size-bytes", 2*config.size.width*config.size.height*4, nullptr);
     g_object_set(elements["parser"], "use-sink-caps", 0, nullptr);
     g_object_set(elements["parser"], "width", config.size.width, nullptr);
     g_object_set(elements["parser"], "height", config.size.height, nullptr);
     g_object_set(elements["parser"], "format", 12, nullptr);
-    g_object_set(elements["parser"], "framerate", 0, 0, nullptr);
+    g_object_set(elements["parser"], "framerate", config.framerate, 1, nullptr);
 
     if (type == Endpoint::Type::Socket) {
         g_object_set(elements["sink"], "host", socketAddress.c_str(), "port", socketPort, nullptr);
@@ -311,7 +664,7 @@ Result Endpoint::createGstreamerEndpoint() {
         }
 
         if (!gst_element_link(elements[lastElement], elements[name])) {
-            JST_ERROR("[ENDPOINT] Failed to link gstreamer element `{}`.", name);
+            JST_ERROR("[ENDPOINT] Failed to link gstreamer element `{}` -> `{}`.", lastElement, name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }
@@ -326,6 +679,7 @@ Result Endpoint::createGstreamerEndpoint() {
         gst_object_unref(pipeline);
         return Result::ERROR;
     }
+    socketReady = true;
 
     return Result::SUCCESS;
 }
@@ -333,22 +687,50 @@ Result Endpoint::createGstreamerEndpoint() {
 Result Endpoint::destroyGstreamerEndpoint() {
     JST_DEBUG("[ENDPOINT] Destroying gstreamer endpoint.");
 
-    // Stop pipeline.
+    // Stop piping frames.
+    socketReady = false;
 
-    gst_element_set_state(pipeline, GST_STATE_NULL);
-    gst_object_unref(pipeline);
+    // Send EOS.
+    gst_element_send_event(pipeline, gst_event_new_eos());
 
-    // De-initialize gstreamer.
+    // Wait pipeline to process EOS.
 
-    if (gst_is_initialized()) {
-        gst_deinit();
+    GstBus* bus = gst_element_get_bus(pipeline);
+    GstMessage* msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_EOS);
+    if (msg) {
+        gst_message_unref(msg);
     }
+    gst_object_unref(bus);
+
+    // Stop pipeline.
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+
+    // Cleanup.
+    gst_object_unref(pipeline);
 
     return Result::SUCCESS;
 }
 
 Result Endpoint::createFileEndpoint() {
     JST_DEBUG("[ENDPOINT] Creating file endpoint ({}).", config.endpoint);
+
+    // Get file extension with regex.
+
+    std::smatch matches;
+    std::regex pattern(R"(^\.?\/?[^\/\\]*\.([\w]+)$)");
+    if (std::regex_match(config.endpoint, matches, pattern)) {
+        if (matches.size() == 2) {
+            fileExtension = matches[1].str();
+        }
+    } else {
+        JST_ERROR("[ENDPOINT] Invalid endpoint format. Expected `filename.extension`. Example: `./video.mkv`.");
+        return Result::ERROR;
+    }
+
+    if (fileExtension != "mkv") {
+        JST_ERROR("[ENDPOINT] Invalid file extension. Expected `mkv`.");
+        return Result::ERROR;
+    }
 
     JST_CHECK(createGstreamerEndpoint());
 
@@ -363,42 +745,6 @@ Result Endpoint::destroyFileEndpoint() {
     return Result::SUCCESS;
 }
 
-Result Endpoint::createSocketEndpoint() {
-    JST_DEBUG("[ENDPOINT] Creating socket endpoint ({}).", config.endpoint);
-
-    // Get socket address and port with regex.
-
-    std::smatch matches;
-    std::regex pattern(R"((\w+)://([\d\.]+):(\d+))");
-    if (std::regex_match(config.endpoint, matches, pattern)) {
-        if (matches.size() == 4) {
-            socketType = matches[1].str();
-            socketAddress = matches[2].str();
-            socketPort = std::stoi(matches[3].str());
-        }
-    } else {
-        JST_ERROR("[ENDPOINT] Invalid endpoint format. Expected `protocol://address:port`. Example: `tcp://10.10.1.1:5000`.");
-        return Result::ERROR;
-    }
-
-    if (socketType != "tcp" && socketType != "udp") {
-        JST_ERROR("[ENDPOINT] Invalid socket type. Expected `tcp` or `udp`.");
-        return Result::ERROR;
-    }
-
-    JST_CHECK(createGstreamerEndpoint());
-
-    return Result::SUCCESS;
-}
-
-Result Endpoint::destroySocketEndpoint() {
-    JST_DEBUG("[ENDPOINT] Destroying socket endpoint.");
-
-    JST_CHECK(destroyGstreamerEndpoint());
-
-    return Result::SUCCESS;
-}
-
 #endif
 
 Result Endpoint::newFrameHost(const uint8_t* data) {
@@ -407,7 +753,7 @@ Result Endpoint::newFrameHost(const uint8_t* data) {
     }
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
-    if (type == Endpoint::Type::File || type == Endpoint::Type::Socket) {
+    if ((type == Endpoint::Type::File || type == Endpoint::Type::Socket) && socketReady) {
         GstBuffer* buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
                                                         const_cast<uint8_t*>(data),
                                                         config.size.width * config.size.height * 4,

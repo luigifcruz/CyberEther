@@ -389,8 +389,8 @@ Result Instance::moduleUpdater(const Locale locale, const std::function<Result(c
 
     // Check if the module store has such a record fingerprint.
     if (!Store::Modules().contains(record.fingerprint)) {
-        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist.");        
-        res = Result::ERROR;
+        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: `{}`.", record.fingerprint);        
+        return Result::ERROR;
     } else {
         res = Store::Modules().at(record.fingerprint)(*this, record);
     }

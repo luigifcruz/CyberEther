@@ -309,8 +309,8 @@ const VkFormat& Implementation::getSwapchainImageFormat() const {
     return swapchainImageFormat;
 }
 
-std::vector<VkImageView>& Implementation::getSwapchainImageViews() {
-    return swapchainImageViews;
+VkImageView& Implementation::getSwapchainImageView(const U64& index) {
+    return swapchainImageViews[index];
 }
 
 const VkExtent2D& Implementation::getSwapchainExtent() const {

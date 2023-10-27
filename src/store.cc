@@ -225,6 +225,9 @@ const ModuleStore& Store::defaultModules() {
 #ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE
         { {"scale-view",         "cpu",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Scale, Device::CPU, F32>(r); } },
 #endif
+#ifdef JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE
+        { {"remote-view",         "cpu",    "",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Remote, Device::CPU>(r); } },
+#endif
 
 // Device::Metal
 
@@ -636,7 +639,7 @@ const ModuleListStore& Store::defaultModuleList() {
         },
         {"scale-view",
             {
-                false,
+                true,
                 "Scale View",
                 "Scales input data by a factor with extra controls.",
                 "Multiplies each data point in the input by a specified scaling factor, adjusting its magnitude.",
@@ -647,6 +650,21 @@ const ModuleListStore& Store::defaultModuleList() {
 #endif
 #ifdef JETSTREAM_MODULE_SCALE_METAL_AVAILABLE
                         {Device::Metal, {{"F32", "", ""}}},
+#endif
+                    }
+                }
+            }
+        },
+        {"remote-view",
+            {
+                true,
+                "Remote View",
+                "Opens a remote view to a CyberEther instance.",
+                "Opens a remote view to a CyberEther instance via the network. This allows viewing and controlling the instance from a different computer.",
+                {
+                    {
+#ifdef JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE
+                        {Device::CPU, {{"", "", ""}}},
 #endif
                     }
                 }

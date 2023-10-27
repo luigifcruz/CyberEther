@@ -33,5 +33,8 @@
 #include "jetstream/bundles/scale.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE)
+#include "jetstream/bundles/remote.hh"
+#endif
 
 #endif

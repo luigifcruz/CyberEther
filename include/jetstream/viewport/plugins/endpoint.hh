@@ -7,6 +7,8 @@
 #include <gst/gst.h>
 #endif
 
+#include <thread>
+
 namespace Jetstream::Viewport {
 
 class Endpoint {
@@ -45,10 +47,22 @@ class Endpoint {
    GstElement* pipeline;
    GstElement* source;
 
+   // Broker endpoint.
+   std::string brokerAddress;
+   int brokerPort;
+   int brokerEndpointFileDescriptor;
+   int brokerClientFileDescriptor;
+   bool brokerEndpointRunning;
+   std::thread brokerEndpointThread;
+
    // Socket endpoint.
-   std::string socketType;
    std::string socketAddress;
    int socketPort;
+   bool socketConnected;
+   bool socketReady;
+
+   // File endpoint. 
+   std::string fileExtension;
    
    Result createGstreamerEndpoint();
    Result destroyGstreamerEndpoint();

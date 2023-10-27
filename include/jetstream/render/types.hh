@@ -22,19 +22,19 @@ enum class PixelType : uint32_t {
 };
 
 enum class VideoCodec : uint32_t {
-    HEVC,
-    AV1,
-    VP9,
     H264,
+    AV1,
+    VP8,
+    VP9,
     FFV1,
 };
 
 inline std::string VideoCodecToString(const VideoCodec& codec) {
     switch (codec) {
-        case VideoCodec::HEVC:
-            return "hevc";
         case VideoCodec::AV1:
             return "av1";
+        case VideoCodec::VP8:
+            return "vp8";
         case VideoCodec::VP9:
             return "vp9";
         case VideoCodec::H264:
@@ -51,10 +51,10 @@ inline VideoCodec StringToVideoCodec(const std::string& codec) {
     std::string codec_l = codec;
     std::transform(codec_l.begin(), codec_l.end(), codec_l.begin(), ::tolower);
 
-    if (codec_l == "hevc") {
-        return VideoCodec::HEVC;
-    } else if (codec_l == "av1") {
+    if (codec_l == "av1") {
         return VideoCodec::AV1;
+    } else if (codec_l == "vp8") {
+        return VideoCodec::VP8;
     } else if (codec_l == "vp9") {
         return VideoCodec::VP9;
     } else if (codec_l == "h264") {

@@ -2,6 +2,10 @@
 #define JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 
 #include <chrono>
+#include <queue>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"
@@ -46,18 +50,31 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
 
     const VkFormat& getSwapchainImageFormat() const;
-    std::vector<VkImageView>& getSwapchainImageViews();
+    VkImageView& getSwapchainImageView(const U64& index);
     const VkExtent2D& getSwapchainExtent() const;
 
  private:
-    VkImage swapchainImage;
-    std::vector<VkImageView> swapchainImageViews;
-    VkDeviceMemory swapchainMemory;
+    const static U32 MAX_FRAMES_IN_FLIGHT = 2;
+
+    std::chrono::high_resolution_clock::time_point lastTime;
+    std::array<VkImage, MAX_FRAMES_IN_FLIGHT> swapchainImages;
+    std::array<VkImageView, MAX_FRAMES_IN_FLIGHT> swapchainImageViews;
+    std::array<VkDeviceMemory, MAX_FRAMES_IN_FLIGHT> swapchainMemory;
+    std::array<void*, MAX_FRAMES_IN_FLIGHT> swapchainMemoryMapped;
+    std::array<std::atomic_flag, MAX_FRAMES_IN_FLIGHT> swapchainEvents;
+    std::array<VkFence, MAX_FRAMES_IN_FLIGHT> swapchainFences;
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
     U32 _currentDrawableIndex;
+
     Endpoint endpoint;
-    std::chrono::high_resolution_clock::time_point lastTime;
+    std::queue<U64> endpointFrameSubmissionQueue;
+    std::mutex endpointFrameSubmissionMutex;
+    std::condition_variable endpointFrameSubmissionCondition;
+    std::thread endpointFrameSubmissionThread;
+    bool endpointFrameSubmissionRunning;
+
+    void endpointFrameSubmissionLoop();
 };
 
 }  // namespace Jetstream::Viewport

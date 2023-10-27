@@ -19,7 +19,7 @@ class Adapter<Device::Vulkan> : public Generic {
     virtual Result commitDrawable(std::vector<VkSemaphore>& semaphores) = 0;
     
     virtual const VkFormat& getSwapchainImageFormat() const = 0;
-    virtual std::vector<VkImageView>& getSwapchainImageViews() = 0;
+    virtual VkImageView& getSwapchainImageView(const U64& index) = 0;
     virtual const VkExtent2D& getSwapchainExtent() const = 0;
 };
 

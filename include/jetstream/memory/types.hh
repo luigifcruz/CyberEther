@@ -217,6 +217,14 @@ struct JETSTREAM_API NumericTypeInfo<CU64> {
     inline static const char* name = "CU64";
 };
 
+template<>
+struct JETSTREAM_API NumericTypeInfo<void> {
+    using type = void;
+    using subtype = void;
+    using surtype = void;
+    inline static const char* name = "";
+};
+
 //
 // Device
 //

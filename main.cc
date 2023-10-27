@@ -21,6 +21,10 @@ int main(int argc, char* argv[]) {
         if (arg == "--headless") {
             backendConfig.headless = true;
 
+            continue;
+        }
+
+        if (arg == "--endpoint") {
             if (i + 1 < argc) {
                 viewportConfig.endpoint = argv[++i];
             }
@@ -100,7 +104,8 @@ int main(int argc, char* argv[]) {
         if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " [options] [flowgraph]" << std::endl;
             std::cout << "Options:" << std::endl;
-            std::cout << "  --headless [endpoint]   Run in headless mode (`udp://1.1.1.1:8000`, `./vid.mp4`, etc). Default: `/tmp/cyberether`" << std::endl;
+            std::cout << "  --headless              Enable headless mode." << std::endl;
+            std::cout << "  --endpoint [endpoint]   Set the endpoint of the headless viewport (`1.1.1.1:8000`, `./vid.mp4`, etc). Default: `/tmp/cyberether`" << std::endl;
             std::cout << "  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`)." << std::endl;
             std::cout << "  --framerate [value]     Set the framerate of the headless viewport (FPS). Default: `60`" << std::endl;
             std::cout << "  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`" << std::endl;
@@ -111,6 +116,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --device-id [id]        Set the physical device ID. Default: `0`" << std::endl;
             std::cout << "  --no-validation         Disable Vulkan validation layers." << std::endl;
             std::cout << "  --no-vsync              Disable vsync." << std::endl;
+            std::cout << "Other:" << std::endl;
             std::cout << "  --help, -h              Print this help message." << std::endl;
             std::cout << "  --version, -v           Print the version." << std::endl;
             return 0;
@@ -194,6 +200,8 @@ int main(int argc, char* argv[]) {
 #endif
     
     instance.destroy();
+
+    Backend::DestroyAll();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 

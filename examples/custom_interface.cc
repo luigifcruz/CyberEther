@@ -304,5 +304,7 @@ int main() {
 #endif
     }
 
+    Backend::DestroyAll();
+
     std::cout << "Goodbye from CyberEther!" << std::endl;
 }

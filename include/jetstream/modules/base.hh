@@ -91,4 +91,8 @@
 #include "jetstream/modules/constellation.hh"
 #endif
 
+#if defined(JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE)
+#include "jetstream/modules/remote.hh"
+#endif
+
 #endif

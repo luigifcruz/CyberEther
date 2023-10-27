@@ -89,6 +89,11 @@ class JETSTREAM_API Instance {
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
     }
 
+    Result destroyAll() {
+        backends.clear();
+        return Result::SUCCESS;
+    }
+
  private:
     typedef std::variant<
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
@@ -123,6 +128,10 @@ Result Initialize(const Config& config) {
 template<Device D>
 Result Destroy() {
     return Get().destroy<D>();
+}
+
+inline Result DestroyAll() {
+    return Get().destroyAll();
 }
 
 }  // namespace Jetstream::Backend

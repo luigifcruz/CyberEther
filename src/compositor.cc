@@ -1859,6 +1859,40 @@ Result Compositor::drawGraph() {
         ImGui::End();
     }();
 
+    // window with a milisecond timer
+
+    // move window from side to side slowly
+    static float x = 0.0f;
+    static float xdir = 1.0f;
+    x += xdir;
+    if (x > 1920.0f) {
+        xdir = 0.0f;
+    }
+    if (x < 0.0f) {
+        xdir = 0.0f;
+    }
+
+    // move window 
+
+    [&](){
+        ImGui::SetNextWindowSize(ImVec2(250.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
+
+        ImGui::SetNextWindowPos(ImVec2(x, 500.0f));
+        
+
+        if (!ImGui::Begin("Timer")) {
+            ImGui::End();
+            return;
+        }
+
+        U64 ms = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        ImGui::TextFormatted("Time: {} ms", ms);
+
+        ImGui::End();
+    }();
+
+    ImGui::ShowDemoWindow();
+
     return Result::SUCCESS;
 }
 

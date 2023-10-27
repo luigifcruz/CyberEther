@@ -297,7 +297,8 @@ Result Scheduler::removeInactive() {
     JST_DEBUG("[SCHEDULER] Removing stale modules.");
     std::unordered_set<std::string> staleModules;
     for (const auto& [name, state] : computeModuleStates) {
-        if (state.activeInputs.empty() && state.activeOutputs.empty()) {
+        if ((state.activeInputs.empty() && state.activeOutputs.empty()) &&
+            (!state.block->compute && state.block->present)) {
             JST_TRACE("Removing stale module '{}'.", name);
             staleModules.insert(name);
         }

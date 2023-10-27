@@ -6,6 +6,7 @@ subdir('constellation')
 subdir('lineplot')
 subdir('spectrogram')
 subdir('waterfall')
+subdir('remote')
 
 foreach shader_pkg: shader_pkg_lst
     name = shader_pkg.get('name')

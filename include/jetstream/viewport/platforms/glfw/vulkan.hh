@@ -46,7 +46,7 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
 
     const VkFormat& getSwapchainImageFormat() const;
-    std::vector<VkImageView>& getSwapchainImageViews();
+    VkImageView& getSwapchainImageView(const U64& index);
     const VkExtent2D& getSwapchainExtent() const;
 
  private:

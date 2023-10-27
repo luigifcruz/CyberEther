@@ -110,6 +110,7 @@ class UI {
         computeWorker.join();
         graphicalWorker.join();
         instance.destroy();
+        Backend::DestroyAll();
 
         JST_DEBUG("The UI was destructed.");
 

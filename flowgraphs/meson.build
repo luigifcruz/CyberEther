@@ -7,6 +7,7 @@ if python_bin.found()
             'remote-spectrum-analyzer.yml',
             'spectrum-analyzer.yml',
             'speech-recognition-fm.yml',
+            'remote-instance.yml',
         ]),
         output : ['data.hh'],
         command : [python_bin, files('parser.py'), meson.project_build_root()],

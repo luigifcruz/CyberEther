@@ -21,6 +21,13 @@ inline float FillScreenTextureVertices[] = {
     +0.0f, +0.0f,
 };
 
+inline float FillScreenTextureVerticesXYFlip[] = {
+    +1.0f, +1.0f,
+    +1.0f, +0.0f,
+    +0.0f, +0.0f,
+    +0.0f, +1.0f,
+};
+
 inline uint32_t FillScreenIndices[] = {
     0, 1, 2,
     2, 3, 0,

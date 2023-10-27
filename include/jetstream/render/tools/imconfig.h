@@ -14,5 +14,11 @@
 
 #pragma once
 
+#include "jetstream_config.hh"
+
 #define IMGUI_IMPL_METAL_CPP
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+
+#ifndef JST_DEBUG_MODE
+#define IMGUI_DISABLE_DEBUG_TOOLS
+#endif
