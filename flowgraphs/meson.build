@@ -6,7 +6,6 @@ if python_bin.found()
             'simple-fm.yml',
             'remote-spectrum-analyzer.yml',
             'spectrum-analyzer.yml',
-            'speech-recognition-fm.yml',
             'remote-instance.yml',
         ]),
         output : ['data.hh'],
