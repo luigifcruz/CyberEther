@@ -64,6 +64,10 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     std::array<void*, MAX_FRAMES_IN_FLIGHT> swapchainMemoryMapped;
     std::array<std::atomic_flag, MAX_FRAMES_IN_FLIGHT> swapchainEvents;
     std::array<VkFence, MAX_FRAMES_IN_FLIGHT> swapchainFences;
+    std::array<VkBuffer, MAX_FRAMES_IN_FLIGHT> swapchainStagingBuffers;
+    std::array<VkDeviceMemory, MAX_FRAMES_IN_FLIGHT> swapchainStagingMemory;
+    VkCommandPool swapchainCommandPool;
+    std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> swapchainCommandBuffers;
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
     U32 _currentDrawableIndex;

@@ -56,6 +56,7 @@ Result Implementation::destroy() {
 Result Implementation::createSwapchain() {
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
 
     // Create extent.
 
@@ -76,7 +77,7 @@ Result Implementation::createSwapchain() {
         imageCreateInfo.mipLevels = 1;
         imageCreateInfo.arrayLayers = 1;
         imageCreateInfo.format = swapchainImageFormat;
-        imageCreateInfo.tiling = VK_IMAGE_TILING_LINEAR;
+        imageCreateInfo.tiling = (unified) ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
         imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
@@ -94,14 +95,19 @@ Result Implementation::createSwapchain() {
     VkMemoryRequirements memoryRequirements;
     vkGetImageMemoryRequirements(device, swapchainImages[0], &memoryRequirements);
 
+    VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    if (unified) {
+        memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    }
+
     VkMemoryAllocateInfo memoryAllocateInfo = {};
-        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        memoryAllocateInfo.allocationSize = memoryRequirements.size;
-        memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                                    memoryRequirements.memoryTypeBits,
-                                                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | 
-                                                                    VK_MEMORY_PROPERTY_HOST_CACHED_BIT | 
-                                                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memoryAllocateInfo.allocationSize = memoryRequirements.size;
+    memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                                memoryRequirements.memoryTypeBits,
+                                                                memoryProperties);
 
     for (U32 i = 0; i < swapchainMemory.size(); i++) {
         JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &swapchainMemory[i]), [&]{
@@ -112,8 +118,77 @@ Result Implementation::createSwapchain() {
             JST_ERROR("[VULKAN] Failed to bind memory to the swapchain image.");
         });
 
-        JST_VK_CHECK_THROW(vkMapMemory(device, swapchainMemory[i], 0, memoryRequirements.size, 0, &swapchainMemoryMapped[i]), [&]{
-            JST_FATAL("[VULKAN] Failed to map swapchain buffer memory.");
+        if (unified) {
+            JST_VK_CHECK_THROW(vkMapMemory(device, swapchainMemory[i], 0, memoryRequirements.size, 0, &swapchainMemoryMapped[i]), [&]{
+                JST_FATAL("[VULKAN] Failed to map swapchain buffer memory.");
+            });
+        }
+    }
+
+    // Create staging buffer in case of non-unified system.
+
+    for (U32 i = 0; (i < swapchainStagingBuffers.size()) && !unified; i++) {
+        JST_FATAL("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        VkBufferCreateInfo bufferCreateInfo = {};
+        bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferCreateInfo.size = memoryRequirements.size;
+        bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        JST_VK_CHECK(vkCreateBuffer(device, &bufferCreateInfo, nullptr, &swapchainStagingBuffers[i]), [&]{
+            JST_ERROR("[VULKAN] Can't create staging buffer.");
+        });
+
+        VkMemoryRequirements stagingMemoryRequirements;
+        vkGetBufferMemoryRequirements(device, swapchainStagingBuffers[i], &stagingMemoryRequirements);
+
+        VkMemoryAllocateInfo stagingMemoryAllocateInfo = {};
+        stagingMemoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        stagingMemoryAllocateInfo.allocationSize = stagingMemoryRequirements.size;
+        stagingMemoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                                                  stagingMemoryRequirements.memoryTypeBits,
+                                                                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        JST_VK_CHECK(vkAllocateMemory(device, &stagingMemoryAllocateInfo, nullptr, &swapchainStagingMemory[i]), [&]{
+            JST_ERROR("[VULKAN] Failed to allocate staging buffer memory.");
+        });
+
+        JST_VK_CHECK(vkBindBufferMemory(device, swapchainStagingBuffers[i], swapchainStagingMemory[i], 0), [&]{
+            JST_ERROR("[VULKAN] Failed to bind memory to the staging buffer.");
+        });
+
+        JST_VK_CHECK_THROW(vkMapMemory(device, swapchainStagingMemory[i], 0, stagingMemoryRequirements.size, 0, &swapchainMemoryMapped[i]), [&]{
+            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");
+        });
+    }
+
+    // Create command pool in case of non-unified system.
+
+    if (!unified) {
+        Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
+
+        VkCommandPoolCreateInfo commandPoolCreateInfo = {};
+        commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        commandPoolCreateInfo.queueFamilyIndex = indices.graphicFamily.value();
+        commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+        JST_VK_CHECK(vkCreateCommandPool(device, &commandPoolCreateInfo, nullptr, &swapchainCommandPool), [&]{
+            JST_ERROR("[VULKAN] Failed to create swapchain command pool.");
+        });
+    }
+
+    // Create command buffer in case of non-unified system.
+
+   if (!unified) {
+        VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+        commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        commandBufferAllocateInfo.commandPool = swapchainCommandPool;
+        commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandBufferAllocateInfo.commandBufferCount = swapchainCommandBuffers.size();
+
+        JST_VK_CHECK(vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, swapchainCommandBuffers.data()), [&]{
+            JST_ERROR("[VULKAN] Failed to allocate swapchain command buffers.");
         });
     }
 
@@ -170,10 +245,23 @@ Result Implementation::createSwapchain() {
 
 Result Implementation::destroySwapchain() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
 
     // Destroy swapchain.
 
+    if (!unified) {
+        vkFreeCommandBuffers(device, swapchainCommandPool, swapchainCommandBuffers.size(), swapchainCommandBuffers.data());
+        vkDestroyCommandPool(device, swapchainCommandPool, nullptr);
+    }
+
     for (U32 i = 0; i < swapchainImageViews.size(); i++) {
+        if (!unified) {
+            vkUnmapMemory(device, swapchainStagingMemory[i]);
+            vkFreeMemory(device, swapchainStagingMemory[i], nullptr);
+            vkDestroyBuffer(device, swapchainStagingBuffers[i], nullptr);
+        } else {
+            vkUnmapMemory(device, swapchainMemory[i]);
+        }
         vkDestroyImageView(device, swapchainImageViews[i], nullptr);
         vkDestroyImage(device, swapchainImages[i], nullptr);
         vkFreeMemory(device, swapchainMemory[i], nullptr);
@@ -258,6 +346,44 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
 }
 
 Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
+    const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
+
+    // Copy swapchain image to staging buffer if non-unified.
+
+    if (!unified) {
+        VkCommandBufferBeginInfo cmdBeginInfo = {};
+        cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        JST_VK_CHECK(vkBeginCommandBuffer(swapchainCommandBuffers[_currentDrawableIndex], &cmdBeginInfo), [&]{
+            JST_ERROR("[VULKAN] Failed to begin swapchain framebuffer download command-buffer.");
+        });
+
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = {0, 0, 0};
+        region.imageExtent.width = config.size.width;
+        region.imageExtent.height = config.size.height;
+        region.imageExtent.depth = 1;
+
+        vkCmdCopyImageToBuffer(swapchainCommandBuffers[_currentDrawableIndex],
+                               swapchainImages[_currentDrawableIndex],
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               swapchainStagingBuffers[_currentDrawableIndex],
+                               1,
+                               &region);
+
+        JST_VK_CHECK(vkEndCommandBuffer(swapchainCommandBuffers[_currentDrawableIndex]), [&]{
+            JST_ERROR("[VULKAN] Failed to end swapchain framebuffer download command-buffer.");
+        });
+    }
+
     // Wait framebuffer to be ready.
 
     const VkPipelineStageFlags waitStage[] = { VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT };
@@ -268,8 +394,8 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     submitInfo.waitSemaphoreCount = semaphores.size();
     submitInfo.pWaitSemaphores = semaphores.data();
     submitInfo.pWaitDstStageMask = waitStage;
-    submitInfo.commandBufferCount = 0;
-    submitInfo.pCommandBuffers = nullptr;
+    submitInfo.commandBufferCount = (unified) ? 0 : 1;
+    submitInfo.pCommandBuffers = (unified) ? nullptr : &swapchainCommandBuffers[_currentDrawableIndex];
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = nullptr;
 
