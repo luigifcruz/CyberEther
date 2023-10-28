@@ -20,10 +20,7 @@ Result Remote<D, T>::create() {
 
     // Set variables.
 
-    brokerEndpointRunning = false;
-    socketConnected = false;
-    brokerConnected = false;
-    frameCounter = 0;
+    _statistics = {};
 
     // Check if endpoint is valid.
 
@@ -48,17 +45,23 @@ Result Remote<D, T>::create() {
 
     // Create TCP client.
 
-    brokerEndpointFileDescriptor = socket(AF_INET, SOCK_STREAM, 0);
-    if (brokerEndpointFileDescriptor < 0) {
+    brokerFileDescriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (brokerFileDescriptor < 0) {
         JST_ERROR("Failed to open socket.");
         return Result::ERROR;
     }
 
     // Set socket options.
 
-    int flag = 1;
-    if (setsockopt(brokerEndpointFileDescriptor, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(flag)) < 0) {
-        JST_ERROR("Failed to set socket options.");
+    int delay = 1;
+    if (setsockopt(brokerFileDescriptor, IPPROTO_TCP, TCP_NODELAY, &delay, sizeof(delay)) < 0) {
+        JST_ERROR("Failed to set no delay socket option.");
+        return Result::ERROR;
+    }
+
+    int keepalive = 1;
+    if (setsockopt(brokerFileDescriptor, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive)) < 0) {
+        JST_ERROR("Failed to set keep alive socket option.");
         return Result::ERROR;
     }
 
@@ -69,8 +72,8 @@ Result Remote<D, T>::create() {
     serverAddress.sin_addr.s_addr = inet_addr(brokerAddress.c_str());
     serverAddress.sin_port = htons(brokerPort);
 
-    if (connect(brokerEndpointFileDescriptor, (sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
-        JST_ERROR("Failed to connect to server.");
+    if (connect(brokerFileDescriptor, (sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+        JST_ERROR("Failed to connect to broker.");
         return Result::ERROR;
     }
     brokerConnected = true;
@@ -78,8 +81,8 @@ Result Remote<D, T>::create() {
     // Send framebuffer size request command. 
 
     {
-        auto response = fmt::format("cmd:fbsize\ncmd:framerate\n");
-        send(brokerEndpointFileDescriptor, response.c_str(), response.size(), 0);
+        auto response = fmt::format("cmd:fbsize\n");
+        send(brokerFileDescriptor, response.c_str(), response.size(), 0);
     }
 
     // Create thread.
@@ -87,14 +90,13 @@ Result Remote<D, T>::create() {
     std::promise<Result> brokerEndpointSignal;
     std::future<Result> brokerEndpointFuture = brokerEndpointSignal.get_future();
 
-    brokerEndpointRunning = true;
-    brokerEndpointThread = std::thread([&, b = std::move(brokerEndpointSignal)]() mutable {
-        while (brokerEndpointRunning) {
+    brokerThread = std::thread([&, b = std::move(brokerEndpointSignal)]() mutable {
+        while (brokerConnected) {
             // Read header.
 
             char buffer[1024] = {0};
 
-            if (read(brokerEndpointFileDescriptor, buffer, sizeof(buffer)) < 0) {
+            if (read(brokerFileDescriptor, buffer, sizeof(buffer)) < 0) {
                 break;
             }
             const auto packetTime = std::chrono::high_resolution_clock::now();
@@ -115,7 +117,7 @@ Result Remote<D, T>::create() {
 
                 if (line.compare(0, 3, "err") == 0) {
                     JST_ERROR("Received `err` from server: `{}`.", line);
-                    close(brokerEndpointFileDescriptor);
+                    close(brokerFileDescriptor);
                     break;
                 }
 
@@ -130,7 +132,10 @@ Result Remote<D, T>::create() {
 
                         JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.width, 
                                                                                               remoteFramebufferSize.height);
-                        b.set_value(Result::SUCCESS);
+                        
+                        auto response = fmt::format("cmd:framerate\n");
+                        send(brokerFileDescriptor, response.c_str(), response.size(), 0);
+
                         continue;
                     }
 
@@ -138,20 +143,40 @@ Result Remote<D, T>::create() {
 
                     if (line.compare(0, 12, "ok:framerate") == 0) {
                         remoteFramerate = std::stoi(line.substr(13, line.length() - 1));
+
                         JST_DEBUG("Received `ok:framerate` from server: `framerate={}`.", remoteFramerate);
+
+                        auto response = fmt::format("cmd:codec\n");
+                        send(brokerFileDescriptor, response.c_str(), response.size(), 0);
+
+                        continue;
+                    }
+
+                    // Parse command `ok:codec:id`.
+
+                    if (line.compare(0, 8, "ok:codec") == 0) {
+                        const auto codec = line.substr(9, line.length() - 1);
+                        remoteFramebufferCodec = Render::StringToVideoCodec(codec);
+
+                        JST_DEBUG("Received `ok:codec` from server: `id={}`.", codec);
+                        
+                        b.set_value(Result::SUCCESS);
+
                         continue;
                     }
 
                     // Parse command `ok:connect`.
 
                     if (line.compare(0, 10, "ok:connect") == 0) {
+                        socketConnected = true;
                         socketAddress = "0.0.0.0";
                         socketPort = brokerPort + 1;
+
                         if (createGstreamerEndpoint() != Result::SUCCESS) {
-                            close(brokerEndpointFileDescriptor);
+                            close(brokerFileDescriptor);
                             break;
                         }
-                        socketConnected = true;
+
                         continue;
                     }
 
@@ -164,19 +189,16 @@ Result Remote<D, T>::create() {
                 {
                     JST_ERROR("Received unrecognized message from server: `{}`.", line);
                     auto response = fmt::format("err:Unrecognized message.\n");
-                    send(brokerEndpointFileDescriptor, response.c_str(), response.size(), 0);
+                    send(brokerFileDescriptor, response.c_str(), response.size(), 0);
                     continue;
                 }
             }
         }
 
-        if (socketConnected) {
-            socketConnected = false;
-            destroyGstreamerEndpoint();
-        }
+        JST_INFO("[ENDPOINT] Server disconnected. Closing socket.");
 
+        destroyGstreamerEndpoint();
         brokerConnected = false;
-        close(brokerEndpointFileDescriptor);
     });
 
     // Wait for broker signal.
@@ -196,7 +218,7 @@ Result Remote<D, T>::create() {
 
     {
         auto response = fmt::format("cmd:connect\n");
-        send(brokerEndpointFileDescriptor, response.c_str(), response.size(), 0);
+        send(brokerFileDescriptor, response.c_str(), response.size(), 0);
     }
 
     return Result::SUCCESS;
@@ -204,23 +226,25 @@ Result Remote<D, T>::create() {
 
 template<Device D, typename T>
 Result Remote<D, T>::destroy() {
-    // Send streaming stop command.
+    // Close broker endpoint.
 
-    if (socketConnected) {
-        auto response = fmt::format("cmd:disconnect\n");
-        send(brokerEndpointFileDescriptor, response.c_str(), response.size(), 0);
+    if (brokerConnected) {
+        // Send streaming stop command.
+
+        if (socketStreaming) {
+            auto response = fmt::format("cmd:disconnect\n");
+            send(brokerFileDescriptor, response.c_str(), response.size(), 0);
+        }
+
+        // Close broker endpoint.
+
+        brokerConnected = false;
+        close(brokerFileDescriptor);
+        shutdown(brokerFileDescriptor, SHUT_RD);
+        if (brokerThread.joinable()) {
+            brokerThread.join();
+        }
     }
-
-    brokerEndpointRunning = false;
-    if (brokerEndpointThread.joinable()) {
-        brokerEndpointThread.join();
-    }
-
-    // Reset variables.
-
-    socketConnected = false;
-    brokerConnected = false;
-    frameCounter = 0;
 
     return Result::SUCCESS;
 }
@@ -241,7 +265,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
         gst_init(nullptr, nullptr);
     }
 
-    // Check if all plugins are available.
+    // List required plugins.
 
     std::vector<std::string> plugins = {
         "app",
@@ -253,6 +277,25 @@ Result Remote<D, T>::createGstreamerEndpoint() {
         "udp",
         "rtpmanager",
     };
+
+    // Add codec specific plugins.
+
+    if (remoteFramebufferCodec == Render::VideoCodec::H264) {
+        plugins.push_back("libav");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::VP8) {
+        plugins.push_back("vpx");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::VP9) {
+        plugins.push_back("vpx");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::AV1) {
+        plugins.push_back("dav1d");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::FFV1) {
+        plugins.push_back("libav");
+    } else {
+        JST_ERROR("Unsupported remote framebuffer codec.");
+        return Result::ERROR;
+    }
+
+    // Check if all plugins are available.
 
     for (const auto& plugin : plugins) {
         if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
@@ -278,13 +321,33 @@ Result Remote<D, T>::createGstreamerEndpoint() {
         "srcfilter",
         "jitter",
         "demuxer",
+        "decoder",
+        "convert",
+        "sinkfilter",
+        "sink"
     };
 
     elements["source"] = gst_element_factory_make("udpsrc", "source");
     elements["srcfilter"] = gst_element_factory_make("capsfilter", "srcfilter");
     elements["jitter"] = gst_element_factory_make("rtpjitterbuffer", "jitter");
-    elements["demuxer"] = demuxer = gst_element_factory_make("rtpgstdepay", "demuxer");
-    
+    elements["demuxer"] = gst_element_factory_make("rtpgstdepay", "demuxer");
+
+    if (remoteFramebufferCodec == Render::VideoCodec::FFV1) {
+        elements["decoder"] = gst_element_factory_make("avdec_ffv1", "decoder");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::VP8) {
+        elements["decoder"] = gst_element_factory_make("vp8dec", "decoder");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::VP9) {
+        elements["decoder"] = gst_element_factory_make("vp9dec", "decoder");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::AV1) {
+        elements["decoder"] = gst_element_factory_make("dav1ddec", "decoder");
+    } else if (remoteFramebufferCodec == Render::VideoCodec::H264) {
+        elements["decoder"] = gst_element_factory_make("avdec_h264", "decoder");
+    }
+
+    elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+    elements["sinkfilter"] = gst_element_factory_make("capsfilter", "sinkfilter");
+    elements["sink"] = gst_element_factory_make("appsink", "sink");
+
     for (const auto& [name, element] : elements) {
         if (!element) {
             JST_ERROR("Failed to create gstreamer element `{}`.", name);
@@ -300,14 +363,21 @@ Result Remote<D, T>::createGstreamerEndpoint() {
                                         nullptr);
     g_object_set(elements["srcfilter"], "caps", caps, nullptr);
     gst_caps_unref(caps);
+
     g_object_set(elements["source"], "address", socketAddress.c_str(), "port", socketPort, nullptr);
 
-    // Link callback.
+    GstCaps* convertCaps = gst_caps_new_simple("video/x-raw",
+                                               "format", G_TYPE_STRING, "RGBA",
+                                               nullptr);
+    g_object_set(elements["sinkfilter"], "caps", convertCaps, nullptr);
+    gst_caps_unref(convertCaps);
 
-    std::future<Result> muxerFuture = muxerSignal.get_future();
-    auto* srcpad = gst_element_get_static_pad(elements["demuxer"], "src");
-    gst_pad_add_probe(srcpad, GST_PAD_PROBE_TYPE_BUFFER, MuxerReadyCallabck, this, nullptr);
-    gst_object_unref(srcpad);
+    g_object_set(elements["sink"], "emit-signals", true, nullptr);
+    g_object_set(elements["sink"], "sync", false, nullptr);
+
+    // Link callbacks.
+
+    g_signal_connect(elements["sink"], "new-sample", G_CALLBACK(OnSampleCallback), this);
         
     // Add elements to pipeline.
 
@@ -344,161 +414,10 @@ Result Remote<D, T>::createGstreamerEndpoint() {
         return Result::ERROR;
     }
 
-    // Wait for muxer signal.
-    muxerFuture.wait();
-    JST_CHECK(muxerFuture.get());
+    // Signal success.
+    socketStreaming = true;
 
     return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-GstPadProbeReturn Remote<D, T>::MuxerReadyCallabck(GstPad* pad, GstPadProbeInfo*, gpointer data) {
-    auto* that = reinterpret_cast<Remote*>(data);
-
-    // Get remote framebuffer size.
-
-    GstCaps* caps = gst_pad_get_current_caps(pad);
-    GstStructure* capsStruct = gst_caps_get_structure(caps, 0);
-
-    int width, height;
-    if (!gst_structure_get_int(capsStruct, "width", &width) ||
-        !gst_structure_get_int(capsStruct, "height", &height)) {
-        JST_ERROR("Failed to get remote framebuffer size.");
-        gst_object_unref(that->pipeline);
-        that->muxerSignal.set_value(Result::ERROR);
-        return GST_PAD_PROBE_REMOVE;
-    }
-
-    assert(static_cast<int>(that->remoteFramebufferSize.width) == width);
-    assert(static_cast<int>(that->remoteFramebufferSize.height) == height);
-
-    // Get remote framebuffer size.
-
-    const gchar* codec = gst_structure_get_name(capsStruct);
-    JST_DEBUG("Remote framebuffer codec: {}.", codec);
-
-    Render::VideoCodec renderCodec;
-    std::string plugin;
-
-    if (strcmp(codec, "video/x-h264") == 0) {
-        renderCodec = Render::VideoCodec::H264;
-        plugin = "libav";
-    } else if (strcmp(codec, "video/x-vp8") == 0) {
-        renderCodec = Render::VideoCodec::VP8;
-        plugin = "vpx";
-    } else if (strcmp(codec, "video/x-vp9") == 0) {
-        renderCodec = Render::VideoCodec::VP9;
-        plugin = "vpx";
-    } else if (strcmp(codec, "video/x-av1") == 0) {
-        renderCodec = Render::VideoCodec::AV1;
-        plugin = "dav1d";
-    } else if (strcmp(codec, "video/x-ffv") == 0) {
-        renderCodec = Render::VideoCodec::FFV1;
-        plugin = "libav";
-    } else {
-        JST_ERROR("Unsupported remote framebuffer codec.");
-        gst_object_unref(that->pipeline);
-        that->muxerSignal.set_value(Result::ERROR);
-        return GST_PAD_PROBE_REMOVE;
-    }
-
-    if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
-        JST_ERROR("Gstreamer plugin `{}` is not available.", plugin);
-        gst_object_unref(that->pipeline);
-        that->muxerSignal.set_value(Result::ERROR);
-        return GST_PAD_PROBE_REMOVE;
-    }
-
-    // Create pipeline.
-
-    std::map<std::string, GstElement*> elements;
-    std::vector<std::string> elementOrder = {
-        "demuxer",
-        "decoder",
-        "convert",
-        "sinkfilter",
-        "sink"
-    };
-
-    if (renderCodec == Render::VideoCodec::FFV1) {
-        elements["decoder"] = gst_element_factory_make("avdec_ffv1", "decoder");
-    } else if (renderCodec == Render::VideoCodec::VP8) {
-        elements["decoder"] = gst_element_factory_make("vp8dec", "decoder");
-    } else if (renderCodec == Render::VideoCodec::VP9) {
-        elements["decoder"] = gst_element_factory_make("vp9dec", "decoder");
-    } else if (renderCodec == Render::VideoCodec::AV1) {
-        elements["decoder"] = gst_element_factory_make("dav1ddec", "decoder");
-    } else if (renderCodec == Render::VideoCodec::H264) {
-        elements["decoder"] = gst_element_factory_make("avdec_h264", "decoder");
-    }
-
-    elements["convert"] = gst_element_factory_make("videoconvert", "convert");
-    elements["sinkfilter"] = gst_element_factory_make("capsfilter", "sinkfilter");
-    elements["sink"] = that->sink = gst_element_factory_make("appsink", "sink");
-
-    for (const auto& [name, element] : elements) {
-        if (!element) {
-            JST_ERROR("Failed to create gstreamer element `{}`.", name);
-            gst_object_unref(that->pipeline);
-            that->muxerSignal.set_value(Result::ERROR);
-            return GST_PAD_PROBE_REMOVE;
-        }
-    }
-
-    // Configure elements.
-
-    g_object_set(elements["sink"], "emit-signals", true, nullptr);
-
-    // Link callbacks.
-
-    g_signal_connect(elements["sink"], "new-sample", G_CALLBACK(OnSampleCallback), data);
-
-    // Add elements to pipeline.
-
-    for (const auto& [name, element] : elements) {
-        if (!gst_bin_add(GST_BIN(that->pipeline), element)) {
-            JST_ERROR("Failed to add gstreamer element `{}` to pipeline.", name);
-            gst_object_unref(that->pipeline);
-            that->muxerSignal.set_value(Result::ERROR);
-            return GST_PAD_PROBE_REMOVE;
-        }
-    }
-
-    // Link elements.
-
-    elements["demuxer"] = that->demuxer;
-
-    std::string lastElement = "demuxer";
-    for (const auto& name : elementOrder) {
-        if (name == "demuxer") {
-            continue;
-        }
-
-        if (!gst_element_link(elements[lastElement], elements[name])) {
-            JST_ERROR("Failed to link gstreamer element `{}` -> `{}`.", lastElement, name);
-            gst_object_unref(that->pipeline);
-            that->muxerSignal.set_value(Result::ERROR);
-            return GST_PAD_PROBE_REMOVE;
-        }
-
-        lastElement = name;
-    }
-
-    // Set converter pixel format. 
-
-    GstCaps* convertCaps = gst_caps_new_simple("video/x-raw",
-                                               "format", G_TYPE_STRING, "RGBA",
-                                               nullptr);
-    g_object_set(elements["sinkfilter"], "caps", convertCaps, nullptr);
-    gst_caps_unref(convertCaps);
-
-    // Signal success.
-    that->muxerSignal.set_value(Result::SUCCESS);
-
-    // Start pipeline.
-    gst_element_set_state(that->pipeline, GST_STATE_PLAYING);
-
-    return GST_PAD_PROBE_REMOVE;
 }
 
 template<Device D, typename T>
@@ -512,8 +431,14 @@ GstFlowReturn Remote<D, T>::OnSampleCallback(GstElement* sink, gpointer data) {
         GstMapInfo map;
         gst_buffer_map(buffer, &map, GST_MAP_READ);
 
-        memcpy(that->remoteFramebufferMemory.data(), map.data, map.size);
+        {
+            std::lock_guard<std::mutex> lock(that->localFramebufferMutex);
+            memcpy(that->remoteFramebufferMemory.data(), map.data, map.size);
+            that->localFramebufferAvailable = true;
+        }
 
+        that->_statistics.frames += 1;
+        
         gst_buffer_unmap(buffer, &map);
 
         gst_sample_unref(sample);
@@ -529,8 +454,28 @@ Result Remote<D, T>::destroyGstreamerEndpoint() {
 
     // Stop pipeline.
 
-    gst_element_set_state(pipeline, GST_STATE_NULL);
-    gst_object_unref(pipeline);
+    if (socketStreaming) {
+        // Stop piping frames.
+        socketStreaming = false;
+
+        // Send EOS.
+        gst_element_send_event(pipeline, gst_event_new_eos());
+
+        // Wait pipeline to process EOS.
+
+        GstBus* bus = gst_element_get_bus(pipeline);
+        GstMessage* msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_EOS);
+        if (msg) {
+            gst_message_unref(msg);
+        }
+        gst_object_unref(bus);
+
+        // Stop pipeline.
+        gst_element_set_state(pipeline, GST_STATE_NULL);
+
+        // Destroy pipeline.
+        gst_object_unref(pipeline);        
+    }
 
     return Result::SUCCESS;
 }
@@ -604,71 +549,71 @@ Result Remote<D, T>::destroyPresent() {
 
 template<Device D, typename T>
 Result Remote<D, T>::present() {
-    if (socketConnected) {
-        JST_CHECK(remoteFramebufferTexture->fill());
-    }
+    if (socketStreaming) {
+        if (localFramebufferAvailable) {
+            std::lock_guard<std::mutex> lock(localFramebufferMutex);
+            JST_CHECK(remoteFramebufferTexture->fill());
+            localFramebufferAvailable = false;
+        }
 
-    if (brokerEndpointRunning) {
-        if ((frameCounter % static_cast<U64>(remoteFramerate)) == 0) {
+        if ((_statistics.frames % static_cast<U64>(remoteFramerate)) == 0) {
             static char buffer[8] = "ping\n";
             lastPingTime = std::chrono::high_resolution_clock::now();
-            send(brokerEndpointFileDescriptor, buffer, 5, 0);
+            send(brokerFileDescriptor, buffer, 5, 0);
         }
     }
-
-    frameCounter += 1;
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 void Remote<D, T>::registerMousePos(const F32& x, const F32& y) {
-    if (socketConnected) {
+    if (socketStreaming) {
         const I32 X = static_cast<I32>((x / config.viewSize.width) * remoteFramebufferSize.width);
         const I32 Y = static_cast<I32>((y / config.viewSize.height) * remoteFramebufferSize.height);
 
         static char buffer[32];
         snprintf(buffer, 32, "hid:mouse:pos:%05d,%05d\n", X, Y);
-        send(brokerEndpointFileDescriptor, buffer, 26, 0);
+        send(brokerFileDescriptor, buffer, 26, 0);
     }
 }
 
 template<Device D, typename T>
 void Remote<D, T>::registerMouseButton(const I32& button, const bool& pressed) {
-    if (socketConnected) {
+    if (socketStreaming) {
         static char buffer[32];
         snprintf(buffer, 32, "hid:mouse:btn:%01d,%01d\n", button, ((pressed) ? 1 : 0));
-        send(brokerEndpointFileDescriptor, buffer, 18, 0);
+        send(brokerFileDescriptor, buffer, 18, 0);
     }
 }
 
 template<Device D, typename T>
 void Remote<D, T>::registerMouseScroll(const F32& deltaX, const F32& deltaY) {
-    if (socketConnected) {
+    if (socketStreaming) {
         const I32 DeltaX = static_cast<I32>(deltaX * 100.0f);
         const I32 DeltaY = static_cast<I32>(deltaY * 100.0f);
 
         static char buffer[32];
         snprintf(buffer, 32, "hid:mouse:scroll:%+06d,%+06d\n", DeltaX, DeltaY);
-        send(brokerEndpointFileDescriptor, buffer, 31, 0);
+        send(brokerFileDescriptor, buffer, 31, 0);
     }
 }
 
 template<Device D, typename T>
 void Remote<D, T>::registerKey(const I32& key, const bool& pressed) {
-    if (socketConnected) {
+    if (socketStreaming) {
         static char buffer[16];
         snprintf(buffer, 16, "hid:key:%04d,%01d\n", key, ((pressed) ? 1 : 0));
-        send(brokerEndpointFileDescriptor, buffer, 15, 0);
+        send(brokerFileDescriptor, buffer, 15, 0);
     }
 }
 
 template<Device D, typename T>
 void Remote<D, T>::registerChar(const char& key) {
-    if (socketConnected) {
+    if (socketStreaming) {
         static char buffer[16];
         snprintf(buffer, 16, "hid:char:%c\n", key);
-        send(brokerEndpointFileDescriptor, buffer, 11, 0);
+        send(brokerFileDescriptor, buffer, 11, 0);
     }
 }
 

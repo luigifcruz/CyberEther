@@ -6,6 +6,7 @@
 #include <future>
 #include <thread>
 #include <chrono>
+#include <mutex>
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -82,6 +83,7 @@ class Remote : public Module, public Present {
 
     struct Statistics {
         F32 latency;
+        U64 frames;
     };
 
     constexpr const Statistics& statistics() const {
@@ -100,12 +102,12 @@ class Remote : public Module, public Present {
         return remoteFramebufferCodec;
     }
 
-    constexpr const bool& isSocketConnected() const {
-        return socketConnected;
-    }
-
     constexpr const bool& isBrokerConnected() const {
         return brokerConnected;
+    }
+
+    constexpr const bool& isSocketStreaming() const {
+        return socketStreaming;
     }
 
     constexpr const Size2D<U64>& viewSize() const {
@@ -127,25 +129,32 @@ class Remote : public Module, public Present {
     Result destroyPresent() final;
 
  private:
+    // Gstreamer.
     GstElement* pipeline;
     GstElement* demuxer;
-    GstElement* sink;
-    bool brokerEndpointRunning;
-    bool brokerConnected;
-    int brokerEndpointFileDescriptor;
-    std::string brokerAddress;
-    int brokerPort;
-    bool socketConnected;
-    std::string socketAddress;
-    int socketPort;
-    std::promise<Result> muxerSignal;
-    std::thread brokerEndpointThread;
 
+    // Broker endpoint.
+    bool brokerConnected;
+    int brokerPort;
+    std::string brokerAddress;
+    int brokerFileDescriptor;
+    std::thread brokerThread;
+
+    // Socket endpoint.
+    bool socketConnected;
+    bool socketStreaming;
+    int socketPort;
+    std::string socketAddress;
+
+    // Remote framebuffer.
     Size2D<U64> remoteFramebufferSize;
     Render::VideoCodec remoteFramebufferCodec;
     std::vector<U8> remoteFramebufferMemory;
     F32 remoteFramerate;
 
+    // Local framebuffer.
+    bool localFramebufferAvailable;
+    std::mutex localFramebufferMutex;
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
@@ -158,13 +167,11 @@ class Remote : public Module, public Present {
     std::shared_ptr<Render::Draw> drawVertex;
 
     Statistics _statistics;
-    U64 frameCounter;
     std::chrono::high_resolution_clock::time_point lastPingTime;
 
     Result createGstreamerEndpoint();
     Result destroyGstreamerEndpoint();
 
-    static GstPadProbeReturn MuxerReadyCallabck(GstPad* pad, GstPadProbeInfo*, gpointer data);
     static GstFlowReturn OnSampleCallback(GstElement* sink, gpointer data);
 
     JST_DEFINE_IO();

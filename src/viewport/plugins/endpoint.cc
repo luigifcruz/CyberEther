@@ -50,8 +50,6 @@ Result Endpoint::create(const Viewport::Config& _config) {
     // Set variables.
 
     config = _config;
-    socketConnected = false;
-    brokerEndpointRunning = false;
 
     // Check if endpoint is valid.
 
@@ -111,12 +109,6 @@ Result Endpoint::destroy() {
         JST_CHECK(destroySocketEndpoint());
     }
 #endif
-
-    // Reset variables.
-
-    brokerEndpointRunning = false;
-    socketConnected = false;
-    config = {};
 
     return Result::SUCCESS;
 }
@@ -203,6 +195,12 @@ Result Endpoint::createSocketEndpoint() {
     int reuse = 1;
     if (setsockopt(brokerEndpointFileDescriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
         JST_ERROR("[ENDPOINT] Failed to set socket reuse option on broker endpoint.");
+        return Result::ERROR;
+    }
+
+    int delay = 1;
+    if (setsockopt(brokerEndpointFileDescriptor, IPPROTO_TCP, TCP_NODELAY, &delay, sizeof(delay)) < 0) {
+        JST_ERROR("[ENDPOINT] Failed to set socket no delay option on broker endpoint.");
         return Result::ERROR;
     }
 
@@ -356,19 +354,19 @@ Result Endpoint::createSocketEndpoint() {
                             socketPort = brokerPort + 1;
                             socketConnected = true;
 
-                            // Send response.
-
-                            {
-                                auto response = fmt::format("ok:connect\n");
-                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
-                            }
-
                             // Create Gstreamer endpoint.
 
                             if (createGstreamerEndpoint() != Result::SUCCESS) {
                                 auto response = fmt::format("err:{}\n", JST_LOG_LAST_ERROR());
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                                 continue;
+                            }
+
+                            // Send response.
+
+                            {
+                                auto response = fmt::format("ok:connect\n");
+                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                             }
 
                             continue;
@@ -414,6 +412,15 @@ Result Endpoint::createSocketEndpoint() {
 
                             continue;
                         }
+
+                        // Parse command `cmd:codec`.
+
+                        if (line.compare(0, 9, "cmd:codec") == 0) {
+                            auto response = fmt::format("ok:codec:{}\n", Render::VideoCodecToString(config.codec));
+                            send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
+
+                            continue;
+                        }
                     }
 
                     // Parse command `err`.
@@ -445,8 +452,8 @@ Result Endpoint::createSocketEndpoint() {
             
             JST_INFO("[ENDPOINT] Client disconnected. Closing socket.");
             close(brokerClientFileDescriptor);
-            socketConnected = false;
             destroyGstreamerEndpoint();
+            socketConnected = false;
         }
     });
 
@@ -457,9 +464,9 @@ Result Endpoint::destroySocketEndpoint() {
     JST_DEBUG("[ENDPOINT] Destroying socket endpoint.");
 
     if (socketConnected) {
+        socketConnected = false;
         auto response = fmt::format("err:Server is closing down.\n");
         send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
-        JST_CHECK(destroyGstreamerEndpoint());
         close(brokerClientFileDescriptor);
     }
 
@@ -472,6 +479,8 @@ Result Endpoint::destroySocketEndpoint() {
         }
     }
 
+    JST_CHECK(destroyGstreamerEndpoint());
+    
     return Result::SUCCESS;
 }
 
@@ -550,6 +559,7 @@ Result Endpoint::createGstreamerEndpoint() {
     std::vector<std::string> elementOrder = {
         "source",
         "queue",
+        "caps",
         "parser",
         "rate",
         "convert",
@@ -560,6 +570,7 @@ Result Endpoint::createGstreamerEndpoint() {
 
     elements["source"] = source = gst_element_factory_make("appsrc", "source");
     elements["queue"] = gst_element_factory_make("queue", "queue");
+    elements["caps"] = gst_element_factory_make("capsfilter", "caps");
     elements["parser"] = gst_element_factory_make("rawvideoparse", "parser");
     elements["rate"] = gst_element_factory_make("videorate", "rate");
     elements["convert"] = gst_element_factory_make("videoconvert", "convert");
@@ -613,6 +624,7 @@ Result Endpoint::createGstreamerEndpoint() {
             g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
             g_object_set(elements["encoder"], "tune", 4, nullptr);
             g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+            g_object_set(elements["encoder"], "key-int-max", config.framerate/4, nullptr);
         }
 
         if (config.codec == Render::VideoCodec::AV1) {
@@ -631,14 +643,21 @@ Result Endpoint::createGstreamerEndpoint() {
     
     g_object_set(elements["queue"], "leaky", 2, nullptr);
     g_object_set(elements["queue"], "max-size-bytes", 2*config.size.width*config.size.height*4, nullptr);
-    g_object_set(elements["parser"], "use-sink-caps", 0, nullptr);
-    g_object_set(elements["parser"], "width", config.size.width, nullptr);
-    g_object_set(elements["parser"], "height", config.size.height, nullptr);
-    g_object_set(elements["parser"], "format", 12, nullptr);
-    g_object_set(elements["parser"], "framerate", config.framerate, 1, nullptr);
+
+    g_object_set(elements["parser"], "use-sink-caps", 1, nullptr);
+
+    GstCaps* caps = gst_caps_new_simple("video/x-raw",
+                                        "format", G_TYPE_STRING, "BGRA",
+                                        "width", G_TYPE_INT, config.size.width,
+                                        "height", G_TYPE_INT, config.size.height,
+                                        "framerate", GST_TYPE_FRACTION, config.framerate, 1,
+                                        nullptr);
+    g_object_set(elements["caps"], "caps", caps, nullptr);
+    gst_caps_unref(caps);
 
     if (type == Endpoint::Type::Socket) {
         g_object_set(elements["sink"], "host", socketAddress.c_str(), "port", socketPort, nullptr);
+        g_object_set(elements["sink"], "sync", false, NULL);
     } 
 
     if (type == Endpoint::Type::File) {
@@ -679,7 +698,7 @@ Result Endpoint::createGstreamerEndpoint() {
         gst_object_unref(pipeline);
         return Result::ERROR;
     }
-    socketReady = true;
+    socketStreaming = true;
 
     return Result::SUCCESS;
 }
@@ -687,26 +706,30 @@ Result Endpoint::createGstreamerEndpoint() {
 Result Endpoint::destroyGstreamerEndpoint() {
     JST_DEBUG("[ENDPOINT] Destroying gstreamer endpoint.");
 
-    // Stop piping frames.
-    socketReady = false;
-
-    // Send EOS.
-    gst_element_send_event(pipeline, gst_event_new_eos());
-
-    // Wait pipeline to process EOS.
-
-    GstBus* bus = gst_element_get_bus(pipeline);
-    GstMessage* msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_EOS);
-    if (msg) {
-        gst_message_unref(msg);
-    }
-    gst_object_unref(bus);
-
     // Stop pipeline.
-    gst_element_set_state(pipeline, GST_STATE_NULL);
 
-    // Cleanup.
-    gst_object_unref(pipeline);
+    if (socketStreaming) {
+        // Stop piping frames.
+        socketStreaming = false;
+
+        // Send EOS.
+        gst_element_send_event(pipeline, gst_event_new_eos());
+
+        // Wait pipeline to process EOS.
+
+        GstBus* bus = gst_element_get_bus(pipeline);
+        GstMessage* msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE, GST_MESSAGE_EOS);
+        if (msg) {
+            gst_message_unref(msg);
+        }
+        gst_object_unref(bus);
+
+        // Stop pipeline.
+        gst_element_set_state(pipeline, GST_STATE_NULL);
+
+        // Cleanup.
+        gst_object_unref(pipeline);
+    }
 
     return Result::SUCCESS;
 }
@@ -753,7 +776,7 @@ Result Endpoint::newFrameHost(const uint8_t* data) {
     }
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
-    if ((type == Endpoint::Type::File || type == Endpoint::Type::Socket) && socketReady) {
+    if ((type == Endpoint::Type::File || type == Endpoint::Type::Socket) && socketStreaming) {
         GstBuffer* buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
                                                         const_cast<uint8_t*>(data),
                                                         config.size.width * config.size.height * 4,

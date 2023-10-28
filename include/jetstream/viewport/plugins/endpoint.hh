@@ -59,7 +59,7 @@ class Endpoint {
    std::string socketAddress;
    int socketPort;
    bool socketConnected;
-   bool socketReady;
+   bool socketStreaming;
 
    // File endpoint. 
    std::string fileExtension;

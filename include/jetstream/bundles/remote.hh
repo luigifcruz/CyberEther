@@ -115,7 +115,7 @@ class Remote : public Bundle {
         ImGui::PushStyleColor(ImGuiCol_Text, remote->isBrokerConnected() ? ImVec4(0.196f, 0.804f, 0.194f, 1.0f) : 
                                                                            ImVec4(1.0f, 0.325f, 0.286f, 1.0f));
         ImGui::TextFormatted("{} {}", remote->isBrokerConnected() ? "Connected" : "Disconnected", 
-                                      remote->isSocketConnected() ? "Streaming" : "");
+                                      remote->isSocketStreaming() ? "Streaming" : "");
         ImGui::PopStyleColor();
     }
 
