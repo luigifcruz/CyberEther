@@ -3,9 +3,9 @@
 #include "jetstream/viewport/platforms/headless/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
-namespace Jetstream::Viewport {
-
 static bool keepRunningFlag;
+
+namespace Jetstream::Viewport {
 
 using Implementation = Headless<Device::Vulkan>;
 

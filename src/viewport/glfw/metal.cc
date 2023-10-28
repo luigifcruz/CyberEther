@@ -1,3 +1,5 @@
+#include <csignal>
+
 #include "jetstream/viewport/platforms/glfw/metal.hh"
 
 namespace Jetstream::Viewport {
@@ -5,6 +7,8 @@ namespace Jetstream::Viewport {
 static void PrintGLFWError(int error, const char* description) {
     JST_FATAL("[Metal] GLFW error: {}", description);
 }
+
+static bool keepRunningFlag;
 
 using Implementation = GLFW<Device::Metal>;
 
@@ -17,6 +21,15 @@ Implementation::~GLFW() {
 }
 
 Result Implementation::create() {
+    // Register signal handler.
+
+    keepRunningFlag = true;
+    std::signal(SIGINT, [](int){
+        keepRunningFlag = false;
+    });
+
+    // Initialize and configure GLFW.
+
     if (!glfwInit()) {
         JST_ERROR("[Metal] Failed to initialize GLFW.");
         return Result::ERROR;
@@ -90,13 +103,13 @@ void* Implementation::nextDrawable() {
 }
 
 Result Implementation::pollEvents() {
-    glfwWaitEvents();
+    glfwWaitEventsTimeout(0.150);
 
     return Result::SUCCESS;
 }
 
 bool Implementation::keepRunning() {
-    return !glfwWindowShouldClose(window);
+    return !glfwWindowShouldClose(window) || keepRunningFlag;
 }
 
 }  // namespace Jetstream::Viewport 

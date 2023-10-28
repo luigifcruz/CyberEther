@@ -1,9 +1,13 @@
+#include <csignal>
+
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
+
+static bool keepRunningFlag;
 
 namespace Jetstream::Viewport {
 
@@ -18,7 +22,17 @@ Implementation::~GLFW() {
 }
 
 Result Implementation::create() {
+    // Register signal handler.
+
+    keepRunningFlag = true;
+    std::signal(SIGINT, [](int){
+        keepRunningFlag = false;
+    });
+
+    // Check if we are running in headless mode.
     JST_ASSERT(!Backend::State<Device::Vulkan>()->headless());
+
+    // Initialize and configure GLFW.
 
     if (!glfwInit()) {
         JST_ERROR("[VULKAN] Failed to initialize GLFW.");
@@ -322,13 +336,13 @@ const VkExtent2D& Implementation::getSwapchainExtent() const {
 }
 
 Result Implementation::pollEvents() {
-    glfwWaitEvents();
+    glfwWaitEventsTimeout(0.150);
 
     return Result::SUCCESS;
 }
 
 bool Implementation::keepRunning() {
-    return !glfwWindowShouldClose(window);
+    return (!glfwWindowShouldClose(window)) && keepRunningFlag;
 }
 
 }  // namespace Jetstream::Viewport 
