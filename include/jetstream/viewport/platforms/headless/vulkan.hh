@@ -56,7 +56,7 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
  private:
     const static U32 MAX_FRAMES_IN_FLIGHT = 2;
 
-    std::chrono::high_resolution_clock::time_point lastTime;
+    std::chrono::steady_clock::time_point lastTime;
     std::array<VkImage, MAX_FRAMES_IN_FLIGHT> swapchainImages;
     std::array<VkImageView, MAX_FRAMES_IN_FLIGHT> swapchainImageViews;
     std::array<VkDeviceMemory, MAX_FRAMES_IN_FLIGHT> swapchainMemory;

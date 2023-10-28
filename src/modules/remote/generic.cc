@@ -369,8 +369,8 @@ GstPadProbeReturn Remote<D, T>::MuxerReadyCallabck(GstPad* pad, GstPadProbeInfo*
         return GST_PAD_PROBE_REMOVE;
     }
 
-    assert(that->remoteFramebufferSize.width == width);
-    assert(that->remoteFramebufferSize.height == height);
+    assert(static_cast<int>(that->remoteFramebufferSize.width) == width);
+    assert(static_cast<int>(that->remoteFramebufferSize.height) == height);
 
     // Get remote framebuffer size.
 

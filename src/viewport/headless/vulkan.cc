@@ -33,7 +33,7 @@ Result Implementation::create() {
     endpointFrameSubmissionRunning = false;
     _currentDrawableIndex = 0;
     swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-    lastTime = std::chrono::high_resolution_clock::now();
+    lastTime = std::chrono::steady_clock::now();
 
     // Create endpoint.
 
