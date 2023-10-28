@@ -47,6 +47,12 @@ class Endpoint {
    GstElement* pipeline;
    GstElement* source;
 
+   std::mutex bufferMutex;
+   std::condition_variable bufferCond;
+   bool bufferProcessed = false;
+
+   static void OnBufferReleaseCallback(gpointer user_data);
+
    // Broker endpoint.
    std::string brokerAddress;
    int brokerPort;

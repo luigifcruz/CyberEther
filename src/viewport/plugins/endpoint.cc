@@ -558,7 +558,6 @@ Result Endpoint::createGstreamerEndpoint() {
     std::map<std::string, GstElement*> elements;
     std::vector<std::string> elementOrder = {
         "source",
-        "queue",
         "caps",
         "parser",
         "rate",
@@ -569,7 +568,6 @@ Result Endpoint::createGstreamerEndpoint() {
     };
 
     elements["source"] = source = gst_element_factory_make("appsrc", "source");
-    elements["queue"] = gst_element_factory_make("queue", "queue");
     elements["caps"] = gst_element_factory_make("capsfilter", "caps");
     elements["parser"] = gst_element_factory_make("rawvideoparse", "parser");
     elements["rate"] = gst_element_factory_make("videorate", "rate");
@@ -641,8 +639,10 @@ Result Endpoint::createGstreamerEndpoint() {
         g_object_set(elements["muxer"], "config-interval", 1, nullptr);
     }
     
-    g_object_set(elements["queue"], "leaky", 2, nullptr);
-    g_object_set(elements["queue"], "max-size-bytes", 2*config.size.width*config.size.height*4, nullptr);
+    //g_object_set(elements["queue"], "leaky", 2, nullptr);
+    //g_object_set(elements["queue"], "max-size-bytes", 2*config.size.width*config.size.height*4, nullptr);
+    g_object_set(elements["source"], "block", true, nullptr);
+    g_object_set(elements["source"], "is-live", true, nullptr);
 
     g_object_set(elements["parser"], "use-sink-caps", 1, nullptr);
 
@@ -656,8 +656,8 @@ Result Endpoint::createGstreamerEndpoint() {
     gst_caps_unref(caps);
 
     if (type == Endpoint::Type::Socket) {
+        g_object_set(elements["sink"], "sync", false, nullptr);
         g_object_set(elements["sink"], "host", socketAddress.c_str(), "port", socketPort, nullptr);
-        g_object_set(elements["sink"], "sync", false, NULL);
     } 
 
     if (type == Endpoint::Type::File) {
@@ -770,6 +770,13 @@ Result Endpoint::destroyFileEndpoint() {
 
 #endif
 
+void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
+    auto* that = reinterpret_cast<Endpoint*>(user_data);
+    std::unique_lock<std::mutex> lock(that->bufferMutex);
+    that->bufferProcessed = true;
+    that->bufferCond.notify_one();
+}
+
 Result Endpoint::newFrameHost(const uint8_t* data) {
     if (type == Endpoint::Type::Pipe) {
         write(pipeFileDescriptor, data, config.size.width * config.size.height * 4);
@@ -782,12 +789,26 @@ Result Endpoint::newFrameHost(const uint8_t* data) {
                                                         config.size.width * config.size.height * 4,
                                                         0,
                                                         config.size.width * config.size.height * 4,
-                                                        nullptr,
-                                                        nullptr);
+                                                        this,
+                                                        &OnBufferReleaseCallback);
+
         if (gst_app_src_push_buffer(GST_APP_SRC(source), buffer) != GST_FLOW_OK) {
             JST_ERROR("[ENDPOINT] Failed to push buffer to gstreamer pipeline.");
             return Result::ERROR;
         }
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        {
+            std::unique_lock<std::mutex> lock(bufferMutex);
+            bufferCond.wait(lock, [&]{ return bufferProcessed; });
+            bufferProcessed = false;
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+        JST_DEBUG("[ENDPOINT] Time: {} ms", duration.count());
     }
 #endif
 

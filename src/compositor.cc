@@ -1865,11 +1865,11 @@ Result Compositor::drawGraph() {
     static float x = 0.0f;
     static float xdir = 1.0f;
     x += xdir;
-    if (x > 1920.0f) {
-        xdir = 0.0f;
+    if (x > 1000.0f) {
+        x = 0.0f;
     }
     if (x < 0.0f) {
-        xdir = 0.0f;
+        x = 0.0f;
     }
 
     // move window 
