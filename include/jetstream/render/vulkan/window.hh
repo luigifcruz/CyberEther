@@ -39,9 +39,7 @@ class WindowImp<Device::Vulkan> : public Window {
     ImGuiStyle* style = nullptr;
     VkRenderPass renderPass;
     VkCommandPool commandPool;
-    VkCommandBufferBeginInfo commandBufferBeginInfo;
     VkCommandBuffer currentCommandBuffer;
-    VkRenderPassBeginInfo renderPassBeginInfo;
     std::vector<VkFramebuffer> swapchainFramebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkSemaphore> imageAvailableSemaphores;

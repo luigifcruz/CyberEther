@@ -51,6 +51,7 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
 
     const VkFormat& getSwapchainImageFormat() const;
     VkImageView& getSwapchainImageView(const U64& index);
+    U32 getSwapchainImageViewsCount() const;
     const VkExtent2D& getSwapchainExtent() const;
 
  private:

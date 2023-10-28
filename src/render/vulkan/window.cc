@@ -62,10 +62,8 @@ Result Implementation::create() {
     // Reseting internal variables.
  
     statsData.droppedFrames = 0;
-    renderPassBeginInfo = {};
-    commandBufferBeginInfo = {};
 
-    // Create Render Pass.
+    // Create render pass.
 
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = viewport->getSwapchainImageFormat();
@@ -123,7 +121,7 @@ Result Implementation::create() {
 
     // Create command buffers.
 
-    commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    commandBuffers.resize(viewport->getSwapchainImageViewsCount());
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -191,7 +189,7 @@ Result Implementation::createFramebuffer() {
 
     const auto& swapchainExtent = viewport->getSwapchainExtent();
 
-    swapchainFramebuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    swapchainFramebuffers.resize(viewport->getSwapchainImageViewsCount());
 
     for (size_t i = 0; i < swapchainFramebuffers.size(); i++) {
         VkImageView attachments[] = {  viewport->getSwapchainImageView(i) };
@@ -254,8 +252,8 @@ Result Implementation::createImgui() {
         .PipelineCache = {},
         .DescriptorPool = backend->getDescriptorPool(),
         .Subpass = {},
-        .MinImageCount = static_cast<U32>(MAX_FRAMES_IN_FLIGHT),
-        .ImageCount = static_cast<U32>(MAX_FRAMES_IN_FLIGHT),
+        .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
+        .ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .Allocator = {},
         .CheckVkResultFn = nullptr
@@ -338,11 +336,13 @@ Result Implementation::begin() {
 
     // Refresh command buffer and begin new render pass.
 
+    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     JST_VK_CHECK(vkBeginCommandBuffer(currentCommandBuffer, &commandBufferBeginInfo), [&]{
         JST_ERROR("[VULKAN] Can't begin command buffer.");     
     });
 
+    VkRenderPassBeginInfo renderPassBeginInfo = {};
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassBeginInfo.renderPass = renderPass;
     renderPassBeginInfo.framebuffer = swapchainFramebuffers[viewport->currentDrawableIndex()];

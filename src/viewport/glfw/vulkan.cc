@@ -313,6 +313,10 @@ VkImageView& Implementation::getSwapchainImageView(const U64& index) {
     return swapchainImageViews[index];
 }
 
+U32 Implementation::getSwapchainImageViewsCount() const {
+    return swapchainImageViews.size();
+}
+
 const VkExtent2D& Implementation::getSwapchainExtent() const {
     return swapchainExtent;       
 }
