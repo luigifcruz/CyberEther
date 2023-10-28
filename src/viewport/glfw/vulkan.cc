@@ -26,6 +26,9 @@ Result Implementation::create() {
 
     keepRunningFlag = true;
     std::signal(SIGINT, [](int){
+        if (!keepRunningFlag) {
+            exit(0);
+        }
         keepRunningFlag = false;
     });
 
