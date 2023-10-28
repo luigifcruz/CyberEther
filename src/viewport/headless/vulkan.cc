@@ -128,7 +128,6 @@ Result Implementation::createSwapchain() {
     // Create staging buffer in case of non-unified system.
 
     for (U32 i = 0; (i < swapchainStagingBuffers.size()) && !unified; i++) {
-        JST_FATAL("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
         VkBufferCreateInfo bufferCreateInfo = {};
         bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferCreateInfo.size = memoryRequirements.size;
