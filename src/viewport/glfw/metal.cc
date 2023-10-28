@@ -109,7 +109,7 @@ Result Implementation::pollEvents() {
 }
 
 bool Implementation::keepRunning() {
-    return !glfwWindowShouldClose(window) || keepRunningFlag;
+    return !glfwWindowShouldClose(window) && keepRunningFlag;
 }
 
 }  // namespace Jetstream::Viewport 
