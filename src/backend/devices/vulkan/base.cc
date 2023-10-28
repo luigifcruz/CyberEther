@@ -10,7 +10,6 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
 
     // System extensions.
 
-    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
     extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 #endif
@@ -254,6 +253,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     }
 
     {
+        cache.hasUnifiedMemory = true;
         VkPhysicalDeviceMemoryProperties memoryProperties;
         vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
         for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; i++) {
@@ -262,31 +262,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             if (memoryHeap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
                 cache.physicalMemory += memoryHeap.size;
             }
+
+            cache.hasUnifiedMemory &= (memoryHeap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
         }
-    }
-
-    {
-        VkPhysicalDeviceMemoryProperties2 memProperties = {};
-        memProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
-        memProperties.pNext = nullptr;
-
-        vkGetPhysicalDeviceMemoryProperties2(physicalDevice, &memProperties);
-
-        bool hasDeviceLocalMemory = false;
-        bool hasHostVisibleMemory = false;
-
-        for (uint32_t i = 0; i < memProperties.memoryProperties.memoryTypeCount; i++) {
-            VkMemoryType memoryType = memProperties.memoryProperties.memoryTypes[i];
-
-            if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0) {
-                hasDeviceLocalMemory = true;
-            }
-
-            if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
-                hasHostVisibleMemory = true;
-            }
-        }
-        cache.hasUnifiedMemory = hasDeviceLocalMemory && hasHostVisibleMemory;
     }
 
     // Create logical device.
@@ -460,7 +438,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("API Version:     {}", getApiVersion())
     JST_INFO("Unified Memory:  {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Processor Count: {}", getTotalProcessorCount());
-    JST_INFO("System Memory:   {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
+    JST_INFO("Device Memory:   {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("Staging Buffer:  {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / (1024*1024));
     JST_INFO("—————————————————————————————————————————————————————");
 }
