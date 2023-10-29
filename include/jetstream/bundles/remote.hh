@@ -215,7 +215,7 @@ class Remote : public Bundle {
     }
 
     constexpr bool shouldDrawView() const {
-        return remote->isBrokerConnected();
+        return remote->isSocketStreaming();
     }
 
     void drawControl() {
@@ -257,10 +257,10 @@ class Remote : public Bundle {
 
  private:
     bool lastKeyStates[ImGuiKey_NamedKey_COUNT] = { false };
-    bool lastMouseLeftDown;
-    bool lastMouseRightDown;
-    bool lastMouseMiddleDown;
-    ImVec2 lastMousePos;
+    bool lastMouseLeftDown = false;
+    bool lastMouseRightDown = false;
+    bool lastMouseMiddleDown = false;
+    ImVec2 lastMousePos = {0.0f, 0.0f};
 
     std::shared_ptr<Jetstream::Remote<D>> remote;
 

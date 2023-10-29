@@ -8,6 +8,8 @@
 #endif
 
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 
 namespace Jetstream::Viewport {
 
@@ -64,8 +66,8 @@ class Endpoint {
    // Socket endpoint.
    std::string socketAddress;
    int socketPort;
-   bool socketConnected;
-   bool socketStreaming;
+   bool socketConnected = false;
+   bool socketStreaming = false;
 
    // File endpoint. 
    std::string fileExtension;

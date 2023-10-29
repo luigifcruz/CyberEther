@@ -622,7 +622,7 @@ Result Endpoint::createGstreamerEndpoint() {
             g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
             g_object_set(elements["encoder"], "tune", 4, nullptr);
             g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
-            g_object_set(elements["encoder"], "key-int-max", config.framerate/4, nullptr);
+            g_object_set(elements["encoder"], "key-int-max", config.framerate, nullptr);
         }
 
         if (config.codec == Render::VideoCodec::AV1) {
@@ -639,10 +639,10 @@ Result Endpoint::createGstreamerEndpoint() {
         g_object_set(elements["muxer"], "config-interval", 1, nullptr);
     }
     
-    //g_object_set(elements["queue"], "leaky", 2, nullptr);
-    //g_object_set(elements["queue"], "max-size-bytes", 2*config.size.width*config.size.height*4, nullptr);
     g_object_set(elements["source"], "block", true, nullptr);
+    g_object_set(elements["source"], "leaky-type", 2, nullptr);
     g_object_set(elements["source"], "is-live", true, nullptr);
+    g_object_set(elements["source"], "max-bytes", 2*config.size.width*config.size.height*4, nullptr);
 
     g_object_set(elements["parser"], "use-sink-caps", 1, nullptr);
 

@@ -82,8 +82,8 @@ class Remote : public Module, public Present {
     // Miscellaneous
 
     struct Statistics {
-        F32 latency;
-        U64 frames;
+        F32 latency = 0.0f;
+        U64 frames = 0;
     };
 
     constexpr const Statistics& statistics() const {
@@ -134,15 +134,15 @@ class Remote : public Module, public Present {
     GstElement* demuxer;
 
     // Broker endpoint.
-    bool brokerConnected;
+    bool brokerConnected = false;
     int brokerPort;
     std::string brokerAddress;
     int brokerFileDescriptor;
     std::thread brokerThread;
 
     // Socket endpoint.
-    bool socketConnected;
-    bool socketStreaming;
+    bool socketConnected = false;
+    bool socketStreaming = false;
     int socketPort;
     std::string socketAddress;
 
@@ -153,7 +153,7 @@ class Remote : public Module, public Present {
     F32 remoteFramerate;
 
     // Local framebuffer.
-    bool localFramebufferAvailable;
+    bool localFramebufferAvailable = false;
     std::mutex localFramebufferMutex;
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
