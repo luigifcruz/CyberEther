@@ -24,6 +24,12 @@ class TensorBuffer<Device::CPU> {
                           const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer);
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                          const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer);
+#endif
+
     ~TensorBuffer();
 
     TensorBuffer(const TensorBuffer&) = delete;

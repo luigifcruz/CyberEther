@@ -4,6 +4,11 @@
 #include "jetstream/memory/devices/metal/buffer.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/memory/devices/vulkan/buffer.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
+#endif
+
 namespace Jetstream {
 
 using Implementation = TensorBuffer<Device::CPU>;
@@ -103,12 +108,45 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 }
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
+    JST_TRACE("[CPU:BUFFER] Cloning from Vulkan buffer.");
+
+    // Check platform.
+
+    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
+        JST_ERROR("[CPU:BUFFER] Vulkan buffer is not unified. Cannot share data between CPU and GPU.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
+    // Check size.
+
+    if (prototype->size_bytes == 0) {
+        return;
+    }
+
+    // Initialize buffer.
+
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    const auto size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+
+    JST_VK_CHECK_THROW(vkMapMemory(device, root_buffer->memory(), 0, size, 0, &buffer), [&]{
+        JST_FATAL("[CPU:BUFFER] Failed to map buffer memory.");
+    });
+    owns_data = false;
+}
+#endif
+
 Implementation::~TensorBuffer() {
     JST_TRACE("[CPU:BUFFER] Trying to free buffer at {}.", fmt::ptr(buffer));
 
     if (owns_data) {
         free(buffer);
     }
+
+    // TODO: Unmap memory if imported from Vulkan.
 }
 
 }  // namespace Jetstream

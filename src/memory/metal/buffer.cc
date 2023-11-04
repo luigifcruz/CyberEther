@@ -48,6 +48,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     memset(buffer->contents(), 0, prototype->size_bytes);
 }
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const std::shared_ptr<TensorPrototypeMetadata>& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
@@ -85,6 +86,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     }
     owns_data = false;
 }
+#endif
 
 Implementation::~TensorBuffer() {
     JST_TRACE("[METAL:BUFFER] Releasing buffer {}.", fmt::ptr(buffer));

@@ -13,9 +13,11 @@ class TensorBuffer<Device::Metal> {
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const std::shared_ptr<TensorPrototypeMetadata>& prototype);
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const std::shared_ptr<TensorPrototypeMetadata>& prototype,
                           const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);
+#endif
 
     ~TensorBuffer();
 

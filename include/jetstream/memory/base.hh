@@ -18,4 +18,10 @@
 #include "jetstream/memory/devices/metal/tensor.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/memory/devices/vulkan/buffer.hh"
+#include "jetstream/memory/devices/vulkan/copy.hh"
+#include "jetstream/memory/devices/vulkan/tensor.hh"
+#endif
+
 #endif

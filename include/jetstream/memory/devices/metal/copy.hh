@@ -4,6 +4,7 @@
 namespace Jetstream {
 
 // TODO: Add Metal copy method.
+
 }  // namespace Jetstream
 
 #endif
