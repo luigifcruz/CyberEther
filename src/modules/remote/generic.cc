@@ -10,8 +10,6 @@
 #include "jetstream/instance.hh"
 #include "shaders/remote_shaders.hh"
 
-// TODO: Give two-shits about V-Sync. 
-
 namespace Jetstream {
 
 template<Device D, typename T>
@@ -365,6 +363,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
     gst_caps_unref(caps);
 
     g_object_set(elements["source"], "address", socketAddress.c_str(), "port", socketPort, nullptr);
+    g_object_set(elements["source"], "buffer-size", getSocketBufferSize(), nullptr);
 
     GstCaps* convertCaps = gst_caps_new_simple("video/x-raw",
                                                "format", G_TYPE_STRING, "RGBA",
@@ -647,6 +646,53 @@ template<Device D, typename T>
 Render::Texture& Remote<D, T>::getTexture() {
     return *texture;
 };
+
+template<Device D, typename T>
+I32 Remote<D, T>::getSocketBufferSize() const {
+    I32 bufferSize = 0;
+    I32 recommendedBufferSize = 32*1024*1024;  // 32 MB
+
+#ifdef JST_OS_LINUX
+    // Get default socket buffer size (rmem_default).
+
+    I32 defaultSocketSize = 0;
+    {
+        std::ifstream file("/proc/sys/net/core/rmem_default");
+        if (file.is_open()) {
+            std::string line;
+            std::getline(file, line);
+            defaultSocketSize = std::stoi(line);
+        }
+    }
+
+    if (defaultSocketSize < recommendedBufferSize) {
+        JST_INFO("Increasing socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
+        bufferSize = recommendedBufferSize;
+    }
+
+    // Get maximum socket buffer size (rmem_max).
+
+    I32 maxSocketSize = 0;
+    {
+        std::ifstream file("/proc/sys/net/core/rmem_max");
+        if (file.is_open()) {
+            std::string line;
+            std::getline(file, line);
+            maxSocketSize = std::stoi(line);
+        }
+    }
+
+    if (maxSocketSize < bufferSize) {
+        JST_WARN("Can't increase socket buffer size to {:.2f} MB. Maximum system socket buffer size is {:.2f} MB.", 
+                 static_cast<F32>(bufferSize)/(1024*1024), static_cast<F32>(maxSocketSize)/(1024*1024));
+        bufferSize = maxSocketSize;
+    }
+#endif
+
+    JST_DEBUG("Socket buffer size: {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
+
+    return bufferSize;
+}
 
 template class Remote<Device::CPU, void>;
 
