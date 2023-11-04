@@ -67,6 +67,15 @@ std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     return extensions;
 }
 
+std::vector<const char*> Vulkan::getOptionalDeviceExtensions() {
+    std::vector<const char*> extensions;
+
+    extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+
+    return extensions;
+}
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT,
                                                            VkDebugReportObjectTypeEXT,
                                                            uint64_t,
@@ -102,14 +111,23 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-    const auto deviceExtensions = getRequiredDeviceExtensions();
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+    
+    const auto& requiredDeviceExtensions = getRequiredDeviceExtensions();
+    std::set<std::string> requiredExtensions(requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
+
+    const auto& optionalDeviceExtensions = getOptionalDeviceExtensions();
+    std::set<std::string> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
 
     for (const auto& extension : availableExtensions) {
-        if (requiredExtensions.contains(extension.extensionName) && config.validationEnabled) {
+        if (requiredExtensions.contains(extension.extensionName)) {
             JST_DEBUG("[VULKAN] Device supports required extension: {}", extension.extensionName);
         }
         requiredExtensions.erase(extension.extensionName);
+
+        if (optionalExtensions.contains(extension.extensionName)) {
+            JST_DEBUG("[VULKAN] Device supports optional extension: {}", extension.extensionName);
+            availableOptionalDeviceCapabilities[extension.extensionName] = true;
+        }
     }
 
     auto indices = FindQueueFamilies(device);
@@ -477,6 +495,10 @@ PhysicalDeviceType Vulkan::getPhysicalDeviceType() const {
 
 bool Vulkan::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
+}
+
+bool Vulkan::canExportMemory() const {
+    return availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 }
 
 U64 Vulkan::getPhysicalMemory() const {

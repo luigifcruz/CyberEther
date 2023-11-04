@@ -2,6 +2,7 @@
 #define JETSTREAM_BACKEND_DEVICE_VULKAN_HH
 
 #include <set>
+#include <unordered_map>
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -27,6 +28,7 @@ class Vulkan {
     std::string getApiVersion() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
     bool hasUnifiedMemory() const;
+    bool canExportMemory() const;
     U64 getPhysicalMemory() const;
     U64 getTotalProcessorCount() const;
     bool getLowPowerStatus() const;
@@ -109,6 +111,7 @@ class Vulkan {
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;
+    std::unordered_map<const char*, bool> availableOptionalDeviceCapabilities;
 
     struct {
         std::string deviceName;
@@ -126,6 +129,7 @@ class Vulkan {
     bool checkValidationLayerSupport();
     std::vector<const char*> getRequiredInstanceExtensions();
     std::vector<const char*> getRequiredDeviceExtensions();
+    std::vector<const char*> getOptionalDeviceExtensions();
     std::vector<const char*> getRequiredValidationLayers();
     bool checkDeviceExtensionSupport(const VkPhysicalDevice& device);
     bool isDeviceSuitable(const VkPhysicalDevice& device);
