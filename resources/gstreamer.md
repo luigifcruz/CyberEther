@@ -61,3 +61,26 @@ gst-launch-1.0 tcpclientsrc host=127.0.0.1 port=5000 ! \
     videoconvert ! \
     glimagesink sync=false
 ```
+
+### Receiving from a CyberEther instance.
+
+The video stream endpoint is located at the configuration port increased by one. A signal has to be sent to the broker server to start the transmission. This server is located at the configuration port number.
+
+```
+nc 127.0.0.1 5002
+> ping
+pong
+> cmd:connect
+> cmd:disconnect
+```
+
+```
+gst-launch-1.0 udpsrc address=127.0.0.1 port=5003 blocksize=8192 buffer-size=214748364 ! \
+    application/x-rtp,media=application ! \
+    rtpjitterbuffer ! \
+    rtpgstdepay ! \
+    avdec_h264 ! \
+    videoconvert ! \
+    capsfilter ! \
+    glimagesink sync=false
+```

@@ -13,7 +13,7 @@ class Remote : public Bundle {
    // Configuration
 
     struct Config {
-        std::string endpoint = "udp://127.0.0.1:5000";
+        std::string endpoint = "127.0.0.1:5000";
         Size2D<U64> viewSize = {1280, 720};
 
         JST_SERDES(
