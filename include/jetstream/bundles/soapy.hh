@@ -21,7 +21,7 @@ class Soapy : public Bundle {
         F32 frequency = 96.9e6;
         F32 sampleRate = 2.0e6;
         bool automaticGain = true;
-        VectorShape<2> outputShape;
+        std::vector<U64> outputShape;
         U64 bufferMultiplier = 4;
 
         JST_SERDES(
@@ -53,7 +53,7 @@ class Soapy : public Bundle {
     // Output
 
     struct Output {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -64,7 +64,7 @@ class Soapy : public Bundle {
         return output;
     }
 
-    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
+    constexpr const Tensor<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

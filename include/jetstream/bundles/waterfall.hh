@@ -35,7 +35,7 @@ class Waterfall : public Bundle {
     // Input
 
     struct Input {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);

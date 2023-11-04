@@ -20,10 +20,8 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
     }
 
     for (U64 b = 0; b < input.buffer.shape()[0]; b++) {
-        const auto offset = input.buffer.shapeToOffset({b, 0});
-
         for (U64 x = 0; x < input.buffer.shape()[1]; x++) {
-            const U16 index = input.buffer[x + offset] * config.height;
+            const U16 index = input.buffer[{b, x}] * config.height;
 
             if (index < config.height && index > 0) {
                 frequencyBins[x + (index * input.buffer.shape()[1])] += 0.02; 

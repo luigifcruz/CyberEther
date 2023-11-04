@@ -1,5 +1,7 @@
+backend_lst = []
+
 deps = [
-    'JETSTREAM_LOADER_FFTW_AVAILABLE',
+    'JETSTREAM_BACKEND_CPU_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -8,10 +10,7 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_MODULE_FILTER_CPU_AVAILABLE', true)
     src_lst += files([
-        'base.cc',
+        'buffer.cc',
     ])
 endif
-
-backend_lst += 'CPU'

@@ -25,7 +25,7 @@ class Amplitude : public Module, public Compute {
     // Input
 
     struct Input {
-        Vector<D, IT, 2> buffer;
+        Tensor<D, IT> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -39,7 +39,7 @@ class Amplitude : public Module, public Compute {
     // Output
 
     struct Output {
-        Vector<D, OT, 2> buffer;
+        Tensor<D, OT> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -50,7 +50,7 @@ class Amplitude : public Module, public Compute {
         return output;
     }
 
-    constexpr const Vector<D, OT, 2>& getOutputBuffer() const {
+    constexpr const Tensor<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -86,7 +86,7 @@ class Amplitude : public Module, public Compute {
 
     struct {
         MTL::ComputePipelineState* state;
-        Vector<Device::Metal, U8> constants;
+        Tensor<Device::Metal, U8> constants;
     } metal;
 #endif
 

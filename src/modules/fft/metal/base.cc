@@ -10,8 +10,8 @@ Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     auto& runtime = meta.metal;
 
     // Assign buffers to module assets.
-    assets.input = input.buffer;
-    assets.output = output.buffer;
+    assets.input = input.buffer.data();
+    assets.output = output.buffer.data();
 
     // Create VkFFT instance.
     assets.app = new VkFFTApplication({});

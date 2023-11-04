@@ -3,7 +3,6 @@
 
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
-#include "jetstream/parser.hh"
 
 namespace Jetstream::Backend {
 
@@ -46,13 +45,6 @@ struct Config {
 #endif
     U64 stagingBufferSize = 64*1024*1024;
     bool headless = false;
-
-    JST_SERDES(
-        JST_SERDES_VAL("deviceId", deviceId);
-        JST_SERDES_VAL("validationEnabled", validationEnabled);
-        JST_SERDES_VAL("stagingBufferSize", stagingBufferSize);
-        JST_SERDES_VAL("headless", headless);
-    );
 };
 
 }  // namespace Jetstream::Backend

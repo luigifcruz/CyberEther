@@ -36,7 +36,7 @@ class Lineplot : public Module, public Compute, public Present {
     // Input
 
     struct Input {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -95,8 +95,8 @@ class Lineplot : public Module, public Compute, public Present {
     Result destroyPresent() final;
 
  private:
-    Vector<D, F32, 2> plot;
-    Vector<D, F32, 3> grid;
+    Tensor<Device::CPU, F32> plot;
+    Tensor<Device::CPU, F32> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;
@@ -123,7 +123,7 @@ class Lineplot : public Module, public Compute, public Present {
 
     struct {
         MTL::ComputePipelineState* state;
-        Vector<Device::Metal, U8> constants;
+        Tensor<Device::Metal, U8> constants;
     } metal;
 #endif
 

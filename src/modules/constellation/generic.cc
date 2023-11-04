@@ -13,7 +13,7 @@ Result Constellation<D, T>::create() {
     );
 
     // Allocate internal buffers.
-    timeSamples = Vector<D, F32, 2>({config.viewSize.width, config.viewSize.height});
+    timeSamples = Tensor<D, F32>({config.viewSize.width, config.viewSize.height});
 
     return Result::SUCCESS;
 }

@@ -34,7 +34,7 @@ class Spectrogram : public Module, public Compute, public Present {
     // Input
 
     struct Input {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -101,7 +101,7 @@ class Spectrogram : public Module, public Compute, public Present {
     } shaderUniforms;
 
     F32 decayFactor;
-    Vector<D, F32, 2> frequencyBins;
+    Tensor<D, F32> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -127,7 +127,7 @@ class Spectrogram : public Module, public Compute, public Present {
     struct {
         MTL::ComputePipelineState* stateDecay;
         MTL::ComputePipelineState* stateActivate;
-        Vector<Device::Metal, U8> constants;
+        Tensor<Device::Metal, U8> constants;
     } metal;
 #endif
 

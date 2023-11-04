@@ -21,7 +21,7 @@ class Filter : public Module {
         F32 signalSampleRate;
         F32 filterSampleRate = 1e6;
         F32 filterCenter = 0.0;
-        VectorShape<2> shape;
+        std::vector<U64> shape;
         U64 numberOfTaps = 101;
         bool linearFrequency = true;
 
@@ -52,7 +52,7 @@ class Filter : public Module {
     // Output
 
     struct Output {
-        Vector<D, T, 2> coeffs;
+        Tensor<D, T> coeffs;
 
         JST_SERDES(
             JST_SERDES_VAL("coeffs", coeffs);
@@ -63,7 +63,7 @@ class Filter : public Module {
         return output;
     }
 
-    constexpr const Vector<D, T, 2>& getOutputCoeffs() const {
+    constexpr const Tensor<D, T>& getOutputCoeffs() const {
         return this->output.coeffs;
     }
 
@@ -131,10 +131,10 @@ class Filter : public Module {
  private:
     fftwf_plan plan;
 
-    Vector<D, typename T::value_type, 2> sincCoeffs;
-    Vector<D, typename T::value_type, 2> windowCoeffs;
-    Vector<D, T, 2> upconvertCoeffs;
-    Vector<D, T, 2> scratchCoeffs;
+    Tensor<D, typename T::value_type> sincCoeffs;
+    Tensor<D, typename T::value_type> windowCoeffs;
+    Tensor<D, T> upconvertCoeffs;
+    Tensor<D, T> scratchCoeffs;
     F32 filterWidth;
     F32 filterOffset;
 

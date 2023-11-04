@@ -24,8 +24,8 @@ class JETSTREAM_API Module : public Interface {
     virtual void summary() const = 0;
 
  protected:
-    template<Device DeviceId, typename DataType, U64 Dimensions>
-    Result initInput(const std::string&, Vector<DeviceId, DataType, Dimensions>& buffer) {
+    template<Device DeviceId, typename DataType>
+    Result initInput(const std::string&, Tensor<DeviceId, DataType>& buffer) {
         if (buffer.empty()) {
             JST_ERROR("Input is empty during initialization.");
             return Result::ERROR;
@@ -33,10 +33,10 @@ class JETSTREAM_API Module : public Interface {
         return Result::SUCCESS;
     }
 
-    template<Device DeviceId, typename DataType, U64 Dimensions>
+    template<Device DeviceId, typename DataType>
     Result initOutput(const std::string& name,
-                      Vector<DeviceId, DataType, Dimensions>& buffer,
-                      const VectorShape<Dimensions>& shape,
+                      Tensor<DeviceId, DataType>& buffer,
+                      const std::vector<U64>& shape,
                       const Result& prevRes) {
         Result res = Result::SUCCESS;
 
@@ -46,17 +46,18 @@ class JETSTREAM_API Module : public Interface {
         }
 
         if (prevRes == Result::SUCCESS) {
-            buffer = Vector<DeviceId, DataType, Dimensions>(shape);
+            buffer = Tensor<DeviceId, DataType>(shape);
         }
-        buffer.updateLocale({locale().id, locale().subId, name});
+
+        buffer.store()["locale"] = Locale{locale().id, locale().subId, name};
 
         return res;
     }
 
-    template<Device DeviceId, typename Type, U64 Dimensions>
+    template<Device DeviceId, typename Type>
     Result initInplaceOutput(const std::string& name,
-                             Vector<DeviceId, Type, Dimensions>& dst,
-                             Vector<DeviceId, Type, Dimensions>& src,
+                             Tensor<DeviceId, Type>& dst,
+                             Tensor<DeviceId, Type>& src,
                              const Result& prevRes = Result::SUCCESS) {
         Result res = Result::SUCCESS;
 
@@ -76,11 +77,11 @@ class JETSTREAM_API Module : public Interface {
         return res;
     }
 
-    template<Device DeviceId, typename DataType, U64 Dimensions>
-    Result voidOutput(Vector<DeviceId, DataType, Dimensions>& buffer) {
-        const auto vectorName = buffer.locale().pinId;
-        buffer = Vector<DeviceId, DataType, Dimensions>();
-        buffer.updateLocale({locale().id, locale().subId, vectorName});
+    template<Device DeviceId, typename DataType>
+    Result voidOutput(Tensor<DeviceId, DataType>& buffer) {
+        const auto vectorName = buffer.template store<Locale>("locale").pinId;
+        buffer = Tensor<DeviceId, DataType>();
+        buffer.store()["locale"] = Locale{locale().id, locale().subId, vectorName};
 
         return Result::SUCCESS;
     }

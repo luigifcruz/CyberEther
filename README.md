@@ -98,14 +98,14 @@ Font rendering is known to be a pain to implement. This feature will require som
 Sharing data with the computation pipeline while rendering requires synchronization to make sure the data is not being mutated during the presentation. This synchronization has to be precise and lightweight to not cause any stutter. This requires a mutually exclusive synchronization (compute vs present) with priority to the rendering calls. Synchronization with blocking mechanisms such as `std::conditional_variable` was [tried first](https://github.com/luigifcruz/CyberEther/blob/378f4a2289e27a8376823667ceb188f06a3ff037/subprojects/jetstream/include/jetstream/base.hpp), but these turn out to be quite slow on some types of hardware, particularly ARM devices (Jetson/RPi). The solution to this appears to be a new C++20 synchronization mechanism called `std::atomic_flags` that requires the underlying implementation to use non-blocking mechanisms. This most of the time translates to better performance but requires C++20 to work. You can check out this implementation [here](https://github.com/luigifcruz/CyberEther/blob/77094f4fc4c018f5cc78522dd19cfadec138e897/subprojects/jetstream/src/instance.cc).
 
 ### Data Handling
-Turns out, you need data to display data. Our way to handle data is with the "Jetstream::Vector". This is basically the same as a `std::span` but made with heterogeneous computing in mind. The main problem with `std::span` is that you don't know where your data is local to. Sure, one can create a `std::span` with a GPU memory pointer, but how do you know that when you pass that vector forward? This requires further runtime logic to communicate the location of the buffer making things confusing. This is not an optimal place to be in an envoriment with multiple heterogeneous devices using incoherent memory. To solve this in Jetstream, the `Jetstream::Vector` requires a template `Jetstream::Device` to specify the locale of the data. For example, data inside the CUDA GPU is represented as `Vector<Device::CUDA>`. This will ensure that whoever is receiving this vector knows how to handle it properly in compile time (no runtime overhead and less code). This syntax also works in an envoriment like CUDA Unified Memory with `Vector<Device::CUDA | Device::CPU>` where the data can be accessed either from the GPU and CPU using the same pointer.
+Turns out, you need data to display data. Our way to handle data is with the "Jetstream::Vector". This is basically the same as a `std::span` but made with heterogeneous computing in mind. The main problem with `std::span` is that you don't know where your data is local to. Sure, one can create a `std::span` with a GPU memory pointer, but how do you know that when you pass that vector forward? This requires further runtime logic to communicate the location of the buffer making things confusing. This is not an optimal place to be in an envoriment with multiple heterogeneous devices using incoherent memory. To solve this in Jetstream, the `Jetstream::Vector` requires a template `Jetstream::Device` to specify the locale of the data. For example, data inside the CUDA GPU is represented as `Tensor<Device::CUDA>`. This will ensure that whoever is receiving this vector knows how to handle it properly in compile time (no runtime overhead and less code). This syntax also works in an envoriment like CUDA Unified Memory with `Tensor<Device::CUDA | Device::CPU>` where the data can be accessed either from the GPU and CPU using the same pointer.
 
 ### Jetstream Compute
 Sometimes, some data processing is required to display a signal. Like the render, `Jetstream::Compute` offers a way to abstract the computation away from hardware libraries (CPU, CUDA, Vulkan, Metal, etc). For this purpose, Jetstream separates computation into blocks. These blocks can be overloaded with different APIs implementations using the `Jetstrem::Device` enum. For example, below we have an FFT block with a CUDA and CPU (FFTW) implementation.
 
 ```cpp
 // Performing the implementation with the CPU (FFTW) implementation.
-// This expects the input buffer to be local to the CPU (Vector<Device::CPU>).
+// This expects the input buffer to be local to the CPU (Tensor<Device::CPU>).
 fft = Block<FFT, Device::CPU>({
     .size = stream.size(),
 }, {
@@ -113,7 +113,7 @@ fft = Block<FFT, Device::CPU>({
 });
 
 // Performing the implementation with the CUDA implementation.
-// This expects the input buffer to be local to the GPU (Vector<Device::CUDA>).
+// This expects the input buffer to be local to the GPU (Tensor<Device::CUDA>).
 fft = Block<FFT, Device::CUDA>({
     .size = stream.size(),
 }, {

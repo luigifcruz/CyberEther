@@ -20,7 +20,7 @@ Result Window<D, T>::create() {
                   0.08 * cos(4.0 * M_PI * i / (config.shape[1] - 1));
             tap = (i % 2) == 0 ? tap : -tap;
 
-            output.window[{b, i}] = T(tap, 0.0);
+            output.window.cpu()[{b, i}] = T(tap, 0.0);
         }
     }
 

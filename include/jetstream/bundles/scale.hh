@@ -27,7 +27,7 @@ class Scale : public Bundle {
     // Input
 
     struct Input {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -41,7 +41,7 @@ class Scale : public Bundle {
     // Output
 
     struct Output {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -52,7 +52,7 @@ class Scale : public Bundle {
         return output;
     }
 
-    constexpr const Vector<D, T, 2>& getOutputBuffer() const {
+    constexpr const Tensor<D, T>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

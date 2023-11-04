@@ -13,5 +13,3 @@ if all_deps_found
         dependencies: libjetstream_dep,
     ), is_parallel: false, timeout: 0)
 endif
-
-sum_lst += {'Metal': all_deps_found}

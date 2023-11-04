@@ -80,10 +80,10 @@ Result Filter<D, T>::create() {
     JST_DEBUG("Initializing Filter module.");
 
     // Allocate internal data.
-    sincCoeffs = Vector<D, typename T::value_type, 2>(config.shape);
-    windowCoeffs = Vector<D, typename T::value_type, 2>(config.shape);
-    upconvertCoeffs = Vector<D, T, 2>(config.shape);
-    scratchCoeffs = Vector<D, T, 2>(config.shape);
+    sincCoeffs = Tensor<D, typename T::value_type>(config.shape);
+    windowCoeffs = Tensor<D, typename T::value_type>(config.shape);
+    upconvertCoeffs = Tensor<D, T>(config.shape);
+    scratchCoeffs = Tensor<D, T>(config.shape);
 
     // Initialize output.
     JST_INIT(
@@ -147,5 +147,7 @@ void Filter<D, T>::summary() const {
     JST_INFO("  Linear Frequency:   {}", config.linearFrequency ? "YES" : "NO");
     JST_INFO("  Filter Shape:       {}", config.shape);
 }
+
+template class Filter<Device::CPU, CF32>;
 
 }  // namespace Jetstream

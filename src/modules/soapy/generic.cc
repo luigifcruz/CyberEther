@@ -27,7 +27,7 @@ Result Soapy<D, T>::create() {
     );
 
     // Initialize circular buffer.
-    buffer.resize(config.outputShape.size() * config.bufferMultiplier);
+    buffer.resize(output.buffer.size() * config.bufferMultiplier);
 
     // Convert requested device and stream strings into arguments.
 
@@ -269,5 +269,7 @@ bool Soapy<D, T>::CheckValidRange(const std::vector<SoapySDR::Range>& ranges, co
 
     return isSampleRateSupported;
 }
+
+template class Soapy<Device::CPU, CF32>;
 
 }  // namespace Jetstream

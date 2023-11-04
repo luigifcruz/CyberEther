@@ -26,8 +26,8 @@ class Multiply : public Module, public Compute {
     // Input
 
     struct Input {
-        Vector<D, T, 2> factorA;
-        Vector<D, T, 2> factorB;
+        Tensor<D, T> factorA;
+        Tensor<D, T> factorB;
 
         JST_SERDES(
             JST_SERDES_VAL("factorA", factorA);
@@ -42,7 +42,7 @@ class Multiply : public Module, public Compute {
     // Output
 
     struct Output {
-        Vector<D, T, 2> product;
+        Tensor<D, T> product;
 
         JST_SERDES(
             JST_SERDES_VAL("product", product);
@@ -53,7 +53,7 @@ class Multiply : public Module, public Compute {
         return output;
     }
 
-    constexpr const Vector<D, T, 2>& getOutputProduct() const {
+    constexpr const Tensor<D, T>& getOutputProduct() const {
         return this->output.product;
     }
 

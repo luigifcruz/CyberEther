@@ -107,4 +107,6 @@ Result Audio<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
+template class Audio<Device::CPU, F32>;
+
 }  // namespace Jetstream

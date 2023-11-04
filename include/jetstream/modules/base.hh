@@ -12,8 +12,7 @@
 #include "jetstream/modules/fft.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_FILTER_METAL_AVAILABLE)
+#if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE)
 #include "jetstream/modules/filter.hh"
 #endif
 
@@ -37,13 +36,11 @@
 #include "jetstream/modules/scale.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE)
+#if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE)
 #include "jetstream/modules/soapy.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE)
+#if defined(JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE)
 #include "jetstream/modules/audio.hh"
 #endif
 

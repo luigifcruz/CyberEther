@@ -57,9 +57,9 @@ Result MultiplyConstant<D, T>::compute(const RuntimeMetadata& meta) {
 
     auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(assets.state);
-    cmdEncoder->setBuffer(assets.constants, 0, 0);
-    cmdEncoder->setBuffer(input.factor, 0, 1);
-    cmdEncoder->setBuffer(output.product, 0, 2);
+    cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+    cmdEncoder->setBuffer(input.factor.data(), 0, 1);
+    cmdEncoder->setBuffer(output.product.data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(output.product.size(), 1, 1),
                                 MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();

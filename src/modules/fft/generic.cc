@@ -6,7 +6,7 @@ template<Device D, typename T>
 Result FFT<D, T>::create() {
     JST_DEBUG("Initializing FFT module.");
 
-    VectorShape<2> outputShape = input.buffer.shape();
+    std::vector<U64> outputShape = input.buffer.shape();
     if (config.offset != 0 || config.size != 0) {
         outputShape = {outputShape[0], config.size};
     }

@@ -5,8 +5,8 @@ src_lst += files([
    'logger.cc',
 ])
 
-subdir('memory')
 subdir('backend')
+subdir('memory')
 subdir('viewport')
 subdir('render')
 subdir('modules')

@@ -16,10 +16,10 @@ class JETSTREAM_API Bundle : public Interface {
     virtual Result destroy() = 0;
 
  protected:
-    template<Device DeviceId, typename Type, U64 Dimensions>
+    template<Device DeviceId, typename Type>
     Result linkOutput(const std::string& name,
-                      Vector<DeviceId, Type, Dimensions>& dst,
-                      const Vector<DeviceId, Type, Dimensions>& src) {
+                      Tensor<DeviceId, Type>& dst,
+                      const Tensor<DeviceId, Type>& src) {
         Result res = Result::SUCCESS;
 
         if (!dst.empty()) {
@@ -35,8 +35,8 @@ class JETSTREAM_API Bundle : public Interface {
         dst = src;
 
         // Rename the pinId to the bundle's name.
-        const auto& locale = src.locale();
-        dst.updateLocale({locale.id, locale.subId, name});
+        const auto& srcLocale = src.template store<Locale>("locale");
+        dst.store()["locale"] = Locale{srcLocale.id, srcLocale.subId, name};
 
         return res;
     }

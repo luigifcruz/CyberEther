@@ -25,12 +25,12 @@ class Metal : public Graph {
 
     template<typename ConstantsType>
     static ConstantsType* Constants(auto& assets) {
-        return reinterpret_cast<ConstantsType*>(assets.constants.data());
+        return reinterpret_cast<ConstantsType*>(assets.constants.cpu().data());
     }
 
     template<typename ConstantsType>
     static ConstantsType* CreateConstants(auto& assets) {
-        assets.constants = Vector<Device::Metal, U8>({sizeof(ConstantsType)});
+        assets.constants = Tensor<Device::Metal, U8>({sizeof(ConstantsType)});
         return Constants<ConstantsType>(assets);
     }
 

@@ -13,7 +13,7 @@ Result Waterfall<D, T>::create() {
     );
 
     // Allocate internal buffers.
-    frequencyBins = Vector<D, F32, 2>({input.buffer.shape()[1],  config.height});
+    frequencyBins = Tensor<D, F32>({input.buffer.shape()[1],  config.height});
 
     return Result::SUCCESS;
 }
@@ -64,9 +64,9 @@ Result Waterfall<D, T>::createPresent() {
     JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
     Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = frequencyBins.data();
+    bufferCfg.buffer = frequencyBins.cpu().data();
     bufferCfg.size = frequencyBins.size();
-    bufferCfg.elementByteSize = sizeof(frequencyBins[0]);
+    bufferCfg.elementByteSize = sizeof(F32);
     bufferCfg.target = Render::Buffer::Target::STORAGE;
     bufferCfg.enableZeroCopy = true;
     JST_CHECK(window->build(binTexture, bufferCfg));

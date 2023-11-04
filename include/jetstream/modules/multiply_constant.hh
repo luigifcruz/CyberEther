@@ -30,7 +30,7 @@ class MultiplyConstant : public Module, public Compute {
     // Input
 
     struct Input {
-        Vector<D, T, 2> factor;
+        Tensor<D, T> factor;
 
         JST_SERDES(
             JST_SERDES_VAL("factor", factor);
@@ -44,7 +44,7 @@ class MultiplyConstant : public Module, public Compute {
     // Output
 
     struct Output {
-        Vector<D, T, 2> product;
+        Tensor<D, T> product;
 
         JST_SERDES(
             JST_SERDES_VAL("product", product);
@@ -55,7 +55,7 @@ class MultiplyConstant : public Module, public Compute {
         return output;
     }
 
-    constexpr const Vector<D, T, 2>& getOutputProduct() const {
+    constexpr const Tensor<D, T>& getOutputProduct() const {
         return this->output.product;
     }
 
@@ -92,7 +92,7 @@ class MultiplyConstant : public Module, public Compute {
 
     struct {
         MTL::ComputePipelineState* state;
-        Vector<Device::Metal, U8> constants;
+        Tensor<Device::Metal, U8> constants;
     } metal;
 #endif
 

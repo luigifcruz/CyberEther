@@ -63,9 +63,9 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
 
     auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(assets.state);
-    cmdEncoder->setBuffer(assets.constants, 0, 0);
-    cmdEncoder->setBuffer(input.buffer, 0, 1);
-    cmdEncoder->setBuffer(output.buffer, 0, 2);
+    cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+    cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
+    cmdEncoder->setBuffer(output.buffer.data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(output.buffer.size(), 1, 1),
                                 MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();

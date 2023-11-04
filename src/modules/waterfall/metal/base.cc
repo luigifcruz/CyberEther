@@ -13,10 +13,10 @@ Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
     const auto offset = inc * sampleByteSize;
     const auto size = JST_MIN(batchByteSize, (config.height - inc) * sampleByteSize);
 
-    blitEncoder->copyFromBuffer(input.buffer, 0, frequencyBins, offset, size);
+    blitEncoder->copyFromBuffer(input.buffer.data(), 0, frequencyBins.data(), offset, size);
     if (size < batchByteSize) {
-        blitEncoder->copyFromBuffer(input.buffer, size, 
-            frequencyBins, 0, batchByteSize - size);
+        blitEncoder->copyFromBuffer(input.buffer.data(), size, 
+            frequencyBins.data(), 0, batchByteSize - size);
     }
 
     blitEncoder->endEncoding();

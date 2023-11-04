@@ -1,3 +1,5 @@
+backend_lst = []
+
 deps = [
     'JETSTREAM_BACKEND_METAL_AVAILABLE',
 ]
@@ -8,10 +10,7 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    cfg_lst.set('JETSTREAM_MODULE_FILTER_METAL_AVAILABLE', true)
     src_lst += files([
-        'base.cc',
+        'buffer.cc',
     ])
 endif
-
-backend_lst += 'METAL'

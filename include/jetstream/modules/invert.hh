@@ -25,7 +25,7 @@ class Invert : public Module, public Compute {
     // Input
 
     struct Input {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -39,7 +39,7 @@ class Invert : public Module, public Compute {
     // Output
 
     struct Output {
-        Vector<D, T, 2> buffer;
+        Tensor<D, T> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);

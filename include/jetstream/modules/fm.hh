@@ -32,7 +32,7 @@ class FM : public Module, public Compute {
     // Input
 
     struct Input {
-        Vector<D, IT, 2> buffer;
+        Tensor<D, IT> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -46,7 +46,7 @@ class FM : public Module, public Compute {
     // Output
 
     struct Output {
-        Vector<D, OT, 2> buffer;
+        Tensor<D, OT> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);

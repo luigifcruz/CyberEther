@@ -65,8 +65,8 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     {
         auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
         cmdEncoder->setComputePipelineState(assets.stateDecay);
-        cmdEncoder->setBuffer(assets.constants, 0, 0);
-        cmdEncoder->setBuffer(frequencyBins, 0, 1);
+        cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+        cmdEncoder->setBuffer(frequencyBins.data(), 0, 1);
 
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
@@ -80,9 +80,9 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     {
         auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
         cmdEncoder->setComputePipelineState(assets.stateActivate);
-        cmdEncoder->setBuffer(assets.constants, 0, 0);
-        cmdEncoder->setBuffer(input.buffer, 0, 1);
-        cmdEncoder->setBuffer(frequencyBins, 0, 2);
+        cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+        cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
+        cmdEncoder->setBuffer(frequencyBins.data(), 0, 2);
 
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;

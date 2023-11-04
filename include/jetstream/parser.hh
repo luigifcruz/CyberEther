@@ -11,7 +11,7 @@
 #include <unordered_map>
 
 #include "jetstream/types.hh"
-#include "jetstream/memory/vector.hh"
+#include "jetstream/memory/base.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/tools/rapidyaml.hh"
@@ -148,13 +148,16 @@ class Parser {
 
         metadata.object = std::any(variable);
 
-        if constexpr (std::is_base_of<VectorType, T>::value) {
+        if constexpr (IsTensor<T>::value) {
             metadata.hash = variable.hash();
-            metadata.data = variable.data();
-            metadata.locale = variable.locale();
+            metadata.data = variable.data();        
             metadata.device = variable.device();
             metadata.dataType = NumericTypeInfo<typename T::DataType>::name;
-            metadata.shape = variable.shape().native();
+            metadata.shape = variable.shape();
+
+            if (variable.store().contains("locale")) {
+                metadata.locale = variable.template store<Locale>("locale");
+            }
         }
 
         return Result::SUCCESS;
@@ -179,10 +182,10 @@ class Parser {
             return Result::SUCCESS;
         } catch (const std::bad_any_cast&) {};
 
-        if constexpr (IsVector<T>::value) {
+        if constexpr (IsTensor<T>::value) {
             try {
-                DesOpVector(anyVar, variable);
-                JST_TRACE("Deserializing '{}': Converting Vector to T.", name);
+                DesOpTensor(anyVar, variable);
+                JST_TRACE("Deserializing '{}': Converting Tensor to T.", name);
                 return Result::SUCCESS;
             } catch (const std::bad_any_cast&) {};
         } else {
@@ -261,23 +264,23 @@ class Parser {
         variable = std::any_cast<T>(anyVar);
     }
 
-    template<Device DeviceId, typename DataType, U64 Dimensions>
-    static void DesOpVector(std::any& anyVar, Vector<DeviceId, DataType, Dimensions>& variable) {
-        using T = Vector<DeviceId, DataType, Dimensions>;
+    template<Device DeviceId, typename DataType>
+    static void DesOpTensor(std::any& anyVar, Tensor<DeviceId, DataType>& variable) {
+        using T = Tensor<DeviceId, DataType>;
 
         if constexpr (DeviceId == Device::CPU) {
             try {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-                JST_TRACE("BindVariable: Trying to convert Vector<Metal> into Vector<CPU>.");
-                variable = std::move(T(std::any_cast<Vector<Device::Metal, DataType, Dimensions>>(anyVar)));
+                JST_TRACE("BindVariable: Trying to convert Tensor<Metal> into Tensor<CPU>.");
+                variable = std::move(T(std::any_cast<Tensor<Device::Metal, DataType>>(anyVar)));
                 return;
 #endif
             } catch (const std::bad_any_cast&) {};
         } else if constexpr (DeviceId == Device::Metal) {
             try {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-                JST_TRACE("BindVariable: Trying to convert Vector<CPU> into Vector<Metal>.");
-                variable = std::move(T(std::any_cast<Vector<Device::CPU, DataType, Dimensions>>(anyVar)));
+                JST_TRACE("BindVariable: Trying to convert Tensor<CPU> into Tensor<Metal>.");
+                variable = std::move(T(std::any_cast<Tensor<Device::CPU, DataType>>(anyVar)));
                 return;
 #endif
             } catch (const std::bad_any_cast&) {};
@@ -306,11 +309,11 @@ class Parser {
             std::string lower_s = std::any_cast<std::string>(anyVar);
             std::transform(lower_s.begin(), lower_s.end(), lower_s.begin(), ::tolower);
             variable = lower_s == "true" || lower_s == "1";
-        } else if constexpr (std::is_same<T, VectorShape<2>>::value) {
-            JST_TRACE("Converting std::string to VectorShape<2>.");
+        } else if constexpr (std::is_same<T, std::vector<U64>>::value) {
+            JST_TRACE("Converting std::string to std::vector<U64>.");
             const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-            JST_ASSERT_THROW(values.size() == 2);
-            variable = VectorShape<2>{std::stoull(values[0]), std::stoull(values[1])};
+            variable = std::vector<U64>(values.size());
+            std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return std::stoull(s); });
         } else if constexpr (std::is_same<T, Range<F32>>::value) {
             JST_TRACE("Converting std::string to Range<F32>.");
             const auto values = SplitString(std::any_cast<std::string>(anyVar), ", ");

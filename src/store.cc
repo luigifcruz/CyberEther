@@ -163,9 +163,6 @@ const ModuleStore& Store::defaultModules() {
 #ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
         { {"fft",               "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<FFT, Device::Metal, CF32>(r); } },
 #endif
-#ifdef JETSTREAM_MODULE_FILTER_METAL_AVAILABLE
-        { {"filter",            "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Filter, Device::Metal, CF32>(r); } },
-#endif
 #ifdef JETSTREAM_MODULE_WINDOW_METAL_AVAILABLE
         { {"window",            "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Window, Device::Metal, CF32>(r); } },
 #endif
@@ -177,12 +174,6 @@ const ModuleStore& Store::defaultModules() {
 #endif
 #ifdef JETSTREAM_MODULE_SCALE_METAL_AVAILABLE
         { {"scale",             "metal",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Scale, Device::Metal, F32>(r); } },
-#endif
-#ifdef JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE
-        { {"soapy",             "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Soapy, Device::Metal, CF32>(r); } },
-#endif
-#ifdef JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE
-        { {"audio",             "metal",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Audio, Device::Metal, F32>(r); } },
 #endif
 #ifdef JETSTREAM_MODULE_MULTIPLY_CONSTANT_METAL_AVAILABLE
         { {"multiply-constant", "metal",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<MultiplyConstant, Device::Metal,  F32>(r); } },
@@ -243,9 +234,6 @@ const ModuleStore& Store::defaultModules() {
 #ifdef JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE
         // TODO: Add Metal Constellation.
 #endif
-#ifdef JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE
-        { {"soapy-view",         "metal", "CF32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Soapy, Device::Metal, CF32>(r); } },
-#endif
 #ifdef JETSTREAM_MODULE_SCALE_METAL_AVAILABLE
         { {"scale-view",         "metal",  "F32",     "",     ""}, [](Instance& instance, Parser::ModuleRecord& r) { return instance.addModule<Bundles::Scale, Device::Metal, F32>(r); } },
 #endif
@@ -288,9 +276,6 @@ const ModuleListStore& Store::defaultModuleList() {
                     {
 #ifdef JETSTREAM_MODULE_FILTER_CPU_AVAILABLE
                         {Device::CPU, {{"CF32", "", ""}}},
-#endif
-#ifdef JETSTREAM_MODULE_FILTER_METAL_AVAILABLE
-                        {Device::Metal, {{"CF32", "", ""}}},
 #endif
                     }
                 }
@@ -379,9 +364,6 @@ const ModuleListStore& Store::defaultModuleList() {
 #ifdef JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE
                         {Device::CPU, {{"CF32", "", ""}}},
 #endif
-#ifdef JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE
-                        {Device::Metal, {{"CF32", "", ""}}},
-#endif
                     }
                 }
             }
@@ -396,9 +378,6 @@ const ModuleListStore& Store::defaultModuleList() {
                     {
 #ifdef JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE
                         {Device::CPU, {{"F32", "", ""}}},
-#endif
-#ifdef JETSTREAM_MODULE_AUDIO_METAL_AVAILABLE
-                        {Device::Metal, {{"F32", "", ""}}},
 #endif
                     }
                 }
@@ -629,9 +608,6 @@ const ModuleListStore& Store::defaultModuleList() {
                     {
 #ifdef JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE
                         {Device::CPU, {{"CF32", "", ""}}},
-#endif
-#ifdef JETSTREAM_MODULE_SOAPY_METAL_AVAILABLE
-                        {Device::Metal, {{"CF32", "", ""}}},
 #endif
                     }
                 }

@@ -15,7 +15,7 @@ class Window : public Module {
     // Configuration 
 
     struct Config {
-        VectorShape<2> shape;
+        std::vector<U64> shape;
 
         JST_SERDES(
             JST_SERDES_VAL("shape", shape);
@@ -39,7 +39,7 @@ class Window : public Module {
     // Output
 
     struct Output {
-        Vector<D, T, 2> window;
+        Tensor<D, T> window;
 
         JST_SERDES(
             JST_SERDES_VAL("window", window);
@@ -50,7 +50,7 @@ class Window : public Module {
         return output;
     }
 
-    constexpr const Vector<D, T, 2>& getWindowBuffer() const {
+    constexpr const Tensor<D, T>& getWindowBuffer() const {
         return this->output.window;
     }
 

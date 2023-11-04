@@ -18,7 +18,7 @@ Result Lineplot<D, T>::create() {
         const U64 num_cols = config.numberOfVerticalLines;
         const U64 num_rows = config.numberOfHorizontalLines;
 
-        grid = Vector<D, F32, 3>({num_cols + num_rows, 2, 3});
+        grid = Tensor<Device::CPU, F32>({num_cols + num_rows, 2, 3});
 
         const F32 x_step  = +2.0f / (num_cols - 1);
         const F32 y_step  = +2.0f / (num_rows - 1);
@@ -52,7 +52,7 @@ Result Lineplot<D, T>::create() {
         // Generate Plot coordinates.
         const U64 num_cols = input.buffer.shape()[1];
 
-        plot = Vector<D, F32, 2>({num_cols, 3});
+        plot = Tensor<Device::CPU, F32>({num_cols, 3});
 
         for (U64 j = 0; j < num_cols; j++) {
             plot[{j, 0}] = j * 2.0f / (num_cols - 1) - 1.0f;
@@ -71,7 +71,7 @@ template<Device D, typename T>
 Result Lineplot<D, T>::createPresent() {
     Render::Buffer::Config gridVerticesConf;
     gridVerticesConf.buffer = grid.data();
-    gridVerticesConf.elementByteSize = sizeof(grid[0]);
+    gridVerticesConf.elementByteSize = sizeof(F32);
     gridVerticesConf.size = grid.size();
     gridVerticesConf.target = Render::Buffer::Target::VERTEX;
     gridVerticesConf.enableZeroCopy = true;
@@ -90,7 +90,7 @@ Result Lineplot<D, T>::createPresent() {
 
     Render::Buffer::Config lineVerticesConf;
     lineVerticesConf.buffer = plot.data();
-    lineVerticesConf.elementByteSize = sizeof(plot[0]);
+    lineVerticesConf.elementByteSize = sizeof(F32);
     lineVerticesConf.size = plot.size();
     lineVerticesConf.target = Render::Buffer::Target::VERTEX;
     lineVerticesConf.enableZeroCopy = true;

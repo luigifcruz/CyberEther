@@ -31,7 +31,7 @@ class Cast : public Module, public Compute {
     // Input
 
     struct Input {
-        Vector<D, IT, 1> buffer;
+        Tensor<D, IT> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -45,7 +45,7 @@ class Cast : public Module, public Compute {
     // Output
 
     struct Output {
-        Vector<D, OT, 1> buffer;
+        Tensor<D, OT> buffer;
 
         JST_SERDES(
             JST_SERDES_VAL("buffer", buffer);
@@ -56,7 +56,7 @@ class Cast : public Module, public Compute {
         return output;
     }
 
-    constexpr const Vector<D, OT, 1>& getOutputBuffer() const {
+    constexpr const Tensor<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 

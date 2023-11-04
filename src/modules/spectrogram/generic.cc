@@ -13,7 +13,7 @@ Result Spectrogram<D, T>::create() {
     );
 
     // Allocate internal buffers.
-    frequencyBins = Vector<D, F32, 2>({input.buffer.shape()[1], config.height});
+    frequencyBins = Tensor<D, F32>({input.buffer.shape()[1], config.height});
 
     return Result::SUCCESS;
 }
@@ -60,7 +60,7 @@ Result Spectrogram<D, T>::createPresent() {
     JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
     Render::Texture::Config bufferCfg;
-    bufferCfg.buffer = (U8*)(frequencyBins.data());
+    bufferCfg.buffer = (U8*)(frequencyBins.cpu().data());
     bufferCfg.size = {frequencyBins.shape()[0], frequencyBins.shape()[1]};
     bufferCfg.dfmt = Render::Texture::DataFormat::F32;
     bufferCfg.pfmt = Render::Texture::PixelFormat::RED;

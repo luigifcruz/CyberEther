@@ -32,10 +32,8 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
     }
 
     for (U64 b = 0; b < input.buffer.shape()[0]; b++) {
-        const auto offset = input.buffer.shapeToOffset({b, 0});
-
         for (U64 x = 0; x < input.buffer.shape()[1]; x++) {
-            const CF32& sample = input.buffer[x + offset];
+            const CF32& sample = input.buffer[{b, x}];
 
             const U64 r = ((sample.real() - min_real) / (max_real - min_real)) * timeSamples.shape()[0];
             const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * timeSamples.shape()[0];
