@@ -56,7 +56,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 }
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const std::shared_ptr<TensorPrototypeMetadata>&,
                              void* ptr) {
     JST_TRACE("[CPU:BUFFER] New buffer from raw pointer.");
 
@@ -109,14 +109,14 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 #endif
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const std::shared_ptr<TensorPrototypeMetadata>& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Vulkan buffer.");
 
     // Check platform.
 
-    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
+    if (!Backend::State<Device::Vulkan>()->hasUnifiedMemory()) {
         JST_ERROR("[CPU:BUFFER] Vulkan buffer is not unified. Cannot share data between CPU and GPU.");
         JST_CHECK_THROW(Result::ERROR);
     }

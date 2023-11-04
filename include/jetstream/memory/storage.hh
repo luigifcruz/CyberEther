@@ -55,11 +55,12 @@ class TensorStorage : public TensorPrototype {
             prototype->size *= dim;
         }
 
-        // TODO: Update for loop to use U64.
         prototype->strides.resize(prototype->shape.size());
-        prototype->strides.back() = 1;
-        for (int i = prototype->shape.size() - 2; i >= 0; i--) {
-            prototype->strides[i] = prototype->strides[i + 1] * prototype->shape[i + 1];
+        for (U64 i = 0; i < prototype->shape.size(); i++) {
+            prototype->strides[i] = 1;
+            for (U64 j = i + 1; j < prototype->shape.size(); j++) {
+                prototype->strides[i] *= prototype->shape[j];
+            }
         }
 
         assert(prototype->strides.size() == prototype->shape.size());

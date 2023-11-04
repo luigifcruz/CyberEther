@@ -86,15 +86,21 @@ class TensorPrototype {
     }
 
     U64 shapeToOffset(const std::vector<U64>& shape) const {
-        // TODO: Update for loop to use U64.
-        U64 offset = 0;
-        for (int i = 0; i < shape.size(); i++) {
-            offset += shape[i] * prototype->strides[i];
+        U64 index = 0;
+        for (U64 i = 0; i < shape.size(); i++) {
+            index += shape[i] *  prototype->strides[i];
         }
-        return offset;
+        return index;
     }
 
-    // TODO: Add offsetToShape method.
+    std::vector<U64> offsetToShape(U64 index) const {
+        std::vector<U64> shape;
+        for (U64 i = 0; i < shape.size(); i++) {
+            shape[i] = index / prototype->strides[i];
+            index -= shape[i] * prototype->strides[i];
+        }
+        return shape;
+    }
 
     std::shared_ptr<TensorPrototypeMetadata> prototype;
 };

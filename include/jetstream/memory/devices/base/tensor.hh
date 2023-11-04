@@ -39,7 +39,7 @@ class TensorBase : public TensorStorage<T> {
         return *this;
     }
 
-    constexpr const Device device() const noexcept {
+    constexpr Device device() const noexcept {
         return D;
     }
 
