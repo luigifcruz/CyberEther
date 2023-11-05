@@ -2,7 +2,8 @@
 #define JETSTREAM_BACKEND_DEVICE_VULKAN_HH
 
 #include <set>
-#include <unordered_map>
+#include <string>
+#include <vector>
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -111,7 +112,7 @@ class Vulkan {
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;
-    std::unordered_map<const char*, bool> availableOptionalDeviceCapabilities;
+    std::set<const char*> availableOptionalDeviceCapabilities;
 
     struct {
         std::string deviceName;
@@ -132,6 +133,7 @@ class Vulkan {
     std::vector<const char*> getOptionalDeviceExtensions();
     std::vector<const char*> getRequiredValidationLayers();
     bool checkDeviceExtensionSupport(const VkPhysicalDevice& device);
+    std::set<const char*> checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device);
     bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
 

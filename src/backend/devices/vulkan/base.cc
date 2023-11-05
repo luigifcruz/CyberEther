@@ -40,7 +40,7 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
         extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
 
-    JST_DEBUG("[VULKAN] Required extensions: {}", extensions);
+    JST_DEBUG("[VULKAN] Supported required instance extensions: {}", extensions);
 
     return extensions;
 }
@@ -111,28 +111,35 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-    
+
     const auto& requiredDeviceExtensions = getRequiredDeviceExtensions();
     std::set<std::string> requiredExtensions(requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
 
-    const auto& optionalDeviceExtensions = getOptionalDeviceExtensions();
-    std::set<std::string> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
-
     for (const auto& extension : availableExtensions) {
-        if (requiredExtensions.contains(extension.extensionName)) {
-            JST_DEBUG("[VULKAN] Device supports required extension: {}", extension.extensionName);
-        }
         requiredExtensions.erase(extension.extensionName);
-
-        if (optionalExtensions.contains(extension.extensionName)) {
-            JST_DEBUG("[VULKAN] Device supports optional extension: {}", extension.extensionName);
-            availableOptionalDeviceCapabilities[extension.extensionName] = true;
-        }
     }
 
     auto indices = FindQueueFamilies(device);
 
     return indices.isComplete() && requiredExtensions.empty();
+}
+
+std::set<const char*> Vulkan::checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device) {
+    uint32_t extensionCount;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+    const auto& optionalDeviceExtensions = getOptionalDeviceExtensions();
+    std::set<const char*> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
+
+    for (const auto& extension : availableExtensions) {
+        if (!optionalExtensions.contains(extension.extensionName)) {
+            optionalExtensions.erase(extension.extensionName);
+        }
+    }
+
+    return optionalExtensions;
 }
 
 Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
@@ -148,6 +155,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
         // Reasons why this is Vulkan 1.1:
         // 1. Negative viewport support for compatibility with Metal.
+        // 2. Support for VK_KHR_external_memory.
         appInfo.apiVersion = VK_API_VERSION_1_1;
 
         // Create instance.
@@ -237,6 +245,23 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         vkGetPhysicalDeviceProperties(physicalDevice, &properties);
     }
 
+    // Gather device extensions.
+
+    std::vector<const char*> deviceExtensions;
+
+    {
+        const auto& requiredExtensions = getRequiredDeviceExtensions();
+        const auto& optionalExtensions = checkDeviceOptionalExtensionSupport(physicalDevice);
+
+        JST_DEBUG("[VULKAN] Supported required device extensions: {}", requiredExtensions);
+        JST_DEBUG("[VULKAN] Supported optional device extensions: {}", optionalExtensions);
+
+        deviceExtensions.insert(deviceExtensions.end(), requiredExtensions.begin(), requiredExtensions.end());
+        deviceExtensions.insert(deviceExtensions.end(), optionalExtensions.begin(), optionalExtensions.end());
+
+        availableOptionalDeviceCapabilities = optionalExtensions;
+    }
+
     // Populate information cache.
 
     cache.deviceName = properties.deviceName;
@@ -314,10 +339,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
         createInfo.queueCreateInfoCount = static_cast<U32>(queueCreateInfos.size());
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
-
         createInfo.pEnabledFeatures = &deviceFeatures;
-
-        const auto deviceExtensions = getRequiredDeviceExtensions();
         createInfo.enabledExtensionCount = static_cast<U32>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
