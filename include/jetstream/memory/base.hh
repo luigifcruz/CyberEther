@@ -24,4 +24,10 @@
 #include "jetstream/memory/devices/vulkan/tensor.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/memory/devices/cuda/buffer.hh"
+#include "jetstream/memory/devices/cuda/copy.hh"
+#include "jetstream/memory/devices/cuda/tensor.hh"
+#endif
+
 #endif

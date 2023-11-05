@@ -61,6 +61,24 @@ class TensorBase : public TensorStorage<T> {
     }
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    Tensor<Device::Vulkan, T>& vulkan() {
+        if (!vulkan_tensor_cache) {
+            vulkan_tensor_cache = std::make_shared<Tensor<Device::Vulkan, T>>(*this);
+        }
+        return *vulkan_tensor_cache;
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    Tensor<Device::CUDA, T>& cuda() {
+        if (!cuda_tensor_cache) {
+            cuda_tensor_cache = std::make_shared<Tensor<Device::CUDA, T>>(*this);
+        }
+        return *cuda_tensor_cache;
+    }
+#endif
+
  protected:
     std::shared_ptr<TensorBuffer<D>> buffer;
 
@@ -69,6 +87,12 @@ class TensorBase : public TensorStorage<T> {
 #endif
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     std::shared_ptr<Tensor<Device::Metal, T>> metal_tensor_cache;
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    std::shared_ptr<Tensor<Device::Vulkan, T>> vulkan_tensor_cache;
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    std::shared_ptr<Tensor<Device::CUDA, T>> cuda_tensor_cache;
 #endif
 };
 

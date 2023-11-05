@@ -5,8 +5,11 @@
 #endif
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-#include "jetstream/memory/devices/vulkan/buffer.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/memory/devices/cuda/buffer.hh"
 #endif
 
 namespace Jetstream {
@@ -105,6 +108,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     buffer = root_buffer->data()->contents();
     owns_data = false;
+    external_memory_device = Device::Metal;
 }
 #endif
 
@@ -127,15 +131,48 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         return;
     }
 
+    // Save variables for later.
+
+    vulkan_memory = root_buffer->memory();
+
     // Initialize buffer.
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     const auto size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
 
-    JST_VK_CHECK_THROW(vkMapMemory(device, root_buffer->memory(), 0, size, 0, &buffer), [&]{
+    JST_VK_CHECK_THROW(vkMapMemory(device, vulkan_memory, 0, size, 0, &buffer), [&]{
         JST_FATAL("[CPU:BUFFER] Failed to map buffer memory.");
     });
+
     owns_data = false;
+    external_memory_device = Device::Vulkan;
+}
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
+    JST_TRACE("[CPU:BUFFER] Cloning from CUDA buffer.");
+
+    // Check platform.
+
+    if (!root_buffer->managed()) {
+        JST_ERROR("[CPU:BUFFER] CUDA buffer is not managed. It cannot share data with the CPU.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
+    // Check size.
+
+    if (prototype->size_bytes == 0) {
+        return;
+    }
+
+    // Initialize buffer.
+
+    buffer = root_buffer->data();
+    owns_data = false;
+    external_memory_device = Device::CUDA;
 }
 #endif
 
@@ -145,6 +182,13 @@ Implementation::~TensorBuffer() {
     if (owns_data) {
         free(buffer);
     }
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (external_memory_device == Device::Vulkan) {
+        auto& device = Backend::State<Device::Vulkan>()->getDevice();
+        vkUnmapMemory(device, vulkan_memory);
+    }
+#endif
 
     // TODO: Unmap memory if imported from Vulkan.
 }

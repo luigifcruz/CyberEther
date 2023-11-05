@@ -91,9 +91,6 @@ int main() {
     JST_INFO("---------------------------------------------");
 
     {
-        {
-            
-        }
         Tensor<Device::CPU, U64> a({24});
         PrintVarDebug("a", a);
         assert(a.size() == 24);
@@ -186,51 +183,6 @@ int main() {
     JST_INFO("---------------------------------------------");
 
     {
-        Tensor<Device::CPU, F32> b({42});
-        PrintVarDebug("b", b);
-        assert(b.size() == 42);
-        assert(b.references() == 1);
-        assert(b.data() != nullptr);
-
-        {
-            Tensor<Device::Metal, F32> a({3});
-            PrintVarDebug("a", a);
-            assert(a.size() == 3);
-            assert(a.references() == 1);
-
-            b = a;
-            PrintVarDebug("b", b);
-            assert(b.size() == 3);
-            assert(b.references() == 2);
-            assert(b.data() != nullptr);
-        }
-        PrintVarDebug("b", b);
-        assert(b.size() == 3);
-        assert(b.references() == 1);
-        assert(b.data() != nullptr);
-
-        JST_INFO("Vector cross-device test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::CPU, F32> b({42});
-        PrintVarDebug("b", b);
-        assert(b.size() == 42);
-        assert(b.references() == 1);
-
-        Tensor<Device::Metal, F32> a(b);
-        PrintVarDebug("a", a);
-        assert(a.size() == 42);
-        assert(a.references() == 2);
-
-        JST_INFO("Vector cross-device copy constructor test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
         Tensor<Device::CPU, F32> b(nullptr, {21});
         PrintVarDebug("b", b);
         assert(b.size() == 21);
@@ -256,51 +208,6 @@ int main() {
         PrintVarDebug("array", array);
 
         JST_INFO("Tensor shape constructor test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::Metal, F32> metal_array({1, 2, 3});
-        PrintVarDebug("metal_array", metal_array);
-    
-        Tensor<Device::CPU, F32> array(metal_array);
-        PrintVarDebug("array", array);
-
-        JST_INFO("Tensor cross-device constructor test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::Metal, F32> metal_array({1, 2, 3});
-        PrintVarDebug("metal_array", metal_array);
-
-        metal_array.store()["test"] = 1;
-
-        Tensor<Device::CPU, F32> array;
-        PrintVarDebug("array", array);
-
-        array = metal_array;
-
-        assert(array.store().contains("test") == true);
-        assert(array.store().contains("test2") == false);
-
-        JST_INFO("Tensor store after copy test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::CPU, F32> cpu_array;
-        PrintVarDebug("cpu_array", cpu_array);
-        assert(cpu_array.device() == Device::CPU);
-
-        Tensor<Device::Metal, F32> metal_array;
-        PrintVarDebug("metal_array", metal_array);
-        assert(metal_array.device() == Device::Metal);
-
-        JST_INFO("Tensor device indicator test successful!");
     }
 
     JST_INFO("---------------------------------------------");
@@ -342,36 +249,6 @@ int main() {
         assert(data != nullptr);
 
         JST_INFO("Tensor storage test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::Metal, F32> metal_array({2, 3, 4});
-        PrintVarDebug("metal_array", metal_array);
-        assert(metal_array.compatible_devices().contains(Device::CPU));
-
-        Tensor<Device::CPU, F32> cpu_array(metal_array);
-        PrintVarDebug("cpu_array", cpu_array);
-        assert(cpu_array.compatible_devices().contains(Device::Metal));
-
-        JST_INFO("Tensor compatibility test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::Metal, F32> metal_array({2, 3, 4});
-        PrintVarDebug("metal_array", metal_array);
-        Tensor<Device::CPU, F32> cpu_array;
-        PrintVarDebug("cpu_array", cpu_array);
-        cpu_array = metal_array;
-        PrintVarDebug("cpu_array", cpu_array);
-        assert(cpu_array.shape(0) == 2);
-        assert(cpu_array.shape(1) == 3);
-        assert(cpu_array.shape(2) == 4);
-
-        JST_INFO("Tensor cloning test successful!");
     }
 
     JST_INFO("---------------------------------------------");
@@ -440,6 +317,158 @@ int main() {
     } 
 
     JST_INFO("---------------------------------------------");
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    {
+        Tensor<Device::CPU, F32> b({42});
+        PrintVarDebug("b", b);
+        assert(b.size() == 42);
+        assert(b.references() == 1);
+        assert(b.data() != nullptr);
+
+        {
+            Tensor<Device::Metal, F32> a({3});
+            PrintVarDebug("a", a);
+            assert(a.size() == 3);
+            assert(a.references() == 1);
+
+            b = a;
+            PrintVarDebug("b", b);
+            assert(b.size() == 3);
+            assert(b.references() == 2);
+            assert(b.data() != nullptr);
+        }
+        PrintVarDebug("b", b);
+        assert(b.size() == 3);
+        assert(b.references() == 1);
+        assert(b.data() != nullptr);
+
+        JST_INFO("Vector cross-device test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::CPU, F32> b({42});
+        PrintVarDebug("b", b);
+        assert(b.size() == 42);
+        assert(b.references() == 1);
+
+        Tensor<Device::Metal, F32> a(b);
+        PrintVarDebug("a", a);
+        assert(a.size() == 42);
+        assert(a.references() == 2);
+
+        JST_INFO("Vector cross-device copy constructor test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::Metal, F32> metal_array({1, 2, 3});
+        PrintVarDebug("metal_array", metal_array);
+    
+        Tensor<Device::CPU, F32> array(metal_array);
+        PrintVarDebug("array", array);
+
+        JST_INFO("Tensor cross-device constructor test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::Metal, F32> metal_array({1, 2, 3});
+        PrintVarDebug("metal_array", metal_array);
+
+        metal_array.store()["test"] = 1;
+
+        Tensor<Device::CPU, F32> array;
+        PrintVarDebug("array", array);
+
+        array = metal_array;
+
+        assert(array.store().contains("test") == true);
+        assert(array.store().contains("test2") == false);
+
+        JST_INFO("Tensor store after copy test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::CPU, F32> cpu_array;
+        PrintVarDebug("cpu_array", cpu_array);
+        assert(cpu_array.device() == Device::CPU);
+
+        Tensor<Device::Metal, F32> metal_array;
+        PrintVarDebug("metal_array", metal_array);
+        assert(metal_array.device() == Device::Metal);
+
+        JST_INFO("Tensor device indicator test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::Metal, F32> metal_array({2, 3, 4});
+        PrintVarDebug("metal_array", metal_array);
+        assert(metal_array.compatible_devices().contains(Device::CPU));
+
+        Tensor<Device::CPU, F32> cpu_array(metal_array);
+        PrintVarDebug("cpu_array", cpu_array);
+        assert(cpu_array.compatible_devices().contains(Device::Metal));
+
+        JST_INFO("Tensor compatibility test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::Metal, F32> metal_array({2, 3, 4});
+        PrintVarDebug("metal_array", metal_array);
+        Tensor<Device::CPU, F32> cpu_array;
+        PrintVarDebug("cpu_array", cpu_array);
+        cpu_array = metal_array;
+        PrintVarDebug("cpu_array", cpu_array);
+        assert(cpu_array.shape(0) == 2);
+        assert(cpu_array.shape(1) == 3);
+        assert(cpu_array.shape(2) == 4);
+
+        JST_INFO("Tensor cloning test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+#endif
+
+#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE) && \
+    defined(JETSTREAM_BACKEND_CUDA_AVAILABLE)
+    {
+        Tensor<Device::CUDA, F32> b({42});
+        PrintVarDebug("b", b);
+        assert(b.size() == 42);
+        assert(b.references() == 1);
+        assert(b.data() != nullptr);
+
+        {
+            Tensor<Device::Vulkan, F32> a({3});
+            PrintVarDebug("a", a);
+            assert(a.size() == 3);
+            assert(a.references() == 1);
+
+            b = a;
+            PrintVarDebug("b", b);
+            assert(b.size() == 3);
+            assert(b.references() == 2);
+            assert(b.data() != nullptr);
+        }
+        PrintVarDebug("b", b);
+        assert(b.size() == 3);
+        assert(b.references() == 1);
+        assert(b.data() != nullptr);
+
+        JST_INFO("Vector cross-device test successful!");
+    }
+#endif
 
     JST_INFO("Test successful!");
 

@@ -27,12 +27,19 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
+    const auto& canExport = Backend::State<Device::Vulkan>()->canExportMemory();
 
-    // Add CPU support if unified memory is enabled.
+    // Add CPU and CUDA support if unified memory is enabled.
 
     if (unified) {
         storage->compatible_devices.insert(Device::CPU);
     }
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (canExport) {
+        storage->compatible_devices.insert(Device::CUDA);
+    }
+#endif
 
     // Sort buffer usage flags.
 
@@ -42,11 +49,16 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Create buffer object. 
 
+    VkExternalMemoryImageCreateInfo extImageCreateInfo = {};
+    extImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+    extImageCreateInfo.handleTypes |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
     bufferInfo.usage = bufferUsageFlag;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    bufferInfo.pNext = (canExport) ? &extImageCreateInfo : nullptr;
 
     JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &_buffer), [&]{
         JST_ERROR("[VULKAN] Can't create memory buffer.");
@@ -64,12 +76,17 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     }
 
+    VkExportMemoryAllocateInfo exportInfo = {};
+    exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+    exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+
     VkMemoryAllocateInfo memoryAllocateInfo = {};
     memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memoryAllocateInfo.allocationSize = memoryRequirements.size;
     memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
                                                                  memoryRequirements.memoryTypeBits,
                                                                  memoryProperties);
+    memoryAllocateInfo.pNext = (canExport) ? &exportInfo : nullptr;
 
     JST_VK_CHECK_THROW(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &_memory), [&]{
         JST_ERROR("[VULKAN:BUFFER] Failed to allocate buffer memory.");

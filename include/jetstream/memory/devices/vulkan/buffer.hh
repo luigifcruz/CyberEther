@@ -13,6 +13,10 @@ class TensorBuffer<Device::Vulkan> {
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const std::shared_ptr<TensorPrototypeMetadata>& prototype);
 
+    // TODO: Add CPU -> Vulkan.
+
+    // TODO: Add CUDA -> Vulkan.
+
     ~TensorBuffer();
 
     TensorBuffer(const TensorBuffer&) = delete;

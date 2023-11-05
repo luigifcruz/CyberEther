@@ -1,7 +1,6 @@
-#ifndef JETSTREAM_MEMORY_CPU_BUFFER_HH
-#define JETSTREAM_MEMORY_CPU_BUFFER_HH
+#ifndef JETSTREAM_MEMORY_CUDA_BUFFER_HH
+#define JETSTREAM_MEMORY_CUDA_BUFFER_HH
 
-#include <cstdlib>
 #include <memory>
 
 #include "jetstream/memory/devices/base/buffer.hh"
@@ -13,20 +12,11 @@
 namespace Jetstream {
 
 template<>
-class TensorBuffer<Device::CPU> {
+class TensorBuffer<Device::CUDA> {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype);
-
-    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const std::shared_ptr<TensorPrototypeMetadata>& prototype,
-                          void* ptr);
-
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
-                          const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer);
-#endif
+                          const bool& force_managed_memory = false);
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
@@ -34,32 +24,34 @@ class TensorBuffer<Device::CPU> {
                           const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer);
 #endif
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
-                          const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer);
-#endif
+    // TODO: Add CPU -> CUDA.
 
     ~TensorBuffer();
 
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
+    constexpr const bool& managed() const {
+        return managed_memory;
+    }
+
     const void* data() const noexcept {
-        return buffer;
+        return _buffer;
     }
 
     void* data() noexcept {
-        return buffer;
+        return _buffer;
     }
 
  private:
-    void* buffer = nullptr;
+    void* _buffer;
     bool owns_data = false;
+    bool managed_memory = false;
     Device external_memory_device = Device::None;
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    VkDeviceMemory vulkan_memory = VK_NULL_HANDLE;
+    int vulkan_file_descriptor = 0;
+    CUexternalMemory vulkan_external_memory = nullptr;
 #endif
 };
 
