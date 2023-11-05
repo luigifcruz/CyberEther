@@ -17,43 +17,6 @@
 #define JETSTREAM_HIDDEN __attribute__((visibility("hidden")))
 #endif  // JETSTREAM_HIDDEN
 
-#if __has_include("cuda_runtime.h") && defined JETSTREAM_CUDA_AVAILABLE
-#include <cuda_runtime.h>
-
-#ifndef JST_CUDA_CHECK_KERNEL
-#define JST_CUDA_CHECK_KERNEL(callback) { \
-    cudaError_t val; \
-    if ((val = cudaPeekAtLastError()) != cudaSuccess) { \
-        auto err = cudaGetErrorString(val); \
-        return callback(); \
-    } \
-}
-#endif  // JST_CUDA_CHECK_KERNEL
-
-#ifndef JST_CUDA_CHECK
-#define JST_CUDA_CHECK(x, callback) { \
-    cudaError_t val = (x); \
-    if (val != cudaSuccess) { \
-        auto err = cudaGetErrorString(val); \
-        callback(); \
-        return Result::ERROR; \
-    } \
-}
-#endif  // JST_CUDA_CHECK
-
-#endif
-
-#ifndef JST_CUDA_CHECK_THROW
-#define JST_CUDA_CHECK_THROW(x, callback) { \
-    cudaError_t val = (x); \
-    if (val != cudaSuccess) { \
-        auto err = cudaGetErrorString(val); \
-        callback(); \
-        throw Result::ERROR; \
-    } \
-}
-#endif  // JST_CUDA_CHECK_THROW
-
 #ifndef JST_CHECK
 #define JST_CHECK(...) { \
     Result val = (__VA_ARGS__); \

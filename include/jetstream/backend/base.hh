@@ -25,6 +25,10 @@
 #include "jetstream/backend/devices/cpu/base.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/backend/devices/cuda/base.hh"
+#endif
+
 namespace Jetstream::Backend {
 
 template<Device DeviceId>
@@ -55,6 +59,13 @@ struct GetBackend<Device::WebGPU> {
 template<>
 struct GetBackend<Device::CPU> {
     using Type = CPU;  
+};
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+template<>
+struct GetBackend<Device::CUDA> {
+    using Type = CUDA;  
 };
 #endif
 
@@ -106,7 +117,10 @@ class JETSTREAM_API Instance {
         std::unique_ptr<WebGPU>,
 #endif
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-        std::unique_ptr<CPU>
+        std::unique_ptr<CPU>,
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        std::unique_ptr<CUDA>
 #endif
     > BackendHolder;
 

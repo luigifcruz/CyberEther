@@ -10,6 +10,7 @@ endforeach
 if all_deps_found
     cfg_lst.set('JETSTREAM_BACKEND_CUDA_AVAILABLE', true)
     src_lst += files([
+        'base.cc',
     ])
 endif
 
