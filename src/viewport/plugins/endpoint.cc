@@ -777,7 +777,7 @@ void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
     that->bufferCond.notify_one();
 }
 
-Result Endpoint::newFrameHost(const uint8_t* data) {
+Result Endpoint::newFrame(const void* data) {
     if (type == Endpoint::Type::Pipe) {
         write(pipeFileDescriptor, data, config.size.width * config.size.height * 4);
     }
@@ -785,7 +785,7 @@ Result Endpoint::newFrameHost(const uint8_t* data) {
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     if ((type == Endpoint::Type::File || type == Endpoint::Type::Socket) && socketStreaming) {
         GstBuffer* buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
-                                                        const_cast<uint8_t*>(data),
+                                                        const_cast<void*>(data),
                                                         config.size.width * config.size.height * 4,
                                                         0,
                                                         config.size.width * config.size.height * 4,

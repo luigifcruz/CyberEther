@@ -18,62 +18,68 @@ class Endpoint {
     Result create(const Viewport::Config& config);
     Result destroy();
 
-    Result newFrameHost(const uint8_t* data);
+    const bool& passDeviceMemory() const {
+        return _passDeviceMemory;
+    }
+
+    Result newFrame(const void* data);
 
  private:
-   enum class Type {
-      File,
-      Pipe,
-      Socket,
-      Unknown
-   };
+    enum class Type {
+        File,
+        Pipe,
+        Socket,
+        Unknown
+    };
 
-   Config config;
-   Endpoint::Type type;
+    Config config;
+    Endpoint::Type type;
 
-   Result createFileEndpoint();
-   Result createPipeEndpoint();
-   Result createSocketEndpoint();
+    bool _passDeviceMemory = false;
 
-   Result destroyFileEndpoint();
-   Result destroyPipeEndpoint();
-   Result destroySocketEndpoint();
+    Result createFileEndpoint();
+    Result createPipeEndpoint();
+    Result createSocketEndpoint();
 
-   static Endpoint::Type DetermineEndpointType(const std::string& endpoint);
+    Result destroyFileEndpoint();
+    Result destroyPipeEndpoint();
+    Result destroySocketEndpoint();
 
-   // Pipe endpoint.
-   int pipeFileDescriptor;
-   bool pipeCreated = false;
+    static Endpoint::Type DetermineEndpointType(const std::string& endpoint);
+
+    // Pipe endpoint.
+    int pipeFileDescriptor;
+    bool pipeCreated = false;
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
-   GstElement* pipeline;
-   GstElement* source;
+    GstElement* pipeline;
+    GstElement* source;
 
-   std::mutex bufferMutex;
-   std::condition_variable bufferCond;
-   bool bufferProcessed = false;
+    std::mutex bufferMutex;
+    std::condition_variable bufferCond;
+    bool bufferProcessed = false;
 
-   static void OnBufferReleaseCallback(gpointer user_data);
+    static void OnBufferReleaseCallback(gpointer user_data);
 
-   // Broker endpoint.
-   std::string brokerAddress;
-   int brokerPort;
-   int brokerEndpointFileDescriptor;
-   int brokerClientFileDescriptor;
-   bool brokerEndpointRunning;
-   std::thread brokerEndpointThread;
+    // Broker endpoint.
+    std::string brokerAddress;
+    int brokerPort;
+    int brokerEndpointFileDescriptor;
+    int brokerClientFileDescriptor;
+    bool brokerEndpointRunning;
+    std::thread brokerEndpointThread;
 
-   // Socket endpoint.
-   std::string socketAddress;
-   int socketPort;
-   bool socketConnected = false;
-   bool socketStreaming = false;
+    // Socket endpoint.
+    std::string socketAddress;
+    int socketPort;
+    bool socketConnected = false;
+    bool socketStreaming = false;
 
-   // File endpoint. 
-   std::string fileExtension;
-   
-   Result createGstreamerEndpoint();
-   Result destroyGstreamerEndpoint();
+    // File endpoint. 
+    std::string fileExtension;
+
+    Result createGstreamerEndpoint();
+    Result destroyGstreamerEndpoint();
 #endif
 };
 
