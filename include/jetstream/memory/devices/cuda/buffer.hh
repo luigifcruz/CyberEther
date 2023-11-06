@@ -16,7 +16,7 @@ class TensorBuffer<Device::CUDA> {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const std::shared_ptr<TensorPrototypeMetadata>& prototype,
-                          const bool& force_managed_memory = false);
+                          const bool& host_accessible = false);
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
@@ -31,8 +31,8 @@ class TensorBuffer<Device::CUDA> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr const bool& managed() const {
-        return managed_memory;
+    constexpr const bool& host_accessible() const {
+        return _host_accessible;
     }
 
     const void* data() const noexcept {
@@ -46,7 +46,7 @@ class TensorBuffer<Device::CUDA> {
  private:
     void* _buffer;
     bool owns_data = false;
-    bool managed_memory = false;
+    bool _host_accessible = false;
     Device external_memory_device = Device::None;
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE

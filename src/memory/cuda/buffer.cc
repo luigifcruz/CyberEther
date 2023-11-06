@@ -11,7 +11,7 @@ using Implementation = TensorBuffer<Device::CUDA>;
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const std::shared_ptr<TensorPrototypeMetadata>& prototype,
-                             const bool& force_managed_memory) {
+                             const bool& host_accessible) {
     JST_TRACE("[CUDA:BUFFER] Allocating new buffer.");
 
     // Initialize storage.
@@ -33,7 +33,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Add CPU compatibility.
 
-    if (force_managed_memory || unified) {
+    if (host_accessible || unified) {
         storage->compatible_devices.insert(Device::CPU);
     }
 
@@ -41,7 +41,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     const auto size_bytes = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
 
-    if (force_managed_memory || unified) {
+    if (host_accessible || unified) {
         JST_CUDA_CHECK_THROW(cudaMallocManaged(&_buffer, size_bytes), [&]{
             JST_FATAL("[CUDA:BUFFER] Failed to allocate managed CUDA memory: {}", err);
         });
@@ -52,7 +52,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     }
     
     owns_data = true;
-    managed_memory = force_managed_memory || unified;
+    _host_accessible = host_accessible || unified;
 }
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
@@ -62,6 +62,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     JST_TRACE("[CUDA:BUFFER] Cloning from Vulkan buffer.");
 
     // Check platform.
+
+    if (!Backend::State<Device::CUDA>()->isAvailable()) {
+        JST_FATAL("[CUDA:BUFFER] CUDA is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
 
     if (!Backend::State<Device::Vulkan>()->canExportMemory()) {
         JST_FATAL("[CUDA:BUFFER] Vulkan buffer cannot export memory. It cannot share data with CUDA.");

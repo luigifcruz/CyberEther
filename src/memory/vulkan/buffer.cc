@@ -6,7 +6,9 @@ namespace Jetstream {
 using Implementation = TensorBuffer<Device::Vulkan>;
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype) {
+                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const bool& host_accessible,
+                             const VkBufferUsageFlags& usage) {
     JST_TRACE("[VULKAN:BUFFER] Allocating new buffer.");
 
     // Initialize storage.
@@ -31,7 +33,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Add CPU and CUDA support if unified memory is enabled.
 
-    if (unified) {
+    if (host_accessible || unified) {
         storage->compatible_devices.insert(Device::CPU);
     }
 
@@ -43,10 +45,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Sort buffer usage flags.
 
-    VkBufferUsageFlags bufferUsageFlag = 0;
-    bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
     // Create buffer object. 
 
     VkExternalMemoryImageCreateInfo extImageCreateInfo = {};
@@ -56,7 +54,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
-    bufferInfo.usage = bufferUsageFlag;
+    bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferInfo.pNext = (canExport) ? &extImageCreateInfo : nullptr;
 
@@ -69,11 +67,25 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements(device, _buffer, &memoryRequirements);
 
-    VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VkMemoryPropertyFlags memoryProperties = 0;
 
     if (unified) {
+        memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
         memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        JST_TRACE("[VULKAN:BUFFER] Using unified memory (DL, HV, HC).");
+    } else {
+        if (host_accessible) {
+            memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+            JST_TRACE("[VULKAN:BUFFER] Using host accessible memory (HV, HC).");
+        } else {
+            memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+            JST_TRACE("[VULKAN:BUFFER] Using device local memory (DL).");
+        }
     }
 
     VkExportMemoryAllocateInfo exportInfo = {};
@@ -95,7 +107,9 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     JST_VK_CHECK_THROW(vkBindBufferMemory(device, _buffer, _memory, 0), [&]{
         JST_ERROR("[VULKAN:BUFFER] Failed to bind memory to the buffer.");
     });
+
     owns_data = true;
+    _host_accessible = host_accessible || unified;
 }
 
 Implementation::~TensorBuffer() {

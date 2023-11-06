@@ -120,8 +120,8 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Check platform.
 
-    if (!Backend::State<Device::Vulkan>()->hasUnifiedMemory()) {
-        JST_ERROR("[CPU:BUFFER] Vulkan buffer is not unified. Cannot share data between CPU and GPU.");
+    if (!root_buffer->host_accessible()) {
+        JST_ERROR("[CPU:BUFFER] Vulkan buffer is not host accessible. Cannot share data with CPU.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -157,8 +157,8 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Check platform.
 
-    if (!root_buffer->managed()) {
-        JST_ERROR("[CPU:BUFFER] CUDA buffer is not managed. It cannot share data with the CPU.");
+    if (!root_buffer->host_accessible()) {
+        JST_ERROR("[CPU:BUFFER] CUDA buffer is not host accessible. It cannot share data with the CPU.");
         JST_CHECK_THROW(Result::ERROR);
     }
 

@@ -28,6 +28,11 @@ class TensorBase : public TensorStorage<T> {
         buffer = this->template create_buffer<D>(ptr);
     }
 
+    template<typename... Args>
+    TensorBase(const std::vector<U64>& shape, Args... args) : TensorStorage<T>(shape) {
+        buffer = this->template create_buffer<D>(args...);
+    }
+
     template<Device RootDevice>
     TensorBase(const TensorBase<RootDevice, T>& other) {
         buffer = this->template clone_buffer<D, RootDevice>(other);

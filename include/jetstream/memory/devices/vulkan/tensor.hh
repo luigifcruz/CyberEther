@@ -14,6 +14,14 @@ class Tensor<Device::Vulkan, T> : public TensorBase<Device::Vulkan, T> {
 
     Tensor(const TensorBase<Device::Vulkan, T>& base) : TensorBase<Device::Vulkan, T>(base) {}
 
+    const VkDeviceMemory& memory() const noexcept {
+        return this->buffer->memory();
+    }
+
+    VkDeviceMemory& memory() noexcept {
+        return this->buffer->memory();
+    }
+
     const VkBuffer& data() const noexcept {
         return this->buffer->data();
     }

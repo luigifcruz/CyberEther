@@ -11,7 +11,10 @@ template<>
 class TensorBuffer<Device::Vulkan> {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype);
+                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                          const bool& host_accessible = false,
+                          const VkBufferUsageFlags& usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
     // TODO: Add CPU -> Vulkan.
 
@@ -21,6 +24,10 @@ class TensorBuffer<Device::Vulkan> {
 
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
+
+    constexpr const bool& host_accessible() const {
+        return _host_accessible;
+    }
 
     const VkDeviceMemory& memory() const noexcept {
         return _memory;
@@ -42,6 +49,7 @@ class TensorBuffer<Device::Vulkan> {
     VkBuffer _buffer;
     VkDeviceMemory _memory;
     bool owns_data = false;
+    bool _host_accessible = false;
 };
 
 }  // namespace Jetstream
