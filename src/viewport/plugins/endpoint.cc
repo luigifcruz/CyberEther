@@ -6,6 +6,7 @@
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
 #include <gst/app/gstappsrc.h>
+#include <gst/video/video-event.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,12 +45,13 @@ Endpoint::Type Endpoint::DetermineEndpointType(const std::string& endpoint) {
     return Endpoint::Type::Unknown;
 }
 
-Result Endpoint::create(const Viewport::Config& _config) {
+Result Endpoint::create(const Viewport::Config& _config, const Device& _viewport_device) {
     JST_DEBUG("[ENDPOINT] Initializing plugin.");
 
     // Set variables.
 
     config = _config;
+    viewportDevice = _viewport_device;
 
     // Check if endpoint is valid.
 
@@ -74,6 +76,8 @@ Result Endpoint::create(const Viewport::Config& _config) {
     }
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
+    JST_CHECK(createGstreamerEndpoint());
+
     if (type == Endpoint::Type::File) {
         JST_DEBUG("[ENDPOINT] Endpoint is a file.");
         JST_CHECK(createFileEndpoint());
@@ -98,16 +102,21 @@ Result Endpoint::destroy() {
 
     if (type == Endpoint::Type::Pipe) {
         JST_CHECK(destroyPipeEndpoint());
+        return Result::SUCCESS;
     }
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     if (type == Endpoint::Type::File) {
         JST_CHECK(destroyFileEndpoint());
+        return Result::SUCCESS;
     }
 
     if (type == Endpoint::Type::Socket) {
         JST_CHECK(destroySocketEndpoint());
+        return Result::SUCCESS;
     }
+
+    JST_CHECK(destroyGstreamerEndpoint());
 #endif
 
     return Result::SUCCESS;
@@ -356,7 +365,7 @@ Result Endpoint::createSocketEndpoint() {
 
                             // Create Gstreamer endpoint.
 
-                            if (createGstreamerEndpoint() != Result::SUCCESS) {
+                            if (startGstreamerEndpoint() != Result::SUCCESS) {
                                 auto response = fmt::format("err:{}\n", JST_LOG_LAST_ERROR());
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                                 continue;
@@ -452,7 +461,7 @@ Result Endpoint::createSocketEndpoint() {
             
             JST_INFO("[ENDPOINT] Client disconnected. Closing socket.");
             close(brokerClientFileDescriptor);
-            destroyGstreamerEndpoint();
+            stopGstreamerEndpoint();
             socketConnected = false;
         }
     });
@@ -479,7 +488,7 @@ Result Endpoint::destroySocketEndpoint() {
         }
     }
 
-    JST_CHECK(destroyGstreamerEndpoint());
+    JST_CHECK(stopGstreamerEndpoint());
     
     return Result::SUCCESS;
 }
@@ -515,34 +524,77 @@ Result Endpoint::createGstreamerEndpoint() {
         plugins.push_back("matroska");
     }
 
+    // Check required core plugins.
+
+    JST_CHECK(checkGstreamerPlugins(plugins));
+
     // Inject codec plugins.
 
+    std::vector<std::tuple<Device, Strategy, std::vector<std::string>>> combinations;
+
     if (config.codec == Render::VideoCodec::H264) {
-        plugins.push_back("x264");
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        if (viewportDevice == Device::Vulkan && Backend::State<Device::CUDA>()->isAvailable()) {
+            combinations.push_back({Device::CUDA, Strategy::HardwareNvidia, {"nvcodec"}});
+        }
+#endif
+        combinations.push_back({Device::CPU, Strategy::Software, {"x264"}});
     }
 
     if (config.codec == Render::VideoCodec::FFV1) {
-        plugins.push_back("libav");
+        combinations.push_back({Device::CPU, Strategy::Software, {"libav"}});
     }
 
     if (config.codec == Render::VideoCodec::VP8) {
-        plugins.push_back("vpx");
+        combinations.push_back({Device::CPU, Strategy::Software, {"vpx"}});
     }
 
     if (config.codec == Render::VideoCodec::VP9) {
-        plugins.push_back("vpx");
+        combinations.push_back({Device::CPU, Strategy::Software, {"vpx"}});
     }
 
     if (config.codec == Render::VideoCodec::AV1) {
-        plugins.push_back("rav1e");
+        combinations.push_back({Device::CPU, Strategy::Software, {"rav1e"}});
     }
 
+    for (const auto& [device, strategy, plugins] : combinations) {
+        if (checkGstreamerPlugins(plugins) == Result::SUCCESS) {
+            _inputMemoryDevice = device;
+            _encodingStrategy = strategy;
+
+            JST_DEBUG("[ENDPOINT] Using {} encoding with {} memory.", StrategyToString(strategy),
+                                                                      GetDevicePrettyName(device));
+
+            return Result::SUCCESS;
+        }
+    }
+
+    JST_ERROR("[ENDPOINT] No encoding combination is available.");
+    return Result::ERROR;
+}
+
+Result Endpoint::destroyGstreamerEndpoint() {
+    JST_DEBUG("[ENDPOINT] Destroying gstreamer endpoint.");
+
+    _encodingStrategy = Strategy::None;
+    _inputMemoryDevice = Device::None;
+
+    return Result::SUCCESS;
+}
+
+Result Endpoint::checkGstreamerPlugins(const std::vector<std::string>& plugins) {
     for (const auto& plugin : plugins) {
         if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
             JST_ERROR("[ENDPOINT] Gstreamer plugin `{}` is not available.", plugin);
             return Result::ERROR;
         }
     }
+
+    return Result::SUCCESS;
+}
+
+Result Endpoint::startGstreamerEndpoint() {
+    JST_DEBUG("[ENDPOINT] Starting gstreamer endpoint.");
 
     // Create pipeline.
 
@@ -556,55 +608,73 @@ Result Endpoint::createGstreamerEndpoint() {
     // Create elements.
 
     std::map<std::string, GstElement*> elements;
-    std::vector<std::string> elementOrder = {
-        "source",
-        "caps",
-        "parser",
-        "rate",
-        "convert",
-        "encoder",
-        "muxer",
-        "sink"
-    };
+    std::vector<std::string> elementOrder;
 
     elements["source"] = source = gst_element_factory_make("appsrc", "source");
-    elements["caps"] = gst_element_factory_make("capsfilter", "caps");
-    elements["parser"] = gst_element_factory_make("rawvideoparse", "parser");
-    elements["rate"] = gst_element_factory_make("videorate", "rate");
-    elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+    elementOrder.push_back("source");
 
-    // TODO: Add framerate compensator `videorate`.
+    elements["caps"] = gst_element_factory_make("capsfilter", "caps");
+    elementOrder.push_back("caps");
+
+    if (_encodingStrategy == Strategy::Software) {
+        elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
+        elementOrder.push_back("rawparser");
+
+        elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+        elementOrder.push_back("convert");
+    }
 
     if (config.codec == Render::VideoCodec::H264) {
-        elements["encoder"] = gst_element_factory_make("x264enc", "encoder");
+        if (_encodingStrategy == Strategy::HardwareNvidia) {
+            elements["encoder"] = encoder = gst_element_factory_make("nvh264enc", "encoder");
+            elementOrder.push_back("encoder");
+
+            elements["parser"] = gst_element_factory_make("h264parse", "parser");
+            elementOrder.push_back("parser");
+        }
+        
+        if (_encodingStrategy == Strategy::Software) {
+            elements["encoder"] = encoder = gst_element_factory_make("x264enc", "encoder");
+            elementOrder.push_back("encoder");
+        }
     }
 
     if (config.codec == Render::VideoCodec::FFV1) {
-        elements["encoder"] = gst_element_factory_make("avenc_ffv1", "encoder");
+        elements["encoder"] = encoder = gst_element_factory_make("avenc_ffv1", "encoder");
+        elementOrder.push_back("encoder");
     }
 
     if (config.codec == Render::VideoCodec::VP8) {
-        elements["encoder"] = gst_element_factory_make("vp8enc", "encoder");
+        elements["encoder"] = encoder = gst_element_factory_make("vp8enc", "encoder");
+        elementOrder.push_back("encoder");
     }
 
     if (config.codec == Render::VideoCodec::VP9) {
-        elements["encoder"] = gst_element_factory_make("vp9enc", "encoder");
+        elements["encoder"] = encoder = gst_element_factory_make("vp9enc", "encoder");
+        elementOrder.push_back("encoder");
     }
 
     if (config.codec == Render::VideoCodec::AV1) {
-        elements["encoder"] = gst_element_factory_make("rav1enc", "encoder");
+        elements["encoder"] = encoder = gst_element_factory_make("rav1enc", "encoder");
+        elementOrder.push_back("encoder");
     }
 
     if (type == Endpoint::Type::Socket) {
         elements["muxer"] = gst_element_factory_make("rtpgstpay", "muxer");
+        elementOrder.push_back("muxer");
+
         elements["sink"] = gst_element_factory_make("udpsink", "sink");
+        elementOrder.push_back("sink");
     }
 
     if (type == Endpoint::Type::File) {
         if (fileExtension == "mkv") {
             elements["muxer"] = gst_element_factory_make("matroskamux", "muxer");
+            elementOrder.push_back("muxer");
         }
+
         elements["sink"] = gst_element_factory_make("filesink", "sink");
+        elementOrder.push_back("sink");
     }
     
     for (const auto& [name, element] : elements) {
@@ -619,10 +689,16 @@ Result Endpoint::createGstreamerEndpoint() {
 
     if (type == Endpoint::Type::Socket) {
         if (config.codec == Render::VideoCodec::H264) {
-            g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
-            g_object_set(elements["encoder"], "tune", 4, nullptr);
-            g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
-            g_object_set(elements["encoder"], "key-int-max", config.framerate, nullptr);
+            if (_encodingStrategy == Strategy::HardwareNvidia) {
+                g_object_set(elements["encoder"], "zerolatency", true, nullptr);
+                g_object_set(elements["encoder"], "preset", 5, nullptr);
+            }
+
+            if (_encodingStrategy == Strategy::Software) {
+                g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
+                g_object_set(elements["encoder"], "tune", 4, nullptr);
+                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+            }
         }
 
         if (config.codec == Render::VideoCodec::AV1) {
@@ -640,18 +716,28 @@ Result Endpoint::createGstreamerEndpoint() {
     }
     
     g_object_set(elements["source"], "block", true, nullptr);
+    g_object_set(elements["source"], "format", 3, nullptr);
     g_object_set(elements["source"], "leaky-type", 2, nullptr);
     g_object_set(elements["source"], "is-live", true, nullptr);
     g_object_set(elements["source"], "max-bytes", 2*config.size.width*config.size.height*4, nullptr);
 
-    g_object_set(elements["parser"], "use-sink-caps", 1, nullptr);
+    if (_encodingStrategy == Strategy::Software) {
+        g_object_set(elements["rawparser"], "use-sink-caps", 1, nullptr);
+    }
 
     GstCaps* caps = gst_caps_new_simple("video/x-raw",
                                         "format", G_TYPE_STRING, "BGRA",
                                         "width", G_TYPE_INT, config.size.width,
                                         "height", G_TYPE_INT, config.size.height,
                                         "framerate", GST_TYPE_FRACTION, config.framerate, 1,
+                                        "interlace-mode", G_TYPE_STRING, "progressive",
                                         nullptr);
+    
+    if (_encodingStrategy == Strategy::HardwareNvidia && _inputMemoryDevice == Device::CUDA) {
+        GstCapsFeatures *features = gst_caps_features_new("memory:CUDAMemory", NULL);
+        gst_caps_set_features(caps, 0, features);
+    }
+
     g_object_set(elements["caps"], "caps", caps, nullptr);
     gst_caps_unref(caps);
 
@@ -698,13 +784,16 @@ Result Endpoint::createGstreamerEndpoint() {
         gst_object_unref(pipeline);
         return Result::ERROR;
     }
+
+    initialFrameTime = std::chrono::steady_clock::now();
+    forceKeyframe = true;
     socketStreaming = true;
 
     return Result::SUCCESS;
 }
 
-Result Endpoint::destroyGstreamerEndpoint() {
-    JST_DEBUG("[ENDPOINT] Destroying gstreamer endpoint.");
+Result Endpoint::stopGstreamerEndpoint() {
+    JST_DEBUG("[ENDPOINT] Stopping gstreamer endpoint.");
 
     // Stop pipeline.
 
@@ -755,7 +844,7 @@ Result Endpoint::createFileEndpoint() {
         return Result::ERROR;
     }
 
-    JST_CHECK(createGstreamerEndpoint());
+    JST_CHECK(startGstreamerEndpoint());
 
     return Result::SUCCESS;
 }
@@ -763,7 +852,7 @@ Result Endpoint::createFileEndpoint() {
 Result Endpoint::destroyFileEndpoint() {
     JST_DEBUG("[ENDPOINT] Destroying file endpoint.");
 
-    JST_CHECK(destroyGstreamerEndpoint());
+    JST_CHECK(stopGstreamerEndpoint());
 
     return Result::SUCCESS;
 }
@@ -777,13 +866,15 @@ void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
     that->bufferCond.notify_one();
 }
 
-Result Endpoint::newFrame(const void* data) {
+Result Endpoint::pushNewFrame(const void* data) {
     if (type == Endpoint::Type::Pipe) {
         write(pipeFileDescriptor, data, config.size.width * config.size.height * 4);
     }
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     if ((type == Endpoint::Type::File || type == Endpoint::Type::Socket) && socketStreaming) {
+        // Create buffer.
+
         GstBuffer* buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
                                                         const_cast<void*>(data),
                                                         config.size.width * config.size.height * 4,
@@ -792,23 +883,50 @@ Result Endpoint::newFrame(const void* data) {
                                                         this,
                                                         &OnBufferReleaseCallback);
 
+        // Calculate timings.
+
+        const auto currentFrameTime = std::chrono::steady_clock::now();
+        const auto elapsedSinceLastFrame = std::chrono::duration_cast<std::chrono::nanoseconds>(currentFrameTime - 
+                                                                                                initialFrameTime);
+        const auto elapsedSinceLastKeyframe = std::chrono::duration_cast<std::chrono::seconds>(currentFrameTime - 
+                                                                                               lastKeyframeTime);
+
+        // Set buffer timings (PTS and DTS).
+
+        GST_BUFFER_PTS(buffer) = static_cast<U64>(elapsedSinceLastFrame.count());
+        GST_BUFFER_DTS(buffer) = GST_CLOCK_TIME_NONE;
+
+        // Force keyframe every 1 seconds.
+
+        if ((elapsedSinceLastKeyframe.count() > 1) || forceKeyframe) {
+            GstEvent* force_key_unit_event = gst_video_event_new_downstream_force_key_unit(
+                GST_CLOCK_TIME_NONE,
+                GST_CLOCK_TIME_NONE,
+                GST_CLOCK_TIME_NONE,
+                TRUE,
+                0
+            );
+
+            gst_element_send_event(encoder, force_key_unit_event);
+
+            lastKeyframeTime = currentFrameTime;
+            forceKeyframe = false;
+        }
+
+        // Push frame to pipeline.
+
         if (gst_app_src_push_buffer(GST_APP_SRC(source), buffer) != GST_FLOW_OK) {
             JST_ERROR("[ENDPOINT] Failed to push buffer to gstreamer pipeline.");
             return Result::ERROR;
         }
 
-        auto start = std::chrono::high_resolution_clock::now();
+        // Wait for buffer to be processed.
 
         {
             std::unique_lock<std::mutex> lock(bufferMutex);
             bufferCond.wait(lock, [&]{ return bufferProcessed; });
             bufferProcessed = false;
         }
-
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-        JST_DEBUG("[ENDPOINT] Time: {} ms", duration.count());
     }
 #endif
 

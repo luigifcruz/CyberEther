@@ -1,6 +1,7 @@
 deps = [
     dependency('gstreamer-1.0', required: get_option('GSTREAMER')),
     dependency('gstreamer-app-1.0', required: get_option('GSTREAMER')),
+    dependency('gstreamer-video-1.0', required: get_option('GSTREAMER')),
 ]
 
 all_deps_found = true

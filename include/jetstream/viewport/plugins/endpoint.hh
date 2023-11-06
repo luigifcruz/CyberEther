@@ -10,19 +10,20 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 
 namespace Jetstream::Viewport {
 
 class Endpoint {
  public:
-    Result create(const Viewport::Config& config);
+    Result create(const Viewport::Config& config, const Device& viewport_device);
     Result destroy();
 
-    const bool& passDeviceMemory() const {
-        return _passDeviceMemory;
+    const Device& inputMemoryDevice() const {
+        return _inputMemoryDevice;
     }
 
-    Result newFrame(const void* data);
+    Result pushNewFrame(const void* data);
 
  private:
     enum class Type {
@@ -32,10 +33,35 @@ class Endpoint {
         Unknown
     };
 
+    enum class Strategy {
+        None,
+        Software,
+        HardwareNvidia,
+        HardwareRpi
+    };
+
+    std::string StrategyToString(const Strategy& strategy) {
+        switch (strategy) {
+            case Strategy::None:
+                return "None";
+            case Strategy::Software:
+                return "Software";
+            case Strategy::HardwareNvidia:
+                return "Hardware NVIDIA (NVENC)";
+            case Strategy::HardwareRpi:
+                return "Hardware Raspberry Pi";
+            default:
+                return "Unknown";
+        }
+    }
+
     Config config;
     Endpoint::Type type;
 
-    bool _passDeviceMemory = false;
+    Device _inputMemoryDevice = Device::None;
+    Strategy _encodingStrategy = Strategy::None;
+
+    Device viewportDevice = Device::None;
 
     Result createFileEndpoint();
     Result createPipeEndpoint();
@@ -54,10 +80,15 @@ class Endpoint {
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     GstElement* pipeline;
     GstElement* source;
+    GstElement* encoder;
 
     std::mutex bufferMutex;
     std::condition_variable bufferCond;
     bool bufferProcessed = false;
+
+    bool forceKeyframe = false;
+    std::chrono::time_point<std::chrono::steady_clock> initialFrameTime;
+    std::chrono::time_point<std::chrono::steady_clock> lastKeyframeTime;
 
     static void OnBufferReleaseCallback(gpointer user_data);
 
@@ -79,7 +110,11 @@ class Endpoint {
     std::string fileExtension;
 
     Result createGstreamerEndpoint();
+    Result startGstreamerEndpoint();
+    Result stopGstreamerEndpoint();
     Result destroyGstreamerEndpoint();
+
+    Result checkGstreamerPlugins(const std::vector<std::string>& plugins);
 #endif
 };
 
