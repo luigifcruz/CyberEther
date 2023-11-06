@@ -57,6 +57,8 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
  private:
     const static U32 MAX_FRAMES_IN_FLIGHT = 2;
 
+    std::array<Tensor<Device::Vulkan, U8>, MAX_FRAMES_IN_FLIGHT> stagingBuffers;
+
     std::chrono::steady_clock::time_point lastTime;
     std::array<VkImage, MAX_FRAMES_IN_FLIGHT> swapchainImages;
     std::array<VkImageView, MAX_FRAMES_IN_FLIGHT> swapchainImageViews;
@@ -64,8 +66,6 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     std::array<void*, MAX_FRAMES_IN_FLIGHT> swapchainMemoryMapped;
     std::array<std::atomic_flag, MAX_FRAMES_IN_FLIGHT> swapchainEvents;
     std::array<VkFence, MAX_FRAMES_IN_FLIGHT> swapchainFences;
-    std::array<VkBuffer, MAX_FRAMES_IN_FLIGHT> swapchainStagingBuffers;
-    std::array<VkDeviceMemory, MAX_FRAMES_IN_FLIGHT> swapchainStagingMemory;
     VkCommandPool swapchainCommandPool;
     std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> swapchainCommandBuffers;
     VkFormat swapchainImageFormat;

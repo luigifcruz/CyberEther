@@ -40,7 +40,7 @@ Result Implementation::create() {
 
     // Create endpoint.
 
-    JST_CHECK(endpoint.create(config));
+    JST_CHECK(endpoint.create(config, Device::Vulkan));
     JST_CHECK(createSwapchain());
 
     return Result::SUCCESS;
@@ -56,7 +56,6 @@ Result Implementation::destroy() {
 Result Implementation::createSwapchain() {
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
 
     // Create extent.
 
@@ -112,47 +111,25 @@ Result Implementation::createSwapchain() {
         });
     }
 
-    // Create staging buffer in case of non-unified system.
+    // Create staging buffer.
 
-    for (U32 i = 0; i < swapchainStagingBuffers.size(); i++) {
-        VkBufferCreateInfo bufferCreateInfo = {};
-        bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferCreateInfo.size = memoryRequirements.size;
-        bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    const auto& inputMemoryDevice = endpoint.inputMemoryDevice();
 
-        JST_VK_CHECK(vkCreateBuffer(device, &bufferCreateInfo, nullptr, &swapchainStagingBuffers[i]), [&]{
-            JST_ERROR("[VULKAN] Can't create staging buffer.");
-        });
+    for (U32 i = 0; i < stagingBuffers.size(); i++) {
+        stagingBuffers[i] = Tensor<Device::Vulkan, U8>({config.size.width, config.size.height, 4}, inputMemoryDevice == Device::CPU);
 
-        VkMemoryRequirements stagingMemoryRequirements;
-        vkGetBufferMemoryRequirements(device, swapchainStagingBuffers[i], &stagingMemoryRequirements);
-
-        VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-                                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-        if (unified) {
-            memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        if (inputMemoryDevice == Device::CUDA) {
+            swapchainMemoryMapped[i] = stagingBuffers[i].cuda().data();
+            continue;
         }
-
-        VkMemoryAllocateInfo stagingMemoryAllocateInfo = {};
-        stagingMemoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        stagingMemoryAllocateInfo.allocationSize = stagingMemoryRequirements.size;
-        stagingMemoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                                                  stagingMemoryRequirements.memoryTypeBits,
-                                                                                  memoryProperties);
-
-        JST_VK_CHECK(vkAllocateMemory(device, &stagingMemoryAllocateInfo, nullptr, &swapchainStagingMemory[i]), [&]{
-            JST_ERROR("[VULKAN] Failed to allocate staging buffer memory.");
-        });
-
-        JST_VK_CHECK(vkBindBufferMemory(device, swapchainStagingBuffers[i], swapchainStagingMemory[i], 0), [&]{
-            JST_ERROR("[VULKAN] Failed to bind memory to the staging buffer.");
-        });
-
-        JST_VK_CHECK_THROW(vkMapMemory(device, swapchainStagingMemory[i], 0, stagingMemoryRequirements.size, 0, &swapchainMemoryMapped[i]), [&]{
-            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");
-        });
+#endif
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        if (inputMemoryDevice == Device::CPU) {
+            swapchainMemoryMapped[i] = stagingBuffers[i].cpu().data();
+            continue;
+        }
+#endif
     }
 
     // Create command pool in case of non-unified system.
@@ -240,9 +217,7 @@ Result Implementation::destroySwapchain() {
     vkDestroyCommandPool(device, swapchainCommandPool, nullptr);
 
     for (U32 i = 0; i < swapchainImageViews.size(); i++) {
-        vkUnmapMemory(device, swapchainStagingMemory[i]);
-        vkFreeMemory(device, swapchainStagingMemory[i], nullptr);
-        vkDestroyBuffer(device, swapchainStagingBuffers[i], nullptr);
+        stagingBuffers[i] = Tensor<Device::Vulkan, U8>();
         vkDestroyImageView(device, swapchainImageViews[i], nullptr);
         vkDestroyImage(device, swapchainImages[i], nullptr);
         vkFreeMemory(device, swapchainMemory[i], nullptr);
@@ -355,7 +330,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     vkCmdCopyImageToBuffer(swapchainCommandBuffers[_currentDrawableIndex],
                            swapchainImages[_currentDrawableIndex],
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           swapchainStagingBuffers[_currentDrawableIndex],
+                           stagingBuffers[_currentDrawableIndex].data(),
                            1,
                            &region);
 
@@ -424,7 +399,7 @@ void Implementation::endpointFrameSubmissionLoop() {
         vkWaitForFences(device, 1, &swapchainFences[fenceIndex], true, UINT64_MAX);
 
         // TODO: Add check.
-        endpoint.newFrame(swapchainMemoryMapped[fenceIndex]);
+        endpoint.pushNewFrame(swapchainMemoryMapped[fenceIndex]);
 
         swapchainEvents[fenceIndex].clear();
         swapchainEvents[fenceIndex].notify_one();
