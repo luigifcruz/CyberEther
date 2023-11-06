@@ -12,6 +12,7 @@ class CUDA {
  public:
     explicit CUDA(const Config& config);
 
+    bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     std::string getDriverVersion() const;
@@ -22,8 +23,8 @@ class CUDA {
     
  private:
     Config config;
-
     CUdevice device;
+    bool _isAvailable = false;
 
     struct {
         std::string deviceName;
