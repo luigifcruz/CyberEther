@@ -132,7 +132,7 @@ Result Implementation::createSwapchain() {
 #endif
     }
 
-    // Create command pool in case of non-unified system.
+    // Create command pool.
 
     Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
 
@@ -145,7 +145,7 @@ Result Implementation::createSwapchain() {
         JST_ERROR("[VULKAN] Failed to create swapchain command pool.");
     });
 
-    // Create command buffer in case of non-unified system.
+    // Create command buffer.
 
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -302,9 +302,7 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
 }
 
 Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
-    const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
-
-    // Copy swapchain image to staging buffer if non-unified.
+    // Copy swapchain image to staging buffer.
 
     VkCommandBufferBeginInfo cmdBeginInfo = {};
     cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -348,8 +346,8 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     submitInfo.waitSemaphoreCount = semaphores.size();
     submitInfo.pWaitSemaphores = semaphores.data();
     submitInfo.pWaitDstStageMask = waitStage;
-    submitInfo.commandBufferCount = (unified) ? 0 : 1;
-    submitInfo.pCommandBuffers = (unified) ? nullptr : &swapchainCommandBuffers[_currentDrawableIndex];
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &swapchainCommandBuffers[_currentDrawableIndex];
     submitInfo.signalSemaphoreCount = 0;
     submitInfo.pSignalSemaphores = nullptr;
 

@@ -689,6 +689,11 @@ I32 Remote<D, T>::getSocketBufferSize() const {
     }
 #endif
 
+#ifdef JST_OS_MAC
+    bufferSize = recommendedBufferSize;
+    JST_INFO("Setting socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
+#endif
+
     JST_DEBUG("Socket buffer size: {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
 
     return bufferSize;

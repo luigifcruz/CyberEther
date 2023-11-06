@@ -116,11 +116,11 @@ class JETSTREAM_API Instance {
 #ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
         std::unique_ptr<WebGPU>,
 #endif
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-        std::unique_ptr<CPU>,
-#endif
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        std::unique_ptr<CUDA>
+        std::unique_ptr<CUDA>,
+#endif
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        std::unique_ptr<CPU>
 #endif
     > BackendHolder;
 

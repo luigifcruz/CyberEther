@@ -131,15 +131,16 @@ std::set<const char*> Vulkan::checkDeviceOptionalExtensionSupport(const VkPhysic
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
     const auto& optionalDeviceExtensions = getOptionalDeviceExtensions();
-    std::set<const char*> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
+    std::set<std::string> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
+    std::set<const char*> supportedOptionalExtensions;
 
     for (const auto& extension : availableExtensions) {
-        if (!optionalExtensions.contains(extension.extensionName)) {
-            optionalExtensions.erase(extension.extensionName);
+        if (optionalExtensions.contains(extension.extensionName)) {
+            supportedOptionalExtensions.insert(extension.extensionName);
         }
     }
 
-    return optionalExtensions;
+    return supportedOptionalExtensions;
 }
 
 Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
