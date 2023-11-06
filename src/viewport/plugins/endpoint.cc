@@ -743,6 +743,7 @@ Result Endpoint::startGstreamerEndpoint() {
 
     if (type == Endpoint::Type::Socket) {
         g_object_set(elements["sink"], "sync", false, nullptr);
+        g_object_set(elements["sink"], "buffer-size", Backend::GetSocketBufferSize(), nullptr);
         g_object_set(elements["sink"], "host", socketAddress.c_str(), "port", socketPort, nullptr);
     } 
 
