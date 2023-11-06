@@ -29,6 +29,9 @@ struct Config {
     /// @brief The video codec of the headless viewport.
     Render::VideoCodec codec = Render::VideoCodec::FFV1;
 
+    /// @brief Whether hardware acceleration is enabled.
+    bool hardwareAcceleration = true;
+
     JST_SERDES(
         JST_SERDES_VAL("vsync", vsync);
         JST_SERDES_VAL("title", title);
@@ -36,6 +39,7 @@ struct Config {
         JST_SERDES_VAL("framerate", framerate);
         JST_SERDES_VAL("endpoint", endpoint);
         JST_SERDES_VAL("codec", codec);
+        JST_SERDES_VAL("hardwareAcceleration", hardwareAcceleration);
     );
 };
 

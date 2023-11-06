@@ -558,6 +558,9 @@ Result Endpoint::createGstreamerEndpoint() {
     }
 
     for (const auto& [device, strategy, plugins] : combinations) {
+        if ((strategy != Strategy::Software) && !config.hardwareAcceleration) {
+            continue;
+        }
         if (checkGstreamerPlugins(plugins) == Result::SUCCESS) {
             _inputMemoryDevice = device;
             _encodingStrategy = strategy;
