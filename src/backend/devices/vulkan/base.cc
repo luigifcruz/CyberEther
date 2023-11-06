@@ -53,8 +53,8 @@ std::vector<const char*> Vulkan::getRequiredValidationLayers() {
     return layers;
 }
 
-std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
-    std::vector<const char*> extensions;
+std::vector<std::string> Vulkan::getRequiredDeviceExtensions() {
+    std::vector<std::string> extensions;
 
     if (!config.headless) {
         extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -67,8 +67,8 @@ std::vector<const char*> Vulkan::getRequiredDeviceExtensions() {
     return extensions;
 }
 
-std::vector<const char*> Vulkan::getOptionalDeviceExtensions() {
-    std::vector<const char*> extensions;
+std::vector<std::string> Vulkan::getOptionalDeviceExtensions() {
+    std::vector<std::string> extensions;
 
     extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
     extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
@@ -124,7 +124,7 @@ bool Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device) {
     return indices.isComplete() && requiredExtensions.empty();
 }
 
-std::set<const char*> Vulkan::checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device) {
+std::set<std::string> Vulkan::checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device) {
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
@@ -132,7 +132,7 @@ std::set<const char*> Vulkan::checkDeviceOptionalExtensionSupport(const VkPhysic
 
     const auto& optionalDeviceExtensions = getOptionalDeviceExtensions();
     std::set<std::string> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
-    std::set<const char*> supportedOptionalExtensions;
+    std::set<std::string> supportedOptionalExtensions;
 
     for (const auto& extension : availableExtensions) {
         if (optionalExtensions.contains(extension.extensionName)) {
@@ -248,7 +248,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
     // Gather device extensions.
 
-    std::vector<const char*> deviceExtensions;
+    std::vector<std::string> deviceExtensions;
 
     {
         const auto& requiredExtensions = getRequiredDeviceExtensions();
@@ -341,8 +341,14 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.queueCreateInfoCount = static_cast<U32>(queueCreateInfos.size());
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
         createInfo.pEnabledFeatures = &deviceFeatures;
-        createInfo.enabledExtensionCount = static_cast<U32>(deviceExtensions.size());
-        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+        std::vector<const char*> vulkanDeviceExtensions(deviceExtensions.size());
+
+        std::transform(deviceExtensions.begin(), deviceExtensions.end(), vulkanDeviceExtensions.begin(),
+                       [](const std::string& str) { return str.c_str(); });
+
+        createInfo.enabledExtensionCount = static_cast<U32>(vulkanDeviceExtensions.size());
+        createInfo.ppEnabledExtensionNames = vulkanDeviceExtensions.data();
 
         const auto validationLayers = getRequiredValidationLayers();
         if (config.validationEnabled) {

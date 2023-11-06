@@ -112,7 +112,7 @@ class Vulkan {
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;
-    std::set<const char*> availableOptionalDeviceCapabilities;
+    std::set<std::string> availableOptionalDeviceCapabilities;
 
     struct {
         std::string deviceName;
@@ -129,11 +129,11 @@ class Vulkan {
         
     bool checkValidationLayerSupport();
     std::vector<const char*> getRequiredInstanceExtensions();
-    std::vector<const char*> getRequiredDeviceExtensions();
-    std::vector<const char*> getOptionalDeviceExtensions();
     std::vector<const char*> getRequiredValidationLayers();
+    std::vector<std::string> getRequiredDeviceExtensions();
+    std::vector<std::string> getOptionalDeviceExtensions();
     bool checkDeviceExtensionSupport(const VkPhysicalDevice& device);
-    std::set<const char*> checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device);
+    std::set<std::string> checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device);
     bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
 
