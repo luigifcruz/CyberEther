@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <optional>
 
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"
@@ -78,6 +79,7 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     std::condition_variable endpointFrameSubmissionCondition;
     std::thread endpointFrameSubmissionThread;
     bool endpointFrameSubmissionRunning;
+    std::optional<Result> endpointFrameSubmissionResult;
 
     void endpointFrameSubmissionLoop();
 };

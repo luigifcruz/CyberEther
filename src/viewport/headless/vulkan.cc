@@ -373,6 +373,10 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
 
     _currentDrawableIndex = (_currentDrawableIndex + 1) % 2;
 
+    if (endpointFrameSubmissionResult.has_value()) {
+        return endpointFrameSubmissionResult.value();
+    }
+
     return Result::SUCCESS;
 }
 
@@ -398,8 +402,10 @@ void Implementation::endpointFrameSubmissionLoop() {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
         vkWaitForFences(device, 1, &swapchainFences[fenceIndex], true, UINT64_MAX);
 
-        // TODO: Add check.
-        endpoint.pushNewFrame(swapchainMemoryMapped[fenceIndex]);
+        const auto& result = endpoint.pushNewFrame(swapchainMemoryMapped[fenceIndex]);
+        if (result != Result::SUCCESS) {
+            endpointFrameSubmissionResult = result;
+        }
 
         swapchainEvents[fenceIndex].clear();
         swapchainEvents[fenceIndex].notify_one();
