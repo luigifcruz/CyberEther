@@ -666,8 +666,8 @@ I32 Remote<D, T>::getSocketBufferSize() const {
     }
 
     if (defaultSocketSize < recommendedBufferSize) {
-        JST_INFO("Increasing socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
         bufferSize = recommendedBufferSize;
+        JST_INFO("Increasing socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
     }
 
     // Get maximum socket buffer size (rmem_max).
@@ -683,9 +683,9 @@ I32 Remote<D, T>::getSocketBufferSize() const {
     }
 
     if (maxSocketSize < bufferSize) {
+        bufferSize = maxSocketSize;
         JST_WARN("Can't increase socket buffer size to {:.2f} MB. Maximum system socket buffer size is {:.2f} MB.", 
                  static_cast<F32>(bufferSize)/(1024*1024), static_cast<F32>(maxSocketSize)/(1024*1024));
-        bufferSize = maxSocketSize;
     }
 #endif
 
