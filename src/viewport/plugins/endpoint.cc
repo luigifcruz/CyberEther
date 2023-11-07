@@ -631,7 +631,7 @@ Result Endpoint::startGstreamerEndpoint() {
     elements["caps"] = gst_element_factory_make("capsfilter", "caps");
     elementOrder.push_back("caps");
 
-    if (_encodingStrategy == Strategy::Software) {
+    if (_encodingStrategy == Strategy::Software || _encodingStrategy == Strategy::HardwareV4L2) {
         elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
         elementOrder.push_back("rawparser");
 
@@ -713,52 +713,11 @@ Result Endpoint::startGstreamerEndpoint() {
 
     // Configure elements.
 
-    if (type == Endpoint::Type::Socket) {
-        if (config.codec == Render::VideoCodec::H264) {
-            if (_encodingStrategy == Strategy::HardwareNVENC) {
-                g_object_set(elements["encoder"], "zerolatency", true, nullptr);
-                g_object_set(elements["encoder"], "preset", 5, nullptr);
-            }
-
-            if (_encodingStrategy == Strategy::HardwareV4L2) {
-                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                                      "level", G_TYPE_STRING, "5",
-                                                      "profile", G_TYPE_STRING, "main",
-                                                      nullptr);
-                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
-                gst_caps_unref(hwcaps);
-            }
-
-            if (_encodingStrategy == Strategy::Software) {
-                g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
-                g_object_set(elements["encoder"], "tune", 4, nullptr);
-                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
-            }
-        }
-
-        if (config.codec == Render::VideoCodec::AV1) {
-            g_object_set(elements["encoder"], "low-latency", true, nullptr);
-            g_object_set(elements["encoder"], "speed-preset", 10, nullptr);
-            g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
-        }
-
-        if (config.codec == Render::VideoCodec::VP8 ||
-            config.codec == Render::VideoCodec::VP9) {
-            g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
-        }
-
-        g_object_set(elements["muxer"], "config-interval", 1, nullptr);
-    }
-    
     g_object_set(elements["source"], "block", true, nullptr);
     g_object_set(elements["source"], "format", 3, nullptr);
     g_object_set(elements["source"], "leaky-type", 2, nullptr);
     g_object_set(elements["source"], "is-live", true, nullptr);
     g_object_set(elements["source"], "max-bytes", 2*config.size.width*config.size.height*4, nullptr);
-
-    if (_encodingStrategy == Strategy::Software) {
-        g_object_set(elements["rawparser"], "use-sink-caps", 1, nullptr);
-    }
 
     GstCaps* caps = gst_caps_new_simple("video/x-raw",
                                         "format", G_TYPE_STRING, "BGRA",
@@ -776,7 +735,46 @@ Result Endpoint::startGstreamerEndpoint() {
     g_object_set(elements["caps"], "caps", caps, nullptr);
     gst_caps_unref(caps);
 
+    if (_encodingStrategy == Strategy::Software || _encodingStrategy == Strategy::HardwareV4L2) {
+        g_object_set(elements["rawparser"], "use-sink-caps", 1, nullptr);
+    }
+
+    if (config.codec == Render::VideoCodec::H264) {
+        if (_encodingStrategy == Strategy::HardwareNVENC) {
+            g_object_set(elements["encoder"], "zerolatency", true, nullptr);
+            g_object_set(elements["encoder"], "preset", 5, nullptr);
+        }
+
+        if (_encodingStrategy == Strategy::HardwareV4L2) {
+            GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
+                                                  "level", G_TYPE_STRING, "5",
+                                                  "profile", G_TYPE_STRING, "main",
+                                                  nullptr);
+            g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
+            gst_caps_unref(hwcaps);
+        }
+
+        if (_encodingStrategy == Strategy::Software) {
+            g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
+            g_object_set(elements["encoder"], "tune", 4, nullptr);
+            g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+        }
+    }
+
+    if (config.codec == Render::VideoCodec::AV1) {
+        g_object_set(elements["encoder"], "low-latency", true, nullptr);
+        g_object_set(elements["encoder"], "speed-preset", 10, nullptr);
+        g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
+    }
+
+    if (config.codec == Render::VideoCodec::VP8 ||
+        config.codec == Render::VideoCodec::VP9) {
+        g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
+    }
+
     if (type == Endpoint::Type::Socket) {
+        g_object_set(elements["muxer"], "config-interval", 1, nullptr);
+
         g_object_set(elements["sink"], "sync", false, nullptr);
         g_object_set(elements["sink"], "buffer-size", Backend::GetSocketBufferSize(), nullptr);
         g_object_set(elements["sink"], "host", socketAddress.c_str(), "port", socketPort, nullptr);
