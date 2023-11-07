@@ -21,7 +21,9 @@ std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
 
 #if defined(JST_OS_LINUX)
         extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-        extensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+        if (Backend::WindowMightBeWayland()) {
+            extensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+        }
 #endif
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
         extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
