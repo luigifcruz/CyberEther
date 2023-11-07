@@ -857,14 +857,14 @@ Result Endpoint::destroyFileEndpoint() {
     return Result::SUCCESS;
 }
 
-#endif
-
 void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
     auto* that = reinterpret_cast<Endpoint*>(user_data);
     std::unique_lock<std::mutex> lock(that->bufferMutex);
     that->bufferProcessed = true;
     that->bufferCond.notify_one();
 }
+
+#endif
 
 Result Endpoint::pushNewFrame(const void* data) {
     if (type == Endpoint::Type::Pipe) {
