@@ -6,6 +6,8 @@
 #include <vector>
 #include <thread>
 #include <functional>
+#include <cstdlib>
+#include <string>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
@@ -288,6 +290,30 @@ inline Result TransitionImageLayout(VkCommandBuffer& commandBuffer,
     );
 
     return Result::SUCCESS;
+}
+
+inline bool WindowMightBeWayland() {
+    const char* xdgSessionType = std::getenv("XDG_SESSION_TYPE");
+    if (xdgSessionType != nullptr) {
+        std::string sessionTypeStr(xdgSessionType);
+        if (sessionTypeStr == "x11") {
+            return false;
+        } else if (sessionTypeStr == "wayland") {
+            return true;
+        }
+    }
+
+    const char* displayEnv = std::getenv("DISPLAY");
+    if (displayEnv != nullptr) {
+        return false;
+    }
+
+    const char* waylandDisplayEnv = std::getenv("WAYLAND_DISPLAY");
+    if (waylandDisplayEnv != nullptr) {
+        return true;
+    }
+
+    return true;
 }
 
 }  // namespace Jetstream::Backend

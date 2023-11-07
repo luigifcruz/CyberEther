@@ -174,8 +174,6 @@ class Remote : public Module, public Present {
 
     static GstFlowReturn OnSampleCallback(GstElement* sink, gpointer data);
 
-    I32 getSocketBufferSize() const;
-
     JST_DEFINE_IO();
 };
 

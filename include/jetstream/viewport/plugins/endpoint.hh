@@ -36,8 +36,8 @@ class Endpoint {
     enum class Strategy {
         None,
         Software,
-        HardwareNvidia,
-        HardwareRpi
+        HardwareNVENC,
+        HardwareV4L2
     };
 
     std::string StrategyToString(const Strategy& strategy) {
@@ -46,10 +46,10 @@ class Endpoint {
                 return "None";
             case Strategy::Software:
                 return "Software";
-            case Strategy::HardwareNvidia:
+            case Strategy::HardwareNVENC:
                 return "Hardware NVIDIA (NVENC)";
-            case Strategy::HardwareRpi:
-                return "Hardware Raspberry Pi";
+            case Strategy::HardwareV4L2:
+                return "Hardware Linux (V4L2)";
             default:
                 return "Unknown";
         }

@@ -52,6 +52,12 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
+        if (arg == "--no-hw-acceleration") {
+            viewportConfig.hardwareAcceleration = false;
+
+            continue;
+        }
+
         if (arg == "--framerate") {
             if (i + 1 < argc) {
                 viewportConfig.framerate = std::stoul(argv[++i]);
@@ -111,11 +117,12 @@ int main(int argc, char* argv[]) {
             std::cout << "  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`" << std::endl;
             std::cout << "  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`" << std::endl;
             std::cout << "  --scale [scale]         Set the scale of the render window. Default: `1.0`" << std::endl;
+            std::cout << "  --no-hw-acceleration    Disable hardware acceleration. Enabled otherwise." << std::endl;
             std::cout << "Other Options:" << std::endl;
             std::cout << "  --staging-buffer [size] Set the staging buffer size (MB). Default: `32`" << std::endl;
             std::cout << "  --device-id [id]        Set the physical device ID. Default: `0`" << std::endl;
-            std::cout << "  --no-validation         Disable Vulkan validation layers." << std::endl;
-            std::cout << "  --no-vsync              Disable vsync." << std::endl;
+            std::cout << "  --no-validation         Disable Vulkan validation layers. Enabled otherwise." << std::endl;
+            std::cout << "  --no-vsync              Disable vsync. Enabled otherwise." << std::endl;
             std::cout << "Other:" << std::endl;
             std::cout << "  --help, -h              Print this help message." << std::endl;
             std::cout << "  --version, -v           Print the version." << std::endl;
