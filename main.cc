@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--no-vsync") {
-            viewportConfig.vsync = true;
+            viewportConfig.vsync = false;
 
             continue;
         }

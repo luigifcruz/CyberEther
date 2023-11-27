@@ -37,6 +37,10 @@ Result Implementation::create() {
 
     // Initialize and configure GLFW.
 
+    if (Backend::WindowMightBeWayland()) {
+        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
+    }
+
     if (!glfwInit()) {
         JST_ERROR("[VULKAN] Failed to initialize GLFW.");
         return Result::ERROR;
@@ -292,13 +296,15 @@ VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkS
 VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
     if (config.vsync) {
         for (const auto &availablePresentMode : availablePresentModes) {
-            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            // HACK: Mailbox is not currenlt supported on Wayland.
+            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR &&!Backend::WindowMightBeWayland()) {
                 JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
                 return availablePresentMode;
             }
         }
+        return VK_PRESENT_MODE_FIFO_KHR;
     }
-    return VK_PRESENT_MODE_FIFO_KHR;
+    return VK_PRESENT_MODE_IMMEDIATE_KHR;
 }
 
 VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
