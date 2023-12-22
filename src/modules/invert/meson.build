@@ -5,4 +5,7 @@ backend_lst = []
 
 subdir('cpu')
 
-sum_lst += {'Invert': backend_lst}
+if backend_lst.length() > 0
+    cfg_lst.set('JETSTREAM_MODULE_INVERT_AVAILABLE', true)
+    sum_lst += {'Invert': backend_lst}
+endif

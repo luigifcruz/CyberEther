@@ -26,9 +26,7 @@ class Draw {
         std::shared_ptr<Vertex> buffer;
     };
 
-    explicit Draw(const Config& config) : config(config) {
-        JST_DEBUG("Draw initialized.");
-    }
+    explicit Draw(const Config& config) : config(config) {}
     virtual ~Draw() = default;
 
     template<Device D> 

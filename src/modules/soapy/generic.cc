@@ -16,18 +16,11 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Soapy<D, T>::create() {
     JST_DEBUG("Initializing Soapy module.");
+    JST_INIT_IO();
 
-    streaming = true;
+    streaming = false;
     deviceName = "None";
     deviceHardwareKey = "None";
-
-    // Initialize output.
-    JST_INIT(
-        JST_INIT_OUTPUT("buffer", output.buffer, config.outputShape);
-    );
-
-    // Initialize circular buffer.
-    buffer.resize(output.buffer.size() * config.bufferMultiplier);
 
     // Convert requested device and stream strings into arguments.
 
@@ -58,17 +51,14 @@ Result Soapy<D, T>::create() {
 #endif
     } catch(const std::exception& e) {
         JST_ERROR("Failed to open device. Reason: {}", e.what());
-        JST_VOID_OUTPUT(output.buffer);
         return Result::ERROR;
     } catch(...) {
         JST_ERROR("Failed to open device.");
-        JST_VOID_OUTPUT(output.buffer);
         return Result::ERROR;
     }
 
     if (soapyDevice == nullptr) {
         JST_ERROR("Can't open SoapySDR device.");
-        JST_VOID_OUTPUT(output.buffer);
         return Result::ERROR;
     }
 
@@ -80,15 +70,13 @@ Result Soapy<D, T>::create() {
     // Check if requested configuration is supported.
 
     if (!CheckValidRange(sampleRateRanges, config.sampleRate)) {
-        JST_ERROR("Sample rate requested ({}) is not supported by the device.", config.sampleRate);
-        JST_VOID_OUTPUT(output.buffer);
+        JST_ERROR("Sample rate requested ({:.2f} MHz) is not supported by the device.", config.sampleRate / JST_MHZ);
         SoapySDR::Device::unmake(soapyDevice);
         return Result::ERROR;
     }
 
     if (!CheckValidRange(frequencyRanges, config.frequency)) {
-        JST_ERROR("Frequency requested ({}) is not supported by the device.", config.frequency);
-        JST_VOID_OUTPUT(output.buffer);
+        JST_ERROR("Frequency requested ({:.2f} MHz) is not supported by the device.", config.frequency / JST_MHZ);
         SoapySDR::Device::unmake(soapyDevice);
         return Result::ERROR;
     }
@@ -102,7 +90,6 @@ Result Soapy<D, T>::create() {
     soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
     if (soapyStream == nullptr) {
         JST_ERROR("Failed to setup SoapySDR stream.");
-        JST_VOID_OUTPUT(output.buffer);
         SoapySDR::Device::unmake(soapyDevice);
         return Result::ERROR;
     }
@@ -111,7 +98,20 @@ Result Soapy<D, T>::create() {
     deviceName = soapyDevice->getDriverKey();
     deviceHardwareKey = soapyDevice->getHardwareKey();
 
+    // Calculate shape.
+
+    std::vector<U64> outputShape = { config.numberOfBatches, config.numberOfTimeSamples };
+
+    // Allocate output.
+
+    output.buffer = Tensor<D, T>(outputShape);
+
+    // Allocate circular buffer.
+
+    buffer.resize(output.buffer.size() * config.bufferMultiplier);
+
     // Initialize thread for ingest.
+
     producer = std::thread([&]{
         try {
             soapyThreadLoop();
@@ -145,7 +145,7 @@ void Soapy<D, T>::soapyThreadLoop() {
     streaming = true;
     while (streaming) {
         int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
-        if (ret > 0) {
+        if (ret > 0 && streaming) {
             buffer.put(tmp, ret);
         }
     }
@@ -153,31 +153,37 @@ void Soapy<D, T>::soapyThreadLoop() {
     soapyDevice->deactivateStream(soapyStream, 0, 0);
     soapyDevice->closeStream(soapyStream);
 
+#ifdef JETSTREAM_STATIC
+    delete soapyDevice;
+#else
     SoapySDR::Device::unmake(soapyDevice);
+#endif
 
     JST_TRACE("SDR Thread Safed");
 }
 
 template<Device D, typename T>
-void Soapy<D, T>::summary() const {
-    JST_INFO("  Device String:      {}", config.deviceString);
-    JST_INFO("  Stream String:      {}", config.streamString);
-    JST_INFO("  Frequency:          {:.2f} MHz", config.frequency / (1000*1000));
-    JST_INFO("  Sample Rate:        {:.2f} MHz", config.sampleRate / (1000*1000));
-    JST_INFO("  Output Shape:       {}", config.outputShape);
+void Soapy<D, T>::info() const {
+    JST_INFO("  Device String:          {}", config.deviceString);
+    JST_INFO("  Stream String:          {}", config.streamString);
+    JST_INFO("  Frequency:              {:.2f} MHz", config.frequency / JST_MHZ);
+    JST_INFO("  Sample Rate:            {:.2f} MHz", config.sampleRate / JST_MHZ);
+    JST_INFO("  Automatic Gain:         {}", config.automaticGain ? "YES" : "NO");
+    JST_INFO("  Number of Batches:      {}", config.numberOfBatches);
+    JST_INFO("  Number of Time Samples: {}", config.numberOfTimeSamples);
 }
 
 template<Device D, typename T>
 Result Soapy<D, T>::setTunerFrequency(F32& frequency) {
     if (!CheckValidRange(frequencyRanges, frequency)) {
-        JST_WARN("Frequency requested ({:.2f} MHz) is not supported by the device.", frequency / (1000*1000));
+        JST_WARN("Frequency requested ({:.2f} MHz) is not supported by the device.", frequency / JST_MHZ);
         frequency = config.frequency;
         return Result::WARNING;
     }
 
     config.frequency = frequency;
 
-    if (!complete()) {
+    if (!streaming) {
         return Result::RELOAD;
     }
 
@@ -189,14 +195,14 @@ Result Soapy<D, T>::setTunerFrequency(F32& frequency) {
 template<Device D, typename T>
 Result Soapy<D, T>::setSampleRate(F32& sampleRate) {
     if (!CheckValidRange(sampleRateRanges, sampleRate)) {
-        JST_WARN("Sample rate requested ({:.2f} MHz) is not supported by the device.", sampleRate / (1000*1000));
+        JST_WARN("Sample rate requested ({:.2f} MHz) is not supported by the device.", sampleRate / JST_MHZ);
         sampleRate = config.sampleRate;
         return Result::WARNING;
     }
 
     config.sampleRate = sampleRate;
 
-    if (!complete()) {
+    if (!streaming) {
         return Result::RELOAD;
     }
 
@@ -209,7 +215,7 @@ template<Device D, typename T>
 Result Soapy<D, T>::setAutomaticGain(bool& automaticGain) {
     config.automaticGain = automaticGain;
 
-    if (!complete()) {
+    if (!streaming) {
         return Result::RELOAD;
     }
 
@@ -270,6 +276,6 @@ bool Soapy<D, T>::CheckValidRange(const std::vector<SoapySDR::Range>& ranges, co
     return isSampleRateSupported;
 }
 
-template class Soapy<Device::CPU, CF32>;
+JST_SOAPY_CPU(JST_INSTANTIATION);
 
 }  // namespace Jetstream

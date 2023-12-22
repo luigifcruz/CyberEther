@@ -31,10 +31,11 @@ class Buffer {
         bool enableZeroCopy = false;
     };
 
-    explicit Buffer(const Config& config) : config(config) {
-        JST_DEBUG("Buffer initialized.");
-    }
+    explicit Buffer(const Config& config) : config(config) {}
     virtual ~Buffer() = default;
+
+    virtual Result create() = 0;
+    virtual Result destroy() = 0;
 
     constexpr U64 size() const {
         return config.size;

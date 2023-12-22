@@ -46,13 +46,13 @@ Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &assets.stateDecay));
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
 
-    decayFactor = pow(0.999, input.buffer.shape()[0]);
+    decayFactor = pow(0.999, numberOfBatches);
 
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->width = input.buffer.shape()[1];
+    constants->width = numberOfElements;
     constants->height = config.height; 
     constants->decayFactor = decayFactor;
-    constants->batchSize = input.buffer.shape()[0];
+    constants->batchSize = numberOfBatches;
 
     return Result::SUCCESS;
 }
@@ -71,7 +71,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.shape()[1], config.height, 1);
+        auto threadsPerGrid = MTL::Size(numberOfElements, config.height, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -87,7 +87,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
         auto w = assets.stateDecay->threadExecutionWidth();
         auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(input.buffer.shape()[1], input.buffer.shape()[0], 1);
+        auto threadsPerGrid = MTL::Size(numberOfElements, numberOfBatches, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -96,6 +96,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template class Spectrogram<Device::Metal, F32>;
+JST_SPECTROGRAM_METAL(JST_INSTANTIATION);
 
 }  // namespace Jetstream

@@ -32,11 +32,11 @@ class Tensor<Device::CPU, T> : public TensorBase<Device::CPU, T> {
     }
 
     const T& operator[](const std::vector<U64>& idx) const noexcept {
-        return data()[this->shapeToOffset(idx)];
+        return data()[this->shape_to_offset(idx)];
     }
 
     T& operator[](const std::vector<U64>& idx) noexcept {
-        return data()[this->shapeToOffset(idx)];
+        return data()[this->shape_to_offset(idx)];
     }
 
     auto begin() {

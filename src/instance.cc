@@ -3,86 +3,6 @@
 
 namespace Jetstream {
 
-Result Instance::openFlowgraphFile(const std::string& path) {
-    if (_parser->haveFlowgraph()) {
-        JST_ERROR("[INSTANCE] Flowgraph already loaded.");
-        return Result::ERROR;
-    }
-
-    if (path.empty()) {
-        JST_ERROR("[INSTANCE] Configuration path is empty.");
-        return Result::ERROR;
-    }
-    
-    JST_DEBUG("[INSTANCE] Importing flowgraph from file ({}).", path);
-
-    JST_CHECK(_parser->openFlowgraphFile(path));
-    JST_CHECK(_parser->printFlowgraph());
-    JST_CHECK(_parser->importFlowgraph(*this));
-
-    return Result::SUCCESS;
-}
-
-Result Instance::openFlowgraphBlob(const char* blob) {
-    if (_parser->haveFlowgraph()) {
-        JST_ERROR("[INSTANCE] Flowgraph already loaded.");
-        return Result::ERROR;
-    }
-
-    JST_DEBUG("[INSTANCE] Importing flowgraph from blob.");
-
-    JST_CHECK(_parser->openFlowgraphBlob(blob));
-    JST_CHECK(_parser->printFlowgraph());
-    JST_CHECK(_parser->importFlowgraph(*this));
-
-    return Result::SUCCESS;
-}
-
-Result Instance::saveFlowgraph(const std::string& path) {
-    if (!_parser->haveFlowgraph()) {
-        JST_ERROR("[INSTANCE] Flowgraph not loaded.");
-        return Result::ERROR;
-    }
-
-    JST_CHECK(_parser->exportFlowgraph(*this));
-    JST_CHECK(_parser->saveFlowgraph(path));
-
-    return Result::SUCCESS;
-}
-
-Result Instance::resetFlowgraph() {
-    if (!_parser->haveFlowgraph()) {
-        JST_ERROR("[INSTANCE] Flowgraph not loaded.");
-        return Result::ERROR;
-    }
-
-    JST_CHECK(clearModules());
-
-    JST_CHECK(_parser->exportFlowgraph(*this));
-
-    return Result::SUCCESS;
-}
-
-Result Instance::closeFlowgraph() {
-    JST_CHECK(clearModules());
-
-    JST_CHECK(_parser->closeFlowgraph());
-
-    return Result::SUCCESS;
-}
-
-Result Instance::newFlowgraph() {
-    if (_parser->haveFlowgraph()) {
-        JST_ERROR("[INSTANCE] Flowgraph already loaded.");
-        return Result::ERROR;
-    }
-
-    JST_CHECK(closeFlowgraph());
-    JST_CHECK(openFlowgraphBlob("\n"));
-
-    return Result::SUCCESS;
-}
-
 Result Instance::buildDefaultInterface(const Device& preferredDevice,
                                        const Backend::Config& backendConfig,
                                        const Viewport::Config& viewportConfig,
@@ -156,30 +76,28 @@ Result Instance::buildDefaultInterface(const Device& preferredDevice,
     }
 }
 
-Result Instance::reloadModule(const Locale locale) {
-    JST_DEBUG("[INSTANCE] Reloading module '{}'.", locale);
+Result Instance::reloadBlock(Locale locale) {
+    JST_DEBUG("[INSTANCE] Reloading block '{}'.", locale.block());
 
-    if (!blockStates.contains(locale)) {
-        JST_ERROR("[INSTANCE] Module '{}' doesn't exist.", locale);
+    if (!_flowgraph.nodes().contains(locale.block())) {
+        JST_ERROR("[INSTANCE] Block '{}' doesn't exist.", locale.block());
         return Result::ERROR;
     }
 
-    JST_CHECK(moduleUpdater(locale, [](const Locale&, Parser::ModuleRecord&){
+    JST_CHECK(blockUpdater(locale.block(), [](std::shared_ptr<Flowgraph::Node>&){
         return Result::SUCCESS;
     }));
 
     return Result::SUCCESS;
 }
 
-Result Instance::removeModule(const std::string id, const std::string bundleId) {
-    const auto& locale = (!id.empty() && !bundleId.empty()) ? Locale{bundleId, id} : Locale{id};
-
-    JST_DEBUG("[INSTANCE] Trying to remove module '{}'.", locale);
+Result Instance::removeBlock(Locale locale) {
+    JST_DEBUG("[INSTANCE] Trying to remove block '{}'.", locale);
 
     // Verify input parameters.
 
-    if (!blockStates.contains(locale)) {
-        JST_ERROR("[INSTANCE] Module '{}' doesn't exist.", locale);
+    if (!_flowgraph.nodes().contains(locale.block())) {
+        JST_ERROR("[INSTANCE] Block '{}' doesn't exist.", locale);
         return Result::ERROR;
     }
 
@@ -187,37 +105,37 @@ Result Instance::removeModule(const std::string id, const std::string bundleId) 
 
     std::vector<std::pair<Locale, Locale>> unlinkList;
     // TODO: This is exponential garbage. Implement cached system.
-    for (const auto& [outputPinId, outputRecord] : blockStates.at(locale)->record.outputMap) {
-        for (const auto& [inputLocale, inputState] : blockStates) {
-            for (const auto& [inputPinId, inputRecord] : inputState->record.inputMap) {
+    for (const auto& [outputPinId, outputRecord] : _flowgraph.nodes().at(locale)->outputMap) {
+        for (const auto& [inputLocale, inputState] : _flowgraph.nodes()) {
+            for (const auto& [inputPinId, inputRecord] : inputState->inputMap) {
                 if (inputRecord.locale == outputRecord.locale) {
-                    unlinkList.push_back({{inputLocale.id, inputLocale.subId, inputPinId}, outputRecord.locale});
+                    unlinkList.push_back({{inputLocale.blockId, inputLocale.moduleId, inputPinId}, outputRecord.locale});
                 }
             }
         }
     }
 
     for (const auto& [inputLocale, outputLocale] : unlinkList) {
-        JST_CHECK(unlinkModules(inputLocale, outputLocale));
+        JST_CHECK(unlinkBlocks(inputLocale.block(), outputLocale.block()));
     }
 
     // Delete module.
-    JST_CHECK(eraseModule(locale));
+    JST_CHECK(eraseBlock(locale.block()));
 
     return Result::SUCCESS;
 }
 
-Result Instance::unlinkModules(const Locale inputLocale, const Locale outputLocale) {
+Result Instance::unlinkBlocks(Locale inputLocale, Locale outputLocale) {
     JST_DEBUG("[INSTANCE] Unlinking '{}' -> '{}'.", outputLocale, inputLocale);
 
     // Verify input parameters.
 
-    if (!blockStates.contains(inputLocale.idOnly())) {
+    if (!_flowgraph.nodes().contains(inputLocale.block())) {
         JST_ERROR("[INSTANCE] Link input block '{}' doesn't exist.", inputLocale);
         return Result::ERROR;
     }
 
-    if (!blockStates.contains(outputLocale.idOnly())) {
+    if (!_flowgraph.nodes().contains(outputLocale.block())) {
         JST_ERROR("[INSTANCE] Link output block '{}' doesn't exist.", outputLocale);
         return Result::ERROR;
     }
@@ -227,17 +145,17 @@ Result Instance::unlinkModules(const Locale inputLocale, const Locale outputLoca
         return Result::ERROR;
     }
 
-    const auto& rawInputLocale = blockStates.at(inputLocale.idOnly())->record.inputMap.at(inputLocale.pinId).locale;
-    if (rawInputLocale.idOnly() != outputLocale.idOnly()) {
+    const auto& rawInputLocale = _flowgraph.nodes().at(inputLocale.block())->inputMap.at(inputLocale.pinId).locale;
+    if (rawInputLocale.block() != outputLocale.block()) {
         JST_ERROR("[INSTANCE] Link '{}' -> '{}' doesn't exist.", outputLocale, inputLocale);
         return Result::ERROR;
     }
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(inputLocale, [&](const Locale&, Parser::ModuleRecord& record) {
+    JST_CHECK(blockUpdater(inputLocale.block(), [&](std::shared_ptr<Flowgraph::Node>& node) {
         // Delete link from input block inputs.
-        record.inputMap.erase(inputLocale.pinId);
+        node->inputMap.erase(inputLocale.pinId);
 
         return Result::SUCCESS;
     }));
@@ -245,17 +163,17 @@ Result Instance::unlinkModules(const Locale inputLocale, const Locale outputLoca
     return Result::SUCCESS;
 }
 
-Result Instance::linkModules(const Locale inputLocale, const Locale outputLocale) {
+Result Instance::linkBlocks(Locale inputLocale, Locale outputLocale) {
     JST_DEBUG("[INSTANCE] Linking '{}' -> '{}'.", outputLocale, inputLocale);
 
     // Verify input parameters.
 
-    if (!blockStates.contains(inputLocale.idOnly())) {
+    if (!_flowgraph.nodes().contains(inputLocale.block())) {
         JST_ERROR("[INSTANCE] Link input block '{}' doesn't exist.", inputLocale);
         return Result::ERROR;
     }
 
-    if (!blockStates.contains(outputLocale.idOnly())) {
+    if (!_flowgraph.nodes().contains(outputLocale.block())) {
         JST_ERROR("[INSTANCE] Link output block '{}' doesn't exist.", outputLocale);
         return Result::ERROR;
     }
@@ -265,13 +183,13 @@ Result Instance::linkModules(const Locale inputLocale, const Locale outputLocale
         return Result::ERROR;
     }
 
-    const auto& rawInputLocale = blockStates.at(inputLocale.idOnly())->record.inputMap.at(inputLocale.pinId).locale;
-    if (rawInputLocale.idOnly() == outputLocale.idOnly()) {
+    const auto& rawInputLocale = _flowgraph.nodes().at(inputLocale.block())->inputMap.at(inputLocale.pinId).locale;
+    if (rawInputLocale.block() == outputLocale.block()) {
         JST_ERROR("[INSTANCE] Link '{}' -> '{}' already exists.", outputLocale, inputLocale);
         return Result::ERROR;
     }
 
-    const auto& inputRecordMap = blockStates.at(inputLocale.idOnly())->record.inputMap;
+    const auto& inputRecordMap = _flowgraph.nodes().at(inputLocale.block())->inputMap;
     if (inputRecordMap.contains(inputLocale.pinId) && inputRecordMap.at(inputLocale.pinId).hash != 0) {
         JST_ERROR("[INSTANCE] Input '{}' is already linked with something else.", inputLocale);
         return Result::ERROR;
@@ -279,10 +197,10 @@ Result Instance::linkModules(const Locale inputLocale, const Locale outputLocale
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(inputLocale, [&](const Locale& locale, Parser::ModuleRecord& record) {
-        // Delete link from input block inputs.
-        auto& outputMap = blockStates.at(outputLocale.idOnly())->record.outputMap;
-        record.inputMap[locale.pinId] = outputMap.at(outputLocale.pinId);
+    JST_CHECK(blockUpdater(inputLocale.block(), [&](std::shared_ptr<Flowgraph::Node>& node) {
+        // Add link between input and output blocks.
+        const auto& outputMap = _flowgraph.nodes().at(outputLocale.block())->outputMap;
+        node->inputMap[inputLocale.pinId] = outputMap.at(outputLocale.pinId);
 
         return Result::SUCCESS;
     }));
@@ -290,21 +208,21 @@ Result Instance::linkModules(const Locale inputLocale, const Locale outputLocale
     return Result::SUCCESS;
 }
 
-Result Instance::changeModuleBackend(const Locale input, const Device device) {
+Result Instance::changeBlockBackend(Locale input, Device device) {
     JST_DEBUG("[INSTANCE] Changing module '{}' backend to '{}'.", input, device);
 
     // Verify input parameters.
 
-    if (!blockStates.contains(input.idOnly())) {
+    if (!_flowgraph.nodes().contains(input.block())) {
         JST_ERROR("[INSTANCE] Module '{}' doesn't exist.", input);
         return Result::ERROR;
     }
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(input, [&](const Locale&, Parser::ModuleRecord& record) {
+    JST_CHECK(blockUpdater(input.block(), [&](std::shared_ptr<Flowgraph::Node>& node) {
         // Change backend.
-        record.fingerprint.device = GetDeviceName(device);
+        node->fingerprint.device = GetDeviceName(device);
 
         return Result::SUCCESS;
     }));
@@ -312,29 +230,28 @@ Result Instance::changeModuleBackend(const Locale input, const Device device) {
     return Result::SUCCESS;
 }
 
-Result Instance::changeModuleDataType(const Locale input, const std::tuple<std::string, std::string, std::string> type) {
+Result Instance::changeBlockDataType(Locale input, std::tuple<std::string, std::string> type) {
     JST_DEBUG("[INSTANCE] Changing module '{}' data type to '{}'.", input, type);
 
     // Verify input parameters.
 
-    if (!blockStates.contains(input.idOnly())) {
+    if (!_flowgraph.nodes().contains(input.block())) {
         JST_ERROR("[INSTANCE] Module '{}' doesn't exist.", input);
         return Result::ERROR;
     }
 
     // Update module.
 
-    JST_CHECK(moduleUpdater(input, [&](const Locale&, Parser::ModuleRecord& record) {
+    JST_CHECK(blockUpdater(input.block(), [&](std::shared_ptr<Flowgraph::Node>& node) {
         // Change data type.
-        const auto& [dataType, inputDataType, outputDataType] = type;
-        record.fingerprint.dataType = dataType;
-        record.fingerprint.inputDataType = inputDataType;
-        record.fingerprint.outputDataType = outputDataType;
+        const auto& [inputDataType, outputDataType] = type;
+        node->fingerprint.inputDataType = inputDataType;
+        node->fingerprint.outputDataType = outputDataType;
 
         // Clean-up every state because they will most likely be incompatible.
-        record.inputMap.clear();
-        record.outputMap.clear();
-        record.configMap.clear();
+        node->inputMap.clear();
+        node->outputMap.clear();
+        node->configMap.clear();
 
         return Result::SUCCESS;
     }));
@@ -342,57 +259,79 @@ Result Instance::changeModuleDataType(const Locale input, const std::tuple<std::
     return Result::SUCCESS;
 }
 
-Result Instance::moduleUpdater(const Locale locale, const std::function<Result(const Locale&, Parser::ModuleRecord&)>& updater) {
+Result Instance::renameBlock(Locale input, const std::string& id) {
+    JST_DEBUG("[INSTANCE] Renaming block '{}' to '{}'.", input.blockId, id);
+
+    // Verify input parameters.
+
+    if (!_flowgraph.nodes().contains(input.block())) {
+        JST_ERROR("[INSTANCE] Block '{}' doesn't exist.", input);
+        return Result::ERROR;
+    }
+
+    // Update block.
+
+    JST_CHECK(blockUpdater(input.block(), [&](std::shared_ptr<Flowgraph::Node>& node) {
+        // Change ID.
+        node->id = id;
+
+        return Result::SUCCESS;
+    }));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::blockUpdater(Locale locale, 
+                              const std::function<Result(std::shared_ptr<Flowgraph::Node>&)>& updater) {
     // List all dependencies.
 
     std::vector<Locale> dependencyTree;
-    JST_CHECK(fetchDependencyTree(locale.idOnly(), dependencyTree));
+    JST_CHECK(fetchDependencyTree(locale.block(), dependencyTree));
 
-    // Copy and update dependency blocks states and then delete.
+    // Copy and update dependency blocks nodes and then delete.
 
-    std::vector<Parser::ModuleRecord> dependencyRecords;
+    std::vector<std::shared_ptr<Flowgraph::Node>> dependencyRecords;
     for (const auto& dependencyLocale : dependencyTree | std::ranges::views::reverse) {
-        // Skip if dependency is internal.
-        if (dependencyLocale.internal()) {
-            continue;
-        }
-
         // Fetch dependency record.
-        auto& record = blockStates.at(dependencyLocale)->record;
+        auto& record = _flowgraph.nodes().at(dependencyLocale);
 
         // Update dependency block records.
-        JST_CHECK(record.updateMaps());
+        JST_CHECK(record->updateMaps());
 
         // Copy dependency block records.
         dependencyRecords.push_back(record);
 
         // Delete dependency block.
-        JST_CHECK(eraseModule(dependencyLocale));
+        JST_CHECK(eraseBlock(dependencyLocale));
     }
 
     // Copy input block record.
-    auto record = blockStates.at(locale.idOnly())->record;
+    auto record = _flowgraph.nodes().at(locale.block());
 
     // Update input block records.
-    JST_CHECK(record.updateMaps());
+    JST_CHECK(record->updateMaps());
 
     // Delete input block.
-    JST_CHECK(eraseModule(locale.idOnly()));
+    JST_CHECK(eraseBlock(locale.block()));
 
     // Backup original record.
-    auto recordBackup = record;
+    Flowgraph::Node recordBackup = *record;
 
     // Call user defined record updater.
-    JST_CHECK(updater(locale, record));
+    JST_CHECK(updater(record));
 
     auto res = Result::SUCCESS;
 
     // Check if the module store has such a record fingerprint.
-    if (!Store::Modules().contains(record.fingerprint)) {
-        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: `{}`.", record.fingerprint);        
+    if (!Store::BlockConstructorList().contains(record->fingerprint)) {
+        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: '{}'.", record->fingerprint);        
         return Result::ERROR;
     } else {
-        res = Store::Modules().at(record.fingerprint)(*this, record);
+        res = Store::BlockConstructorList().at(record->fingerprint)(*this,
+                                                                    record->id,
+                                                                    record->configMap,
+                                                                    record->inputMap,
+                                                                    record->stateMap);
     }
 
     // Create new input block using saved records.
@@ -400,19 +339,36 @@ Result Instance::moduleUpdater(const Locale locale, const std::function<Result(c
 
     // If recreation fails, rewind the module state.
     if (res != Result::SUCCESS) {
-        JST_CHECK(Store::Modules().at(recordBackup.fingerprint)(*this, recordBackup));
+        JST_TRACE("[INSTANCE] Module recreation failed. Rewinding state.");
+        JST_CHECK(Store::BlockConstructorList().at(recordBackup.fingerprint)(*this,
+                                                                             recordBackup.id,
+                                                                             recordBackup.configMap,
+                                                                             recordBackup.inputMap,
+                                                                             recordBackup.stateMap));
     }
 
     // Create new dependency block using saved records.
-    for (auto& record : dependencyRecords | std::ranges::views::reverse) {
+    for (auto& dependencyRecord : dependencyRecords | std::ranges::views::reverse) {
         // Update input of dependency block record.
-        for (auto& [inputName, inputRecord] : record.inputMap) {
-            auto& outputRecord = blockStates.at(inputRecord.locale.idOnly())->record;
-            inputRecord = outputRecord.outputMap.at(inputRecord.locale.pinId);
+        for (auto& [inputName, inputRecord] : dependencyRecord->inputMap) {
+            auto inputLocale = inputRecord.locale;
+
+            // Update block ID if necessary.
+            if (inputLocale.blockId == recordBackup.id) {
+                JST_TRACE("[INSTANCE] Updating block ID of input '{}' to '{}'.", inputLocale.blockId, record->id)
+                inputLocale.blockId = record->id;
+            }
+
+            const auto& outputRecord = _flowgraph.nodes().at(inputLocale.block());
+            inputRecord = outputRecord->outputMap.at(inputLocale.pinId);
         }
 
         // Create new dependency block with updated inputs.
-        JST_CHECK(Store::Modules().at(record.fingerprint)(*this, record));
+        JST_CHECK(Store::BlockConstructorList().at(dependencyRecord->fingerprint)(*this,
+                                                                                  dependencyRecord->id,
+                                                                                  dependencyRecord->configMap,
+                                                                                  dependencyRecord->inputMap,
+                                                                                  dependencyRecord->stateMap));
     }
 
     JST_LOG_LAST_ERROR() = errorCodeBackup;
@@ -420,25 +376,17 @@ Result Instance::moduleUpdater(const Locale locale, const std::function<Result(c
     return res;
 }
 
-Result Instance::eraseModule(const Locale locale) {
+Result Instance::eraseModule(Locale locale) {
     // Verify input parameters.
-    if (!blockStates.contains(locale)) {
-        JST_ERROR("[INSTANCE] Module '{}' doesn't exist.", locale);
-        return Result::ERROR;
+    if (!_flowgraph.nodes().contains(locale)) {
+        return Result::SUCCESS;
     }
-
-    // Remove module from state.
-    auto state = blockStates.extract(locale).mapped();
 
     // Remove block from schedule.
-    if (state->interface->complete()) {
-        JST_CHECK(_scheduler.removeModule(locale));
-    }
+    JST_CHECK(_scheduler.removeModule(locale));
 
-    // Remove block from compositor.
-    if (!locale.internal()) {
-        JST_CHECK(_compositor.removeModule(locale));
-    }
+    // Remove module from state.
+    auto state = _flowgraph.nodes().extract(locale).mapped();
 
     // Destroy the present logic.
     if (state->present) {
@@ -446,16 +394,63 @@ Result Instance::eraseModule(const Locale locale) {
     }
 
     // Destroy the module or bundle.
-    if (state->module) {
-        JST_CHECK(state->module->destroy());
-    } else if (state->bundle) {
-        JST_CHECK(state->bundle->destroy());
+    JST_CHECK(state->module->destroy());
+
+    // Remove module from order.
+    _flowgraph.nodesOrder().erase(std::find(_flowgraph.nodesOrder().begin(), _flowgraph.nodesOrder().end(), locale));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::eraseBlock(Locale locale) {
+    // Verify input parameters.
+    if (!_flowgraph.nodes().contains(locale)) {
+        JST_ERROR("[INSTANCE] Block '{}' doesn't exist.", locale);
+        return Result::ERROR;
+    }
+
+    // Remove block from compositor.
+    JST_CHECK(_compositor.removeBlock(locale));
+
+    // Remove module from state.
+    auto state = _flowgraph.nodes().extract(locale).mapped();
+
+    // Destroy the module or bundle.
+    JST_CHECK(state->block->destroy());
+
+    // Remove block from order.
+    _flowgraph.nodesOrder().erase(std::find(_flowgraph.nodesOrder().begin(), _flowgraph.nodesOrder().end(), locale));
+
+    return Result::SUCCESS;
+}
+
+Result Instance::reset() {
+    JST_DEBUG("[INSTANCE] Reseting instance.");
+
+    // Destroying compositor and scheduler.
+
+    JST_CHECK(_compositor.destroy());
+    JST_CHECK(_scheduler.destroy());
+
+    // Destroying blocks.
+
+    std::vector<Locale> block_erase_list;
+
+    for (const auto& [locale, state] : _flowgraph.nodes()) {
+        if (state->block) {
+            block_erase_list.push_back(locale);
+        }
+    }
+
+    for (const auto& locale : block_erase_list) {
+        JST_TRACE("[INSTANCE] Resetting block '{}'.", locale);
+        JST_CHECK(eraseBlock(locale));
     }
 
     return Result::SUCCESS;
 }
 
-Result Instance::fetchDependencyTree(const Locale locale, std::vector<Locale>& storage) {
+Result Instance::fetchDependencyTree(Locale locale, std::vector<Locale>& storage) {
     std::stack<Locale> stack;
     std::unordered_set<Locale, Locale::Hasher> seenLocales;
 
@@ -466,12 +461,12 @@ Result Instance::fetchDependencyTree(const Locale locale, std::vector<Locale>& s
         Locale currentLocale = stack.top();
         stack.pop();
 
-        // TODO: This is an exponential garbage hack. Implement cached system.
-        for (const auto& [outputPinId, outputRecord] : blockStates.at(currentLocale)->record.outputMap) {
-            for (const auto& [inputLocale, inputState] : blockStates) {
-                for (const auto& [inputPinId, inputRecord] : inputState->record.inputMap) {
+        // TODO: Kill this shit with fire. This is an exponential hack. Implement cached system.
+        for (const auto& [outputPinId, outputRecord] : _flowgraph.nodes().at(currentLocale)->outputMap) {
+            for (const auto& [inputLocale, inputState] : _flowgraph.nodes()) {
+                for (const auto& [inputPinId, inputRecord] : inputState->inputMap) {
                     if (inputRecord.locale == outputRecord.locale) {
-                        Locale nextLocale = inputLocale.idOnly();
+                        Locale nextLocale = inputLocale.block();
                         if (seenLocales.find(nextLocale) == seenLocales.end()) {
                             storage.push_back(nextLocale);
                             stack.push(nextLocale);
@@ -486,41 +481,11 @@ Result Instance::fetchDependencyTree(const Locale locale, std::vector<Locale>& s
     return Result::SUCCESS;
 }
 
-Result Instance::clearModules() {
-    JST_DEBUG("[INSTANCE] Clearing modules from instance.");
-
-    // Destroying compositor and scheduler.
-    JST_CHECK(_compositor.destroy());
-    JST_CHECK(_scheduler.destroy());
-
-    // Destroy all present modules.
-    for (auto& [_, state] : blockStates) {
-        if (!state->present) {
-            continue;
-        }
-        JST_CHECK(state->present->destroyPresent());
-    }
-
-    // Destroy all modules.
-    for (auto& [_, state] : blockStates) {
-        // TODO: This ignores bundles. Is this right?
-        if (!state->module) {
-            continue;
-        }
-        JST_CHECK(state->module->destroy());
-    }
-
-    // Clear internal state memory.
-    blockStates.clear();
-
-    return Result::SUCCESS;
-}
-
 Result Instance::destroy() {
     JST_DEBUG("[INSTANCE] Destroying instance.");
 
     // Clear modules.
-    JST_CHECK(clearModules());
+    JST_CHECK(reset());
 
     // Destroy window and viewport.
 
@@ -531,8 +496,6 @@ Result Instance::destroy() {
     if (_viewport) {
         JST_CHECK(_viewport->destroy());
     }
-
-    _parser = std::make_shared<Parser>();
 
     return Result::SUCCESS;
 }

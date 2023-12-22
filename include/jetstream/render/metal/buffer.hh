@@ -11,15 +11,15 @@ class BufferImp<Device::Metal> : public Buffer {
  public:
     explicit BufferImp(const Config& config);
 
+    Result create();
+    Result destroy();
+
     using Render::Buffer::size;
 
     Result update();
     Result update(const U64& offset, const U64& size);
 
  protected:
-    Result create();
-    Result destroy();
-
     constexpr MTL::Buffer* getHandle() const {
         return buffer;
     }

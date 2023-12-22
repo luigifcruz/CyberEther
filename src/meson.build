@@ -2,6 +2,7 @@ src_lst += files([
    'instance.cc',
    'compositor.cc',
    'store.cc',
+   'parser.cc',
    'logger.cc',
 ])
 
@@ -11,4 +12,6 @@ subdir('viewport')
 subdir('render')
 subdir('modules')
 subdir('compute')
-subdir('parser')
+subdir('flowgraph')
+subdir('platform')
+subdir('tools')

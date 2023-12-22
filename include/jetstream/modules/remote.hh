@@ -19,6 +19,9 @@
 
 namespace Jetstream {
 
+#define JST_REMOTE_CPU(MACRO) \
+    MACRO(Remote, Device::CPU, void)
+
 template<Device D, typename T = void>
 class Remote : public Module, public Present {
  public:
@@ -28,10 +31,7 @@ class Remote : public Module, public Present {
         std::string endpoint = "tcp://0.0.0.0:5000";
         Size2D<U64> viewSize = {1280, 720};
 
-        JST_SERDES(
-            JST_SERDES_VAL("endpoint", endpoint);
-            JST_SERDES_VAL("viewSize", viewSize);
-        );
+        JST_SERDES(endpoint, viewSize);
     };
 
     constexpr const Config& getConfig() const {
@@ -41,7 +41,7 @@ class Remote : public Module, public Present {
     // Input
 
     struct Input {
-        JST_SERDES();
+        JST_SERDES_INPUT();
     };
 
     constexpr const Input& getInput() const {
@@ -51,7 +51,7 @@ class Remote : public Module, public Present {
     // Output
 
     struct Output {
-        JST_SERDES();
+        JST_SERDES_OUTPUT();
     };
 
     constexpr const Output& getOutput() const {
@@ -64,15 +64,7 @@ class Remote : public Module, public Present {
         return D;
     }
 
-    std::string_view name() const {
-        return "remote";
-    }
-
-    std::string_view prettyName() const {
-        return "Remote";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -176,6 +168,10 @@ class Remote : public Module, public Present {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE
+JST_REMOTE_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

@@ -74,6 +74,8 @@ inline I32 GetSocketBufferSize() {
     I32 bufferSize = 0;
     I32 recommendedBufferSize = 32*1024*1024;  // 32 MB
 
+    (void)recommendedBufferSize;
+
 #ifdef JST_OS_LINUX
     // Get default socket buffer size (rmem_default).
 
@@ -89,7 +91,7 @@ inline I32 GetSocketBufferSize() {
 
     if (defaultSocketSize < recommendedBufferSize) {
         bufferSize = recommendedBufferSize;
-        JST_INFO("Increasing socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
+        JST_INFO("Increasing socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize) / JST_MB);
     }
 
     // Get maximum socket buffer size (rmem_max).
@@ -107,16 +109,16 @@ inline I32 GetSocketBufferSize() {
     if (maxSocketSize < bufferSize) {
         bufferSize = maxSocketSize;
         JST_WARN("Can't increase socket buffer size to {:.2f} MB. Maximum system socket buffer size is {:.2f} MB.", 
-                 static_cast<F32>(bufferSize)/(1024*1024), static_cast<F32>(maxSocketSize)/(1024*1024));
+                 static_cast<F32>(bufferSize) / JST_MB, static_cast<F32>(maxSocketSize) / JST_MB);
     }
 #endif
 
 #ifdef JST_OS_MAC
     bufferSize = recommendedBufferSize;
-    JST_INFO("Setting socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
+    JST_INFO("Setting socket buffer size to {:.2f} MB.", static_cast<F32>(bufferSize) / JST_MB);
 #endif
 
-    JST_DEBUG("Socket buffer size: {:.2f} MB.", static_cast<F32>(bufferSize)/(1024*1024));
+    JST_DEBUG("Socket buffer size: {:.2f} MB.", static_cast<F32>(bufferSize) / JST_MB);
 
     return bufferSize;
 }

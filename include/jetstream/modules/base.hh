@@ -3,93 +3,104 @@
 
 #include "jetstream/types.hh"
 
-// 
-// Compute
-//
-
-#if defined(JETSTREAM_MODULE_FFT_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_FFT_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_FFT_AVAILABLE
 #include "jetstream/modules/fft.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_FILTER_CPU_AVAILABLE)
+#ifdef JETSTREAM_MODULE_FILTER_AVAILABLE
 #include "jetstream/modules/filter.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_WINDOW_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_WINDOW_AVAILABLE
 #include "jetstream/modules/window.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_MULTIPLY_AVAILABLE
 #include "jetstream/modules/multiply.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_AMPLITUDE_AVAILABLE
 #include "jetstream/modules/amplitude.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_SCALE_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_SCALE_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_SCALE_AVAILABLE
 #include "jetstream/modules/scale.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE)
+#ifdef JETSTREAM_MODULE_SOAPY_AVAILABLE
 #include "jetstream/modules/soapy.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE)
+#ifdef JETSTREAM_MODULE_AUDIO_AVAILABLE
 #include "jetstream/modules/audio.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_FM_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_FM_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_FM_AVAILABLE
 #include "jetstream/modules/fm.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_INVERT_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_INVERT_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_INVERT_AVAILABLE
 #include "jetstream/modules/invert.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_MULTIPLY_CONSTANT_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_MULTIPLY_CONSTANT_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_MULTIPLY_CONSTANT_AVAILABLE
 #include "jetstream/modules/multiply_constant.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_CAST_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_CAST_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_CAST_AVAILABLE
 #include "jetstream/modules/cast.hh"
 #endif
 
-//
-// Graphical
-// 
+#ifdef JETSTREAM_MODULE_PAD_AVAILABLE
+#include "jetstream/modules/pad.hh"
+#endif
 
-#if defined(JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_UNPAD_AVAILABLE
+#include "jetstream/modules/unpad.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_OVERLAP_ADD_AVAILABLE
+#include "jetstream/modules/overlap_add.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_AGC_AVAILABLE
+#include "jetstream/modules/agc.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_LINEPLOT_AVAILABLE
 #include "jetstream/modules/lineplot.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_WATERFALL_AVAILABLE
 #include "jetstream/modules/waterfall.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_SPECTROGRAM_AVAILABLE
 #include "jetstream/modules/spectrogram.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE) || \
-    defined(JETSTREAM_MODULE_CONSTELLATION_METAL_AVAILABLE)
+#ifdef JETSTREAM_MODULE_CONSTELLATION_AVAILABLE
 #include "jetstream/modules/constellation.hh"
 #endif
 
-#if defined(JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE)
+#ifdef JETSTREAM_MODULE_REMOTE_AVAILABLE
 #include "jetstream/modules/remote.hh"
 #endif
 
+#include "jetstream/modules/tensor_modifier.hh"
+
+#ifdef JETSTREAM_MODULE_FOLD_AVAILABLE
+#include "jetstream/modules/fold.hh"
 #endif
+
+#ifdef JETSTREAM_MODULE_SPEECH_RECOGNITION_AVAILABLE
+#include "jetstream/modules/speech_recognition.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_TAKE_AVAILABLE
+#include "jetstream/modules/take.hh"
+#endif
+
+// [NEW MODULE HOOK]
+
+#endif  // JETSTREAM_MODULES_BASE_HH

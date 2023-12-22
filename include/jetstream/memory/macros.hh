@@ -21,6 +21,14 @@
 #define JST_MIN(a,b) (((a)<(b))?(a):(b))
 #endif
 
+#ifndef JST_MHZ
+#define JST_MHZ (1000*1000)
+#endif
+
+#ifndef JST_MB
+#define JST_MB (1024*1024)
+#endif
+
 inline uint64_t HashU64(uint64_t x) {
     x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
     x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;

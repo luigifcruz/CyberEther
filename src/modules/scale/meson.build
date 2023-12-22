@@ -6,4 +6,7 @@ backend_lst = []
 subdir('cpu')
 subdir('metal')
 
-sum_lst += {'Scale': backend_lst}
+if backend_lst.length() > 0
+    cfg_lst.set('JETSTREAM_MODULE_SCALE_AVAILABLE', true)
+    sum_lst += {'Scale': backend_lst}
+endif

@@ -17,6 +17,28 @@ namespace Jetstream {
 template<typename T>
 class TensorStorage : public TensorPrototype {
  public:
+    TensorStorage(const TensorStorage& other) {
+        storage = other.storage;
+        prototype = other.prototype;
+    }
+
+    TensorStorage(TensorStorage&& other) noexcept {
+        storage = std::move(other.storage);
+        prototype = std::move(other.prototype);
+    }
+
+    TensorStorage& operator=(const TensorStorage& other) {
+        storage = other.storage;
+        prototype = other.prototype;
+        return *this;
+    }
+
+    TensorStorage& operator=(TensorStorage&& other) noexcept {
+        storage = std::move(other.storage);
+        prototype = std::move(other.prototype);
+        return *this;
+    }
+
     const Device& root_device() const noexcept {
         return storage->root_device;
     }
@@ -26,8 +48,19 @@ class TensorStorage : public TensorPrototype {
     }
 
     U64 references() const {
-        assert(storage.use_count() == prototype.use_count());
         return storage.use_count();
+    }
+
+    const TensorStorageMetadata::AttributeMap& attributes() const noexcept {
+        return storage->attributes;
+    }
+
+    const TensorStorageMetadata::Attribute& attribute(const std::string& key) const {
+        return storage->attributes.at(key);
+    }
+
+    TensorStorageMetadata::Attribute& attribute(const std::string& key) {
+        return storage->attributes[key];
     }
 
  protected:
@@ -48,27 +81,27 @@ class TensorStorage : public TensorPrototype {
 
         // Calculate prototype metadata.
 
-        prototype->shape = shape;
+        prototype.shape = shape;
 
-        prototype->size = 1;
-        for (const auto& dim : prototype->shape) {
-            prototype->size *= dim;
+        prototype.size = 1;
+        for (const auto& dim : prototype.shape) {
+            prototype.size *= dim;
         }
 
-        prototype->strides.resize(prototype->shape.size());
-        for (U64 i = 0; i < prototype->shape.size(); i++) {
-            prototype->strides[i] = 1;
-            for (U64 j = i + 1; j < prototype->shape.size(); j++) {
-                prototype->strides[i] *= prototype->shape[j];
+        prototype.strides.resize(prototype.shape.size());
+        for (U64 i = 0; i < prototype.shape.size(); i++) {
+            prototype.strides[i] = 1;
+            for (U64 j = i + 1; j < prototype.shape.size(); j++) {
+                prototype.strides[i] *= prototype.shape[j];
             }
         }
 
-        assert(prototype->strides.size() == prototype->shape.size());
+        assert(prototype.strides.size() == prototype.shape.size());
 
-        prototype->type_size = sizeof(T);
-        prototype->hash = rand();
-        prototype->size_bytes = prototype->size *
-                                prototype->type_size;
+        prototype.type_size = sizeof(T);
+        prototype.hash = std::rand() + 1;
+        prototype.size_bytes = prototype.size *
+                                prototype.type_size;
     }
 
     template<Device RootDevice, typename... Args>

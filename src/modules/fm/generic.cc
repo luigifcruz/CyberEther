@@ -2,27 +2,26 @@
 
 namespace Jetstream {
 
-template<Device D, typename T>
-Result FM<D, T>::create() {
+template<Device D, typename IT, typename OT>
+Result FM<D, IT, OT>::create() {
     JST_DEBUG("Initializing FM module.");
-
-    // Initialize input/output.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-        JST_INIT_OUTPUT("buffer", output.buffer, input.buffer.shape());
-    );
+    JST_INIT_IO();
 
     // Initialize constant coefficients.
 
-    kf = 100e3 / 240e3;
-    ref = 1.0f / (2 * M_PI * kf);
+    kf = 100e3f / config.sampleRate;
+    ref = 1.0f / (2.0f * M_PI * kf);
+
+    // Allocate output.
+
+    output.buffer = Tensor<D, OT>(input.buffer.shape());
 
     return Result::SUCCESS;
 }
 
-template<Device D, typename T>
-void FM<D, T>::summary() const {
-    JST_INFO("  Sample Rate: {:.2f} MHz", config.sampleRate / (1000*1000));
+template<Device D, typename IT, typename OT>
+void FM<D, IT, OT>::info() const {
+    JST_INFO("  Sample Rate: {:.2f} MHz", config.sampleRate / JST_MHZ);
 }
 
 }  // namespace Jetstream

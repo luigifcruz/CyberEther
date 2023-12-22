@@ -9,17 +9,18 @@
 
 namespace Jetstream {
 
+#define JST_WINDOW_CPU(MACRO) \
+    MACRO(Window, Device::CPU, CF32)
+
 template<Device D, typename T = CF32>
-class Window : public Module {
+class Window : public Module, public Compute {
  public:
     // Configuration 
 
     struct Config {
-        std::vector<U64> shape;
+        U64 size;
 
-        JST_SERDES(
-            JST_SERDES_VAL("shape", shape);
-        );
+        JST_SERDES(size);
     };
 
     constexpr const Config& getConfig() const {
@@ -29,7 +30,7 @@ class Window : public Module {
     // Input
 
     struct Input {
-        JST_SERDES();
+        JST_SERDES_INPUT();
     };
 
     constexpr const Input& getInput() const {
@@ -41,16 +42,14 @@ class Window : public Module {
     struct Output {
         Tensor<D, T> window;
 
-        JST_SERDES(
-            JST_SERDES_VAL("window", window);
-        );
+        JST_SERDES_OUTPUT(window);
     };
 
     constexpr const Output& getOutput() const {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getWindowBuffer() const {
+    constexpr const Tensor<D, T>& getOutputWindow() const {
         return this->output.window;
     }
 
@@ -60,22 +59,24 @@ class Window : public Module {
         return D;
     }
 
-    std::string_view name() const {
-        return "window";
-    }
-
-    std::string_view prettyName() const {
-        return "Window";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
     Result create();
 
+ protected:
+    Result compute(const RuntimeMetadata& meta) final;
+
+ private:
+    bool baked = false;
+
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE
+JST_WINDOW_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

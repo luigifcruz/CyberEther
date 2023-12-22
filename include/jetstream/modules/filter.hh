@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_MODULES_FILTER_HH
 #define JETSTREAM_MODULES_FILTER_HH
 
-#include <fftw3.h>
-
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
@@ -11,28 +9,21 @@
 
 namespace Jetstream {
 
-// TODO: Copy coeffs only when compute.
+#define JST_FILTER_CPU(MACRO) \
+    MACRO(Filter, Device::CPU, CF32)
+
 template<Device D, typename T = CF32>
-class Filter : public Module {
+class Filter : public Module, public Compute {
  public:
     // Configuration 
 
     struct Config {
-        F32 signalSampleRate;
-        F32 filterSampleRate = 1e6;
-        F32 filterCenter = 0.0;
-        std::vector<U64> shape;
-        U64 numberOfTaps = 101;
-        bool linearFrequency = true;
+        std::vector<F32> center = {0.0e6f};
+        F32 sampleRate = 2.0e6f;
+        F32 bandwidth = 1.0e6f;
+        U64 taps = 101;
 
-        JST_SERDES(
-            JST_SERDES_VAL("signalSampleRate", signalSampleRate);
-            JST_SERDES_VAL("filterSampleRate", filterSampleRate);
-            JST_SERDES_VAL("filterCenter", filterCenter);
-            JST_SERDES_VAL("shape", shape);
-            JST_SERDES_VAL("numberOfTaps", numberOfTaps);
-            JST_SERDES_VAL("linearFrequency", linearFrequency);
-        );
+        JST_SERDES(center, sampleRate, bandwidth, taps);
     };
 
     constexpr const Config& getConfig() const {
@@ -42,7 +33,7 @@ class Filter : public Module {
     // Input
 
     struct Input {
-        JST_SERDES();
+        JST_SERDES_INPUT();
     };
 
     constexpr const Input& getInput() const {
@@ -54,9 +45,7 @@ class Filter : public Module {
     struct Output {
         Tensor<D, T> coeffs;
 
-        JST_SERDES(
-            JST_SERDES_VAL("coeffs", coeffs);
-        );
+        JST_SERDES_OUTPUT(coeffs);
     };
 
     constexpr const Output& getOutput() const {
@@ -64,7 +53,7 @@ class Filter : public Module {
     }
 
     constexpr const Tensor<D, T>& getOutputCoeffs() const {
-        return this->output.coeffs;
+        return output.coeffs;
     }
 
     // Taint & Housekeeping
@@ -73,15 +62,7 @@ class Filter : public Module {
         return D;
     }
 
-    std::string_view name() const {
-        return "filter";
-    }
-
-    std::string_view prettyName() const {
-        return "Filter";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -90,62 +71,46 @@ class Filter : public Module {
 
     // Miscellaneous
 
-    constexpr const F32& filterSampleRate() const {
-        return this->config.filterSampleRate;
+    constexpr const F32& sampleRate() const {
+        return config.sampleRate;
     }
+    Result sampleRate(F32& sampleRate);
 
-    const F32& filterSampleRate(const F32& sampleRate) {
-        this->config.filterSampleRate = sampleRate;
-        JST_CHECK_THROW(calculateFractions());
-        JST_CHECK_THROW(generateSincFunction());
-        JST_CHECK_THROW(bakeFilter());
-        return sampleRate;
+    constexpr const F32& bandwidth() const {
+        return config.bandwidth;
     }
+    Result bandwidth(F32& bandwith);
 
-    constexpr const F32& filterCenter() const {
-        return this->config.filterCenter;
+    constexpr const F32& center(const U64& idx) const {
+        return config.center[idx];
     }
+    Result center(const U64& idx, F32& center);
 
-    const F32& filterCenter(const F32& center) {
-        this->config.filterCenter = center;
-        JST_CHECK_THROW(calculateFractions());
-        JST_CHECK_THROW(generateUpconvert());
-        JST_CHECK_THROW(bakeFilter());
-        return center;
+    constexpr const U64& taps() const {
+        return config.taps;
     }
+    Result taps(U64& taps);
 
-    constexpr const U64& filterTaps() const {
-        return this->config.numberOfTaps;
-    }
-
-    const U64& filterTaps(const U64& numberOfTaps) {
-        this->config.numberOfTaps = numberOfTaps;
-        JST_CHECK_THROW(calculateFractions());
-        JST_CHECK_THROW(generateSincFunction());
-        JST_CHECK_THROW(generateWindow());
-        JST_CHECK_THROW(generateUpconvert());
-        JST_CHECK_THROW(bakeFilter());
-        return numberOfTaps;
-    }
+ protected:
+    Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    fftwf_plan plan;
-
     Tensor<D, typename T::value_type> sincCoeffs;
     Tensor<D, typename T::value_type> windowCoeffs;
     Tensor<D, T> upconvertCoeffs;
-    Tensor<D, T> scratchCoeffs;
-    F32 filterWidth;
-    F32 filterOffset;
 
-    Result calculateFractions();
+    bool baked = false;
+
     Result generateSincFunction();
     Result generateWindow();
     Result generateUpconvert();
-    Result bakeFilter();
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_FILTER_CPU_AVAILABLE
+JST_FILTER_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

@@ -14,12 +14,12 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
     explicit GLFW(const Config& config);
     virtual ~GLFW();
 
-    std::string_view prettyName() const {
-        return "GLFW (Vulkan)";
+    std::string id() const {
+        return "glfw";
     }
 
-    std::string_view name() const {
-        return "glfw";
+    std::string name() const {
+        return "GLFW (Vulkan)";
     }
 
     constexpr Device device() const {

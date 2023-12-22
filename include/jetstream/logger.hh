@@ -2,6 +2,7 @@
 #define JETSTREAM_LOGGER_HH
 
 #include <iostream>
+#include <string>
 #include <mutex>
 
 #include <fmt/format.h>
@@ -15,7 +16,16 @@ std::string& JST_LOG_LAST_WARNING();
 std::string& JST_LOG_LAST_ERROR();
 std::string& JST_LOG_LAST_FATAL();
 
+void JST_LOG_SET_DEBUG_LEVEL(int level);
+
+#ifdef JST_DEBUG_MODE
+#define JST_LOG_DEBUG_DEFAULT_LEVEL 3
+#else
+#define JST_LOG_DEBUG_DEFAULT_LEVEL 2
+#endif
+
 std::mutex& _JST_LOG_MUTEX();
+int& _JST_LOG_DEBUG_LEVEL();
 
 #define _JST_LOG_SINK          std::cout
 #define _JST_LOG_ENDL          std::endl;
@@ -46,7 +56,7 @@ std::mutex& _JST_LOG_MUTEX();
 
 #ifndef JST_TRACE
 #ifdef JST_DEBUG_MODE
-#define JST_TRACE(...) if (getenv("TRACE"))           { \
+#define JST_TRACE(...) if (_JST_LOG_DEBUG_LEVEL() >= 4) { \
                        std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
                        _JST_LOG_SINK                 << \
                        _JST_LOG_NAME                 << \
@@ -60,8 +70,7 @@ std::mutex& _JST_LOG_MUTEX();
 #endif
 
 #ifndef JST_DEBUG
-#ifdef JST_DEBUG_MODE
-#define JST_DEBUG(...) { \
+#define JST_DEBUG(...) if (_JST_LOG_DEBUG_LEVEL() >= 3) { \
                        std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
                        _JST_LOG_SINK                << \
                        _JST_LOG_NAME                << \
@@ -72,10 +81,9 @@ std::mutex& _JST_LOG_MUTEX();
 #else
 #define JST_DEBUG(...)
 #endif
-#endif
 
 #ifndef JST_INFO
-#define JST_INFO(...) { \
+#define JST_INFO(...) if (_JST_LOG_DEBUG_LEVEL() >= 2) { \
                       std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
                       _JST_LOG_SINK              << \
                       _JST_LOG_NAME              << \
@@ -88,7 +96,7 @@ std::mutex& _JST_LOG_MUTEX();
 #endif
 
 #ifndef JST_WARN
-#define JST_WARN(...) { \
+#define JST_WARN(...) if (_JST_LOG_DEBUG_LEVEL() >= 1) { \
                       JST_LOG_LAST_WARNING() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                       std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
                       _JST_LOG_SINK                << \
@@ -102,7 +110,7 @@ std::mutex& _JST_LOG_MUTEX();
 #endif
 
 #ifndef JST_ERROR
-#define JST_ERROR(...) { \
+#define JST_ERROR(...) if (_JST_LOG_DEBUG_LEVEL() >= 0) { \
                        JST_LOG_LAST_ERROR() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                        std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
                        _JST_LOG_SINK             << \
@@ -116,7 +124,7 @@ std::mutex& _JST_LOG_MUTEX();
 #endif
 
 #ifndef JST_FATAL
-#define JST_FATAL(...) { \
+#define JST_FATAL(...) if (_JST_LOG_DEBUG_LEVEL() >= 0) { \
                        JST_LOG_LAST_FATAL() = _JST_LOG_DEFAULT(__VA_ARGS__); \
                        std::lock_guard<std::mutex> lock(_JST_LOG_MUTEX()); \
                        _JST_LOG_SINK                 << \

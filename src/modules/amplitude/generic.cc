@@ -5,18 +5,22 @@ namespace Jetstream {
 template<Device D, typename IT, typename OT>
 Result Amplitude<D, IT, OT>::create() {
     JST_DEBUG("Initializing Amplitude module.");
+    JST_INIT_IO();
 
-    // Initialize output.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-        JST_INIT_OUTPUT("buffer", output.buffer, input.buffer.shape());
-    );
+    // Calculate parameters.
+
+    const U64 last_axis = input.buffer.rank() - 1;
+    scalingSize = input.buffer.shape()[last_axis];
+
+    // Allocate output.
+
+    output.buffer = Tensor<D, OT>(input.buffer.shape());
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>
-void Amplitude<D, IT, OT>::summary() const {
+void Amplitude<D, IT, OT>::info() const {
     JST_INFO("  None");
 }
 

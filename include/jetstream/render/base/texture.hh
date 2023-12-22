@@ -37,10 +37,11 @@ class Texture {
         PixelType ptype = PixelType::UI8;
     };
 
-    explicit Texture(const Config& config) : config(config) {
-        JST_DEBUG("Texture initialized.");
-    }
+    explicit Texture(const Config& config) : config(config) {}
     virtual ~Texture() = default;
+
+    virtual Result create() = 0;
+    virtual Result destroy() = 0;
 
     constexpr const Size2D<U64>& size() const {
         return config.size;

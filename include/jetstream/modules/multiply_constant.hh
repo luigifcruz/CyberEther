@@ -10,6 +10,14 @@
 
 namespace Jetstream {
 
+#define JST_MULTIPLY_CONSTANT_CPU(MACRO) \
+    MACRO(MultiplyConstant, Device::CPU, CF32) \
+    MACRO(MultiplyConstant, Device::CPU, F32) 
+
+#define JST_MULTIPLY_CONSTANT_METAL(MACRO) \
+    MACRO(MultiplyConstant, Device::Metal, CF32) \
+    MACRO(MultiplyConstant, Device::Metal, F32)
+
 template<Device D, typename T = CF32>
 class MultiplyConstant : public Module, public Compute {
  public:
@@ -18,9 +26,7 @@ class MultiplyConstant : public Module, public Compute {
     struct Config {
         T constant;
 
-        JST_SERDES(
-            JST_SERDES_VAL("constant", constant);
-        );
+        JST_SERDES(constant);
     };
 
     constexpr const Config& getConfig() const {
@@ -32,9 +38,7 @@ class MultiplyConstant : public Module, public Compute {
     struct Input {
         Tensor<D, T> factor;
 
-        JST_SERDES(
-            JST_SERDES_VAL("factor", factor);
-        );
+        JST_SERDES_INPUT(factor);
     };
 
     constexpr const Input& getInput() const {
@@ -46,9 +50,7 @@ class MultiplyConstant : public Module, public Compute {
     struct Output {
         Tensor<D, T> product;
 
-        JST_SERDES(
-            JST_SERDES_VAL("product", product);
-        );
+        JST_SERDES_OUTPUT(product);
     };
 
     constexpr const Output& getOutput() const {
@@ -65,15 +67,7 @@ class MultiplyConstant : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "multiply-constant";
-    }
-
-    std::string_view prettyName() const {
-        return "Multiply Constant";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -98,6 +92,13 @@ class MultiplyConstant : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_MULTIPLY_CONSTANT_CPU_AVAILABLE
+JST_MULTIPLY_CONSTANT_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_MULTIPLY_CONSTANT_METAL_AVAILABLE
+JST_MULTIPLY_CONSTANT_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

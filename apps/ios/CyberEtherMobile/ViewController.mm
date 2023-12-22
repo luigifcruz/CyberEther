@@ -45,7 +45,7 @@
     JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg,
                                                      (__bridge CA::MetalLayer*)layer));
     
-    JST_CHECK_THROW(instance.buildDefaultInterface());
+    JST_CHECK_THROW(instance.buildRender<Device::Metal>({}));
     
     // Attach configured layer to view.
     [self.view.layer addSublayer:layer];

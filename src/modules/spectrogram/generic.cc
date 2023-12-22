@@ -6,20 +6,30 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Spectrogram<D, T>::create() {
     JST_DEBUG("Initializing Spectrogram module.");
+    JST_INIT_IO();
 
-    // Initialize Input & Output memory.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-    );
+    // Check parameters.
+
+    if (input.buffer.rank() > 2) {
+        JST_ERROR("Invalid input rank ({}). It should be `1` or `2`.", input.buffer.rank());
+        return Result::ERROR;
+    }
+
+    // Calculate parameters.
+
+    const U64 last_axis = input.buffer.rank() - 1;
+    numberOfElements = input.buffer.shape()[last_axis];
+    numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
 
     // Allocate internal buffers.
-    frequencyBins = Tensor<D, F32>({input.buffer.shape()[1], config.height});
+
+    frequencyBins = Tensor<D, F32>({numberOfElements, config.height});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void Spectrogram<D, T>::summary() const {
+void Spectrogram<D, T>::info() const {
     JST_INFO("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
@@ -114,7 +124,7 @@ template<Device D, typename T>
 Result Spectrogram<D, T>::present() {
     binTexture->fill();
 
-    shaderUniforms.width = input.buffer.shape()[1];
+    shaderUniforms.width = numberOfElements;
     shaderUniforms.height = config.height;
     shaderUniforms.zoom = 1.0;
     shaderUniforms.offset = 0.0;

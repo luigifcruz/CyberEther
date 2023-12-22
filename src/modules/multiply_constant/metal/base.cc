@@ -67,7 +67,6 @@ Result MultiplyConstant<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template class MultiplyConstant<Device::Metal, CF32>;
-template class MultiplyConstant<Device::Metal, F32>;
+JST_MULTIPLY_CONSTANT_METAL(JST_INSTANTIATION);
 
 }  // namespace Jetstream

@@ -8,10 +8,9 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
+    backend_lst += 'Metal'
     cfg_lst.set('JETSTREAM_GRAPH_METAL_AVAILABLE', true)
     src_lst += files([
         'base.cc',
     ])
 endif
-
-backend_lst += 'Metal'

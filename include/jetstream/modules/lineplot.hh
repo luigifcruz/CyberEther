@@ -12,6 +12,12 @@
 
 namespace Jetstream {
 
+#define JST_LINEPLOT_CPU(MACRO) \
+    MACRO(Lineplot, Device::CPU, F32)
+
+#define JST_LINEPLOT_METAL(MACRO) \
+    MACRO(Lineplot, Device::Metal, F32)
+
 template<Device D, typename T = F32>
 class Lineplot : public Module, public Compute, public Present {
  public:
@@ -22,11 +28,7 @@ class Lineplot : public Module, public Compute, public Present {
         U64 numberOfHorizontalLines = 5;
         Size2D<U64> viewSize = {512, 384};
 
-        JST_SERDES(
-            JST_SERDES_VAL("numberOfVerticalLines", numberOfVerticalLines);
-            JST_SERDES_VAL("numberOfHorizontalLines", numberOfHorizontalLines);
-            JST_SERDES_VAL("viewSize", viewSize);
-        );
+        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize);
     };
 
     constexpr const Config& getConfig() const {
@@ -38,9 +40,7 @@ class Lineplot : public Module, public Compute, public Present {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -50,7 +50,7 @@ class Lineplot : public Module, public Compute, public Present {
     // Output
 
     struct Output {
-        JST_SERDES();
+        JST_SERDES_OUTPUT();
     };
 
     constexpr const Output& getOutput() const {
@@ -63,15 +63,7 @@ class Lineplot : public Module, public Compute, public Present {
         return D;
     }
 
-    std::string_view name() const {
-        return "lineplot";
-    }
-
-    std::string_view prettyName() const {
-        return "Lineplot";
-    }
-
-    void summary() const final; 
+    void info() const final; 
 
     // Constructor
 
@@ -127,8 +119,18 @@ class Lineplot : public Module, public Compute, public Present {
     } metal;
 #endif
 
+    U64 numberOfElements = 0;
+    U64 numberOfBatches = 0;
+
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
+JST_LINEPLOT_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
+JST_LINEPLOT_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

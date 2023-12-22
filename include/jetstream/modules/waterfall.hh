@@ -12,6 +12,12 @@
 
 namespace Jetstream {
 
+#define JST_WATERFALL_CPU(MACRO) \
+    MACRO(Waterfall, Device::CPU, F32)
+
+#define JST_WATERFALL_METAL(MACRO) \
+    MACRO(Waterfall, Device::Metal, F32)
+
 template<Device D, typename T = F32>
 class Waterfall : public Module, public Compute, public Present {
  public:
@@ -24,13 +30,7 @@ class Waterfall : public Module, public Compute, public Present {
         bool interpolate = true;
         Size2D<U64> viewSize = {512, 384};
 
-        JST_SERDES(
-            JST_SERDES_VAL("zoom", zoom);
-            JST_SERDES_VAL("offset", offset);
-            JST_SERDES_VAL("height", height);
-            JST_SERDES_VAL("interpolate", interpolate);
-            JST_SERDES_VAL("viewSize", viewSize);
-        );
+        JST_SERDES(zoom, offset, height, interpolate, viewSize);
     };
 
     constexpr const Config& getConfig() const {
@@ -42,9 +42,7 @@ class Waterfall : public Module, public Compute, public Present {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -54,7 +52,7 @@ class Waterfall : public Module, public Compute, public Present {
     // Output
 
     struct Output {
-        JST_SERDES();
+        JST_SERDES_OUTPUT();
     };
 
     constexpr const Output& getOutput() const {
@@ -67,15 +65,7 @@ class Waterfall : public Module, public Compute, public Present {
         return D;
     }
 
-    std::string_view name() const {
-        return "waterfall";
-    }
-
-    std::string_view prettyName() const {
-        return "Waterfall";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -124,6 +114,9 @@ class Waterfall : public Module, public Compute, public Present {
         bool interpolate;
     } shaderUniforms;
 
+    U64 numberOfElements = 0;
+    U64 numberOfBatches = 0;
+
     int inc = 0, last = 0, ymax = 0;
     Tensor<D, F32> frequencyBins;
 
@@ -144,6 +137,13 @@ class Waterfall : public Module, public Compute, public Present {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
+JST_WATERFALL_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE
+JST_WATERFALL_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

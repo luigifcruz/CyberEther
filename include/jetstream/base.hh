@@ -18,7 +18,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/module.hh"
-#include "jetstream/interface.hh"
+#include "jetstream/block.hh"
+#include "jetstream/flowgraph.hh"
 #include "jetstream/parser.hh"
 
 //
@@ -26,7 +27,7 @@
 //
 
 #include "jetstream/modules/base.hh"
-#include "jetstream/bundles/base.hh"
+#include "jetstream/blocks/base.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/viewport/base.hh"

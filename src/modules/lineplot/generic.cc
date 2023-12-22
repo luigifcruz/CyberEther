@@ -6,15 +6,26 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Lineplot<D, T>::create() {
     JST_DEBUG("Initializing Lineplot module.");
+    JST_INIT_IO();
 
-    // Initialize Input & Output memory.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-    );
+    // Check parameters.
+
+    if (input.buffer.rank() > 2) {
+        JST_ERROR("Invalid input rank ({}). It should be `1` or `2`.", input.buffer.rank());
+        return Result::ERROR;
+    }
+
+    // Calculate parameters.
+
+    const U64 last_axis = input.buffer.rank() - 1;
+    numberOfElements = input.buffer.shape()[last_axis];
+    numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
 
     // Allocate internal buffers.
+
     {
         // Generate Grid coordinates.
+
         const U64 num_cols = config.numberOfVerticalLines;
         const U64 num_rows = config.numberOfHorizontalLines;
 
@@ -50,12 +61,11 @@ Result Lineplot<D, T>::create() {
 
     {
         // Generate Plot coordinates.
-        const U64 num_cols = input.buffer.shape()[1];
 
-        plot = Tensor<Device::CPU, F32>({num_cols, 3});
+        plot = Tensor<Device::CPU, F32>({numberOfElements, 3});
 
-        for (U64 j = 0; j < num_cols; j++) {
-            plot[{j, 0}] = j * 2.0f / (num_cols - 1) - 1.0f;
+        for (U64 j = 0; j < numberOfElements; j++) {
+            plot[{j, 0}] = j * 2.0f / (numberOfElements - 1) - 1.0f;
         }
     }
 
@@ -63,7 +73,7 @@ Result Lineplot<D, T>::create() {
 }
 
 template<Device D, typename T>
-void Lineplot<D, T>::summary() const {
+void Lineplot<D, T>::info() const {
     JST_INFO("  Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 

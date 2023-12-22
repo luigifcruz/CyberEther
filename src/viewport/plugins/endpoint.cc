@@ -124,7 +124,7 @@ Result Endpoint::destroy() {
 }
 
 Result Endpoint::createPipeEndpoint() {
-    JST_DEBUG("[ENDPOINT] Creating pipe endpoint ({}).", config.endpoint);
+    JST_INFO("[ENDPOINT] Creating pipe endpoint ({}).", config.endpoint);
 
     // Check if pipe exists, if not, create it.
 
@@ -170,7 +170,7 @@ Result Endpoint::destroyPipeEndpoint() {
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
 
 Result Endpoint::createSocketEndpoint() {
-    JST_DEBUG("[ENDPOINT] Creating socket endpoint ({}).", config.endpoint);
+    JST_INFO("[ENDPOINT] Creating socket endpoint ({}).", config.endpoint);
 
     // Get broker address and port with regex.
 
@@ -263,7 +263,7 @@ Result Endpoint::createSocketEndpoint() {
                         continue;
                     }
 
-                    JST_TRACE("[ENDPOINT] Received message from client: `{}`.", line);
+                    JST_TRACE("[ENDPOINT] Received message from client: '{}'.", line);
 
                     // Parse command `hid:mouse:pos:{x},{y}`.
 
@@ -436,21 +436,21 @@ Result Endpoint::createSocketEndpoint() {
                     // Parse command `err`.
 
                     if (line.compare(0, 3, "err") == 0) {
-                        JST_ERROR("[ENDPOINT] Received `err` from client: `{}`.", line);
+                        JST_ERROR("[ENDPOINT] Received `err` from client: '{}'.", line);
                         continue;
                     }
 
                     // Parse command `ok`.
 
                     if (line.compare(0, 2, "ok") == 0) {
-                        JST_DEBUG("[ENDPOINT] Received `ok` from client: `{}`.", line);
+                        JST_DEBUG("[ENDPOINT] Received `ok` from client: '{}'.", line);
                         continue;
                     }
 
                     // Reply for unrecognized message.
 
                     {
-                        JST_ERROR("[ENDPOINT] Received unrecognized message from client: `{}`.", line);
+                        JST_ERROR("[ENDPOINT] Received unrecognized message from client: '{}'.", line);
                         auto response = fmt::format("err:Unrecognized message.\n");
                         send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                         continue;
@@ -541,7 +541,7 @@ Result Endpoint::createGstreamerEndpoint() {
         }
 #endif
 
-        if (checkGstreamerPlugins({"video4linux2"}) == Result::SUCCESS) {
+        if (checkGstreamerPlugins({"video4linux2"}, true) == Result::SUCCESS) {
             GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
             if (factory) {
                 combinations.push_back({Device::CPU, Strategy::HardwareV4L2, {"video4linux2"}});
@@ -573,12 +573,12 @@ Result Endpoint::createGstreamerEndpoint() {
         if ((strategy != Strategy::Software) && !config.hardwareAcceleration) {
             continue;
         }
-        if (checkGstreamerPlugins(plugins) == Result::SUCCESS) {
+        if (checkGstreamerPlugins(plugins, true) == Result::SUCCESS) {
             _inputMemoryDevice = device;
             _encodingStrategy = strategy;
 
-            JST_DEBUG("[ENDPOINT] Using {} encoding with {} memory.", StrategyToString(strategy),
-                                                                      GetDevicePrettyName(device));
+            JST_INFO("[ENDPOINT] Using {} encoding with {} memory.", StrategyToString(strategy),
+                                                                     GetDevicePrettyName(device));
 
             return Result::SUCCESS;
         }
@@ -597,10 +597,13 @@ Result Endpoint::destroyGstreamerEndpoint() {
     return Result::SUCCESS;
 }
 
-Result Endpoint::checkGstreamerPlugins(const std::vector<std::string>& plugins) {
+Result Endpoint::checkGstreamerPlugins(const std::vector<std::string>& plugins, 
+                                       const bool& silent) {
     for (const auto& plugin : plugins) {
         if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
-            JST_ERROR("[ENDPOINT] Gstreamer plugin `{}` is not available.", plugin);
+            if (!silent) {
+                JST_ERROR("[ENDPOINT] Gstreamer plugin '{}' is not available.", plugin);
+            }
             return Result::ERROR;
         }
     }
@@ -705,7 +708,7 @@ Result Endpoint::startGstreamerEndpoint() {
     
     for (const auto& [name, element] : elements) {
         if (!element) {
-            JST_ERROR("[ENDPOINT] Failed to create gstreamer element `{}`.", name);
+            JST_ERROR("[ENDPOINT] Failed to create gstreamer element '{}'.", name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }
@@ -788,7 +791,7 @@ Result Endpoint::startGstreamerEndpoint() {
 
     for (const auto& [name, element] : elements) {
         if (!gst_bin_add(GST_BIN(pipeline), element)) {
-            JST_ERROR("[ENDPOINT] Failed to add gstreamer element `{}` to pipeline.", name);
+            JST_ERROR("[ENDPOINT] Failed to add gstreamer element '{}' to pipeline.", name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }
@@ -803,7 +806,7 @@ Result Endpoint::startGstreamerEndpoint() {
         }
 
         if (!gst_element_link(elements[lastElement], elements[name])) {
-            JST_ERROR("[ENDPOINT] Failed to link gstreamer element `{}` -> `{}`.", lastElement, name);
+            JST_ERROR("[ENDPOINT] Failed to link gstreamer element '{}' -> '{}'.", lastElement, name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }

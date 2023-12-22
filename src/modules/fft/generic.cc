@@ -5,26 +5,37 @@ namespace Jetstream {
 template<Device D, typename T>
 Result FFT<D, T>::create() {
     JST_DEBUG("Initializing FFT module.");
+    JST_INIT_IO();
 
-    std::vector<U64> outputShape = input.buffer.shape();
-    if (config.offset != 0 || config.size != 0) {
-        outputShape = {outputShape[0], config.size};
+    // Calculate parameters.
+
+    const U64 last_axis = input.buffer.rank() - 1;
+
+    numberOfElements = input.buffer.shape()[last_axis];
+
+    numberOfOperations = 1;
+    for (U64 i = 0; i < last_axis; i++) {
+        numberOfOperations *= input.buffer.shape()[i];
     }
 
-    // Initialize Input & Output memory.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-        JST_INIT_OUTPUT("buffer", output.buffer, outputShape);
-    );
+    elementStride = 1;
+
+    JST_TRACE("[FFT] Number of elements: {};", numberOfElements);
+    JST_TRACE("[FFT] Number of operations: {};", numberOfOperations);
+    JST_TRACE("[FFT] Element stride: {};", elementStride);
+
+    // TODO: Implement axis selection for FFT.
+
+    // Allocate output.
+
+    output.buffer = Tensor<D, T>(input.buffer.shape());
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void FFT<D, T>::summary() const {
+void FFT<D, T>::info() const {
     JST_INFO("  Forward: {}", config.forward ? "YES" : "NO");
-    JST_INFO("  Offset: {}", config.offset);
-    JST_INFO("  Size: {}", config.size);
 }
 
 }  // namespace Jetstream

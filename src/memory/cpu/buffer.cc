@@ -17,7 +17,7 @@ namespace Jetstream {
 using Implementation = TensorBuffer<Device::CPU>;
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype) {
+                             const TensorPrototypeMetadata& prototype) {
     JST_TRACE("[CPU:BUFFER] Allocating new buffer.");
 
     // Initialize storage.
@@ -26,12 +26,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     storage->compatible_devices = {
         Device::CPU,
     };
-
-    // Check size.
-
-    if (prototype->size_bytes == 0) {
-        return;
-    }
 
     // Check alignment.
 
@@ -42,11 +36,17 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     }
 #endif
 
+    // Check size.
+
+    if (prototype.size_bytes == 0) {
+        return;
+    }
+
     // Allocate memory.
 
     void* memoryAddr = nullptr;
     const auto pageSize = JST_PAGESIZE();
-    const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+    const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
     const auto result = posix_memalign(&memoryAddr, pageSize, alignedSizeBytes);
     if (result < 0 || (buffer = static_cast<void*>(memoryAddr)) == nullptr) {
         JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
@@ -55,11 +55,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     owns_data = true;
 
     // Null out array.
-    memset(buffer, 0, prototype->size_bytes);
+    memset(buffer, 0, prototype.size_bytes);
 }
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>&,
+                             const TensorPrototypeMetadata&,
                              void* ptr) {
     JST_TRACE("[CPU:BUFFER] New buffer from raw pointer.");
 
@@ -87,7 +87,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Metal buffer.");
 
@@ -100,7 +100,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Check size.
 
-    if (prototype->size_bytes == 0) {
+    if (prototype.size_bytes == 0) {
         return;
     }
 
@@ -114,7 +114,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Vulkan buffer.");
 
@@ -127,7 +127,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Check size.
 
-    if (prototype->size_bytes == 0) {
+    if (prototype.size_bytes == 0) {
         return;
     }
 
@@ -138,7 +138,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     // Initialize buffer.
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    const auto size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+    const auto size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     JST_VK_CHECK_THROW(vkMapMemory(device, vulkan_memory, 0, size, 0, &buffer), [&]{
         JST_FATAL("[CPU:BUFFER] Failed to map buffer memory.");
@@ -151,7 +151,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from CUDA buffer.");
 
@@ -164,7 +164,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Check size.
 
-    if (prototype->size_bytes == 0) {
+    if (prototype.size_bytes == 0) {
         return;
     }
 

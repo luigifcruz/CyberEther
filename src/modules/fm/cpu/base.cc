@@ -4,14 +4,14 @@
 
 namespace Jetstream {
 
-template<Device D, typename T>
-Result FM<D, T>::createCompute(const RuntimeMetadata&) {
+template<Device D, typename IT, typename OT>
+Result FM<D, IT, OT>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create FM compute core.");
     return Result::SUCCESS;
 }
 
-template<Device D, typename T>
-Result FM<D, T>::compute(const RuntimeMetadata&) {
+template<Device D, typename IT, typename OT>
+Result FM<D, IT, OT>::compute(const RuntimeMetadata&) {
     for (size_t n = 1; n < input.buffer.size(); n++) {
         output.buffer[n] = std::arg(std::conj(input.buffer[n - 1]) * input.buffer[n]) * ref;
     }
@@ -19,6 +19,6 @@ Result FM<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-template class FM<Device::CPU, CF32>;
-    
+JST_FM_CPU(JST_INSTANTIATION);
+
 }  // namespace Jetstream

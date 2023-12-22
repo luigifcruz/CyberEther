@@ -11,6 +11,9 @@ class TextureImp<Device::WebGPU> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 
+    Result create();
+    Result destroy();
+
     using Render::Texture::size;
     bool size(const Size2D<U64>& size);
 
@@ -22,9 +25,6 @@ class TextureImp<Device::WebGPU> : public Texture {
     }
 
  protected:
-    Result create();
-    Result destroy();
-
     constexpr wgpu::Texture& getHandle() {
         return texture;
     }

@@ -6,6 +6,7 @@ __pycache__
 .ipynb_checkpoints
 .vscode
 .idea
+builddir
 imgui.ini
 
 *.zip

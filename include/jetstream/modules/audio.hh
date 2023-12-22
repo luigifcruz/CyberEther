@@ -1,4 +1,5 @@
 #ifndef JETSTREAM_MODULES_AUDIO_HH
+#define JETSTREAM_MODULES_AUDIO_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -11,6 +12,9 @@
 
 namespace Jetstream {
 
+#define JST_AUDIO_CPU(MACRO) \
+    MACRO(Audio, Device::CPU, F32) \
+
 template<Device D, typename T = F32>
 class Audio : public Module, public Compute {
  public:
@@ -20,10 +24,7 @@ class Audio : public Module, public Compute {
         F32 inSampleRate = 48e3;
         F32 outSampleRate = 48e3;
 
-        JST_SERDES(
-            JST_SERDES_VAL("inSampleRate", inSampleRate);
-            JST_SERDES_VAL("outSampleRate", outSampleRate);
-        );
+        JST_SERDES(inSampleRate, outSampleRate);
     };
 
     constexpr const Config& getConfig() const {
@@ -35,9 +36,7 @@ class Audio : public Module, public Compute {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -49,9 +48,7 @@ class Audio : public Module, public Compute {
     struct Output {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -68,15 +65,7 @@ class Audio : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "audio";
-    }
-
-    std::string_view prettyName() const {
-        return "Audio";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -99,6 +88,10 @@ class Audio : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE
+JST_AUDIO_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

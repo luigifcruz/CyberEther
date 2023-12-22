@@ -23,7 +23,7 @@ Result Implementation::create() {
     keepRunningFlag = true;
     std::signal(SIGINT, [](int){
         if (!keepRunningFlag) {
-            exit(0);
+            std::exit(0);
         }
         keepRunningFlag = false;
     });
@@ -236,14 +236,10 @@ Result Implementation::destroySwapchain() {
 }
 
 Result Implementation::createImgui() {
-    // TODO: Implement interaction.
-
     return Result::SUCCESS;
 }
 
 F32 Implementation::scale(const F32& scale) const {
-    // TODO: Implement HiDPI support.
-
     return scale;
 }
 

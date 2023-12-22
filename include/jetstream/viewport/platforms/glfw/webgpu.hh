@@ -14,12 +14,12 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     explicit GLFW(const Config& config);
     virtual ~GLFW();
 
-    std::string_view prettyName() const {
-        return "GLFW (WebGPU)";
+    std::string id() const {
+        return "glfw";
     }
 
-    std::string_view name() const {
-        return "glfw";
+    std::string name() const {
+        return "GLFW (WebGPU)";
     }
 
     constexpr Device device() const {

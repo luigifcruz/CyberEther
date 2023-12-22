@@ -38,8 +38,8 @@ Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->batchSize = input.buffer.shape()[0];
-    constants->gridSize = input.buffer.shape()[1];
+    constants->batchSize = numberOfBatches;
+    constants->gridSize = numberOfElements;
 
     return Result::SUCCESS;
 }
@@ -54,13 +54,13 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
     cmdEncoder->setBuffer(plot.metal().data(), 0, 2);
-    cmdEncoder->dispatchThreads(MTL::Size(input.buffer.shape()[1], 1, 1),
+    cmdEncoder->dispatchThreads(MTL::Size(numberOfElements, 1, 1),
                                 MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;
 }
 
-template class Lineplot<Device::Metal, F32>;
-    
+JST_LINEPLOT_METAL(JST_INSTANTIATION);
+
 }  // namespace Jetstream

@@ -2,87 +2,137 @@
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
 title: Remote Spectrum Analyzer
-description: SoapySDR Remote Spectrum Analyzer.
-creator: Luigi
+summary: SoapySDR Remote Spectrum Analyzer.
+author: Luigi
 license: MIT
-
-computeDevice: cpu
-
 graph:
   soapy:
-    module: soapy-view
-    device: ${computeDevice}
+    module: soapy
+    device: cpu
     dataType: CF32
     config:
-      deviceString: driver=remote,remote:driver=airspy,remote=11.11.5.1
-      streamString: remote:mtu=4000,remote:window=1000000000,remote:prot=udp
-      frequency: 94.9e6
-      sampleRate: 2e6
-      outputShape: [16, 2048]
       bufferMultiplier: 512
-
+      sampleRate: 2000000
+      frequency: 94900000
+      hintString: 'driver=remote,remote:driver=airspy,remote=11.11.5.1'
+      streamString: 'remote:mtu=4000,remote:window=1000000000,remote:prot=udp'
+      numberOfTimeSamples: 8192
+      numberOfBatches: 8
+      automaticGain: true
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1, 119]
+      controlEnabled: false
   win:
     module: window
-    device: ${computeDevice}
+    device: cpu
     dataType: CF32
     config:
-      shape: ${graph.soapy.config.outputShape}
-
-  win_mul:
-    module: multiply
-    device: ${computeDevice}
+      size: 8192
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2, -26.327866]
+      controlEnabled: false
+  inv18:
+    module: invert
+    device: cpu
     dataType: CF32
     input:
+      buffer: ${graph.win.output.window}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 129
+      nodePos: [353.2826, -1.3278656]
+      controlEnabled: false
+  win_mul:
+    module: multiply
+    device: cpu
+    dataType: CF32
+    input:
+      factorB: ${graph.inv18.output.buffer}
       factorA: ${graph.soapy.output.buffer}
-      factorB: ${graph.win.output.window}
-
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 167
+      nodePos: [524.5, 44.000015]
+      controlEnabled: false
   fft:
     module: fft
-    device: ${computeDevice}
+    device: cpu
     dataType: CF32
     config:
       forward: true
     input:
       buffer: ${graph.win_mul.output.product}
-
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [748.2826, 57]
+      controlEnabled: false
   amp:
     module: amplitude
-    device: ${computeDevice}
+    device: cpu
     inputDataType: CF32
     outputDataType: F32
     input:
       buffer: ${graph.fft.output.buffer}
-
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 147
+      nodePos: [1088.7826, 106]
+      controlEnabled: false
   scl:
-    module: scale-view
-    device: ${computeDevice}
+    module: scale
+    device: cpu
     dataType: F32
     config:
-      range: [-100.0, 0.0]
+      range: [-100, 0]
     input:
       buffer: ${graph.amp.output.buffer}
-
-  lpt:
-    module: lineplot-view
-    device: ${computeDevice}
-    dataType: F32
-    input:
-      buffer: ${graph.scl.output.buffer}
-
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1298.5652, 74]
+      controlEnabled: false
   wtf:
-    module: waterfall-view
-    device: ${computeDevice}
+    module: waterfall
+    device: cpu
     dataType: F32
+    config:
+      viewSize: [512, 384]
+      interpolate: true
+      height: 512
+      offset: 0
+      zoom: 1
     input:
       buffer: ${graph.scl.output.buffer}
     interface:
       previewEnabled: true
-
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1645.0652, 320]
+      controlEnabled: false
   spc:
-    module: spectrogram-view
-    device: ${computeDevice}
+    module: spectrogram
+    device: cpu
     dataType: F32
+    config:
+      viewSize: [512, 384]
+      height: 256
     input:
       buffer: ${graph.scl.output.buffer}
     interface:
       previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1644.7826, -14.655762]
+      controlEnabled: false

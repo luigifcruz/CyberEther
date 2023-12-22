@@ -22,7 +22,6 @@ class Program {
         FRAGMENT = 1 << 1,
     };
 
-
     struct Config {
         std::shared_ptr<Draw> draw;
         std::vector<std::shared_ptr<Texture>> textures;
@@ -30,9 +29,7 @@ class Program {
         std::unordered_map<Device, std::vector<std::span<const U8>>> shaders;
     };
 
-    explicit Program(const Config& config) : config(config) {
-        JST_DEBUG("Program initialized.");
-    }
+    explicit Program(const Config& config) : config(config) {}
     virtual ~Program() = default;
 
     template<Device D> 

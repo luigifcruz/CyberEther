@@ -17,6 +17,9 @@
 
 namespace Jetstream {
 
+#define JST_SOAPY_CPU(MACRO) \
+    MACRO(Soapy, Device::CPU, CF32)
+
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {
  public:
@@ -42,18 +45,14 @@ class Soapy : public Module, public Compute {
         F32 frequency = 96.9e6;
         F32 sampleRate = 2.0e6;
         bool automaticGain = true;
-        std::vector<U64> outputShape;
+        U64 numberOfBatches = 8;
+        U64 numberOfTimeSamples = 8192;
         U64 bufferMultiplier = 4;
 
-        JST_SERDES(
-            JST_SERDES_VAL("deviceString", deviceString);
-            JST_SERDES_VAL("streamString", streamString);
-            JST_SERDES_VAL("frequency", frequency);
-            JST_SERDES_VAL("sampleRate", sampleRate);
-            JST_SERDES_VAL("automaticGain", automaticGain);
-            JST_SERDES_VAL("outputShape", outputShape);
-            JST_SERDES_VAL("bufferMultiplier", bufferMultiplier);
-        );
+        JST_SERDES(deviceString, streamString,
+                   frequency, sampleRate, automaticGain, 
+                   numberOfBatches, numberOfTimeSamples, 
+                   bufferMultiplier);
     };
 
     constexpr const Config& getConfig() const {
@@ -63,7 +62,7 @@ class Soapy : public Module, public Compute {
     // Input
 
     struct Input {
-        JST_SERDES();
+        JST_SERDES_INPUT();
     };
 
     constexpr const Input& getInput() const {
@@ -75,9 +74,7 @@ class Soapy : public Module, public Compute {
     struct Output {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -94,15 +91,7 @@ class Soapy : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "soapy";
-    }
-
-    std::string_view prettyName() const {
-        return "Soapy";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -160,6 +149,10 @@ class Soapy : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE
+JST_SOAPY_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

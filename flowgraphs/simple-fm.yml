@@ -2,20 +2,20 @@
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
 title: Simple FM Receiver
-description: Radio receiver with RTLSDR.
-creator: Luigi
+summary: Radio receiver with RTLSDR.
+author: Luigi
 license: MIT
 
 computeDevice: cpu
 
 graph:
   soapy:
-    module: soapy-view
+    module: soapy
     device: ${computeDevice}
     dataType: CF32
     config:
       deviceString: driver=rtlsdr,serial=00000001
-      frequency: 94.9e6
+      frequency: 96.9e6
       sampleRate: 240e3
       outputShape: [1, 2048]
       bufferMultiplier: 512
@@ -23,7 +23,8 @@ graph:
   fm:
     module: fm
     device: ${computeDevice}
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: F32
     input:
       buffer: ${graph.soapy.output.buffer}
 

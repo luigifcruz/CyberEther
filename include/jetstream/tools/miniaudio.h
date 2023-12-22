@@ -39634,7 +39634,7 @@ TODO: Version 0.12: Swap this logic around so that AudioWorklets are used by def
 
 static ma_bool32 ma_is_capture_supported__webaudio()
 {
-    return EM_ASM_INT({
+    return MAIN_THREAD_EM_ASM_INT({
         return (navigator.mediaDevices !== undefined && navigator.mediaDevices.getUserMedia !== undefined);
     }, 0) != 0; /* Must pass in a dummy argument for C99 compatibility. */
 }
@@ -39722,7 +39722,7 @@ static ma_result ma_context_get_device_info__webaudio(ma_context* pContext, ma_d
     pDeviceInfo->nativeDataFormats[0].flags      = 0;
     pDeviceInfo->nativeDataFormats[0].format     = ma_format_unknown;
     pDeviceInfo->nativeDataFormats[0].channels   = 0; /* All channels are supported. */
-    pDeviceInfo->nativeDataFormats[0].sampleRate = EM_ASM_INT({
+    pDeviceInfo->nativeDataFormats[0].sampleRate = MAIN_THREAD_EM_ASM_INT({
         try {
             var temp = new (window.AudioContext || window.webkitAudioContext)();
             var sampleRate = temp.sampleRate;
@@ -39731,7 +39731,7 @@ static ma_result ma_context_get_device_info__webaudio(ma_context* pContext, ma_d
         } catch(e) {
             return 0;
         }
-    }, 0);  /* Must pass in a dummy argument for C99 compatibility. */
+    });  /* Must pass in a dummy argument for C99 compatibility. */
 
     if (pDeviceInfo->nativeDataFormats[0].sampleRate == 0) {
         return MA_NO_DEVICE;
@@ -39748,7 +39748,7 @@ static ma_result ma_device_uninit__webaudio(ma_device* pDevice)
 
     #if defined(MA_USE_AUDIO_WORKLETS)
     {
-        EM_ASM({
+        MAIN_THREAD_EM_ASM({
             var device = miniaudio.get_device_by_index($0);
 
             if (device.streamNode !== undefined) {
@@ -39763,7 +39763,7 @@ static ma_result ma_device_uninit__webaudio(ma_device* pDevice)
     }
     #else
     {
-        EM_ASM({
+        MAIN_THREAD_EM_ASM({
             var device = miniaudio.get_device_by_index($0);
 
             /* Make sure all nodes are disconnected and marked for collection. */
@@ -39789,7 +39789,7 @@ static ma_result ma_device_uninit__webaudio(ma_device* pDevice)
     #endif
 
     /* Clean up the device on the JS side. */
-    EM_ASM({
+    MAIN_THREAD_EM_ASM({
         miniaudio.untrack_device_by_index($0);
     }, pDevice->webaudio.deviceIndex);
 
@@ -39956,7 +39956,7 @@ static void ma_audio_worklet_processor_created__webaudio(EMSCRIPTEN_WEBAUDIO_T a
 
     /* With the audio worklet initialized we can now attach it to the graph. */
     if (pParameters->pConfig->deviceType == ma_device_type_capture || pParameters->pConfig->deviceType == ma_device_type_duplex) {
-        ma_result attachmentResult = EM_ASM_INT({
+        ma_result attachmentResult = MAIN_THREAD_EM_ASM_INT({
             var getUserMediaResult = 0;
             var audioWorklet = emscriptenGetAudioObject($0);
             var audioContext = emscriptenGetAudioObject($1);
@@ -39987,7 +39987,7 @@ static void ma_audio_worklet_processor_created__webaudio(EMSCRIPTEN_WEBAUDIO_T a
 
     /* If it's playback only we can now attach the worklet node to the graph. This has already been done for the duplex case. */
     if (pParameters->pConfig->deviceType == ma_device_type_playback) {
-        ma_result attachmentResult = EM_ASM_INT({
+        ma_result attachmentResult = MAIN_THREAD_EM_ASM_INT({
             var audioWorklet = emscriptenGetAudioObject($0);
             var audioContext = emscriptenGetAudioObject($1);
             audioWorklet.connect(audioContext.destination);
@@ -40003,7 +40003,7 @@ static void ma_audio_worklet_processor_created__webaudio(EMSCRIPTEN_WEBAUDIO_T a
     }
 
     /* We need to update the descriptors so that they reflect the internal data format. Both capture and playback should be the same. */
-    sampleRate = EM_ASM_INT({ return emscriptenGetAudioObject($0).sampleRate; }, audioContext);
+    sampleRate = MAIN_THREAD_EM_ASM_INT({ return emscriptenGetAudioObject($0).sampleRate; }, audioContext);
 
     if (pParameters->pDescriptorCapture != NULL) {
         pParameters->pDescriptorCapture->format              = ma_format_f32;
@@ -40139,7 +40139,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
         }
 
         /* We need to add an entry to the miniaudio.devices list on the JS side so we can do some JS/C interop. */
-        pDevice->webaudio.deviceIndex = EM_ASM_INT({
+        pDevice->webaudio.deviceIndex = MAIN_THREAD_EM_ASM_INT({
             return miniaudio.track_device({
                 webaudio: emscriptenGetAudioObject($0),
                 state:    1 /* 1 = ma_device_state_stopped */
@@ -40186,7 +40186,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
             return MA_OUT_OF_MEMORY;
         }
 
-        deviceIndex = EM_ASM_INT({
+        deviceIndex = MAIN_THREAD_EM_ASM_INT({
             var deviceType = $0;
             var channels   = $1;
             var sampleRate = $2;
@@ -40289,7 +40289,7 @@ static ma_result ma_device_init__webaudio(ma_device* pDevice, const ma_device_co
         pDevice->webaudio.deviceIndex = deviceIndex;
 
         /* Grab the sample rate from the audio context directly. */
-        sampleRate = (ma_uint32)EM_ASM_INT({ return miniaudio.get_device_by_index($0).webaudio.sampleRate; }, deviceIndex);
+        sampleRate = (ma_uint32)MAIN_THREAD_EM_ASM_INT({ return miniaudio.get_device_by_index($0).webaudio.sampleRate; }, deviceIndex);
 
         if (pDescriptorCapture != NULL) {
             pDescriptorCapture->format              = ma_format_f32;
@@ -40318,7 +40318,7 @@ static ma_result ma_device_start__webaudio(ma_device* pDevice)
 {
     MA_ASSERT(pDevice != NULL);
 
-    EM_ASM({
+    MAIN_THREAD_EM_ASM({
         var device = miniaudio.get_device_by_index($0);
         device.webaudio.resume();
         device.state = miniaudio.device_state.started;
@@ -40340,7 +40340,7 @@ static ma_result ma_device_stop__webaudio(ma_device* pDevice)
     I read this to mean that "any current context processing blocks" are processed by suspend() - i.e. They they are drained. We therefore shouldn't need to
     do any kind of explicit draining.
     */
-    EM_ASM({
+    MAIN_THREAD_EM_ASM({
         var device = miniaudio.get_device_by_index($0);
         device.webaudio.suspend();
         device.state = miniaudio.device_state.stopped;
@@ -40359,7 +40359,7 @@ static ma_result ma_context_uninit__webaudio(ma_context* pContext)
     (void)pContext; /* Unused. */
 
     /* Remove the global miniaudio object from window if there are no more references to it. */
-    EM_ASM({
+    MAIN_THREAD_EM_ASM({
         if (typeof(window.miniaudio) !== 'undefined') {
             window.miniaudio.referenceCount -= 1;
             if (window.miniaudio.referenceCount === 0) {
@@ -40380,7 +40380,7 @@ static ma_result ma_context_init__webaudio(ma_context* pContext, const ma_contex
     (void)pConfig; /* Unused. */
 
     /* Here is where our global JavaScript object is initialized. */
-    resultFromJS = EM_ASM_INT({
+    resultFromJS = MAIN_THREAD_EM_ASM_INT({
         if (typeof window === 'undefined' || (window.AudioContext || window.webkitAudioContext) === undefined) {
             return 0;   /* Web Audio not supported. */
         }

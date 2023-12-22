@@ -1,3 +1,7 @@
+#include <mutex>
+#include <algorithm>
+#include <compare>
+
 #include "jetstream/memory/buffer.hh"
 
 using namespace std::chrono_literals;

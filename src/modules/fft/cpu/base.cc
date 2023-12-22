@@ -6,24 +6,21 @@ template<>
 Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create FFT compute core using CPU backend.");
 
-    auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data()) + config.offset;
+    auto inBuf = reinterpret_cast<fftwf_complex*>(input.buffer.data());
     auto outBuf = reinterpret_cast<fftwf_complex*>(output.buffer.data());
 
-    I32 M = input.buffer.shape()[0];
-    I32 N = input.buffer.shape()[1];
+    I32 M = numberOfOperations;
+    I32 N = numberOfElements;
+    I32 S = elementStride;
     auto direction = (config.forward) ? FFTW_FORWARD : FFTW_BACKWARD;
-
-    if (config.offset != 0 || config.size != 0) {
-        N = config.size;
-    }
 
     int rank     = 1;      // Number of dimensions
     int n[]      = { N };  // Size of each dimension
     int howmany  = M;      // Number of FFTs
     int idist    = N;      // Distance between consecutive elements in input array
     int odist    = N;      // Distance between consecutive elements in output array
-    int istride  = 1;      // Stride between successive elements in same FFT
-    int ostride  = 1;      // Stride between successive elements in same FFT
+    int istride  = S;      // Stride between successive elements in same FFT
+    int ostride  = S;      // Stride between successive elements in same FFT
     int *inembed = n;      // Pointer to array of dimensions for input
     int *onembed = n;      // Pointer to array of dimensions for output
 
@@ -56,6 +53,6 @@ Result FFT<Device::CPU, CF32>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-template class FFT<Device::CPU, CF32>;
+JST_FFT_CPU(JST_INSTANTIATION);
 
 }  // namespace Jetstream

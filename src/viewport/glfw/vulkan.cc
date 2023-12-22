@@ -27,7 +27,7 @@ Result Implementation::create() {
     keepRunningFlag = true;
     std::signal(SIGINT, [](int){
         if (!keepRunningFlag) {
-            exit(0);
+            std::exit(0);
         }
         keepRunningFlag = false;
     });
@@ -37,9 +37,11 @@ Result Implementation::create() {
 
     // Initialize and configure GLFW.
 
+#ifdef GLFW_PLATFORM_WAYLAND
     if (Backend::WindowMightBeWayland()) {
         glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
     }
+#endif
 
     if (!glfwInit()) {
         JST_ERROR("[VULKAN] Failed to initialize GLFW.");

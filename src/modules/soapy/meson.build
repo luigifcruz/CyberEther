@@ -8,6 +8,7 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
+    cfg_lst.set('JETSTREAM_MODULE_SOAPY_AVAILABLE', true)
     cfg_lst.set('JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE', true)
 
     src_lst += files([

@@ -4,32 +4,11 @@
 #include "jetstream/parser.hh"
 #include "jetstream/instance.hh"
 
+#include "jetstream/block.hh"
+#include "jetstream/flowgraph.hh"
+
 namespace Jetstream {
 
-typedef std::unordered_map<Parser::ModuleFingerprint,
-                           std::function<Result(Instance&, Parser::ModuleRecord&)>,
-                           Parser::ModuleFingerprint::Hash,
-                           Parser::ModuleFingerprint::Equal> ModuleStore;
-
-struct ModuleListValueStore {
-    bool isBundle;
-    std::string title;
-    std::string small;
-    std::string detailed;
-    std::map<Device, std::vector<std::tuple<std::string, std::string, std::string>>> options;
-};
-
-typedef std::unordered_map<std::string, ModuleListValueStore> ModuleListStore;
-
-struct FlowgraphListValueStore {
-    std::string title;
-    std::string description;
-    const char* data;
-};
-
-typedef std::unordered_map<std::string, FlowgraphListValueStore> FlowgraphListStore;
-
-// MAYDO: Add new modules during runtime.
 class JETSTREAM_API Store {
  public:
     Store(Store const&) = delete;
@@ -37,38 +16,46 @@ class JETSTREAM_API Store {
 
     static Store& GetInstance();
 
-    static ModuleStore& Modules() {
-        return GetInstance().modules;
+    typedef std::function<Result(Block::ConstructorManifest&, 
+                                 Block::MetadataManifest&)> BlockLoaderFunc;
+
+    static Result LoadBlocks(const BlockLoaderFunc& loader) {
+        return GetInstance()._loadBlocks(loader);
     }
 
-    static ModuleListStore& ModuleList(const std::string& filter = "", const bool& showModules = true) {
-        GetInstance()._moduleList(filter, showModules);
-        return GetInstance().filteredModuleList;
+    static Block::ConstructorManifest& BlockConstructorList() {
+        return GetInstance().blockConstructorList;
     }
 
-    static FlowgraphListStore& FlowgraphList(const std::string& filter = "") {
+    static Block::MetadataManifest& BlockMetadataList(const std::string& filter = "") {
+        GetInstance()._blockList(filter);
+        return GetInstance().blockFilteredMetadataList;
+    }
+
+    static Flowgraph::MetadataManifest& FlowgraphMetadataList(const std::string& filter = "") {
         GetInstance()._flowgraphList(filter);
-        return GetInstance().filteredFlowgraphList;
+        return GetInstance().filteredFlowgraphMetadataList;
     }
 
  private:
     Store();
 
-    ModuleStore modules;
-    ModuleListStore moduleList;
-    ModuleListStore filteredModuleList;
-    std::string lastModuleListFilter;
-    bool lastModuleListShowModules;
+    Result _loadBlocks(const BlockLoaderFunc& loader) {
+        JST_CHECK(loader(blockConstructorList, blockMetadataList));
+        blockFilteredMetadataList.clear();
+        return Result::SUCCESS;
+    }
 
-    FlowgraphListStore flowgraphList;
-    FlowgraphListStore filteredFlowgraphList;
-    std::string lastFlowgraphListFilter;
-    
-    const ModuleStore& defaultModules();
-    const ModuleListStore& defaultModuleList();
-    const FlowgraphListStore& defaultFlowgraphList();
+    Block::ConstructorManifest blockConstructorList;
+    Block::MetadataManifest blockMetadataList;
+    Block::MetadataManifest blockFilteredMetadataList;
+    std::string lastBlockFilter;
 
-    Result _moduleList(const std::string& filter, const bool& modules);
+    Flowgraph::MetadataManifest flowgraphMetadataList;
+    Flowgraph::MetadataManifest filteredFlowgraphMetadataList;
+    std::string lastFlowgraphFilter;
+
+    Result _blockList(const std::string& filter);
     Result _flowgraphList(const std::string& filter);
 };
 

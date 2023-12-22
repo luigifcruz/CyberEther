@@ -23,6 +23,58 @@ void PrintVarDebug(const std::string& varName, const Tensor<D, T>& a) {
 
 int main() {
     {
+        Tensor<Device::CPU, F32> a;
+
+        a.set_locale({"a", "b", "c"});
+        assert(a.locale().blockId == "a");
+        assert(a.locale().moduleId == "b");
+        assert(a.locale().pinId == "c");
+
+        JST_INFO("Tensor locale test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::CPU, F32> a;
+
+        a.set_locale({"a", "b", "c"});
+        assert(a.locale().blockId == "a");
+        assert(a.locale().moduleId == "b");
+        assert(a.locale().pinId == "c");
+
+        Tensor<Device::CPU, F32> c(a);
+        assert(c.locale().blockId == "a");
+        assert(c.locale().moduleId == "b");
+        assert(c.locale().pinId == "c");
+
+        JST_INFO("Tensor locale copy constructor test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
+        Tensor<Device::CPU, F32> a;
+
+        a.set_locale({"a", "b", "c"});
+        assert(a.locale().blockId == "a");
+        assert(a.locale().moduleId == "b");
+        assert(a.locale().pinId == "c");
+
+        Tensor<Device::CPU, F32> c;
+        assert(c.locale().empty() == true);
+
+        a = c;
+        assert(a.locale().blockId == "a");
+        assert(a.locale().moduleId == "b");
+        assert(a.locale().pinId == "c");
+
+        JST_INFO("Tensor locale copy test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+    {
         Tensor<Device::CPU, U64> a({1, 2, 3, 4});
         PrintVarDebug("a", a);
         assert(a.size() == 24);
@@ -39,9 +91,11 @@ int main() {
         assert(a.size() == 24);
         assert(a.references() == 2);
         assert(a.data() != nullptr);
+
+        JST_INFO("Tensor copy constructor test successful!");
     }
 
-    JST_TRACE("====")
+    JST_INFO("---------------------------------------------");
 
     {
         Tensor<Device::CPU, U64> a;
@@ -233,8 +287,8 @@ int main() {
         Tensor<Device::CPU, F32> array({2, 3, 4});
         PrintVarDebug("array", array);
 
-        array.store()["key"] = std::string("value");
-        assert(std::any_cast<std::string>(array.store()["key"]) == "value");
+        array.attribute("key").set(std::string("value"));
+        assert(array.attribute("key").template get<std::string>() == "value");
 
         JST_INFO("Tensor metadata test successful!");
     }
@@ -380,15 +434,15 @@ int main() {
         Tensor<Device::Metal, F32> metal_array({1, 2, 3});
         PrintVarDebug("metal_array", metal_array);
 
-        metal_array.store()["test"] = 1;
+        metal_array.attribute("test").set(1);
 
         Tensor<Device::CPU, F32> array;
         PrintVarDebug("array", array);
 
         array = metal_array;
 
-        assert(array.store().contains("test") == true);
-        assert(array.store().contains("test2") == false);
+        assert(array.attributes().contains("test") == true);
+        assert(array.attributes().contains("test2") == false);
 
         JST_INFO("Tensor store after copy test successful!");
     }

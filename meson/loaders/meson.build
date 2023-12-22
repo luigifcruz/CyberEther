@@ -12,5 +12,6 @@ subdir('vulkan')
 subdir('webgpu')
 subdir('audiotoolbox')
 subdir('gstreamer')
+subdir('whispercpp')
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

@@ -32,15 +32,7 @@ struct Config {
     /// @brief Whether hardware acceleration is enabled.
     bool hardwareAcceleration = true;
 
-    JST_SERDES(
-        JST_SERDES_VAL("vsync", vsync);
-        JST_SERDES_VAL("title", title);
-        JST_SERDES_VAL("size", size);
-        JST_SERDES_VAL("framerate", framerate);
-        JST_SERDES_VAL("endpoint", endpoint);
-        JST_SERDES_VAL("codec", codec);
-        JST_SERDES_VAL("hardwareAcceleration", hardwareAcceleration);
-    );
+    JST_SERDES(vsync, title, size, framerate, endpoint, codec, hardwareAcceleration);
 };
 
 class Generic {
@@ -48,8 +40,8 @@ class Generic {
     explicit Generic(const Config& config);   
     virtual ~Generic() = default;
 
-    virtual std::string_view prettyName() const = 0;
-    virtual std::string_view name() const = 0;
+    virtual std::string id() const = 0;
+    virtual std::string name() const = 0;
     virtual Device device() const = 0;
 
     virtual Result create() = 0;

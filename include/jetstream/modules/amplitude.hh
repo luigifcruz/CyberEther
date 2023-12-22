@@ -9,6 +9,12 @@
 
 namespace Jetstream {
 
+#define JST_AMPLITUDE_CPU(MACRO) \
+    MACRO(Amplitude, Device::CPU, CF32, F32)
+
+#define JST_AMPLITUDE_METAL(MACRO) \
+    MACRO(Amplitude, Device::Metal, CF32, F32)
+
 template<Device D, typename IT = CF32, typename OT = F32>
 class Amplitude : public Module, public Compute {
  public:
@@ -27,9 +33,7 @@ class Amplitude : public Module, public Compute {
     struct Input {
         Tensor<D, IT> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -41,9 +45,7 @@ class Amplitude : public Module, public Compute {
     struct Output {
         Tensor<D, OT> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -60,15 +62,7 @@ class Amplitude : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "amplitude";
-    }
-
-    std::string_view prettyName() const {
-        return "Amplitude";
-    }
-
-    void summary() const final; 
+    void info() const final; 
 
     // Constructor
 
@@ -90,8 +84,17 @@ class Amplitude : public Module, public Compute {
     } metal;
 #endif
 
+    U64 scalingSize = 0;
+
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE
+JST_AMPLITUDE_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE
+JST_AMPLITUDE_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

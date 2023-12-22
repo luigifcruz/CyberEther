@@ -32,11 +32,14 @@
 namespace Jetstream::Backend {
 
 template<Device DeviceId>
-struct GetBackend {};
+struct GetBackend {
+    static constexpr bool enabled = false;
+};
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 template<>
 struct GetBackend<Device::Metal> {
+    static constexpr bool enabled = true;
     using Type = Metal;  
 };
 #endif
@@ -44,6 +47,7 @@ struct GetBackend<Device::Metal> {
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 template<>
 struct GetBackend<Device::Vulkan> {
+    static constexpr bool enabled = true;
     using Type = Vulkan;  
 };
 #endif
@@ -51,6 +55,7 @@ struct GetBackend<Device::Vulkan> {
 #ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
 template<>
 struct GetBackend<Device::WebGPU> {
+    static constexpr bool enabled = true;
     using Type = WebGPU;
 };
 #endif
@@ -58,6 +63,7 @@ struct GetBackend<Device::WebGPU> {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 template<>
 struct GetBackend<Device::CPU> {
+    static constexpr bool enabled = true;
     using Type = CPU;  
 };
 #endif
@@ -65,6 +71,7 @@ struct GetBackend<Device::CPU> {
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 template<>
 struct GetBackend<Device::CUDA> {
+    static constexpr bool enabled = true;
     using Type = CUDA;  
 };
 #endif

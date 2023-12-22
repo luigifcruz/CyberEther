@@ -16,93 +16,105 @@ namespace Jetstream {
 class TensorPrototype {
  public:
     const U64& size() const noexcept {
-        return prototype->size;
+        return prototype.size;
     }
 
     const U64& size_bytes() const noexcept {
-        return prototype->size_bytes;
+        return prototype.size_bytes;
     }
 
     const U64& type_size() const noexcept {
-        return prototype->type_size;
+        return prototype.type_size;
     }
 
     const U64& hash() const noexcept {
-        return prototype->hash;
+        return prototype.hash;
     }
 
     const std::vector<U64>& shape() const noexcept {
-        return prototype->shape;
+        return prototype.shape;
     }
 
     const std::vector<U64>& strides() const noexcept {
-        return prototype->strides;
+        return prototype.strides;
     }
 
     const U64& shape(const U64& idx) const noexcept {
-        return prototype->shape[idx];
+        return prototype.shape[idx];
     }
 
     const U64& strides(const U64& idx) const noexcept {
-        return prototype->strides[idx];
+        return prototype.strides[idx];
     }
 
     bool empty() const noexcept {
-        return prototype->size == 0;
+        return prototype.size == 0;
     }
 
     U64 rank() const noexcept {
-        return prototype->shape.size();
+        return prototype.shape.size();
     }
 
     U64 ndims() const noexcept {
-        return prototype->shape.size();
+        return prototype.shape.size();
     }
 
-    const std::unordered_map<std::string, std::any>& store() const noexcept {
-        return prototype->store;
+    bool valid_shape() const noexcept {
+        bool valid = true;
+        for (const auto& dim : prototype.shape) {
+            valid &= dim > 0;
+        }
+        return valid;
     }
 
-    std::unordered_map<std::string, std::any>& store() noexcept {
-        return prototype->store;
+    const Locale& locale() const noexcept {
+        return prototype.locale;
     }
 
-    template<typename T>
-    const T& store(const std::string& key) const noexcept {
-        return std::any_cast<const T&>(prototype->store.at(key));
+    void set_locale(const Locale& locale) noexcept {
+        prototype.locale = locale;
     }
 
     bool operator==(const TensorPrototype& other) const noexcept {
-        return prototype->hash == other.prototype->hash;
+        return prototype.hash == other.prototype.hash;
     }
 
     bool operator!=(const TensorPrototype& other) const noexcept {
-        return prototype->hash != other.prototype->hash;
-    }
-    
- protected:
-    TensorPrototype() {
-        prototype = std::make_shared<TensorPrototypeMetadata>();
+        return prototype.hash != other.prototype.hash;
     }
 
-    U64 shapeToOffset(const std::vector<U64>& shape) const {
+    U64 shape_to_offset(const std::vector<U64>& shape) const {
+        assert(shape.size() >= prototype.strides.size());
         U64 index = 0;
-        for (U64 i = 0; i < shape.size(); i++) {
-            index += shape[i] *  prototype->strides[i];
+        U64 pad = shape.size() - prototype.strides.size();
+        for (U64 i = 0; i < prototype.strides.size(); i++) {
+            // TODO: This is a hack. This should be done by modifiying the strides.
+            index += ((shape[pad + i] >= prototype.shape[i]) ? 0 : shape[pad + i]) * prototype.strides[i];
         }
         return index;
     }
 
-    std::vector<U64> offsetToShape(U64 index) const {
-        std::vector<U64> shape;
-        for (U64 i = 0; i < shape.size(); i++) {
-            shape[i] = index / prototype->strides[i];
-            index -= shape[i] * prototype->strides[i];
+    void offset_to_shape(U64 index, std::vector<U64>& shape) const {
+        assert(shape.size() >= prototype.strides.size());
+        for (U64 i = 0; i < prototype.strides.size(); i++) {
+            shape[i] = index / prototype.strides[i];
+            index -= shape[i] * prototype.strides[i];
         }
-        return shape;
     }
 
-    std::shared_ptr<TensorPrototypeMetadata> prototype;
+    void expand_dims(const U64& axis) {
+        prototype.shape.insert(prototype.shape.begin() + axis, 1);
+        prototype.strides.insert(prototype.strides.begin() + axis, 1);
+    }
+
+    void squeeze_dims(const U64& axis) {
+        assert(prototype.shape[axis] == 1);
+        prototype.shape.erase(prototype.shape.begin() + axis);
+        prototype.strides.erase(prototype.strides.begin() + axis);
+    }
+    
+ protected:
+    TensorPrototypeMetadata prototype;
 };
 
 }  // namespace Jetstream

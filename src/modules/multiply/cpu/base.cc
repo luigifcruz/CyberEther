@@ -10,14 +10,16 @@ Result Multiply<D, T>::createCompute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 Result Multiply<D, T>::compute(const RuntimeMetadata&) {
-    for (U64 i = 0; i < input.factorA.size(); i++) {
-        output.product[i] = input.factorA[i] * input.factorB[i];
+    std::vector<U64> shape_p(output.product.rank(), 1);
+
+    for (U64 idx = 0; idx < output.product.size(); idx++) {
+        output.product.offset_to_shape(idx, shape_p);
+        output.product[idx] = input.factorA[shape_p] * input.factorB[shape_p];
     }
 
     return Result::SUCCESS;
 }
 
-template class Multiply<Device::CPU, CF32>;
-template class Multiply<Device::CPU, F32>;
+JST_MULTIPLY_CPU(JST_INSTANTIATION);
     
 }  // namespace Jetstream

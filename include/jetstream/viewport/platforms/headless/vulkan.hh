@@ -19,12 +19,12 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     explicit Headless(const Config& config);
     virtual ~Headless();
 
-    std::string_view prettyName() const {
-        return "Headless (Vulkan)";
+    std::string id() const {
+        return "headless";
     }
 
-    std::string_view name() const {
-        return "headless";
+    std::string name() const {
+        return "Headless (Vulkan)";
     }
 
     constexpr Device device() const {

@@ -26,6 +26,7 @@ cfg_lst.set('buildtype', get_option('buildtype'))
 
 subdir('meson')
 
+subdir('resources')
 subdir('flowgraphs')
 subdir('shaders')
 subdir('src')
@@ -51,7 +52,10 @@ libjetstream_dep = declare_dependency(
     link_with: libjetstream
 )
 
-subdir('tests')
+if target_machine.system() != 'emscripten'
+    subdir('tests')
+endif
+
 
 pkg = import('pkgconfig')
 pkg.generate(

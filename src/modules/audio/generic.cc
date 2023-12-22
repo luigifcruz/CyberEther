@@ -5,19 +5,12 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Audio<D, T>::create() {
     JST_DEBUG("Initializing Audio module.");
+    JST_INIT_IO();
 
     const U64 outputSize = input.buffer.size() * (config.outSampleRate / config.inSampleRate);
 
-    // Initialize input/output.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-        JST_INIT_OUTPUT("buffer", output.buffer, {outputSize});
-    );
-
-    // Initialize circular buffer.
-    buffer.resize(input.buffer.shape()[1]*20);
-
     // Configure audio resampler.
+
     resamplerConfig = ma_resampler_config_init(
         ma_format_f32,
         1, 
@@ -33,6 +26,7 @@ Result Audio<D, T>::create() {
     }
 
     // Configure audio device.
+
     deviceConfig = ma_device_config_init(ma_device_type_playback);
     // TODO: Implement support for more audio formats.
     deviceConfig.playback.format    = ma_format_f32;
@@ -53,6 +47,15 @@ Result Audio<D, T>::create() {
         JST_CHECK(Result::ERROR);
     }
 
+
+    // Allocate output.
+
+    output.buffer = Tensor<D, T>({outputSize});
+
+    // Initialize circular buffer.
+
+    buffer.resize(input.buffer.shape()[1]*20);
+
     return Result::SUCCESS;
 }
 
@@ -67,7 +70,7 @@ Result Audio<D, T>::destroy() {
 }
 
 template<Device D, typename T>
-void Audio<D, T>::summary() const {
+void Audio<D, T>::info() const {
     JST_INFO("  Device Name:        {}", deviceCtx.playback.name);
     JST_INFO("  Input Sample Rate:  {:.2f} kHz", config.inSampleRate / 1000);
     JST_INFO("  Output Sample Rate: {:.2f} kHz", config.outSampleRate / 1000);
@@ -107,6 +110,6 @@ Result Audio<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-template class Audio<Device::CPU, F32>;
+JST_AUDIO_CPU(JST_INSTANTIATION);
 
 }  // namespace Jetstream

@@ -10,6 +10,12 @@
 
 namespace Jetstream {
 
+#define JST_SCALE_CPU(MACRO) \
+    MACRO(Scale, Device::CPU, F32)
+
+#define JST_SCALE_METAL(MACRO) \
+    MACRO(Scale, Device::Metal, F32)
+
 template<Device D, typename T = F32>
 class Scale : public Module, public Compute {
  public:
@@ -18,9 +24,7 @@ class Scale : public Module, public Compute {
     struct Config {
         Range<T> range = {-1.0, +1.0};
 
-        JST_SERDES(
-            JST_SERDES_VAL("range", range);
-        );
+        JST_SERDES(range);
     };
 
     constexpr const Config& getConfig() const {
@@ -32,9 +36,7 @@ class Scale : public Module, public Compute {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -46,9 +48,7 @@ class Scale : public Module, public Compute {
     struct Output {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -65,15 +65,7 @@ class Scale : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "scale";
-    }
-
-    std::string_view prettyName() const {
-        return "Scale";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -109,6 +101,13 @@ class Scale : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE
+JST_SCALE_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_SCALE_METAL_AVAILABLE
+JST_SCALE_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

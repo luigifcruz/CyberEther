@@ -12,6 +12,12 @@
 
 namespace Jetstream {
 
+#define JST_SPECTROGRAM_CPU(MACRO) \
+    MACRO(Spectrogram, Device::CPU, F32)
+
+#define JST_SPECTROGRAM_METAL(MACRO) \
+    MACRO(Spectrogram, Device::Metal, F32)
+
 template<Device D, typename T = F32>
 class Spectrogram : public Module, public Compute, public Present {
  public:
@@ -21,10 +27,7 @@ class Spectrogram : public Module, public Compute, public Present {
         U64 height = 256;
         Size2D<U64> viewSize = {512, 384};
 
-        JST_SERDES(
-            JST_SERDES_VAL("height", height);
-            JST_SERDES_VAL("viewSize", viewSize);
-        );
+        JST_SERDES(height, viewSize);
     };
     
     constexpr const Config& getConfig() const {
@@ -36,9 +39,7 @@ class Spectrogram : public Module, public Compute, public Present {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -48,7 +49,7 @@ class Spectrogram : public Module, public Compute, public Present {
     // Output
 
     struct Output {
-        JST_SERDES();
+        JST_SERDES_OUTPUT();
     };
 
     constexpr const Output& getOutput() const {
@@ -61,15 +62,7 @@ class Spectrogram : public Module, public Compute, public Present {
         return D;
     }
 
-    std::string_view name() const {
-        return "spectrogram";
-    }
-
-    std::string_view prettyName() const {
-        return "Spectrogram";
-    }
-
-    void summary() const final;
+    void info() const final;
     
     // Constructor
 
@@ -103,6 +96,9 @@ class Spectrogram : public Module, public Compute, public Present {
     F32 decayFactor;
     Tensor<D, F32> frequencyBins;
 
+    U64 numberOfElements = 0;
+    U64 numberOfBatches = 0;
+
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
@@ -133,6 +129,13 @@ class Spectrogram : public Module, public Compute, public Present {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
+JST_SPECTROGRAM_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE
+JST_SPECTROGRAM_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

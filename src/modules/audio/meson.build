@@ -11,6 +11,7 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
+    cfg_lst.set('JETSTREAM_MODULE_AUDIO_AVAILABLE', true)
     cfg_lst.set('JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE', true)
     
     if target_machine.system() == 'ios' or target_machine.system() == 'darwin'

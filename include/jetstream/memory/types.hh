@@ -301,43 +301,36 @@ inline std::ostream& operator<<(std::ostream& os, const Device& device) {
 //
 
 struct Locale {
-    std::string id = "";
-    std::string subId = "";
+    std::string blockId = "";
+    std::string moduleId = "";
     std::string pinId = "";
 
-    // TODO: Remove
-    std::string str() const {
-        return id + subId + pinId;
+    Locale block() const {
+        return Locale{blockId};
     }
 
-    Locale idOnly() const {
-        return Locale{id};
+    Locale module() const {
+        return Locale{blockId, moduleId};
     }
 
-    Locale idSub() const {
-        return Locale{id, subId};
-    }
-
-    Locale idPin() const {
-        return Locale{id, "", pinId};
-    }
-
-    Locale pinOnly() const {
-        return Locale{id, "", pinId};
+    Locale pin() const {
+        return Locale{blockId, "", pinId};
     }
 
     bool empty() const {
-        return id.empty() && subId.empty() && pinId.empty();
-    }
-
-    bool internal() const {
-        return !subId.empty();
+        return blockId.empty() && 
+               moduleId.empty() && 
+               pinId.empty();
     }
 
     bool operator==(const Locale& other) const {
-        return id == other.id &&
-               subId == other.subId &&
-               pinId == other.pinId;
+        return blockId  == other.blockId  &&
+               moduleId == other.moduleId &&
+               pinId    == other.pinId;
+    }
+
+    std::string shash() const {
+        return blockId + moduleId + pinId;
     }
 
     std::size_t hash() const {
@@ -347,8 +340,8 @@ struct Locale {
     struct Hasher {
         std::size_t operator()(const Locale& locale) const {
             std::hash<std::string> string_hasher;
-            std::size_t h1 = string_hasher(locale.id);
-            std::size_t h2 = string_hasher(locale.subId);
+            std::size_t h1 = string_hasher(locale.blockId);
+            std::size_t h2 = string_hasher(locale.moduleId);
             std::size_t h3 = string_hasher(locale.pinId);
             return h1 ^ (h2 << 1) ^ (h3 << 2);
         }
@@ -356,13 +349,13 @@ struct Locale {
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Locale& locale) {
-    if (!locale.id.empty() && !locale.subId.empty()) {
-        os << fmt::format("{}-", locale.id);
+    if (!locale.blockId.empty() && !locale.moduleId.empty()) {
+        os << fmt::format("{}-", locale.blockId);
     } else {
-        os << fmt::format("{}", locale.id);
+        os << fmt::format("{}", locale.blockId);
     }
-    if (!locale.subId.empty()) {
-        os << fmt::format("{}", locale.subId);
+    if (!locale.moduleId.empty()) {
+        os << fmt::format("{}", locale.moduleId);
     }
     if (!locale.pinId.empty()) {
         os << fmt::format(".{}", locale.pinId);

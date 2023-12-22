@@ -1,4 +1,5 @@
 #ifndef JETSTREAM_MODULES_FM_HH
+#define JETSTREAM_MODULES_FM_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -9,20 +10,18 @@
 
 namespace Jetstream {
 
-template<Device D, typename T = CF32>
+#define JST_FM_CPU(MACRO) \
+    MACRO(FM, Device::CPU, CF32, F32)
+
+template<Device D, typename IT = CF32, typename OT = F32>
 class FM : public Module, public Compute {
  public:
-    using IT = T;
-    using OT = typename NumericTypeInfo<T>::subtype;
-
     // Configuration 
 
     struct Config {
         F32 sampleRate = 240e3f;
 
-        JST_SERDES(
-            JST_SERDES_VAL("sampleRate", sampleRate);
-        );
+        JST_SERDES(sampleRate);
     };
 
     constexpr const Config& getConfig() const {
@@ -34,9 +33,7 @@ class FM : public Module, public Compute {
     struct Input {
         Tensor<D, IT> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -48,13 +45,15 @@ class FM : public Module, public Compute {
     struct Output {
         Tensor<D, OT> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
         return output;
+    }
+
+    constexpr const Tensor<D, OT>& getOutputBuffer() const {
+        return this->output.buffer;
     }
 
     // Taint & Housekeeping
@@ -63,15 +62,7 @@ class FM : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "fm";
-    }
-
-    std::string_view prettyName() const {
-        return "Frequency Modulation";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -82,11 +73,15 @@ class FM : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    float kf;
-    float ref;
+    F32 kf;
+    F32 ref;
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_FM_CPU_AVAILABLE
+JST_FM_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

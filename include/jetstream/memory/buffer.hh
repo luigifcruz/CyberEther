@@ -2,11 +2,10 @@
 #define JETSTREAM_MEMORY_BUFFER_H
 
 #include <mutex>
-#include <cstring>
 #include <memory>
-#include <algorithm>
 #include <condition_variable>
 #include <chrono>
+#include <complex>
 
 #include "jetstream/types.hh"
 

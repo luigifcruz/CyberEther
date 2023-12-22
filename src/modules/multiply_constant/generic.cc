@@ -5,18 +5,17 @@ namespace Jetstream {
 template<Device D, typename T>
 Result MultiplyConstant<D, T>::create() {
     JST_DEBUG("Initializing Multiply Constant module.");
+    JST_INIT_IO();
 
-    // Initialize output.
-    JST_INIT(
-        JST_INIT_INPUT("factor", input.factor);
-        JST_INIT_OUTPUT("product", output.product, input.factor.shape());
-    );
+    // Allocate output.
+
+    output.product = Tensor<D, T>(input.factor.shape());
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void MultiplyConstant<D, T>::summary() const {
+void MultiplyConstant<D, T>::info() const {
     // TODO: Add custom formater for complex type.
     if constexpr (IsComplex<T>::value) {
         JST_INFO("  Constant: ({}, {})", config.constant.real(), config.constant.imag());

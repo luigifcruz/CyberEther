@@ -6,20 +6,17 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Constellation<D, T>::create() {
     JST_DEBUG("Initializing Constellation module.");
-
-    // Initialize Input & Output memory.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-    );
+    JST_INIT_IO();
 
     // Allocate internal buffers.
+
     timeSamples = Tensor<D, F32>({config.viewSize.width, config.viewSize.height});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void Constellation<D, T>::summary() const {
+void Constellation<D, T>::info() const {
     JST_INFO("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 

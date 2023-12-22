@@ -9,12 +9,12 @@
 #include <unordered_set>
 #include <unordered_map>
 
-#include "jetstream/state.hh"
 #include "jetstream/types.hh"
 #include "jetstream/module.hh"
-#include "jetstream/bundle.hh"
+#include "jetstream/block.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/interface.hh"
+#include "jetstream/block.hh"
+#include "jetstream/flowgraph.hh"
 #include "jetstream/compositor.hh"
 #include "jetstream/compute/base.hh"
 
@@ -25,16 +25,9 @@ class JETSTREAM_API Instance {
     Instance()
          : _scheduler(),
            _compositor(*this),
-           _parser(std::make_shared<Parser>()) {
+           _flowgraph(*this) {
         JST_DEBUG("[INSTANCE] Started.");
     };
-
-    Result openFlowgraphFile(const std::string& path);
-    Result openFlowgraphBlob(const char* blob);
-    Result saveFlowgraph(const std::string& path);
-    Result resetFlowgraph();
-    Result closeFlowgraph();
-    Result newFlowgraph();
 
     Result buildDefaultInterface(const Device& preferredDevice = Device::None,
                                  const Backend::Config& backendConfig = {},
@@ -90,37 +83,134 @@ class JETSTREAM_API Instance {
                      const std::string& id,
                      const typename T<D, C...>::Config& config,
                      const typename T<D, C...>::Input& input,
-                     const std::string& bundleId = "",
-                     const Interface::Config& interfaceConfig = {}) {
-        using Block = T<D, C...>;
+                     const std::string& blockId) {
+        using B = T<D, C...>;
 
-        // Check Block type.
+        // Validate module type.
 
-        if constexpr (!std::is_base_of<Interface, Block>::value) {
-            JST_ERROR("[INSTANCE] Failed because a module must have an Interface.");
-            return Result::ERROR;
-        }
-
-        if constexpr (std::is_base_of<Present, Block>::value) {
+        if constexpr (std::is_base_of<Present, B>::value) {
             if (!_window) {
-                JST_ERROR("[INSTANCE] A window is required because "
+                JST_FATAL("[INSTANCE] A window is required because "
                           "a graphical module was added.");
-                return Result::ERROR;
+                return Result::FATAL;
             }
         }
 
+        if constexpr (!std::is_base_of<Compute, B>::value &&
+                      !std::is_base_of<Present, B>::value) {
+            JST_FATAL("[INSTANCE] Invalid module invalid because it has "
+                      "no compute or present taints.");
+            return Result::FATAL;
+        }
+
         // Allocate module.
-        module = std::make_shared<Block>();
+        module = std::make_shared<B>();
+
+        // Build locale.
+
+        const auto& locale = Locale{blockId, id};
+        JST_DEBUG("[INSTANCE] Adding new module '{}'.", locale);
+        
+        if (_flowgraph.nodes().contains(locale)) {
+            JST_ERROR("[INSTANCE] Module '{}' already exists.", locale);
+            return Result::ERROR;
+        }
+
+        // Create new state for module.
+
+        auto node = std::make_shared<Flowgraph::Node>();
+        node->module = module;
+        node->id = id;
+
+        // Load generic data.
+
+        module->setLocale(locale);
+        module->config = config;
+        module->input = input;
+
+        // Create module and load state.
+
+        if (module->create() != Result::SUCCESS) {
+            JST_DEBUG("[INSTANCE] Module '{}' is incomplete.", locale);
+
+            auto& block = _flowgraph.nodes().at(locale.block())->block;
+            block->setComplete(false);
+            block->pushError(fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
+
+            return Result::SUCCESS;
+        }
+
+        // Populate block state record data.
+
+        JST_CHECK(module->input >> node->inputMap);
+        JST_CHECK(module->output >> node->outputMap);
+
+        // Check if output locale is owned by module.
+
+        for (const auto& [name, meta] : node->outputMap) {
+            if (!meta.locale.empty() && meta.locale.block() != locale.block()) {
+                JST_FATAL("[INSTANCE] Module '{}' output '{}' is not owned by the module. "
+                          "The output locale is set to '{}'. "
+                          "This is likely an internal module error.", locale, name, meta.locale);
+                return Result::FATAL;
+            }
+        }
+
+        // Load state for present.
+
+        if constexpr (std::is_base_of<Present, B>::value) {
+            module->window = _window;
+            JST_CHECK(module->createPresent());
+        }
+
+        // Add module sub-types to nodes.
+
+        if constexpr (std::is_base_of<Compute, B>::value) {
+            node->compute = module;
+        }
+
+        if constexpr (std::is_base_of<Present, B>::value) {
+            node->present = module;
+        }
+
+        // Add block to the scheduler.
+
+        JST_CHECK(_scheduler.addModule(locale, 
+                                       module, 
+                                       node->inputMap, 
+                                       node->outputMap, 
+                                       node->compute, 
+                                       node->present));
+
+        // Add module to the instance.
+
+        _flowgraph.nodes()[locale] = node;
+        _flowgraph.nodesOrder().push_back(locale);
+
+        return Result::SUCCESS;
+    }
+
+    template<template<Device, typename...> class T, Device D, typename... C>
+    Result addBlock(std::shared_ptr<T<D, C...>>& block,
+                    const std::string& id,
+                    const typename T<D, C...>::Config& config,
+                    const typename T<D, C...>::Input& input,
+                    const typename T<D, C...>::State& state) {
+        using B = T<D, C...>;
+
+        // Allocate module.
+        block = std::make_shared<B>();
 
         // Generate automatic node id if none was provided.
+
         const auto autoId = [&](){
             if (!id.empty()) {
                 return id;
             }
 
             std::vector<std::string> parts;
-            const auto moduleName = std::string(module->name());
-            std::stringstream ss(moduleName);
+            const auto name = std::string(block->id());
+            std::stringstream ss(name);
             std::string item;
 
             while (std::getline(ss, item, '-')) {
@@ -128,145 +218,123 @@ class JETSTREAM_API Instance {
             }
 
             if (parts.size() < 2) {
-                return fmt::format("{}{}", moduleName.substr(0, 3), blockStates.size());
+                return fmt::format("{}{}", name.substr(0, 3), _flowgraph.nodes().size());
             }
 
-            return fmt::format("{}_{}{}", parts[0].substr(0, 3), parts[1], blockStates.size());
+            return fmt::format("{}_{}{}", parts[0].substr(0, 3), parts[1], _flowgraph.nodes().size());
         }();
 
-        // Generate locale and check if it's valid.
-        const auto& locale = (!autoId.empty() && !bundleId.empty()) ? Locale{bundleId, autoId} : Locale{autoId};
-        JST_DEBUG("[INSTANCE] Adding new module '{}'.", locale);
+        // Build locale.
 
-        if (blockStates.contains(locale)) {
-            JST_ERROR("[INSTANCE] Module '{}' already exists.", locale);
+        const auto& locale = Locale{autoId};
+        JST_DEBUG("[INSTANCE] Adding new block '{}'.", locale);
+
+        if (_flowgraph.nodes().contains(locale)) {
+            JST_ERROR("[INSTANCE] Block '{}' already exists.", locale);
             return Result::ERROR;
         }
 
-        // Create new state for module and load interface.
+        // Create new state for block.
 
-        auto& state = blockStates[locale] = std::make_shared<BlockState>();
+        auto node = std::make_shared<Flowgraph::Node>();
 
-        state->interface = module;
+        _flowgraph.nodes()[locale] = node;
+        _flowgraph.nodesOrder().push_back(locale);
 
-        // Load generic data.
+        node->block = block;
+        node->id = autoId;
 
-        module->setLocale(locale);
-        module->setInstance(this);
-        module->setComplete(true);
-        module->setInterfaceConfig(interfaceConfig);
-
-        module->config = config;
-        module->input = input;
-
-        // Create module and load state.
-        if constexpr (std::is_base_of<Bundle, Block>::value) {
-            if (module->create() != Result::SUCCESS) {
-                // If it fails, mark bundle as incomplete.
-                // This is redundant but nice to have I guess.
-                module->setComplete(false);
-            }
-
-            state->bundle = module;
-        } else {
-            if (module->create() != Result::SUCCESS) {
-                JST_DEBUG("[INSTANCE] Module '{}' is incomplete.", locale);
-
-                // If module is internal, mark its bundle as incomplete.
-                if (locale.internal()) {
-                    auto& bundle = blockStates.at(locale.idOnly())->interface;
-                    bundle->setComplete(false);
-                    bundle->pushError(fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
-                }
-
-                module->setComplete(false);
-                module->pushError(JST_LOG_LAST_ERROR());
-            }
-
-            state->module = module;
-        }
-
-        // Load state for compute.
-        if constexpr (std::is_base_of<Compute, Block>::value) {
-            state->compute = module;
-        }
-
-        // Load state for present.
-        if constexpr (std::is_base_of<Present, Block>::value) {
-            if (module->complete()) {
-                state->present = module;
-                state->present->window = _window;
-                JST_CHECK(state->present->createPresent());
-            }
-        }
-
-        // Populate state record fingerprint.
-
-        state->record.fingerprint.module = module->name();
-        state->record.fingerprint.device = GetDeviceName(module->device());
+        node->fingerprint.id = block->id();
+        node->fingerprint.device = GetDeviceName(block->device());
 
         if constexpr (CountArgs<C...>::value == 1) {
             using Type = typename std::tuple_element<0, std::tuple<C...> >::type;
-            state->record.fingerprint.dataType = NumericTypeInfo<Type>::name;
+            node->fingerprint.inputDataType = NumericTypeInfo<Type>::name;
         }
         if constexpr (CountArgs<C...>::value == 2) {
             using InputType = typename std::tuple_element<0, std::tuple<C...> >::type;
-            state->record.fingerprint.inputDataType = NumericTypeInfo<InputType>::name;
+            node->fingerprint.inputDataType = NumericTypeInfo<InputType>::name;
             using OutputType = typename std::tuple_element<1, std::tuple<C...> >::type;
-            state->record.fingerprint.outputDataType = NumericTypeInfo<OutputType>::name;
+            node->fingerprint.outputDataType = NumericTypeInfo<OutputType>::name;
+        }
+
+        // Load generic data.
+
+        block->setLocale(locale);
+        block->setInstance(this);
+        block->setComplete(true);
+        block->state = state;
+        block->config = config;
+        block->input = input;
+
+        // Create block and load state.
+
+        if (block->create() != Result::SUCCESS) {
+            JST_DEBUG("[INSTANCE] Block '{}' is incomplete.", locale);
+            block->setComplete(false);
         }
 
         // Populate block state record data.
 
-        state->record.locale = locale;
+        JST_CHECK(block->input >> node->inputMap);
+        JST_CHECK(block->output >> node->outputMap);
+        JST_CHECK(block->state >> node->stateMap);
 
-        state->record.setConfigEndpoint(module->config);
-        state->record.setInputEndpoint(module->input);
-        state->record.setOutputEndpoint(module->output);
-        if (!locale.internal()) {
-            state->record.setInterfaceEndpoint(module->getInterfaceConfig());
+        node->setConfigEndpoint(block->config);
+        node->setStateEndpoint(block->state);
+
+        // Check if output locale is owned by block.
+
+        for (const auto& [name, meta] : node->outputMap) {
+            if (!meta.locale.empty() && meta.locale.block() != locale.block()) {
+                JST_FATAL("[INSTANCE] Block '{}' output '{}' is not owned by the block. "
+                          "The output locale is set to '{}'. "
+                          "This is likely an internal block error.", locale, name, meta.locale);
+                return Result::FATAL;
+            }
         }
-
-        JST_CHECK(state->record.updateMaps());
-
-        // Add block to the schedule.
-        if (module->complete()) {
-            JST_CHECK(_scheduler.addModule(locale, state));
-        }
-
+        
         // Add block to the compositor.
-        if (!locale.internal()) {
-            JST_CHECK(_compositor.addModule(locale, state));
-        }
+        JST_CHECK(_compositor.addBlock(locale, 
+                                       block, 
+                                       node->inputMap, 
+                                       node->outputMap, 
+                                       node->stateMap, 
+                                       node->fingerprint));
 
         return Result::SUCCESS;
     }
 
     template<template<Device, typename...> class T, Device D, typename... C>
-    Result addModule(Parser::ModuleRecord& record) {
-        using Module = T<D, C...>;
+    Result addBlock(const std::string& id, 
+                    Parser::RecordMap& configMap,
+                    Parser::RecordMap& inputMap, 
+                    Parser::RecordMap& stateMap) {
+        using B = T<D, C...>;
 
-        typename Module::Config config{};
-        typename Module::Input input{};
-        Interface::Config interfaceConfig{};
+        typename B::Config config{};
+        typename B::Input input{};
+        typename B::State state{};
 
-        JST_CHECK(config<<record.configMap);
-        JST_CHECK(input<<record.inputMap);
-        JST_CHECK(interfaceConfig<<record.interfaceMap);
+        JST_CHECK(config << configMap);
+        JST_CHECK(input << inputMap);
+        JST_CHECK(state << stateMap);
 
-        std::shared_ptr<Module> module;
-        const auto& [id, bundleId, _] = record.locale;
-        return addModule<T, D, C...>(module, id, config, input, bundleId, interfaceConfig);
+        std::shared_ptr<B> block;
+        return addBlock<T, D, C...>(block, id, config, input, state);
     }
 
-    Result eraseModule(const Locale locale);
-    Result linkModules(const Locale inputLocale, const Locale outputLocale);
-    Result unlinkModules(const Locale inputLocale, const Locale outputLocale);
-    Result removeModule(const std::string id, const std::string bundleId = "");
-    Result changeModuleBackend(const Locale input, const Device device);
-    Result changeModuleDataType(const Locale input, const std::tuple<std::string, std::string, std::string> type);
-    Result clearModules();
-    Result reloadModule(const Locale locale);
+    Result renameBlock(Locale locale, const std::string& id);
+    Result removeBlock(Locale locale);
+    Result reloadBlock(Locale locale);
+    Result linkBlocks(Locale inputLocale, Locale outputLocale);
+    Result unlinkBlocks(Locale inputLocale, Locale outputLocale);
+    Result changeBlockBackend(Locale input, Device device);
+    Result changeBlockDataType(Locale input, std::tuple<std::string, std::string> type);
+
+    Result reset();
+    Result eraseModule(Locale locale);
+    Result eraseBlock(Locale locale);
 
     Result destroy();
     Result compute();
@@ -290,34 +358,21 @@ class JETSTREAM_API Instance {
         return *_viewport;
     }
 
-    Parser& parser() {
-        return *_parser;
+    Flowgraph& flowgraph() {
+        return _flowgraph;
     }
-
- protected:
-    BlockState& getBlockState(const std::string& id) {
-        return *blockStates[{id}];
-    }
-
-    U64 countBlockState(const std::string& id) {
-        return blockStates.count({id});
-    }
-
-    friend class Parser;
 
  private:
     Scheduler _scheduler;
     Compositor _compositor;
-
-    std::unordered_map<Locale, std::shared_ptr<BlockState>, Locale::Hasher> blockStates;
+    Flowgraph _flowgraph;
 
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
-    std::shared_ptr<Parser> _parser;
 
-    Result fetchDependencyTree(const Locale locale, std::vector<Locale>& storage);
+    Result fetchDependencyTree(Locale locale, std::vector<Locale>& storage);
 
-    Result moduleUpdater(const Locale locale, const std::function<Result(const Locale&, Parser::ModuleRecord&)>& updater);
+    Result blockUpdater(Locale locale, const std::function<Result(std::shared_ptr<Flowgraph::Node>&)>& updater);
 };
 
 }  // namespace Jetstream

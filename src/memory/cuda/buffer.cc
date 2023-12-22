@@ -10,7 +10,7 @@ namespace Jetstream {
 using Implementation = TensorBuffer<Device::CUDA>;
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const TensorPrototypeMetadata& prototype,
                              const bool& host_accessible) {
     JST_TRACE("[CUDA:BUFFER] Allocating new buffer.");
 
@@ -20,12 +20,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     storage->compatible_devices = {
         Device::CUDA
     };
-
-    // Check size.
-
-    if (prototype->size_bytes == 0) {
-        return;
-    }
 
     // Get device types.
 
@@ -37,9 +31,15 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         storage->compatible_devices.insert(Device::CPU);
     }
 
+    // Check size.
+
+    if (prototype.size_bytes == 0) {
+        return;
+    }
+
     // Allocate memory.
 
-    const auto size_bytes = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+    const auto size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     if (host_accessible || unified) {
         JST_CUDA_CHECK_THROW(cudaMallocManaged(&_buffer, size_bytes), [&]{
@@ -57,7 +57,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
     JST_TRACE("[CUDA:BUFFER] Cloning from Vulkan buffer.");
 
@@ -75,7 +75,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Check size.
 
-    if (prototype->size_bytes == 0) {
+    if (prototype.size_bytes == 0) {
         return;
     }
 
@@ -103,7 +103,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     CUDA_EXTERNAL_MEMORY_HANDLE_DESC extMemHandleDesc = {};
     extMemHandleDesc.type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD;
     extMemHandleDesc.handle.fd = vulkan_file_descriptor;
-    extMemHandleDesc.size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+    extMemHandleDesc.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     JST_CUDA_CHECK_THROW(cuImportExternalMemory(&vulkan_external_memory, &extMemHandleDesc), [&]{
         JST_FATAL("[CUDA:BUFFER] Failed to import Vulkan buffer memory into CUDA.");
@@ -113,7 +113,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     CUDA_EXTERNAL_MEMORY_BUFFER_DESC bufferDesc = {};
     bufferDesc.offset = 0;
-    bufferDesc.size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+    bufferDesc.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     JST_CUDA_CHECK_THROW(cuExternalMemoryGetMappedBuffer(&devPtr, vulkan_external_memory, &bufferDesc), [&]{
         JST_FATAL("[CUDA:BUFFER] Failed to get CUDA buffer from Vulkan buffer memory.");
@@ -122,6 +122,23 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     _buffer = reinterpret_cast<void*>(devPtr);
     external_memory_device = Device::Vulkan;
     owns_data = false;
+}
+#endif
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
+    throw std::runtime_error("Exporting CPU memory to CUDA not implemented.");
+    // TODO: Add CPU -> CUDA.
+}
+#endif
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
+    throw std::runtime_error("Exporting Metal memory to CUDA not implemented.");
 }
 #endif
 

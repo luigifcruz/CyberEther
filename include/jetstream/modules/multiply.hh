@@ -10,6 +10,13 @@
 
 namespace Jetstream {
 
+#define JST_MULTIPLY_CPU(MACRO) \
+    MACRO(Multiply, Device::CPU, CF32) \
+    MACRO(Multiply, Device::CPU, F32)
+
+#define JST_MULTIPLY_METAL(MACRO) \
+    MACRO(Multiply, Device::Metal, CF32)
+
 template<Device D, typename T = CF32>
 class Multiply : public Module, public Compute {
  public:
@@ -29,10 +36,7 @@ class Multiply : public Module, public Compute {
         Tensor<D, T> factorA;
         Tensor<D, T> factorB;
 
-        JST_SERDES(
-            JST_SERDES_VAL("factorA", factorA);
-            JST_SERDES_VAL("factorB", factorB);
-        );
+        JST_SERDES_INPUT(factorA, factorB);
     };
 
     constexpr const Input& getInput() const {
@@ -44,9 +48,7 @@ class Multiply : public Module, public Compute {
     struct Output {
         Tensor<D, T> product;
 
-        JST_SERDES(
-            JST_SERDES_VAL("product", product);
-        );
+        JST_SERDES_OUTPUT(product);
     };
 
     constexpr const Output& getOutput() const {
@@ -63,15 +65,7 @@ class Multiply : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "multiply";
-    }
-
-    std::string_view prettyName() const {
-        return "Multiply";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -90,6 +84,13 @@ class Multiply : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE
+JST_MULTIPLY_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
+JST_MULTIPLY_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

@@ -114,7 +114,8 @@ class Endpoint {
     Result stopGstreamerEndpoint();
     Result destroyGstreamerEndpoint();
 
-    Result checkGstreamerPlugins(const std::vector<std::string>& plugins);
+    Result checkGstreamerPlugins(const std::vector<std::string>& plugins,
+                                 const bool& silent = false);
 #endif
 };
 

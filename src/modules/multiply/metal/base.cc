@@ -34,6 +34,8 @@ template<Device D, typename T>
 Result Multiply<D, T>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
+
+    // TODO: Implement new multiplication logic.
     
     auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(assets.state);
@@ -47,6 +49,6 @@ Result Multiply<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template class Multiply<Device::Metal, CF32>;
+JST_MULTIPLY_METAL(JST_INSTANTIATION);
     
 }  // namespace Jetstream

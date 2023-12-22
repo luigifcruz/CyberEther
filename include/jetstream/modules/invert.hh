@@ -1,4 +1,5 @@
 #ifndef JETSTREAM_MODULES_INVERT_HH
+#define JETSTREAM_MODULES_INVERT_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -8,6 +9,9 @@
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
+
+#define JST_INVERT_CPU(MACRO) \
+    MACRO(Invert, Device::CPU, CF32)
 
 template<Device D, typename T = CF32>
 class Invert : public Module, public Compute {
@@ -27,9 +31,7 @@ class Invert : public Module, public Compute {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -41,13 +43,15 @@ class Invert : public Module, public Compute {
     struct Output {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
         return output;
+    }
+
+    constexpr const Tensor<D, T>& getOutputBuffer() const {
+        return this->output.buffer;
     }
 
     // Taint & Housekeeping
@@ -56,15 +60,7 @@ class Invert : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "invert";
-    }
-
-    std::string_view prettyName() const {
-        return "Invert";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -76,6 +72,10 @@ class Invert : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_INVERT_CPU_AVAILABLE
+JST_INVERT_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

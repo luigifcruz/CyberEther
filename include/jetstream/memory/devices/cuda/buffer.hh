@@ -15,16 +15,26 @@ template<>
 class TensorBuffer<Device::CUDA> {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                          const TensorPrototypeMetadata& prototype,
                           const bool& host_accessible = false);
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                          const TensorPrototypeMetadata& prototype,
                           const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer);
 #endif
 
-    // TODO: Add CPU -> CUDA.
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const TensorPrototypeMetadata& prototype,
+                          const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);
+#endif
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const TensorPrototypeMetadata& prototype,
+                          const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer);
+#endif
 
     ~TensorBuffer();
 

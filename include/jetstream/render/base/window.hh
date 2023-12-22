@@ -28,19 +28,14 @@ class Window {
         F32 scale = 1.0f;
         bool imgui = true;
 
-        JST_SERDES(
-            JST_SERDES_VAL("scale", scale);
-            JST_SERDES_VAL("imgui", imgui);
-        );
+        JST_SERDES(scale, imgui);
     };
 
     struct Stats {
         U64 droppedFrames;
     };
 
-    explicit Window(const Config& config) : config(config) {
-        JST_DEBUG("Window initialized.");
-    }
+    explicit Window(const Config& config) : config(config) {}
     virtual ~Window() = default;
 
     virtual Result create();

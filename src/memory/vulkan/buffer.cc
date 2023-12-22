@@ -6,7 +6,7 @@ namespace Jetstream {
 using Implementation = TensorBuffer<Device::Vulkan>;
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                             const TensorPrototypeMetadata& prototype,
                              const bool& host_accessible,
                              const VkBufferUsageFlags& usage) {
     JST_TRACE("[VULKAN:BUFFER] Allocating new buffer.");
@@ -17,12 +17,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     storage->compatible_devices = {
         Device::Vulkan
     };
-
-    // Check size.
-
-    if (prototype->size_bytes == 0) {
-        return;
-    }
 
     // Get device types.
 
@@ -43,7 +37,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     }
 #endif
 
-    // Sort buffer usage flags.
+    // Check size.
+
+    if (prototype.size_bytes == 0) {
+        return;
+    }
 
     // Create buffer object. 
 
@@ -53,7 +51,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype->size_bytes);
+    bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferInfo.pNext = (canExport) ? &extImageCreateInfo : nullptr;
@@ -111,6 +109,32 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     owns_data = true;
     _host_accessible = host_accessible || unified;
 }
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                             const TensorPrototypeMetadata& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
+    throw std::runtime_error("Exporting CPU memory to Vulkan not implemented.");
+    // TODO: Add CPU -> Vulkan.
+}
+#endif
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                             const TensorPrototypeMetadata& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
+    throw std::runtime_error("Exporting Metal memory to Vulkan not implemented.");
+}
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                             const TensorPrototypeMetadata& prototype,
+                             const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
+    throw std::runtime_error("Exporting CUDA memory to Vulkan not implemented.");
+    // TODO: Add CUDA -> Vulkan.
+}
+#endif
 
 Implementation::~TensorBuffer() {
     JST_TRACE("[VULKAN:BUFFER] Releasing buffer {}.", fmt::ptr(_buffer));

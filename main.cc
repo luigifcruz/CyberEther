@@ -147,21 +147,14 @@ int main(int argc, char* argv[]) {
                                                    renderConfig));
 
     if (!flowgraphPath.empty()) {
-        JST_CHECK_THROW(instance.openFlowgraphFile(flowgraphPath));
+        JST_CHECK_THROW(instance.flowgraph().create(flowgraphPath));
     }
     
     // Start compute thread.
 
     auto computeThread = std::thread([&]{
         while (instance.viewport().keepRunning()) {
-            const auto result = instance.compute();
-
-            if (result == Result::SUCCESS ||
-                result == Result::TIMEOUT) {
-                continue;
-            }
-
-            JST_CHECK_THROW(result);
+            JST_CHECK_THROW(instance.compute());
         }
     });
 

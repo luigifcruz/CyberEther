@@ -5,18 +5,17 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Invert<D, T>::create() {
     JST_DEBUG("Initializing Invert module.");
+    JST_INIT_IO();
 
-    // Initialize input/output.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-        JST_INIT_OUTPUT("buffer", output.buffer, input.buffer.shape());
-    );
+    // Allocate output.
+
+    output.buffer = Tensor<D, T>(input.buffer.shape());
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void Invert<D, T>::summary() const {
+void Invert<D, T>::info() const {
     JST_INFO("  None");
 }
 

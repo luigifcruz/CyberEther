@@ -51,7 +51,7 @@ Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->scalingSize = input.buffer.shape()[1];
+    constants->scalingSize = scalingSize;
 
     return Result::SUCCESS;
 }
@@ -73,6 +73,6 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template class Amplitude<Device::Metal, CF32>;
+JST_AMPLITUDE_METAL(JST_INSTANTIATION);
     
 }  // namespace Jetstream

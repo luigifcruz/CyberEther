@@ -5,4 +5,7 @@ backend_lst = []
 
 subdir('cpu')
 
-sum_lst += {'Cast': backend_lst}
+if backend_lst.length() > 0
+    cfg_lst.set('JETSTREAM_MODULE_CAST_AVAILABLE', true)
+    sum_lst += {'Cast': backend_lst}
+endif

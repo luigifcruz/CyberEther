@@ -20,9 +20,7 @@ class Surface {
         std::vector<std::shared_ptr<Program>> programs;
     };
 
-    explicit Surface(const Config& config) : config(config) {
-        JST_DEBUG("Surface initialized.");
-    }
+    explicit Surface(const Config& config) : config(config) {}
     virtual ~Surface() = default;
 
     const Size2D<U64>& size() const {

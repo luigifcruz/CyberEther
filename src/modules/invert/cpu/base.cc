@@ -20,6 +20,6 @@ Result Invert<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-template class Invert<Device::CPU, CF32>;
+JST_INVERT_CPU(JST_INSTANTIATION);
     
 }  // namespace Jetstream

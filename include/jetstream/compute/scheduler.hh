@@ -11,14 +11,18 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "jetstream/state.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
 
 class JETSTREAM_API Scheduler {
  public:
-    Result addModule(const Locale& locale, const std::shared_ptr<BlockState>& block);
+    Result addModule(const Locale& locale, 
+                     const std::shared_ptr<Module>& module,
+                     const Parser::RecordMap& inputMap,
+                     const Parser::RecordMap& outputMap,
+                     std::shared_ptr<Compute>& compute,
+                     std::shared_ptr<Present>& present);
     Result removeModule(const Locale& locale);
     Result compute();
     Result present();
@@ -31,18 +35,30 @@ class JETSTREAM_API Scheduler {
     typedef std::vector<std::pair<Device, ExecutionOrder>> DeviceExecutionOrder;
 
     struct ComputeModuleState {
-        std::shared_ptr<BlockState> block;
+        std::shared_ptr<Compute> module;
+        Parser::RecordMap inputMap;
+        Parser::RecordMap outputMap;
+        Device device;
         U64 clusterId;
         std::unordered_map<std::string, const Parser::Record*> activeInputs;
         std::unordered_map<std::string, const Parser::Record*> activeOutputs;
     };
 
     struct PresentModuleState {
-        std::shared_ptr<BlockState> block;
+        std::shared_ptr<Present> module;
+        Parser::RecordMap inputMap;
+        Parser::RecordMap outputMap;
     };
 
-    std::atomic_flag computeSync{false};
-    std::atomic_flag presentSync{false};
+    std::mutex presentMutex;
+    std::mutex computeMutex;
+
+    std::condition_variable presentCond;
+    std::condition_variable computeCond;
+
+    bool computeSync = false;
+    bool presentSync = false;
+
     std::atomic_flag computeWait{false};
     std::atomic_flag computeHalt{true};
     std::atomic_flag presentHalt{true};
@@ -53,6 +69,7 @@ class JETSTREAM_API Scheduler {
     std::unordered_map<std::string, ComputeModuleState> validComputeModuleStates;
     std::unordered_map<std::string, PresentModuleState> validPresentModuleStates;
 
+    bool running = true;
     std::vector<std::shared_ptr<Graph>> graphs;
     ExecutionOrder executionOrder;
     DeviceExecutionOrder deviceExecutionOrder;

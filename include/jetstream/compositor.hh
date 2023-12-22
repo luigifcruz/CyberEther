@@ -11,12 +11,12 @@
 #include <unordered_set>
 #include <unordered_map>
 
-#include "jetstream/state.hh"
 #include "jetstream/types.hh"
 #include "jetstream/module.hh"
-#include "jetstream/bundle.hh"
+#include "jetstream/block.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/interface.hh"
+#include "jetstream/block.hh"
+#include "jetstream/render/base.hh"
 #include "jetstream/compute/base.hh"
 
 namespace Jetstream {
@@ -25,19 +25,7 @@ class Instance;
 
 class JETSTREAM_API Compositor {
  public:
-    Compositor(Instance& instance)
-         : instance(instance),
-           graphSpatiallyOrganized(false),
-           rightClickMenuEnabled(false),
-           sourceEditorEnabled(false),
-           moduleStoreEnabled(true),
-           infoPanelEnabled(true),
-           flowgraphEnabled(true),
-           globalModalContentId(0),
-           nodeContextMenuNodeId(0) {
-        stacks["Graph"] = {true, 0};
-        JST_CHECK_THROW(refreshState());
-    };
+    Compositor(Instance& instance);
 
     Compositor& showStore(const bool& enabled) {
         moduleStoreEnabled = enabled;
@@ -49,32 +37,42 @@ class JETSTREAM_API Compositor {
         return *this;
     }
 
-    Result addModule(const Locale& locale, const std::shared_ptr<BlockState>& block);
-    Result removeModule(const Locale& locale);
+    Result addBlock(const Locale& locale, 
+                    const std::shared_ptr<Block>& block, 
+                    const Parser::RecordMap& inputMap, 
+                    const Parser::RecordMap& outputMap, 
+                    const Parser::RecordMap& stateMap,
+                    const Block::Fingerprint& fingerprint);
+    Result removeBlock(const Locale& locale);
     Result destroy();
 
     Result draw();
     Result processInteractions();
 
  private:
-    Instance& instance;
-
-    typedef std::pair<std::string, Device> CreateModuleMail;
+    typedef std::pair<std::string, Device> CreateBlockMail;
     typedef std::pair<Locale, Locale> LinkMail;
     typedef std::pair<Locale, Locale> UnlinkMail;
-    typedef Locale DeleteModuleMail;
-    typedef Locale ReloadModuleMail;
-    typedef std::pair<Locale, std::string> RenameModuleMail;
-    typedef std::pair<Locale, Device> ChangeModuleBackendMail;
-    typedef std::pair<Locale, std::tuple<std::string, std::string, std::string>> ChangeModuleDataTypeMail;
-    typedef std::pair<Locale, bool> ToggleModuleMail;
+    typedef Locale DeleteBlockMail;
+    typedef Locale ReloadBlockMail;
+    typedef std::pair<Locale, std::string> RenameBlockMail;
+    typedef std::pair<Locale, Device> ChangeBlockBackendMail;
+    typedef std::pair<Locale, std::tuple<std::string, std::string>> ChangeBlockDataTypeMail;
+    typedef std::pair<Locale, bool> ToggleBlockMail;
 
     typedef U64 LinkId;
     typedef U64 PinId;
     typedef U64 NodeId;
 
     struct NodeState {
-        std::shared_ptr<BlockState> block;
+        std::shared_ptr<Block> block;
+
+        Parser::RecordMap inputMap;
+        Parser::RecordMap outputMap;
+        Parser::RecordMap stateMap;
+        Block::Fingerprint fingerprint;
+        std::string title;
+
         NodeId id;
         U64 clusterLevel;
         std::unordered_map<PinId, Locale> inputs;
@@ -87,10 +85,14 @@ class JETSTREAM_API Compositor {
 
     Result refreshState();
     Result updateAutoLayoutState();
+    Result checkAutoLayoutState();
 
     Result drawStatic();
     Result drawGraph();
 
+    Instance& instance;
+
+    bool running = true;
     I32 nodeDragId;
     bool graphSpatiallyOrganized;
     bool rightClickMenuEnabled;
@@ -98,10 +100,18 @@ class JETSTREAM_API Compositor {
     bool moduleStoreEnabled;
     bool infoPanelEnabled;
     bool flowgraphEnabled;
+    bool debugDemoEnabled;
+    bool debugLatencyEnabled;
+    bool debugEnableTrace;
     U64 globalModalContentId;
     I32 nodeContextMenuNodeId;
 
     std::atomic_flag interfaceHalt{false};
+
+    bool assetsLoaded = false;
+    std::shared_ptr<Render::Texture> bannerTexture;
+    Result loadAssets();
+    Result unloadAssets();
 
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
     std::unordered_map<Locale, std::vector<Locale>, Locale::Hasher> outputInputCache;
@@ -114,26 +124,31 @@ class JETSTREAM_API Compositor {
     std::unordered_map<PinId, Locale> pinLocaleMap;
     std::unordered_map<NodeId, Locale> nodeLocaleMap;
 
-    CreateModuleMail createModuleStagingMailbox;
+    CreateBlockMail createBlockStagingMailbox;
     
     std::optional<LinkMail> linkMailbox;
     std::optional<UnlinkMail> unlinkMailbox;
-    std::optional<CreateModuleMail> createModuleMailbox;
-    std::optional<DeleteModuleMail> deleteModuleMailbox;
-    std::optional<ReloadModuleMail> reloadModuleMailbox;
-    std::optional<RenameModuleMail> renameModuleMailbox;
-    std::optional<ChangeModuleBackendMail> changeModuleBackendMailbox;
-    std::optional<ChangeModuleDataTypeMail> changeModuleDataTypeMailbox;
-    std::optional<ToggleModuleMail> toggleModuleMailbox;
+    std::optional<CreateBlockMail> createBlockMailbox;
+    std::optional<DeleteBlockMail> deleteBlockMailbox;
+    std::optional<ReloadBlockMail> reloadBlockMailbox;
+    std::optional<RenameBlockMail> renameBlockMailbox;
+    std::optional<ChangeBlockBackendMail> changeBlockBackendMailbox;
+    std::optional<ChangeBlockDataTypeMail> changeBlockDataTypeMailbox;
+    std::optional<ToggleBlockMail> toggleBlockMailbox;
     std::optional<bool> resetFlowgraphMailbox;
     std::optional<bool> closeFlowgraphMailbox;
-    std::optional<const char*> openFlowgraphUrlMailbox;
-    std::optional<const char*> openFlowgraphPathMailbox;
+    std::optional<std::string> openFlowgraphUrlMailbox;
+    std::optional<std::string> openFlowgraphPathMailbox;
     std::optional<const char*> openFlowgraphBlobMailbox;
+    std::optional<bool> updateFlowgraphBlobMailbox;
     std::optional<bool> saveFlowgraphMailbox;
     std::optional<bool> newFlowgraphMailbox;
 
     ImGuiID mainNodeId;
+    bool globalModalToggle;
+
+    Locale renameBlockLocale;
+    std::string renameBlockNewId;
 
     static const U32 CpuColor              = IM_COL32(224, 146,   0, 255);
     static const U32 CpuColorSelected      = IM_COL32(184, 119,   0, 255);

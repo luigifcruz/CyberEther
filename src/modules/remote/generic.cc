@@ -6,6 +6,8 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 
+#include <regex>
+
 #include "jetstream/modules/remote.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/backend/devices/cpu/helpers.hh"
@@ -110,12 +112,12 @@ Result Remote<D, T>::create() {
                     continue;
                 }
 
-                JST_TRACE("[ENDPOINT] Received message from server: `{}`.", line);
+                JST_TRACE("[ENDPOINT] Received message from server: '{}'.", line);
 
                 // Parse command `err`.
 
                 if (line.compare(0, 3, "err") == 0) {
-                    JST_ERROR("Received `err` from server: `{}`.", line);
+                    JST_ERROR("Received `err` from server: '{}'.", line);
                     close(brokerFileDescriptor);
                     break;
                 }
@@ -179,14 +181,14 @@ Result Remote<D, T>::create() {
                         continue;
                     }
 
-                    JST_DEBUG("Received `ok` from server: `{}`.", line);
+                    JST_DEBUG("Received `ok` from server: '{}'.", line);
                     continue;
                 }
 
                 // Reply for unrecognized message.
 
                 {
-                    JST_ERROR("Received unrecognized message from server: `{}`.", line);
+                    JST_ERROR("Received unrecognized message from server: '{}'.", line);
                     auto response = fmt::format("err:Unrecognized message.\n");
                     send(brokerFileDescriptor, response.c_str(), response.size(), 0);
                     continue;
@@ -249,7 +251,7 @@ Result Remote<D, T>::destroy() {
 }
 
 template<Device D, typename T>
-void Remote<D, T>::summary() const {
+void Remote<D, T>::info() const {
     JST_INFO("  Endpoint:     {}", config.endpoint);
     JST_INFO("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
@@ -298,7 +300,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
 
     for (const auto& plugin : plugins) {
         if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
-            JST_ERROR("Gstreamer plugin `{}` is not available.", plugin);
+            JST_ERROR("Gstreamer plugin '{}' is not available.", plugin);
             return Result::ERROR;
         }
     }
@@ -349,7 +351,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
 
     for (const auto& [name, element] : elements) {
         if (!element) {
-            JST_ERROR("Failed to create gstreamer element `{}`.", name);
+            JST_ERROR("Failed to create gstreamer element '{}'.", name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }
@@ -383,7 +385,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
 
     for (const auto& [name, element] : elements) {
         if (!gst_bin_add(GST_BIN(pipeline), element)) {
-            JST_ERROR("Failed to add gstreamer element `{}` to pipeline.", name);
+            JST_ERROR("Failed to add gstreamer element '{}' to pipeline.", name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }
@@ -398,7 +400,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
         }
 
         if (!gst_element_link(elements[lastElement], elements[name])) {
-            JST_ERROR("Failed to link gstreamer element `{}` -> `{}`.", lastElement, name);
+            JST_ERROR("Failed to link gstreamer element '{}' -> '{}'.", lastElement, name);
             gst_object_unref(pipeline);
             return Result::ERROR;
         }
@@ -648,6 +650,6 @@ Render::Texture& Remote<D, T>::getTexture() {
     return *texture;
 };
 
-template class Remote<Device::CPU, void>;
+JST_REMOTE_CPU(JST_INSTANTIATION);
 
 }  // namespace Jetstream

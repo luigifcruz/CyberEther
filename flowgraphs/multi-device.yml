@@ -2,15 +2,15 @@
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
 title: Multi Device Spectrum Analyzer
-description: Multi SDR waterfall and lineplot.
-creator: Luigi
+summary: Multi SDR waterfall and lineplot.
+author: Luigi
 license: MIT
 
 computeDevice: cpu
 
 graph:
   soapy-1:
-    module: soapy-view
+    module: soapy
     device: ${computeDevice}
     dataType: CF32
     config:
@@ -62,14 +62,14 @@ graph:
       buffer: ${graph.amp-1.output.buffer}
 
   spc-1:
-    module: spectrogram-view
+    module: spectrogram
     device: ${computeDevice}
     dataType: F32
     input:
       buffer: ${graph.scl-1.output.buffer}
 
   soapy-2:
-    module: soapy-view
+    module: soapy
     device: ${computeDevice}
     dataType: CF32
     config:
@@ -121,7 +121,7 @@ graph:
       buffer: ${graph.amp-2.output.buffer}
 
   spc-2:
-    module: spectrogram-view
+    module: spectrogram
     device: ${computeDevice}
     dataType: F32
     input:

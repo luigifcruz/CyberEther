@@ -2,13 +2,13 @@
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
 title: Remote Instance
-description: Headless CyberEther instance.
-creator: Luigi
+summary: Headless CyberEther instance.
+author: Luigi
 license: MIT
 
 graph:
   remote:
-    module: remote-view
+    module: remote
     device: cpu
     config:
       endpoint: 127.0.0.1:5002

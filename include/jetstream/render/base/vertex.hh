@@ -19,9 +19,7 @@ class Vertex {
         std::shared_ptr<Buffer> indices;
     };
 
-    explicit Vertex(const Config& config) : config(config) {
-        JST_DEBUG("Vertex initialized.");
-    }
+    explicit Vertex(const Config& config) : config(config) {}
     virtual ~Vertex() = default;
 
     template<Device D> 

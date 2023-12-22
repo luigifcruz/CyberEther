@@ -24,6 +24,6 @@ Result Cast<D, IT, OT>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-template class Cast<Device::CPU, F32, I16>;
+JST_CAST_CPU(JST_INSTANTIATION);
 
 }  // namespace Jetstream

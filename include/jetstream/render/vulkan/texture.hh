@@ -13,6 +13,9 @@ class TextureImp<Device::Vulkan> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 
+    Result create();
+    Result destroy();
+
     using Render::Texture::size;
     bool size(const Size2D<U64>& size);
 
@@ -24,9 +27,6 @@ class TextureImp<Device::Vulkan> : public Texture {
     }
 
  protected:
-    Result create();
-    Result destroy();
-
     constexpr const VkFormat& getPixelFormat() const {
         return pixelFormat;
     }

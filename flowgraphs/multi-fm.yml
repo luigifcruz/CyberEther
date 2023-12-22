@@ -2,22 +2,23 @@
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
 title: Multi FM Receiver
-description: Multi radio station receiver.
-creator: Luigi
+summary: Multi radio station receiver.
+author: Luigi
 license: MIT
 
 computeDevice: cpu
 
 graph:
   soapy:
-    module: soapy-view
+    module: soapy
     device: ${computeDevice}
     dataType: CF32
     config:
       deviceString: driver=rtlsdr,serial=00000001
       frequency: 96.9e6
       sampleRate: 240e3
-      outputShape: [1, 24000]
+      numberOfBatches: 8
+      numberOfTimeSamples: 2048
       bufferMultiplier: 512
 
   win:
@@ -25,7 +26,7 @@ graph:
     device: ${computeDevice}
     dataType: CF32
     config:
-      shape: ${graph.soapy.config.outputShape}
+      size: 2048
 
   win_mul:
     module: multiply
@@ -53,7 +54,7 @@ graph:
       buffer: ${graph.fft.output.buffer}
 
   scl:
-    module: scale-view
+    module: scale
     device: ${computeDevice}
     dataType: F32
     config:
@@ -66,12 +67,10 @@ graph:
     device: ${computeDevice}
     dataType: CF32
     config:
-      signalSampleRate: 240e3
-      filterSampleRate: 200e3
-      filterCenter: 0.0
-      shape: ${graph.soapy.config.outputShape}
-      numberOfTaps: 111
-      linearFrequency: true
+      sampleRate: 240e3
+      bandwith: 200e3
+      center: 0.0
+      taps: 111
 
   flt_mul:
     module: multiply
@@ -90,7 +89,7 @@ graph:
       buffer: ${graph.flt_mul.output.product}
 
   scl-2:
-    module: scale-view
+    module: scale
     device: ${computeDevice}
     dataType: F32
     config:
@@ -117,7 +116,8 @@ graph:
   fm:
     module: fm
     device: ${computeDevice}
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: F32
     config:
       sampleRate: 240e3
     input:
@@ -141,7 +141,7 @@ graph:
       buffer: ${graph.fft-3.output.buffer}
 
   scl-3:
-    module: scale-view
+    module: scale
     device: ${computeDevice}
     dataType: F32
     config:
@@ -160,7 +160,7 @@ graph:
       buffer: ${graph.fm.output.buffer}
   
   wtf:
-      module: waterfall-view
+      module: waterfall
       device: ${computeDevice}
       dataType: F32
       input:
@@ -169,7 +169,7 @@ graph:
         previewEnabled: true
 
   wtf-2:
-      module: waterfall-view
+      module: waterfall
       device: ${computeDevice}
       dataType: F32
       input:
@@ -178,7 +178,7 @@ graph:
         previewEnabled: true
 
   wtf-3:
-      module: waterfall-view
+      module: waterfall
       device: ${computeDevice}
       dataType: F32
       input:

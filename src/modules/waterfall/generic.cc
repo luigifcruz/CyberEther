@@ -6,20 +6,30 @@ namespace Jetstream {
 template<Device D, typename T>
 Result Waterfall<D, T>::create() {
     JST_DEBUG("Initializing Waterfall module.");
+    JST_INIT_IO();
 
-    // Initialize Input & Output memory.
-    JST_INIT(
-        JST_INIT_INPUT("buffer", input.buffer);
-    );
+    // Check parameters.
+
+    if (input.buffer.rank() > 2) {
+        JST_ERROR("Invalid input rank ({}). It should be `1` or `2`.", input.buffer.rank());
+        return Result::ERROR;
+    }
+
+    // Calculate parameters.
+
+    const U64 last_axis = input.buffer.rank() - 1;
+    numberOfElements = input.buffer.shape()[last_axis];
+    numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
 
     // Allocate internal buffers.
-    frequencyBins = Tensor<D, F32>({input.buffer.shape()[1],  config.height});
+
+    frequencyBins = Tensor<D, F32>({numberOfElements,  config.height});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void Waterfall<D, T>::summary() const {
+void Waterfall<D, T>::info() const {
     JST_INFO("  Offset:       {}", config.offset);
     JST_INFO("  Zoom:         {}", config.zoom);
     JST_INFO("  Interpolate:  {}", config.interpolate ? "YES" : "NO");
@@ -123,17 +133,17 @@ Result Waterfall<D, T>::present() {
     if (blocks < 0) {
         blocks = config.height - last;
 
-        binTexture->update(start * input.buffer.shape()[1], blocks * input.buffer.shape()[1]);
+        binTexture->update(start * numberOfElements, blocks * numberOfElements);
 
         start = 0;
         blocks = inc;
     }
 
-    binTexture->update(start * input.buffer.shape()[1], blocks * input.buffer.shape()[1]);
+    binTexture->update(start * numberOfElements, blocks * numberOfElements);
     last = inc;
 
     shaderUniforms.zoom = config.zoom;
-    shaderUniforms.width = input.buffer.shape()[1];
+    shaderUniforms.width = numberOfElements;
     shaderUniforms.height = config.height;
     shaderUniforms.interpolate = config.interpolate;
     shaderUniforms.index = inc / (float)shaderUniforms.height;
@@ -153,7 +163,7 @@ Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
     auto res = underlyingCompute(meta);
-    inc = (inc + input.buffer.shape()[0]) % config.height;
+    inc = (inc + numberOfBatches) % config.height;
     return res;
 }
 

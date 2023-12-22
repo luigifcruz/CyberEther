@@ -11,14 +11,28 @@ template<>
 class TensorBuffer<Device::Vulkan> {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                          const std::shared_ptr<TensorPrototypeMetadata>& prototype,
+                          const TensorPrototypeMetadata& prototype,
                           const bool& host_accessible = false,
                           const VkBufferUsageFlags& usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
-    // TODO: Add CPU -> Vulkan.
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const TensorPrototypeMetadata& prototype,
+                          const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);
+#endif
 
-    // TODO: Add CUDA -> Vulkan.
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const TensorPrototypeMetadata& prototype,
+                          const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer);
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const TensorPrototypeMetadata& prototype,
+                          const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer);
+#endif
 
     ~TensorBuffer();
 

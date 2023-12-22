@@ -24,6 +24,12 @@
 
 namespace Jetstream {
 
+#define JST_FFT_CPU(MACRO) \
+    MACRO(FFT, Device::CPU, CF32)
+
+#define JST_FFT_METAL(MACRO) \
+    MACRO(FFT, Device::Metal, CF32)
+
 template<Device D, typename T = CF32>
 class FFT : public Module, public Compute {
  public:
@@ -31,14 +37,8 @@ class FFT : public Module, public Compute {
 
     struct Config {
         bool forward = true;
-        U64 offset = 0;
-        U64 size = 0;
 
-        JST_SERDES(
-            JST_SERDES_VAL("forward", forward);
-            JST_SERDES_VAL("offset", offset);
-            JST_SERDES_VAL("size", size);
-        );
+        JST_SERDES(forward);
     };
 
     constexpr const Config& getConfig() const {
@@ -50,9 +50,7 @@ class FFT : public Module, public Compute {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -64,9 +62,7 @@ class FFT : public Module, public Compute {
     struct Output {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -83,15 +79,7 @@ class FFT : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "fft";
-    }
-
-    std::string_view prettyName() const {
-        return "Fast-Fourier Transform";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
 
@@ -119,8 +107,19 @@ class FFT : public Module, public Compute {
     } metal;
 #endif
 
+    U64 numberOfOperations = 0;
+    U64 numberOfElements = 0;
+    U64 elementStride = 0;
+
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
+JST_FFT_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
+JST_FFT_METAL(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

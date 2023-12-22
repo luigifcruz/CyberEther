@@ -11,6 +11,9 @@
 
 namespace Jetstream {
 
+#define JST_CAST_CPU(MACRO) \
+    MACRO(Cast, Device::CPU, F32, I16)
+
 template<Device D, typename IT = F32, typename OT = I16>
 class Cast : public Module, public Compute {
  public:
@@ -19,9 +22,7 @@ class Cast : public Module, public Compute {
     struct Config {
         F32 scaler = 0.0f;
 
-        JST_SERDES(
-            JST_SERDES_VAL("scaler", scaler);
-        );
+        JST_SERDES(scaler);
     };
 
     constexpr const Config& getConfig() const {
@@ -33,9 +34,7 @@ class Cast : public Module, public Compute {
     struct Input {
         Tensor<D, IT> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -47,9 +46,7 @@ class Cast : public Module, public Compute {
     struct Output {
         Tensor<D, OT> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -66,15 +63,7 @@ class Cast : public Module, public Compute {
         return D;
     }
 
-    std::string_view name() const {
-        return "cast";
-    }
-
-    std::string_view prettyName() const {
-        return "Cast";
-    }
-
-    void summary() const final; 
+    void info() const final; 
 
     // Constructor
 
@@ -86,6 +75,10 @@ class Cast : public Module, public Compute {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_CAST_CPU_AVAILABLE
+JST_CAST_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

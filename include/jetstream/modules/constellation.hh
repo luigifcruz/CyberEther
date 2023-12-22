@@ -12,6 +12,9 @@
 
 namespace Jetstream {
 
+#define JST_CONSTELLATION_CPU(MACRO) \
+    MACRO(Constellation, Device::CPU, CF32)
+
 template<Device D, typename T = CF32>
 class Constellation : public Module, public Compute, public Present {
  public:
@@ -20,9 +23,7 @@ class Constellation : public Module, public Compute, public Present {
     struct Config {
         Size2D<U64> viewSize = {512, 512};
 
-        JST_SERDES(
-            JST_SERDES_VAL("viewSize", viewSize);
-        );
+        JST_SERDES(viewSize);
     };
 
     constexpr const Config& getConfig() const {
@@ -34,9 +35,7 @@ class Constellation : public Module, public Compute, public Present {
     struct Input {
         Tensor<D, T> buffer;
 
-        JST_SERDES(
-            JST_SERDES_VAL("buffer", buffer);
-        );
+        JST_SERDES_INPUT(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -46,7 +45,7 @@ class Constellation : public Module, public Compute, public Present {
     // Output
 
     struct Output {
-        JST_SERDES();
+        JST_SERDES_OUTPUT();
     };
 
     constexpr const Output& getOutput() const {
@@ -59,15 +58,7 @@ class Constellation : public Module, public Compute, public Present {
         return D;
     }
 
-    std::string_view name() const {
-        return "constellation";
-    }
-
-    std::string_view prettyName() const {
-        return "Constellation";
-    }
-
-    void summary() const final;
+    void info() const final;
 
     // Constructor
     
@@ -131,6 +122,10 @@ class Constellation : public Module, public Compute, public Present {
 
     JST_DEFINE_IO();
 };
+
+#ifdef JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE
+JST_CONSTELLATION_CPU(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

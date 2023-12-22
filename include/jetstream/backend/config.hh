@@ -6,8 +6,6 @@
 
 namespace Jetstream::Backend {
 
-// TODO: Add physical device limits API.
-
 enum class PhysicalDeviceType : uint8_t {
     UNKNOWN     = 0,
     DISCRETE    = 1,

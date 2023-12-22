@@ -17,17 +17,16 @@ Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     assets.app = new VkFFTApplication({});
     assets.configuration = new VkFFTConfiguration({});
     assets.configuration->FFTdim = 1;
-    assets.configuration->size[0] = (config.offset != 0 || config.size != 0) ? config.size : input.buffer.shape()[1];
+    assets.configuration->size[0] = numberOfElements;
     assets.configuration->device = Backend::State<Device::Metal>()->getDevice();
     assets.configuration->queue = runtime.commandQueue;
     assets.configuration->doublePrecision = false;
-    assets.configuration->numberBatches = input.buffer.shape()[0];
+    assets.configuration->numberBatches = numberOfOperations;
     assets.configuration->isInputFormatted = 1;
     assets.configuration->inputBufferSize = new U64(input.buffer.size_bytes());
     assets.configuration->inputBuffer = const_cast<MTL::Buffer**>(&assets.input);
     assets.configuration->bufferSize = new U64(output.buffer.size_bytes());
     assets.configuration->buffer = &assets.output;
-    assets.configuration->inputBufferOffset = config.offset * sizeof(CF32);
 
     if (auto res = initializeVkFFT(assets.app, *assets.configuration); res != VKFFT_SUCCESS) {
         JST_ERROR("Failed to initialize VkFFT: {}", static_cast<int>(res));
@@ -77,6 +76,6 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template class FFT<Device::Metal, CF32>;
+JST_FFT_METAL(JST_INSTANTIATION);
     
 }  // namespace Jetstream

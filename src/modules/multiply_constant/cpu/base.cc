@@ -17,7 +17,6 @@ Result MultiplyConstant<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-template class MultiplyConstant<Device::CPU, CF32>;
-template class MultiplyConstant<Device::CPU, F32>;
+JST_MULTIPLY_CONSTANT_CPU(JST_INSTANTIATION);
 
 }  // namespace Jetstream
