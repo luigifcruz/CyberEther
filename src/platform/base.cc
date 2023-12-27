@@ -61,7 +61,6 @@ Result OpenUrl(const std::string& url) {
 
 // Defined on apple.mm.
 
-// TODO: Implement Linux support.
 // TODO: Implement iOS support.
 
 #elif defined(__EMSCRIPTEN__)
@@ -128,6 +127,39 @@ Result PickFile(std::string& path) {
     return Result::SUCCESS;
 }
 
+#elif defined(JST_OS_LINUX)
+
+Result PickFile(std::string& path) {
+    std::array<char, 1024> buffer;
+    std::string command = "zenity --file-selection --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
+
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+
+    if (!pipe) {
+        JST_ERROR("Failed to open file selection dialog.");
+        return Result::ERROR;
+    }
+
+    if (pipe.get() == nullptr) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    fgets(buffer.data(), buffer.size(), pipe.get());
+    path = buffer.data();
+
+    if (path.empty()) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    if (path.back() == '\n') {
+        path.pop_back();
+    }
+
+    return Result::SUCCESS;
+}
+
 #else
 
 Result PickFile(std::string& path) {
@@ -145,7 +177,6 @@ Result PickFile(std::string& path) {
 
 // Defined on apple.mm.
 
-// TODO: Implement Linux support.
 // TODO: Implement iOS support.
 
 #elif defined(__EMSCRIPTEN__)
@@ -206,6 +237,39 @@ Result SaveFile(std::string& path) {
         return Result::ERROR;
     }
     path = std::string(jst_file_path());
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_LINUX)
+
+Result SaveFile(std::string& path) {
+    std::array<char, 1024> buffer;
+    std::string command = "zenity --file-selection --save --confirm-overwrite --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
+
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+
+    if (!pipe) {
+        JST_ERROR("Failed to open save file dialog.");
+        return Result::ERROR;
+    }
+
+    if (pipe.get() == nullptr) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    fgets(buffer.data(), buffer.size(), pipe.get());
+    path = buffer.data();
+
+    if (path.empty()) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    if (path.back() == '\n') {
+        path.pop_back();
+    }
+
     return Result::SUCCESS;
 }
 

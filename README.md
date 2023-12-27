@@ -72,7 +72,7 @@ This shouldn't be difficult because of the low number of dependencies. CyberEthe
 #### Linux (Arch Linux)
 Core dependencies (you probably already have them).
 ```bash
-$ pacman -S git base-devel cmake pkg-config ninja meson git
+$ pacman -S git base-devel cmake pkg-config ninja meson git zenity
 ```
 
 Graphical dependencies.
@@ -97,7 +97,7 @@ $ pacman -S gstreamer gst-plugins-base gst-plugins-good
 #### Linux (Ubuntu 22.04)
 Core dependencies (you probably already have them).
 ```bash
-$ apt install git build-essential cmake pkg-config ninja-build meson git
+$ apt install git build-essential cmake pkg-config ninja-build meson git zenity
 ```
 
 Graphical dependencies.
