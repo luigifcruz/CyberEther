@@ -14,7 +14,9 @@
 <img src="docs/cyberether-banner.png" />
 </p>
 
-> ⚠️ **CyberEther** is in **Alpha**. Expect bugs, missing features, and breaking changes.
+> [!WARNING]
+>
+> **CyberEther** is in **Alpha**. Expect bugs, missing features, and breaking changes.
 
 CyberEther provides a flowgraph interface to build and run compute-intensive pipelines. The interface is engineered to provide a closely coupled integration between the graphical and compute blocks providing leading edge visualization capabilities. CyberEther is built on top of [Vulkan](https://www.khronos.org/vulkan/), [Metal](https://developer.apple.com/metal/), [CUDA](https://developer.nvidia.com/cuda-toolkit), and [WebGPU](https://www.w3.org/TR/webgpu/), which allows it to run on virtually any modern device. CyberEther is also designed to be easily extended with new blocks and backends. It is a great tool for prototyping and testing new ideas.
 
