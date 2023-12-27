@@ -32,6 +32,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_SPECTROGRAM_CPU(JST_INSTANTIATION);
+JST_SPECTROGRAM_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

@@ -76,6 +76,7 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-JST_FFT_METAL(JST_INSTANTIATION);
-    
+JST_FFT_METAL(JST_INSTANTIATION)
+JST_FFT_METAL(JST_BENCHMARK)
+
 }  // namespace Jetstream

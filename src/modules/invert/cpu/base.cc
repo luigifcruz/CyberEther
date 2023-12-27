@@ -13,13 +13,19 @@ Result Invert<D, T>::createCompute(const RuntimeMetadata&) {
 template<Device D, typename T>
 Result Invert<D, T>::compute(const RuntimeMetadata&) {
     for (U64 i = 0; i < input.buffer.size(); i++) {
-        output.buffer[i] = {input.buffer[i].real(), input.buffer[i].imag()};
-        output.buffer[i] *= (i % 2) == 0 ? CF32{1.0f, 0.0f} : CF32{-1.0f, 0.0f};
+        auto value = input.buffer[i];
+
+        if ((i % 2) == 0) {
+            output.buffer[i] = {value.real(), value.imag()};
+        } else {
+            output.buffer[i] = {-value.real(), -value.imag()};
+        }
     }
 
     return Result::SUCCESS;
 }
 
-JST_INVERT_CPU(JST_INSTANTIATION);
+JST_INVERT_CPU(JST_INSTANTIATION)
+JST_INVERT_CPU(JST_BENCHMARK)
     
 }  // namespace Jetstream

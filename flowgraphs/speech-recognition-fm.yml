@@ -15,7 +15,7 @@ graph:
     dataType: CF32
     config:
       deviceString: driver=rtlsdr,serial=00000001
-      frequency: 96.9e6
+      frequency: 97.5e6
       sampleRate: 240e3
       numberOfTimeSamples: 500000
       numberOfBatches: 1

@@ -1,5 +1,6 @@
 #include <regex>
 
+#include "jetstream/benchmark.hh"
 #include "jetstream/compositor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
@@ -361,38 +362,55 @@ Result Compositor::destroy() {
     return Result::SUCCESS;
 }
 
-Result Compositor::loadAssets() {
+Result Compositor::loadImageAsset(const uint8_t* binary_data, 
+                                  const U64& binary_len, 
+                                  std::shared_ptr<Render::Texture>& texture) {
     int image_width, image_height, image_channels;
 
-    uint8_t* data = stbi_load_from_memory(
-        static_cast<const uint8_t*>(Resources::compositor_banner_bin), 
-        Resources::compositor_banner_len, 
+    uint8_t* raw_data = stbi_load_from_memory(
+        binary_data, 
+        binary_len, 
         &image_width, 
         &image_height, 
         &image_channels, 
         4
     );
-    if (data == nullptr) {
-        JST_FATAL("[COMPOSITOR] Could not load banner image.");
+    if (raw_data == nullptr) {
+        JST_FATAL("[COMPOSITOR] Could not load image asset.");
         return Result::ERROR;
     }
 
-    Render::Texture::Config bannerConfig;
-    bannerConfig.size = {
+    Render::Texture::Config config;
+    config.size = {
         static_cast<U64>(image_width), 
         static_cast<U64>(image_height)
     };
-    bannerConfig.buffer = static_cast<uint8_t*>(data);
-    JST_CHECK(instance.window().build(bannerTexture, bannerConfig));
-    JST_CHECK(bannerTexture->create());
-    stbi_image_free(data);
+    config.buffer = static_cast<uint8_t*>(raw_data);
+    JST_CHECK(instance.window().build(texture, config));
+    JST_CHECK(texture->create());
+    stbi_image_free(raw_data);
+
+    return Result::SUCCESS;
+}
+
+Result Compositor::loadAssets() {
+    JST_DEBUG("[COMPOSITOR] Loading assets.");
+
+    JST_CHECK(loadImageAsset(Resources::compositor_banner_primary_bin, 
+                             Resources::compositor_banner_primary_len,
+                             primaryBannerTexture));
+
+    JST_CHECK(loadImageAsset(Resources::compositor_banner_secondary_bin, 
+                             Resources::compositor_banner_secondary_len,
+                             secondaryBannerTexture));
 
     assetsLoaded = true;
     return Result::SUCCESS;
 }
 
 Result Compositor::unloadAssets() {
-    JST_CHECK(bannerTexture->destroy());
+    JST_CHECK(primaryBannerTexture->destroy());
+    JST_CHECK(secondaryBannerTexture->destroy());
 
     assetsLoaded = false;
     return Result::SUCCESS;
@@ -665,6 +683,15 @@ Result Compositor::drawStatic() {
                 globalModalToggle = true;
                 globalModalContentId = 0;
             }
+            if (ImGui::MenuItem("View License")) {
+                globalModalToggle = true;
+                globalModalContentId = 7;
+            }
+            if (ImGui::MenuItem("Third-Party OSS")) {
+                globalModalToggle = true;
+                globalModalContentId = 8;
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Block Backend Matrix")) {
                 globalModalToggle = true;
                 globalModalContentId = 1;
@@ -726,6 +753,10 @@ Result Compositor::drawStatic() {
                     JST_LOG_SET_DEBUG_LEVEL(JST_LOG_DEBUG_DEFAULT_LEVEL);
                 }
             }
+            if (ImGui::MenuItem("Open Benchmarking Tool", nullptr, nullptr)) {
+                globalModalToggle = true;
+                globalModalContentId = 9;
+            }
             ImGui::EndMenu();
         }
 
@@ -745,6 +776,15 @@ Result Compositor::drawStatic() {
             }
             if (ImGui::MenuItem("Report an issue")) {
                 JST_CHECK_NOTIFY(Platform::OpenUrl("https://github.com/luigifcruz/CyberEther/issues"));
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("View license")) {
+                globalModalToggle = true;
+                globalModalContentId = 7;
+            }
+            if (ImGui::MenuItem("Third-Party OSS")) {
+                globalModalToggle = true;
+                globalModalContentId = 8;
             }
             ImGui::EndMenu();
         }
@@ -1184,9 +1224,17 @@ Result Compositor::drawStatic() {
         const auto largestTextSize = ImGui::CalcTextSize(largestText).x;
 
         if (assetsLoaded) {
-            const auto& [w, h] = bannerTexture->size();
+            static bool usePrimaryTexture = true;
+            auto texture = usePrimaryTexture ? primaryBannerTexture : secondaryBannerTexture;
+            const auto& [w, h] = texture->size();
             const auto ratio = static_cast<F32>(w) / static_cast<F32>(h);
-            ImGui::Image(bannerTexture->raw(), ImVec2(largestTextSize, largestTextSize / ratio));
+            ImGui::Image(texture->raw(), ImVec2(largestTextSize, largestTextSize / ratio));
+
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                usePrimaryTexture = false;
+            } else {
+                usePrimaryTexture = true;
+            }
 
             ImGui::Spacing();
         }
@@ -1273,21 +1321,22 @@ Result Compositor::drawStatic() {
             ImGui::Separator();
             ImGui::Spacing();
 
-            ImGui::TextFormatted("Version: {}-{}", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
-            ImGui::Text("Developed by Luigi Cruz");
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
             ImGui::Text("CyberEther is a state-of-the-art tool designed for graphical visualization");
             ImGui::Text("of radio signals and computing focusing in heterogeneous systems.");
 
             ImGui::Spacing();
 
-            ImGui::BulletText(ICON_FA_GAUGE_HIGH   " Broad compatibility including NVIDIA, Apple Silicon, Raspberry Pi, and AMD.");
-            ImGui::BulletText(ICON_FA_BATTERY_FULL " Broad graphical backend support with Vulkan, Metal, and WebGPU.");
-            ImGui::BulletText(ICON_FA_SHUFFLE      " Dynamic hardware acceleration settings for tailored performance.");
+            ImGui::BulletText(ICON_FA_GAUGE_HIGH   " Graphical support for any device with Vulkan, Metal, or WebGPU.");
+            ImGui::BulletText(ICON_FA_BATTERY_FULL " Portable GPU-acceleration for compute: NVIDIA (CUDA), Apple (Metal), etc.");
+            ImGui::BulletText(ICON_FA_SHUFFLE      " Runtime flowgraph pipeline with heterogeneously-accelerated modular blocks.");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::TextFormatted("Version: {}-{}", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
+            ImGui::Text("License: MIT License");
+            ImGui::Text("Copyright (c) 2021-2023 Luigi F. Cruz");
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -1313,7 +1362,7 @@ Result Compositor::drawStatic() {
 
             if (ImGui::BeginTable("table1", 5, tableFlags, tableHeight)) {
                 static std::vector<std::tuple<const char*, float, U32, bool, Device>> columns = {
-                    {"Block Name", 0.25f,   DefaultColor, false, Device::None},
+                    {"Block Name",  0.25f,   DefaultColor, false, Device::None},
                     {"CPU",         0.1875f, CpuColor,     true,  Device::CPU},
                     {"Metal",       0.1875f, MetalColor,   true,  Device::Metal},
                     {"Vulkan",      0.1875f, VulkanColor,  true,  Device::Vulkan},
@@ -1668,6 +1717,190 @@ Result Compositor::drawStatic() {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::PopStyleColor();
+            if (ImGui::Button("Close", ImVec2(-1, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else if (globalModalContentId == 7) {
+            ImGui::TextUnformatted(ICON_FA_KEY " CyberEther License");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("MIT License");
+
+            ImGui::Spacing();
+
+            ImGui::Text("Copyright (c) 2021-2023 Luigi F. Cruz");
+
+            ImGui::Spacing();
+
+            ImGui::Text("Permission is hereby granted, free of charge, to any person obtaining a copy");
+            ImGui::Text("of this software and associated documentation files (the \"Software\"), to deal");
+            ImGui::Text("in the Software without restriction, including without limitation the rights");
+            ImGui::Text("to use, copy, modify, merge, publish, distribute, sublicense, and/or sell");
+            ImGui::Text("copies of the Software, and to permit persons to whom the Software is");
+            ImGui::Text("furnished to do so, subject to the following conditions:");
+
+            ImGui::Spacing();
+
+            ImGui::Text("The above copyright notice and this permission notice shall be");
+            ImGui::Text("included in all copies or substantial portions of the Software.");
+
+            ImGui::Spacing();
+
+            ImGui::Text("THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR");
+            ImGui::Text("IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,");
+            ImGui::Text("FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE");
+            ImGui::Text("AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER");
+            ImGui::Text("LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,");
+            ImGui::Text("OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE");
+            ImGui::Text("SOFTWARE.");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if (ImGui::Button("View Third-Party Licenses")) {
+                Platform::OpenUrl("https://github.com/luigifcruz/CyberEther/blob/main/ACKNOWLEDGMENTS.md");
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            if (ImGui::Button("Close", ImVec2(-1, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else if (globalModalContentId == 8) {
+            ImGui::TextUnformatted(ICON_FA_BOX_OPEN " Third-Party OSS");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("CyberEther utilizes the following open-source third-party software,");
+            ImGui::Text("and we extend our gratitude to the creators of these libraries for");
+            ImGui::Text("their valuable contributions to the open-source community.");
+
+            ImGui::BulletText("Miniaudio - MIT License");
+            ImGui::BulletText("Dear ImGui - MIT License");
+            ImGui::BulletText("ImNodes - MIT License");
+            ImGui::BulletText("PocketFFT - BSD-3-Clause License");
+            ImGui::BulletText("RapidYAML - MIT License");
+            ImGui::BulletText("vkFFT - MIT License");
+            ImGui::BulletText("stb - MIT License");
+            ImGui::BulletText("fmtlib - MIT License");
+            ImGui::BulletText("SoapySDR - Boost Software License");
+            ImGui::BulletText("GLFW - zlib/libpng License");
+            ImGui::BulletText("imgui-notify - MIT License");
+            ImGui::BulletText("spirv-cross - MIT License");
+            ImGui::BulletText("glslang - BSD-3-Clause License");
+            ImGui::BulletText("naga - Apache License 2.0");
+            ImGui::BulletText("gstreamer - LGPL-2.1 License");
+            ImGui::BulletText("libusb - LGPL-2.1 License");
+            ImGui::BulletText("nanobench - MIT License");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if (ImGui::Button("View Third-Party Licenses")) {
+                Platform::OpenUrl("https://github.com/luigifcruz/CyberEther/blob/main/ACKNOWLEDGMENTS.md");
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            if (ImGui::Button("Close", ImVec2(-1, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else if (globalModalContentId == 9) {
+            ImGui::TextUnformatted(ICON_FA_GAUGE_HIGH " Benchmarking Tool");
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("This is the Benchmarking Tool, a place where you can run benchmarks");
+            ImGui::Text("to compare the performance between different devices and backends.");
+
+            if (ImGui::Button("Run Benchmark")) {
+                std::thread([&]{
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Running benchmark..." });
+                    Benchmark::Run("quiet");
+                }).detach();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset Benchmark")) {
+                if (Benchmark::TotalCount() == Benchmark::CurrentCount()) {
+                    Benchmark::ResetResults();
+                }
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            const auto& results = Benchmark::GetResults();
+
+            const ImVec2 tableHeight = ImVec2(0.50f * io.DisplaySize.x, 0.50f * io.DisplaySize.y);
+            const ImGuiTableFlags mainTableFlags = ImGuiTableFlags_PadOuterX | 
+                                                   ImGuiTableFlags_Borders | 
+                                                   ImGuiTableFlags_ScrollY | 
+                                                   ImGuiTableFlags_Reorderable | 
+                                                   ImGuiTableFlags_Hideable;
+
+            if (ImGui::BeginTable("benchmark-table", 2, mainTableFlags, tableHeight)) {
+                ImGui::TableSetupColumn("Module", ImGuiTableColumnFlags_WidthStretch, 0.175f);
+                ImGui::TableSetupColumn("Results", ImGuiTableColumnFlags_WidthStretch, 0.825f);
+                ImGui::TableHeadersRow();
+
+                for (const auto& [name, entries] : results) {
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(name.c_str());
+
+                    const ImGuiTableFlags nestedTableFlags = ImGuiTableFlags_Borders |
+                                                             ImGuiTableFlags_Reorderable |
+                                                             ImGuiTableFlags_Hideable;
+
+                    ImGui::TableNextColumn();
+                    if (ImGui::BeginTable(("benchmark-subtable-" + name).c_str(), 4, nestedTableFlags)) {
+                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.60f);
+                        ImGui::TableSetupColumn("ms/op", ImGuiTableColumnFlags_WidthStretch, 0.10f);
+                        ImGui::TableSetupColumn("op/s", ImGuiTableColumnFlags_WidthStretch, 0.20f);
+                        ImGui::TableSetupColumn("err%", ImGuiTableColumnFlags_WidthStretch, 0.10f);
+                        ImGui::TableHeadersRow();
+
+                        for (const auto& entry : entries) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%s", entry.name.c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%.2f", entry.ms_per_op);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%.2f", entry.ops_per_sec);
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%.2f", entry.error);
+                        }
+
+                        ImGui::EndTable();
+                    }
+                }
+
+                ImGui::EndTable();
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            std::string progressTaint;
+            if (Benchmark::TotalCount() == Benchmark::CurrentCount()) {
+                progressTaint = "COMPLETE";
+            } else {
+                progressTaint = fmt::format("{}/{}", Benchmark::CurrentCount(), Benchmark::TotalCount());
+            }
+            ImGui::TextFormatted("Benchmark Progress [{}]", progressTaint);
+            F32 progress =  Benchmark::TotalCount() > 0 ? static_cast<F32>(Benchmark::CurrentCount()) /  Benchmark::TotalCount() : 0.0f;
+            ImGui::ProgressBar(progress, ImVec2(-1, 0), "");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
             if (ImGui::Button("Close", ImVec2(-1, 0))) {
                 ImGui::CloseCurrentPopup();
             }

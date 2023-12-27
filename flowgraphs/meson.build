@@ -9,7 +9,7 @@ if python_bin.found()
             'remote-spectrum-analyzer.yml',
             'simple-fm.yml',
             'spectrum-analyzer.yml',
-            'speech-recognition-fm.yml',
+            ## 'speech-recognition-fm.yml',
         ]),
         output : ['manifest.hh'],
         command : [python_bin, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],

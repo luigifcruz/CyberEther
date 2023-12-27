@@ -5,6 +5,7 @@ title: Simple FM Receiver
 summary: Radio receiver with RTLSDR.
 author: Luigi
 license: MIT
+description: Shows the simplest way to demodulate an FM station using a RTL-SDR.
 
 computeDevice: cpu
 
@@ -17,7 +18,8 @@ graph:
       deviceString: driver=rtlsdr,serial=00000001
       frequency: 96.9e6
       sampleRate: 240e3
-      outputShape: [1, 2048]
+      numberOfTimeSamples: 2048
+      numberOfBatches: 8
       bufferMultiplier: 512
 
   fm:

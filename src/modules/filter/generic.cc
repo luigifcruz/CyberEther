@@ -177,6 +177,6 @@ void Filter<D, T>::info() const {
     JST_INFO("  Number Of Taps:     {}", config.taps);
 }
 
-JST_FILTER_CPU(JST_INSTANTIATION);
+JST_FILTER_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

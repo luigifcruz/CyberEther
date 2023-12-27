@@ -9,7 +9,7 @@
 #include "jetstream/compute/graph/base.hh"
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
-#include <fftw3.h>
+#include "jetstream/tools/pocketfft.hh"
 #endif
 
 #ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
@@ -25,10 +25,10 @@
 namespace Jetstream {
 
 #define JST_FFT_CPU(MACRO) \
-    MACRO(FFT, Device::CPU, CF32)
+    MACRO(FFT, CPU, CF32)
 
 #define JST_FFT_METAL(MACRO) \
-    MACRO(FFT, Device::Metal, CF32)
+    MACRO(FFT, Metal, CF32)
 
 template<Device D, typename T = CF32>
 class FFT : public Module, public Compute {
@@ -93,8 +93,9 @@ class FFT : public Module, public Compute {
  private:
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
     struct {
-        fftwf_plan fftPlanCF32;
-        fftw_plan fftPlanCF64;
+        pocketfft::shape_t shape;
+        pocketfft::stride_t stride;
+        pocketfft::shape_t axes;
     } cpu;
 #endif
 

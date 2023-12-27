@@ -5,8 +5,6 @@
 using namespace Jetstream;
 
 int main(int argc, char* argv[]) {
-    std::cout << "Welcome to CyberEther!" << std::endl;
-
     // Parse command line arguments.
 
     Backend::Config backendConfig;
@@ -56,6 +54,18 @@ int main(int argc, char* argv[]) {
             viewportConfig.hardwareAcceleration = false;
 
             continue;
+        }
+
+        if (arg == "--benchmark") {
+            std::string outputType = "markdown";
+
+            if (i + 1 < argc) {
+                outputType = std::string(argv[++i]);
+            }
+
+            Benchmark::Run(outputType);
+
+            return 0;
         }
 
         if (arg == "--framerate") {
@@ -117,6 +127,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`" << std::endl;
             std::cout << "  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`" << std::endl;
             std::cout << "  --scale [scale]         Set the scale of the render window. Default: `1.0`" << std::endl;
+            std::cout << "  --benchmark [type]      Run the benchmark and output the results (`markdown`, `json`, or `csv`). Default: `markdown`" << std::endl;
             std::cout << "  --no-hw-acceleration    Disable hardware acceleration. Enabled otherwise." << std::endl;
             std::cout << "Other Options:" << std::endl;
             std::cout << "  --staging-buffer [size] Set the staging buffer size (MB). Default: `32`" << std::endl;
@@ -202,8 +213,6 @@ int main(int argc, char* argv[]) {
     instance.destroy();
 
     Backend::DestroyAll();
-
-    std::cout << "Goodbye from CyberEther!" << std::endl;
 
     return 0;
 }

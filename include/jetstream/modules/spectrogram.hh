@@ -13,10 +13,10 @@
 namespace Jetstream {
 
 #define JST_SPECTROGRAM_CPU(MACRO) \
-    MACRO(Spectrogram, Device::CPU, F32)
+    MACRO(Spectrogram, CPU, F32)
 
 #define JST_SPECTROGRAM_METAL(MACRO) \
-    MACRO(Spectrogram, Device::Metal, F32)
+    MACRO(Spectrogram, Metal, F32)
 
 template<Device D, typename T = F32>
 class Spectrogram : public Module, public Compute, public Present {

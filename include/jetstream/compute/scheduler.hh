@@ -50,12 +50,9 @@ class JETSTREAM_API Scheduler {
         Parser::RecordMap outputMap;
     };
 
-    std::mutex presentMutex;
-    std::mutex computeMutex;
-
+    std::mutex sharedMutex;
     std::condition_variable presentCond;
     std::condition_variable computeCond;
-
     bool computeSync = false;
     bool presentSync = false;
 
@@ -79,8 +76,7 @@ class JETSTREAM_API Scheduler {
     Result checkSequenceValidity();
     Result createExecutionGraphs();
 
-    void lock();
-    void unlock();
+    Result lockState(const std::function<Result()>& func);
 };
 
 }  // namespace Jetstream

@@ -67,6 +67,7 @@ Result MultiplyConstant<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-JST_MULTIPLY_CONSTANT_METAL(JST_INSTANTIATION);
+JST_MULTIPLY_CONSTANT_METAL(JST_INSTANTIATION)
+JST_MULTIPLY_CONSTANT_METAL(JST_BENCHMARK)
 
 }  // namespace Jetstream

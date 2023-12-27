@@ -13,7 +13,7 @@
 namespace Jetstream {
 
 #define JST_CONSTELLATION_CPU(MACRO) \
-    MACRO(Constellation, Device::CPU, CF32)
+    MACRO(Constellation, CPU, CF32)
 
 template<Device D, typename T = CF32>
 class Constellation : public Module, public Compute, public Present {

@@ -33,30 +33,22 @@ class UI {
                 .deviceString = "driver=rtlsdr",
                 .frequency = 96.9e6,
                 .sampleRate = 2.0e6,
-                .outputShape = {8, 2 << 10},
+                .numberOfBatches = 8,
+                .numberOfTimeSamples = 2 << 10,
                 .bufferMultiplier = 512,
             }, {}
         ));
 
         JST_CHECK(instance.addModule<Window, ComputeDevice>(
             win, "win", {
-                .shape = sdr->getOutputBuffer().shape(),
-            }, {}
-        ));
-
-        JST_CHECK(instance.addModule<Filter, ComputeDevice>(
-            flt, "flt", {
-                .signalSampleRate = sdr->getConfig().sampleRate,
-                .filterSampleRate = 5e6,
-                .filterCenter = -5e6,
-                .shape = sdr->getOutputBuffer().shape(),
+                .size = sdr->getOutputBuffer().shape()[1],
             }, {}
         ));
 
         JST_CHECK(instance.addModule<Multiply, ComputeDevice>(
             win_mul, "win_mul", {}, {
                 .factorA = sdr->getOutputBuffer(),
-                .factorB = win->getWindowBuffer(),
+                .factorB = win->getOutputWindow(),
             }
         ));
 
@@ -68,16 +60,9 @@ class UI {
             }
         ));
 
-        JST_CHECK(instance.addModule<Multiply, ComputeDevice>(
-            flt_mul, "flt_mul", {}, {
-                .factorA = fft->getOutputBuffer(),
-                .factorB = flt->getOutputCoeffs(),
-            }
-        ));
-
         JST_CHECK(instance.addModule<Amplitude, ComputeDevice>(
             amp, "amp", {}, {
-                .buffer = flt_mul->getOutputProduct(),
+                .buffer = fft->getOutputBuffer(),
             }
         ));
 
@@ -89,19 +74,19 @@ class UI {
             }
         ));
 
-        JST_CHECK(instance.addModule<Bundles::Lineplot, ComputeDevice>(
+        JST_CHECK(instance.addModule<Lineplot, ComputeDevice>(
             lpt, "lpt", {}, {
                 .buffer = scl->getOutputBuffer(),
             }
         ));
 
-        JST_CHECK(instance.addModule<Bundles::Waterfall, ComputeDevice>(
+        JST_CHECK(instance.addModule<Waterfall, ComputeDevice>(
             wtf, "wtf", {}, {
                 .buffer = scl->getOutputBuffer(),
             }
         ));
 
-        JST_CHECK(instance.addModule<Bundles::Spectrogram, ComputeDevice>(
+        JST_CHECK(instance.addModule<Spectrogram, ComputeDevice>(
             spc, "spc", {}, {
                 .buffer = scl->getOutputBuffer(),
             }
@@ -156,12 +141,10 @@ class UI {
     std::shared_ptr<FFT<ComputeDevice>> fft;
     std::shared_ptr<Amplitude<ComputeDevice>> amp;
     std::shared_ptr<Scale<ComputeDevice>> scl;
-    std::shared_ptr<Filter<ComputeDevice>> flt;
-    std::shared_ptr<Multiply<ComputeDevice>> flt_mul;
 
-    std::shared_ptr<Bundles::Lineplot<ComputeDevice>> lpt;
-    std::shared_ptr<Bundles::Waterfall<ComputeDevice>> wtf;
-    std::shared_ptr<Bundles::Spectrogram<ComputeDevice>> spc;
+    std::shared_ptr<Lineplot<ComputeDevice>> lpt;
+    std::shared_ptr<Waterfall<ComputeDevice>> wtf;
+    std::shared_ptr<Spectrogram<ComputeDevice>> spc;
 
     void computeThreadLoop() {
         JST_CHECK_THROW(instance.compute());
@@ -174,28 +157,6 @@ class UI {
     void graphicalThreadLoop() {
         if (instance.begin() == Result::SKIP) {
             return;
-        }
-
-        {
-            ImGui::Begin("FIR Filter Control");
-
-            auto sampleRate = flt->filterSampleRate() / (1000 * 1000);
-            if (ImGui::DragFloat("Bandwidth (MHz)", &sampleRate, 0.01, 0, sdr->getConfig().sampleRate / (1000 * 1000), "%.2f MHz")) {
-                flt->filterSampleRate(sampleRate * (1000 * 1000));
-            }
-
-            auto center = flt->filterCenter() / (1000 * 1000);
-            auto halfSampleRate = (sdr->getConfig().sampleRate / 2.0) / (1000 * 1000);
-            if (ImGui::DragFloat("Center (MHz)", &center, 0.01, -halfSampleRate, halfSampleRate, "%.2f MHz")) {
-                flt->filterCenter(center * (1000 * 1000));
-            }
-
-            auto numberOfTaps = static_cast<int>(flt->filterTaps());
-            if (ImGui::DragInt("Taps", &numberOfTaps, 2, 3, 2000, "%d taps")) {
-                flt->filterTaps(numberOfTaps);
-            }
-
-            ImGui::End();
         }
 
         {
@@ -220,10 +181,10 @@ class UI {
             ImGui::Begin("System Info");
 
             if (ImGui::CollapsingHeader("Buffer Health", ImGuiTreeNodeFlags_DefaultOpen)) {
-                float bufferThroughputMB = (sdr->getCircularBuffer().getThroughput() / (1024 * 1024));
+                float bufferThroughputMB = (sdr->getCircularBuffer().getThroughput() / JST_MB);
                 ImGui::TextFormatted("Buffer Throughput {:.0f} MB/s", bufferThroughputMB);
 
-                float bufferCapacityMB = ((F32)sdr->getCircularBuffer().getCapacity() * sizeof(CF32) / (1024 * 1024));
+                float bufferCapacityMB = ((F32)sdr->getCircularBuffer().getCapacity() * sizeof(CF32) / JST_MB);
                 ImGui::TextFormatted("Capacity {:.0f} MB", bufferCapacityMB);
 
                 ImGui::TextFormatted("Overflows {}", sdr->getCircularBuffer().getOverflows());
@@ -234,7 +195,7 @@ class UI {
             }
 
             if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::TextFormatted("Data Shape: ({}, {})", sdr->getConfig().outputShape[0], sdr->getConfig().outputShape[1]);
+                ImGui::TextFormatted("Data Shape: ({}, 1, {})", sdr->getConfig().numberOfBatches, sdr->getConfig().numberOfTimeSamples);
                 ImGui::TextFormatted("Compute Device: {}", GetDevicePrettyName(ComputeDevice));
             }
 
@@ -247,10 +208,52 @@ class UI {
             if (ImGui::CollapsingHeader("SDR", ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::TextFormatted("Device Name: {}", sdr->getDeviceName());
                 ImGui::TextFormatted("Hardware Key: {}", sdr->getDeviceHardwareKey());
-                float sdrThroughputMB = ((sdr->getConfig().sampleRate * 8) / (1024 * 1024));
+                float sdrThroughputMB = ((sdr->getConfig().sampleRate * 8) / JST_MB);
                 ImGui::TextFormatted("Data Throughput {:.0f} MB/s", sdrThroughputMB);
-                ImGui::TextFormatted("RF Bandwidth: {:.1f} MHz", sdr->getConfig().sampleRate / (1000 * 1000));
+                ImGui::TextFormatted("RF Bandwidth: {:.1f} MHz", sdr->getConfig().sampleRate / JST_MHZ);
             }
+
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Lineplot");
+
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto scale = ImGui::GetIO().DisplayFramebufferScale;
+            auto [width, height] = lpt->viewSize({
+                static_cast<U64>(x*scale.x),
+                static_cast<U64>(y*scale.y)
+            });
+            ImGui::Image(lpt->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Waterfall");
+
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto scale = ImGui::GetIO().DisplayFramebufferScale;
+            auto [width, height] = wtf->viewSize({
+                static_cast<U64>(x*scale.x),
+                static_cast<U64>(y*scale.y)
+            });
+            ImGui::Image(wtf->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Spectrogram");
+
+            auto [x, y] = ImGui::GetContentRegionAvail();
+            auto scale = ImGui::GetIO().DisplayFramebufferScale;
+            auto [width, height] = spc->viewSize({
+                static_cast<U64>(x*scale.x),
+                static_cast<U64>(y*scale.y)
+            });
+            ImGui::Image(spc->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
 
             ImGui::End();
         }

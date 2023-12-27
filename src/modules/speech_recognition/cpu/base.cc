@@ -2,14 +2,17 @@
 
 #include "jetstream/backend/devices/cpu/helpers.hh"
 
-std::string to_timestamp(int64_t t) {
-    int64_t sec = t/100;
-    int64_t msec = t - sec*100;
-    int64_t min = sec/60;
-    sec = sec - min*60;
+std::string to_timestamp(int64_t t, bool comma = false) {
+    int64_t msec = t * 10;
+    int64_t hr = msec / (1000 * 60 * 60);
+    msec = msec - hr * (1000 * 60 * 60);
+    int64_t min = msec / (1000 * 60);
+    msec = msec - min * (1000 * 60);
+    int64_t sec = msec / 1000;
+    msec = msec - sec * 1000;
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "%02d:%02d.%03d", (int) min, (int) sec, (int) msec);
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d%s%03d", (int) hr, (int) min, (int) sec, comma ? "," : ".", (int) msec);
 
     return std::string(buf);
 }
@@ -20,8 +23,10 @@ template<Device D, typename T>
 Result SpeechRecognition<D, T>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Speech Recognition compute core using CPU backend.");
 
-    ctx = whisper_init_from_file("/Users/luigi/sandbox/whisper.cpp/models/ggml-base.bin");
-    wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    struct whisper_context_params cparams;
+    cparams.use_gpu = true;
+    ctx = whisper_init_from_file_with_params("/Users/luigi/sandbox/whisper.cpp/models/ggml-base.bin", cparams);
+    wparams = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
 
     wparams.print_progress   = false;
     wparams.print_special    = false;
@@ -29,19 +34,18 @@ Result SpeechRecognition<D, T>::createCompute(const RuntimeMetadata&) {
     wparams.print_timestamps = false;
     wparams.translate        = false;
     wparams.single_segment   = false;
-    wparams.max_tokens       = 128;
-    wparams.language         = "pt";
+    wparams.language         = "en";
     wparams.n_threads        = 8;
     wparams.speed_up         = false;
+
+    wparams.token_timestamps = true;
+    wparams.max_len          = 1;
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result SpeechRecognition<D, T>::compute(const RuntimeMetadata&) {
-    wparams.prompt_tokens    = promptTokens.data();
-    wparams.prompt_n_tokens  = promptTokens.size();
-
     if (whisper_full(ctx, wparams, input.buffer.data(), input.buffer.size()) != 0) {
         JST_FATAL("failed to process audio\n");
     }
@@ -49,6 +53,9 @@ Result SpeechRecognition<D, T>::compute(const RuntimeMetadata&) {
     const int n_segments = whisper_full_n_segments(ctx);
 
     for (int i = 0; i < n_segments; ++i) {
+        const auto t0 = whisper_full_get_segment_t0(ctx, i);
+        const auto t1 = whisper_full_get_segment_t1(ctx, i);
+
         const char* text = whisper_full_get_segment_text(ctx, i);
 
         std::string output = text;
@@ -56,24 +63,16 @@ Result SpeechRecognition<D, T>::compute(const RuntimeMetadata&) {
             output += " [SPEAKER_TURN]";
         }
 
-        output += "\n";
+        JST_TRACE(">> [{} -> {}] {}", to_timestamp(t0), to_timestamp(t1), output);
 
-        JST_TRACE(">> {}", output);
-
-        textBuffer += output.c_str();
+        textBuffer += text;
     }
 
-    promptTokens.clear();
-    for (int i = 0; i < n_segments; ++i) {
-        const int token_count = whisper_full_n_tokens(ctx, i);
-        for (int j = 0; j < token_count; ++j) {
-            promptTokens.push_back(whisper_full_get_token_id(ctx, i, j));
-        }
-    }
+    textBuffer += "\n";
 
     return Result::SUCCESS;
 }
 
-JST_SPEECH_RECOGNITION_CPU(JST_INSTANTIATION);
+JST_SPEECH_RECOGNITION_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

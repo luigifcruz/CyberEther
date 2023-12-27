@@ -18,7 +18,7 @@
 namespace Jetstream {
 
 #define JST_SOAPY_CPU(MACRO) \
-    MACRO(Soapy, Device::CPU, CF32)
+    MACRO(Soapy, CPU, CF32)
 
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {

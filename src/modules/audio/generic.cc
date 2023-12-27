@@ -110,6 +110,6 @@ Result Audio<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_AUDIO_CPU(JST_INSTANTIATION);
+JST_AUDIO_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

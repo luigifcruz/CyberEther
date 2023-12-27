@@ -61,6 +61,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-JST_LINEPLOT_METAL(JST_INSTANTIATION);
+JST_LINEPLOT_METAL(JST_INSTANTIATION)
 
 }  // namespace Jetstream

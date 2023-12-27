@@ -11,10 +11,10 @@
 namespace Jetstream {
 
 #define JST_SCALE_CPU(MACRO) \
-    MACRO(Scale, Device::CPU, F32)
+    MACRO(Scale, CPU, F32)
 
 #define JST_SCALE_METAL(MACRO) \
-    MACRO(Scale, Device::Metal, F32)
+    MACRO(Scale, Metal, F32)
 
 template<Device D, typename T = F32>
 class Scale : public Module, public Compute {

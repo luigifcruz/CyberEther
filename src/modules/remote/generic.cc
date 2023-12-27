@@ -650,6 +650,6 @@ Render::Texture& Remote<D, T>::getTexture() {
     return *texture;
 };
 
-JST_REMOTE_CPU(JST_INSTANTIATION);
+JST_REMOTE_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

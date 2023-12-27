@@ -5,6 +5,7 @@
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/metadata.hh"
+#include "jetstream/benchmark.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/memory/base.hh"
 

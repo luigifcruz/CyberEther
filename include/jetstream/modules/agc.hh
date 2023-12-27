@@ -10,8 +10,8 @@
 namespace Jetstream {
 
 #define JST_AGC_CPU(MACRO) \
-    MACRO(AGC, Device::CPU, CF32) \
-    MACRO(AGC, Device::CPU, F32)
+    MACRO(AGC, CPU, CF32) \
+    MACRO(AGC, CPU, F32)
 
 template<Device D, typename T = CF32>
 class AGC : public Module, public Compute {

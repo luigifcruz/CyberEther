@@ -48,6 +48,6 @@ Result OverlapAdd<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_OVERLAP_ADD_CPU(JST_INSTANTIATION);
+JST_OVERLAP_ADD_CPU(JST_INSTANTIATION)
     
 }  // namespace Jetstream

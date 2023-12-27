@@ -11,8 +11,8 @@
 namespace Jetstream {
 
 #define JST_OVERLAP_ADD_CPU(MACRO) \
-    MACRO(OverlapAdd, Device::CPU, CF32) \
-    MACRO(OverlapAdd, Device::CPU, F32)
+    MACRO(OverlapAdd, CPU, CF32) \
+    MACRO(OverlapAdd, CPU, F32)
 
 template<Device D, typename T = CF32>
 class OverlapAdd : public Module, public Compute {

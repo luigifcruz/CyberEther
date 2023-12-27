@@ -11,7 +11,7 @@
 namespace Jetstream {
 
 #define JST_FM_CPU(MACRO) \
-    MACRO(FM, Device::CPU, CF32, F32)
+    MACRO(FM, CPU, CF32, F32)
 
 template<Device D, typename IT = CF32, typename OT = F32>
 class FM : public Module, public Compute {

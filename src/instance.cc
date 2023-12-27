@@ -501,7 +501,10 @@ Result Instance::destroy() {
 }
 
 Result Instance::compute() {
-    return _scheduler.compute();
+    // Update the modules compute logic.
+    JST_CHECK(_scheduler.compute());
+
+    return Result::SUCCESS;
 }
 
 Result Instance::begin() {

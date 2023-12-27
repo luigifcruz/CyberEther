@@ -10,8 +10,8 @@
 namespace Jetstream {
 
 #define JST_TAKE_CPU(MACRO) \
-    MACRO(Take, Device::CPU, CF32) \
-    MACRO(Take, Device::CPU, F32)
+    MACRO(Take, CPU, CF32) \
+    MACRO(Take, CPU, F32)
 
 template<Device D, typename T = CF32>
 class Take : public Module, public Compute {

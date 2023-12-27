@@ -32,6 +32,7 @@ Result CPU::destroy() {
     for (const auto& block : blocks) {
         JST_CHECK(block->destroyCompute(*metadata));
     }
+    blocks.clear();
     return Result::SUCCESS;
 }
 

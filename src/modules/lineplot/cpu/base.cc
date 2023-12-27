@@ -26,6 +26,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_LINEPLOT_CPU(JST_INSTANTIATION);
+JST_LINEPLOT_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

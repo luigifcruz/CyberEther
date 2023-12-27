@@ -315,6 +315,10 @@ class FilterEngine : public Block {
                                            center / JST_MHZ, 
                                            frequencyPerBin / JST_MHZ);
                 }
+
+                // TODO: Looks like there is a problem with the calculation of this 
+                // offset when the sample rate is 2.5 MHz and the filter offset is 0.6 MHz. 
+                // Verify if there is a problem here or in the Fold module.
                 resamplerOffset = static_cast<U64>(std::round(centerBin));
             }
             

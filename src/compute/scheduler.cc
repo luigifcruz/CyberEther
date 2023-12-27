@@ -77,40 +77,38 @@ Result Scheduler::addModule(const Locale& locale,
     }
     JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
 
-    // Stop execution.
-    lock();
+    JST_CHECK(lockState([&]{
+        // Destroy compute logic from modules.
+        for (const auto& graph : graphs) {
+            JST_CHECK(graph->destroy());
+        }
 
-    // Destroy compute logic from modules.
-    for (const auto& graph : graphs) {
-        graph->destroy();
-    }
+        // Add module to present and/or compute.
+        if (present) {
+            presentModuleStates[locale.shash()].module = present;
+            presentModuleStates[locale.shash()].inputMap = inputMap;
+            presentModuleStates[locale.shash()].outputMap = outputMap;
+        }
+        if (compute) {
+            computeModuleStates[locale.shash()].module = compute;
+            computeModuleStates[locale.shash()].device = module->device();
+            computeModuleStates[locale.shash()].inputMap = inputMap;
+            computeModuleStates[locale.shash()].outputMap = outputMap;
+        }
 
-    // Add module to present and/or compute.
-    if (present) {
-        presentModuleStates[locale.shash()].module = present;
-        presentModuleStates[locale.shash()].inputMap = inputMap;
-        presentModuleStates[locale.shash()].outputMap = outputMap;
-    }
-    if (compute) {
-        computeModuleStates[locale.shash()].module = compute;
-        computeModuleStates[locale.shash()].device = module->device();
-        computeModuleStates[locale.shash()].inputMap = inputMap;
-        computeModuleStates[locale.shash()].outputMap = outputMap;
-    }
+        // Process modules into graph.
+        JST_CHECK(removeInactive());
+        JST_CHECK(arrangeDependencyOrder());
+        JST_CHECK(checkSequenceValidity());
+        JST_CHECK(createExecutionGraphs());
 
-    // Process modules into graph.
-    JST_CHECK(removeInactive());
-    JST_CHECK(arrangeDependencyOrder());
-    JST_CHECK(checkSequenceValidity());
-    JST_CHECK(createExecutionGraphs());
+        // Initialize graphs.
+        for (const auto& graph : graphs) {
+            JST_CHECK(graph->create());
+        }
 
-    // Initialize graphs.
-    for (const auto& graph : graphs) {
-        JST_CHECK(graph->create());
-    }
-
-    // Restart execution.
-    unlock();
+        return Result::SUCCESS;
+    }));
 
     return Result::SUCCESS;
 }
@@ -123,35 +121,33 @@ Result Scheduler::removeModule(const Locale& locale) {
         return Result::SUCCESS;
     }
 
-    // Stop execution.
-    lock();
+    JST_CHECK(lockState([&]{
+        // Destroy compute logic from modules.
+        for (const auto& graph : graphs) {
+            JST_CHECK(graph->destroy());
+        }
 
-    // Destroy compute logic from modules.
-    for (const auto& graph : graphs) {
-        graph->destroy();
-    }
+        // Remove module from present and/or compute.
+        if (presentModuleStates.contains(locale.shash())) {
+            presentModuleStates.erase(locale.shash());
+        }
+        if (computeModuleStates.contains(locale.shash())) {
+            computeModuleStates.erase(locale.shash());
+        }
 
-    // Remove module from present and/or compute.
-    if (presentModuleStates.contains(locale.shash())) {
-        presentModuleStates.erase(locale.shash());
-    }
-    if (computeModuleStates.contains(locale.shash())) {
-        computeModuleStates.erase(locale.shash());
-    }
+        // Process modules into graph.
+        JST_CHECK(removeInactive());
+        JST_CHECK(arrangeDependencyOrder());
+        JST_CHECK(checkSequenceValidity());
+        JST_CHECK(createExecutionGraphs());
 
-    // Process modules into graph.
-    JST_CHECK(removeInactive());
-    JST_CHECK(arrangeDependencyOrder());
-    JST_CHECK(checkSequenceValidity());
-    JST_CHECK(createExecutionGraphs());
+        // Initialize graphs.
+        for (const auto& graph : graphs) {
+            JST_CHECK(graph->create());
+        }
 
-    // Initialize graphs.
-    for (const auto& graph : graphs) {
-        JST_CHECK(graph->create());
-    }
-
-    // Restart execution.
-    unlock();
+        return Result::SUCCESS;
+    }));
 
     return Result::SUCCESS;
 }
@@ -159,28 +155,26 @@ Result Scheduler::removeModule(const Locale& locale) {
 Result Scheduler::destroy() {
     JST_DEBUG("[SCHEDULER] Destroying compute graph.");
 
-    // Stop execution.
-    lock();
+    JST_CHECK(lockState([&]{
+        // Stop execution.
+        running = false;
 
-    // Stop execution.
-    running = false;
+        // Destroy compute logic from modules.
+        for (const auto& graph : graphs) {
+            JST_CHECK(graph->destroy());
+        }
 
-    // Destroy compute logic from modules.
-    for (const auto& graph : graphs) {
-        graph->destroy();
-    }
+        // Blanks internal memory.
+        computeModuleStates.clear();
+        presentModuleStates.clear();
+        validComputeModuleStates.clear();
+        validPresentModuleStates.clear();
+        executionOrder.clear();
+        deviceExecutionOrder.clear();
+        graphs.clear();
 
-    // Blanks internal memory.
-    computeModuleStates.clear();
-    presentModuleStates.clear();
-    validComputeModuleStates.clear();
-    validPresentModuleStates.clear();
-    executionOrder.clear();
-    deviceExecutionOrder.clear();
-    graphs.clear();
-
-    // Restart execution.
-    unlock();
+        return Result::SUCCESS;
+    }));
 
     return Result::SUCCESS;
 }
@@ -220,8 +214,8 @@ Result Scheduler::compute() {
 
     Result res = Result::SUCCESS;
     {
-        std::unique_lock<std::mutex> lock(computeMutex);
-        computeCond.wait(lock, [&] { return !computeSync; });
+        std::unique_lock<std::mutex> lock(sharedMutex);
+        computeCond.wait(lock, [&] { return !presentSync; });
         computeSync = true;
 
         for (const auto& graph : graphs) {
@@ -232,7 +226,7 @@ Result Scheduler::compute() {
 
         computeSync = false;
     }
-    computeCond.notify_all();
+    presentCond.notify_all();
 
     if (res == Result::SUCCESS) {
         return res;
@@ -259,9 +253,11 @@ Result Scheduler::present() {
     }
 
     {
-        std::unique_lock<std::mutex> lock(presentMutex);
-        presentCond.wait(lock, [&] { return !presentSync; });
+        // Present thread has priority over compute thread.
         presentSync = true;
+
+        std::unique_lock<std::mutex> lock(sharedMutex);
+        presentCond.wait(lock, [&] { return !computeSync; });
 
         for (const auto& [_, state] : validPresentModuleStates) {
             JST_CHECK(state.module->present());
@@ -269,25 +265,41 @@ Result Scheduler::present() {
 
         presentSync = false;
     }
-    presentCond.notify_all();
+    computeCond.notify_all();
 
     return Result::SUCCESS;
 }
 
-void Scheduler::lock() {
-    presentHalt.test_and_set();
+Result Scheduler::lockState(const std::function<Result()>& func) {
+    // Send halt signal.
     computeHalt.test_and_set();
-    computeWait.wait(true);
-    while (computeSync || presentSync) {
-        std::this_thread::yield();
-    }
-}
+    presentHalt.test_and_set();
 
-void Scheduler::unlock() {
-    presentHalt.clear();
-    presentHalt.notify_all();
+    // Wait for compute to clear.
+    computeWait.wait(true);
+
+    // Acquire compute/present lock.
+    sharedMutex.lock();
+    presentSync = true;
+    computeSync = true;
+
+    // Run function.
+    Result res = func();
+
+    // Release compute/present lock.
+    computeSync = false;
+    presentSync = false;
+    sharedMutex.unlock();
+    computeCond.notify_all();
+    presentCond.notify_all();
+
+    // Unhalt present.
     computeHalt.clear();
     computeHalt.notify_all();
+    presentHalt.clear();
+    presentHalt.notify_all();
+
+    return res;
 }
 
 Result Scheduler::removeInactive() {

@@ -5,37 +5,39 @@ title: Remote Spectrum Analyzer
 summary: SoapySDR Remote Spectrum Analyzer.
 author: Luigi
 license: MIT
+description: Shows how to connect to a remove SDR using SoapySDR Remote. This will send the RAW samples to the SoapySDR block and act like a local SDR.
 graph:
   soapy:
     module: soapy
     device: cpu
     dataType: CF32
     config:
-      bufferMultiplier: 512
-      sampleRate: 2000000
-      frequency: 94900000
-      hintString: 'driver=remote,remote:driver=airspy,remote=11.11.5.1'
-      streamString: 'remote:mtu=4000,remote:window=1000000000,remote:prot=udp'
-      numberOfTimeSamples: 8192
+      frequency: 96900000
+      bufferMultiplier: 8
+      sampleRate: 2500000
+      streamString: 'remote:mtu=1500,remote:window=16384000,remote:prot=udp'
+      hintString: 'driver=remote,remote:driver=airspy,remote=192.168.2.1'
+      numberOfTimeSamples: 1024
       numberOfBatches: 8
       automaticGain: true
+      deviceString: ''
     interface:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [1, 119]
+      nodePos: [2, 174]
       controlEnabled: false
   win:
     module: window
     device: cpu
     dataType: CF32
     config:
-      size: 8192
+      size: 1024
     interface:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [2, -26.327866]
+      nodePos: [3, 28.672134]
       controlEnabled: false
   inv18:
     module: invert
@@ -47,7 +49,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 129
-      nodePos: [353.2826, -1.3278656]
+      nodePos: [354.2826, 53.672134]
       controlEnabled: false
   win_mul:
     module: multiply
@@ -60,7 +62,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 167
-      nodePos: [524.5, 44.000015]
+      nodePos: [526.5, 84.000015]
       controlEnabled: false
   fft:
     module: fft
@@ -74,7 +76,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [748.2826, 57]
+      nodePos: [749.2826, 86]
       controlEnabled: false
   amp:
     module: amplitude
@@ -87,7 +89,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 147
-      nodePos: [1088.7826, 106]
+      nodePos: [1089.7826, 135]
       controlEnabled: false
   scl:
     module: scale
@@ -101,7 +103,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [1298.5652, 74]
+      nodePos: [1297.5652, 94]
       controlEnabled: false
   wtf:
     module: waterfall
@@ -119,7 +121,7 @@ graph:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [1645.0652, 320]
+      nodePos: [1650.0652, 351]
       controlEnabled: false
   spc:
     module: spectrogram
@@ -134,5 +136,24 @@ graph:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [1644.7826, -14.655762]
+      nodePos: [1650.7826, 13.344238]
+      controlEnabled: false
+  not18:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        This is very similar to the local Spectrum Analyzer. The only difference is
+        the `Device Hint` string is modified.
+        
+        `driver=remote,remote:driver=airspy,remote=11.11.5.1`
+        
+        Note that you will need to manually select which kind of device you are 
+        trying to connect (e.g. `airspy`, `rtlsdr`, etc). And the endpoint IP 
+        address.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 521
+      nodePos: [446.48364, 288.6519]
       controlEnabled: false

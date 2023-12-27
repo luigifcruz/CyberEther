@@ -108,7 +108,11 @@ class Filter : public Block {
         F32 sampleRate = config.sampleRate / JST_MHZ;
         if (ImGui::InputFloat("##filter-sample-rate", &sampleRate, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.sampleRate = sampleRate * JST_MHZ;
-            JST_MODULE_UPDATE(filter, sampleRate(config.sampleRate));
+            
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+            });
         }
 
         ImGui::TableNextRow();
@@ -119,7 +123,11 @@ class Filter : public Block {
         F32 bandwidth = config.bandwidth / JST_MHZ;
         if (ImGui::InputFloat("##filter-bandwidth", &bandwidth, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.bandwidth = bandwidth * JST_MHZ;
-            JST_MODULE_UPDATE(filter, bandwidth(config.bandwidth));
+            
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+            });
         }
 
         ImGui::TableNextRow();
@@ -130,7 +138,11 @@ class Filter : public Block {
         F32 taps = config.taps;
         if (ImGui::InputFloat("##filter-taps", &taps, 2.0f, 2.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.taps = static_cast<U64>(taps);
-            JST_MODULE_UPDATE(filter, taps(config.taps));
+            
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+            });
         }
 
         ImGui::TableNextRow();
@@ -160,7 +172,11 @@ class Filter : public Block {
             F32 center = config.center[i] / JST_MHZ;
             if (ImGui::InputFloat(id.c_str(), &center, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 config.center[i] = center * JST_MHZ;
-                JST_MODULE_UPDATE(filter, center(i, config.center[i]));
+                
+                JST_DISPATCH_ASYNC([&](){
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                    JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+                });
             }
         }
     }

@@ -23,21 +23,22 @@ class UI {
                 .deviceString = "driver=rtlsdr",
                 .frequency = 96.9e6,
                 .sampleRate = 2.0e6,
-                .outputShape = {8, 2 << 10},
+                .numberOfBatches = 8,
+                .numberOfTimeSamples = 2 << 10,
                 .bufferMultiplier = 512,
             }, {}
         ));
 
         JST_CHECK(instance.addModule<Window, ComputeDevice>(
             win, "win", {
-                .shape = sdr->getOutputBuffer().shape(),
+                .size = sdr->getOutputBuffer().shape()[1],
             }, {}
         ));
 
         JST_CHECK(instance.addModule<Multiply, ComputeDevice>(
             win_mul, "win_mul", {}, {
                 .factorA = sdr->getOutputBuffer(),
-                .factorB = win->getWindowBuffer(),
+                .factorB = win->getOutputWindow(),
             }
         ));
 

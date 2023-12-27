@@ -21,6 +21,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/benchmark.hh"
 
 //
 // Functional Imports

@@ -18,6 +18,8 @@
 #include "jetstream/compositor.hh"
 #include "jetstream/compute/base.hh"
 
+// TODO: Add way to disable compositor completely.
+
 namespace Jetstream {
 
 class JETSTREAM_API Instance {
@@ -83,7 +85,7 @@ class JETSTREAM_API Instance {
                      const std::string& id,
                      const typename T<D, C...>::Config& config,
                      const typename T<D, C...>::Input& input,
-                     const std::string& blockId) {
+                     const std::string& blockId = "main") {
         using B = T<D, C...>;
 
         // Validate module type.

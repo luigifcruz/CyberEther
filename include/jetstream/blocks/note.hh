@@ -76,6 +76,7 @@ class Note : public Block {
     // Interface
 
     void drawPreview(const F32& maxWidth) {
+        // TODO: Add support for markdown with links and images.
         const I32 numActualLines = std::count(config.note.begin(), config.note.end(), '\n');
         const I32 numLines = std::min(std::max(5, numActualLines + 2), 20);
         ImGui::InputTextMultiline("##note", &config.note, ImVec2(maxWidth, numLines * ImGui::GetTextLineHeight()), ImGuiInputTextFlags_NoHorizontalScroll);

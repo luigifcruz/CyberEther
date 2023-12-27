@@ -276,6 +276,6 @@ bool Soapy<D, T>::CheckValidRange(const std::vector<SoapySDR::Range>& ranges, co
     return isSampleRateSupported;
 }
 
-JST_SOAPY_CPU(JST_INSTANTIATION);
+JST_SOAPY_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

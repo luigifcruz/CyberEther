@@ -11,7 +11,7 @@
 namespace Jetstream {
 
 #define JST_INVERT_CPU(MACRO) \
-    MACRO(Invert, Device::CPU, CF32)
+    MACRO(Invert, CPU, CF32)
 
 template<Device D, typename T = CF32>
 class Invert : public Module, public Compute {

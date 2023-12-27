@@ -1,188 +1,194 @@
 ---
 protocolVersion: 1.0.0
 cyberetherVersion: 1.0.0
-title: Multi FM Receiver
-summary: Multi radio station receiver.
+title: 'Multi-FM'
+summary: Receive multiple FM simultaneously.
 author: Luigi
 license: MIT
-
-computeDevice: cpu
-
+description: 'Shows the reception of multiple FM broadcast stations simultaneously. The partitioning into individual stations is done via the Overlap-Add-Fold method presented in another example. This flowgraph abstracts this mechanism using the `Filter Engine` block.'
 graph:
   soapy:
     module: soapy
-    device: ${computeDevice}
+    device: cpu
     dataType: CF32
     config:
-      deviceString: driver=rtlsdr,serial=00000001
-      frequency: 96.9e6
-      sampleRate: 240e3
+      bufferMultiplier: 1024
+      sampleRate: 2000000
+      frequency: 96900000
+      hintString: ''
+      streamString: ''
+      numberOfTimeSamples: 8000
       numberOfBatches: 8
-      numberOfTimeSamples: 2048
-      bufferMultiplier: 512
-
-  win:
-    module: window
-    device: ${computeDevice}
-    dataType: CF32
-    config:
-      size: 2048
-
-  win_mul:
-    module: multiply
-    device: ${computeDevice}
-    dataType: CF32
-    input:
-      factorA: ${graph.soapy.output.buffer}
-      factorB: ${graph.win.output.window}
-
-  fft:
-    module: fft
-    device: ${computeDevice}
-    dataType: CF32
-    config:
-      forward: true
-    input:
-      buffer: ${graph.win_mul.output.product}
-
-  amp:
-    module: amplitude
-    device: ${computeDevice}
-    inputDataType: CF32
-    outputDataType: F32
-    input:
-      buffer: ${graph.fft.output.buffer}
-
-  scl:
-    module: scale
-    device: ${computeDevice}
-    dataType: F32
-    config:
-      range: [-100.0, 0.0]
-    input:
-      buffer: ${graph.amp.output.buffer}
-
+      automaticGain: true
+      deviceString: 'driver=rtlsdr,serial=00000001'
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [-2, 224.00002]
+      controlEnabled: false
   flt:
     module: filter
-    device: ${computeDevice}
+    device: cpu
     dataType: CF32
     config:
-      sampleRate: 240e3
-      bandwith: 200e3
-      center: 0.0
-      taps: 111
-
-  flt_mul:
-    module: multiply
-    device: ${computeDevice}
+      taps: 51
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: [0, 600000, ]
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [-2, -16]
+      controlEnabled: false
+  fil_engine36:
+    module: 'filter-engine'
+    device: cpu
     dataType: CF32
     input:
-      factorA: ${graph.fft.output.buffer}
-      factorB: ${graph.flt.output.coeffs}
-
-  amp-2:
-    module: amplitude
-    device: ${computeDevice}
+      filter: ${graph.flt.output.coeffs}
+      signal: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 235
+      nodePos: [367, 221]
+      controlEnabled: false
+  not34:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        This is a simplified flowgraph from what was presented in the 
+        `Overlap-Add-Fold` example. That entire mechanism was abstracted 
+        away with the `Filter Engine` block.
+        
+        Here, 2 MHz of the FM broadcast spectrum is being received and 
+        filtered. The `Filter` block generates two sets of 200 kHz bandpass
+        filter taps centered around 96.9 MHz and 97.5 MHz. The result after
+        applying the taps to the signal is two independent FM stations that
+        can be chosen by selecting the `Index` in the `Take` block.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 470
+      nodePos: [361.88336, -15.929108]
+      controlEnabled: false
+  spe33:
+    module: spectroscope
+    device: cpu
     inputDataType: CF32
     outputDataType: F32
-    input:
-      buffer: ${graph.flt_mul.output.product}
-
-  scl-2:
-    module: scale
-    device: ${computeDevice}
-    dataType: F32
     config:
-      range: [-100.0, 0.0]
+      viewSize: [512, 512]
+      range: [-81, 1]
+      waterfall: true
+      lineplot: true
+      spectrogram: false
     input:
-      buffer: ${graph.amp-2.output.buffer}
-
-  ifft:
-    module: fft
-    device: ${computeDevice}
+      buffer: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [366, 345]
+      controlEnabled: false
+  not43:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        On the left, you can see the entire 2 MHz of the input signal.
+        
+        On the right, you can see the filtered and resampled 200 kHz
+        signal of a single FM station.
+        
+        The Filter Engine block will also try to resample the signal
+        after filtering to the input filter's bandwidth. In this case,
+        two sets of 200 kHz bandwidth centered in 0.0 MHz and 0.6 MHz.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 431
+      nodePos: [691.0375, 406.43774]
+      controlEnabled: false
+  not44:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        You can also add more filters if you have 
+        more FM stations to filter. Simply increase
+        the number of `Heads` and set the correct 
+        `Center` in the `Filter` block.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [855.0375, -12.5622635]
+      controlEnabled: false
+  tak23:
+    module: take
+    device: cpu
     dataType: CF32
     config:
-      forward: false
+      axis: 1
+      index: 1
     input:
-      buffer: ${graph.flt_mul.output.product}
-
-  invert:
-    module: invert
-    device: ${computeDevice}
-    dataType: CF32
-    input:
-      buffer: ${graph.ifft.output.buffer}
-
+      buffer: ${graph.fil_engine36.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [701.8888, 222.43848]
+      controlEnabled: false
   fm:
     module: fm
-    device: ${computeDevice}
+    device: cpu
     inputDataType: CF32
     outputDataType: F32
     config:
-      sampleRate: 240e3
+      sampleRate: 200000
     input:
-      buffer: ${graph.invert.output.buffer}
-
-  fft-3:
-    module: fft
-    device: ${computeDevice}
-    dataType: CF32
-    config:
-      forward: true
-    input:
-      buffer: ${graph.ifft.output.buffer}
-
-  amp-3:
-    module: amplitude
-    device: ${computeDevice}
+      buffer: ${graph.tak23.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1184.5, 101.00002]
+      controlEnabled: false
+  spe23:
+    module: spectroscope
+    device: cpu
     inputDataType: CF32
     outputDataType: F32
-    input:
-      buffer: ${graph.fft-3.output.buffer}
-
-  scl-3:
-    module: scale
-    device: ${computeDevice}
-    dataType: F32
     config:
-      range: [-100.0, 0.0]
+      viewSize: [512, 512]
+      range: [-57, 1]
+      waterfall: true
+      lineplot: true
+      spectrogram: false
     input:
-      buffer: ${graph.amp-3.output.buffer}
-  
+      buffer: ${graph.tak23.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1144, 255]
+      controlEnabled: false
   audio:
     module: audio
     device: cpu
     dataType: F32
     config:
-      inSampleRate: 240e3
-      outSampleRate: 48e3
+      outSampleRate: 48000
+      inSampleRate: 200000
     input:
       buffer: ${graph.fm.output.buffer}
-  
-  wtf:
-      module: waterfall
-      device: ${computeDevice}
-      dataType: F32
-      input:
-        buffer: ${graph.scl-2.output.buffer}
-      interface:
-        previewEnabled: true
-
-  wtf-2:
-      module: waterfall
-      device: ${computeDevice}
-      dataType: F32
-      input:
-        buffer: ${graph.scl-3.output.buffer}
-      interface:
-        previewEnabled: true
-
-  wtf-3:
-      module: waterfall
-      device: ${computeDevice}
-      dataType: F32
-      input:
-        buffer: ${graph.scl.output.buffer}
-      interface:
-        previewEnabled: true
-
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1543.4663, 107.91619]
+      controlEnabled: false

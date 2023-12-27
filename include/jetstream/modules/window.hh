@@ -10,7 +10,7 @@
 namespace Jetstream {
 
 #define JST_WINDOW_CPU(MACRO) \
-    MACRO(Window, Device::CPU, CF32)
+    MACRO(Window, CPU, CF32)
 
 template<Device D, typename T = CF32>
 class Window : public Module, public Compute {

@@ -5,12 +5,38 @@ title: Remote Instance
 summary: Headless CyberEther instance.
 author: Luigi
 license: MIT
-
+description: Shows how to connect to a remote instance of CyberEther running in a headless remote server. The keyboard and mouse events are also sent via the network.
 graph:
+  not1:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        The Remote block can connect to a remote CyberEther instance running in
+        another machine via the network. The mouse and keyboard inputs will
+        also be sent to the remote instance. Just like any VNC!
+        
+        Run in the remote machine:
+        `./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264`
+        
+        Note: This block will use two ports, the first one is shown in the
+        block below (TCP:5002) for telemetry and control and a second one
+        (UDP:5003) for data streaming.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 505.00006
+      nodePos: [356.99994, 51]
+      controlEnabled: false
   remote:
     module: remote
     device: cpu
     config:
-      endpoint: 127.0.0.1:5002
+      viewSize: [1280, 720]
+      endpoint: '127.0.0.1:5002'
     interface:
       previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [456, 308.99997]
+      controlEnabled: false

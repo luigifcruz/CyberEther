@@ -11,8 +11,8 @@
 namespace Jetstream {
 
 #define JST_UNPAD_CPU(MACRO) \
-    MACRO(Unpad, Device::CPU, CF32) \
-    MACRO(Unpad, Device::CPU, F32)
+    MACRO(Unpad, CPU, CF32) \
+    MACRO(Unpad, CPU, F32)
 
 template<Device D, typename T = CF32>
 class Unpad : public Module, public Compute {

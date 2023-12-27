@@ -1,5 +1,7 @@
 #include "jetstream/modules/fft.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>

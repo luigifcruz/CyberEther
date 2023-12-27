@@ -5,6 +5,7 @@ title: Spectrum Analyzer
 summary: Simple waterfall and lineplot.
 author: Luigi
 license: MIT
+description: 'Shows how a CyberEther flowgraph can be used as a traditional SDR console. This example will take the samples from the SDR and display a frequency-domain representation of it.'
 graph:
   win:
     module: window
@@ -136,4 +137,38 @@ graph:
       viewEnabled: false
       nodeWidth: 300
       nodePos: [1654.6652, -3.3278809]
+      controlEnabled: false
+  spe18:
+    module: spectroscope
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      viewSize: [512, 512]
+      range: [-88, 1]
+      waterfall: true
+      lineplot: true
+      spectrogram: false
+    input:
+      buffer: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [550.8816, 224.20804]
+      controlEnabled: false
+  not28:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        The `Spectroscope` blocks is a higher level way to 
+        visualize the signal. It basically implements all 
+        modules you see above with multiple options to 
+        visualize it.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 368.99426
+      nodePos: [875.8815, 381.20804]
       controlEnabled: false

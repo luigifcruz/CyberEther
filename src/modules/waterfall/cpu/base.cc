@@ -17,6 +17,6 @@ Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_WATERFALL_CPU(JST_INSTANTIATION);
+JST_WATERFALL_CPU(JST_INSTANTIATION)
     
 }  // namespace Jetstream

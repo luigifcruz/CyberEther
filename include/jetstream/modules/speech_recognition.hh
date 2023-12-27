@@ -15,7 +15,7 @@
 namespace Jetstream {
 
 #define JST_SPEECH_RECOGNITION_CPU(MACRO) \
-    MACRO(SpeechRecognition, Device::CPU, F32)
+    MACRO(SpeechRecognition, CPU, F32)
 
 template<Device D, typename T = F32>
 class SpeechRecognition : public Module, public Compute {

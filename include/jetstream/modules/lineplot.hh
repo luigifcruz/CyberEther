@@ -13,10 +13,10 @@
 namespace Jetstream {
 
 #define JST_LINEPLOT_CPU(MACRO) \
-    MACRO(Lineplot, Device::CPU, F32)
+    MACRO(Lineplot, CPU, F32)
 
 #define JST_LINEPLOT_METAL(MACRO) \
-    MACRO(Lineplot, Device::Metal, F32)
+    MACRO(Lineplot, Metal, F32)
 
 template<Device D, typename T = F32>
 class Lineplot : public Module, public Compute, public Present {

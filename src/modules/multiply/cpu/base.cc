@@ -20,6 +20,7 @@ Result Multiply<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_MULTIPLY_CPU(JST_INSTANTIATION);
-    
+JST_MULTIPLY_CPU(JST_INSTANTIATION)
+JST_MULTIPLY_CPU(JST_BENCHMARK)
+
 }  // namespace Jetstream

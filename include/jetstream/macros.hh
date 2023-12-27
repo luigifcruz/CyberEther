@@ -76,13 +76,27 @@
 //
 
 #ifndef JST_DEFINE_IO
-#define JST_DEFINE_IO() protected: Config config; Input input; Output output; friend Instance;
+#define JST_DEFINE_IO() \
+    public: \
+        void init_benchmark_mode(const Config& _c, const Input& _i) { \
+            config = _c; \
+            input = _i; \
+            under_benchmark = true; \
+        }; \
+    protected: \
+        Config config; \
+        Input input; \
+        Output output; \
+        bool under_benchmark = false; \
+        friend Instance;
 #endif  // JST_DEFINE_IO
 
 #ifndef JST_INIT_IO
 #define JST_INIT_IO() \
-    JST_CHECK(output.init(locale())); \
-    JST_CHECK(input.init());
+    if (!under_benchmark) { \
+        JST_CHECK(output.init(locale())); \
+        JST_CHECK(input.init()); \
+    }
 #endif  // JST_INIT_IO
 
 //
@@ -106,6 +120,41 @@
   __VA_OPT__(FOR_EACH_AGAIN PARENS (macro, __VA_ARGS__))
 #define FOR_EACH_AGAIN() FOR_EACH_HELPER
 #endif  // FOR_EACH
+
+//
+// Variardic concatenation mechanism.
+//
+
+#ifndef JST_UNIQUE
+#define JST_UNIQUE_CONCAT_HELPER(A, B) A##B
+#define JST_UNIQUE_CONCAT(A, B) JST_UNIQUE_CONCAT_HELPER(A, B)
+#define JST_UNIQUE(A) JST_UNIQUE_CONCAT(A, __COUNTER__)
+#endif  // JST_UNIQUE
+
+//
+// Benchmark macros.
+//
+
+#ifndef COMMA
+#define COMMA ,
+#endif  // COMMA
+
+#ifndef JST_BENCHMARK_RUN
+#define JST_BENCHMARK_RUN(TestName, Config, Input, ...) \
+    { \
+        auto graph = NewGraph(D); \
+        auto module = std::make_shared<Module<D, __VA_ARGS__>>(); \
+        module->init_benchmark_mode(Config, Input); \
+        module->create(); \
+        graph->setModule(module); \
+        graph->create(); \
+        bench.run(name + TestName, [&] { \
+            graph->compute(); \
+        }); \
+        graph->destroy(); \
+        module->destroy(); \
+    }
+#endif  // JST_BENCHMARK_RUN
 
 //
 // Struct serialize/deserialize methods.
@@ -174,10 +223,16 @@ struct is_specialized {
 }  // namespace Jetstream
 
 #define JST_SPECIALIZATION(Class, DeviceType, ...) \
-template <> struct is_specialized<Class<DeviceType, __VA_ARGS__>> { static constexpr bool value = true; };
+template <> struct is_specialized<Class<Device:: DeviceType, __VA_ARGS__>> { static constexpr bool value = true; };
 
 #define JST_INSTANTIATION(Class, DeviceType, ...) \
-template class Class<DeviceType, __VA_ARGS__>;
+template class Class<Device:: DeviceType, __VA_ARGS__>;
+
+#define JST_BENCHMARK(Class, DeviceType, ...) \
+    static bool JST_UNIQUE_CONCAT(Class, JST_UNIQUE(_Benchmark_)) __attribute__((used)) = []() -> bool { \
+        Jetstream::Benchmark::Add(#Class, #DeviceType, #__VA_ARGS__, benchmark<Class, Device:: DeviceType, __VA_ARGS__>); \
+        return true; \
+    }();
 
 //
 // Block specialization macros.

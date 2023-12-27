@@ -11,12 +11,12 @@
 namespace Jetstream {
 
 #define JST_MULTIPLY_CONSTANT_CPU(MACRO) \
-    MACRO(MultiplyConstant, Device::CPU, CF32) \
-    MACRO(MultiplyConstant, Device::CPU, F32) 
+    MACRO(MultiplyConstant, CPU, CF32) \
+    MACRO(MultiplyConstant, CPU, F32) 
 
 #define JST_MULTIPLY_CONSTANT_METAL(MACRO) \
-    MACRO(MultiplyConstant, Device::Metal, CF32) \
-    MACRO(MultiplyConstant, Device::Metal, F32)
+    MACRO(MultiplyConstant, Metal, CF32) \
+    MACRO(MultiplyConstant, Metal, F32)
 
 template<Device D, typename T = CF32>
 class MultiplyConstant : public Module, public Compute {

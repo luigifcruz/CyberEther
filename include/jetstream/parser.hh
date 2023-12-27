@@ -263,7 +263,14 @@ class Parser {
 
     static Result AnyToString(const std::any& var, std::string& out, const bool& optional = false) {
         if (var.type() == typeid(std::string)) {
-            out = fmt::format("{}", std::any_cast<std::string>(var));
+            const auto& string_value = std::any_cast<std::string>(var);
+
+            if (std::count(string_value.begin(), string_value.end(), '\n')) {
+                out = fmt::format("{}", string_value);
+            } else {
+                out = fmt::format("'{}'", string_value);
+            }
+
             return Result::SUCCESS;
         }
 

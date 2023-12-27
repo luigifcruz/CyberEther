@@ -29,6 +29,6 @@ Result Unpad<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_UNPAD_CPU(JST_INSTANTIATION);
+JST_UNPAD_CPU(JST_INSTANTIATION)
     
 }  // namespace Jetstream

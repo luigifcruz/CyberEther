@@ -16,6 +16,6 @@ Result Take<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_TAKE_CPU(JST_INSTANTIATION);
+JST_TAKE_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

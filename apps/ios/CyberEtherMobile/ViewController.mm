@@ -45,7 +45,16 @@
     JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg,
                                                      (__bridge CA::MetalLayer*)layer));
     
-    JST_CHECK_THROW(instance.buildRender<Device::Metal>({}));
+    F32 interfaceScale = 1.0f;
+    
+    UIDevice* device = [UIDevice currentDevice];
+    if (device.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
+        interfaceScale = 0.7f;
+    }
+    
+    JST_CHECK_THROW(instance.buildRender<Device::Metal>({
+        .scale = interfaceScale,
+    }));
     
     // Attach configured layer to view.
     [self.view.layer addSublayer:layer];

@@ -84,7 +84,6 @@ class TensorPrototype {
     }
 
     U64 shape_to_offset(const std::vector<U64>& shape) const {
-        assert(shape.size() >= prototype.strides.size());
         U64 index = 0;
         U64 pad = shape.size() - prototype.strides.size();
         for (U64 i = 0; i < prototype.strides.size(); i++) {
@@ -95,7 +94,6 @@ class TensorPrototype {
     }
 
     void offset_to_shape(U64 index, std::vector<U64>& shape) const {
-        assert(shape.size() >= prototype.strides.size());
         for (U64 i = 0; i < prototype.strides.size(); i++) {
             shape[i] = index / prototype.strides[i];
             index -= shape[i] * prototype.strides[i];

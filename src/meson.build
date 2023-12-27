@@ -4,6 +4,7 @@ src_lst += files([
    'store.cc',
    'parser.cc',
    'logger.cc',
+   'benchmark.cc',
 ])
 
 subdir('backend')

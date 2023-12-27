@@ -13,7 +13,7 @@
 namespace Jetstream {
 
 #define JST_AUDIO_CPU(MACRO) \
-    MACRO(Audio, Device::CPU, F32) \
+    MACRO(Audio, CPU, F32) \
 
 template<Device D, typename T = F32>
 class Audio : public Module, public Compute {

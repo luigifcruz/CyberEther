@@ -11,11 +11,11 @@
 namespace Jetstream {
 
 #define JST_MULTIPLY_CPU(MACRO) \
-    MACRO(Multiply, Device::CPU, CF32) \
-    MACRO(Multiply, Device::CPU, F32)
+    MACRO(Multiply, CPU, CF32) \
+    MACRO(Multiply, CPU, F32)
 
 #define JST_MULTIPLY_METAL(MACRO) \
-    MACRO(Multiply, Device::Metal, CF32)
+    MACRO(Multiply, Metal, CF32)
 
 template<Device D, typename T = CF32>
 class Multiply : public Module, public Compute {

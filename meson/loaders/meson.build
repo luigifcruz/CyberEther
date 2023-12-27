@@ -4,7 +4,6 @@ cfg_lst.set('build_type', get_option('prefix'))
 ldr_lst = {}
 
 subdir('cuda')
-subdir('fftw')
 subdir('metal')
 subdir('glfw')
 subdir('soapy')

@@ -1,5 +1,7 @@
 #include "jetstream/modules/multiply.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>

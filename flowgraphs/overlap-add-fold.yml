@@ -1,0 +1,337 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+title: 'Overlap-Add-Fold'
+summary: 'Filter with overlap-add & resample.'
+author: Luigi
+license: MIT
+description: Shows how to filter a signal in the frequency domain with a FIR filter. Uses multiply and add to reduce blocking artifacts. The signal is also folded and resampled.
+graph:
+  not22:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        To understand the Overlap-Add section of this flowgraph, please, 
+        open the `Overlap-Add` example flowgraph. This is a continuation
+        of that example that adds a `Fold` block for resampling the 
+        filtered signal. This decreases the computation necessary by 
+        reducing the IFFT size for each station.
+        
+        The next example flowgraph `Multi-FM` abstracts this whole mechanism
+        in a single `Filter Engine` block. Making it more practical for 
+        reuse.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 479.77533
+      nodePos: [364.22467, -36.036713]
+      controlEnabled: false
+  soapy:
+    module: soapy
+    device: cpu
+    dataType: CF32
+    config:
+      frequency: 96900000
+      bufferMultiplier: 1024
+      sampleRate: 2000000
+      streamString: ''
+      hintString: ''
+      numberOfTimeSamples: 8000
+      numberOfBatches: 8
+      automaticGain: true
+      deviceString: 'driver=rtlsdr'
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [0, 0]
+      controlEnabled: false
+  flt:
+    module: filter
+    device: cpu
+    dataType: CF32
+    config:
+      taps: 101
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: [600000, 0, ]
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [0, 371]
+      controlEnabled: false
+  pad_flt:
+    module: pad
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      size: 7999
+    input:
+      unpadded: ${graph.flt.output.coeffs}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [351.5, 404]
+      controlEnabled: false
+  fft_flt:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.pad_flt.output.padded}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [694, 410]
+      controlEnabled: false
+  pad_soapy:
+    module: pad
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      size: 100
+    input:
+      unpadded: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [350.5, 200]
+      controlEnabled: false
+  fft_soapy:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.pad_soapy.output.padded}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [698, 221]
+      controlEnabled: false
+  exp_dims27:
+    module: 'expand-dims'
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+    input:
+      buffer: ${graph.fft_soapy.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1031.7026, 181.6622]
+      controlEnabled: false
+  mul:
+    module: multiply
+    device: cpu
+    dataType: CF32
+    input:
+      factorB: ${graph.exp_dims27.output.buffer}
+      factorA: ${graph.fft_flt.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 140
+      nodePos: [1372.5, 314]
+      controlEnabled: false
+  fol36:
+    module: fold
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 2
+      size: 810
+      offset: 0
+    input:
+      buffer: ${graph.mul.output.product}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1554, 278]
+      controlEnabled: false
+  ifft:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: false
+    input:
+      buffer: ${graph.fol36.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1904, 299]
+      controlEnabled: false
+  unpad:
+    module: unpad
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 2
+      size: 10
+    input:
+      padded: ${graph.ifft.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2256.5, 284]
+      controlEnabled: false
+  overlap_add:
+    module: 'overlap-add'
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 2
+    input:
+      overlap: ${graph.unpad.output.pad}
+      buffer: ${graph.unpad.output.unpadded}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2610, 321]
+      controlEnabled: false
+  tak51:
+    module: take
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      index: 0
+    input:
+      buffer: ${graph.overlap_add.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2955.7026, 318.66223]
+      controlEnabled: false
+  fm:
+    module: fm
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      sampleRate: 200000
+    input:
+      buffer: ${graph.tak51.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [3310.3196, 247.84073]
+      controlEnabled: false
+  audio:
+    module: audio
+    device: cpu
+    dataType: F32
+    config:
+      outSampleRate: 48000
+      inSampleRate: 200000
+    input:
+      buffer: ${graph.fm.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [3671.8196, 247.84073]
+      controlEnabled: false
+  inv29:
+    module: invert
+    device: cpu
+    dataType: CF32
+    input:
+      buffer: ${graph.tak51.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 140
+      nodePos: [3310.507, 479.75385]
+      controlEnabled: false
+  fft30:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.inv29.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [3490.507, 449.75385]
+      controlEnabled: false
+  agc32:
+    module: agc
+    device: cpu
+    dataType: CF32
+    input:
+      buffer: ${graph.fft30.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 120
+      nodePos: [3819.5068, 480.75385]
+      controlEnabled: false
+  amp:
+    module: amplitude
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.agc32.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 147
+      nodePos: [3977.5068, 481.75385]
+      controlEnabled: false
+  scl:
+    module: scale
+    device: cpu
+    dataType: F32
+    config:
+      range: [-100, 0]
+    input:
+      buffer: ${graph.amp.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [4161.1045, 451.39954]
+      controlEnabled: false
+  wtf:
+    module: waterfall
+    device: cpu
+    dataType: F32
+    config:
+      viewSize: [512, 384]
+      interpolate: true
+      height: 512
+      offset: 0
+      zoom: 1
+    input:
+      buffer: ${graph.scl.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [4515.158, 386.37955]
+      controlEnabled: false

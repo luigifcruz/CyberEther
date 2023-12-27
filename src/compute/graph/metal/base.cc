@@ -51,6 +51,7 @@ Result Metal::destroy() {
     for (const auto& block : blocks) {
         JST_CHECK(block->destroyCompute(*metadata));
     }
+    blocks.clear();
     
     // TODO: Check if necessary.
     //outerPool->release();

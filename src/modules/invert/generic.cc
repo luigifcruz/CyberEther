@@ -1,5 +1,7 @@
 #include "jetstream/modules/invert.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>

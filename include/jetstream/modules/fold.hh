@@ -10,8 +10,8 @@
 namespace Jetstream {
 
 #define JST_FOLD_CPU(MACRO) \
-    MACRO(Fold, Device::CPU, CF32) \
-    MACRO(Fold, Device::CPU, F32)
+    MACRO(Fold, CPU, CF32) \
+    MACRO(Fold, CPU, F32)
 
 template<Device D, typename T = CF32>
 class Fold : public Module, public Compute {

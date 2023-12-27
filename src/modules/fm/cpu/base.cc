@@ -19,6 +19,6 @@ Result FM<D, IT, OT>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_FM_CPU(JST_INSTANTIATION);
+JST_FM_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

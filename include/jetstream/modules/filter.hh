@@ -10,7 +10,7 @@
 namespace Jetstream {
 
 #define JST_FILTER_CPU(MACRO) \
-    MACRO(Filter, Device::CPU, CF32)
+    MACRO(Filter, CPU, CF32)
 
 template<Device D, typename T = CF32>
 class Filter : public Module, public Compute {

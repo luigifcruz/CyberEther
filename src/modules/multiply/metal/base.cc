@@ -49,6 +49,7 @@ Result Multiply<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-JST_MULTIPLY_METAL(JST_INSTANTIATION);
+JST_MULTIPLY_METAL(JST_INSTANTIATION)
+JST_MULTIPLY_METAL(JST_BENCHMARK)
     
 }  // namespace Jetstream

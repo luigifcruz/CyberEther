@@ -19,6 +19,6 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_AMPLITUDE_CPU(JST_INSTANTIATION);
+JST_AMPLITUDE_CPU(JST_INSTANTIATION)
     
 }  // namespace Jetstream

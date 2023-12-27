@@ -13,10 +13,10 @@
 namespace Jetstream {
 
 #define JST_WATERFALL_CPU(MACRO) \
-    MACRO(Waterfall, Device::CPU, F32)
+    MACRO(Waterfall, CPU, F32)
 
 #define JST_WATERFALL_METAL(MACRO) \
-    MACRO(Waterfall, Device::Metal, F32)
+    MACRO(Waterfall, Metal, F32)
 
 template<Device D, typename T = F32>
 class Waterfall : public Module, public Compute, public Present {

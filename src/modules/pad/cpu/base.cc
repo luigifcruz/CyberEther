@@ -23,6 +23,6 @@ Result Pad<D, T>::compute(const RuntimeMetadata&) {
     return Result::SUCCESS;
 }
 
-JST_PAD_CPU(JST_INSTANTIATION);
+JST_PAD_CPU(JST_INSTANTIATION)
     
 }  // namespace Jetstream

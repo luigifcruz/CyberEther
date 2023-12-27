@@ -96,6 +96,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-JST_SPECTROGRAM_METAL(JST_INSTANTIATION);
+JST_SPECTROGRAM_METAL(JST_INSTANTIATION)
 
 }  // namespace Jetstream

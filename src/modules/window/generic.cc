@@ -40,6 +40,6 @@ void Window<D, T>::info() const {
     JST_INFO("  Window Size: {}", config.size);
 }
 
-JST_WINDOW_CPU(JST_INSTANTIATION);
+JST_WINDOW_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

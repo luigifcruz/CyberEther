@@ -12,7 +12,7 @@
 namespace Jetstream {
 
 #define JST_CAST_CPU(MACRO) \
-    MACRO(Cast, Device::CPU, F32, I16)
+    MACRO(Cast, CPU, F32, I16)
 
 template<Device D, typename IT = F32, typename OT = I16>
 class Cast : public Module, public Compute {

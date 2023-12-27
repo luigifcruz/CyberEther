@@ -20,7 +20,7 @@
 namespace Jetstream {
 
 #define JST_REMOTE_CPU(MACRO) \
-    MACRO(Remote, Device::CPU, void)
+    MACRO(Remote, CPU, void)
 
 template<Device D, typename T = void>
 class Remote : public Module, public Present {
