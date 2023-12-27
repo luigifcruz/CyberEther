@@ -13,6 +13,7 @@ namespace Jetstream {
 
 Compositor::Compositor(Instance& instance)
      : instance(instance),
+       running(true),
        graphSpatiallyOrganized(false),
        rightClickMenuEnabled(false),
        sourceEditorEnabled(false),
@@ -23,7 +24,8 @@ Compositor::Compositor(Instance& instance)
        debugLatencyEnabled(false),
        debugEnableTrace(false),
        globalModalContentId(0),
-       nodeContextMenuNodeId(0) {
+       nodeContextMenuNodeId(0),
+       globalModalToggle(false) {
     stacks["Graph"] = {true, 0};
     JST_CHECK_THROW(refreshState());
 }
@@ -1025,6 +1027,8 @@ Result Compositor::drawStatic() {
     // Draw Source Editor.
     //
 
+    // TODO: Implement editing inside the source editor.
+
     [&](){
         if (!sourceEditorEnabled) {
             return;
@@ -1364,7 +1368,11 @@ Result Compositor::drawStatic() {
                 static std::vector<std::tuple<const char*, float, U32, bool, Device>> columns = {
                     {"Block Name",  0.25f,   DefaultColor, false, Device::None},
                     {"CPU",         0.1875f, CpuColor,     true,  Device::CPU},
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
                     {"Metal",       0.1875f, MetalColor,   true,  Device::Metal},
+#else
+                    {"CUDA",        0.1875f, CudaColor,  true,  Device::CUDA},
+#endif
                     {"Vulkan",      0.1875f, VulkanColor,  true,  Device::Vulkan},
                     {"WebGPU",      0.1875f, WebGPUColor,  true,  Device::WebGPU}
                 };
@@ -2407,7 +2415,7 @@ Result Compositor::drawGraph() {
 
             if (!rec.attributes.empty()) {
                 std::string attributes;
-                int i = 0;
+                U64 i = 0;
                 for (const auto& [key, value] : rec.attributes) {
                     attributes += fmt::format("{}{}: {}{}", i == 0 ? "" : "             ", 
                                                              key, 
@@ -2684,7 +2692,7 @@ Result Compositor::drawGraph() {
         ImGui::SetNextWindowSize(ImVec2(timerWindowWidth, timerWindowHeight));
         ImGui::SetNextWindowPos(ImVec2(x, (mainWindowHeight / 2.0f) - (timerWindowHeight / 2.0f)));
 
-        if (!ImGui::Begin("Timer", nullptr, ImGuiWindowFlags_NoResize)) {
+        if (!ImGui::Begin("Timer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
             ImGui::End();
             return;
         }

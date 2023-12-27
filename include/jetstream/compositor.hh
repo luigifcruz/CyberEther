@@ -92,7 +92,7 @@ class JETSTREAM_API Compositor {
 
     Instance& instance;
 
-    bool running = true;
+    bool running;
     I32 nodeDragId;
     bool graphSpatiallyOrganized;
     bool rightClickMenuEnabled;

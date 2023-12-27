@@ -241,7 +241,7 @@ template class Class<Device:: DeviceType, __VA_ARGS__>;
 #define JST_BLOCK_ENABLE(BLOCK, ...) \
 namespace Jetstream { \
     template <Device D, typename IT, typename OT> \
-    struct Jetstream::is_specialized<Blocks::BLOCK<D, IT, OT>> { \
+    struct is_specialized<Blocks::BLOCK<D, IT, OT>> { \
         static constexpr bool value = (__VA_ARGS__); \
     }; \
 }
