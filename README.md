@@ -83,7 +83,7 @@ $ pacman -S git base-devel cmake pkg-config ninja meson git zenity
 
 Graphical dependencies.
 ```bash
-$ pacman -S glslang glfw[-x11 or -wayland]
+$ pacman -S glslang [glfw-x11 or glfw-wayland]
 ```
 ```bash
 $ yay -S spirv-cross
