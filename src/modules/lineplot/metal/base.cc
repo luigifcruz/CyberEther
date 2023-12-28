@@ -1,5 +1,3 @@
-#include "jetstream/modules/lineplot.hh"
-
 #include "../generic.cc"
 
 namespace Jetstream {
@@ -62,5 +60,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
 }
 
 JST_LINEPLOT_METAL(JST_INSTANTIATION)
+JST_LINEPLOT_METAL(JST_BENCHMARK)
 
 }  // namespace Jetstream

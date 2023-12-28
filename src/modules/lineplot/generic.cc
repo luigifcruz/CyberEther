@@ -1,6 +1,8 @@
 #include "jetstream/modules/lineplot.hh"
 #include "shaders/lineplot_shaders.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>

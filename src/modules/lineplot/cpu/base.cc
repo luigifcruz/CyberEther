@@ -1,5 +1,3 @@
-#include "jetstream/modules/lineplot.hh"
-
 #include "../generic.cc"
 
 namespace Jetstream {
@@ -27,5 +25,6 @@ Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
 }
 
 JST_LINEPLOT_CPU(JST_INSTANTIATION)
+JST_LINEPLOT_CPU(JST_BENCHMARK)
 
 }  // namespace Jetstream
