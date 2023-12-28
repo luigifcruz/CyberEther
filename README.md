@@ -129,8 +129,8 @@ $ apt install libsoapysdr-dev soapysdr-module-rtlsdr
 $ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
 ```
 
-#### macOS (Apple Silicon)
-This assumes [Homebrew](https://brew.sh) is installed.
+#### macOS 13+ (Apple Silicon)
+This assumes [Homebrew](https://brew.sh) is installed. Older versions of macOS might work but installing a newer Clang compiler (14+) will be necessary.
 
 Core dependencies (you probably already have them).
 ```bash
@@ -175,7 +175,7 @@ Follow the instructions below to build and install CyberEther on your system.
 
 Build and install.
 ```bash
-$ meson -Dbuildtype=debugoptimized build && cd build
+$ meson setup -Dbuildtype=debugoptimized build && cd build
 $ ninja install
 ```
 
@@ -185,7 +185,7 @@ Done! The executable will be installed in the default terminal path. For usage i
 
 Build project with cross-compilation to WebAssembly.
 ```bash
-$ meson --cross-file crosscompile/emscripten.ini -Dbuildtype=debugoptimized build-browser && cd build-browser
+$ meson setup --cross-file crosscompile/emscripten.ini -Dbuildtype=debugoptimized build-browser && cd build-browser
 $ ninja
 ```
 
@@ -204,7 +204,9 @@ $ python ../tools/local_server.py
 
 Build the project with cross-compilation to iOS and install binaries in the Xcode project.
 ```bash
-$ meson --cross-file crosscompile/ios.ini -Dbuildtype=debugoptimized build-ios && cd build-ios
+$ meson setup --cross-file crosscompile/ios.ini \
+              --prefix $(pwd)/apps/ios/CyberEtherMobile/Library \
+              -Dbuildtype=debugoptimized build-ios && cd build-ios
 $ ninja install
 ```
 
