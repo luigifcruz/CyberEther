@@ -36,12 +36,12 @@ jobs:
 
       ##
 
-      - name: Build and install
+      - name: Build
         run: |
           rm -fr build
           git submodule update --init --recursive
           meson build -Dprefix=/usr
-          cd build && ninja install
+          cd build && ninja
 
-      - name: Run ninja test
+      - name: Test
         run: cd build && ninja test
