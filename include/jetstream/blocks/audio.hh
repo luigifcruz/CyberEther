@@ -70,6 +70,7 @@ class Audio : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Downsamples the input to the output sample rate and plays it on the speaker.";
     }
 

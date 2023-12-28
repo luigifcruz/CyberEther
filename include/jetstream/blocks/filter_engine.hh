@@ -74,6 +74,7 @@ class FilterEngine : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Filter the input signal using the provided filter taps. This block applies "
                "the filter using the overlap-add method in the frequency domain.";
     }

@@ -60,6 +60,7 @@ class Note : public Block {
     }
 
     std::string description() const {
+        // TODO: Add support for markdown with links and images.
         return "Just a simple flowgraph note.";
     }
 

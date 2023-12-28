@@ -80,6 +80,7 @@ class Soapy : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Provides an interface to communicate and control SoapySDR supported devices, facilitating data acquisition and device configuration.";
     }
 

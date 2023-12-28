@@ -67,6 +67,7 @@ class AGC : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Adjusts the gain of the input signal to a constant level.";
     }
 

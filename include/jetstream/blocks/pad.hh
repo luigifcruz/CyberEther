@@ -70,6 +70,7 @@ class Pad : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Adds padding to the end of a tensor along a given axis.";
     }
 

@@ -62,6 +62,7 @@ class Remote : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Opens a remote view to a CyberEther instance via the network. This allows viewing and controlling the instance from a different computer.";
     }
 

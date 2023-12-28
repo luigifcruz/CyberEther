@@ -69,6 +69,7 @@ class Cast : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Casts from one numeric type to another.";
     }
 

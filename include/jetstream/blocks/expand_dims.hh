@@ -69,6 +69,7 @@ class ExpandDims : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Expands the dimensions of a tensor. Similar to numpy.expand_dims().";
     }
 

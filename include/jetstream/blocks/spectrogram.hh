@@ -64,6 +64,7 @@ class Spectrogram : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Visualizes how frequencies of input data change over time. Represents amplitude of frequencies using color.";
     }
 

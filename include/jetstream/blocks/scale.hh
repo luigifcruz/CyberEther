@@ -69,6 +69,7 @@ class Scale : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Multiplies each data point in the input by a specified scaling factor, adjusting its magnitude.";
     }
 

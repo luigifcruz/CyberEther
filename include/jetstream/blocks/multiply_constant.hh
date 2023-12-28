@@ -69,6 +69,7 @@ class MultiplyConstant : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Takes 'factor' as input and multiplied it with the const value producing the result as 'product'.";
     }
 

@@ -64,6 +64,7 @@ class Constellation : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Visualizes modulated data in a 2D scatter plot. Commonly used in digital communication to represent symbol modulation.";
     }
 

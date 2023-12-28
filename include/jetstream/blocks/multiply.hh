@@ -68,6 +68,7 @@ class Multiply : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Takes 'factorA' and 'factorB' as inputs and outputs the result as 'product'.";
     }
 

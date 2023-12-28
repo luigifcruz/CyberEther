@@ -67,6 +67,7 @@ class Window : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Renerate a Butterworth window of the specified length and order.";
     }
 

@@ -69,6 +69,7 @@ class FFT : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Fast Fourier Transform that converts time-domain data to its frequency components. Supports real and complex data types.";
     }
 

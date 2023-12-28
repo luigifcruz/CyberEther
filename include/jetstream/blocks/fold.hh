@@ -71,6 +71,7 @@ class Fold : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Folds the input signal along the specified axis.";
     }
 

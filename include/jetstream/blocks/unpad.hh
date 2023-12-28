@@ -75,6 +75,7 @@ class Unpad : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Removes padding from the end of a tensor along a given axis.";
     }
 

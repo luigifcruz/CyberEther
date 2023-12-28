@@ -71,6 +71,7 @@ class Take : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Takes a slice of the input tensor. Similar to numpy.take().";
     }
 

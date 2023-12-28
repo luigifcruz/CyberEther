@@ -69,6 +69,7 @@ class FM : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Demodulates a complex-valued frequency modulated signal.";
     }
 

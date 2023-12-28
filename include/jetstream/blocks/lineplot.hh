@@ -65,6 +65,7 @@ class Lineplot : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Visualizes input data in a line graph format, suitable for time-domain signals and waveform displays.";
     }
 

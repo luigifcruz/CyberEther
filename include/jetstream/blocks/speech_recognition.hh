@@ -61,6 +61,7 @@ class SpeechRecognition : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Converts audio to text using Whisper.";
     }
 

@@ -67,6 +67,7 @@ class Invert : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Inverts the complex-valued input signal. Useful for ploting the spectrum of a signal.";
     }
 
