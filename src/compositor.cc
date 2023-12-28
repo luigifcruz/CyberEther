@@ -1947,6 +1947,8 @@ Result Compositor::drawGraph() {
             continue;
         }
 
+        ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f), 
+                                            ImVec2(io.DisplaySize.x, io.DisplaySize.y));
         if (!ImGui::Begin(fmt::format("View - {}", state.title).c_str(),
                           &state.block->state.viewEnabled)) {
             ImGui::End();
@@ -1966,6 +1968,8 @@ Result Compositor::drawGraph() {
             continue;
         }
 
+        ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f), 
+                                            ImVec2(io.DisplaySize.x, io.DisplaySize.y));
         if (!ImGui::Begin(fmt::format("Control - {}", state.title).c_str(),
                           &state.block->state.controlEnabled)) {
             ImGui::End();

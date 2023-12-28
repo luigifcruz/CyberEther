@@ -96,7 +96,9 @@ class Spectroscope : public Block {
                        ((config.waterfall) ? 1 : 0);
 
         auto individualViewSize = config.viewSize;
-        individualViewSize.height /= numberOfRows;
+        if (numberOfRows > 0) {
+            individualViewSize.height /= numberOfRows;
+        }
 
         JST_CHECK(instance().template addModule<Jetstream::Window, D, IT>(
             window, "window", {
@@ -302,43 +304,40 @@ class Spectroscope : public Block {
     }
 
     constexpr bool shouldDrawPreview() const {
-        return true;
+        return spectrogram || lineplot || waterfall;
     }
 
     void drawView() {
-        auto [x, y] = ImGui::GetContentRegionAvail();
+        auto [width, height] = ImGui::GetContentRegionAvail();
         auto scale = ImGui::GetIO().DisplayFramebufferScale;
 
-        // Remove padding from avaliable draw space.
-        y -= ImGui::GetStyle().FramePadding.y * 2.0f * numberOfRows;
+        const auto paddingHeight = ImGui::GetStyle().FramePadding.y * 2.0f * numberOfRows;
+        const U64 availableWidth = width * scale.x;
+        const U64 availableHeight = std::max(0.0f, (height * scale.y) - paddingHeight);
+
+        const auto blockSize = Size2D<U64>{
+            availableWidth,
+            availableHeight / numberOfRows,
+        };
 
         if (spectrogram) {
-            auto [width, height] = spectrogram->viewSize({
-                static_cast<U64>(x*scale.x),
-                static_cast<U64>((y/numberOfRows)*scale.y)
-            });
+            auto [width, height] = spectrogram->viewSize(blockSize);
             ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
         }
 
         if (lineplot) {
-            auto [width, height] = lineplot->viewSize({
-                static_cast<U64>(x*scale.x),
-                static_cast<U64>((y/numberOfRows)*scale.y)
-            });
+            auto [width, height] = lineplot->viewSize(blockSize);
             ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
         }
         
         if (waterfall) {
-            auto [width, height] = waterfall->viewSize({
-                static_cast<U64>(x*scale.x),
-                static_cast<U64>((y/numberOfRows)*scale.y)
-            });
+            auto [width, height] = waterfall->viewSize(blockSize);
             ImGui::Image(waterfall->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
         }
     }
 
     constexpr bool shouldDrawView() const {
-        return true;
+        return spectrogram || lineplot || waterfall;
     }
 
  private:
