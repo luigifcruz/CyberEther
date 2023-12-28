@@ -21,7 +21,7 @@ jobs:
         run: docker rmi -f $(docker images -aq) || true
 
       - name: Build the Docker image for Arch.
-        run: docker build -f Dockerfile-arch -t cyberether-arch .
+        run: docker build -f ./docker/Dockerfile-arch -t cyberether-arch .
 
       - name: Run ninja test for Arch.
         run: docker run --rm cyberether-arch bash -c "cd cyberether/build && ninja test"
@@ -36,7 +36,7 @@ jobs:
         run: docker rmi -f $(docker images -aq) || true
 
       - name: Build the Docker image for Ubuntu.
-        run: docker build -f Dockerfile-ubuntu -t cyberether-ubuntu .
+        run: docker build -f ./docker/Dockerfile-ubuntu -t cyberether-ubuntu .
 
       - name: Run ninja test for Ubuntu.
         run: docker run --rm cyberether-ubuntu bash -c "cd cyberether/build && ninja test"
