@@ -1218,7 +1218,7 @@ Result Compositor::drawStatic() {
         ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT " Welcome to CyberEther!");
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
-        ImGui::TextFormatted("Version: {}", JETSTREAM_VERSION_STR);
+        ImGui::TextFormatted("Version: {} (Alpha)", JETSTREAM_VERSION_STR);
         ImGui::PopStyleColor();
         
         ImGui::Separator();
