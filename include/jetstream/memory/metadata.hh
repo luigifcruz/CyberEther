@@ -13,7 +13,7 @@ namespace Jetstream {
 struct TensorPrototypeMetadata {
     Locale locale;
     std::vector<U64> shape = {0};
-    std::vector<U64> strides = {0};
+    std::vector<U64> stride = {0};
     bool contiguous = true;
     U64 element_size = 0;
     U64 hash = 0;
@@ -25,7 +25,7 @@ struct TensorPrototypeMetadata {
             locale = other.locale;
         }
         shape = other.shape;
-        strides = other.strides;
+        stride = other.stride;
         element_size = other.element_size;
         contiguous = other.contiguous;
         hash = other.hash;
@@ -39,7 +39,7 @@ struct TensorPrototypeMetadata {
             locale = std::move(other.locale);
         }
         shape = std::move(other.shape);
-        strides = std::move(other.strides);
+        stride = std::move(other.stride);
         element_size = std::move(other.element_size);
         contiguous = std::move(other.contiguous);
         hash = std::move(other.hash);

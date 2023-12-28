@@ -8,7 +8,7 @@ Result FFT<Device::CPU, CF32>::createCompute(const RuntimeMetadata&) {
 
     for (U64 i = 0; i < input.buffer.rank(); ++i) {
         cpu.shape.push_back(static_cast<U32>(input.buffer.shape()[i]));
-        cpu.stride.push_back(static_cast<U32>(input.buffer.strides()[i]) * sizeof(std::complex<F32>));
+        cpu.stride.push_back(static_cast<U32>(input.buffer.stride()[i]) * sizeof(std::complex<F32>));
     }
 
     cpu.axes.push_back(output.buffer.rank() - 1);

@@ -276,7 +276,7 @@ int main() {
         assert(array.rank() == 3);
         assert(array.ndims() == 3);
         assert(array.shape(1) == 3);
-        assert(array.strides(1) == 4);
+        assert(array.stride(1) == 4);
 
         JST_INFO("Tensor properties test successful!");
     }
