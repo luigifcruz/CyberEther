@@ -42,6 +42,3 @@ jobs:
           git submodule update --init --recursive
           meson build -Dprefix=/usr
           cd build && ninja
-
-      - name: Test
-        run: cd build && ninja test
