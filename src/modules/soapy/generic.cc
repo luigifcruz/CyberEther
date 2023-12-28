@@ -251,7 +251,7 @@ Result Soapy<D, T>::compute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename T>
-Soapy<D, T>::DeviceList Soapy<D, T>::ListAvailableDevices(const std::string& filter) {
+typename Soapy<D, T>::DeviceList Soapy<D, T>::ListAvailableDevices(const std::string& filter) {
     DeviceList deviceMap;
     const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
 
