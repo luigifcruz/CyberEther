@@ -47,21 +47,25 @@ These are some examples of CyberEther running on the field. Do you have a cool d
 This is a simple demo showing how to create a new flowgraph in CyberEther. The flowgraph is a simple pipeline with a Soapy block streaming data from a RTL-SDR dongle and a Spectroscope block visualizing the data with a waterfall and line plot.
 
 [//]: <> (cyberether-new-flowgraph.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/fcc6c17c-b191-4982-bfaa-012472c0a919
 
 ### Wideband Spectrum Analyzer
 This is a screen-capture of CyberEther running on an MacBook Pro with M1 Pro chip. The Metal backend is being used for the graphical and compute blocks. The flowgraph is a wideband spectrum analyzer with a bandwidth of 122 MHz streaming from a [RFNM](https://rfnm.io/) software-defined radio.
 
 [//]: <> (rfnm-spectrum-analyzer-demo.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/815642f2-1813-464b-b1e2-7c4e285bc4e6
 
 ### Multi FM Flowgraph
 A fan favorite demo from my 2019 project called [CyberRadio](https://github.com/luigifcruz/CyberRadio). As the name suggests, the flowgraph is a multi-channel FM receiver. The SDR streams 2 MHz worth of the FM broadcast band and the flowgraph filters, resamples, and demodulates the signal. This flowgraph is available by default in the graphical interface examples.
 
 [//]: <> (cyberether-multi-fm.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/dff6e236-d836-4c5c-a059-b5b5e70858bd
 
 ### Running on iPad & iPhone
 This demo is running as a native iOS app and illustrates how portable CyberEther can be. The flowgraph implements a standard spectrum analyzer with waterfall and lineplot. It is running on an iPad Pro with M2 chip. But it also runs on any iPhone and Mac with Apple Silicon and iOS 14 or later. The demo also shows seamless switching between the CPU and Metal backends for individual blocks while the flowgraph is running. Bonus: CyberEther can also run in the browser!
 
 [//]: <> (cyberether-ipad.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/5b5f4b8a-8991-4abc-9340-21acea5ec1c2
 
 ## Installation
 The only way to use CyberEther at the moment is by compiling it from the source. But don't worry, it is not difficult! Follow the [Build From Source](#build-from-source) instructions below to compile it on your system.
