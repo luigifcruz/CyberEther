@@ -1,0 +1,42 @@
+name: Test Linux
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  deployments: write
+  contents: write
+
+jobs:
+  build-arch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Arch.
+        run: docker build -f Dockerfile-arch -t cyberether-arch .
+
+      - name: Run ninja test for Arch.
+        run: docker run --rm cyberether-arch bash -c "cd cyberether/build && ninja test"
+
+  build-ubuntu:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Ubuntu.
+        run: docker build -f Dockerfile-ubuntu -t cyberether-ubuntu .
+
+      - name: Run ninja test for Ubuntu.
+        run: docker run --rm cyberether-ubuntu bash -c "cd cyberether/build && ninja test"

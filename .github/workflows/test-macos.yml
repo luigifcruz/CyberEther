@@ -1,0 +1,47 @@
+name: Test macOS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Homebrew (if not already installed)
+        run: |
+          which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+      #
+      # [NEW DEPENDENCY HOOK]
+      # This is copy-pasta from the README.md file.
+      # Update this as the README.md file changes.
+      #
+
+      - name: Install core dependencies
+        run: brew install cmake pkg-config ninja meson
+
+      - name: Install graphical dependencies
+        run: brew install spirv-cross glslang glfw
+
+      - name: Install optional dependencies for SoapySDR and Remote capabilities
+        run: |
+          brew install soapysdr soapyrtlsdr
+          brew install gstreamer
+
+      ##
+
+      - name: Build and install
+        run: |
+          rm -fr build
+          git submodule update --init --recursive
+          meson build -Dprefix=/usr
+          cd build && ninja install
+
+      - name: Run ninja test
+        run: cd build && ninja test

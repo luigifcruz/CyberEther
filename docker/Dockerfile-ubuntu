@@ -5,6 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update --fix-missing
 
 #
+# [NEW DEPENDENCY HOOK]
 # This is copy-pasta from the README.md file.
 # Update this as the README.md file changes.
 #
