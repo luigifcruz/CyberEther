@@ -1,0 +1,28 @@
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt update --fix-missing
+
+#
+# This is copy-pasta from the README.md file.
+# Update this as the README.md file changes.
+#
+
+RUN apt install -y git build-essential cmake pkg-config ninja-build meson git zenity
+RUN apt install -y spirv-cross glslang-tools libglfw3-dev
+RUN apt install -y mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
+RUN apt install -y libsoapysdr-dev soapysdr-module-rtlsdr
+RUN apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
+
+###
+
+COPY . /cyberether
+WORKDIR /cyberether
+
+RUN rm -fr build
+RUN git submodule update --init --recursive
+RUN meson build -Dprefix=/usr
+RUN cd build && ninja install
+
+WORKDIR /

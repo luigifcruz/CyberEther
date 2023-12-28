@@ -34,7 +34,7 @@ CyberEther can run in virtually any modern device with a GPU. The build system w
 | ✅ | Raspberry Pi (4 or later)           | Vulkan, WebGPU        | CPU, Vulkan            |
 | ✅ | Browser (Chrome)                    | WebGPU                | CPU, WebGPU*           |
 | ✅ | Android                             | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
-| ✅ | Windows (NVIDIA, AMD, Intel)*       | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
+| ✅ | Windows (NVIDIA, AMD, Intel)        | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
 
 `*`: Planned for the future.
 
@@ -71,7 +71,7 @@ https://github.com/luigifcruz/CyberEther/assets/6627901/5b5f4b8a-8991-4abc-9340-
 The only way to use CyberEther at the moment is by compiling it from the source. But don't worry, it is not difficult! Follow the [Build From Source](#build-from-source) instructions below to compile it on your system.
 
 ## Build From Source
-This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-10 or >Clang 13.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source.
+This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-10 or >Clang 13.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source. There are also Docker files available in the [docker](./docker/) directory that can be used to build and run CyberEther in a container.
 
 ### Step 1: Dependencies
 
@@ -83,21 +83,24 @@ $ pacman -S git base-devel cmake pkg-config ninja meson git zenity
 
 Graphical dependencies.
 ```bash
-$ pacman -S spirv-cross glslang glfw
+$ pacman -S glslang glfw[-x11 or -wayland]
+```
+```bash
+$ yay -S spirv-cross
 ```
 
 Vulkan backend dependencies (you probably already have them).
 ```bash
-$ pacman -S vulkan-icd-loader vulkan-validationlayers
+$ pacman -S vulkan-icd-loader vulkan-validation-layers
 ```
 
 Optional dependencies.
 ```bash
 # For SoapySDR block with RTL-SDR support.
-$ pacman -S soapysdr soapysdr-rtlsdr
+$ pacman -S soapysdr soapyrtlsdr
 
 # For Remote capabilities.
-$ pacman -S gstreamer gst-plugins-base gst-plugins-good
+$ pacman -S gstreamer gst-plugins-base gst-plugins-good gst-libav
 ```
 
 #### Linux (Ubuntu 22.04)
@@ -122,11 +125,7 @@ Optional dependencies.
 $ apt install libsoapysdr-dev soapysdr-module-rtlsdr
 
 # For Remote capabilities.
-$ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
-```
-
-Optional dependencies.
-```bash
+$ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
 ```
 
 #### macOS (Apple Silicon)
@@ -148,7 +147,7 @@ Optional dependencies.
 $ brew install soapysdr soapyrtlsdr
 
 # For Remote capabilities.
-$ brew install gst-plugins-base gst-plugins-good
+$ brew install gstreamer
 ```
 
 #### Browser (Chrome)
