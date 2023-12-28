@@ -67,6 +67,7 @@ class Waterfall : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Visualizes frequency-domain data over time in a 2D color-coded format. Suitable for spectral analysis.";
     }
 

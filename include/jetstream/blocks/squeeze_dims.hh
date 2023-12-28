@@ -69,6 +69,7 @@ class SqueezeDims : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Squeezes the dimensions of a tensor. Similar to numpy.squeeze().";
     }
 

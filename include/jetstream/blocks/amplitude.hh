@@ -67,6 +67,7 @@ class Amplitude : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Calculates the amplitude of a complex signal.";
     }
 

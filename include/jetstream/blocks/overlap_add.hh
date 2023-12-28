@@ -70,6 +70,7 @@ class OverlapAdd : public Block {
     }
 
     std::string description() const {
+        // TODO: Add decent block description describing internals and I/O.
         return "Sums the overlap data with the buffer data along the specified axis.";
     }
 

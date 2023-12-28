@@ -286,7 +286,7 @@ class Soapy : public Block {
  private:
     F32 stepSize = 10.0f;
     std::string currentDevice;
-    SoapyModule::DeviceList availableDeviceList;
+    typename SoapyModule::DeviceList availableDeviceList;
     
     std::shared_ptr<SoapyModule> soapy;
 

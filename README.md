@@ -71,9 +71,10 @@ https://github.com/luigifcruz/CyberEther/assets/6627901/5b5f4b8a-8991-4abc-9340-
 The only way to use CyberEther at the moment is by compiling it from the source. But don't worry, it is not difficult! Follow the [Build From Source](#build-from-source) instructions below to compile it on your system.
 
 ## Build From Source
-This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-10 or >Clang 13.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source. There are also Docker files available in the [docker](./docker/) directory that can be used to build and run CyberEther in a container.
+This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-10 or >Clang 14.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source. There are also Docker files available in the [docker](./docker/) directory that can be used to build and run CyberEther in a container.
 
 ### Step 1: Dependencies
+[//]: <> ([NEW DEPENDENCY HOOK])
 
 #### Linux (Arch Linux)
 Core dependencies (you probably already have them).
@@ -296,4 +297,4 @@ There are no easter eggs in CyberEther. I promise.
 CyberEther was created in 2021 by [Luigi Cruz](https://luigi.ltd) as a personal project. The project is still in its early stages and it is being developed in the open and contributions are welcome. Regular talks about CyberEther were given at previous GNU Radio Conference editions and are available [here](https://luigi.ltd/talks/).
 
 ## Contributing
-Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository. The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html). The default line length is 88. This can be overridden if necessary. Please, be sensible. Also keep in mind that since this project is still in its early stages, the API is not stable and it is subject to change.
+Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository. The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html). The default line length is 88. This can be overridden if necessary. Please, be sensible. Also keep in mind that since this project is still in its early stages, the API is not stable and it is subject to change. More details on how to contribute can be found [here](./CONTRIBUTING.md).
