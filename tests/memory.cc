@@ -272,7 +272,7 @@ int main() {
 
         assert(array.size() == 2 * 3 * 4);
         assert(array.size_bytes() == 2 * 3 * 4 * sizeof(F32));
-        assert(array.type_size() == sizeof(F32));
+        assert(array.element_size() == sizeof(F32));
         assert(array.rank() == 3);
         assert(array.ndims() == 3);
         assert(array.shape(1) == 3);

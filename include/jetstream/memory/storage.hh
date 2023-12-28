@@ -80,28 +80,7 @@ class TensorStorage : public TensorPrototype {
         storage = std::make_shared<TensorStorageMetadata>();
 
         // Calculate prototype metadata.
-
-        prototype.shape = shape;
-
-        prototype.size = 1;
-        for (const auto& dim : prototype.shape) {
-            prototype.size *= dim;
-        }
-
-        prototype.strides.resize(prototype.shape.size());
-        for (U64 i = 0; i < prototype.shape.size(); i++) {
-            prototype.strides[i] = 1;
-            for (U64 j = i + 1; j < prototype.shape.size(); j++) {
-                prototype.strides[i] *= prototype.shape[j];
-            }
-        }
-
-        assert(prototype.strides.size() == prototype.shape.size());
-
-        prototype.type_size = sizeof(T);
-        prototype.hash = std::rand() + 1;
-        prototype.size_bytes = prototype.size *
-                                prototype.type_size;
+        TensorPrototype::initialize(shape, sizeof(T));
     }
 
     template<Device RootDevice, typename... Args>

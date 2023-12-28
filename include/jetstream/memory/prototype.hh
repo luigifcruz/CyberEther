@@ -23,8 +23,12 @@ class TensorPrototype {
         return prototype.size_bytes;
     }
 
-    const U64& type_size() const noexcept {
-        return prototype.type_size;
+    const U64& element_size() const noexcept {
+        return prototype.element_size;
+    }
+
+    const bool& contiguous() const noexcept {
+        return prototype.contiguous;
     }
 
     const U64& hash() const noexcept {
@@ -113,6 +117,31 @@ class TensorPrototype {
     
  protected:
     TensorPrototypeMetadata prototype;
+
+    void initialize(const std::vector<U64>& shape, const U64& element_size) {
+        prototype.shape = shape;
+        prototype.element_size = element_size;
+
+        prototype.size = 1;
+        for (const auto& dim : prototype.shape) {
+            prototype.size *= dim;
+        }
+
+        prototype.strides.resize(prototype.shape.size());
+        for (U64 i = 0; i < prototype.shape.size(); i++) {
+            prototype.strides[i] = 1;
+            for (U64 j = i + 1; j < prototype.shape.size(); j++) {
+                prototype.strides[i] *= prototype.shape[j];
+            }
+        }
+
+        assert(prototype.strides.size() == prototype.shape.size());
+
+        prototype.hash = std::rand() + 1;
+        prototype.size_bytes = prototype.size *
+                               prototype.element_size;
+        prototype.contiguous = true;
+    }
 };
 
 }  // namespace Jetstream
