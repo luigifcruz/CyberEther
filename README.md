@@ -6,7 +6,7 @@
 - 🦑 Portable GPU acceleration for compute: **NVIDIA (CUDA)**, **Apple (Metal)**, **Raspberry Pi (Vulkan)**, etc.
 - 🔋 Runtime configurable flowgraph pipeline with heterogeneously-accelerated modular blocks.
 - 🧳 **Hackable** and easy to use as a library or as a standalone application.
-- 🧊 Installation-free fully-featured [web-application](https://ether.luigi.ltd) powered by **WebAssembly** and **WebGPU**.
+- 🧊 Installation-free fully-featured [web application](https://ether.luigi.ltd) powered by **WebAssembly** and **WebGPU**.
 - 🤯 Low-latency [remote interface](#remote-interface) for headless servers and edge devices.
 
 <br>
@@ -18,13 +18,13 @@
 >
 > **CyberEther** is in **Alpha**. Expect bugs, missing features, and breaking changes.
 
-CyberEther provides a flowgraph interface to build and run compute-intensive pipelines. The interface is engineered to provide a closely coupled integration between the graphical and compute blocks providing leading edge visualization capabilities. CyberEther is built on top of [Vulkan](https://www.khronos.org/vulkan/), [Metal](https://developer.apple.com/metal/), [CUDA](https://developer.nvidia.com/cuda-toolkit), and [WebGPU](https://www.w3.org/TR/webgpu/), which allows it to run on virtually any modern device. CyberEther is also designed to be easily extended with new blocks and backends. It is a great tool for prototyping and testing new ideas.
+CyberEther provides a flowgraph interface to build and run compute-intensive pipelines. The interface is engineered to provide a closely coupled integration between the graphical and compute blocks providing leading-edge visualization capabilities. CyberEther is built on top of [Vulkan](https://www.khronos.org/vulkan/), [Metal](https://developer.apple.com/metal/), [CUDA](https://developer.nvidia.com/cuda-toolkit), and [WebGPU](https://www.w3.org/TR/webgpu/), which allows it to run on virtually any modern device. CyberEther is also designed to be easily extended with new blocks and backends. It is a great tool for prototyping and testing new ideas.
 
-The flowgraph enables the user to build a pipeline by connecting blocks together. Each block provides a set of inputs and outputs. The inputs and outputs are connected with edges. The edges are used to transfer data between blocks. The blocks can be accelerated with any combination of backends. The user can build a pipeline with blocks that run on different devices. For example, the user can build a pipeline with a block accelerated with Vulkan followed by a block accelerated with Metal. The scheduler will transparently take care of the synchronization and memory management between the blocks and everything will run like magic!
+The flowgraph enables the user to build a pipeline by connecting blocks. Each block provides a set of inputs and outputs. The inputs and outputs are connected with edges. The edges are used to transfer data between blocks. The blocks can be accelerated with any combination of backends. The user can build a pipeline with blocks that run on different devices. For example, the user can build a pipeline with a block accelerated with Vulkan followed by a block accelerated with Metal. The scheduler will transparently take care of the synchronization and memory management between the blocks and everything will run like magic!
 
 ## Compatibility
 
-CyberEther can run in viraully any modern device with a GPU. The build system will automatically choose between the three graphical backends available (Metal, Vulkan, or WebGPU) depending on the target device. The same process applies to the compute blocks, which can be accelerated with CUDA, Metal, or Vulkan. Here is a summary of the compatible devices and backends:
+CyberEther can run in virtually any modern device with a GPU. The build system will automatically choose between the three graphical backends available (Metal, Vulkan, or WebGPU) depending on the target device. The same process applies to the compute blocks, which can be accelerated with CUDA, Metal, or Vulkan. Here is a summary of the compatible devices and backends:
 
 |    |                Device               |       Graphics        |         Compute        |
 |----|-------------------------------------|-----------------------|------------------------|
@@ -44,13 +44,13 @@ Please note that the compatibility table above is not exhaustive. Compute implem
 These are some examples of CyberEther running on the field. Do you have a cool demo? Tweet it with the hashtag [#CyberEther](https://twitter.com/hashtag/CyberEther) and mention [@luigifcruz](https://twitter.com/luigifcruz).
 
 ### Simple Flowgraph
-This is a simple demo showing how to create a new flowgraph in CyberEther. The flowgraph is a simple pipeline with a Soapy block streaming data from a RTL-SDR dongle and a Spectroscope block visualizing the data with a waterfall and line plot.
+This is a simple demo showing how to create a new flowgraph in CyberEther. The flowgraph is a simple pipeline with a Soapy block streaming data from an RTL-SDR dongle and a Spectroscope block visualizing the data with a waterfall and line plot.
 
 [//]: <> (cyberether-new-flowgraph.mp4)
 https://github.com/luigifcruz/CyberEther/assets/6627901/fcc6c17c-b191-4982-bfaa-012472c0a919
 
 ### Wideband Spectrum Analyzer
-This is a screen-capture of CyberEther running on an MacBook Pro with M1 Pro chip. The Metal backend is being used for the graphical and compute blocks. The flowgraph is a wideband spectrum analyzer with a bandwidth of 122 MHz streaming from a [RFNM](https://rfnm.io/) software-defined radio.
+This is a screen capture of CyberEther running on a MacBook Pro with an M1 Pro chip. The Metal backend is being used for the graphical and compute blocks. The flowgraph is a wideband spectrum analyzer with a bandwidth of 122 MHz streaming from an [RFNM](https://rfnm.io/) software-defined radio.
 
 [//]: <> (rfnm-spectrum-analyzer-demo.mp4)
 https://github.com/luigifcruz/CyberEther/assets/6627901/815642f2-1813-464b-b1e2-7c4e285bc4e6
@@ -62,7 +62,7 @@ A fan favorite demo from my 2019 project called [CyberRadio](https://github.com/
 https://github.com/luigifcruz/CyberEther/assets/6627901/dff6e236-d836-4c5c-a059-b5b5e70858bd
 
 ### Running on iPad & iPhone
-This demo is running as a native iOS app and illustrates how portable CyberEther can be. The flowgraph implements a standard spectrum analyzer with waterfall and lineplot. It is running on an iPad Pro with M2 chip. But it also runs on any iPhone and Mac with Apple Silicon and iOS 14 or later. The demo also shows seamless switching between the CPU and Metal backends for individual blocks while the flowgraph is running. Bonus: CyberEther can also run in the browser!
+This demo is running as a native iOS app and illustrates how portable CyberEther can be. The flowgraph implements a standard spectrum analyzer with waterfall and lineplot. It is running on an iPad Pro with an M2 chip. But it also runs on any iPhone and Mac with Apple Silicon and iOS 14 or later. The demo also shows seamless switching between the CPU and Metal backends for individual blocks while the flowgraph is running. Bonus: CyberEther can also run in the browser!
 
 [//]: <> (cyberether-ipad.mp4)
 https://github.com/luigifcruz/CyberEther/assets/6627901/5b5f4b8a-8991-4abc-9340-21acea5ec1c2
@@ -86,7 +86,7 @@ Graphical dependencies.
 $ pacman -S spirv-cross glslang glfw
 ```
 
-Vulkan backend dependencies (you probable already have them).
+Vulkan backend dependencies (you probably already have them).
 ```bash
 $ pacman -S vulkan-icd-loader vulkan-validationlayers
 ```
@@ -111,7 +111,7 @@ Graphical dependencies.
 $ apt install spirv-cross glslang-tools libglfw3-dev
 ```
 
-Vulkan backend dependencies (you probable already have them).
+Vulkan backend dependencies (you probably already have them).
 ```bash
 $ apt install mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
 ```
@@ -161,7 +161,7 @@ All CyberEther dependencies for iOS are included in the repository. You only nee
 
 ### Step 2: Clone
 
-Clone the repository from Github.
+Clone the repository from GitHub.
 ```bash
 $ git clone https://github.com/luigifcruz/CyberEther.git
 $ cd CyberEther
@@ -195,14 +195,14 @@ $ cp ../resources/cyberether.html .
 $ cp ../resources/cyberether.png .
 ```
 
-Start web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
+Start the web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
 ```bash
 $ python ../tools/local_server.py
 ```
 
 #### iOS (iPhone & iPad)
 
-Build project with cross-compilation to iOS and install binaries in the Xcode project.
+Build the project with cross-compilation to iOS and install binaries in the Xcode project.
 ```bash
 $ meson --cross-file crosscompile/ios.ini -Dbuildtype=debugoptimized build-ios && cd build-ios
 $ ninja install
@@ -237,7 +237,7 @@ Other:
 ```
 
 ### Graphical Interface
-The graphical interface is where the fun is! It is a fully-featured application that can be used to build and run flowgraphs. Building a flowgraph is very familiar to anyone who has used GNU Radio Companion. Just drag the block icon from the right panel and drop them in the canvas. The color of the block icon indicates which backend to pick. For example, the Yellow block will run on the CPU, Purple on Metal, etc. Each block can be connected by dragging edges from the output of one block to the input of another. There is no start or stop button, blocks will start running as soon as they are connected. Flowgraphs can be exported and imported as readable YAML files. Example flowgraphs with helpful notes can be found pre-loaded in the application.
+The graphical interface is where the fun is! It is a fully-featured application that can be used to build and run flowgraphs. Building a flowgraph is very familiar to anyone who has used GNU Radio Companion. Just drag the block icon from the right panel and drop it in the canvas. The color of the block icon indicates which backend to pick. For example, the Yellow block will run on the CPU, Purple on Metal, etc. Each block can be connected by dragging edges from the output of one block to the input of another. There is no start or stop button, blocks will start running as soon as they are connected. Flowgraphs can be exported and imported as readable YAML files. Example flowgraphs with helpful notes can be found pre-loaded in the application.
 
 ![Flowgraph](docs/cyberether-flowgraph.png)
 
@@ -246,7 +246,7 @@ CyberEther can be used as a remote interface for headless servers and edge devic
 
 ![Remote Instance](docs/remote-instance.png)
 
-At this time, software video encoding will be used in most platforms. Work is being done to enable hardware encoding in more devices, but this requires a lot of experimentation. Exceptions to this are NVIDIA GPUs, which will use the NVENC hardware encoder with a zero-copy framebuffer encoding, making it very nice and efficient. The Raspberry Pi will also use hardware encoding by default.
+At this time, software video encoding will be used on most platforms. Work is being done to enable hardware encoding in more devices, but this requires a lot of experimentation. Exceptions to this are NVIDIA GPUs, which will use the NVENC hardware encoder with a zero-copy framebuffer encoding, making it very nice and efficient. The Raspberry Pi will also use hardware encoding by default.
 
 To initialize a remote instance of CyberEther, run the command below on the server. If you want lossless video, use the `--codec ffv1` option instead. The lossless video will use quite a lot of bandwidth, so make sure you have a good connection.
 
@@ -254,7 +254,7 @@ To initialize a remote instance of CyberEther, run the command below on the serv
 $ ./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264
 ```
 
-Note: This block will use two ports, the first one is shown in the block below (TCP:5002) for telemetry and control and a second one (UDP:5003) for data streaming. Fun fact, you can use gstreamer to receive the video stream. Detailed instructions on how to do this can be found [here](./docs/remote-headless-mode.md).
+Note: This block will use two ports, the first one is shown in the block below (TCP:5002) for telemetry, and control and the second one (UDP:5003) for data streaming. Fun fact, you can use gstreamer to receive the video stream. Detailed instructions on how to do this can be found [here](./docs/remote-headless-mode.md).
 
 ### Benchmark Tool
 CyberEther comes with a neat runtime benchmark tool that can be used to compare the performance of different backends and modules. There are two ways to use it, either through the graphical interface or by running the command line tool. The graphical interface is the easiest way to use it. To access it, click on the `Developer` menu and then click on `Open Benchmarking Tool`. A new window will open (see image below) and the benchmark can be started by clicking on the `Run Benchmark` button. The results will be displayed in a table.
@@ -268,24 +268,24 @@ $ JST_DEBUG=2 ./cyberether --benchmark
 ```
 
 ### Examples
-Another option other than using the graphical interface is to use CyberEther as a library for your own application. The library is designed to be easily integrated and hackable. The [examples](./examples/) directory contains a few examples to get you started. At the moment, the main focus of the project is to continue to improve the graphical interface, but the standalone features will be improved in the future as things stabilize.
+Another option other than using the graphical interface is to use CyberEther as a library for your application. The library is designed to be easily integrated and hackable. The [examples](./examples/) directory contains a few examples to get you started. At the moment, the main focus of the project is to continue to improve the graphical interface, but the standalone features will be improved in the future as things stabilize.
 
 ## Frequently Asked Questions
 
 #### Q. Why is CyberEther written in C++?
-The short answer to this question is that compatibility is king. The longer answer is that one of the design choices is to be as low-level as possible. This allows me to have full control over the code and to be able to optimize it for a specific platform without being locked down by a framework. That is why CyberEther can run inside the browser while being able to scale towards a supercomputer. Currently, one of the problems with other languages is that they have too many wrappers and abstractions that make it difficult to debug and optimize the code. I expect this to change in the future as first-party support grows but for now, C++ is the best option. As John Carmack once said, "[...] externalities that can overwhelm the benefits of a language [...]". I am also a big fan of Rust and I am looking forward to find a good project to use it in the future.
+The short answer to this question is that compatibility is king. The longer answer is that one of the design choices is to be as low-level as possible. This allows me to have full control over the code and to be able to optimize it for a specific platform without being locked down by a framework. That is why CyberEther can run inside the browser while being able to scale towards a supercomputer. Currently, one of the problems with other languages is that they have too many wrappers and abstractions that make it difficult to debug and optimize the code. I expect this to change in the future as first-party support grows but for now, C++ is the best option. As John Carmack once said, "[...] externalities that can overwhelm the benefits of a language [...]". I am also a big fan of Rust and I am looking forward to finding a good project to use it in the future.
 
 #### Q. What is the best way to contribute to the project?
 The code is riddled with TODO comments. These are a good place to start. Another way to contribute is by implementing new blocks and modules.
 
-#### Q. Why CyberEther uses Jetstream as namespace?
-In the beginning of the project, CyberEther was meant to be only a application that utilized Jetstream as a library. But as the project evolved, the two things became one. In the end, I decided to keep Jetstream as the name of the library and CyberEther as the name of the application.
+#### Q. Why CyberEther uses Jetstream as the namespace?
+At the beginning of the project, CyberEther was meant to be only an application that utilized Jetstream as a library. But as the project evolved, the two things became one. In the end, I decided to keep Jetstream as the name of the library and CyberEther as the name of the application.
 
 #### Q. How CyberEther compares to GNU Radio?
-First of all, GNU Radio is an amazing project. It is a very powerful tool and it is used by many people and institutions around the world. Developing CyberEther as a separate project without the burden of backwards compatibility and legacy code allowed me to explore new ideas that would be time-consuming to implement in GNU Radio. I think of CyberEther as a playground for new ideas that can be later integrated into GNU Radio if they prove to be useful. Beyond radio, CyberEther has the potential to be used in other domains such as machine learning, computer vision, and robotics. The goal is to make CyberEther a general-purpose acceleration tool for compute-intensive pipelines.
+First of all, GNU Radio is an amazing project. It is a very powerful tool and it is used by many people and institutions around the world. Developing CyberEther as a separate project without the burden of backward compatibility and legacy code allowed me to explore new ideas that would be time-consuming to implement in GNU Radio. I think of CyberEther as a playground for new ideas that can be later integrated into GNU Radio if they prove to be useful. Beyond radio, CyberEther has the potential to be used in other domains such as machine learning, computer vision, and robotics. The goal is to make CyberEther a general-purpose acceleration tool for compute-intensive pipelines.
 
 #### Q. What are the future plans for CyberEther?
-The future plans for CyberEther include adding unit tests, improving documentation, and implementing new blocks and modules. The goal is to continue expanding the capabilities of CyberEther beyond radio communications and make it a powerful tool for accelerating compute-intensive pipelines in various domains.
+The plans for CyberEther include adding unit tests, improving documentation, and implementing new blocks and modules. The goal is to continue expanding the capabilities of CyberEther beyond radio communications and make it a powerful tool for accelerating compute-intensive pipelines in various domains.
 
 #### Q. What are the minimum requirements to run CyberEther?
 There are no minimum requirements, only minimum expectations.
