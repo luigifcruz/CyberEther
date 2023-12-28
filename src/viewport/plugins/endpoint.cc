@@ -508,7 +508,6 @@ Result Endpoint::createGstreamerEndpoint() {
     std::vector<std::string> plugins = {
         "app",
         "rawparse",
-        "videoconvertscale",
         "coreelements",
     };
 
