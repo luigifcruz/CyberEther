@@ -105,6 +105,7 @@ class JETSTREAM_API Compositor {
     bool debugEnableTrace;
     U64 globalModalContentId;
     I32 nodeContextMenuNodeId;
+    bool benchmarkRunning;
 
     std::atomic_flag interfaceHalt{false};
 

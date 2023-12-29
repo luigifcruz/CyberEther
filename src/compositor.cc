@@ -25,6 +25,7 @@ Compositor::Compositor(Instance& instance)
        debugEnableTrace(false),
        globalModalContentId(0),
        nodeContextMenuNodeId(0),
+       benchmarkRunning(false),
        globalModalToggle(false) {
     stacks["Graph"] = {true, 0};
     JST_CHECK_THROW(refreshState());
@@ -1828,14 +1829,21 @@ Result Compositor::drawStatic() {
             ImGui::Text("to compare the performance between different devices and backends.");
 
             if (ImGui::Button("Run Benchmark")) {
-                std::thread([&]{
-                    ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Running benchmark..." });
-                    Benchmark::Run("quiet");
-                }).detach();
+                if (benchmarkRunning) {
+                    ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "A benchmark is already running." });
+                } else {
+                    std::thread([&]{
+                        benchmarkRunning = true;
+                        Benchmark::ResetResults();
+                        ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Running benchmark..." });
+                        Benchmark::Run("quiet");
+                        benchmarkRunning = false;
+                    }).detach();
+                }
             }
             ImGui::SameLine();
             if (ImGui::Button("Reset Benchmark")) {
-                if (Benchmark::TotalCount() == Benchmark::CurrentCount()) {
+                if (!benchmarkRunning) {
                     Benchmark::ResetResults();
                 }
             }
