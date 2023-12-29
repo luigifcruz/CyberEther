@@ -10,6 +10,7 @@
 
 #include "jetstream/types.hh"
 #include "jetstream/memory/metadata.hh"
+#include "jetstream/memory/token.hh"
 
 namespace Jetstream {
 
@@ -87,8 +88,10 @@ class TensorPrototype {
         return prototype.hash != other.prototype.hash;
     }
 
+    // TODO: Move functions to source file.
+
     U64 shape_to_offset(const std::vector<U64>& shape) const {
-        U64 index = 0;
+        U64 index = prototype.offset;
         U64 pad = shape.size() - prototype.stride.size();
         for (U64 i = 0; i < prototype.stride.size(); i++) {
             // TODO: This is a hack. This should be done by modifiying the stride.
@@ -112,7 +115,85 @@ class TensorPrototype {
     void squeeze_dims(const U64& axis) {
         assert(prototype.shape[axis] == 1);
         prototype.shape.erase(prototype.shape.begin() + axis);
-        prototype.strides.erase(prototype.strides.begin() + axis);
+        prototype.stride.erase(prototype.stride.begin() + axis);
+    }
+
+    // TODO: Add permutation function.
+
+    void view(const std::vector<Token>& tokens) {
+        std::vector<U64> shape;
+        std::vector<U64> stride;
+        U64 offset = 0;
+        U64 dim = 0;
+        bool ellipsis_used = false;
+
+        for (const auto& token : tokens) {
+            switch (token.get_type()) {
+                case Token::Type::Number: {
+                    if (dim >= prototype.shape.size()) {
+                        throw std::runtime_error("Index exceeds array dimensions.");
+                    }
+                    offset += token.get_a() * prototype.stride[dim];
+                    dim++;
+                    break;
+                }
+                case Token::Type::Colon: {
+                    if (dim >= prototype.shape.size()) {
+                        throw std::runtime_error("Index exceeds array dimensions.");
+                    }
+                    const U64 start = token.get_a();
+                    U64 end = token.get_b();
+                    const U64 step = token.get_c();
+
+                    if (end == 0) {
+                        end = prototype.shape[dim];
+                    }
+
+                    shape.push_back((end - start + step - 1) / step);
+                    stride.push_back(prototype.stride[dim] * step);
+                    offset += start * prototype.stride[dim];
+                    dim++;
+                    break;
+                }
+                case Token::Type::Ellipsis: {
+                    if (ellipsis_used) {
+                        throw std::runtime_error("Ellipsis used more than once.");
+                    }
+                    ellipsis_used = true;
+                    const U64 remaining_dims = prototype.shape.size() - (tokens.size() - 1) + 1;
+                    while (dim < remaining_dims) {
+                        shape.push_back(prototype.shape[dim]);
+                        stride.push_back(prototype.stride[dim]);
+                        dim++;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (!ellipsis_used) {
+            while (dim < prototype.shape.size()) {
+                shape.push_back(prototype.shape[dim]);
+                stride.push_back(prototype.stride[dim]);
+                dim++;
+            }
+        }
+
+        JST_TRACE("[MEMORY] View shape: {} -> {}.", prototype.shape, shape);
+        JST_TRACE("[MEMORY] View stride: {} -> {}.", prototype.stride, stride);
+        JST_TRACE("[MEMORY] View offset: {}.", offset);
+
+        prototype.shape = shape;
+        prototype.stride = stride;
+        prototype.offset = offset;
+        prototype.contiguous = false;
+
+        prototype.size = 1;
+        for (const auto& s : shape) {
+            prototype.size *= s;
+        }
+        prototype.size_bytes = prototype.size * 
+                               prototype.element_size;
     }
     
  protected:

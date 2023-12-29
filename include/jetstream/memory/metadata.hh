@@ -14,6 +14,7 @@ struct TensorPrototypeMetadata {
     Locale locale;
     std::vector<U64> shape = {0};
     std::vector<U64> stride = {0};
+    U64 offset = 0;
     bool contiguous = true;
     U64 element_size = 0;
     U64 hash = 0;
@@ -27,6 +28,7 @@ struct TensorPrototypeMetadata {
         shape = other.shape;
         stride = other.stride;
         element_size = other.element_size;
+        offset = other.offset;
         contiguous = other.contiguous;
         hash = other.hash;
         size = other.size;
@@ -41,6 +43,7 @@ struct TensorPrototypeMetadata {
         shape = std::move(other.shape);
         stride = std::move(other.stride);
         element_size = std::move(other.element_size);
+        offset = std::move(other.offset);
         contiguous = std::move(other.contiguous);
         hash = std::move(other.hash);
         size = std::move(other.size);
