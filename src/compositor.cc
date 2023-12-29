@@ -1803,6 +1803,7 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("gstreamer - LGPL-2.1 License");
             ImGui::BulletText("libusb - LGPL-2.1 License");
             ImGui::BulletText("nanobench - MIT License");
+            // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
             ImGui::Separator();
