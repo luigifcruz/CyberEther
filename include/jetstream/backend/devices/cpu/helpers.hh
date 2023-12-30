@@ -25,29 +25,29 @@ inline F32 ApproxAtan2(const F32& y, const F32& x) {
                 return ApproxAtan(z);
             } else if (y >= 0.0) {
                 // atan2(y,x) = atan(y/x) + PI if x < 0, y >= 0
-                return ApproxAtan(z) + M_PI;
+                return ApproxAtan(z) + JST_PI;
             } else {
                 // atan2(y,x) = atan(y/x) - PI if x < 0, y < 0
-                return ApproxAtan(z) - M_PI;
+                return ApproxAtan(z) - JST_PI;
             }
         } else {
             // Use property atan(y/x) = PI/2 - atan(x/y) if |y/x| > 1.
             const F32 z = x / y;
             if (y > 0.0) {
                 // atan2(y,x) = PI/2 - atan(x/y) if |y/x| > 1, y > 0
-                return -ApproxAtan(z) + M_PI_2;
+                return -ApproxAtan(z) + JST_PI_2;
             } else {
                 // atan2(y,x) = -PI/2 - atan(x/y) if |y/x| > 1, y < 0
-                return -ApproxAtan(z) - M_PI_2;
+                return -ApproxAtan(z) - JST_PI_2;
             }
         }
     } else {
         if (y > 0.0f) {
             // x = 0, y > 0
-            return M_PI_2;
+            return JST_PI_2;
         } else if (y < 0.0f) {
             // x = 0, y < 0
-            return -M_PI_2;
+            return -JST_PI_2;
         }
     }
     return 0.0f; // x,y = 0. Could return NaN instead.

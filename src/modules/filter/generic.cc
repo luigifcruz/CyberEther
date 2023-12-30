@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 inline F64 sinc(F64 x) {
-    return (x == 0) ? 1.0 : sin(M_PI * x) / (M_PI * x);
+    return (x == 0) ? 1.0 : sin(JST_PI * x) / (JST_PI * x);
 }
 
 inline F64 n(U64 len, U64 index) {
@@ -24,8 +24,8 @@ Result Filter<D, T>::generateSincFunction() {
 template<Device D, typename T>
 Result Filter<D, T>::generateWindow() {
     for (U64 i = 0; i < config.taps; i++) {
-        windowCoeffs[i] = 0.42 - 0.50 * cos(2.0 * M_PI * i / (config.taps - 1)) + \
-                          0.08 * cos(4.0 * M_PI * i / (config.taps - 1));
+        windowCoeffs[i] = 0.42 - 0.50 * cos(2.0 * JST_PI * i / (config.taps - 1)) + \
+                          0.08 * cos(4.0 * JST_PI * i / (config.taps - 1));
     }
 
     return Result::SUCCESS;
@@ -39,7 +39,7 @@ Result Filter<D, T>::generateUpconvert() {
         const F64 filterOffset = (config.center[c] / (config.sampleRate / 2.0)) / 2.0;
 
         for (U64 i = 0; i < config.taps; i++) {
-            upconvertCoeffs[{c, i}] = std::exp(j * 2.0 * M_PI * n(config.taps, i) * filterOffset);
+            upconvertCoeffs[{c, i}] = std::exp(j * 2.0 * JST_PI * n(config.taps, i) * filterOffset);
         }
     }
 

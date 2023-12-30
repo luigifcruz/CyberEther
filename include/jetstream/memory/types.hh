@@ -14,6 +14,22 @@
 namespace Jetstream {
 
 //
+// Common Numeric Constants
+//
+
+#ifndef JST_PI
+#define JST_PI 3.14159265358979323846
+#endif
+
+#ifndef JST_PI_2
+#define JST_PI_2 1.57079632679489661923
+#endif
+
+#ifndef JST_E
+#define JST_E 2.7182818284590452354
+#endif
+
+//
 // Numeric Types
 //
 

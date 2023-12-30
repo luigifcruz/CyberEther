@@ -10,7 +10,7 @@ Result FM<D, IT, OT>::create() {
     // Initialize constant coefficients.
 
     kf = 100e3f / config.sampleRate;
-    ref = 1.0f / (2.0f * M_PI * kf);
+    ref = 1.0f / (2.0f * JST_PI * kf);
 
     // Allocate output.
 
