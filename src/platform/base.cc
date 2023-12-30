@@ -26,6 +26,8 @@ namespace Jetstream::Platform {
 // Open URL
 //
 
+// TODO: Implement Windows support.
+
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
 // Defined on apple.mm.
@@ -57,11 +59,12 @@ Result OpenUrl(const std::string& url) {
 // Pick File
 //
 
+// TODO: Implement iOS support.
+// TODO: Implement Windows support.
+
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
 // Defined on apple.mm.
-
-// TODO: Implement iOS support.
 
 #elif defined(__EMSCRIPTEN__)
 
@@ -173,11 +176,12 @@ Result PickFile(std::string& path) {
 // Save File
 //
 
+// TODO: Implement iOS support.
+// TODO: Implement Windows support.
+
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
 // Defined on apple.mm.
-
-// TODO: Implement iOS support.
 
 #elif defined(__EMSCRIPTEN__)
 

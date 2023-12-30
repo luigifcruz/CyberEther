@@ -13,8 +13,10 @@
 #endif
 
 #ifdef JST_OS_WINDOWS
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #undef ERROR
+#undef FATAL
 #endif
 
 namespace Jetstream {
@@ -193,7 +195,11 @@ Implementation::~TensorBuffer() {
     JST_TRACE("[CPU:BUFFER] Trying to free buffer at {}.", fmt::ptr(buffer));
 
     if (owns_data) {
+#ifdef JST_OS_WINDOWS
+        VirtualFree(buffer, 0, MEM_RELEASE);
+#else
         free(buffer);
+#endif
     }
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE

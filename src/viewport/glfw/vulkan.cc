@@ -297,13 +297,16 @@ VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkS
 
 VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
     if (config.vsync) {
+        // TODO: Re-evaluate if we want MAILBOX.
+#ifndef JST_OS_WINDOWS
         for (const auto &availablePresentMode : availablePresentModes) {
-            // HACK: Mailbox is not currenlt supported on Wayland.
+            // HACK: Mailbox is not currently supported on Wayland.
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR &&!Backend::WindowMightBeWayland()) {
                 JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
                 return availablePresentMode;
             }
         }
+#endif
         return VK_PRESENT_MODE_FIFO_KHR;
     }
     return VK_PRESENT_MODE_IMMEDIATE_KHR;
