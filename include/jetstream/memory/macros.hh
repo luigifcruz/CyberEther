@@ -5,8 +5,15 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "jetstream/macros.hh"
+
 #ifndef JST_PAGESIZE
+#ifdef JST_OS_WINDOWS
+// I guess this is valid? I don't care about alignment on Windows.
+#define JST_PAGESIZE() 4096
+#else
 #define JST_PAGESIZE() getpagesize()
+#endif
 #endif 
 
 #ifndef JST_PAGE_ALIGNED_SIZE
@@ -28,12 +35,5 @@
 #ifndef JST_MB
 #define JST_MB (1024*1024)
 #endif
-
-inline uint64_t HashU64(uint64_t x) {
-    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
-    x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;
-    x = (x ^ (x >> 31));
-    return x;
-}
 
 #endif

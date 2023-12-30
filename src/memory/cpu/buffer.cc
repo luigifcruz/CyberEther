@@ -12,6 +12,11 @@
 #include "jetstream/memory/devices/cuda/buffer.hh"
 #endif
 
+#ifdef JST_OS_WINDOWS
+#include <windows.h>
+#undef ERROR
+#endif
+
 namespace Jetstream {
 
 using Implementation = TensorBuffer<Device::CPU>;
@@ -47,11 +52,19 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     void* memoryAddr = nullptr;
     const auto pageSize = JST_PAGESIZE();
     const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+#ifdef JST_OS_WINDOWS
+    buffer = VirtualAlloc(nullptr, alignedSizeBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (buffer == nullptr) {
+        JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+#else
     const auto result = posix_memalign(&memoryAddr, pageSize, alignedSizeBytes);
     if (result < 0 || (buffer = static_cast<void*>(memoryAddr)) == nullptr) {
         JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
         JST_CHECK_THROW(Result::ERROR);
     }
+#endif
     owns_data = true;
 
     // Null out array.
