@@ -63,13 +63,18 @@ class Endpoint {
 
     Device viewportDevice = Device::None;
 
-    Result createFileEndpoint();
+#ifndef JST_OS_WINDOWS
     Result createPipeEndpoint();
-    Result createSocketEndpoint();
-
-    Result destroyFileEndpoint();
     Result destroyPipeEndpoint();
+#endif
+
+#ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
+    Result createFileEndpoint();
+    Result destroyFileEndpoint();   
+
+    Result createSocketEndpoint();
     Result destroySocketEndpoint();
+#endif
 
     static Endpoint::Type DetermineEndpointType(const std::string& endpoint);
 

@@ -70,11 +70,13 @@ Result Endpoint::create(const Viewport::Config& _config, const Device& _viewport
         return Result::ERROR;
     }
 
+#ifndef JST_OS_WINDOWS
     if (type == Endpoint::Type::Pipe) {
         JST_DEBUG("[ENDPOINT] Endpoint is a pipe.");
         JST_CHECK(createPipeEndpoint());
         return Result::SUCCESS;
     }
+#endif
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     JST_CHECK(createGstreamerEndpoint());
@@ -101,10 +103,12 @@ Result Endpoint::destroy() {
 
     // Destroy endpoints.
 
+#ifndef JST_OS_WINDOWS
     if (type == Endpoint::Type::Pipe) {
         JST_CHECK(destroyPipeEndpoint());
         return Result::SUCCESS;
     }
+#endif
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     if (type == Endpoint::Type::File) {
@@ -122,6 +126,8 @@ Result Endpoint::destroy() {
 
     return Result::SUCCESS;
 }
+
+#ifndef JST_OS_WINDOWS
 
 Result Endpoint::createPipeEndpoint() {
     JST_INFO("[ENDPOINT] Creating pipe endpoint ({}).", config.endpoint);
@@ -166,6 +172,8 @@ Result Endpoint::destroyPipeEndpoint() {
 
     return Result::SUCCESS;
 }
+
+#endif
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
 
@@ -903,9 +911,11 @@ void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
 #endif
 
 Result Endpoint::pushNewFrame(const void* data) {
+#ifndef JST_OS_WINDOWS
     if (type == Endpoint::Type::Pipe) {
         write(pipeFileDescriptor, data, config.size.width * config.size.height * 4);
     }
+#endif
 
 #ifdef JETSTREAM_LOADER_GSTREAMER_AVAILABLE
     if ((type == Endpoint::Type::File || type == Endpoint::Type::Socket) && socketStreaming) {
