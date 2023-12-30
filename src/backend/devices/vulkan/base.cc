@@ -479,9 +479,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
     // Print device information.
 
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [VULKAN]")
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
     JST_INFO("Device Name:     {}", getDeviceName());
     JST_INFO("Device Type:     {}", getPhysicalDeviceType());
     JST_INFO("API Version:     {}", getApiVersion());
@@ -489,7 +489,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("Processor Count: {}", getTotalProcessorCount());
     JST_INFO("Device Memory:   {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("Staging Buffer:  {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / JST_MB);
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
 }
 
 Vulkan::~Vulkan() {

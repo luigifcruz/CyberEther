@@ -21,16 +21,16 @@ Metal::Metal(const Config& config) {
     info = NS::ProcessInfo::processInfo();
 
     // Print device information.
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [METAL]")
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
     JST_INFO("Device Name:     {}", getDeviceName());
     JST_INFO("Device Type:     {}", getPhysicalDeviceType());
     JST_INFO("API Version:     {}", getApiVersion());
     JST_INFO("Unified Memory:  {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Processor Count: {}/{}", getActiveProcessorCount(), getTotalProcessorCount());
     JST_INFO("Device Memory:   {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
 }
 
 Metal::~Metal() {

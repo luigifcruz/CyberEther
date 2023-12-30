@@ -89,9 +89,9 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
 
     // Print device information.
 
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [CUDA]")
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
     JST_INFO("Device Name:        {}", getDeviceName());
     JST_INFO("Device Type:        {}", getPhysicalDeviceType());
     JST_INFO("API Version:        {}", getApiVersion());
@@ -99,7 +99,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("Driver Version:     {}", getDriverVersion());
     JST_INFO("Unified Memory:     {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Device Memory:      {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
-    JST_INFO("—————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------");
 }
 
 bool CUDA::isAvailable() const {

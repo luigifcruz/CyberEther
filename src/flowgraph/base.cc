@@ -557,9 +557,9 @@ Result Flowgraph::print() const {
                                                     "license",
                                                     "description"}, true);
 
-    JST_INFO("———————————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------------");
     JST_INFO("|                  JETSTREAM CONFIG FILE                  |")
-    JST_INFO("———————————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------------");
     JST_INFO("Protocol Version:   {}", ResolveReadable(configValues["protocolVersion"]));
     JST_INFO("CyberEther Version: {}", ResolveReadable(configValues["cyberetherVersion"]));
     if (optConfigValues.contains("title")) {
@@ -582,7 +582,7 @@ Result Flowgraph::print() const {
         return Result::SUCCESS;
     }
 
-    JST_INFO("————————————————————————— GRAPH ——————————————————————————");
+    JST_INFO("------------------------- GRAPH --------------------------");
 
     for (const auto& node : GetNode(root, root, "graph")) {
         auto values = GatherNodes(root, node, {"module",
@@ -624,7 +624,7 @@ Result Flowgraph::print() const {
         }
     }
 
-    JST_INFO("———————————————————————————————————————————————————————————");
+    JST_INFO("-----------------------------------------------------------");
 
     return Result::SUCCESS;
 }

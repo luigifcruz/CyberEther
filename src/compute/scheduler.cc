@@ -30,12 +30,12 @@ Result Scheduler::addModule(const Locale& locale,
     running = true;
 
     // Print new module metadata.
-    JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
+    JST_INFO("----------------------------------------------------------------------------------------------------------------------");
     JST_INFO("[{}] [Device::{}] [C: {}, P: {}]", locale,
                                                  module->device(),
                                                  (compute) ? "YES" : "NO",
                                                  (present) ? "YES" : "NO");
-    JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
+    JST_INFO("----------------------------------------------------------------------------------------------------------------------");
 
     {
         JST_INFO("Configuration:");
@@ -75,7 +75,7 @@ Result Scheduler::addModule(const Locale& locale,
                                                                                                          meta.locale);
         }
     }
-    JST_INFO("——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————");
+    JST_INFO("----------------------------------------------------------------------------------------------------------------------");
 
     JST_CHECK(lockState([&]{
         // Destroy compute logic from modules.
@@ -496,14 +496,14 @@ Result Scheduler::arrangeDependencyOrder() {
         deviceExecutionOrder.back().second.push_back(name);
     }
 
-    JST_INFO("———————————————————————————————————————————————————");
+    JST_INFO("---------------------------------------------------");
     JST_INFO("Device execution order:");
-    JST_INFO("———————————————————————————————————————————————————");
+    JST_INFO("---------------------------------------------------");
     for (U64 i = 0; i < deviceExecutionOrder.size(); i++) {
         const auto& [device, blocksNames] = deviceExecutionOrder[i];
         JST_INFO("  [{:02}] [Device::{}]: {}", i, device, blocksNames);
     }
-    JST_INFO("———————————————————————————————————————————————————");
+    JST_INFO("---------------------------------------------------");
 
     return Result::SUCCESS;
 }
