@@ -9,6 +9,10 @@ project(
     ]
 )
 
+if get_option('native')
+    add_project_arguments('-march=native', language: 'cpp')
+endif
+
 cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [

@@ -4,3 +4,5 @@ option('VULKAN', type : 'boolean', value : false, description: 'Force VULKAN Sup
 option('WEBGPU', type : 'boolean', value : false, description: 'Force WebGPU Support.')
 option('SOAPYSDR', type : 'boolean', value : false, description: 'Force SoapySDR Support.')
 option('GSTREAMER', type : 'boolean', value : false, description: 'Force Gstreamer Support.')
+
+option('native', type : 'boolean', value : false, description: 'Enable native build.')
