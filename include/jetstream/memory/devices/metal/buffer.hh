@@ -36,11 +36,11 @@ class TensorBuffer<Device::Metal> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    const MTL::Buffer* data() const noexcept {
+    constexpr const MTL::Buffer* data() const noexcept {
         return buffer;
     }
 
-    MTL::Buffer* data() noexcept {
+    constexpr MTL::Buffer* data() noexcept {
         return buffer;
     }
 

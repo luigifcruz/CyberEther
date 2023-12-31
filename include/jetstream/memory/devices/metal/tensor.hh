@@ -14,11 +14,11 @@ class Tensor<Device::Metal, T> : public TensorBase<Device::Metal, T> {
 
     Tensor(const TensorBase<Device::Metal, T>& base) : TensorBase<Device::Metal, T>(base) {}
 
-    const MTL::Buffer* data() const noexcept {
+    constexpr const MTL::Buffer* data() const noexcept {
         return this->buffer->data();
     }
 
-    MTL::Buffer* data() noexcept {
+    constexpr MTL::Buffer* data() noexcept {
         return this->buffer->data();
     }
 };

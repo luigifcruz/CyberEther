@@ -18,8 +18,11 @@ struct TensorPrototypeMetadata {
     bool contiguous = true;
     U64 element_size = 0;
     U64 hash = 0;
+
     U64 size = 0;
     U64 size_bytes = 0;
+    std::vector<U64> shape_minus_one = {0};
+    std::vector<U64> backstride = {0};
 
     TensorPrototypeMetadata& operator=(const TensorPrototypeMetadata& other) {
         if (locale.empty()) {
@@ -31,8 +34,11 @@ struct TensorPrototypeMetadata {
         offset = other.offset;
         contiguous = other.contiguous;
         hash = other.hash;
+
         size = other.size;
         size_bytes = other.size_bytes;
+        shape_minus_one = other.shape_minus_one;
+        backstride = other.backstride;
         return *this;
     }
 
@@ -46,8 +52,11 @@ struct TensorPrototypeMetadata {
         offset = std::move(other.offset);
         contiguous = std::move(other.contiguous);
         hash = std::move(other.hash);
+
         size = std::move(other.size);
         size_bytes = std::move(other.size_bytes);
+        shape_minus_one = std::move(other.shape_minus_one);
+        backstride = std::move(other.backstride);
         return *this;
     }
 };

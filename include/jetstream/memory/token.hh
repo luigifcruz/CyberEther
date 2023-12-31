@@ -21,19 +21,19 @@ struct Token {
     Token(I32 _a, I32 _b, I32 _c) : a(_a), b(_b), c(_c), type(Type::Colon) {}
     Token(const char*) : type(Type::Ellipsis) {}
 
-    const Type& get_type() const {
+    constexpr const Type& get_type() const {
         return type;
     }
 
-    const U64& get_a() const {
+    constexpr const U64& get_a() const {
         return a;
     }
 
-    const U64& get_b() const {
+    constexpr const U64& get_b() const {
         return b;
     }
 
-    const U64& get_c() const {
+    constexpr const U64& get_c() const {
         return c;
     }
 

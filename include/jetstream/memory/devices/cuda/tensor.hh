@@ -18,11 +18,11 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
         return this->buffer->managed();
     }
 
-    const void* data() const noexcept {
+    constexpr const void* data() const noexcept {
         return this->buffer->data();
     }
 
-    void* data() noexcept {
+    constexpr void* data() noexcept {
         return this->buffer->data();
     }
 };

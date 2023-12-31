@@ -375,6 +375,71 @@ int main() {
 
     JST_INFO("---------------------------------------------");
 
+    {
+        Tensor<Device::CPU, F32> og_array({2, 3, 4});
+        PrintVarDebug("og_array", og_array);
+
+        og_array[{0, 0, 0}] = 1;
+        og_array[{0, 0, 1}] = 2;
+        og_array[{0, 0, 2}] = 3;
+        og_array[{0, 0, 3}] = 4;
+        og_array[{0, 1, 0}] = 5;
+        og_array[{0, 1, 1}] = 6;
+        og_array[{0, 1, 2}] = 7;
+        og_array[{0, 1, 3}] = 8;
+        og_array[{0, 2, 0}] = 9;
+        og_array[{0, 2, 1}] = 10;
+        og_array[{0, 2, 2}] = 11;
+        og_array[{0, 2, 3}] = 12;
+        og_array[{1, 0, 0}] = 13;
+        og_array[{1, 0, 1}] = 14;
+        og_array[{1, 0, 2}] = 15;
+        og_array[{1, 0, 3}] = 16;
+        og_array[{1, 1, 0}] = 17;
+        og_array[{1, 1, 1}] = 18;
+        og_array[{1, 1, 2}] = 19;
+        og_array[{1, 1, 3}] = 20;
+        og_array[{1, 2, 0}] = 21;
+        og_array[{1, 2, 1}] = 22;
+        og_array[{1, 2, 2}] = 23;
+        og_array[{1, 2, 3}] = 24;
+
+        og_array.view({0, {}, 0});  // og_array[0, :, 0]
+        PrintVarDebug("og_array", og_array);
+
+        assert(og_array.rank() == 1);
+        assert(og_array.shape(0) == 3);
+
+        JST_DEBUG("{}", og_array[std::vector<U64>{0}]);
+        JST_DEBUG("{}", og_array[std::vector<U64>{1}]);
+        JST_DEBUG("{}", og_array[std::vector<U64>{2}]);
+
+        assert((og_array[std::vector<U64>{0}] == 1));
+        assert((og_array[std::vector<U64>{1}] == 5));
+        assert((og_array[std::vector<U64>{2}] == 9));
+
+        JST_INFO("Tensor test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
+
+    {
+        Tensor<Device::CPU, F32> array({64});
+        PrintVarDebug("array", array);
+
+        array.view({{0, 0, 2}});
+
+        assert(array.shape() == std::vector<U64>{32});
+        assert(array.stride() == std::vector<U64>{2});
+        assert(array.size() == 32);
+        assert(array.contiguous() == false);
+
+        JST_INFO("Tensor test successful!");
+    }
+
+    JST_INFO("---------------------------------------------");
+
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     {
         Tensor<Device::CPU, F32> b({42});
@@ -492,54 +557,6 @@ int main() {
         assert(cpu_array.shape(2) == 4);
 
         JST_INFO("Tensor cloning test successful!");
-    }
-
-    JST_INFO("---------------------------------------------");
-
-    {
-        Tensor<Device::CPU, F32> og_array({2, 3, 4});
-        PrintVarDebug("og_array", og_array);
-
-        og_array[{0, 0, 0}] = 1;
-        og_array[{0, 0, 1}] = 2;
-        og_array[{0, 0, 2}] = 3;
-        og_array[{0, 0, 3}] = 4;
-        og_array[{0, 1, 0}] = 5;
-        og_array[{0, 1, 1}] = 6;
-        og_array[{0, 1, 2}] = 7;
-        og_array[{0, 1, 3}] = 8;
-        og_array[{0, 2, 0}] = 9;
-        og_array[{0, 2, 1}] = 10;
-        og_array[{0, 2, 2}] = 11;
-        og_array[{0, 2, 3}] = 12;
-        og_array[{1, 0, 0}] = 13;
-        og_array[{1, 0, 1}] = 14;
-        og_array[{1, 0, 2}] = 15;
-        og_array[{1, 0, 3}] = 16;
-        og_array[{1, 1, 0}] = 17;
-        og_array[{1, 1, 1}] = 18;
-        og_array[{1, 1, 2}] = 19;
-        og_array[{1, 1, 3}] = 20;
-        og_array[{1, 2, 0}] = 21;
-        og_array[{1, 2, 1}] = 22;
-        og_array[{1, 2, 2}] = 23;
-        og_array[{1, 2, 3}] = 24;
-
-        og_array.view({0, {}, 0});  // og_array[0, :, 0]
-        PrintVarDebug("og_array", og_array);
-
-        assert(og_array.rank() == 1);
-        assert(og_array.shape(0) == 3);
-
-        JST_DEBUG("{}", og_array[std::vector<U64>{0}]);
-        JST_DEBUG("{}", og_array[std::vector<U64>{1}]);
-        JST_DEBUG("{}", og_array[std::vector<U64>{2}]);
-
-        assert((og_array[std::vector<U64>{0}] == 1));
-        assert((og_array[std::vector<U64>{1}] == 5));
-        assert((og_array[std::vector<U64>{2}] == 9));
-
-        JST_INFO("Tensor test successful!");
     }
 
     JST_INFO("---------------------------------------------");

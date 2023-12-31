@@ -16,81 +16,89 @@ namespace Jetstream {
 
 class TensorPrototype {
  public:
-    const U64& size() const noexcept {
+    constexpr const U64& size() const noexcept {
         return prototype.size;
     }
 
-    const U64& size_bytes() const noexcept {
+    constexpr const U64& size_bytes() const noexcept {
         return prototype.size_bytes;
     }
 
-    const U64& element_size() const noexcept {
+    constexpr const U64& element_size() const noexcept {
         return prototype.element_size;
     }
 
-    const bool& contiguous() const noexcept {
+    constexpr const bool& contiguous() const noexcept {
         return prototype.contiguous;
     }
 
-    const U64& hash() const noexcept {
+    constexpr const U64& offset() const noexcept {
+        return prototype.offset;
+    }
+
+    constexpr const std::vector<U64>& shape_minus_one() const noexcept {
+        return prototype.shape_minus_one;
+    }
+
+    constexpr const std::vector<U64>& backstride() const noexcept {
+        return prototype.backstride;
+    }
+
+    constexpr const U64& hash() const noexcept {
         return prototype.hash;
     }
 
-    const std::vector<U64>& shape() const noexcept {
+    constexpr const std::vector<U64>& shape() const noexcept {
         return prototype.shape;
     }
 
-    const std::vector<U64>& stride() const noexcept {
+    constexpr const std::vector<U64>& stride() const noexcept {
         return prototype.stride;
     }
 
-    const U64& shape(const U64& idx) const noexcept {
+    constexpr const U64& shape(const U64& idx) const noexcept {
         return prototype.shape[idx];
     }
 
-    const U64& stride(const U64& idx) const noexcept {
+    constexpr const U64& stride(const U64& idx) const noexcept {
         return prototype.stride[idx];
     }
 
-    bool empty() const noexcept {
+    constexpr bool empty() const noexcept {
         return prototype.size == 0;
     }
 
-    U64 rank() const noexcept {
+    constexpr U64 rank() const noexcept {
         return prototype.shape.size();
     }
 
-    U64 ndims() const noexcept {
+    constexpr U64 ndims() const noexcept {
         return prototype.shape.size();
     }
 
-    bool valid_shape() const noexcept {
-        bool valid = true;
-        for (const auto& dim : prototype.shape) {
-            valid &= dim > 0;
-        }
-        return valid;
+    constexpr bool valid_shape() const noexcept {
+        return prototype.size > 0;
     }
 
-    const Locale& locale() const noexcept {
+    constexpr const Locale& locale() const noexcept {
         return prototype.locale;
     }
 
-    void set_locale(const Locale& locale) noexcept {
+    constexpr void set_locale(const Locale& locale) noexcept {
         prototype.locale = locale;
     }
 
-    bool operator==(const TensorPrototype& other) const noexcept {
+    constexpr bool operator==(const TensorPrototype& other) const noexcept {
         return prototype.hash == other.prototype.hash;
     }
 
-    bool operator!=(const TensorPrototype& other) const noexcept {
+    constexpr bool operator!=(const TensorPrototype& other) const noexcept {
         return prototype.hash != other.prototype.hash;
     }
 
     // TODO: Move functions to source file.
 
-    U64 shape_to_offset(const std::vector<U64>& shape) const {
+    constexpr U64 shape_to_offset(const std::vector<U64>& shape) const {
         U64 index = prototype.offset;
         U64 pad = shape.size() - prototype.stride.size();
         for (U64 i = 0; i < prototype.stride.size(); i++) {
@@ -100,7 +108,7 @@ class TensorPrototype {
         return index;
     }
 
-    void offset_to_shape(U64 index, std::vector<U64>& shape) const {
+    constexpr void offset_to_shape(U64 index, std::vector<U64>& shape) const {
         for (U64 i = 0; i < prototype.stride.size(); i++) {
             shape[i] = index / prototype.stride[i];
             index -= shape[i] * prototype.stride[i];
@@ -110,15 +118,17 @@ class TensorPrototype {
     void expand_dims(const U64& axis) {
         prototype.shape.insert(prototype.shape.begin() + axis, 1);
         prototype.stride.insert(prototype.stride.begin() + axis, 1);
+        update_cache();
     }
 
     void squeeze_dims(const U64& axis) {
         assert(prototype.shape[axis] == 1);
         prototype.shape.erase(prototype.shape.begin() + axis);
         prototype.stride.erase(prototype.stride.begin() + axis);
+        update_cache();
     }
 
-    // TODO: Add permutation function.
+    // TODO: Add permutation() function.
 
     void view(const std::vector<Token>& tokens) {
         std::vector<U64> shape;
@@ -188,12 +198,9 @@ class TensorPrototype {
         prototype.offset = offset;
         prototype.contiguous = false;
 
-        prototype.size = 1;
-        for (const auto& s : shape) {
-            prototype.size *= s;
-        }
-        prototype.size_bytes = prototype.size * 
-                               prototype.element_size;
+        update_cache();
+
+        return Result::SUCCESS;
     }
     
  protected:
@@ -202,11 +209,6 @@ class TensorPrototype {
     void initialize(const std::vector<U64>& shape, const U64& element_size) {
         prototype.shape = shape;
         prototype.element_size = element_size;
-
-        prototype.size = 1;
-        for (const auto& dim : prototype.shape) {
-            prototype.size *= dim;
-        }
 
         prototype.stride.resize(prototype.shape.size());
         for (U64 i = 0; i < prototype.shape.size(); i++) {
@@ -219,9 +221,27 @@ class TensorPrototype {
         assert(prototype.stride.size() == prototype.shape.size());
 
         prototype.hash = std::rand() + 1;
-        prototype.size_bytes = prototype.size *
-                               prototype.element_size;
         prototype.contiguous = true;
+
+        update_cache();
+    }
+
+    void update_cache() {
+        prototype.backstride.resize(prototype.shape.size());
+        prototype.shape_minus_one.resize(prototype.shape.size());
+
+        for (U64 i = 0; i < prototype.shape.size(); i++) {
+            prototype.shape_minus_one[i] = prototype.shape[i] - 1;
+            prototype.backstride[i] = prototype.stride[i] * prototype.shape_minus_one[i];
+        }
+
+        prototype.size = 1;
+        for (const auto& dim : prototype.shape) {
+            prototype.size *= dim;
+        }
+
+        prototype.size_bytes = prototype.size * 
+                               prototype.element_size;
     }
 };
 

@@ -15,43 +15,43 @@ class Tensor<Device::CPU, T> : public TensorBase<Device::CPU, T> {
 
     Tensor(const TensorBase<Device::CPU, T>& base) : TensorBase<Device::CPU, T>(base) {}
 
-    const T* data() const noexcept {
-        return static_cast<T*>(this->buffer->data());
+    constexpr const T* data() const noexcept {
+        return reinterpret_cast<T*>(this->buffer->data());
     }
 
-    T* data() noexcept {
-        return static_cast<T*>(this->buffer->data());
+    constexpr T* data() noexcept {
+        return reinterpret_cast<T*>(this->buffer->data());
     }
 
-    const T& operator[](const U64& idx) const noexcept {
+    constexpr const T& operator[](const U64& idx) const noexcept {
         return data()[idx];
     }
 
-    T& operator[](const U64& idx) noexcept {
+    constexpr T& operator[](const U64& idx) noexcept {
         return data()[idx];
     }
 
-    const T& operator[](const std::vector<U64>& idx) const noexcept {
+    constexpr const T& operator[](const std::vector<U64>& idx) const noexcept {
         return data()[this->shape_to_offset(idx)];
     }
 
-    T& operator[](const std::vector<U64>& idx) noexcept {
+    constexpr T& operator[](const std::vector<U64>& idx) noexcept {
         return data()[this->shape_to_offset(idx)];
     }
 
-    auto begin() {
+    constexpr auto begin() {
         return data();
     }
 
-    auto end() {
+    constexpr auto end() {
         return data() + this->size();
     }
 
-    auto begin() const {
+    constexpr auto begin() const {
         return data();
     }
 
-    auto end() const {
+    constexpr auto end() const {
         return data() + this->size();
     }
 };

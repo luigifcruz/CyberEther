@@ -43,19 +43,19 @@ class TensorBuffer<Device::Vulkan> {
         return _host_accessible;
     }
 
-    const VkDeviceMemory& memory() const noexcept {
+    constexpr const VkDeviceMemory& memory() const noexcept {
         return _memory;
     }
 
-    VkDeviceMemory& memory() noexcept {
+    constexpr VkDeviceMemory& memory() noexcept {
         return _memory;
     }
 
-    const VkBuffer& data() const noexcept {
+    constexpr const VkBuffer& data() const noexcept {
         return _buffer;
     }
 
-    VkBuffer& data() noexcept {
+    constexpr VkBuffer& data() noexcept {
         return _buffer;
     }
 

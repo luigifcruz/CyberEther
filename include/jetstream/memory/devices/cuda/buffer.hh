@@ -45,11 +45,11 @@ class TensorBuffer<Device::CUDA> {
         return _host_accessible;
     }
 
-    const void* data() const noexcept {
+    constexpr const void* data() const noexcept {
         return _buffer;
     }
 
-    void* data() noexcept {
+    constexpr void* data() noexcept {
         return _buffer;
     }
 

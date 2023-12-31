@@ -45,11 +45,11 @@ class TensorBuffer<Device::CPU> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    const void* data() const noexcept {
+    constexpr const void* data() const noexcept {
         return buffer;
     }
 
-    void* data() noexcept {
+    constexpr void* data() noexcept {
         return buffer;
     }
 
