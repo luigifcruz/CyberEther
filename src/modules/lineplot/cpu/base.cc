@@ -11,14 +11,17 @@ Result Lineplot<D, T>::createCompute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
-    for (U64 i = 0; i < numberOfElements; ++i) {
-        F32 sum = 0.0;
+    const F32 normalizationFactor = 1.0f / (0.5f * numberOfBatches);
+    std::vector<F32> sums(numberOfElements, 0.0f);
 
-        for (U64 b = 0; b < numberOfBatches; ++b) {
-            sum += input.buffer[{b, i}];
+    for (U64 b = 0; b < numberOfBatches; ++b) {
+        for (U64 i = 0; i < numberOfElements; ++i) {
+            sums[i] += input.buffer[i + b * numberOfElements];
         }
+    }
 
-        plot[{i, 1}] = (sum / (0.5f * numberOfBatches)) - 1.0f;
+    for (U64 i = 0; i < numberOfElements; ++i) {
+        plot[(i * 3) + 1] = (sums[i] * normalizationFactor) - 1.0f;
     }
 
     return Result::SUCCESS;
