@@ -130,7 +130,55 @@ class TensorPrototype {
 
     // TODO: Add permutation() function.
 
-    void view(const std::vector<Token>& tokens) {
+    Result broadcast_to(const std::vector<U64>& shape) {
+        if (shape.size() < prototype.shape.size()) {
+            JST_ERROR("[MEMORY] Cannot broadcast shape: {} -> {}.", prototype.shape, shape);
+            return Result::ERROR;
+        }
+
+        if (shape.size() > prototype.shape.size()) {
+            for (U64 i = 0; i < shape.size() - prototype.shape.size(); i++) {
+                expand_dims(0);
+            }
+        }
+
+        bool contiguous = prototype.contiguous;
+        std::vector<U64> new_shape(shape.size());
+        std::vector<U64> new_stride(shape.size());
+
+        for (U64 i = 0; i < shape.size(); i++) {
+            if (prototype.shape[i] != shape[i]) {
+                if (prototype.shape[i] == 1) {
+                    new_shape[i] = shape[i];
+                    new_stride[i] = 0;
+                } else if (shape[i] == 1) {
+                    new_shape[i] = prototype.shape[i];
+                    new_stride[i] = prototype.stride[i];
+                } else {
+                    JST_ERROR("[MEMORY] Cannot broadcast shape: {} -> {}.", prototype.shape, shape);
+                    return Result::ERROR;
+                }
+            } else {
+                new_shape[i] = prototype.shape[i];
+                new_stride[i] = prototype.stride[i];
+            }
+            contiguous &= new_stride[i] != 0;
+        }
+
+        JST_TRACE("[MEMORY] Broadcast shape: {} -> {}.", prototype.shape, new_shape);
+        JST_TRACE("[MEMORY] Broadcast stride: {} -> {}.", prototype.stride, new_stride);
+        JST_TRACE("[MEMORY] Broadcast contiguous: {} -> {}.", prototype.contiguous, contiguous);
+
+        prototype.shape = new_shape;
+        prototype.stride = new_stride;
+        prototype.contiguous = contiguous;
+
+        update_cache();
+
+        return Result::SUCCESS;
+    }
+
+    Result view(const std::vector<Token>& tokens) {
         std::vector<U64> shape;
         std::vector<U64> stride;
         U64 offset = 0;
