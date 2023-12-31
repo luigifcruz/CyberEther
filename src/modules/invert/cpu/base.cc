@@ -12,14 +12,15 @@ Result Invert<D, T>::createCompute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 Result Invert<D, T>::compute(const RuntimeMetadata&) {
-    for (U64 i = 0; i < input.buffer.size(); i++) {
-        auto value = input.buffer[i];
+    const auto* in = reinterpret_cast<std::pair<T, T>*>(input.buffer.data());
+    auto* out = reinterpret_cast<std::pair<T, T>*>(output.buffer.data());
 
-        if ((i % 2) == 0) {
-            output.buffer[i] = {value.real(), value.imag()};
-        } else {
-            output.buffer[i] = {-value.real(), -value.imag()};
-        }
+    for (U64 i = 0; i < input.buffer.size() / 2; i++) {
+        const auto& [in_even, in_odd] = in[i];
+        auto& [out_even, out_odd] = out[i];
+
+        out_even =  in_even;
+        out_odd  = -in_odd;
     }
 
     return Result::SUCCESS;
