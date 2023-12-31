@@ -76,6 +76,10 @@ class Multiply : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
+    Tensor<D, T> a;
+    Tensor<D, T> b;
+    Tensor<D, T> c;
+
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct {
         MTL::ComputePipelineState* state;

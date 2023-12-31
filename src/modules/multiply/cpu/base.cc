@@ -1,5 +1,9 @@
 #include "../generic.cc"
 
+#pragma GCC optimize("unroll-loops")
+
+#include "jetstream/memory/devices/cpu/helpers.hh"
+
 namespace Jetstream {
 
 template<Device D, typename T>
@@ -10,12 +14,14 @@ Result Multiply<D, T>::createCompute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 Result Multiply<D, T>::compute(const RuntimeMetadata&) {
-    std::vector<U64> shape_p(output.product.rank(), 1);
-
-    for (U64 idx = 0; idx < output.product.size(); idx++) {
-        output.product.offset_to_shape(idx, shape_p);
-        output.product[idx] = input.factorA[shape_p] * input.factorB[shape_p];
-    }
+    Memory::CPU::AutomaticIterator([](const auto& a, const auto& b, auto& c) {
+        if constexpr (std::is_same_v<T, CF32>) {
+            c = std::complex<F32>(a.real() * b.real() - a.imag() * b.imag(),
+                                  a.real() * b.imag() + a.imag() * b.real());
+        } else {
+            c = a * b;
+        }
+    }, a, b, c);
 
     return Result::SUCCESS;
 }

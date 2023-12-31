@@ -49,6 +49,15 @@ Result Multiply<D, T>::create() {
 
     output.product = Tensor<D, T>(output_shape);
 
+    // Broadcast input.
+
+    a = input.factorA;
+    b = input.factorB;
+    c = output.product;
+
+    a.broadcast_to(c.shape());
+    b.broadcast_to(c.shape());
+
     return Result::SUCCESS;
 }
 
