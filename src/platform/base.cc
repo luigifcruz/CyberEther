@@ -42,7 +42,11 @@ Result OpenUrl(const std::string& url) {
 #elif defined(JST_OS_LINUX)
 
 Result OpenUrl(const std::string& url) {
-    system(fmt::format("xdg-open ""{}""", url).c_str());
+    const auto res = system(fmt::format("xdg-open ""{}""", url).c_str());
+    if (res != 0) {
+        JST_ERROR("Failed to open URL: {}", url);
+        return Result::ERROR;
+    }
     return Result::SUCCESS;
 }
 
@@ -148,7 +152,12 @@ Result PickFile(std::string& path) {
         return Result::ERROR;
     }
 
-    fgets(buffer.data(), buffer.size(), pipe.get());
+    const auto res = fgets(buffer.data(), buffer.size(), pipe.get());
+    if (res == nullptr) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
     path = buffer.data();
 
     if (path.empty()) {
@@ -262,7 +271,12 @@ Result SaveFile(std::string& path) {
         return Result::ERROR;
     }
 
-    fgets(buffer.data(), buffer.size(), pipe.get());
+    const auto res = fgets(buffer.data(), buffer.size(), pipe.get());
+    if (res == nullptr) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
     path = buffer.data();
 
     if (path.empty()) {
