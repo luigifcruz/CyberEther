@@ -47,7 +47,7 @@ These are some examples of CyberEther running on the field. Do you have a cool d
 This is a simple demo showing how to create a new flowgraph in CyberEther. The flowgraph is a simple pipeline with a Soapy block streaming data from an RTL-SDR dongle and a Spectroscope block visualizing the data with a waterfall and line plot.
 
 [//]: <> (cyberether-new-flowgraph.mp4)
-https://github.com/luigifcruz/CyberEther/assets/6627901/fcc6c17c-b191-4982-bfaa-012472c0a919
+https://github.com/luigifcruz/CyberEther/assets/6627901/f181ae0a-8296-4a5c-8287-6280f1e6a707
 
 ### Wideband Spectrum Analyzer
 This is a screen capture of CyberEther running on a MacBook Pro with an M1 Pro chip. The Metal backend is being used for the graphical and compute blocks. The flowgraph is a wideband spectrum analyzer with a bandwidth of 122 MHz streaming from an [RFNM](https://rfnm.io/) software-defined radio.
