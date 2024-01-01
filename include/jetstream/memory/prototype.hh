@@ -56,24 +56,8 @@ class TensorPrototype {
         return prototype.stride;
     }
 
-    constexpr const U64& shape(const U64& idx) const noexcept {
-        return prototype.shape[idx];
-    }
-
-    constexpr const U64& stride(const U64& idx) const noexcept {
-        return prototype.stride[idx];
-    }
-
     constexpr bool empty() const noexcept {
         return prototype.size == 0;
-    }
-
-    constexpr U64 rank() const noexcept {
-        return prototype.shape.size();
-    }
-
-    constexpr U64 ndims() const noexcept {
-        return prototype.shape.size();
     }
 
     constexpr bool valid_shape() const noexcept {
@@ -84,10 +68,6 @@ class TensorPrototype {
         return prototype.locale;
     }
 
-    constexpr void set_locale(const Locale& locale) noexcept {
-        prototype.locale = locale;
-    }
-
     constexpr bool operator==(const TensorPrototype& other) const noexcept {
         return prototype.hash == other.prototype.hash;
     }
@@ -96,9 +76,29 @@ class TensorPrototype {
         return prototype.hash != other.prototype.hash;
     }
 
+    const U64& shape(const U64& idx) const noexcept {
+        return prototype.shape[idx];
+    }
+
+    const U64& stride(const U64& idx) const noexcept {
+        return prototype.stride[idx];
+    }
+
+    U64 rank() const noexcept {
+        return prototype.shape.size();
+    }
+
+    U64 ndims() const noexcept {
+        return prototype.shape.size();
+    }
+
+    void set_locale(const Locale& locale) noexcept {
+        prototype.locale = locale;
+    }
+
     // TODO: Move functions to source file.
 
-    constexpr U64 shape_to_offset(const std::vector<U64>& shape) const {
+    U64 shape_to_offset(const std::vector<U64>& shape) const {
         U64 index = prototype.offset;
         U64 pad = shape.size() - prototype.stride.size();
         for (U64 i = 0; i < prototype.stride.size(); i++) {
@@ -108,7 +108,7 @@ class TensorPrototype {
         return index;
     }
 
-    constexpr void offset_to_shape(U64 index, std::vector<U64>& shape) const {
+    void offset_to_shape(U64 index, std::vector<U64>& shape) const {
         for (U64 i = 0; i < prototype.stride.size(); i++) {
             shape[i] = index / prototype.stride[i];
             index -= shape[i] * prototype.stride[i];
