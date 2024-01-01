@@ -31,6 +31,7 @@ int& _JST_LOG_DEBUG_LEVEL();
 #define _JST_LOG_ENDL          std::endl;
 #define _JST_LOG_FORMAT        fmt::format
 
+// TODO: Make this a environment variable.
 #ifdef JST_OS_IOS
 #define _JST_LOG_TAINT(first, ...)   _JST_LOG_FORMAT(__VA_ARGS__)
 #else
