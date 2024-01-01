@@ -4,6 +4,7 @@ project('fmt', 'cpp', version: '9.1.0', license: 'BSD', default_options: ['cpp_s
 
 fmt_private_cpp_args = []
 fmt_interface_cpp_args = []
+
 if get_option('default_library') == 'shared'
   fmt_private_cpp_args += ['-DFMT_EXPORT']
   fmt_interface_cpp_args += ['-DFMT_SHARED']
@@ -18,10 +19,12 @@ fmt_lib = library(
   install: not meson.is_subproject(),
 )
 
-install_subdir('include',
-  strip_directory: true,
-  install_dir: get_option('includedir'),
-)
+if not meson.is_subproject()
+  install_subdir('include',
+    strip_directory: true,
+    install_dir: get_option('includedir'),
+  )
+endif
 
 fmt_dep = declare_dependency(
   include_directories: 'include',
@@ -38,8 +41,10 @@ fmt_header_only_dep = declare_dependency(
   compile_args: '-DFMT_HEADER_ONLY',
 )
 
-pkg_mod = import('pkgconfig')
-pkg_mod.generate(fmt_lib,
-  name: 'fmt',
-  filebase: 'fmt',
-)
+if not meson.is_subproject()
+  pkg_mod = import('pkgconfig')
+  pkg_mod.generate(fmt_lib,
+    name: 'fmt',
+    filebase: 'fmt',
+  )
+endif

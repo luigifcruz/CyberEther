@@ -1,21 +1,34 @@
 deps = [
-    dependency('soapysdr', 'SoapySDR', required: get_option('SOAPYSDR') or meson.is_cross_build()),
+    dependency('soapysdr', 'SoapySDR', required: get_option('SOAPYSDR')),
 ]
 
-if target_machine.system() == 'ios'
+if jst_is_ios
     deps += [
-        dependency('soapyremote', 'SoapyRemote', required: meson.is_cross_build()),
+        dependency('soapysdr', 'SoapySDR', required: true),
+        dependency('soapyremote', 'SoapyRemote', required: true),
     ]
 endif
 
-if target_machine.system() == 'emscripten'
+if jst_is_browser or jst_is_windows
     deps += [
-        dependency('soapyremote', 'SoapyRemote', required: meson.is_cross_build()),
-        dependency('libusb', required: meson.is_cross_build()),
-        dependency('libairspy', required: meson.is_cross_build()),
-        dependency('soapyairspy', required: meson.is_cross_build()),
-        dependency('librtlsdr', required: meson.is_cross_build()),
-        dependency('soapyrtlsdr', required: meson.is_cross_build()),  
+        dependency('soapysdr', 'SoapySDR', required: true),
+        dependency('libairspy', required: true),
+        dependency('soapyairspy', required: true),
+        dependency('librtlsdr', required: true),
+        dependency('soapyrtlsdr', required: true),  
+    ]
+endif
+
+if jst_is_browser
+    deps += [
+        dependency('soapyremote', 'SoapyRemote', required: true),
+        dependency('libusb-browser', required: true),
+    ]
+endif
+
+if jst_is_windows
+    deps += [
+        dependency('libusb', fallback: 'libusb-1.0', required: true),
     ]
 endif
 

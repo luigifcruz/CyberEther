@@ -1,0 +1,13 @@
+[wrap-file]
+directory = libusb-1.0.26
+source_url = https://github.com/libusb/libusb/releases/download/v1.0.26/libusb-1.0.26.tar.bz2
+source_filename = libusb-1.0.26.tar.bz2
+source_hash = 12ce7a61fc9854d1d2a1ffe095f7b5fac19ddba095c259e6067a46500381b5a5
+patch_filename = libusb_1.0.26-5_patch.zip
+patch_url = https://wrapdb.mesonbuild.com/v2/libusb_1.0.26-5/get_patch
+patch_hash = 6b107bcc552a531099c19181b327b8d62c2c73bdc4d488f85449d140d3e7eb9b
+source_fallback_url = https://github.com/mesonbuild/wrapdb/releases/download/libusb_1.0.26-5/libusb-1.0.26.tar.bz2
+wrapdb_version = 1.0.26-5
+
+[provide]
+libusb-1.0 = libusb_dep

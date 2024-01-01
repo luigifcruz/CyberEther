@@ -27,5 +27,5 @@ libusb_dep = declare_dependency(
 )
 
 if target_machine.system() == 'emscripten'
-  meson.override_dependency('libusb', libusb_dep)
+  meson.override_dependency('libusb-browser', libusb_dep)
 endif

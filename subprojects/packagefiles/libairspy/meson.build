@@ -4,9 +4,16 @@ private_cpp_args = []
 interface_cpp_args = []
 private_cpp_args += []
 interface_cpp_args += []
-dep_lst = [
-  dependency('libusb', required: true),
-]
+
+if target_machine.system() == 'emscripten'
+  dep_lst = [
+    dependency('libusb-browser', required: true),
+  ]
+else
+  dep_lst = [
+    dependency('libusb', fallback: 'libusb-1.0', required: true),
+  ]
+endif
 
 libairspy_lib = library(
   'libairspy',

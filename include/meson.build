@@ -6,4 +6,6 @@ configure_file(
    install_dir : get_option('includedir') + '/jetstream'
 )
 
-install_subdir('jetstream', install_dir: get_option('includedir'))
+if not jst_is_static
+   install_subdir('jetstream', install_dir: get_option('includedir'))
+endif

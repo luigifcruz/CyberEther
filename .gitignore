@@ -20,4 +20,4 @@ build-*
 
 !*.wrap
 !packagefiles
-!libusb
+!libusb-browser
