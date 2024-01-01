@@ -14,7 +14,8 @@ RUN apt install -y git build-essential cmake pkg-config ninja-build meson git ze
 RUN apt install -y spirv-cross glslang-tools libglfw3-dev
 RUN apt install -y mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
 RUN apt install -y libsoapysdr-dev soapysdr-module-rtlsdr
-RUN apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
+RUN apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav 
+RUN apt install -y python3-yaml
 
 ###
 

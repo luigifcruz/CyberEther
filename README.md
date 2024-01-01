@@ -102,6 +102,9 @@ $ pacman -S soapysdr soapyrtlsdr
 
 # For Remote capabilities.
 $ pacman -S gstreamer gst-plugins-base gst-plugins-good gst-libav
+
+# Pre-loaded examples metadata.
+$ pacman -S python-yaml
 ```
 
 #### Linux (Ubuntu 22.04)
@@ -127,6 +130,9 @@ $ apt install libsoapysdr-dev soapysdr-module-rtlsdr
 
 # For Remote capabilities.
 $ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
+
+# Pre-loaded examples metadata.
+$ apt install python3-yaml
 ```
 
 #### macOS 13+ (Apple Silicon)
@@ -149,6 +155,9 @@ $ brew install soapysdr soapyrtlsdr
 
 # For Remote capabilities.
 $ brew install gstreamer
+
+# Pre-loaded examples metadata.
+$ python -m pip install PyYAML
 ```
 
 #### Browser (Chrome)
