@@ -1,4 +1,4 @@
-project('soapyrtlsdr', 'cpp', version: '0.3.3', default_options: ['cpp_std=c++11'])
+project('soapyrtlsdr', 'cpp', version: '0.3.3', default_options: ['cpp_std=c++11', 'optimization=2'])
 
 private_cpp_args = []
 interface_cpp_args = []

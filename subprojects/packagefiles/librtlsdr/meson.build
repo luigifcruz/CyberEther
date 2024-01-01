@@ -1,4 +1,4 @@
-project('librtlsdr', 'c', version: '0.7.0', default_options: ['cpp_std=c++11'])
+project('librtlsdr', 'c', version: '0.7.0', default_options: ['cpp_std=c++11', 'optimization=2'])
 
 private_cpp_args = []
 interface_cpp_args = []
@@ -11,7 +11,7 @@ if target_machine.system() == 'emscripten'
   ]
 else
   dep_lst = [
-    dependency('libusb', fallback: 'libusb-1.0', required: true),
+    dependency('libusb', 'libusb-1.0', required: true),
   ]
 endif
 

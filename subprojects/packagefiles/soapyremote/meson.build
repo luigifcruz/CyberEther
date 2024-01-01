@@ -1,4 +1,4 @@
-project('soapyremote', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11'])
+project('soapyremote', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11', 'optimization=2'])
 
 private_cpp_args = []
 interface_cpp_args = []

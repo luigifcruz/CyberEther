@@ -1,4 +1,4 @@
-project('libairspy', ['c', 'cpp'], version: '1.0.10', default_options: ['cpp_std=c++11'])
+project('libairspy', ['c', 'cpp'], version: '1.0.10', default_options: ['cpp_std=c++11', 'optimization=2'])
 
 private_cpp_args = []
 interface_cpp_args = []
@@ -11,7 +11,7 @@ if target_machine.system() == 'emscripten'
   ]
 else
   dep_lst = [
-    dependency('libusb', fallback: 'libusb-1.0', required: true),
+    dependency('libusb', 'libusb-1.0', required: true),
   ]
 endif
 

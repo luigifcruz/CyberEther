@@ -1,6 +1,11 @@
-deps = [
-    dependency('soapysdr', 'SoapySDR', required: get_option('SOAPYSDR')),
-]
+deps = []
+
+if jst_is_linux or \
+   jst_is_macos
+    deps += [
+        dependency('soapysdr', 'SoapySDR', required: false),
+    ]
+endif
 
 if jst_is_ios
     deps += [
@@ -9,26 +14,19 @@ if jst_is_ios
     ]
 endif
 
-if jst_is_browser or jst_is_windows
+if jst_is_windows
     deps += [
         dependency('soapysdr', 'SoapySDR', required: true),
-        dependency('libairspy', required: true),
-        dependency('soapyairspy', required: true),
-        dependency('librtlsdr', required: true),
-        dependency('soapyrtlsdr', required: true),  
+        dependency('soapyairspy', required: true).as_link_whole(),
+        dependency('soapyrtlsdr', required: true).as_link_whole(),  
     ]
 endif
 
 if jst_is_browser
     deps += [
-        dependency('soapyremote', 'SoapyRemote', required: true),
-        dependency('libusb-browser', required: true),
-    ]
-endif
-
-if jst_is_windows
-    deps += [
-        dependency('libusb', fallback: 'libusb-1.0', required: true),
+        dependency('soapysdr', 'SoapySDR', required: true),
+        dependency('soapyairspy', required: true).as_link_whole(),
+        dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
 endif
 

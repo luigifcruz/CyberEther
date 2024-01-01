@@ -1,9 +1,9 @@
-project('soapysdr', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11'])
+project('soapysdr', 'cpp', version: '0.8.1', default_options: ['cpp_std=c++11', 'optimization=2'])
 
 private_cpp_args = []
 interface_cpp_args = []
-private_cpp_args += []
-interface_cpp_args += []
+private_cpp_args += ['-DSOAPY_SDR_DLL_EXPORTS']
+interface_cpp_args += ['-DSOAPY_SDR_DLL_EXPORTS']
 
 soapysdr_lib = library(
   'SoapySDR',
