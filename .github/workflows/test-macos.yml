@@ -36,9 +36,17 @@ jobs:
 
       ##
 
-      - name: Build
+      - name: Init submodules
+        run: git submodule update --init --recursive
+
+      - name: Build Dynamic
         run: |
           rm -fr build
-          git submodule update --init --recursive
           meson build -Dprefix=/usr
           cd build && ninja
+
+      - name: Build Static
+        run: |
+          rm -fr build-static
+          meson build-static --default-library=static -Dprefix=/usr
+          cd build-static && ninja

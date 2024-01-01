@@ -30,10 +30,15 @@ RUN pacman -Sy --noconfirm gstreamer gst-plugins-base gst-plugins-good gst-libav
 COPY . /cyberether
 WORKDIR /cyberether
 
-RUN rm -fr build
 RUN git submodule update --init --recursive
+
+RUN rm -fr build
 RUN meson build -Dprefix=/usr
 RUN cd build && ninja install
+
+RUN rm -fr build-static
+RUN meson build-static --default-library=static -Dprefix=/usr
+RUN cd build-static && ninja
 
 # Clean up
 RUN pacman -Scc --noconfirm

@@ -21,9 +21,14 @@ RUN apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreame
 COPY . /cyberether
 WORKDIR /cyberether
 
-RUN rm -fr build
 RUN git submodule update --init --recursive
+
+RUN rm -fr build
 RUN meson build -Dprefix=/usr
 RUN cd build && ninja install
+
+RUN rm -fr build-static
+RUN meson build-static --default-library=static -Dprefix=/usr
+RUN cd build-static && ninja
 
 WORKDIR /
