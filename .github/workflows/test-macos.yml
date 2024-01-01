@@ -50,3 +50,9 @@ jobs:
           rm -fr build-static
           meson build-static --default-library=static -Dprefix=/usr
           cd build-static && ninja
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-macos-x86_64
+          path: ./build-static/cyberether

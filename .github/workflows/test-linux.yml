@@ -26,6 +26,15 @@ jobs:
       - name: Run ninja test for Arch.
         run: docker run --rm cyberether-arch bash -c "cd cyberether/build && ninja test"
 
+      - name: Copy binary from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-arch bash -c "cp cyberether/build-static/cyberether /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-linux-wayland-x86_64
+          path: ./cyberether
+
   build-ubuntu:
     runs-on: ubuntu-latest
 
@@ -40,3 +49,12 @@ jobs:
 
       - name: Run ninja test for Ubuntu.
         run: docker run --rm cyberether-ubuntu bash -c "cd cyberether/build && ninja test"
+
+      - name: Copy binary from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-ubuntu bash -c "cp cyberether/build-static/cyberether /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-linux-x11-x86_64
+          path: ./cyberether

@@ -7,7 +7,8 @@ FROM archlinux:latest
 # This is more complicated than it needs to be.
 #
 
-RUN pacman -Syu --noconfirm git base-devel cmake pkg-config
+RUN pacman -Syyu --noconfirm
+RUN pacman -Sy --noconfirm git base-devel cmake pkg-config
 RUN git clone https://github.com/KhronosGroup/SPIRV-Cross.git
 RUN cd SPIRV-Cross && mkdir build && cd build && cmake .. && make -j && make install
 
@@ -20,7 +21,7 @@ RUN cd SPIRV-Cross && mkdir build && cd build && cmake .. && make -j && make ins
 #
 
 RUN pacman -Sy --noconfirm git base-devel cmake pkg-config ninja meson git zenity
-RUN pacman -Sy --noconfirm glslang glfw-x11
+RUN pacman -Sy --noconfirm glslang glfw-wayland
 RUN pacman -Sy --noconfirm vulkan-icd-loader vulkan-validation-layers
 RUN pacman -Sy --noconfirm soapysdr soapyrtlsdr
 RUN pacman -Sy --noconfirm gstreamer gst-plugins-base gst-plugins-good gst-libav
