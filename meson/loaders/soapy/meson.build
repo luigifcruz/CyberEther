@@ -1,7 +1,6 @@
 deps = []
 
-if jst_is_linux or \
-   jst_is_macos
+if (jst_is_linux or jst_is_macos) and not jst_is_static
     deps += [
         dependency('soapysdr', 'SoapySDR', required: false),
     ]
@@ -14,7 +13,7 @@ if jst_is_ios
     ]
 endif
 
-if jst_is_windows
+if (jst_is_windows or jst_is_macos or jst_is_linux) and jst_is_static
     deps += [
         dependency('soapysdr', 'SoapySDR', required: true),
         dependency('soapyairspy', required: true).as_link_whole(),
