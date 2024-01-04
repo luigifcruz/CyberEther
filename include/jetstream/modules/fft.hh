@@ -9,6 +9,8 @@
 #include "jetstream/compute/graph/base.hh"
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
+// Looks like Windows static build crashes if multitheading is enabled.
+#define POCKETFFT_NO_MULTITHREADING
 #include "jetstream/tools/pocketfft.hh"
 #endif
 
