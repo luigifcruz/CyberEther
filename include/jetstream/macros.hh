@@ -7,11 +7,7 @@
 
 //
 // Core macros.
-// 
-
-#ifdef __EMSCRIPTEN__
-#define JETSTREAM_STATIC
-#endif
+//
 
 #ifndef JETSTREAM_API
 #define JETSTREAM_API __attribute__((visibility("default")))

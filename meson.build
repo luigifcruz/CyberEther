@@ -13,8 +13,10 @@ project(
 # Global Variables
 #
 
+jst_build_optimize = get_option('optimization')
+jst_build_debug = get_option('debug')
 jst_is_static = get_option('default_library') == 'static'
-jst_is_release = get_option('buildtype') == 'release'
+jst_is_release = jst_build_debug
 
 jst_is_linux   = target_machine.system() == 'linux'
 jst_is_macos   = target_machine.system() == 'darwin'
@@ -22,6 +24,15 @@ jst_is_ios     = target_machine.system() == 'ios'
 jst_is_android = target_machine.system() == 'android'
 jst_is_browser = target_machine.system() == 'emscripten'
 jst_is_windows = target_machine.system() == 'windows'
+
+if not jst_is_linux   and \
+   not jst_is_macos   and \
+   not jst_is_ios     and \
+   not jst_is_android and \
+   not jst_is_browser and \
+   not jst_is_windows
+    error('Cannot determine target system. If your system is supported, file a bug report.')
+endif
 
 #
 # Handle Options
@@ -48,7 +59,23 @@ inc_lst = [
 # Handle Configuration Data
 #
 
+cfg_lst.set('version', meson.project_version())
 cfg_lst.set('buildtype', get_option('buildtype'))
+cfg_lst.set('optimization', get_option('optimization'))
+cfg_lst.set('debug', get_option('debug'))
+
+cfg_lst.set('JST_IS_STATIC', jst_is_static)
+cfg_lst.set('JST_IS_SHARED', not jst_is_static)
+
+cfg_lst.set('JST_DEBUG_MODE', not jst_is_release)
+cfg_lst.set('JST_RELEASE_MODE', jst_is_release)
+
+cfg_lst.set('JST_OS_LINUX', jst_is_linux)
+cfg_lst.set('JST_OS_MAC', jst_is_macos)
+cfg_lst.set('JST_OS_IOS', jst_is_ios)
+cfg_lst.set('JST_OS_ANDROID', jst_is_android)
+cfg_lst.set('JST_OS_BROWSER', jst_is_browser)
+cfg_lst.set('JST_OS_WINDOWS', jst_is_windows)
 
 #
 # Call Subdirectories

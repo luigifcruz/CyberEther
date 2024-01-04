@@ -699,7 +699,7 @@ Result Compositor::drawStatic() {
                 globalModalToggle = true;
                 globalModalContentId = 1;
             }
-#ifndef __EMSCRIPTEN__
+#ifndef JST_OS_BROWSER
             ImGui::Separator();
             if (ImGui::MenuItem("Quit CyberEther")) {
                 std::exit(0);
@@ -866,7 +866,7 @@ Result Compositor::drawStatic() {
                 ImGui::SameLine();
             }
 
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
             ImGui::Dummy(ImVec2(5.0f, 0.0f));
             ImGui::SameLine();
 

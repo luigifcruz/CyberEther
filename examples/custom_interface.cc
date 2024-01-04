@@ -8,7 +8,7 @@ using namespace Jetstream;
 constexpr static Device ComputeDevice = Device::CPU;
 
 // Selects the graphical backend to use.
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
 constexpr static Device RenderDevice  = Device::WebGPU;
 #else
 constexpr static Device RenderDevice  = Device::Vulkan;
@@ -101,7 +101,7 @@ class UI {
             }
         });
 
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
         emscripten_set_main_loop_arg(callRenderLoop, this, 0, 1);
 #else
         graphicalWorker = std::thread([&]{
@@ -117,7 +117,7 @@ class UI {
     Result destroy() {
         streaming = false;
         computeWorker.join();
-#ifndef __EMSCRIPTEN__
+#ifndef JST_OS_BROWSER
         graphicalWorker.join();
 #endif
         instance.destroy();
@@ -298,7 +298,7 @@ int main() {
     {
         auto ui = UI(instance);
 
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
         emscripten_runtime_keepalive_push();
 #else
         while (instance.viewport().keepRunning()) {

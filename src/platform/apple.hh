@@ -4,6 +4,7 @@
 #include <string>
 
 #include "jetstream/platform.hh"
+#include "jetstream/macros.hh"
 
 namespace Jetstream::Platform {
 

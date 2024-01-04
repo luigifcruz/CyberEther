@@ -5,7 +5,7 @@
 // Platform Specific
 // 
 
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
 #include "emscripten.h"
 #endif
 

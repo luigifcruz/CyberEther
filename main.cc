@@ -183,7 +183,7 @@ int main(int argc, char* argv[]) {
         }
     };
 
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
     emscripten_set_main_loop_arg(graphicalThreadLoop, &instance, 0, 1);
 #else
     auto graphicalThread = std::thread([&]{
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
 
     // Start input polling.
 
-#ifdef __EMSCRIPTEN__
+#ifdef JST_OS_BROWSER
     emscripten_runtime_keepalive_push();
 #else
     while (instance.viewport().keepRunning()) {
@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
     // Destruction.
 
     computeThread.join();
-#ifndef __EMSCRIPTEN__
+#ifndef JST_OS_BROWSER
     graphicalThread.join();
 #endif
     

@@ -1,34 +1,20 @@
 #define JETSTREAM_VERSION_STR "@version@"
 #define JETSTREAM_BUILD_TYPE "@buildtype@"
+#define JETSTREAM_BUILD_OPTIMIZATION "@optimization@"
+#define JETSTREAM_BUILD_DEBUG "@debug@"
 
-// System Identification
+#mesondefine JST_IS_STATIC
+#mesondefine JST_IS_SHARED
 
-#if defined(_WIN64)
-#define JST_OS_WINDOWS
-#elif defined(__ANDROID__)
-#define JST_OS_ANDROID
-#elif defined(__APPLE__)
-#include "TargetConditionals.h"
-#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
-#define JST_OS_IOS
-#elif TARGET_OS_MAC || TARGET_OS_OSX
-#define JST_OS_MAC
-#else
-#error "Unknown Apple platform"
-#endif
-#elif defined(__linux__) || defined(__linux) || defined(__unix__)  || defined(__unix)
-#define JST_OS_LINUX
-#else
-#error "System Not Supported"
-#endif
+#mesondefine JST_DEBUG_MODE
+#mesondefine JST_RELEASE_MODE
 
-#ifndef NDEBUG
-#define JST_DEBUG_MODE
-#else
-#ifdef JST_DEBUG_MODE
-#undef JST_DEBUG_MODE
-#endif
-#endif
+#mesondefine JST_OS_WINDOWS
+#mesondefine JST_OS_ANDROID
+#mesondefine JST_OS_IOS
+#mesondefine JST_OS_MAC
+#mesondefine JST_OS_LINUX
+#mesondefine JST_OS_BROWSER
 
 // Loaders
 #define JETSTREAM_LOADER_CPU_AVAILABLE

@@ -4,7 +4,7 @@
 #include "apple.hh"
 #endif
 
-#if defined(__EMSCRIPTEN__)
+#if defined(JST_OS_BROWSER)
 #include "emscripten.h"
 
 EM_JS(const char*, jst_file_error_string, (), {
@@ -32,7 +32,7 @@ namespace Jetstream::Platform {
 
 // Defined on apple.mm.
 
-#elif defined(__EMSCRIPTEN__)
+#elif defined(JST_OS_BROWSER)
 
 Result OpenUrl(const std::string& url) {
     emscripten_run_script(fmt::format("window.open('{}', '_blank');", url).c_str());
@@ -70,7 +70,7 @@ Result OpenUrl(const std::string& url) {
 
 // Defined on apple.mm.
 
-#elif defined(__EMSCRIPTEN__)
+#elif defined(JST_OS_BROWSER)
 
 EM_ASYNC_JS(void, jst_pick_file, (), {
     if (typeof window === 'undefined') {
@@ -192,7 +192,7 @@ Result PickFile(std::string& path) {
 
 // Defined on apple.mm.
 
-#elif defined(__EMSCRIPTEN__)
+#elif defined(JST_OS_BROWSER)
 
 EM_ASYNC_JS(void, jst_save_file, (), {
     if (typeof window === 'undefined') {
