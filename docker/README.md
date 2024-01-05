@@ -5,14 +5,17 @@ These are configuration files for building and running the docker image of Cyber
 
 ```bash
 # Arch Linux Image
-docker build -t cyberether-arch -f Dockerfile-arch .
+docker build -t cyberether-arch -f ./docker/Dockerfile-arch .
 
 # Ubuntu Image
-docker build -t cyberether-ubuntu -f Dockerfile-ubuntu .
+docker build -t cyberether-ubuntu -f ./docker/Dockerfile-ubuntu .
+
+# Emscripten Image
+docker build -t cyberether-emscripten -f ./docker/Dockerfile-emscripten .
 ```
 
 ## Run Docker Image
 
 ```bash
-docker run --rm -it --gpus all --entrypoint bash cyberether-arch
+docker run --rm -it --entrypoint bash cyberether-arch
 ``` 

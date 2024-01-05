@@ -1,0 +1,23 @@
+FROM emscripten/emsdk:latest
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt update --fix-missing
+
+RUN apt install -y git build-essential cmake pkg-config ninja-build meson git
+RUN apt install -y spirv-cross glslang-tools
+RUN apt install -y cargo
+RUN apt install -y python3-yaml
+
+COPY . /cyberether
+WORKDIR /cyberether
+
+RUN git submodule update --init --recursive
+
+RUN rm -fr build
+RUN meson setup \
+    --cross-file crosscompile/emscripten.ini \
+    -Dbuildtype=debugoptimized build
+RUN cd build && ninja
+
+WORKDIR /

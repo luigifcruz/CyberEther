@@ -58,3 +58,33 @@ jobs:
         with:
           name: cyberether-linux-x11-x86_64
           path: ./cyberether
+
+  build-emscripten:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Emscripten.
+        run: docker build -f ./docker/Dockerfile-emscripten -t cyberether-emscripten .
+
+      - name: Copy WASM from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.wasm /tmp"
+
+      - name: Copy Worker from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.worker.js /tmp"
+
+      - name: Copy JS from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.js /tmp"
+
+      - name: Copy resources from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/resources/cyberether.* /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-linux-x11-x86_64
+          path: ./cyberether.*
