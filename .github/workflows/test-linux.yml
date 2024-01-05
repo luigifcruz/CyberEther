@@ -1,0 +1,95 @@
+name: Test Linux
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  deployments: write
+  contents: write
+
+jobs:
+  build-arch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Arch.
+        run: docker build -f ./docker/Dockerfile-arch -t cyberether-arch .
+
+      - name: Run ninja test for Arch.
+        run: docker run --rm cyberether-arch bash -c "cd cyberether/build && ninja test"
+
+      - name: Copy binary from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-arch bash -c "cp cyberether/build-static/cyberether /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-linux-wayland-x86_64
+          path: ./cyberether
+
+  build-ubuntu:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Ubuntu.
+        run: docker build -f ./docker/Dockerfile-ubuntu -t cyberether-ubuntu .
+
+      - name: Run ninja test for Ubuntu.
+        run: docker run --rm cyberether-ubuntu bash -c "cd cyberether/build && ninja test"
+
+      - name: Copy binary from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-ubuntu bash -c "cp cyberether/build-static/cyberether /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-linux-x11-x86_64
+          path: ./cyberether
+
+  build-emscripten:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Emscripten.
+        run: docker build -f ./docker/Dockerfile-emscripten -t cyberether-emscripten .
+
+      - name: Copy WASM from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.wasm /tmp"
+
+      - name: Copy Worker from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.worker.js /tmp"
+
+      - name: Copy JS from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.js /tmp"
+
+      - name: Copy tools from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/tools/local_server.py /tmp"
+
+      - name: Copy resources from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/resources/cyberether.* /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-emscripten
+          path: |
+            ./local_server.py
+            ./cyberether.*

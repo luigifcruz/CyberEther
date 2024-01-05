@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no"/>
+    <title>CyberEther</title>
+    <style>
+        * {
+          margin: 0;
+          padding: 0;
+        }
+
+        body, html {
+          height: 100%;
+          background-color: rgb(30, 30, 30);
+          color: white;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        canvas {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+        }
+
+        #loadingText {
+          z-index: 1;
+          font-size: 3.0em;
+          font-weight: bold;
+          margin-bottom: 0.5em;
+        }
+
+        #progressContainer {
+          width: 10em;
+          background-color: #ccc;
+          margin-top: 4em;
+        }
+
+        #progressBar {
+          width: 0%;
+          height: 1em;
+          background-color: #4CAF50;
+        }
+
+        #iconContainer {
+          position: absolute;
+          z-index: 2;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+        }
+
+        #iconImage {
+          width: 12em;
+          height: 12em;
+          border-radius: 3em;
+          object-fit: cover;
+          margin-bottom: 1em;
+        }
+
+        #errorText {
+          font-size: 1.25em;
+          color: red;
+          margin-bottom: 2em;
+        }
+    </style>
+  </head>
+  <body>
+    <div id="iconContainer">
+      <img src="cyberether.png" id="iconImage" alt="Icon">
+      <div id="loadingText">CyberEther</div>
+      <div id="errorText"></div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script type='text/javascript'>
+      var Module;
+      (async () => {
+        Module = {
+          preRun: [],
+          postRun: [],
+          print: (function() {})(),
+          printErr: function(text) {},
+          onRuntimeInitialized: function() {
+            //
+            // Style
+            //
+
+            document.getElementById('iconContainer').style.display = 'none';
+
+            //
+            // File System Hooks
+            //
+
+            window.jst = {
+              path: '',
+              error: 0,
+              error_string: '',
+              fsHandle: null,
+              fsOpenedToWrite: false,
+            };
+
+            FS.trackingDelegate['onOpenFile'] = function(path, flags) {
+              if (path !== window.jst.path) {
+                return;
+              }
+
+              var perms = ["r", "w", "rw"][flags & 3];
+              if (flags & 512) {
+                  perms += "w"
+              }
+
+              if (/w/.test(perms)) {
+                window.jst.fsOpenedToWrite = true;
+              } else {
+                window.jst.fsOpenedToWrite = false;
+              }
+            };
+
+            FS.trackingDelegate['onCloseFile'] = function(path) {
+              if (path !== window.jst.path || !window.jst.fsOpenedToWrite) {
+                return;
+              }
+
+              console.log('Saving file to OS:', path);
+              const data = FS.readFile(path, { encoding: 'utf8' });
+            
+              (async () => {
+                const writable = await window.jst.fsHandle.createWritable();
+                await writable.write(data);
+                await writable.close();
+              })();
+            };
+
+            //
+            // Main Entry Point
+            //
+
+            callMain();
+          },
+          canvas: (function() {
+            var canvas = document.getElementById('canvas');
+
+            canvas.addEventListener('contextmenu', function(e) {
+              e.preventDefault();
+            });
+
+            return canvas;
+          })(),
+          setStatus: function(text) {},
+          totalDependencies: 0,
+          monitorRunDependencies: function(left) {}
+        };
+
+        {
+          if (!navigator.gpu) {
+            document.getElementById('errorText').innerText = "Your browser doesn't support WebGPU.";
+            return;
+          }
+
+          const adapter = await navigator.gpu.requestAdapter();
+          if (!adapter) {
+            document.getElementById('errorText').innerText = "Can't open WebGPU adapter.";
+            return;
+          }
+
+          const device = await adapter.requestDevice({ requiredFeatures: [] });
+          if (!device) {
+            document.getElementById('errorText').innerText = "Can't request WebGPU device.";
+            return;
+          }
+
+          console.log("Javascript loaded WebGPU successfully.");
+
+          Module.preinitializedWebGPUDevice = device;
+          Module.preinitializedWebGPUAdapter = adapter;
+        }
+
+        {
+          const js = document.createElement('script');
+          js.async = true;
+          js.src = "cyberether.js";
+          document.body.appendChild(js);
+        }
+      })();
+
+      function openUsbDevice() {
+        navigator.usb
+          .requestDevice({ filters: [] })
+          .then((usbDevice) => {
+            console.log(`Device selected: ${usbDevice.productName}`);
+          })
+          .catch((e) => {
+            console.error(`No device selected: ${e}`);
+          });
+      }
+    </script>
+  </body>
+</html>

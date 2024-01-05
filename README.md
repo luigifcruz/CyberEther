@@ -1,144 +1,316 @@
-# 💨 CyberEther (Work-In-Progress)
+<h1 align="center"><b>⚡️ CyberEther ⚡️</b></h1>
+<h3 align="center">Multi-platform GPU-accelerated interface for compute-intensive pipelines.</h3>
+<br>
+ 
+- 🖼️ Graphical support for any device with **Vulkan**, **Metal**, or **WebGPU**.
+- 🦑 Portable GPU acceleration for compute: **NVIDIA (CUDA)**, **Apple (Metal)**, **Raspberry Pi (Vulkan)**, etc.
+- 🔋 Runtime configurable flowgraph pipeline with heterogeneously-accelerated modular blocks.
+- 🧳 **Hackable** and easy to use as a library or as a standalone application.
+- 🧊 Installation-free fully-featured web application powered by **WebAssembly** and **WebGPU**.
+- 🤯 Low-latency [remote interface](#remote-interface) for headless servers and edge devices.
 
-### Portable and heterogeneously-accelerated graphical visualization for radio signals.
-
-## Features
-- 🦑 Meant to be extremely portable (NVIDIA, Apple M1/M2, Raspberry Pi, AMD).
-- 🖼️ Meant to support the most common heterogeneous APIs (CUDA, Vulkan, Metal, WebGPU).
-- 🔋 Runtime configurable hardware accelerated heterogeneous computing.
-- 🧳 Compatible with GNU Radio with [gr-cyber](https://github.com/luigifcruz/gr-cyber).
-
+<br>
 <p align="center">
-<img src="docs/development-example.png" />
+<img src="docs/cyberether-banner.png" />
 </p>
+
+> [!WARNING]
+>
+> **CyberEther** is in **Alpha**. Expect bugs, missing features, and breaking changes.
+
+CyberEther provides a flowgraph interface to build and run compute-intensive pipelines. The interface is engineered to provide a closely coupled integration between the graphical and compute blocks providing leading-edge visualization capabilities. CyberEther is built on top of [Vulkan](https://www.khronos.org/vulkan/), [Metal](https://developer.apple.com/metal/), [CUDA](https://developer.nvidia.com/cuda-toolkit), and [WebGPU](https://www.w3.org/TR/webgpu/), which allows it to run on virtually any modern device. CyberEther is also designed to be easily extended with new blocks and backends. It is a great tool for prototyping and testing new ideas.
+
+The flowgraph enables the user to build a pipeline by connecting blocks. Each block provides a set of inputs and outputs. The inputs and outputs are connected with edges. The edges are used to transfer data between blocks. The blocks can be accelerated with any combination of backends. The user can build a pipeline with blocks that run on different devices. For example, the user can build a pipeline with a block accelerated with Vulkan followed by a block accelerated with Metal. The scheduler will transparently take care of the synchronization and memory management between the blocks and everything will run like magic!
 
 ## Compatibility
 
-### Devices
-|               Device             |     Metal    |        Vulkan        |      WebGPU    |
-|----------------------------------|--------------|----------------------|----------------|
-| macOS (Apple Silicon)            | ✅ (Native)   | ✅ (via MoltenVK)    | ✅ (Dawn*)     |
-| iOS/iPadOS                       | ✅ (Native)   | ✅ (via MoltenVK)    | N/A            |
-| Linux (NVIDIA/AMD/Intel)         | N/A          | ✅ (Native)           | ✅ (Dawn*)     |
-| Windows (NVIDIA/AMD/Intel)       | N/A          | ✅ (Native*)          | ✅ (Dawn*)     |
-| Android                          | N/A          | ✅ (Native*)          | ✅ (Dawn*)     |
-| Browser (WebKit/Chrome/Firefox)  | N/A          | N/A                  | ✅ (Chrome)     |
+CyberEther can run in virtually any modern device with a GPU. The build system will automatically choose between the three graphical backends available (Metal, Vulkan, or WebGPU) depending on the target device. The same process applies to the compute blocks, which can be accelerated with CUDA, Metal, or Vulkan. Here is a summary of the compatible devices and backends:
 
-`*` Not validated yet.
- 
-### Graphical Modules
-|     Module    |     Metal    |      Vulkan      |      WebGPU        |    CPU+Render     |
-|---------------|--------------|------------------|--------------------|--------------------|
-| Lineplot      | ✅ (Full)     | ✅ (Graphical)   |  ✅ (Graphical)    | ✅ (Full)           |
-| Waterfall     | ✅ (Full)     | ✅ (Graphical)   |  ✅ (Graphical)    | ✅ (Full)           |
-| Spectrogram   | ✅ (Full)     | ✅ (Graphical)   |  ✅ (Graphical)    | ✅ (Slow but full)  |
-| Constellation | ❌ (Porting)  | ❌ (Porting)     |  ❌ (Porting)       | ✅ (Slow but full)  |
+|    |                Device               |       Graphics        |         Compute        |
+|----|-------------------------------------|-----------------------|------------------------|
+| ✅ | Apple Silicon (iPad, iPhone, Mac)   | Metal, Vulkan, WebGPU | CPU, Metal             |
+| ✅ | Linux (NVIDIA)                      | Vulkan, WebGPU        | CPU, Vulkan, CUDA*     |
+| ✅ | Linux (AMD, Intel)                  | Vulkan, WebGPU        | CPU, Vulkan            |
+| ✅ | Raspberry Pi (4 or later)           | Vulkan, WebGPU        | CPU, Vulkan            |
+| ✅ | Browser (Chrome)                    | WebGPU                | CPU, WebGPU*           |
+| ✅ | Android                             | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
+| ✅ | Windows (NVIDIA, AMD, Intel)        | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
 
-### Compute Modules
-|   Module   |  CPU  |     CUDA     |   Metal   |   Vulkan   |          Description           |
-|------------|-------|--------------|-----------|------------|--------------------------------|
-| Amplitude  | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Complex data to power.        |
-| FFT        | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Channelization.               |
-| Multiply   | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Vector multiplication.        |
-| Scale      | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Scaling vector by factor.     |
-| Window     | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Apply a window to vector.     |
-| Filter     | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Apply a FIR Filter to vector. |
-| Soapy      | ✅    | ❌ (Porting)  | ✅         | ❌ (Next)   | Simple SoapySDR tap.          |
+`*`: Planned for the future.
+
+Please note that the compatibility table above is not exhaustive. Compute implementations for blocks are being added constantly. Feel free to open an issue if you want to request a specific block or device. Or even better, open a pull request with the implementation!
+
+## Showroom
+These are some examples of CyberEther running on the field. Do you have a cool demo? Tweet it with the hashtag [#CyberEther](https://twitter.com/hashtag/CyberEther) and mention [@luigifcruz](https://twitter.com/luigifcruz).
+
+### Simple Flowgraph
+This is a simple demo showing how to create a new flowgraph in CyberEther. The flowgraph is a simple pipeline with a Soapy block streaming data from an RTL-SDR dongle and a Spectroscope block visualizing the data with a waterfall and line plot.
+
+[//]: <> (cyberether-new-flowgraph.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/f181ae0a-8296-4a5c-8287-6280f1e6a707
+
+### Wideband Spectrum Analyzer
+This is a screen capture of CyberEther running on a MacBook Pro with an M1 Pro chip. The Metal backend is being used for the graphical and compute blocks. The flowgraph is a wideband spectrum analyzer with a bandwidth of 122 MHz streaming from an [RFNM](https://rfnm.io/) software-defined radio.
+
+[//]: <> (rfnm-spectrum-analyzer-demo.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/815642f2-1813-464b-b1e2-7c4e285bc4e6
+
+### Multi FM Flowgraph
+A fan favorite demo from my 2019 project called [CyberRadio](https://github.com/luigifcruz/CyberRadio). As the name suggests, the flowgraph is a multi-channel FM receiver. The SDR streams 2 MHz worth of the FM broadcast band and the flowgraph filters, resamples, and demodulates the signal. This flowgraph is available by default in the graphical interface examples.
+
+[//]: <> (cyberether-multi-fm.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/dff6e236-d836-4c5c-a059-b5b5e70858bd
+
+### Running on iPad & iPhone
+This demo is running as a native iOS app and illustrates how portable CyberEther can be. The flowgraph implements a standard spectrum analyzer with waterfall and lineplot. It is running on an iPad Pro with an M2 chip. But it also runs on any iPhone and Mac with Apple Silicon and iOS 14 or later. The demo also shows seamless switching between the CPU and Metal backends for individual blocks while the flowgraph is running. Bonus: CyberEther can also run in the browser!
+
+[//]: <> (cyberether-ipad.mp4)
+https://github.com/luigifcruz/CyberEther/assets/6627901/5b5f4b8a-8991-4abc-9340-21acea5ec1c2
 
 ## Installation
-The only way to use CyberEther at the moment is by compiling it from the source. It won't be that difficult because of the low number of dependencies.
-See file INSTALL.md for the installation process.
+The only way to use CyberEther at the moment is by compiling it from the source. But don't worry, it is not difficult! Follow the [Build From Source](#build-from-source) instructions below to compile it on your system.
 
-### Required Dependencies
-- C++20 Compiler (GCC-10 or higher)
-- Meson (cmake but better)
-- Ninja (make but faster)
+## Build From Source
+This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-10 or >Clang 14.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source. There are also Docker files available in the [docker](./docker/) directory that can be used to build and run CyberEther in a container.
 
-### Optional Dependencies
-- GLFW (if compiling graphical modules)
-- FFTW (if compiling FFT module)
-- Metal (if compiling Metal backend)
-- CUDA (if compiling CUDA backend)
+### Step 1: Dependencies
+[//]: <> ([NEW DEPENDENCY HOOK])
 
-## Implementation Notes
-
-### QT GUI for GNU Radio
-This is currently using a GLFW window to operate, but it's totally possible for it to be rendered as a QGLSurface inside a QTApp parent (standard GNU Radio window). The idea is to write support for this as soon as the API becomes more stable.
-
-### Development Speed
-This is a side project that requires a considerable amount of work that I develop in my free time. I'm making some sacrifices to increase the speed of development like developing new features for Metal (because I have an Apple laptop) and later porting to other APIs, scarce documentation, and currently [no font rendering support](https://github.com/luigifcruz/gr-cyber/edit/main/README.md#font-rendering).
-
-### Jetstream Render
-An important goal of this project is to be as portable as possible. This requires the code to support multiple heterogeneous computing APIs (like Metal, Vulkan, OpenGL, etc). To reduce the amount of code duplication, CyberEther builds on top of a custom-built `Jetstream::Render` engine that abstracts away methods from hardware vendors into a single coherent API. This render can change from the graphical backend in runtime by a simple toggle.
-
-```cpp
-// Initialize Render
-Render::Window::Config renderCfg;
-renderCfg.size = {3130, 1140};
-renderCfg.resizable = true;
-renderCfg.imgui = true;
-renderCfg.vsync = true;
-renderCfg.title = "CyberEther";
-
-// Create a render with the Metal API (Apple GPUs) backend.
-Render::Initialize<Device::Metal>(renderCfg);
-
-// -- OR --
-
-// Create a render with the Vulkan API (Generic GPUs) backend.
-Render::Initialize<Device::Vulkan>(renderCfg);
+#### Linux (Arch Linux)
+Core dependencies (you probably already have them).
+```bash
+$ pacman -S git base-devel cmake pkg-config ninja meson git zenity
 ```
 
-### Windowing System
-Following the "being as much portable as possible" directive, Jetstream will render the plot into a headless framebuffer texture. This means that the buffer can be bound into a QtView or Cocoa Window. This is practical, easy to implement, and doesn't force you into our window manager. To make things easier for development, Jetstream uses glfw to create a window and display multiple plots using the ImGui windowing library. But they are not at all required! Hell, I don't know why, but if you want, you can even share the framebuffer texture with another process on Linux using [DMA-BUF](https://blaztinn.gitlab.io/post/dmabuf-texture-sharing/). Again, ImGui is only used to display the rendered frame buffer. No data plotting drawing is made with it, unlike other implementations.
-
-### Font Rendering
-Font rendering is known to be a pain to implement. This feature will require some engineering work to be implemented correctly, and once implemented will make things hard to change. Therefore, I'm choosing to put that away for the sake of development speed at this early stage of development. 
-
-### Computing While Rendering
-Sharing data with the computation pipeline while rendering requires synchronization to make sure the data is not being mutated during the presentation. This synchronization has to be precise and lightweight to not cause any stutter. This requires a mutually exclusive synchronization (compute vs present) with priority to the rendering calls. Synchronization with blocking mechanisms such as `std::conditional_variable` was [tried first](https://github.com/luigifcruz/CyberEther/blob/378f4a2289e27a8376823667ceb188f06a3ff037/subprojects/jetstream/include/jetstream/base.hpp), but these turn out to be quite slow on some types of hardware, particularly ARM devices (Jetson/RPi). The solution to this appears to be a new C++20 synchronization mechanism called `std::atomic_flags` that requires the underlying implementation to use non-blocking mechanisms. This most of the time translates to better performance but requires C++20 to work. You can check out this implementation [here](https://github.com/luigifcruz/CyberEther/blob/77094f4fc4c018f5cc78522dd19cfadec138e897/subprojects/jetstream/src/instance.cc).
-
-### Data Handling
-Turns out, you need data to display data. Our way to handle data is with the "Jetstream::Vector". This is basically the same as a `std::span` but made with heterogeneous computing in mind. The main problem with `std::span` is that you don't know where your data is local to. Sure, one can create a `std::span` with a GPU memory pointer, but how do you know that when you pass that vector forward? This requires further runtime logic to communicate the location of the buffer making things confusing. This is not an optimal place to be in an envoriment with multiple heterogeneous devices using incoherent memory. To solve this in Jetstream, the `Jetstream::Vector` requires a template `Jetstream::Device` to specify the locale of the data. For example, data inside the CUDA GPU is represented as `Vector<Device::CUDA>`. This will ensure that whoever is receiving this vector knows how to handle it properly in compile time (no runtime overhead and less code). This syntax also works in an envoriment like CUDA Unified Memory with `Vector<Device::CUDA | Device::CPU>` where the data can be accessed either from the GPU and CPU using the same pointer.
-
-### Jetstream Compute
-Sometimes, some data processing is required to display a signal. Like the render, `Jetstream::Compute` offers a way to abstract the computation away from hardware libraries (CPU, CUDA, Vulkan, Metal, etc). For this purpose, Jetstream separates computation into blocks. These blocks can be overloaded with different APIs implementations using the `Jetstrem::Device` enum. For example, below we have an FFT block with a CUDA and CPU (FFTW) implementation.
-
-```cpp
-// Performing the implementation with the CPU (FFTW) implementation.
-// This expects the input buffer to be local to the CPU (Vector<Device::CPU>).
-fft = Block<FFT, Device::CPU>({
-    .size = stream.size(),
-}, {
-    .buffer = mul->getProductBuffer(),
-});
-
-// Performing the implementation with the CUDA implementation.
-// This expects the input buffer to be local to the GPU (Vector<Device::CUDA>).
-fft = Block<FFT, Device::CUDA>({
-    .size = stream.size(),
-}, {
-    .buffer = mul->getProductBuffer(),
-});
+Graphical dependencies.
+```bash
+$ pacman -S glslang [glfw-x11 or glfw-wayland]
+```
+```bash
+$ yay -S spirv-cross
 ```
 
-To accommodate some APIs that require initialization, the backend is initialized with the following code. This will create a global singleton class that can be accessed by a compute module to register a new kernel or to bind a compute buffer to a render texture. Multiple backends can be initialized at the same time.
-
-```cpp
-// Initialize compute API for Metal (Apple GPUs).
-Jetstream::Backend::Initialize<Device::Metal>({});
-
-// Initialize compute API for CUDA (NVIDIA GPUs).
-Jetstream::Backend::Initialize<Device::CUDA>({});
+Vulkan backend dependencies (you probably already have them).
+```bash
+$ pacman -S vulkan-icd-loader vulkan-validation-layers
 ```
 
-### Wrangling Different Asynchronous Compute APIs
-Every API offers a different way to synchronize work, and you can't synchronize asynchronous work from multiple different APIs at once. The CUDA way of dealing with this is using streams and Metal/Vulkan work using encoders. Honestly, this problem gives me a headache and I am still not sure how to properly handle this. But at this time, the scheduler is grouping sequential blocks that use the same API together and sequentially running them. For example, suppose a pipeline with six blocks. Blocks 1, 2, and 3 use CUDA, block 4 uses Metal, and block 5 and 6 use CUDA. The way the scheduler would handle this is to create a CUDA Graph on asynchronous stream #1, enqueue work (from B1, B2, and B3), wait for completion, create a Metal compute encoder, enqueue work (from B4), wait for completion, create a CUDA Graph on async stream #2, enqueue work (from B5, and B6), wait for completion, and repeat. It's not clear if this is the best way to deal with things, but this should make sure no computation is being done at the same time the input buffer is being read.
+Optional dependencies.
+```bash
+# For SoapySDR block with RTL-SDR support.
+$ pacman -S soapysdr soapyrtlsdr
 
-### Samurai
-The original idea behind Samurai was to provide a better C++ interface than SoapySDR. The problem is maintaining SDR driver support is quite difficult and SoapySDR has become a standard implementation. I quite like Samurai API but I might replace it with SoapySDR in the future. Or at least, write a wrapper around SoapySDR with Samurai's API style. 
+# For Remote capabilities.
+$ pacman -S gstreamer gst-plugins-base gst-plugins-good gst-libav
 
-## Development Quicklogs
+# Pre-loaded examples metadata.
+$ pacman -S python-yaml
+```
 
-### September 13, 2022
-Some refactoring has been recently made to support other compute APIs like Vulkan and Metal. As of now, only the Metal implementation works out-of-the-box, but a CUDA implementation from before the refactor is available and should be ported to the current upstream in the coming weeks.
+#### Linux (Ubuntu 22.04)
+Core dependencies (you probably already have them).
+```bash
+$ apt install git build-essential cmake pkg-config ninja-build meson git zenity
+```
+
+Graphical dependencies.
+```bash
+$ apt install spirv-cross glslang-tools libglfw3-dev
+```
+
+Vulkan backend dependencies (you probably already have them).
+```bash
+$ apt install mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
+```
+
+Optional dependencies.
+```bash
+# For SoapySDR block with RTL-SDR support.
+$ apt install libsoapysdr-dev soapysdr-module-rtlsdr
+
+# For Remote capabilities.
+$ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
+
+# Pre-loaded examples metadata.
+$ apt install python3-yaml
+```
+
+#### macOS 13+ (Apple Silicon)
+This assumes [Homebrew](https://brew.sh) is installed. Older versions of macOS might work but installing a newer Clang compiler (14+) will be necessary.
+
+Core dependencies (you probably already have them).
+```bash
+$ brew install cmake pkg-config ninja meson
+```
+
+Graphical dependencies.
+```bash
+$ brew install spirv-cross glslang glfw
+```
+
+Optional dependencies.
+```bash
+# For SoapySDR block with RTL-SDR support.
+$ brew install soapysdr soapyrtlsdr
+
+# For Remote capabilities.
+$ brew install gstreamer
+
+# Pre-loaded examples metadata.
+$ python -m pip install PyYAML
+```
+
+#### Browser (Chrome)
+
+All CyberEther runtime dependencies for the browser are included in the repository. You only need to make sure you have [Python 3](https://www.python.org), [Emscripten](https://emscripten.org/docs/getting_started/downloads.html), and [Rust Cargo](https://www.rust-lang.org/tools/install) installed.
+
+#### iOS (iPhone & iPad)
+
+All CyberEther dependencies for iOS are included in the repository. You only need to make sure you have the latest [Xcode](https://developer.apple.com/xcode/) installed.
+
+### Step 2: Clone
+
+Clone the repository from GitHub.
+```bash
+$ git clone https://github.com/luigifcruz/CyberEther.git
+$ cd CyberEther
+```
+
+### Step 3: Build and Install
+
+Follow the instructions below to build and install CyberEther on your system.
+
+#### Linux or macOS
+
+Build and install.
+```bash
+$ meson setup -Dbuildtype=debugoptimized build && cd build
+$ ninja install
+```
+
+Done! The executable will be installed in the default terminal path. For usage instructions, run `cyberether --help`.
+
+#### Browser (Chrome)
+
+Build project with cross-compilation to WebAssembly.
+```bash
+$ meson setup --cross-file crosscompile/emscripten.ini -Dbuildtype=debugoptimized build-browser && cd build-browser
+$ ninja
+```
+
+Copy dependencies to the build directory.
+```bash
+$ cp ../resources/cyberether.html .
+$ cp ../resources/cyberether.png .
+```
+
+Start the web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
+```bash
+$ python ../tools/local_server.py
+```
+
+#### iOS (iPhone & iPad)
+
+Build the project with cross-compilation to iOS and install binaries in the Xcode project.
+```bash
+$ meson setup --cross-file crosscompile/ios.ini \
+              --prefix $(pwd)/apps/ios/CyberEtherMobile/Library \
+              -Dbuildtype=debugoptimized build-ios && cd build-ios
+$ ninja install
+```
+
+After the build is complete, open the [Xcode project](./apps/ios/) and run it on your device.
+
+## Usage
+The graphical interface of CyberEther can be launched from the terminal by running `./cyberether`. The command-line interface also offers other options that can be used to configure the application. For example, enabling the headless [remote interface](#remote-interface), or running the [benchmark tool](#benchmark-tool). The full list of options can be found below.
+
+```bash
+$ ./cyberether --help
+Usage: ./cyberether [options] [flowgraph]
+Options:
+  --headless              Enable headless mode.
+  --endpoint [endpoint]   Set the endpoint of the headless viewport (`1.1.1.1:8000`, `./vid.mp4`, etc). Default: `/tmp/cyberether`
+  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`).
+  --framerate [value]     Set the framerate of the headless viewport (FPS). Default: `60`
+  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`
+  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`
+  --scale [scale]         Set the scale of the render window. Default: `1.0`
+  --benchmark [type]      Run the benchmark and output the results (`markdown`, `json`, or `csv`). Default: `markdown`
+  --no-hw-acceleration    Disable hardware acceleration. Enabled otherwise.
+Other Options:
+  --staging-buffer [size] Set the staging buffer size (MB). Default: `32`
+  --device-id [id]        Set the physical device ID. Default: `0`
+  --no-validation         Disable Vulkan validation layers. Enabled otherwise.
+  --no-vsync              Disable vsync. Enabled otherwise.
+Other:
+  --help, -h              Print this help message.
+  --version, -v           Print the version.
+```
+
+### Graphical Interface
+The graphical interface is where the fun is! It is a fully-featured application that can be used to build and run flowgraphs. Building a flowgraph is very familiar to anyone who has used GNU Radio Companion. Just drag the block icon from the right panel and drop it in the canvas. The color of the block icon indicates which backend to pick. For example, the Yellow block will run on the CPU, Purple on Metal, etc. Each block can be connected by dragging edges from the output of one block to the input of another. There is no start or stop button, blocks will start running as soon as they are connected. Flowgraphs can be exported and imported as readable YAML files. Example flowgraphs with helpful notes can be found pre-loaded in the application.
+
+![Flowgraph](docs/cyberether-flowgraph.png)
+
+### Remote Interface
+CyberEther can be used as a remote interface for headless servers and edge devices. The remote interface is a low-latency interface that allows the user to control the flowgraph remotely. The remote interface is built on top of [gstreamer](https://gstreamer.freedesktop.org) and uses UDP and TCP for communication. Other than video, the remote interface also sends keyboard and mouse events to the server. The example flowgraph `Remote Instance` (see image below) is available by default in the graphical interface and is a good example of how to use the remote interface.
+
+![Remote Instance](docs/remote-instance.png)
+
+At this time, software video encoding will be used on most platforms. Work is being done to enable hardware encoding in more devices, but this requires a lot of experimentation. Exceptions to this are NVIDIA GPUs, which will use the NVENC hardware encoder with a zero-copy framebuffer encoding, making it very nice and efficient. The Raspberry Pi will also use hardware encoding by default.
+
+To initialize a remote instance of CyberEther, run the command below on the server. If you want lossless video, use the `--codec ffv1` option instead. The lossless video will use quite a lot of bandwidth, so make sure you have a good connection.
+
+```bash
+$ ./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264
+```
+
+Note: This block will use two ports, the first one is shown in the block below (TCP:5002) for telemetry, and control and the second one (UDP:5003) for data streaming. Fun fact, you can use gstreamer to receive the video stream. Detailed instructions on how to do this can be found [here](./docs/remote-headless-mode.md).
+
+### Benchmark Tool
+CyberEther comes with a neat runtime benchmark tool that can be used to compare the performance of different backends and modules. There are two ways to use it, either through the graphical interface or by running the command line tool. The graphical interface is the easiest way to use it. To access it, click on the `Developer` menu and then click on `Open Benchmarking Tool`. A new window will open (see image below) and the benchmark can be started by clicking on the `Run Benchmark` button. The results will be displayed in a table.
+
+![Benchmark Tool](docs/benchmarking-tool.png)
+
+The benchmarking tool can also be run from the command line in headless mode. To do this, run the command below. The results will be printed in the terminal. The format of the results can be changed by specifying `csv`, `json`, or `markdown` after the `--benchmark` option. For example, `--benchmark csv`.
+
+```bash
+$ JST_DEBUG=2 ./cyberether --benchmark 
+```
+
+### Examples
+Another option other than using the graphical interface is to use CyberEther as a library for your application. The library is designed to be easily integrated and hackable. The [examples](./examples/) directory contains a few examples to get you started. At the moment, the main focus of the project is to continue to improve the graphical interface, but the standalone features will be improved in the future as things stabilize.
+
+## Frequently Asked Questions
+
+#### Q. Why is CyberEther written in C++?
+The short answer to this question is that compatibility is king. The longer answer is that one of the design choices is to be as low-level as possible. This allows me to have full control over the code and to be able to optimize it for a specific platform without being locked down by a framework. That is why CyberEther can run inside the browser while being able to scale towards a supercomputer. Currently, one of the problems with other languages is that they have too many wrappers and abstractions that make it difficult to debug and optimize the code. I expect this to change in the future as first-party support grows but for now, C++ is the best option. As John Carmack once said, "[...] externalities that can overwhelm the benefits of a language [...]". I am also a big fan of Rust and I am looking forward to finding a good project to use it in the future.
+
+#### Q. What is the best way to contribute to the project?
+The code is riddled with TODO comments. These are a good place to start. Another way to contribute is by implementing new blocks and modules.
+
+#### Q. Why CyberEther uses Jetstream as the namespace?
+At the beginning of the project, CyberEther was meant to be only an application that utilized Jetstream as a library. But as the project evolved, the two things became one. In the end, I decided to keep Jetstream as the name of the library and CyberEther as the name of the application.
+
+#### Q. How CyberEther compares to GNU Radio?
+First of all, GNU Radio is an amazing project. It is a very powerful tool and it is used by many people and institutions around the world. Developing CyberEther as a separate project without the burden of backward compatibility and legacy code allowed me to explore new ideas that would be time-consuming to implement in GNU Radio. I think of CyberEther as a playground for new ideas that can be later integrated into GNU Radio if they prove to be useful. Beyond radio, CyberEther has the potential to be used in other domains such as machine learning, computer vision, and robotics. The goal is to make CyberEther a general-purpose acceleration tool for compute-intensive pipelines.
+
+#### Q. What are the future plans for CyberEther?
+The plans for CyberEther include adding unit tests, improving documentation, and implementing new blocks and modules. The goal is to continue expanding the capabilities of CyberEther beyond radio communications and make it a powerful tool for accelerating compute-intensive pipelines in various domains.
+
+#### Q. What are the minimum requirements to run CyberEther?
+There are no minimum requirements, only minimum expectations.
+
+#### Q. Where are the easter eggs?
+There are no easter eggs in CyberEther. I promise.
+
+## About
+CyberEther was created in 2021 by [Luigi Cruz](https://luigi.ltd) as a personal project. The project is still in its early stages and it is being developed in the open and contributions are welcome. Regular talks about CyberEther were given at previous GNU Radio Conference editions and are available [here](https://luigi.ltd/talks/).
+
+## Contributing
+Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository. The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html). The default line length is 88. This can be overridden if necessary. Please, be sensible. Also keep in mind that since this project is still in its early stages, the API is not stable and it is subject to change. More details on how to contribute can be found [here](./CONTRIBUTING.md).
+
+## License
+CyberEther is distributed under the [MIT license](./LICENSE). See [LICENSE](./LICENSE) for details. All contributions to the project are considered to be licensed under the same terms. The list of acknowledgements and third-party software used in this project can be found [here](./ACKNOWLEDGEMENTS.md).
+
+If your company is utilizing CyberEther in its software solutions, we encourage you to consider contributing to the CyberEther project. Your support and contributions not only help in the continuous improvement and sustainability of the project but also ensure that CyberEther remains a robust and cutting-edge tool for the community. For more details on how your company can contribute, please [contact me](https://luigi.ltd/contact).

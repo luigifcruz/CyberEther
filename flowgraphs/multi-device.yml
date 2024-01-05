@@ -1,0 +1,253 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+title: Multi Device Spectrum Analyzer
+summary: Multi SDR waterfall and lineplot.
+author: Luigi
+license: MIT
+description: Shows an example of how to run a flowgraph with more than one SDR.
+graph:
+  'soapy-1':
+    module: soapy
+    device: cpu
+    dataType: CF32
+    config:
+      frequency: 96900000
+      bufferMultiplier: 512
+      sampleRate: 30000000
+      streamString: ''
+      hintString: ''
+      numberOfTimeSamples: 2048
+      numberOfBatches: 16
+      automaticGain: true
+      deviceString: 'driver=lime,serial=1D4249D8AEC2A9'
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [0, 661.5]
+      controlEnabled: false
+  'win-1':
+    module: window
+    device: cpu
+    dataType: CF32
+    config:
+      size: 2048
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [0, 522.5]
+      controlEnabled: false
+  'soapy-2':
+    module: soapy
+    device: cpu
+    dataType: CF32
+    config:
+      frequency: 96900000
+      bufferMultiplier: 512
+      sampleRate: 30000000
+      streamString: ''
+      hintString: ''
+      numberOfTimeSamples: 2048
+      numberOfBatches: 16
+      automaticGain: true
+      deviceString: 'driver=lime,serial=1D3AD55F42C0AB'
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [0, 139]
+      controlEnabled: false
+  'win-2':
+    module: window
+    device: cpu
+    dataType: CF32
+    config:
+      size: 2048
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [0, 0]
+      controlEnabled: false
+  inv16:
+    module: invert
+    device: cpu
+    dataType: CF32
+    input:
+      buffer: ${graph.win-2.output.window}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 140
+      nodePos: [347.51123, 14.162933]
+      controlEnabled: false
+  'win_mul-2':
+    module: multiply
+    device: cpu
+    dataType: CF32
+    input:
+      factorB: ${graph.inv16.output.buffer}
+      factorA: ${graph.soapy-2.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 181
+      nodePos: [556.5, 54]
+      controlEnabled: false
+  'fft-2':
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.win_mul-2.output.product}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [783, 48]
+      controlEnabled: false
+  'amp-2':
+    module: amplitude
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.fft-2.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 160
+      nodePos: [1128.5, 48]
+      controlEnabled: false
+  'scl-2':
+    module: scale
+    device: cpu
+    dataType: F32
+    config:
+      range: [-200, 0]
+    input:
+      buffer: ${graph.amp-2.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1334, 48]
+      controlEnabled: false
+  'spc-2':
+    module: spectrogram
+    device: cpu
+    dataType: F32
+    config:
+      viewSize: [512, 384]
+      height: 256
+    input:
+      buffer: ${graph.scl-2.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1680.5, 36]
+      controlEnabled: false
+  inv18:
+    module: invert
+    device: cpu
+    dataType: CF32
+    input:
+      buffer: ${graph.win-1.output.window}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 140
+      nodePos: [351.7224, 536.5686]
+      controlEnabled: false
+  'win_mul-1':
+    module: multiply
+    device: cpu
+    dataType: CF32
+    input:
+      factorB: ${graph.inv18.output.buffer}
+      factorA: ${graph.soapy-1.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 181
+      nodePos: [547.5, 572.5]
+      controlEnabled: false
+  'fft-1':
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.win_mul-1.output.product}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [774, 572.5]
+      controlEnabled: false
+  'amp-1':
+    module: amplitude
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.fft-1.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 160
+      nodePos: [1119.5, 572.5]
+      controlEnabled: false
+  'scl-1':
+    module: scale
+    device: cpu
+    dataType: F32
+    config:
+      range: [-100, 0]
+    input:
+      buffer: ${graph.amp-1.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1325, 572.5]
+      controlEnabled: false
+  'spc-1':
+    module: spectrogram
+    device: cpu
+    dataType: F32
+    config:
+      viewSize: [512, 384]
+      height: 256
+    input:
+      buffer: ${graph.scl-1.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1670.5, 572.5]
+      controlEnabled: false
+  not20:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        This flowgraph shows that is possible to run multiple
+        radios at the same time.
+        
+        
+        Note: Due to a limination in the scheduler, the flowgraph
+        might not work corretly when a SDR has a larger sample-rate
+        than the other. This is expected to be fixed soon.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 409
+      nodePos: [536, 253]
+      controlEnabled: false

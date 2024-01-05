@@ -1,0 +1,517 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2A785673293878C20012F738 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 2A785672293878C20012F738 /* AppDelegate.m */; };
+		2A785676293878C20012F738 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 2A785675293878C20012F738 /* SceneDelegate.m */; };
+		2A785679293878C20012F738 /* ViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 2A785678293878C20012F738 /* ViewController.mm */; };
+		2A78567C293878C20012F738 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 2A78567A293878C20012F738 /* Main.storyboard */; };
+		2A78567E293878C40012F738 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A78567D293878C40012F738 /* Assets.xcassets */; };
+		2A785681293878C40012F738 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 2A78567F293878C40012F738 /* LaunchScreen.storyboard */; };
+		2A785684293878C40012F738 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 2A785683293878C40012F738 /* main.mm */; };
+		2A8E4C9F2A675B7E0049C84B /* SoapyRemote.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A8E4C9A2A675B7E0049C84B /* SoapyRemote.framework */; platformFilter = ios; };
+		2A8E4CA02A675B7E0049C84B /* SoapyRemote.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9A2A675B7E0049C84B /* SoapyRemote.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		2A8E4CA12A675B7E0049C84B /* SoapySDR.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A8E4C9B2A675B7E0049C84B /* SoapySDR.framework */; platformFilter = ios; };
+		2A8E4CA22A675B7E0049C84B /* SoapySDR.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9B2A675B7E0049C84B /* SoapySDR.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		2A8E4CA32A675B7E0049C84B /* FMT.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A8E4C9C2A675B7E0049C84B /* FMT.framework */; platformFilter = ios; };
+		2A8E4CA42A675B7E0049C84B /* FMT.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9C2A675B7E0049C84B /* FMT.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		2A8E4CA52A675B7E0049C84B /* FFTW.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A8E4C9D2A675B7E0049C84B /* FFTW.framework */; platformFilter = ios; };
+		2A8E4CA62A675B7E0049C84B /* FFTW.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9D2A675B7E0049C84B /* FFTW.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		2A8E4CA72A675B7E0049C84B /* Jetstream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */; platformFilter = ios; };
+		2A8E4CA82A675B7E0049C84B /* Jetstream.framework in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2A78569929388AC40012F738 /* Embed Libraries */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 12;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				2A8E4CA82A675B7E0049C84B /* Jetstream.framework in Embed Libraries */,
+				2A8E4CA02A675B7E0049C84B /* SoapyRemote.framework in Embed Libraries */,
+				2A8E4CA62A675B7E0049C84B /* FFTW.framework in Embed Libraries */,
+				2A8E4CA22A675B7E0049C84B /* SoapySDR.framework in Embed Libraries */,
+				2A8E4CA42A675B7E0049C84B /* FMT.framework in Embed Libraries */,
+			);
+			name = "Embed Libraries";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		2A78566E293878C20012F738 /* CyberEtherMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CyberEtherMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2A785671293878C20012F738 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		2A785672293878C20012F738 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		2A785674293878C20012F738 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
+		2A785675293878C20012F738 /* SceneDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
+		2A785677293878C20012F738 /* ViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
+		2A785678293878C20012F738 /* ViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ViewController.mm; sourceTree = "<group>"; };
+		2A78567B293878C20012F738 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		2A78567D293878C40012F738 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2A785680293878C40012F738 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		2A785682293878C40012F738 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2A785683293878C40012F738 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.crashreport; };
+		2A8E4C9A2A675B7E0049C84B /* SoapyRemote.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SoapyRemote.framework; path = CyberEtherMobile/Library/lib/SoapyRemote.framework; sourceTree = "<group>"; };
+		2A8E4C9B2A675B7E0049C84B /* SoapySDR.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SoapySDR.framework; path = CyberEtherMobile/Library/lib/SoapySDR.framework; sourceTree = "<group>"; };
+		2A8E4C9C2A675B7E0049C84B /* FMT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FMT.framework; path = CyberEtherMobile/Library/lib/FMT.framework; sourceTree = "<group>"; };
+		2A8E4C9D2A675B7E0049C84B /* FFTW.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FFTW.framework; path = CyberEtherMobile/Library/lib/FFTW.framework; sourceTree = "<group>"; };
+		2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Jetstream.framework; path = CyberEtherMobile/Library/lib/Jetstream.framework; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2A78566B293878C20012F738 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2A8E4CA72A675B7E0049C84B /* Jetstream.framework in Frameworks */,
+				2A8E4C9F2A675B7E0049C84B /* SoapyRemote.framework in Frameworks */,
+				2A8E4CA52A675B7E0049C84B /* FFTW.framework in Frameworks */,
+				2A8E4CA12A675B7E0049C84B /* SoapySDR.framework in Frameworks */,
+				2A8E4CA32A675B7E0049C84B /* FMT.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2A785665293878C20012F738 = {
+			isa = PBXGroup;
+			children = (
+				2A785670293878C20012F738 /* CyberEtherMobile */,
+				2A78566F293878C20012F738 /* Products */,
+				2A78568A2938793F0012F738 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		2A78566F293878C20012F738 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2A78566E293878C20012F738 /* CyberEtherMobile.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		2A785670293878C20012F738 /* CyberEtherMobile */ = {
+			isa = PBXGroup;
+			children = (
+				2A785671293878C20012F738 /* AppDelegate.h */,
+				2A785672293878C20012F738 /* AppDelegate.m */,
+				2A785674293878C20012F738 /* SceneDelegate.h */,
+				2A785675293878C20012F738 /* SceneDelegate.m */,
+				2A785677293878C20012F738 /* ViewController.h */,
+				2A785678293878C20012F738 /* ViewController.mm */,
+				2A78567A293878C20012F738 /* Main.storyboard */,
+				2A78567D293878C40012F738 /* Assets.xcassets */,
+				2A78567F293878C40012F738 /* LaunchScreen.storyboard */,
+				2A785682293878C40012F738 /* Info.plist */,
+				2A785683293878C40012F738 /* main.mm */,
+			);
+			path = CyberEtherMobile;
+			sourceTree = "<group>";
+		};
+		2A78568A2938793F0012F738 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				2A8E4C9D2A675B7E0049C84B /* FFTW.framework */,
+				2A8E4C9C2A675B7E0049C84B /* FMT.framework */,
+				2A8E4C9E2A675B7E0049C84B /* Jetstream.framework */,
+				2A8E4C9A2A675B7E0049C84B /* SoapyRemote.framework */,
+				2A8E4C9B2A675B7E0049C84B /* SoapySDR.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2A78566D293878C20012F738 /* CyberEtherMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2A785687293878C40012F738 /* Build configuration list for PBXNativeTarget "CyberEtherMobile" */;
+			buildPhases = (
+				2A7578042941B89700CB47A2 /* Run Script */,
+				2A78569929388AC40012F738 /* Embed Libraries */,
+				2A78566A293878C20012F738 /* Sources */,
+				2A78566C293878C20012F738 /* Resources */,
+				2A78566B293878C20012F738 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CyberEtherMobile;
+			productName = CyberEtherMobile;
+			productReference = 2A78566E293878C20012F738 /* CyberEtherMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2A785666293878C20012F738 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					2A78566D293878C20012F738 = {
+						CreatedOnToolsVersion = 14.1;
+						LastSwiftMigration = 1430;
+					};
+				};
+			};
+			buildConfigurationList = 2A785669293878C20012F738 /* Build configuration list for PBXProject "CyberEtherMobile" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 2A785665293878C20012F738;
+			productRefGroup = 2A78566F293878C20012F738 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				2A78566D293878C20012F738 /* CyberEtherMobile */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2A78566C293878C20012F738 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2A785681293878C40012F738 /* LaunchScreen.storyboard in Resources */,
+				2A78567E293878C40012F738 /* Assets.xcassets in Resources */,
+				2A78567C293878C20012F738 /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		2A7578042941B89700CB47A2 /* Run Script */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 12;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Run Script";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cd ${PROJECT_DIR}/CyberEtherMobile/Library/lib\n\nrm -rf Jetstream.framework\nrm -rf FMT.framework\nrm -rf SoapySDR.framework\nrm -rf SoapyRemote.framework\n\nlipo -create libjetstream.dylib -output Jetstream\nlipo -create libfmt.dylib -output FMT\nlipo -create libSoapySDR.dylib -output SoapySDR\nlipo -create libSoapyRemote.dylib -output SoapyRemote\n\nmkdir Jetstream.framework\nmkdir FMT.framework\nmkdir SoapySDR.framework\nmkdir SoapyRemote.framework\n\nmv Jetstream Jetstream.framework\nmv FMT FMT.framework\nmv SoapySDR SoapySDR.framework\nmv SoapyRemote SoapyRemote.framework\n\nsed 's/XXX/Jetstream/g' ${PROJECT_DIR}/BuildResources/Info.plist > Jetstream.framework/Info.plist\nsed 's/XXX/FMT/g' ${PROJECT_DIR}/BuildResources/Info.plist > FMT.framework/Info.plist\nsed 's/XXX/SoapySDR/g' ${PROJECT_DIR}/BuildResources/Info.plist > SoapySDR.framework/Info.plist\nsed 's/XXX/SoapyRemote/g' ${PROJECT_DIR}/BuildResources/Info.plist > SoapyRemote.framework/Info.plist\n\ninstall_name_tool -id \"@executable_path/Frameworks/Jetstream.framework/Jetstream\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -id \"@executable_path/Frameworks/FMT.framework/FMT\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/FMT.framework/FMT\n\ninstall_name_tool -id \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapySDR.framework/SoapySDR\n\ninstall_name_tool -id \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\"  ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libfmt.dylib\" \"@executable_path/Frameworks/FMT.framework/FMT\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapySDR.dylib\" \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapyRemote.dylib\" \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/Jetstream.framework/Jetstream\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapyRemote.dylib\" \"@executable_path/Frameworks/SoapyRemote.framework/SoapyRemote\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n\ninstall_name_tool -change \"${PROJECT_DIR}/CyberEtherMobile/Library/lib/libSoapySDR.dylib\" \"@executable_path/Frameworks/SoapySDR.framework/SoapySDR\" ${PROJECT_DIR}/CyberEtherMobile/Library/lib/SoapyRemote.framework/SoapyRemote\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2A78566A293878C20012F738 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2A785679293878C20012F738 /* ViewController.mm in Sources */,
+				2A785673293878C20012F738 /* AppDelegate.m in Sources */,
+				2A785684293878C40012F738 /* main.mm in Sources */,
+				2A785676293878C20012F738 /* SceneDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		2A78567A293878C20012F738 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				2A78567B293878C20012F738 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		2A78567F293878C40012F738 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				2A785680293878C40012F738 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		2A785685293878C40012F738 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		2A785686293878C40012F738 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		2A785688293878C40012F738 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = V67PWGA5ZA;
+				EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE = NO;
+				ENABLE_MODULE_VERIFIER = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/CyberEtherMobile",
+					"$(PROJECT_DIR)/CyberEtherMobile/Library/lib",
+					"$(PROJECT_DIR)/CyberEtherMobile/Library",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/CyberEtherMobile/Library/include";
+				INFOPLIST_FILE = CyberEtherMobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CyberEther;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "${PRODUCT_NAME} uses the local network to stream data from a Software Defined Radio connected in the same network.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/CyberEtherMobile/Library/lib",
+				);
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu11 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = ltd.luigi.CyberEtherMobile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_ENABLE_EMIT_CONST_VALUES = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2A785689293878C40012F738 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = V67PWGA5ZA;
+				EMBED_ASSET_PACKS_IN_PRODUCT_BUNDLE = NO;
+				ENABLE_MODULE_VERIFIER = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/CyberEtherMobile",
+					"$(PROJECT_DIR)/CyberEtherMobile/Library/lib",
+					"$(PROJECT_DIR)/CyberEtherMobile/Library",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/CyberEtherMobile/Library/include";
+				INFOPLIST_FILE = CyberEtherMobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CyberEther;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "${PRODUCT_NAME} uses the local network to stream data from a Software Defined Radio connected in the same network.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/CyberEtherMobile/Library/lib",
+				);
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu11 gnu++20";
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = ltd.luigi.CyberEtherMobile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_ENABLE_EMIT_CONST_VALUES = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2A785669293878C20012F738 /* Build configuration list for PBXProject "CyberEtherMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A785685293878C40012F738 /* Debug */,
+				2A785686293878C40012F738 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2A785687293878C40012F738 /* Build configuration list for PBXNativeTarget "CyberEtherMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A785688293878C40012F738 /* Debug */,
+				2A785689293878C40012F738 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2A785666293878C20012F738 /* Project object */;
+}

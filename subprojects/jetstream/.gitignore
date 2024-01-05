@@ -1,6 +1,0 @@
-subprojects/*
-*.zip
-
-!*.wrap
-!packagefiles
-!libusb

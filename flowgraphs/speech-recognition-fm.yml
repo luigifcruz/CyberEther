@@ -1,0 +1,48 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+title: Speech Recognition FM Receiver
+description: Radio station transcriber.
+creator: Luigi
+license: MIT
+
+computeDevice: cpu
+
+graph:
+  soapy:
+    module: soapy
+    device: ${computeDevice}
+    dataType: CF32
+    config:
+      deviceString: driver=rtlsdr,serial=00000001
+      frequency: 97.5e6
+      sampleRate: 240e3
+      numberOfTimeSamples: 500000
+      numberOfBatches: 1
+      bufferMultiplier: 8
+
+  fm:
+    module: fm
+    device: ${computeDevice}
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.soapy.output.buffer}
+
+  audio:
+    module: audio
+    device: cpu
+    dataType: F32
+    config:
+      inSampleRate: 240e3
+      outSampleRate: 16e3
+    input:
+      buffer: ${graph.fm.output.buffer}
+
+  asr:
+    module: speech-recognition
+    device: cpu
+    dataType: F32
+    config:
+    input:
+      buffer: ${graph.audio.output.buffer}

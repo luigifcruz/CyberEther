@@ -6,6 +6,18 @@ __pycache__
 .ipynb_checkpoints
 .vscode
 .idea
+builddir
+imgui.ini
 
+*.zip
 subprojects/*
-!subprojects/jetstream
+!subprojects/*.wrap
+!subprojects/libusb
+!subprojects/packagefiles
+
+build
+build-*
+
+!*.wrap
+!packagefiles
+!libusb-browser

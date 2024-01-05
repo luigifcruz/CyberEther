@@ -1,0 +1,10 @@
+[wrap-file]
+directory = naga-0.13.0
+source_url = https://github.com/gfx-rs/naga/archive/refs/tags/v0.13.0.tar.gz
+source_filename = naga-0.13.0.tar.gz
+source_hash = 126393320084c6bb5aa3916f9edc8de80824e9eb169db805432226eef4a56b15
+patch_directory = naga
+wrapdb_version = 1.0.0
+
+[provide]
+naga_bin = naga_bin

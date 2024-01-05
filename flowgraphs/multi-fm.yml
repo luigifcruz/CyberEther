@@ -1,0 +1,194 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+title: 'Multi-FM'
+summary: Receive multiple FM simultaneously.
+author: Luigi
+license: MIT
+description: 'Shows the reception of multiple FM broadcast stations simultaneously. The partitioning into individual stations is done via the Overlap-Add-Fold method presented in another example. This flowgraph abstracts this mechanism using the `Filter Engine` block.'
+graph:
+  soapy:
+    module: soapy
+    device: cpu
+    dataType: CF32
+    config:
+      bufferMultiplier: 1024
+      sampleRate: 2000000
+      frequency: 96900000
+      hintString: ''
+      streamString: ''
+      numberOfTimeSamples: 8000
+      numberOfBatches: 8
+      automaticGain: true
+      deviceString: 'driver=rtlsdr,serial=00000001'
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [-2, 224.00002]
+      controlEnabled: false
+  flt:
+    module: filter
+    device: cpu
+    dataType: CF32
+    config:
+      taps: 51
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: [0, 600000, ]
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [-2, -16]
+      controlEnabled: false
+  fil_engine36:
+    module: 'filter-engine'
+    device: cpu
+    dataType: CF32
+    input:
+      filter: ${graph.flt.output.coeffs}
+      signal: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 235
+      nodePos: [367, 221]
+      controlEnabled: false
+  not34:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        This is a simplified flowgraph from what was presented in the 
+        `Overlap-Add-Fold` example. That entire mechanism was abstracted 
+        away with the `Filter Engine` block.
+        
+        Here, 2 MHz of the FM broadcast spectrum is being received and 
+        filtered. The `Filter` block generates two sets of 200 kHz bandpass
+        filter taps centered around 96.9 MHz and 97.5 MHz. The result after
+        applying the taps to the signal is two independent FM stations that
+        can be chosen by selecting the `Index` in the `Take` block.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 470
+      nodePos: [361.88336, -15.929108]
+      controlEnabled: false
+  spe33:
+    module: spectroscope
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      viewSize: [512, 512]
+      range: [-81, 1]
+      waterfall: true
+      lineplot: true
+      spectrogram: false
+    input:
+      buffer: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [366, 345]
+      controlEnabled: false
+  not43:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        On the left, you can see the entire 2 MHz of the input signal.
+        
+        On the right, you can see the filtered and resampled 200 kHz
+        signal of a single FM station.
+        
+        The Filter Engine block will also try to resample the signal
+        after filtering to the input filter's bandwidth. In this case,
+        two sets of 200 kHz bandwidth centered in 0.0 MHz and 0.6 MHz.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 431
+      nodePos: [691.0375, 406.43774]
+      controlEnabled: false
+  not44:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        You can also add more filters if you have 
+        more FM stations to filter. Simply increase
+        the number of `Heads` and set the correct 
+        `Center` in the `Filter` block.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [855.0375, -12.5622635]
+      controlEnabled: false
+  tak23:
+    module: take
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      index: 1
+    input:
+      buffer: ${graph.fil_engine36.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [701.8888, 222.43848]
+      controlEnabled: false
+  fm:
+    module: fm
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      sampleRate: 200000
+    input:
+      buffer: ${graph.tak23.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1184.5, 101.00002]
+      controlEnabled: false
+  spe23:
+    module: spectroscope
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      viewSize: [512, 512]
+      range: [-57, 1]
+      waterfall: true
+      lineplot: true
+      spectrogram: false
+    input:
+      buffer: ${graph.tak23.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1144, 255]
+      controlEnabled: false
+  audio:
+    module: audio
+    device: cpu
+    dataType: F32
+    config:
+      outSampleRate: 48000
+      inSampleRate: 200000
+    input:
+      buffer: ${graph.fm.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1543.4663, 107.91619]
+      controlEnabled: false

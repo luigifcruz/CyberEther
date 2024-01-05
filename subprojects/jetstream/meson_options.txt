@@ -1,6 +1,0 @@
-option('GLFW', type : 'boolean', value : false, description: 'Force GLFW Support.')
-option('FFTW', type : 'boolean', value : false, description: 'Force FFTW Support.')
-option('CUDA', type : 'boolean', value : false, description: 'Force CUDA Support.')
-option('VULKAN', type : 'boolean', value : false, description: 'Force VULKAN Support.')
-option('WEBGPU', type : 'boolean', value : false, description: 'Force WebGPU Support.')
-option('SOAPYSDR', type : 'boolean', value : false, description: 'Force SoapySDR Support.')

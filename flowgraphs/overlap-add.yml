@@ -1,0 +1,375 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+title: 'Overlap-Add'
+summary: Frequency domain FIR filter.
+author: Luigi
+license: MIT
+description: Shows how to filter a signal in the frequency domain with FIR. Uses multiply and add to reduce blocking artifacts.
+graph:
+  flt:
+    module: filter
+    device: cpu
+    dataType: CF32
+    config:
+      taps: 51
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: [0, ]
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [20, 512]
+      controlEnabled: false
+  not36:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        First, the signal and the filter are padded to the same length. The
+        size of the padding will depend on multiple factors. For the sake 
+        of simplicity, here the pad size will be set to `50`.
+        
+        The Pad block will add 50 zeros to the end of the signal resulting 
+        in 8050 elements. However, for the filter taps, the padding will be
+        of size `(SIGNAL_SIZE - 1) == 7999` resulting in 8050. Both tensors
+        now have 8050 elements and are ready for the next step.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 471
+      nodePos: [367.40503, 76.504364]
+      controlEnabled: false
+  not37:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        Since the filtering is being done in the frequency domain, 
+        both the signal and the filter taps are now converted from
+        the time domain to the frequency domain with the FFT block.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 415
+      nodePos: [726.405, 675.5044]
+      controlEnabled: false
+  not38:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        This is the filter design block. This will need some parameters
+        from the signal coming from the SDR like the sample rate and 
+        bandwidth. The rest of the parameters should look familiar if 
+        you designed a FIR filter before.
+        
+        Other examples will use more features from this block. Like the
+        `multi-fm` example showing how to create multiple filters for 
+        different frequencies to demodulate multiple FM stations at once.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 455
+      nodePos: [22.40503, 729.5044]
+      controlEnabled: false
+  soapy:
+    module: soapy
+    device: cpu
+    dataType: CF32
+    config:
+      frequency: 96900000
+      bufferMultiplier: 1024
+      sampleRate: 2000000
+      numberOfTimeSamples: 8000
+      numberOfBatches: 8
+      automaticGain: true
+      deviceString: driver=rtlsdr,serial=00000001
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [20, 141]
+      controlEnabled: false
+  pad_flt:
+    module: pad
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      size: 7999
+    input:
+      unpadded: ${graph.flt.output.coeffs}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [371.5, 515]
+      controlEnabled: false
+  fft_flt:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.pad_flt.output.padded}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [715, 509]
+      controlEnabled: false
+  pad_soapy:
+    module: pad
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      size: 50
+    input:
+      unpadded: ${graph.soapy.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [369.5, 289]
+      controlEnabled: false
+  fft_soapy:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.pad_soapy.output.padded}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [713, 318]
+      controlEnabled: false
+  mul:
+    module: multiply
+    device: cpu
+    dataType: CF32
+    input:
+      factorB: ${graph.fft_soapy.output.buffer}
+      factorA: ${graph.fft_flt.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 140
+      nodePos: [1068.5, 451]
+      controlEnabled: false
+  ifft:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: false
+    input:
+      buffer: ${graph.mul.output.product}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1245, 427]
+      controlEnabled: false
+  inv29:
+    module: invert
+    device: cpu
+    dataType: CF32
+    input:
+      buffer: ${graph.ifft.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 140
+      nodePos: [1598, 529]
+      controlEnabled: false
+  unpad:
+    module: unpad
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+      size: 50
+    input:
+      padded: ${graph.ifft.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1583.5, 267]
+      controlEnabled: false
+  overlap_add:
+    module: 'overlap-add'
+    device: cpu
+    dataType: CF32
+    config:
+      axis: 1
+    input:
+      overlap: ${graph.unpad.output.pad}
+      buffer: ${graph.unpad.output.unpadded}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1936, 263]
+      controlEnabled: false
+  fm:
+    module: fm
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      sampleRate: 2000000
+    input:
+      buffer: ${graph.overlap_add.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2281.5, 269]
+      controlEnabled: false
+  audio:
+    module: audio
+    device: cpu
+    dataType: F32
+    config:
+      outSampleRate: 48000
+      inSampleRate: 2000000
+    input:
+      buffer: ${graph.fm.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2641, 265]
+      controlEnabled: false
+  fft30:
+    module: fft
+    device: cpu
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      buffer: ${graph.inv29.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [1784, 528]
+      controlEnabled: false
+  agc32:
+    module: agc
+    device: cpu
+    dataType: CF32
+    input:
+      buffer: ${graph.fft30.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 120
+      nodePos: [2123, 538]
+      controlEnabled: false
+  amp:
+    module: amplitude
+    device: cpu
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      buffer: ${graph.agc32.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 147
+      nodePos: [2285, 537]
+      controlEnabled: false
+  scl:
+    module: scale
+    device: cpu
+    dataType: F32
+    config:
+      range: [-100, 0]
+    input:
+      buffer: ${graph.amp.output.buffer}
+    interface:
+      previewEnabled: false
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2480.5, 502.00003]
+      controlEnabled: false
+  wtf:
+    module: waterfall
+    device: cpu
+    dataType: F32
+    config:
+      viewSize: [512, 384]
+      interpolate: true
+      height: 512
+      offset: 0
+      zoom: 1
+    input:
+      buffer: ${graph.scl.output.buffer}
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 300
+      nodePos: [2841, 429]
+      controlEnabled: false
+  not39:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        After multiplying the signal and the filter in the frequency domain
+        the resulting signal is now ready to be brought back to the time-
+        domain for playback. This will be done with the same FFT block but 
+        now configured in the backward direction.
+        
+        This is also a good place to do some extra processing. For example,
+        the signal now can be resampled to the desired output sample rate.
+        This is shown in the `Overlap-Add-Fold` example flowgraph. 
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 469
+      nodePos: [1071.405, 196.50436]
+      controlEnabled: false
+  not40:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        This is the visualization branch, it will only display a waterfall of the filtered 
+        signal and nothing else. The pipeline is also very simple. First, the time domain data 
+        is inverted to show a linear frequency, then a forward FFT is applied to transform the 
+        data to the frequency domain, the gain is automatically adjusted, the amplitude is
+        calculated, and the signal is displayed.
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 638
+      nodePos: [1617.405, 693.5044]
+      controlEnabled: false
+  not41:
+    module: note
+    device: cpu
+    config:
+      note: |-
+        Now that the signal is now back to the time domain, the padding added previously 
+        can be removed and added to the beginning of the next block. This will smooth out 
+        the effects of the discrete convolution performed. Remember, a multiplication in 
+        the frequency domain corresponds to a convolution in the time domain!
+        
+        A nice visualization is available here:
+        https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method
+    interface:
+      previewEnabled: true
+      viewEnabled: false
+      nodeWidth: 572
+      nodePos: [1582.405, 62.504364]
+      controlEnabled: false

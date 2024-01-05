@@ -1,0 +1,5 @@
+CyberEtherMobile/Library/*
+*.DS_Store
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/

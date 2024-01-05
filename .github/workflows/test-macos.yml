@@ -1,0 +1,59 @@
+name: Test macOS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-macos:
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Homebrew (if not already installed)
+        run: |
+          which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+      #
+      # [NEW DEPENDENCY HOOK]
+      # This is copy-pasta from the README.md file.
+      # Update this as the README.md file changes.
+      #
+
+      - name: Install core dependencies
+        run: brew install cmake pkg-config ninja meson
+
+      - name: Install graphical dependencies
+        run: brew install spirv-cross glslang glfw
+
+      - name: Install optional dependencies for SoapySDR and Remote capabilities
+        run: |
+          brew install soapysdr soapyrtlsdr
+          brew install gstreamer
+          python -m pip install pyyaml
+
+      ##
+
+      - name: Init submodules
+        run: git submodule update --init --recursive
+
+      - name: Build Dynamic
+        run: |
+          rm -fr build
+          meson build -Dprefix=/usr
+          cd build && ninja
+
+      - name: Build Static
+        run: |
+          rm -fr build-static
+          meson build-static --default-library=static -Dprefix=/usr
+          cd build-static && ninja
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-macos-x86_64
+          path: ./build-static/cyberether
