@@ -86,5 +86,5 @@ jobs:
       - name: Upload binary.
         uses: actions/upload-artifact@v4
         with:
-          name: cyberether-linux-x11-x86_64
+          name: cyberether-emscripten
           path: ./cyberether.*
