@@ -129,6 +129,7 @@ class Soapy : public Module, public Compute {
 
  private:
     std::thread producer;
+    bool errored = false;
     bool streaming = false;
     std::string deviceLabel;
     std::string deviceName;
@@ -143,7 +144,7 @@ class Soapy : public Module, public Compute {
 
     Tensor<Device::CPU, T> hostOutputBuffer;
 
-    void soapyThreadLoop();
+    Result soapyThreadLoop();
 
     static bool CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val); 
 

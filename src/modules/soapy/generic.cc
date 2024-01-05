@@ -1,16 +1,5 @@
 #include "jetstream/modules/soapy.hh"
 
-#ifdef JETSTREAM_STATIC
-#if __has_include("SoapyAirspy.hpp")
-#define ENABLE_STATIC_AIRSPY
-#include "SoapyAirspy.hpp"
-#endif
-#if __has_include("SoapyRTLSDR.hpp")
-#define ENABLE_STATIC_RTLSDR
-#include "SoapyRTLSDR.hpp"
-#endif
-#endif
-
 namespace Jetstream {
 
 template<Device D, typename T>
@@ -18,6 +7,7 @@ Result Soapy<D, T>::create() {
     JST_DEBUG("Initializing Soapy module.");
     JST_INIT_IO();
 
+    errored = false;
     streaming = false;
     deviceName = "None";
     deviceHardwareKey = "None";
@@ -40,25 +30,9 @@ Result Soapy<D, T>::create() {
     // Try opening device.
 
     try {
-#ifdef JETSTREAM_STATIC
-        const std::string device = args["driver"];
-#ifdef ENABLE_STATIC_AIRSPY
-        if (device.compare("airspy") == 0) {
-            soapyDevice = new SoapyAirspy(args);
-        }
-#endif
-#ifdef ENABLE_STATIC_RTLSDR
-        // Static SoapyRTLSDR requires serial device number to work.
-        // Example: device=rtlsdr,serial=XXXXXXXXXX
-        if (device.compare("rtlsdr") == 0) {
-            soapyDevice = new SoapyRTLSDR(args);
-        }
-#endif
-#else
         const auto devices = SoapySDR::Device::enumerate(args);
         deviceLabel = devices.at(0).at("label");
         soapyDevice = SoapySDR::Device::make(devices.at(0));
-#endif
     } catch(const std::exception& e) {
         JST_ERROR("Failed to open device. Reason: {}", e.what());
         return Result::ERROR;
@@ -124,8 +98,9 @@ Result Soapy<D, T>::create() {
 
     producer = std::thread([&]{
         try {
-            soapyThreadLoop();
+            JST_CHECK_THROW(soapyThreadLoop());
         } catch(...) {
+            errored = true;
             JST_FATAL("[SOAPY] Device thread crashed.");
         }
     });
@@ -145,7 +120,7 @@ Result Soapy<D, T>::destroy() {
 }
 
 template<Device D, typename T>
-void Soapy<D, T>::soapyThreadLoop() {
+Result Soapy<D, T>::soapyThreadLoop() {
     int flags;
     long long timeNs;
     CF32 tmp[8192];
@@ -155,7 +130,7 @@ void Soapy<D, T>::soapyThreadLoop() {
     streaming = true;
     while (streaming) {
         int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
-        if (ret > 0 && streaming) {
+        if (ret > 0 && streaming && !errored) {
             buffer.put(tmp, ret);
         }
     }
@@ -163,13 +138,10 @@ void Soapy<D, T>::soapyThreadLoop() {
     soapyDevice->deactivateStream(soapyStream, 0, 0);
     soapyDevice->closeStream(soapyStream);
 
-#ifdef JETSTREAM_STATIC
-    delete soapyDevice;
-#else
     SoapySDR::Device::unmake(soapyDevice);
-#endif
 
     JST_TRACE("SDR Thread Safed");
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
@@ -251,6 +223,10 @@ Result Soapy<D, T>::computeReady() {
 
 template<Device D, typename T>
 Result Soapy<D, T>::compute(const RuntimeMetadata&) {
+    if (errored) {
+        return Result::ERROR;
+    }
+
     if (buffer.getOccupancy() < output.buffer.size()) {
         return Result::SKIP;
     }
