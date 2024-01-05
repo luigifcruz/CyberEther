@@ -309,3 +309,8 @@ CyberEther was created in 2021 by [Luigi Cruz](https://luigi.ltd) as a personal 
 
 ## Contributing
 Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository. The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html). The default line length is 88. This can be overridden if necessary. Please, be sensible. Also keep in mind that since this project is still in its early stages, the API is not stable and it is subject to change. More details on how to contribute can be found [here](./CONTRIBUTING.md).
+
+## License
+CyberEther is distributed under the [MIT license](./LICENSE). See [LICENSE](./LICENSE) for details. All contributions to the project are considered to be licensed under the same terms. The list of acknowledgements and third-party software used in this project can be found [here](./ACKNOWLEDGEMENTS.md).
+
+If your company is utilizing CyberEther in its software solutions, we encourage you to consider contributing to the CyberEther project. Your support and contributions not only help in the continuous improvement and sustainability of the project but also ensure that CyberEther remains a robust and cutting-edge tool for the community. For more details on how your company can contribute, please [contact me](https://luigi.ltd/contact).
