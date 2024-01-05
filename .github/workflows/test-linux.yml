@@ -80,6 +80,9 @@ jobs:
       - name: Copy JS from Docker container.
         run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/build/cyberether.js /tmp"
 
+      - name: Copy tools from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/tools/local_server.py /tmp"
+
       - name: Copy resources from Docker container.
         run: docker run -v $(pwd):/tmp --rm cyberether-emscripten bash -c "cp cyberether/resources/cyberether.* /tmp"
 
@@ -87,4 +90,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cyberether-emscripten
-          path: ./cyberether.*
+          path: |
+            ./local_server.py
+            ./cyberether.*
