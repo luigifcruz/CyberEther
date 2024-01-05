@@ -22,6 +22,16 @@ Result Soapy<D, T>::create() {
     deviceName = "None";
     deviceHardwareKey = "None";
 
+    // If browser, check if WebUSB is supported.
+
+#ifdef JST_OS_BROWSER
+    if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
+        JST_ERROR("This browser is not compatible with WebUSB. "
+                  "Try a Chromium based browser like Chrome, Brave, or Opera GX.");
+        return Result::ERROR;
+    }
+#endif
+
     // Convert requested device and stream strings into arguments.
 
     SoapySDR::Kwargs args = SoapySDR::KwargsFromString(config.deviceString);
@@ -252,6 +262,14 @@ Result Soapy<D, T>::compute(const RuntimeMetadata&) {
 
 template<Device D, typename T>
 typename Soapy<D, T>::DeviceList Soapy<D, T>::ListAvailableDevices(const std::string& filter) {
+#ifdef JST_OS_BROWSER
+    if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
+        JST_ERROR("This browser is not compatible with WebUSB. "
+                  "Try a Chromium based browser like Chrome, Brave, or Opera GX.");
+        return {};
+    }
+#endif
+
     DeviceList deviceMap;
     const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
 

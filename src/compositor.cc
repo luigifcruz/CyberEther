@@ -871,9 +871,12 @@ Result Compositor::drawStatic() {
             ImGui::SameLine();
 
             if (ImGui::Button(ICON_FA_PLUG " Connect WebUSB Device")) {
-                EM_ASM({
-                    openUsbDevice();
-                });
+                if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
+                    ImGui::InsertNotification({ ImGuiToastType_Error, 10000, "This browser is not compatible with WebUSB. "
+                                                                             "Try a Chromium based browser like Chrome, Brave, or Opera GX." });
+                } else {
+                    EM_ASM({  openUsbDevice(); });
+                }                
             }
             ImGui::SameLine();
 #endif
