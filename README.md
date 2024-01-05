@@ -6,7 +6,7 @@
 - 🦑 Portable GPU acceleration for compute: **NVIDIA (CUDA)**, **Apple (Metal)**, **Raspberry Pi (Vulkan)**, etc.
 - 🔋 Runtime configurable flowgraph pipeline with heterogeneously-accelerated modular blocks.
 - 🧳 **Hackable** and easy to use as a library or as a standalone application.
-- 🧊 Installation-free fully-featured [web application](https://ether.luigi.ltd) powered by **WebAssembly** and **WebGPU**.
+- 🧊 Installation-free fully-featured web application powered by **WebAssembly** and **WebGPU**.
 - 🤯 Low-latency [remote interface](#remote-interface) for headless servers and edge devices.
 
 <br>
