@@ -105,14 +105,14 @@ class Spectroscope : public Block {
             window, "window", {
                 .size = signalSize,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::Invert, D, IT>(
             invert, "invert", {}, {
                 .buffer = window->getOutputWindow(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::Multiply, D, IT>(
@@ -120,14 +120,14 @@ class Spectroscope : public Block {
                 .factorA = invert->getOutputBuffer(),
                 .factorB = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::AGC, D, IT>(
             agc, "agc", {}, {
                 .buffer = multiply->getOutputProduct(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
@@ -136,14 +136,14 @@ class Spectroscope : public Block {
             }, {
                 .buffer = agc->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::Amplitude, D, IT, OT>(
             amplitude, "amplitude", {}, {
                 .buffer = fft->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::Scale, D, OT>(
@@ -152,7 +152,7 @@ class Spectroscope : public Block {
             }, {
                 .buffer = amplitude->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         if (config.spectrogram) {
@@ -163,7 +163,7 @@ class Spectroscope : public Block {
                 }, {
                     .buffer = scale->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
         }
 
@@ -176,7 +176,7 @@ class Spectroscope : public Block {
                 }, {
                     .buffer = scale->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
         }
 
@@ -190,7 +190,7 @@ class Spectroscope : public Block {
                 }, {
                     .buffer = scale->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
         }
 

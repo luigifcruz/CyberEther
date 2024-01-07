@@ -84,7 +84,7 @@ class Filter : public Block {
                 .bandwidth = config.bandwidth,
                 .taps = config.taps,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("coeffs", output.coeffs, filter->getOutputCoeffs()));

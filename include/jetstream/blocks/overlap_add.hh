@@ -84,7 +84,7 @@ class OverlapAdd : public Block {
                 .buffer = input.buffer,
                 .overlap = input.overlap,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, overlap_add->getOutputBuffer()));

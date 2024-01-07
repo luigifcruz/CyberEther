@@ -99,7 +99,7 @@ class FilterEngine : public Block {
             }, {
                 .unpadded = input.signal,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
@@ -109,7 +109,7 @@ class FilterEngine : public Block {
             }, {
                 .unpadded = input.filter,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
@@ -118,7 +118,7 @@ class FilterEngine : public Block {
             }, {
                 .buffer = padSignal->getOutputPadded(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
@@ -127,7 +127,7 @@ class FilterEngine : public Block {
             }, {
                 .buffer = padFilter->getOutputPadded(),
             },
-            locale().blockId
+            locale()
         ));
 
         auto multiplySignalInput = fftSignal->getOutputBuffer();
@@ -144,7 +144,7 @@ class FilterEngine : public Block {
                 }, {
                     .buffer = fftSignal->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
 
             multiplySignalInput = expandDims->getOutputBuffer();
@@ -156,7 +156,7 @@ class FilterEngine : public Block {
                 .factorA = multiplySignalInput,
                 .factorB = fftFilter->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         auto ifftInput = multiply->getOutputProduct();
@@ -170,7 +170,7 @@ class FilterEngine : public Block {
                 }, {
                     .buffer = multiply->getOutputProduct(),
                 },
-                locale().blockId
+                locale()
             ));
 
             ifftInput = fold->getOutputBuffer();
@@ -182,7 +182,7 @@ class FilterEngine : public Block {
             }, {
                 .buffer = ifftInput,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::Unpad, D, IT>(
@@ -192,7 +192,7 @@ class FilterEngine : public Block {
             }, {
                 .padded = ifft->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::OverlapAdd, D, IT>(
@@ -202,7 +202,7 @@ class FilterEngine : public Block {
                 .buffer = unpad->getOutputUnpadded(),
                 .overlap = unpad->getOutputPad(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, overlap->getOutputBuffer()));

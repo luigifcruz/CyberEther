@@ -89,7 +89,7 @@ class Unpad : public Block {
             }, {
                 .padded = input.padded,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("unpadded", output.unpadded, unpad->getOutputUnpadded()));

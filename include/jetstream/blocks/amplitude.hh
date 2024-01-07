@@ -78,7 +78,7 @@ class Amplitude : public Block {
             amplitude, "amplitude", {}, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, amplitude->getOutputBuffer()));

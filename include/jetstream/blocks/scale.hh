@@ -82,7 +82,7 @@ class Scale : public Block {
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, scale->getOutputBuffer()));

@@ -78,7 +78,7 @@ class Invert : public Block {
             invert, "invert", {}, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, invert->getOutputBuffer()));

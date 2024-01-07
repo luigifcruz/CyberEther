@@ -72,7 +72,7 @@ class SpeechRecognition : public Block {
             tts, "tts", {}, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         return Result::SUCCESS;

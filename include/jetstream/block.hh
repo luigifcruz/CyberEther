@@ -177,7 +177,12 @@ class JETSTREAM_API Block {
     static Result LinkOutput(const std::string& name,
                              Tensor<DeviceId, Type>& dst,
                              const Tensor<DeviceId, Type>& src) {
-        dst.set_locale({src.locale().blockId, src.locale().moduleId, name});
+        dst.set_locale({
+            src.locale().parentBlockId, 
+            src.locale().blockId, 
+            src.locale().moduleId, 
+            name
+        });
 
         if (!dst.empty()) {
             JST_ERROR("The destination buffer should be empty during initialization.");

@@ -78,7 +78,7 @@ class AGC : public Block {
             agc, "agc", {}, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, agc->getOutputBuffer()));

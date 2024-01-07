@@ -85,7 +85,7 @@ class Take : public Block {
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(instance().template addModule<Jetstream::TensorModifier, D, IT>(
@@ -97,7 +97,7 @@ class Take : public Block {
             }, {
                 .buffer = take->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, squeezeDims->getOutputBuffer()));

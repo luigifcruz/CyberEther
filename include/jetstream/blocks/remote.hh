@@ -74,7 +74,7 @@ class Remote : public Block {
                 .endpoint = config.endpoint,
                 .viewSize = config.viewSize,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         // Initialize mouse state.

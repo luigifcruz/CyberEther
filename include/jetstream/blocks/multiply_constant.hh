@@ -80,7 +80,7 @@ class MultiplyConstant : public Block {
             multiply, "multiply", {}, {
                 .factor = input.factor,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("product", output.product, multiply->getOutputProduct()));

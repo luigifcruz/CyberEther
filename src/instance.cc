@@ -108,8 +108,10 @@ Result Instance::removeBlock(Locale locale) {
     for (const auto& [outputPinId, outputRecord] : _flowgraph.nodes().at(locale)->outputMap) {
         for (const auto& [inputLocale, inputState] : _flowgraph.nodes()) {
             for (const auto& [inputPinId, inputRecord] : inputState->inputMap) {
-                if (inputRecord.locale == outputRecord.locale) {
-                    unlinkList.push_back({{inputLocale.blockId, inputLocale.moduleId, inputPinId}, outputRecord.locale});
+                if (inputRecord.locale == outputRecord.locale && inputLocale.isBlock()) {
+                    const Locale& in = {inputLocale.parentBlockId, inputLocale.blockId, inputLocale.moduleId, inputPinId};
+                    const Locale& out = outputRecord.locale;
+                    unlinkList.push_back({in, out});
                 }
             }
         }
@@ -119,7 +121,7 @@ Result Instance::removeBlock(Locale locale) {
         JST_CHECK(unlinkBlocks(inputLocale.block(), outputLocale.block()));
     }
 
-    // Delete module.
+    // Delete block.
     JST_CHECK(eraseBlock(locale.block()));
 
     return Result::SUCCESS;
@@ -410,7 +412,9 @@ Result Instance::eraseBlock(Locale locale) {
     }
 
     // Remove block from compositor.
-    JST_CHECK(_compositor.removeBlock(locale));
+    if (locale.isBlock()) {
+        JST_CHECK(_compositor.removeBlock(locale));
+    }
 
     // Remove module from state.
     auto state = _flowgraph.nodes().extract(locale).mapped();
@@ -444,7 +448,9 @@ Result Instance::reset() {
 
     for (const auto& locale : block_erase_list) {
         JST_TRACE("[INSTANCE] Resetting block '{}'.", locale);
-        JST_CHECK(eraseBlock(locale));
+        if (locale.isBlock()) {
+            JST_CHECK(eraseBlock(locale));
+        }
     }
 
     return Result::SUCCESS;
@@ -465,7 +471,7 @@ Result Instance::fetchDependencyTree(Locale locale, std::vector<Locale>& storage
         for (const auto& [outputPinId, outputRecord] : _flowgraph.nodes().at(currentLocale)->outputMap) {
             for (const auto& [inputLocale, inputState] : _flowgraph.nodes()) {
                 for (const auto& [inputPinId, inputRecord] : inputState->inputMap) {
-                    if (inputRecord.locale == outputRecord.locale) {
+                    if (inputRecord.locale == outputRecord.locale && inputLocale.isBlock()) {
                         Locale nextLocale = inputLocale.block();
                         if (seenLocales.find(nextLocale) == seenLocales.end()) {
                             storage.push_back(nextLocale);

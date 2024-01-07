@@ -78,7 +78,7 @@ class Window : public Block {
             window, "window", {
                 .size = config.size,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("window", output.window, window->getOutputWindow()));

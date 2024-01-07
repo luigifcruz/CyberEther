@@ -112,7 +112,7 @@ class Soapy : public Block {
                 .numberOfTimeSamples = config.numberOfTimeSamples,
                 .bufferMultiplier = config.bufferMultiplier,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         // Connecting sub-modules outputs.

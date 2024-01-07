@@ -77,7 +77,7 @@ class Constellation : public Block {
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         return Result::SUCCESS;

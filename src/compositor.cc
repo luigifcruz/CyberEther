@@ -122,7 +122,7 @@ Result Compositor::refreshState() {
 
         for (const auto& [inputPinId, inputRecord] : state.inputMap) {
             // Generate clean locale.
-            Locale inputLocale = {locale.blockId, "", inputPinId};
+            Locale inputLocale = {locale.parentBlockId, locale.blockId, "", inputPinId};
 
             // Save the input pin locale.
             pinLocaleMap[id] = inputLocale;
@@ -140,7 +140,7 @@ Result Compositor::refreshState() {
 
         for (const auto& [outputPinId, outputRecord] : state.outputMap) {
             // Generate clean locale.
-            Locale outputLocale = {locale.blockId, "", outputPinId};
+            Locale outputLocale = {locale.parentBlockId, locale.blockId, "", outputPinId};
 
             // Save the output pin locale.
             pinLocaleMap[id] = outputLocale;
