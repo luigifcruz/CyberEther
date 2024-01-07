@@ -25,6 +25,8 @@ EM_JS(const char*, jst_file_path, (), {
 #include <comutil.h>
 #include <stdio.h>
 #include <shellapi.h>
+#undef ERROR
+#undef FATAL
 #endif
 
 namespace Jetstream::Platform {
@@ -32,17 +34,6 @@ namespace Jetstream::Platform {
 //
 // Open URL
 //
-
-#if defined(JST_OS_WINDOWS)
-Result OpenUrl(const std::string& url) {
-    INT_PTR res = (INT_PTR)ShellExecuteA(0, 0, url.c_str(), 0, 0 , SW_SHOW );
-    if (res < 32) {
-        JST_ERROR("Failed to open URL: {}", url);
-        return Result::ERROR;
-    }
-    return Result::SUCCESS;
-}
-#endif
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -66,6 +57,16 @@ Result OpenUrl(const std::string& url) {
     return Result::SUCCESS;
 }
 
+#elif defined(JST_OS_WINDOWS)
+Result OpenUrl(const std::string& url) {
+    INT_PTR res = (INT_PTR)ShellExecuteA(0, 0, url.c_str(), 0, 0 , SW_SHOW );
+    if (res < 32) {
+        JST_ERROR("Failed to open URL: {}", url);
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+}
+
 #else
 
 Result OpenUrl(const std::string& url) {
@@ -80,45 +81,6 @@ Result OpenUrl(const std::string& url) {
 //
 
 // TODO: Implement iOS support.
-
-#if defined(JST_OS_WINDOWS)
-Result PickFile(std::string& path) {
-    /* File path buffer */
-    char buf[256] = {'\0'};
-    memcpy_s(buf,256,path.c_str(),path.length());
-
-    /* Create OpenFilenameA Struct */
-    OPENFILENAMEA ofn;
-    ZeroMemory(&ofn, sizeof(OPENFILENAME));
-
-    /* Fill struct */
-    ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = NULL;
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = 256;
-    ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
-    ofn.nFilterIndex = 2;
-
-    bool ret = GetOpenFileNameA(&ofn);
-    if (!ret) {
-        JST_ERROR("No file selected or operation cancelled.");
-        return Result::ERROR;
-    }
-
-    path = std::string(ofn.lpstrFile);
-
-    if (path.empty()) {
-        JST_ERROR("No file selected or operation cancelled.");
-        return Result::ERROR;
-    }
-
-    if (path.back() == '\n') {
-        path.pop_back();
-    }
-
-    return Result::SUCCESS;
-}
-#endif
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -226,23 +188,8 @@ Result PickFile(std::string& path) {
     return Result::SUCCESS;
 }
 
-#else
-
+#elif defined(JST_OS_WINDOWS)
 Result PickFile(std::string& path) {
-    JST_ERROR("Picking files is not supported in this platform.");
-    return Result::ERROR;
-}
-
-#endif
-
-//
-// Save File
-//
-
-// TODO: Implement iOS support.
-
-#if defined(JST_OS_WINDOWS)
-Result SaveFile(std::string& path) {
     /* File path buffer */
     char buf[256] = {'\0'};
     memcpy_s(buf,256,path.c_str(),path.length());
@@ -259,7 +206,7 @@ Result SaveFile(std::string& path) {
     ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
     ofn.nFilterIndex = 2;
 
-    bool ret = GetSaveFileNameA(&ofn);
+    bool ret = GetOpenFileNameA(&ofn);
     if (!ret) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
@@ -278,7 +225,21 @@ Result SaveFile(std::string& path) {
 
     return Result::SUCCESS;
 }
+
+#else
+
+Result PickFile(std::string& path) {
+    JST_ERROR("Picking files is not supported in this platform.");
+    return Result::ERROR;
+}
+
 #endif
+
+//
+// Save File
+//
+
+// TODO: Implement iOS support.
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -370,6 +331,44 @@ Result SaveFile(std::string& path) {
     }
 
     path = buffer.data();
+
+    if (path.empty()) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    if (path.back() == '\n') {
+        path.pop_back();
+    }
+
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_WINDOWS)
+Result SaveFile(std::string& path) {
+    /* File path buffer */
+    char buf[256] = {'\0'};
+    memcpy_s(buf,256,path.c_str(),path.length());
+
+    /* Create OpenFilenameA Struct */
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(OPENFILENAME));
+
+    /* Fill struct */
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = NULL;
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = 256;
+    ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
+    ofn.nFilterIndex = 2;
+
+    bool ret = GetSaveFileNameA(&ofn);
+    if (!ret) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    path = std::string(ofn.lpstrFile);
 
     if (path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
