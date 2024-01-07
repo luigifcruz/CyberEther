@@ -21,8 +21,10 @@ EM_JS(const char*, jst_file_path, (), {
 #endif
 
 #if defined(JST_OS_WINDOWS)
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <comutil.h>
+#include <commdlg.h>
 #include <stdio.h>
 #include <shellapi.h>
 #undef ERROR
