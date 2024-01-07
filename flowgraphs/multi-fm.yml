@@ -28,7 +28,7 @@ graph:
       nodePos: [-2, 224.00002]
       controlEnabled: false
   flt:
-    module: filter
+    module: filter-taps
     device: cpu
     dataType: CF32
     config:

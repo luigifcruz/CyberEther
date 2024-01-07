@@ -8,7 +8,7 @@ license: MIT
 description: Shows how to filter a signal in the frequency domain with FIR. Uses multiply and add to reduce blocking artifacts.
 graph:
   flt:
-    module: filter
+    module: filter-taps
     device: cpu
     dataType: CF32
     config:
