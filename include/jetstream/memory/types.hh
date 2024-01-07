@@ -426,9 +426,11 @@ struct JETSTREAM_API Range {
     bool operator<=(const Range<T>& a) const {
         return (min <= a.min || max <= a.max);
     }
-};
 
-// TODO Add print for Range.
+    friend inline std::ostream& operator<<(std::ostream& os, const Range<T>& range) {
+        return os << fmt::format("[{}, {}]", range.min, range.max);
+    }
+};
 
 }  // namespace Jetstream
 
