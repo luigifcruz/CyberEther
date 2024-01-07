@@ -180,6 +180,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_SPECTROSCOPE_AVAILABLE
         Blocks::Spectroscope,
 #endif
+#ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
+        Blocks::Filter,
+#endif
         // [NEW BLOCK HOOK]
     )
 }
