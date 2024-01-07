@@ -429,13 +429,13 @@ Parser::Record Flowgraph::solveLocalPlaceholder(const ryml::ConstNodeRef& node) 
         JST_CHECK_THROW(Result::ERROR);
     }
 
-    if (!_nodes.contains({"", moduleKey})) {
+    if (!_nodes.contains({moduleKey})) {
         JST_ERROR("[PARSER] Module from the variable '{}' not found.", key);
         JST_CHECK_THROW(Result::ERROR);
     }
 
     if (!arrayKey.compare("input")) {
-        auto& map = _nodes.at({"", moduleKey})->inputMap;
+        auto& map = _nodes.at({moduleKey})->inputMap;
         if (!map.contains(elementKey)) {
             JST_ERROR("[PARSER] Input element from the variable '{}' not found.", key);
             JST_CHECK_THROW(Result::ERROR);
@@ -444,7 +444,7 @@ Parser::Record Flowgraph::solveLocalPlaceholder(const ryml::ConstNodeRef& node) 
     }
 
     if (!arrayKey.compare("output")) {
-        auto& map = _nodes.at({"", moduleKey})->outputMap;
+        auto& map = _nodes.at({moduleKey})->outputMap;
         if (!map.contains(elementKey)) {
             JST_ERROR("[PARSER] Output element from the variable '{}' not found.", key);
             JST_CHECK_THROW(Result::ERROR);
@@ -453,7 +453,7 @@ Parser::Record Flowgraph::solveLocalPlaceholder(const ryml::ConstNodeRef& node) 
     }
 
     if (!arrayKey.compare("interface")) {
-        auto& map = _nodes.at({"", moduleKey})->stateMap;
+        auto& map = _nodes.at({moduleKey})->stateMap;
         if (!map.contains(elementKey)) {
             JST_ERROR("[PARSER] Interface state element from the variable '{}' not found.", key);
             JST_CHECK_THROW(Result::ERROR);

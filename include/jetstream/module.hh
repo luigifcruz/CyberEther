@@ -65,7 +65,6 @@ class JETSTREAM_API Module {
         }
             
         buffer.set_locale({
-            locale.parentBlockId,
             locale.blockId, 
             locale.moduleId, 
             name

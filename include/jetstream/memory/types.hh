@@ -317,17 +317,13 @@ inline std::ostream& operator<<(std::ostream& os, const Device& device) {
 //
 
 struct Locale {
-    std::string parentBlockId = "";
     std::string blockId = "";
     std::string moduleId = "";
     std::string pinId = "";
+    std::string parentId = "";
 
     bool isBlock() const {
-        return parentBlockId.empty() && !blockId.empty() && moduleId.empty() && pinId.empty();
-    }
-
-    bool isInternalBlock() const {
-        return !parentBlockId.empty() && !blockId.empty() && moduleId.empty() && pinId.empty();
+        return !blockId.empty() && moduleId.empty() && pinId.empty();
     }
 
     bool isModule() const {
@@ -338,38 +334,32 @@ struct Locale {
         return !blockId.empty() && !moduleId.empty() && !pinId.empty();
     }
 
-    Locale parent() const {
-        return Locale{parentBlockId};
-    }
-
     Locale block() const {
-        return Locale{parentBlockId, blockId};
+        return Locale{blockId};
     }
 
     Locale module() const {
-        return Locale{parentBlockId, blockId, moduleId};
+        return Locale{blockId, moduleId};
     }
 
     Locale pin() const {
-        return Locale{parentBlockId, blockId, "", pinId};
+        return Locale{blockId, "", pinId};
     }
 
     bool empty() const {
-        return parentBlockId.empty() &&
-               blockId.empty() && 
+        return blockId.empty() && 
                moduleId.empty() && 
                pinId.empty();
     }
 
     bool operator==(const Locale& other) const {
-        return parentBlockId == other.parentBlockId &&
-               blockId  == other.blockId  &&
+        return blockId  == other.blockId  &&
                moduleId == other.moduleId &&
                pinId    == other.pinId;
     }
 
     std::string shash() const {
-        return parentBlockId + blockId + moduleId + pinId;
+        return blockId + moduleId + pinId;
     }
 
     std::size_t hash() const {
@@ -379,18 +369,14 @@ struct Locale {
     struct Hasher {
         std::size_t operator()(const Locale& locale) const {
             std::hash<std::string> string_hasher;
-            std::size_t h0 = string_hasher(locale.parentBlockId);
             std::size_t h1 = string_hasher(locale.blockId);
             std::size_t h2 = string_hasher(locale.moduleId);
             std::size_t h3 = string_hasher(locale.pinId);
-            return h0 ^ (h1 << 1) ^ (h2 << 2) ^ (h3 << 3);
+            return h1 ^ (h2 << 1) ^ (h3 << 2);
         }
     };
 
     friend inline std::ostream& operator<<(std::ostream& os, const Locale& locale) {
-        if (!locale.parentBlockId.empty()) {
-            os << fmt::format("{}_", locale.parentBlockId);
-        }
         if (!locale.blockId.empty() && !locale.moduleId.empty()) {
             os << fmt::format("{}-", locale.blockId);
         } else {

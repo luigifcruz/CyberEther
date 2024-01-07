@@ -109,7 +109,7 @@ Result Instance::removeBlock(Locale locale) {
         for (const auto& [inputLocale, inputState] : _flowgraph.nodes()) {
             for (const auto& [inputPinId, inputRecord] : inputState->inputMap) {
                 if (inputRecord.locale == outputRecord.locale && inputLocale.isBlock()) {
-                    const Locale& in = {inputLocale.parentBlockId, inputLocale.blockId, inputLocale.moduleId, inputPinId};
+                    const Locale& in = {inputLocale.blockId, inputLocale.moduleId, inputPinId};
                     const Locale& out = outputRecord.locale;
                     unlinkList.push_back({in, out});
                 }
@@ -412,9 +412,7 @@ Result Instance::eraseBlock(Locale locale) {
     }
 
     // Remove block from compositor.
-    if (locale.isBlock()) {
-        JST_CHECK(_compositor.removeBlock(locale));
-    }
+    JST_CHECK(_compositor.removeBlock(locale));
 
     // Remove module from state.
     auto state = _flowgraph.nodes().extract(locale).mapped();
@@ -448,9 +446,7 @@ Result Instance::reset() {
 
     for (const auto& locale : block_erase_list) {
         JST_TRACE("[INSTANCE] Resetting block '{}'.", locale);
-        if (locale.isBlock()) {
-            JST_CHECK(eraseBlock(locale));
-        }
+        JST_CHECK(eraseBlock(locale));
     }
 
     return Result::SUCCESS;

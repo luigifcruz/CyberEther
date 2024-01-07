@@ -85,7 +85,7 @@ class JETSTREAM_API Instance {
                      const std::string& id,
                      const typename T<D, C...>::Config& config,
                      const typename T<D, C...>::Input& input,
-                     const Locale& blockLocale = {"", "main"}) {
+                     const Locale& blockLocale = {"main"}) {
         using B = T<D, C...>;
 
         // Validate module type.
@@ -110,7 +110,7 @@ class JETSTREAM_API Instance {
 
         // Build locale.
 
-        const Locale& locale = {blockLocale.parentBlockId, blockLocale.blockId, id};
+        const Locale& locale = {blockLocale.blockId, id};
         JST_DEBUG("[INSTANCE] Adding new module '{}'.", locale);
         
         if (_flowgraph.nodes().contains(locale)) {
@@ -197,8 +197,7 @@ class JETSTREAM_API Instance {
                     const std::string& id,
                     const typename T<D, C...>::Config& config,
                     const typename T<D, C...>::Input& input,
-                    const typename T<D, C...>::State& state = {},
-                    const Locale& parentBlockLocale = {}) {
+                    const typename T<D, C...>::State& state) {
         using B = T<D, C...>;
 
         // Allocate module.
@@ -229,7 +228,7 @@ class JETSTREAM_API Instance {
 
         // Build locale.
 
-        const Locale& locale = {parentBlockLocale.blockId, autoId};
+        const Locale& locale = {autoId};
         JST_DEBUG("[INSTANCE] Adding new block '{}'.", locale);
 
         if (_flowgraph.nodes().contains(locale)) {
@@ -249,20 +248,18 @@ class JETSTREAM_API Instance {
 
         // Load fingerprint data.
 
-        if (locale.isBlock()) {
-            node->fingerprint.id = block->id();
-            node->fingerprint.device = GetDeviceName(block->device());
+        node->fingerprint.id = block->id();
+        node->fingerprint.device = GetDeviceName(block->device());
 
-            if constexpr (CountArgs<C...>::value == 1) {
-                using Type = typename std::tuple_element<0, std::tuple<C...> >::type;
-                node->fingerprint.inputDataType = NumericTypeInfo<Type>::name;
-            }
-            if constexpr (CountArgs<C...>::value == 2) {
-                using InputType = typename std::tuple_element<0, std::tuple<C...> >::type;
-                node->fingerprint.inputDataType = NumericTypeInfo<InputType>::name;
-                using OutputType = typename std::tuple_element<1, std::tuple<C...> >::type;
-                node->fingerprint.outputDataType = NumericTypeInfo<OutputType>::name;
-            }
+        if constexpr (CountArgs<C...>::value == 1) {
+            using Type = typename std::tuple_element<0, std::tuple<C...> >::type;
+            node->fingerprint.inputDataType = NumericTypeInfo<Type>::name;
+        }
+        if constexpr (CountArgs<C...>::value == 2) {
+            using InputType = typename std::tuple_element<0, std::tuple<C...> >::type;
+            node->fingerprint.inputDataType = NumericTypeInfo<InputType>::name;
+            using OutputType = typename std::tuple_element<1, std::tuple<C...> >::type;
+            node->fingerprint.outputDataType = NumericTypeInfo<OutputType>::name;
         }
 
         // Load generic data.
@@ -279,24 +276,16 @@ class JETSTREAM_API Instance {
         if (block->create() != Result::SUCCESS) {
             JST_DEBUG("[INSTANCE] Block '{}' is incomplete.", locale);
             block->setComplete(false);
-
-            if (locale.isInternalBlock()) {
-                auto& parentBlock = _flowgraph.nodes().at(parentBlockLocale)->block;
-                parentBlock->setComplete(false);
-                parentBlock->pushError(fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
-            }
         }
 
         // Populate block state record data.
 
-        if (locale.isBlock()) {
-            JST_CHECK(block->input >> node->inputMap);
-            JST_CHECK(block->output >> node->outputMap);
-            JST_CHECK(block->state >> node->stateMap);
+        JST_CHECK(block->input >> node->inputMap);
+        JST_CHECK(block->output >> node->outputMap);
+        JST_CHECK(block->state >> node->stateMap);
 
-            node->setConfigEndpoint(block->config);
-            node->setStateEndpoint(block->state);
-        }
+        node->setConfigEndpoint(block->config);
+        node->setStateEndpoint(block->state);
 
         // Check if output locale is owned by block.
 
@@ -311,14 +300,12 @@ class JETSTREAM_API Instance {
         
         // Add block to the compositor.
 
-        if (locale.isBlock()) {
-            JST_CHECK(_compositor.addBlock(locale, 
-                                           block, 
-                                           node->inputMap, 
-                                           node->outputMap, 
-                                           node->stateMap, 
-                                           node->fingerprint));
-        }
+        JST_CHECK(_compositor.addBlock(locale, 
+                                       block, 
+                                       node->inputMap, 
+                                       node->outputMap, 
+                                       node->stateMap, 
+                                       node->fingerprint));
 
         return Result::SUCCESS;
     }

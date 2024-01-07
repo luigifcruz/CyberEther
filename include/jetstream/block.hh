@@ -178,7 +178,6 @@ class JETSTREAM_API Block {
                              Tensor<DeviceId, Type>& dst,
                              const Tensor<DeviceId, Type>& src) {
         dst.set_locale({
-            src.locale().parentBlockId, 
             src.locale().blockId, 
             src.locale().moduleId, 
             name
