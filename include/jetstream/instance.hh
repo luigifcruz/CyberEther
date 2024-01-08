@@ -13,7 +13,6 @@
 #include "jetstream/module.hh"
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
 #include "jetstream/compositor.hh"
 #include "jetstream/compute/base.hh"
@@ -81,6 +80,58 @@ class JETSTREAM_API Instance {
     }
 
     template<template<Device, typename...> class T, Device D, typename... C>
+    Result addInternalBlock(std::shared_ptr<T<D, C...>>& block,
+                            const std::string& id,
+                            const typename T<D, C...>::Config& config,
+                            const typename T<D, C...>::Input& input,
+                            const Locale& blockLocale = {"main"}) {
+        using B = T<D, C...>;
+
+        // Allocate module.
+
+        block = std::make_shared<B>();
+
+        // Build locale.
+
+        Locale locale = blockLocale;
+
+        if (locale.moduleId.empty()) {
+            locale.moduleId = id;
+        } else {
+            locale.moduleId += fmt::format("_{}", id);
+        }
+
+        JST_DEBUG("[INSTANCE] Adding internal block '{}'.", locale);
+
+        // Load generic data.
+
+        block->setLocale(locale);
+        block->setInstance(this);
+        block->setComplete(true);
+        block->config = config;
+        block->input = input;
+
+        // Create block and load state.
+
+        if (block->create() != Result::SUCCESS) {
+            JST_DEBUG("[INSTANCE] Block '{}' is incomplete.", locale);
+            block->setComplete(false);
+        }
+
+        return Result::SUCCESS;
+    }
+
+    template<template<Device, typename...> class T, Device D, typename... C>
+    Result eraseInternalBlock(std::shared_ptr<T<D, C...>>& block) {
+        if (block->destroy() != Result::SUCCESS) {
+            JST_ERROR("[INSTANCE] Failed to destroy internal block '{}'.", block->locale());
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    }
+
+    template<template<Device, typename...> class T, Device D, typename... C>
     Result addModule(std::shared_ptr<T<D, C...>>& module,
                      const std::string& id,
                      const typename T<D, C...>::Config& config,
@@ -110,7 +161,13 @@ class JETSTREAM_API Instance {
 
         // Build locale.
 
-        const Locale& locale = {blockLocale.blockId, id};
+        std::string autoId = id;
+
+        if (!blockLocale.moduleId.empty()) {
+            autoId = fmt::format("{}_{}", blockLocale.moduleId, id);
+        }
+
+        const Locale& locale = {blockLocale.blockId, autoId};
         JST_DEBUG("[INSTANCE] Adding new module '{}'.", locale);
         
         if (_flowgraph.nodes().contains(locale)) {

@@ -320,7 +320,6 @@ struct Locale {
     std::string blockId = "";
     std::string moduleId = "";
     std::string pinId = "";
-    std::string parentId = "";
 
     bool isBlock() const {
         return !blockId.empty() && moduleId.empty() && pinId.empty();

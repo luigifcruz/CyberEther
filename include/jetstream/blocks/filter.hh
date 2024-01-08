@@ -80,21 +80,21 @@ class Filter : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addBlock<Blocks::FilterTaps, D, IT, OT>(
+        JST_CHECK(instance().template addInternalBlock<Blocks::FilterTaps, D, IT, OT>(
             taps, "taps", {
                 .center = config.center,
                 .sampleRate = config.sampleRate,
                 .bandwidth = config.bandwidth,
                 .taps = config.taps,
-            }, {}, {},
+            }, {},
             locale()
         ));
 
-        JST_CHECK(instance().template addBlock<Blocks::FilterEngine, D, IT, OT>(
+        JST_CHECK(instance().template addInternalBlock<Blocks::FilterEngine, D, IT, OT>(
             engine, "engine", {}, {
                 .signal = input.buffer,
                 .filter = taps->getOutputCoeffs(),
-            }, {},
+            },
             locale()
         ));
 
@@ -104,8 +104,8 @@ class Filter : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseBlock(engine->locale()));
-        JST_CHECK(instance().eraseBlock(taps->locale()));
+        JST_CHECK(instance().eraseInternalBlock(engine));
+        JST_CHECK(instance().eraseInternalBlock(taps));
 
         return Result::SUCCESS;
     }

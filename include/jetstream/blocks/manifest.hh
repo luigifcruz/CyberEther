@@ -181,8 +181,7 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
         Blocks::Spectroscope,
 #endif
 #ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
-        // TODO: Revert.
-        //Blocks::Filter,
+        Blocks::Filter,
 #endif
         // [NEW BLOCK HOOK]
     )
