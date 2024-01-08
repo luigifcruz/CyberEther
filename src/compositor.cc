@@ -1831,15 +1831,23 @@ Result Compositor::drawStatic() {
             ImGui::Text("This is the Benchmarking Tool, a place where you can run benchmarks");
             ImGui::Text("to compare the performance between different devices and backends.");
 
+            static std::ostringstream benchmarkData;
+            static std::string buildInfoStr = fmt::format("V{} ({}) - Optimization: {} - Debug: {} - Native: {}", JETSTREAM_VERSION_STR,  
+                                                                                                                  JETSTREAM_BUILD_TYPE, 
+                                                                                                                  JETSTREAM_BUILD_OPTIMIZATION, 
+                                                                                                                  JETSTREAM_BUILD_DEBUG,
+                                                                                                                  JETSTREAM_BUILD_NATIVE);
+
             if (ImGui::Button("Run Benchmark")) {
                 if (benchmarkRunning) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "A benchmark is already running." });
                 } else {
                     std::thread([&]{
+                        benchmarkData.clear();
                         benchmarkRunning = true;
                         Benchmark::ResetResults();
                         ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Running benchmark..." });
-                        Benchmark::Run("quiet");
+                        Benchmark::Run("markdown", benchmarkData);
                         benchmarkRunning = false;
                     }).detach();
                 }
@@ -1847,7 +1855,15 @@ Result Compositor::drawStatic() {
             ImGui::SameLine();
             if (ImGui::Button("Reset Benchmark")) {
                 if (!benchmarkRunning) {
+                    benchmarkData.clear();
                     Benchmark::ResetResults();
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Copy Benchmark Results")) {
+                if (!benchmarkRunning) {
+                    ImGui::SetClipboardText(fmt::format("{}\n{}", buildInfoStr, benchmarkData.str()).c_str());
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Benchmark results copied to clipboard." });
                 }
             }
 
@@ -1903,6 +1919,13 @@ Result Compositor::drawStatic() {
 
                 ImGui::EndTable();
             }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::Text("Binary Information:");
+            ImGui::TextUnformatted(buildInfoStr.c_str());
 
             ImGui::Spacing();
             ImGui::Separator();

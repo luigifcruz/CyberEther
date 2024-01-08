@@ -63,6 +63,7 @@ cfg_lst.set('version', meson.project_version())
 cfg_lst.set('buildtype', get_option('buildtype'))
 cfg_lst.set('optimization', get_option('optimization'))
 cfg_lst.set('debug', get_option('debug'))
+cfg_lst.set('native', get_option('native'))
 
 cfg_lst.set('JST_IS_STATIC', jst_is_static)
 cfg_lst.set('JST_IS_SHARED', not jst_is_static)

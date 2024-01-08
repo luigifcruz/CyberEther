@@ -2,6 +2,7 @@
 #define JETSTREAM_BUILD_TYPE "@buildtype@"
 #define JETSTREAM_BUILD_OPTIMIZATION "@optimization@"
 #define JETSTREAM_BUILD_DEBUG "@debug@"
+#define JETSTREAM_BUILD_NATIVE "@native@"
 
 #mesondefine JST_IS_STATIC
 #mesondefine JST_IS_SHARED
