@@ -97,7 +97,10 @@ void Window::ScaleStyle(const Viewport::Generic& viewport) {
 
 void Window::ImGuiStyleSetup() {
     // Setup Theme
+
     // Inspired from: https://github.com/ocornut/imgui/issues/707#issuecomment-917151020
+    // Original work is licensed under CC BY 4.0 DEED by Jan Bielak (janekb04).
+    // Tweaked by Luigi F. Cruz (luigifcruz) to match CyberEther style.
 
     auto &colors = ImGui::GetStyle().Colors;
     colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
