@@ -70,6 +70,12 @@ struct TensorStorageMetadata {
      public:
         template<typename T>
         void set(const T& value) {
+            if (storage.has_value()) {
+                const auto last = std::any_cast<const T&>(storage);
+                if (last == value) {
+                    return;
+                }
+            }
             storage = value;
             notify();
         }
