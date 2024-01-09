@@ -40,6 +40,14 @@ class TensorPrototype {
         return prototype.offset_bytes;
     }
 
+    constexpr const std::vector<U64>& shape() const noexcept {
+        return prototype.shape;
+    }
+
+    constexpr const std::vector<U64>& stride() const noexcept {
+        return prototype.stride;
+    }
+
     constexpr const std::vector<U64>& shape_minus_one() const noexcept {
         return prototype.shape_minus_one;
     }
@@ -50,14 +58,6 @@ class TensorPrototype {
 
     constexpr const U64& hash() const noexcept {
         return prototype.hash;
-    }
-
-    constexpr const std::vector<U64>& shape() const noexcept {
-        return prototype.shape;
-    }
-
-    constexpr const std::vector<U64>& stride() const noexcept {
-        return prototype.stride;
     }
 
     constexpr bool empty() const noexcept {
