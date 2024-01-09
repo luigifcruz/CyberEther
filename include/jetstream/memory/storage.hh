@@ -71,6 +71,9 @@ class TensorStorage : public TensorPrototype {
 
         // Initialize storage.
         storage = std::make_shared<TensorStorageMetadata>();
+
+        // Calculate prototype metadata.
+        TensorPrototype::initialize({}, sizeof(T));
     }
 
     explicit TensorStorage(const std::vector<U64>& shape) {

@@ -255,8 +255,13 @@ class TensorPrototype {
     TensorPrototypeMetadata prototype;
 
     void initialize(const std::vector<U64>& shape, const U64& element_size) {
-        prototype.shape = shape;
         prototype.element_size = element_size;
+
+        if (shape.empty()) {
+            return;
+        }
+
+        prototype.shape = shape;
 
         prototype.stride.resize(prototype.shape.size());
         for (U64 i = 0; i < prototype.shape.size(); i++) {
