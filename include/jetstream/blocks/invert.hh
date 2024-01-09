@@ -74,7 +74,7 @@ class Invert : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Invert, D, IT>(
+        JST_CHECK(instance().addModule(
             invert, "invert", {}, {
                 .buffer = input.buffer,
             },

@@ -71,7 +71,7 @@ class Constellation : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Constellation, D, IT>(
+        JST_CHECK(instance().addModule(
             constellation, "constellation", {
                 .viewSize = config.viewSize,
             }, {

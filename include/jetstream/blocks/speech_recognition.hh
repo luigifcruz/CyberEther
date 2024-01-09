@@ -68,7 +68,7 @@ class SpeechRecognition : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::SpeechRecognition, D, IT>(
+        JST_CHECK(instance().addModule(
             tts, "tts", {}, {
                 .buffer = input.buffer,
             },

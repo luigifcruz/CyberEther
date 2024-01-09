@@ -18,7 +18,7 @@ class UI {
     }
 
     Result create() {
-        JST_CHECK(instance.addModule<Soapy, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             sdr, "soapy", {
                 .deviceString = "driver=rtlsdr",
                 .frequency = 96.9e6,
@@ -29,20 +29,20 @@ class UI {
             }, {}
         ));
 
-        JST_CHECK(instance.addModule<Window, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             win, "win", {
                 .size = sdr->getOutputBuffer().shape()[1],
             }, {}
         ));
 
-        JST_CHECK(instance.addModule<Multiply, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             win_mul, "win_mul", {}, {
                 .factorA = sdr->getOutputBuffer(),
                 .factorB = win->getOutputWindow(),
             }
         ));
 
-        JST_CHECK(instance.addModule<FFT, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             fft, "fft", {
                 .forward = true,
             }, {
@@ -50,13 +50,13 @@ class UI {
             }
         ));
 
-        JST_CHECK(instance.addModule<Amplitude, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             amp, "amp", {}, {
                 .buffer = fft->getOutputBuffer(),
             }
         ));
 
-        JST_CHECK(instance.addModule<Scale, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             scl, "scl", {
                 .range = {-100.0, 0.0},
             }, {
@@ -64,7 +64,7 @@ class UI {
             }
         ));
 
-        JST_CHECK(instance.addModule<Lineplot, ComputeDevice>(
+        JST_CHECK(instance.addModule(
             lpt, "lpt", {}, {
                 .buffer = scl->getOutputBuffer(),
             }

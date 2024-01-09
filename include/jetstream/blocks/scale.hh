@@ -76,7 +76,7 @@ class Scale : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Scale, D, IT>(
+        JST_CHECK(instance().addModule(
             scale, "scale", {
                 .range = config.range,
             }, {

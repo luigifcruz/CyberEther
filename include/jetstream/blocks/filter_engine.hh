@@ -92,7 +92,7 @@ class FilterEngine : public Block {
         U64 signalMaxRank = input.signal.rank() - 1;
         const U64 signalSize = input.signal.shape()[signalMaxRank];
 
-        JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
+        JST_CHECK(instance().addModule(
             padSignal, "padSignal", {
                 .size = filterSize - 1,
                 .axis = signalMaxRank,
@@ -102,7 +102,7 @@ class FilterEngine : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
+        JST_CHECK(instance().addModule(
             padFilter, "padFilter", {
                 .size = signalSize - 1,
                 .axis = filterMaxRank,
@@ -112,7 +112,7 @@ class FilterEngine : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().addModule(
             fftSignal, "fftSignal", {
                 .forward = true,
             }, {
@@ -121,7 +121,7 @@ class FilterEngine : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().addModule(
             fftFilter, "fftFilter", {
                 .forward = true,
             }, {
@@ -135,7 +135,7 @@ class FilterEngine : public Block {
         if (input.filter.rank() == 2 && (input.signal.rank() == 1 || input.signal.rank() == 2)) {
             JST_DEBUG("Filter is 2D, adding a dimension to the signal.");
 
-            JST_CHECK(instance().template addModule<Jetstream::TensorModifier, D, IT>(
+            JST_CHECK(instance().addModule(
                 expandDims, "expandDims", {
                     .callback = [&](auto& mod) {
                         mod.expand_dims(signalMaxRank);
@@ -151,7 +151,7 @@ class FilterEngine : public Block {
             signalMaxRank = multiplySignalInput.rank() - 1;
         }
 
-        JST_CHECK(instance().template addModule<Jetstream::Multiply, D, IT>(
+        JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
                 .factorA = multiplySignalInput,
                 .factorB = fftFilter->getOutputBuffer(),
@@ -162,7 +162,7 @@ class FilterEngine : public Block {
         auto ifftInput = multiply->getOutputProduct();
 
         if (calculateResampleHeuristics(filterSize, signalSize)) {
-            JST_CHECK(instance().template addModule<Jetstream::Fold, D, IT>(
+            JST_CHECK(instance().addModule(
                 fold, "fold", {
                     .axis = std::max(filterMaxRank, signalMaxRank),
                     .offset = resamplerOffset,
@@ -176,7 +176,7 @@ class FilterEngine : public Block {
             ifftInput = fold->getOutputBuffer();
         }
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().addModule(
             ifft, "ifft", {
                 .forward = false,
             }, {
@@ -185,7 +185,7 @@ class FilterEngine : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Unpad, D, IT>(
+        JST_CHECK(instance().addModule(
             unpad, "unpad", {
                 .size = padSize,
                 .axis = std::max(filterMaxRank, signalMaxRank),
@@ -195,7 +195,7 @@ class FilterEngine : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::OverlapAdd, D, IT>(
+        JST_CHECK(instance().addModule(
             overlap, "overlap", {
                 .axis = std::max(filterMaxRank, signalMaxRank),
             }, {

@@ -80,7 +80,7 @@ class Filter : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addInternalBlock<Blocks::FilterTaps, D, IT, OT>(
+        JST_CHECK(instance().addInternalBlock(
             taps, "taps", {
                 .center = config.center,
                 .sampleRate = config.sampleRate,
@@ -90,7 +90,7 @@ class Filter : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addInternalBlock<Blocks::FilterEngine, D, IT, OT>(
+        JST_CHECK(instance().addInternalBlock(
             engine, "engine", {}, {
                 .signal = input.buffer,
                 .filter = taps->getOutputCoeffs(),

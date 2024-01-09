@@ -78,7 +78,7 @@ class Take : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Take, D, IT>(
+        JST_CHECK(instance().addModule(
             take, "take", {
                 .index = config.index,
                 .axis = config.axis,
@@ -88,7 +88,7 @@ class Take : public Block {
             locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::TensorModifier, D, IT>(
+        JST_CHECK(instance().addModule(
             squeezeDims, "squeeze-dims", {
                 .callback = [&](auto& mod) {
                     mod.squeeze_dims(config.axis);

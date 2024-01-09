@@ -82,7 +82,7 @@ class Unpad : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Unpad, D, IT>(
+        JST_CHECK(instance().addModule(
             unpad, "unpad", {
                 .size = config.size,
                 .axis = config.axis,

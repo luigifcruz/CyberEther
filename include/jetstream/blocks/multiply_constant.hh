@@ -76,7 +76,7 @@ class MultiplyConstant : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::MultiplyConstant, D, IT>(
+        JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
                 .factor = input.factor,
             },

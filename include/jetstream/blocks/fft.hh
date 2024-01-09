@@ -76,7 +76,7 @@ class FFT : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().addModule(
             fft, "fft", {
                 .forward = config.forward,
             }, {

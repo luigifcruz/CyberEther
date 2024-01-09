@@ -72,7 +72,7 @@ class Lineplot : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Lineplot, D, IT>(
+        JST_CHECK(instance().addModule(
             lineplot, "lineplot", {
                 .numberOfVerticalLines = config.numberOfVerticalLines,
                 .numberOfHorizontalLines = config.numberOfHorizontalLines,

@@ -77,7 +77,7 @@ class FilterTaps : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::FilterTaps, D, IT>(
+        JST_CHECK(instance().addModule(
             taps, "taps", {
                 .center = config.center,
                 .sampleRate = config.sampleRate,

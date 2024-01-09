@@ -76,7 +76,7 @@ class ExpandDims : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::TensorModifier, D, IT>(
+        JST_CHECK(instance().addModule(
             modifier, "modifier", {
                 .callback = [&](auto& mod) {
                     mod.expand_dims(config.axis);

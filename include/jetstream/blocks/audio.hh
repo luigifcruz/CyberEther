@@ -77,7 +77,7 @@ class Audio : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Audio, D, IT>(
+        JST_CHECK(instance().addModule(
             audio, "audio", {
                 .inSampleRate = config.inSampleRate,
                 .outSampleRate = config.outSampleRate,

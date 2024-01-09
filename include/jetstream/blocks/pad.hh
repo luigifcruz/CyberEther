@@ -77,7 +77,7 @@ class Pad : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
+        JST_CHECK(instance().addModule(
             pad, "pad", {
                 .size = config.size,
                 .axis = config.axis,

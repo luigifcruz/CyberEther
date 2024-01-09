@@ -78,7 +78,7 @@ class Fold : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Fold, D, IT>(
+        JST_CHECK(instance().addModule(
             fold, "fold", {
                 .axis = config.axis,
                 .offset = config.offset,

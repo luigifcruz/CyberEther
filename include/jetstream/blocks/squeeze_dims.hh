@@ -76,7 +76,7 @@ class SqueezeDims : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::TensorModifier, D, IT>(
+        JST_CHECK(instance().addModule(
             modifier, "modifier", {
                 .callback = [&](auto& mod) {
                     if (mod.shape()[config.axis] != 1) {

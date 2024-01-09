@@ -101,7 +101,7 @@ class Soapy : public Block {
 
         // Starting sub-modules.
 
-        JST_CHECK(instance().template addModule<Jetstream::Soapy, D, IT>(
+        JST_CHECK(instance().addModule(
             soapy, "soapy", {
                 .deviceString = deviceString,
                 .streamString = config.streamString,
