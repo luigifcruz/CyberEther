@@ -36,6 +36,10 @@ class TensorPrototype {
         return prototype.offset;
     }
 
+    constexpr const U64& offset_bytes() const noexcept {
+        return prototype.offset_bytes;
+    }
+
     constexpr const std::vector<U64>& shape_minus_one() const noexcept {
         return prototype.shape_minus_one;
     }
@@ -295,6 +299,9 @@ class TensorPrototype {
 
         prototype.size_bytes = prototype.size * 
                                prototype.element_size;
+
+        prototype.offset_bytes = prototype.offset * 
+                                 prototype.element_size;
     }
 };
 
