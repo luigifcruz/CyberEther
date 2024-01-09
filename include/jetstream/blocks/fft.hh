@@ -37,7 +37,7 @@ class FFT : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> buffer;
+        Tensor<D, OT> buffer;
 
         JST_SERDES(buffer);
     };
@@ -46,7 +46,7 @@ class FFT : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputBuffer() const {
+    constexpr const Tensor<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -76,7 +76,7 @@ class FFT : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, OT>(
             fft, "fft", {
                 .forward = config.forward,
             }, {
@@ -138,14 +138,14 @@ class FFT : public Block {
     }
 
  private:
-    std::shared_ptr<Jetstream::FFT<D, IT>> fft;
+    std::shared_ptr<Jetstream::FFT<D, IT, OT>> fft;
 
     JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Blocks
 
-JST_BLOCK_ENABLE(FFT, is_specialized<Jetstream::FFT<D, IT>>::value &&
-                      std::is_same<OT, void>::value)
+// Fixme? Is this correct ?
+JST_BLOCK_ENABLE(FFT, is_specialized<Jetstream::FFT<D, IT, OT>>::value)
 
 #endif

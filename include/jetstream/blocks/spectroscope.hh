@@ -130,7 +130,7 @@ class Spectroscope : public Block {
             locale().blockId
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
             fft, "fft", {
                 .forward = true,
             }, {
@@ -350,7 +350,7 @@ class Spectroscope : public Block {
     std::shared_ptr<Jetstream::Invert<D, IT>> invert;
     std::shared_ptr<Jetstream::Multiply<D, IT>> multiply;
     std::shared_ptr<Jetstream::AGC<D, IT>> agc;
-    std::shared_ptr<Jetstream::FFT<D, IT>> fft;
+    std::shared_ptr<Jetstream::FFT<D, IT, IT>> fft;
     std::shared_ptr<Jetstream::Amplitude<D, IT, OT>> amplitude;
     std::shared_ptr<Jetstream::Scale<D, OT>> scale;
 
@@ -368,7 +368,7 @@ JST_BLOCK_ENABLE(Spectroscope, is_specialized<Jetstream::Spectrogram<D, OT>>::va
                                is_specialized<Jetstream::Lineplot<D, OT>>::value &&
                                is_specialized<Jetstream::Scale<D, OT>>::value &&
                                is_specialized<Jetstream::Amplitude<D, IT, OT>>::value &&
-                               is_specialized<Jetstream::FFT<D, IT>>::value &&
+                               is_specialized<Jetstream::FFT<D, IT, IT>>::value &&
                                is_specialized<Jetstream::AGC<D, IT>>::value &&
                                is_specialized<Jetstream::Multiply<D, IT>>::value &&
                                is_specialized<Jetstream::Invert<D, IT>>::value &&

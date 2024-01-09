@@ -2,8 +2,10 @@
 
 namespace Jetstream {
 
-template<>
-Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
+// Fixme ? Not sure if this works with metal...
+
+template<Device D, typename IT, typename OT>
+Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create FFT compute core using Metal backend.");
 
     auto& assets = metal;
@@ -36,8 +38,8 @@ Result FFT<Device::Metal, CF32>::createCompute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template<>
-Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& meta) {
+template<Device D, typename IT, typename OT>
+Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Destroy FFT compute core using Metal backend.");
 
     auto& assets = metal;
@@ -56,8 +58,8 @@ Result FFT<Device::Metal, CF32>::destroyCompute(const RuntimeMetadata& meta) {
     return Result::SUCCESS;
 }
 
-template<>
-Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
+template<Device D, typename IT, typename OT>
+Result FFT<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     auto& assets = metal;
     auto& runtime = meta.metal;
 
@@ -77,6 +79,6 @@ Result FFT<Device::Metal, CF32>::compute(const RuntimeMetadata& meta) {
 }
 
 JST_FFT_METAL(JST_INSTANTIATION)
-JST_FFT_METAL(JST_BENCHMARK)
+// JST_FFT_METAL(JST_BENCHMARK) // Fixme? benchmark with IT, OT probably fails...
 
 }  // namespace Jetstream

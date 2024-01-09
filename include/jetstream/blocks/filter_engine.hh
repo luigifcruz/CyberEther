@@ -112,7 +112,7 @@ class FilterEngine : public Block {
             locale().blockId
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
             fftSignal, "fftSignal", {
                 .forward = true,
             }, {
@@ -121,7 +121,7 @@ class FilterEngine : public Block {
             locale().blockId
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
             fftFilter, "fftFilter", {
                 .forward = true,
             }, {
@@ -176,7 +176,7 @@ class FilterEngine : public Block {
             ifftInput = fold->getOutputBuffer();
         }
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT>(
+        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
             ifft, "ifft", {
                 .forward = false,
             }, {
@@ -245,12 +245,12 @@ class FilterEngine : public Block {
 
     std::shared_ptr<Jetstream::Pad<D, IT>> padSignal;
     std::shared_ptr<Jetstream::Pad<D, IT>> padFilter;
-    std::shared_ptr<Jetstream::FFT<D, IT>> fftSignal;
-    std::shared_ptr<Jetstream::FFT<D, IT>> fftFilter;
+    std::shared_ptr<Jetstream::FFT<D, IT, IT>> fftSignal;
+    std::shared_ptr<Jetstream::FFT<D, IT, IT>> fftFilter;
     std::shared_ptr<Jetstream::TensorModifier<D, IT>> expandDims;
     std::shared_ptr<Jetstream::Multiply<D, IT>> multiply;
     std::shared_ptr<Jetstream::Fold<D, IT>> fold;
-    std::shared_ptr<Jetstream::FFT<D, IT>> ifft;
+    std::shared_ptr<Jetstream::FFT<D, IT, IT>> ifft;
     std::shared_ptr<Jetstream::Unpad<D, IT>> unpad;
     std::shared_ptr<Jetstream::OverlapAdd<D, IT>> overlap;
 
@@ -336,10 +336,10 @@ class FilterEngine : public Block {
 }  // namespace Jetstream::Blocks
 
 JST_BLOCK_ENABLE(FilterEngine, is_specialized<Jetstream::Pad<D, IT>>::value &&
-                               is_specialized<Jetstream::FFT<D, IT>>::value &&
+                               is_specialized<Jetstream::FFT<D, IT, IT>>::value &&
                                is_specialized<Jetstream::Multiply<D, IT>>::value &&
                                is_specialized<Jetstream::Fold<D, IT>>::value &&
-                               is_specialized<Jetstream::FFT<D, IT>>::value &&
+                               is_specialized<Jetstream::FFT<D, IT, IT>>::value &&
                                is_specialized<Jetstream::Unpad<D, IT>>::value &&
                                is_specialized<Jetstream::OverlapAdd<D, IT>>::value &&
                                std::is_same<OT, void>::value)
