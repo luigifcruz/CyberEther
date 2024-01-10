@@ -186,7 +186,8 @@ class TensorPrototype {
             switch (token.get_type()) {
                 case Token::Type::Number: {
                     if (dim >= prototype.shape.size()) {
-                        throw std::runtime_error("Index exceeds array dimensions.");
+                        JST_ERROR("[MEMORY] Index exceeds array dimensions.");
+                        return Result::ERROR;
                     }
                     offset += token.get_a() * prototype.stride[dim];
                     dim++;
@@ -194,7 +195,8 @@ class TensorPrototype {
                 }
                 case Token::Type::Colon: {
                     if (dim >= prototype.shape.size()) {
-                        throw std::runtime_error("Index exceeds array dimensions.");
+                        JST_ERROR("[MEMORY] Index exceeds array dimensions.");
+                        return Result::ERROR;
                     }
                     const U64 start = token.get_a();
                     U64 end = token.get_b();
@@ -212,7 +214,8 @@ class TensorPrototype {
                 }
                 case Token::Type::Ellipsis: {
                     if (ellipsis_used) {
-                        throw std::runtime_error("Ellipsis used more than once.");
+                        JST_ERROR("[MEMORY] Ellipsis used more than once.");
+                        return Result::ERROR;
                     }
                     ellipsis_used = true;
                     const U64 remaining_dims = prototype.shape.size() - (tokens.size() - 1) + 1;
