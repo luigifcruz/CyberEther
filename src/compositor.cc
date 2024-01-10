@@ -1807,6 +1807,7 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("gstreamer - LGPL-2.1 License");
             ImGui::BulletText("libusb - LGPL-2.1 License");
             ImGui::BulletText("nanobench - MIT License");
+            ImGui::BulletText("Catch2 - Boost Software License");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
