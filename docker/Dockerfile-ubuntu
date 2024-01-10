@@ -26,11 +26,11 @@ WORKDIR /cyberether
 RUN git submodule update --init --recursive
 
 RUN rm -fr build
-RUN meson build -Dprefix=/usr
+RUN meson setup build -Dprefix=/usr
 RUN cd build && ninja install
 
 RUN rm -fr build-static
-RUN meson build-static --default-library=static -Dprefix=/usr
+RUN meson setup build-static --default-library=static -Dprefix=/usr
 RUN cd build-static && ninja
 
 WORKDIR /
