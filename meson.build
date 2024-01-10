@@ -131,11 +131,9 @@ endif
 
 if not jst_is_browser and \
    not jst_is_android and \
-   not jst_is_ios and \
-   not jst_is_windows
+   not jst_is_ios
     subdir('tests')
 endif
-
 
 if not jst_is_browser and \
    not jst_is_android and \
