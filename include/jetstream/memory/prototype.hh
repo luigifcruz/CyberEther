@@ -72,14 +72,6 @@ class TensorPrototype {
         return prototype.locale;
     }
 
-    constexpr bool operator==(const TensorPrototype& other) const noexcept {
-        return prototype.hash == other.prototype.hash;
-    }
-
-    constexpr bool operator!=(const TensorPrototype& other) const noexcept {
-        return prototype.hash != other.prototype.hash;
-    }
-
     const U64& shape(const U64& idx) const noexcept {
         return prototype.shape[idx];
     }
