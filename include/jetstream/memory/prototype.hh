@@ -113,7 +113,8 @@ class TensorPrototype {
 
     void expand_dims(const U64& axis) {
         prototype.shape.insert(prototype.shape.begin() + axis, 1);
-        prototype.stride.insert(prototype.stride.begin() + axis, 1);
+        const U64& stride = (axis == 0) ? prototype.stride[0] : prototype.stride[axis - 1];
+        prototype.stride.insert(prototype.stride.begin() + axis, stride);
         update_cache();
     }
 
