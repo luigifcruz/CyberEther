@@ -98,8 +98,7 @@ class TensorPrototype {
         U64 index = prototype.offset;
         U64 pad = shape.size() - prototype.stride.size();
         for (U64 i = 0; i < prototype.stride.size(); i++) {
-            // TODO: This is a hack. This should be done by modifiying the stride.
-            index += ((shape[pad + i] >= prototype.shape[i]) ? 0 : shape[pad + i]) * prototype.stride[i];
+            index += shape[pad + i] * prototype.stride[i];
         }
         return index;
     }
