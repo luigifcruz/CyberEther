@@ -71,7 +71,7 @@ https://github.com/luigifcruz/CyberEther/assets/6627901/5b5f4b8a-8991-4abc-9340-
 The only way to use CyberEther at the moment is by compiling it from the source. But don't worry, it is not difficult! Follow the [Build From Source](#build-from-source) instructions below to compile it on your system.
 
 ## Build From Source
-This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-10 or >Clang 14.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source. There are also Docker files available in the [docker](./docker/) directory that can be used to build and run CyberEther in a container.
+This shouldn't be difficult because of the low number of dependencies. CyberEther requires a C++20 compiler (>GCC-11 or >Clang 14.0), the [Meson](https://mesonbuild.com) build system, and [Ninja Build](https://ninja-build.org). Follow the instructions below to install the dependencies and build CyberEther from source. There are also Docker files available in the [docker](./docker/) directory that can be used to build and run CyberEther in a container.
 
 ### Step 1: Dependencies
 [//]: <> ([NEW DEPENDENCY HOOK])
