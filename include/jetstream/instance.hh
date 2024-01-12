@@ -30,10 +30,10 @@ class JETSTREAM_API Instance {
         JST_DEBUG("[INSTANCE] Started.");
     };
 
-    Result buildDefaultInterface(const Device& preferredDevice = Device::None,
-                                 const Backend::Config& backendConfig = {},
-                                 const Viewport::Config& viewportConfig = {},
-                                 const Render::Window::Config& renderConfig = {});
+    Result buildInterface(const Device& preferredDevice = Device::None,
+                          const Backend::Config& backendConfig = {},
+                          const Viewport::Config& viewportConfig = {},
+                          const Render::Window::Config& renderConfig = {});
 
     template<Device D>
     Result buildBackend(const Backend::Config& config) {

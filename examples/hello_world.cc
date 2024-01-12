@@ -140,7 +140,7 @@ int main() {
     Instance instance;
 
     // Initialize Viewport and Window.
-    JST_CHECK_THROW(instance.buildDefaultInterface());
+    JST_CHECK_THROW(instance.buildInterface());
 
     // Try to comment these line and see what happens!
     instance.compositor().showStore(false)

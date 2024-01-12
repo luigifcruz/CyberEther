@@ -3,11 +3,11 @@
 
 namespace Jetstream {
 
-Result Instance::buildDefaultInterface(const Device& preferredDevice,
-                                       const Backend::Config& backendConfig,
-                                       const Viewport::Config& viewportConfig,
-                                       const Render::Window::Config& renderConfig) {
-    JST_DEBUG("[INSTANCE] Building default viewport and render.");
+Result Instance::buildInterface(const Device& preferredDevice,
+                                const Backend::Config& backendConfig,
+                                const Viewport::Config& viewportConfig,
+                                const Render::Window::Config& renderConfig) {
+    JST_DEBUG("[INSTANCE] Building interface");
 
     if (_viewport || _window) {
         JST_ERROR("[INSTANCE] Viewport or render already built.");
