@@ -23,8 +23,8 @@ endif
 if jst_is_windows
     compiler = meson.get_compiler('cpp')
     dep_lst += [
-        compiler.find_library('Comdlg32', required: true),
+        compiler.find_library('comdlg32', required: true),
         compiler.find_library('kernel32', required: true),
-        compiler.find_library('Shell32', required: true),
+        compiler.find_library('shell32', required: true),
     ]
 endif
