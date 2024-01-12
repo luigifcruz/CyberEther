@@ -16,7 +16,6 @@ RUN apt install -y mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
 RUN apt install -y libsoapysdr-dev soapysdr-module-rtlsdr
 RUN apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav 
 RUN apt install -y python3-yaml
-RUN apt install -y catch2
 
 ###
 

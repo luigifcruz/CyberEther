@@ -26,7 +26,6 @@ RUN pacman -S --noconfirm vulkan-icd-loader vulkan-validation-layers
 RUN pacman -S --noconfirm soapysdr soapyrtlsdr
 RUN pacman -S --noconfirm gstreamer gst-plugins-base gst-plugins-good gst-libav
 RUN pacman -S --noconfirm python-yaml
-RUN pacman -S --noconfirm catch2
 
 ###
 

@@ -105,9 +105,6 @@ $ pacman -S gstreamer gst-plugins-base gst-plugins-good gst-libav
 
 # Pre-loaded examples metadata.
 $ pacman -S python-yaml
-
-# Testing dependencies.
-$ pacman -S catch2
 ```
 
 #### Linux (Ubuntu 22.04)
@@ -136,9 +133,6 @@ $ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-
 
 # Pre-loaded examples metadata.
 $ apt install python3-yaml
-
-# Testing dependencies.
-$ apt install catch2
 ```
 
 #### macOS 13+ (Apple Silicon)
@@ -164,9 +158,6 @@ $ brew install gstreamer
 
 # Pre-loaded examples metadata.
 $ python -m pip install PyYAML
-
-# Testing dependencies.
-$ brew install catch2
 ```
 
 #### Browser (Chrome)

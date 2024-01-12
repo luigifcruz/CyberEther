@@ -34,7 +34,6 @@ jobs:
           brew install soapysdr soapyrtlsdr
           brew install gstreamer
           python -m pip install pyyaml
-          brew install catch2
 
       ##
 
