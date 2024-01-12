@@ -33,8 +33,8 @@ CyberEther can run in virtually any modern device with a GPU. The build system w
 | ✅ | Linux (AMD, Intel)                  | Vulkan, WebGPU        | CPU, Vulkan            |
 | ✅ | Raspberry Pi (4 or later)           | Vulkan, WebGPU        | CPU, Vulkan            |
 | ✅ | Browser (Chrome)                    | WebGPU                | CPU, WebGPU*           |
+| ✅ | Windows (NVIDIA, AMD, Intel)        | WebGPU, Vulkan        | CPU, WebGPU*, Vulkan*  |
 | ✅ | Android                             | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
-| ✅ | Windows (NVIDIA, AMD, Intel)        | WebGPU, Vulkan*       | CPU, WebGPU*, Vulkan*  |
 
 `*`: Planned for the future.
 
