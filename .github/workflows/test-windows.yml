@@ -1,0 +1,36 @@
+name: Test Linux
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  deployments: write
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Delete previous containers.
+        run: docker rmi -f $(docker images -aq) || true
+
+      - name: Build the Docker image for Windows.
+        run: docker build -f ./docker/Dockerfile-windows -t cyberether-windows .
+
+      - name: Run ninja test for Windows.
+        run: docker run --rm cyberether-windows bash -c "cd cyberether/build-static && ninja test"
+
+      - name: Copy binary from Docker container.
+        run: docker run -v $(pwd):/tmp --rm cyberether-windows bash -c "cp cyberether/build-static/cyberether /tmp"
+
+      - name: Upload binary.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberether-windows-x86_64
+          path: ./cyberether

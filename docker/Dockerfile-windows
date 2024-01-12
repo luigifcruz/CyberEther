@@ -1,0 +1,29 @@
+FROM dockcross/windows-static-x64-posix
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt update --fix-missing
+RUN apt install -y wget
+RUN apt install -y python3-yaml
+RUN apt install -y spirv-cross glslang-tools
+
+# Install the Vulkan SDK
+
+ARG VULKAN_VERSION=1.3.268.0
+RUN wget -nv https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/windows/VulkanSDK-${VULKAN_VERSION}-Installer.exe
+RUN /usr/lib/wine/wine64 VulkanSDK-${VULKAN_VERSION}-Installer.exe --accept-licenses --default-answer --confirm-command install
+ARG VULKAN_SDK=/root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}
+RUN ln -s /root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}/Include/ /root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}/include
+RUN ln -s /root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}/Lib/ /root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}/lib
+RUN ln -s /root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}/Lib/vulkan-1.lib /root/.wine/drive_c/VulkanSDK/${VULKAN_VERSION}/lib/vulkan.lib
+
+COPY . /cyberether
+WORKDIR /cyberether
+
+RUN git submodule update --init --recursive
+
+RUN rm -fr build-static
+RUN meson setup --cross-file crosscompile/windows.ini build-static
+RUN cd build-static && ninja
+
+WORKDIR /

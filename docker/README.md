@@ -12,6 +12,9 @@ docker build -t cyberether-ubuntu -f ./docker/Dockerfile-ubuntu .
 
 # Emscripten Image
 docker build -t cyberether-emscripten -f ./docker/Dockerfile-emscripten .
+
+# Windows Image
+docker build -t cyberether-windows -f ./docker/Dockerfile-windows .
 ```
 
 ## Run Docker Image
