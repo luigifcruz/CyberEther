@@ -1,5 +1,5 @@
 deps = [
-    dependency('vulkan', required: get_option('VULKAN')),
+    dependency('vulkan', required: false),
 ]
 
 progs = [
