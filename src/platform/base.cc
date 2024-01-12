@@ -191,6 +191,7 @@ Result PickFile(std::string& path) {
 }
 
 #elif defined(JST_OS_WINDOWS)
+
 Result PickFile(std::string& path) {
     /* File path buffer */
     char buf[256] = {'\0'};
@@ -347,6 +348,7 @@ Result SaveFile(std::string& path) {
 }
 
 #elif defined(JST_OS_WINDOWS)
+
 Result SaveFile(std::string& path) {
     /* File path buffer */
     char buf[256] = {'\0'};
