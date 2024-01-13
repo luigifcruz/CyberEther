@@ -1219,7 +1219,11 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowBgAlpha(0.35f);
         ImGui::Begin("Welcome", nullptr, windowFlags);
 
-        ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT " Welcome to CyberEther!");
+        ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT);
+        ImGui::SameLine();
+        ImGui::PushFont(instance.window().boldFont());
+        ImGui::TextUnformatted("Welcome to CyberEther!");
+        ImGui::PopFont();
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
         ImGui::TextFormatted("Version: {}", JETSTREAM_VERSION_STR);
@@ -1505,7 +1509,9 @@ Result Compositor::drawStatic() {
                     }
 
                     ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
+                    ImGui::PushFont(instance.window().h2Font());
                     ImGui::Text("%s", flowgraph.title.c_str());
+                    ImGui::PopFont();
                     ImGui::SameLine();
                     ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -1809,6 +1815,7 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("nanobench - MIT License");
             ImGui::BulletText("Catch2 - Boost Software License");
             ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
+            ImGui::BulletText("imgui_markdown - Zlib License");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
@@ -1956,7 +1963,7 @@ Result Compositor::drawStatic() {
         }
 
         ImGui::SetItemDefaultFocus();
-        ImGui::Dummy(ImVec2(500.0f * scalingFactor, 0.0f));
+        ImGui::Dummy(ImVec2(550.0f * scalingFactor, 0.0f));
         ImGui::EndPopup();
     }
 
@@ -2140,14 +2147,24 @@ Result Compositor::drawGraph() {
             ImGui::Text(ICON_FA_CIRCLE_QUESTION);
             ImGui::PopStyleColor();
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 8.0f, scalingFactor * 8.0f));
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-                ImGui::BeginTooltip();
-                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 0.0f));
+            if (ImGui::BeginPopupContextItem("fixed-block-description")) {
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Dummy(ImVec2(500.0f, 0.0f));
                 ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
-                ImGui::PopTextWrapPos();
+                ImGui::EndPopup();
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                ImGui::OpenPopupOnItemClick("fixed-block-description", ImGuiPopupFlags_MouseButtonLeft);
+                ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 0.0f));
+                ImGui::BeginTooltip();
+                ImGui::TextWrapped(ICON_FA_BOOK " Description");
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+                ImGui::Text("(click to pin)");
+                ImGui::PopStyleColor();
+                ImGui::Separator();
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
                 ImGui::EndTooltip();
             }
             ImGui::PopStyleVar();
@@ -2632,14 +2649,17 @@ Result Compositor::drawGraph() {
         ImGui::BeginChild("Block List", ImVec2(0, 0), true);
 
         for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
+            ImGui::PushFont(instance.window().boldFont());
             ImGui::TextUnformatted(module.title.c_str());
+            ImGui::PopFont();
             ImGui::SameLine();
             ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 0.0f));
                 ImGui::BeginTooltip();
-                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-                ImGui::TextWrapped("%s", module.description.c_str());
-                ImGui::PopTextWrapPos();
+                ImGui::TextWrapped(ICON_FA_BOOK " Description");
+                ImGui::Separator();
+                ImGui::Markdown(module.description.c_str(), module.description.length(), instance.window().markdownConfig());
                 ImGui::EndTooltip();
             }
             ImGui::TextWrapped("%s", module.summary.c_str());

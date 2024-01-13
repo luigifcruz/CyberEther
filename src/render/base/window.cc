@@ -1,6 +1,8 @@
 #include "jetstream/render/base/window.hh"
+#include "jetstream/platform.hh"
 
 #include "jetstream/render/tools/compressed_jbmm.hh"
+#include "jetstream/render/tools/compressed_jbmb.hh"
 #include "jetstream/render/tools/compressed_fa.hh"
 
 namespace Jetstream::Render {
@@ -83,6 +85,8 @@ void Window::ScaleStyle(const Viewport::Generic& viewport) {
     if (_previousScalingFactor == 0.0f) {
         _scalingFactor = viewport.scale(config.scale);
 
+        ImGuiLoadFonts();
+        ImGuiMarkdownSetup();
         ImGuiStyleSetup();
         ImNodesStyleSetup();
     }
@@ -93,6 +97,146 @@ void Window::ScaleStyle(const Viewport::Generic& viewport) {
     }
 
     _previousScalingFactor = _scalingFactor;
+}
+
+void Window::ImGuiMarkdownLinkCallback(ImGui::MarkdownLinkCallbackData data) {
+    std::string url(data.link, data.linkLength);
+    if(!data.isImage) {
+        Platform::OpenUrl(url);
+    }
+}
+
+void Window::ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_info, bool start) {
+    switch (md_info.type) {
+        case ImGui::MarkdownFormatType::NORMAL_TEXT:
+            break;
+        case ImGui::MarkdownFormatType::EMPHASIS: {
+            ImGui::MarkdownHeadingFormat fmt;
+            if (md_info.level == 1) {
+                // normal emphasis
+                if (start) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                } else {
+                    ImGui::PopStyleColor();
+                }
+            } else {
+                // strong emphasis
+                fmt = md_info.config->headingFormats[ImGui::MarkdownConfig::NUMHEADINGS - 1];
+                if (start) {
+                    if (fmt.font) {
+                        ImGui::PushFont( fmt.font );
+                    }
+                } else {
+                    if (fmt.font) {
+                        ImGui::PopFont();
+                    }
+                }
+            }
+            break;
+        }
+        case ImGui::MarkdownFormatType::HEADING: {
+            ImGui::MarkdownHeadingFormat fmt;
+            if (md_info.level > ImGui::MarkdownConfig::NUMHEADINGS) {
+                fmt = md_info.config->headingFormats[ImGui::MarkdownConfig::NUMHEADINGS - 1];
+            } else {
+                fmt = md_info.config->headingFormats[md_info.level - 1];
+            }
+            if (start) {
+                if (fmt.font) {
+                    ImGui::PushFont(fmt.font);
+                }
+            } else {
+                if (fmt.separator) {
+                    ImGui::Separator();
+                }
+                if (fmt.font) {
+                    ImGui::PopFont();
+                }
+            }
+            break;
+        }
+        case ImGui::MarkdownFormatType::UNORDERED_LIST:
+            break;
+        case ImGui::MarkdownFormatType::LINK: {
+            if (start) {
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(71, 127, 239, 255));
+            } else {
+                ImGui::PopStyleColor();
+                if (md_info.itemHovered) {
+                    ImGui::UnderLine(IM_COL32(71, 127, 239, 255));
+                }
+            }
+            break;
+        }
+    }
+}
+
+void Window::ImGuiMarkdownSetup() {
+    _markdownConfig.linkCallback        = &Window::ImGuiMarkdownLinkCallback;
+    _markdownConfig.tooltipCallback     = nullptr;
+    _markdownConfig.imageCallback       = nullptr;
+    _markdownConfig.linkIcon            = ICON_FA_LINK;
+    _markdownConfig.headingFormats[0]   = { _h1Font, true };
+    _markdownConfig.headingFormats[1]   = { _h2Font, true };
+    _markdownConfig.headingFormats[2]   = { _boldFont, false };
+    _markdownConfig.userData            = this;
+    _markdownConfig.formatCallback      = &Window::ImGuiMarkdownFormatCallback;
+}
+
+void Window::ImGuiLoadFonts() {
+    auto& io = ImGui::GetIO();
+
+    ImFontConfig font_config;
+    font_config.OversampleH = 5;
+    font_config.OversampleV = 5;
+    font_config.FontBuilderFlags = 1;
+    io.Fonts->Clear();
+
+    _bodyFont = io.Fonts->AddFontFromMemoryCompressedTTF(jbmm_compressed_data,
+                                                         jbmm_compressed_size,
+                                                         15.0f * _scalingFactor,
+                                                         &font_config,
+                                                         nullptr);
+
+    ImFontConfig icon_font_config;
+    icon_font_config.OversampleH = 5;
+    icon_font_config.OversampleV = 5;
+    icon_font_config.FontBuilderFlags = 1;
+    icon_font_config.MergeMode = true;
+    icon_font_config.GlyphMinAdvanceX = 15.0f * _scalingFactor;
+    icon_font_config.GlyphOffset = { 0.0f, 2.0f };
+
+    static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+
+    io.Fonts->AddFontFromMemoryCompressedTTF(far_compressed_data,
+                                             far_compressed_size,
+                                             15.0f * _scalingFactor,
+                                             &icon_font_config,
+                                             icon_ranges);
+
+    io.Fonts->AddFontFromMemoryCompressedTTF(fas_compressed_data,
+                                             fas_compressed_size,
+                                             15.0f * _scalingFactor,
+                                             &icon_font_config,
+                                             icon_ranges);
+
+    _h1Font = io.Fonts->AddFontFromMemoryCompressedTTF(jbmb_compressed_data,
+                                                       jbmb_compressed_size,
+                                                       15.0f * _scalingFactor * 1.15,
+                                                       &font_config,
+                                                       nullptr);
+
+    _h2Font = io.Fonts->AddFontFromMemoryCompressedTTF(jbmb_compressed_data,
+                                                       jbmb_compressed_size,
+                                                       15.0f * _scalingFactor * 1.10,
+                                                       &font_config,
+                                                       nullptr);
+
+    _boldFont = io.Fonts->AddFontFromMemoryCompressedTTF(jbmb_compressed_data,
+                                                         jbmb_compressed_size,
+                                                         15.0f * _scalingFactor * 1.04,
+                                                         &font_config,
+                                                         nullptr);
 }
 
 void Window::ImGuiStyleSetup() {
@@ -107,7 +251,7 @@ void Window::ImGuiStyleSetup() {
     colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
     colors[ImGuiCol_WindowBg]               = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
     colors[ImGuiCol_ChildBg]                = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-    colors[ImGuiCol_PopupBg]                = ImVec4(0.19f, 0.19f, 0.19f, 0.92f);
+    colors[ImGuiCol_PopupBg]                = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);
     colors[ImGuiCol_Border]                 = ImVec4(0.19f, 0.19f, 0.19f, 0.29f);
     colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.24f);
     colors[ImGuiCol_FrameBg]                = ImVec4(0.05f, 0.05f, 0.05f, 0.54f);
@@ -158,45 +302,6 @@ void Window::ImGuiStyleSetup() {
     colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
     colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
     colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.10f, 0.10f, 0.10f, 0.65f);
-
-    // Setup Fonts
-
-    auto& io = ImGui::GetIO();
-
-    ImFontConfig font_config;
-    font_config.OversampleH = 5;
-    font_config.OversampleV = 5;
-    font_config.FontBuilderFlags = 1;
-    io.Fonts->Clear();
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(
-        jbmm_compressed_data,
-        jbmm_compressed_size,
-        15.0f * _scalingFactor,
-        &font_config,
-        nullptr);
-
-    ImFontConfig icon_font_config;
-    icon_font_config.OversampleH = 5;
-    icon_font_config.OversampleV = 5;
-    icon_font_config.FontBuilderFlags = 1;
-    icon_font_config.MergeMode = true;
-    icon_font_config.GlyphMinAdvanceX = 15.0f * _scalingFactor;
-    icon_font_config.GlyphOffset = { 0.0f, 2.0f };
-
-    static const ImWchar icon_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(far_compressed_data,
-                                             far_compressed_size,
-                                             15.0f * _scalingFactor,
-                                             &icon_font_config,
-                                             icon_ranges);
-
-    io.Fonts->AddFontFromMemoryCompressedTTF(fas_compressed_data,
-                                             fas_compressed_size,
-                                             15.0f * _scalingFactor,
-                                             &icon_font_config,
-                                             icon_ranges);
 }
 
 void Window::ImGuiStyleScale() {
