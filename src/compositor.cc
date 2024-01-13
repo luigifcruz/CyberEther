@@ -1808,6 +1808,7 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("libusb - LGPL-2.1 License");
             ImGui::BulletText("nanobench - MIT License");
             ImGui::BulletText("Catch2 - Boost Software License");
+            ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
@@ -2144,7 +2145,8 @@ Result Compositor::drawGraph() {
                 ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::TextWrapped("%s", moduleEntry.description.c_str());
+                ImGui::Dummy(ImVec2(500.0f, 0.0f));
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
                 ImGui::PopTextWrapPos();
                 ImGui::EndTooltip();
             }
