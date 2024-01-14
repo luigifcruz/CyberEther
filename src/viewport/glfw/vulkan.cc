@@ -5,6 +5,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include "tools/imgui_impl_glfw.h"
+
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }

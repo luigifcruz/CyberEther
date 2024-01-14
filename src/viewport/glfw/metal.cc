@@ -7,6 +7,8 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
+#include "tools/imgui_impl_glfw.h"
+
 namespace Jetstream::Viewport {
 
 static void PrintGLFWError(int error, const char* description) {

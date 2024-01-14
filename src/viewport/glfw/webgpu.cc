@@ -2,6 +2,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include "tools/imgui_impl_glfw.h"
+
 EM_JS(int, getWindowWidth, (), {
     return window.innerWidth;
 });
