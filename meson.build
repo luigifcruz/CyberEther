@@ -47,7 +47,6 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
     dependency('threads'),
-    dependency('fmt', version: '>=9.1', fallback: 'fmt', default_options: ['default_library=static']),
 ]
 inc_lst = [
     include_directories('include'),

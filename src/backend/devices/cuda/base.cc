@@ -49,7 +49,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         cuDeviceGetAttribute(&ccVersionMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
         int ccVersionMinor;
         cuDeviceGetAttribute(&ccVersionMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device);
-        cache.computeCapability = fmt::format("{}.{}", ccVersionMajor, ccVersionMinor);
+        cache.computeCapability = jst::fmt::format("{}.{}", ccVersionMajor, ccVersionMinor);
     }
 
     {
@@ -60,7 +60,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         int minor = runtimeVersion % 1000 / 10;
         int patch = runtimeVersion % 10;
 
-        cache.apiVersion = fmt::format("{}.{}.{}", major, minor, patch);
+        cache.apiVersion = jst::fmt::format("{}.{}.{}", major, minor, patch);
     }
 
     {

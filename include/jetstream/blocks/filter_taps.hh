@@ -169,7 +169,7 @@ class FilterTaps : public Block {
             ImGui::TextFormatted("Center #{:02}", i);
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            const std::string id = fmt::format("##filter-center-{}", i);
+            const std::string id = jst::fmt::format("##filter-center-{}", i);
             F32 center = config.center[i] / JST_MHZ;
             if (ImGui::InputFloat(id.c_str(), &center, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 config.center[i] = center * JST_MHZ;

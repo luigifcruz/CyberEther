@@ -98,7 +98,7 @@ class JETSTREAM_API Instance {
         if (locale.moduleId.empty()) {
             locale.moduleId = id;
         } else {
-            locale.moduleId += fmt::format("_{}", id);
+            locale.moduleId += jst::fmt::format("_{}", id);
         }
 
         JST_DEBUG("[INSTANCE] Adding internal block '{}'.", locale);
@@ -164,7 +164,7 @@ class JETSTREAM_API Instance {
         std::string autoId = id;
 
         if (!blockLocale.moduleId.empty()) {
-            autoId = fmt::format("{}_{}", blockLocale.moduleId, id);
+            autoId = jst::fmt::format("{}_{}", blockLocale.moduleId, id);
         }
 
         const Locale& locale = {blockLocale.blockId, autoId};
@@ -194,7 +194,7 @@ class JETSTREAM_API Instance {
 
             auto& block = _flowgraph.nodes().at(locale.block())->block;
             block->setComplete(false);
-            block->pushError(fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
+            block->pushError(jst::fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
 
             return Result::SUCCESS;
         }
@@ -277,10 +277,10 @@ class JETSTREAM_API Instance {
             }
 
             if (parts.size() < 2) {
-                return fmt::format("{}{}", name.substr(0, 3), _flowgraph.nodes().size());
+                return jst::fmt::format("{}{}", name.substr(0, 3), _flowgraph.nodes().size());
             }
 
-            return fmt::format("{}_{}{}", parts[0].substr(0, 3), parts[1], _flowgraph.nodes().size());
+            return jst::fmt::format("{}_{}{}", parts[0].substr(0, 3), parts[1], _flowgraph.nodes().size());
         }();
 
         // Build locale.

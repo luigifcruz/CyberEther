@@ -282,25 +282,25 @@ class FilterEngine : public Block {
             const F32 resamplerRatio = sampleRate / bandwidth;
 
             if (resamplerRatio != std::floor(resamplerRatio)) {
-                _warning = fmt::format("Bypassing resampling because filter bandwidth ({:.2f} MHz) "
-                                       "is not a multiple of the signal sample rate ({:.2f} MHz).",
-                                       bandwidth / JST_MHZ, sampleRate / JST_MHZ);
+                _warning = jst::fmt::format("Bypassing resampling because filter bandwidth ({:.2f} MHz) "
+                                            "is not a multiple of the signal sample rate ({:.2f} MHz).",
+                                            bandwidth / JST_MHZ, sampleRate / JST_MHZ);
                 return false;
             }
 
             if ((padSize / resamplerRatio) != std::floor(padSize / resamplerRatio)) {
-                _warning = fmt::format("Bypassing resampling because filter tap size minus one ({}) "
-                                       " is not a multiple of the resampler ratio ({}).", 
-                                       padSize, resamplerRatio);
+                _warning = jst::fmt::format("Bypassing resampling because filter tap size minus one ({}) "
+                                            " is not a multiple of the resampler ratio ({}).", 
+                                            padSize, resamplerRatio);
                 return false;
             }
 
             resamplerSize = (filterSize + signalSize - 1);
             if ((resamplerSize / resamplerRatio) != std::floor(resamplerSize / resamplerRatio)) {
-                _warning = fmt::format("Bypassing resampling because filter tap size minus one ({}) "
-                                       "plus signal size ({}) is not a multiple of the "
-                                       "resampler ratio ({}).", 
-                                       padSize, signalSize, resamplerRatio);
+                _warning = jst::fmt::format("Bypassing resampling because filter tap size minus one ({}) "
+                                            "plus signal size ({}) is not a multiple of the "
+                                            "resampler ratio ({}).", 
+                                            padSize, signalSize, resamplerRatio);
                 return false;
             }
 
@@ -309,12 +309,12 @@ class FilterEngine : public Block {
                 const F32 centerBin = center / frequencyPerBin;
 
                 if (centerBin != std::floor(centerBin)) {
-                    _warning = fmt::format("Output will be shifted by {} MHz because filter "
-                                           "center frequency ({:.2f} MHz) is not a multiple of the "
-                                           "frequency per bin ({} MHz).",
-                                           (centerBin - std::floor(centerBin)) * frequencyPerBin / JST_MHZ, 
-                                           center / JST_MHZ, 
-                                           frequencyPerBin / JST_MHZ);
+                    _warning = jst::fmt::format("Output will be shifted by {} MHz because filter "
+                                                "center frequency ({:.2f} MHz) is not a multiple of the "
+                                                "frequency per bin ({} MHz).",
+                                                (centerBin - std::floor(centerBin)) * frequencyPerBin / JST_MHZ, 
+                                                center / JST_MHZ, 
+                                                frequencyPerBin / JST_MHZ);
                 }
 
                 // TODO: Looks like there is a problem with the calculation of this 

@@ -69,8 +69,8 @@ class JETSTREAM_API Block {
         };
 
         friend std::ostream& operator<<(std::ostream& os, const Fingerprint& m) {
-            os << fmt::format("{{device: '{}', id: '{}', inputDataType: '{}', outputDataType: '{}'}}", 
-                              m.device, m.id, m.inputDataType, m.outputDataType);
+            os << jst::fmt::format("{{device: '{}', id: '{}', inputDataType: '{}', outputDataType: '{}'}}", 
+                                   m.device, m.id, m.inputDataType, m.outputDataType);
             return os;
         }
     };
@@ -208,6 +208,6 @@ class JETSTREAM_API Block {
 
 }  // namespace Jetstream
 
-template <> struct fmt::formatter<Jetstream::Block::Fingerprint> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Block::Fingerprint> : ostream_formatter {};
 
 #endif

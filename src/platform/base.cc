@@ -44,14 +44,14 @@ namespace Jetstream::Platform {
 #elif defined(JST_OS_BROWSER)
 
 Result OpenUrl(const std::string& url) {
-    emscripten_run_script(fmt::format("window.open('{}', '_blank');", url).c_str());
+    emscripten_run_script(jst::fmt::format("window.open('{}', '_blank');", url).c_str());
     return Result::SUCCESS;
 }
 
 #elif defined(JST_OS_LINUX)
 
 Result OpenUrl(const std::string& url) {
-    const auto res = system(fmt::format("xdg-open ""{}""", url).c_str());
+    const auto res = system(jst::fmt::format("xdg-open ""{}""", url).c_str());
     if (res != 0) {
         JST_ERROR("Failed to open URL: {}", url);
         return Result::ERROR;

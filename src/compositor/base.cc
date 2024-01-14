@@ -61,7 +61,7 @@ Result Compositor::addBlock(const Locale& locale,
     nodeState.outputMap = outputMap;
     nodeState.stateMap = stateMap;
     nodeState.fingerprint = fingerprint;
-    nodeState.title = fmt::format("{} ({})", block->name(), locale);
+    nodeState.title = jst::fmt::format("{} ({})", block->name(), locale);
 
     JST_CHECK(refreshState());
 
@@ -861,7 +861,7 @@ Result Compositor::drawStatic() {
                 ImGui::SameLine();
 
                 if (ImGui::Button(ICON_FA_LAYER_GROUP " New Stack")) {
-                    stacks[fmt::format("Stack #{}", stacks.size())] = {true, 0};
+                    stacks[jst::fmt::format("Stack #{}", stacks.size())] = {true, 0};
                 }
                 ImGui::SameLine();
             }
@@ -901,19 +901,19 @@ Result Compositor::drawStatic() {
                     std::string textSummary, textAuthor, textLicense, textDescription;
 
                     if (!instance.flowgraph().summary().empty()) {
-                        textSummary = fmt::format("Summary: {}\n", instance.flowgraph().summary());
+                        textSummary = jst::fmt::format("Summary: {}\n", instance.flowgraph().summary());
                     }
 
                     if (!instance.flowgraph().author().empty()) {
-                        textAuthor = fmt::format("Author:  {}\n", instance.flowgraph().author());
+                        textAuthor = jst::fmt::format("Author:  {}\n", instance.flowgraph().author());
                     }
 
                     if (!instance.flowgraph().license().empty()) {
-                        textLicense = fmt::format("License: {}\n", instance.flowgraph().license());
+                        textLicense = jst::fmt::format("License: {}\n", instance.flowgraph().license());
                     }
 
                     if (!instance.flowgraph().description().empty()) {
-                        textDescription = fmt::format("Description:\n{}", instance.flowgraph().description());
+                        textDescription = jst::fmt::format("Description:\n{}", instance.flowgraph().description());
                     }
 
                     ImGui::TextWrapped("%s%s%s%s", textSummary.c_str(),
@@ -1083,7 +1083,7 @@ Result Compositor::drawStatic() {
 
         if (!id) {
             isDockNew = true;
-            id = ImGui::GetID(fmt::format("##Stack{}", stack).c_str());
+            id = ImGui::GetID(jst::fmt::format("##Stack{}", stack).c_str());
         }
         
         ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
@@ -1420,8 +1420,8 @@ Result Compositor::drawStatic() {
 
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(0, 255, 0, 30));
                         for (const auto& [inputDataType, outputDataType] : store.options.at(device)) {
-                            const auto label = (outputDataType.empty()) ? fmt::format("{}", inputDataType) : 
-                                                                          fmt::format("{} -> {}", inputDataType, outputDataType);
+                            const auto label = (outputDataType.empty()) ? jst::fmt::format("{}", inputDataType) : 
+                                                                          jst::fmt::format("{} -> {}", inputDataType, outputDataType);
                             ImGui::TextUnformatted(label.c_str());
                             ImGui::SameLine();
                         }
@@ -1841,7 +1841,7 @@ Result Compositor::drawStatic() {
             ImGui::Text("to compare the performance between different devices and backends.");
 
             static std::ostringstream benchmarkData;
-            static std::string buildInfoStr = fmt::format("V{} ({}) - Optimization: {} - Debug: {} - Native: {}", JETSTREAM_VERSION_STR,  
+            static std::string buildInfoStr = jst::fmt::format("V{} ({}) - Optimization: {} - Debug: {} - Native: {}", JETSTREAM_VERSION_STR,  
                                                                                                                   JETSTREAM_BUILD_TYPE, 
                                                                                                                   JETSTREAM_BUILD_OPTIMIZATION, 
                                                                                                                   JETSTREAM_BUILD_DEBUG,
@@ -1871,7 +1871,7 @@ Result Compositor::drawStatic() {
             ImGui::SameLine();
             if (ImGui::Button("Copy Benchmark Results")) {
                 if (!benchmarkRunning) {
-                    ImGui::SetClipboardText(fmt::format("{}\n{}", buildInfoStr, benchmarkData.str()).c_str());
+                    ImGui::SetClipboardText(jst::fmt::format("{}\n{}", buildInfoStr, benchmarkData.str()).c_str());
                     ImGui::InsertNotification({ ImGuiToastType_Info, 5000, "Benchmark results copied to clipboard." });
                 }
             }
@@ -1944,7 +1944,7 @@ Result Compositor::drawStatic() {
             if (Benchmark::TotalCount() == Benchmark::CurrentCount()) {
                 progressTaint = "COMPLETE";
             } else {
-                progressTaint = fmt::format("{}/{}", Benchmark::CurrentCount(), Benchmark::TotalCount());
+                progressTaint = jst::fmt::format("{}/{}", Benchmark::CurrentCount(), Benchmark::TotalCount());
             }
             ImGui::TextFormatted("Benchmark Progress [{}]", progressTaint);
             F32 progress =  Benchmark::TotalCount() > 0 ? static_cast<F32>(Benchmark::CurrentCount()) /  Benchmark::TotalCount() : 0.0f;
@@ -1994,7 +1994,7 @@ Result Compositor::drawGraph() {
         ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f), 
                                             ImVec2(io.DisplaySize.x, io.DisplaySize.y));
         ImGui::SetNextWindowSize(ImVec2(400.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(fmt::format("View - {}", state.title).c_str(),
+        if (!ImGui::Begin(jst::fmt::format("View - {}", state.title).c_str(),
                           &state.block->state.viewEnabled)) {
             ImGui::End();
             continue;
@@ -2016,7 +2016,7 @@ Result Compositor::drawGraph() {
         ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f), 
                                             ImVec2(io.DisplaySize.x, io.DisplaySize.y));
         ImGui::SetNextWindowSize(ImVec2(400.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(fmt::format("Control - {}", state.title).c_str(),
+        if (!ImGui::Begin(jst::fmt::format("Control - {}", state.title).c_str(),
                           &state.block->state.controlEnabled)) {
             ImGui::End();
             continue;
@@ -2466,9 +2466,9 @@ Result Compositor::drawGraph() {
             ImGui::TextWrapped(ICON_FA_MEMORY " Tensor Metadata");
             ImGui::Separator();
 
-            const auto firstLine  = fmt::format("[{} -> {}]", outputLocale, inputLocale);
-            const auto secondLine = fmt::format("[{}] {} [Device::{}]", rec.dataType, rec.shape, rec.device);
-            const auto thirdLine  = fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(rec.data), rec.hash);
+            const auto firstLine  = jst::fmt::format("[{} -> {}]", outputLocale, inputLocale);
+            const auto secondLine = jst::fmt::format("[{}] {} [Device::{}]", rec.dataType, rec.shape, rec.device);
+            const auto thirdLine  = jst::fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(rec.data), rec.hash);
 
             ImGui::TextUnformatted(firstLine.c_str());
             ImGui::TextUnformatted(secondLine.c_str());
@@ -2478,7 +2478,7 @@ Result Compositor::drawGraph() {
                 std::string attributes;
                 U64 i = 0;
                 for (const auto& [key, value] : rec.attributes) {
-                    attributes += fmt::format("{}{}: {}{}", i == 0 ? "" : "             ", 
+                    attributes += jst::fmt::format("{}{}: {}{}", i == 0 ? "" : "             ", 
                                                              key, 
                                                              value, 
                                                              i == rec.attributes.size() - 1 ? "" : ", \n");
@@ -2596,8 +2596,8 @@ Result Compositor::drawGraph() {
                 const auto& [inputDataType, outputDataType] = types;
                 const auto enabled = state.fingerprint.inputDataType == inputDataType &&
                                      state.fingerprint.outputDataType == outputDataType;
-                const auto label = (outputDataType.empty()) ? fmt::format("{}", inputDataType) : 
-                                                              fmt::format("{} -> {}", inputDataType, outputDataType);
+                const auto label = (outputDataType.empty()) ? jst::fmt::format("{}", inputDataType) : 
+                                                              jst::fmt::format("{} -> {}", inputDataType, outputDataType);
                 if (ImGui::MenuItem(label.c_str(), NULL, enabled)) {
                     changeBlockDataTypeMailbox = {locale, types};
                 }

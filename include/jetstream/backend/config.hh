@@ -47,6 +47,6 @@ struct Config {
 
 }  // namespace Jetstream::Backend
 
-template <> struct fmt::formatter<Jetstream::Backend::PhysicalDeviceType> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Backend::PhysicalDeviceType> : ostream_formatter {};
 
 #endif

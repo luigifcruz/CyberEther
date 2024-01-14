@@ -143,7 +143,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 #endif
 
 Implementation::~TensorBuffer() {
-    JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", fmt::ptr(_buffer));
+    JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", jst::fmt::ptr(_buffer));
 
     if (owns_data) {
         cudaFree(&_buffer);
