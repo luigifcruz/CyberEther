@@ -2,6 +2,11 @@
 
 #include "jetstream/viewport/platforms/glfw/metal.hh"
 
+#define GLFW_INCLUDE_NONE
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
 namespace Jetstream::Viewport {
 
 static void PrintGLFWError(int error, const char* description) {

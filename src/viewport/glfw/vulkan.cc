@@ -3,6 +3,8 @@
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
+#include <GLFW/glfw3.h>
+
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }

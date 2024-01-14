@@ -1,5 +1,7 @@
 #include "jetstream/viewport/platforms/glfw/webgpu.hh"
 
+#include <GLFW/glfw3.h>
+
 EM_JS(int, getWindowWidth, (), {
     return window.innerWidth;
 });
