@@ -2,6 +2,8 @@
 #include "jetstream/render/vulkan/surface.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
+#include "tools/imgui_impl_vulkan.h"
+
 const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace Jetstream::Render {

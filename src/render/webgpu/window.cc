@@ -1,6 +1,8 @@
 #include "jetstream/render/webgpu/window.hh"
 #include "jetstream/render/webgpu/surface.hh"
 
+#include "tools/imgui_impl_wgpu.h"
+
 namespace Jetstream::Render {
 
 using Implementation = WindowImp<Device::WebGPU>;
