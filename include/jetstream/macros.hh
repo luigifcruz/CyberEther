@@ -3,7 +3,7 @@
 
 #include "jetstream/memory/macros.hh"
 
-#include "jetstream_config.hh"
+#include "jetstream/config.hh"
 
 //
 // Core macros.

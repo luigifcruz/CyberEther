@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "jetstream_config.hh"
+#include "jetstream/config.hh"
 
 #define IMGUI_IMPL_METAL_CPP
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS

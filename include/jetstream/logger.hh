@@ -10,7 +10,7 @@
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 
-#include "jetstream_config.hh"
+#include "jetstream/config.hh"
 
 std::string& JST_LOG_LAST_WARNING();
 std::string& JST_LOG_LAST_ERROR();
