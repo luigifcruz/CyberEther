@@ -101,7 +101,8 @@ Optional dependencies.
 $ pacman -S soapysdr soapyrtlsdr
 
 # For Remote capabilities.
-$ pacman -S gstreamer gst-plugins-base gst-plugins-good gst-libav
+$ pacman -S gstreamer gst-plugins-base gst-libav
+$ pacman -S gst-plugins-good gst-plugins-bad gst-plugins-ugly
 
 # Pre-loaded examples metadata.
 $ pacman -S python-yaml
@@ -129,7 +130,10 @@ Optional dependencies.
 $ apt install libsoapysdr-dev soapysdr-module-rtlsdr
 
 # For Remote capabilities.
-$ apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav
+$ apt install libgstreamer1.0-dev gstreamer1.0-libav
+$ apt install gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev
+$ apt install libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev 
+$ apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 
 # Pre-loaded examples metadata.
 $ apt install python3-yaml

@@ -589,9 +589,11 @@ Result Endpoint::createGstreamerEndpoint() {
 
             return Result::SUCCESS;
         }
+        JST_DEBUG("[ENDPOINT] Failed to find plugins: {}", plugins);
     }
 
     JST_ERROR("[ENDPOINT] No encoding combination is available.");
+    JST_ERROR("[ENDPOINT] This is tipically caused by missing plugins.");
     return Result::ERROR;
 }
 
@@ -746,7 +748,11 @@ Result Endpoint::startGstreamerEndpoint() {
     gst_caps_unref(caps);
 
     if (_encodingStrategy == Strategy::Software || _encodingStrategy == Strategy::HardwareV4L2) {
-        g_object_set(elements["rawparser"], "use-sink-caps", 1, nullptr);
+        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
+        g_object_set(elements["rawparser"], "format", 12, nullptr);
+        g_object_set(elements["rawparser"], "width", config.size.width, nullptr);
+        g_object_set(elements["rawparser"], "height", config.size.height, nullptr);
+        g_object_set(elements["rawparser"], "framerate", 1.0f/config.framerate, nullptr);
     }
 
     if (config.codec == Render::VideoCodec::H264) {
