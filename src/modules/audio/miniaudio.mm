@@ -7,4 +7,4 @@
 #define MA_NO_RUNTIME_LINKING
 
 #define MINIAUDIO_IMPLEMENTATION
-#include "jetstream/tools/miniaudio.h"
+#include "miniaudio.h"
