@@ -5,8 +5,8 @@
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
 #include "jetstream/platform.hh"
-#include "jetstream/tools/stb_image.hh"
 
+#include "stb_image.hh"
 #include "resources/resources.hh"
 
 namespace Jetstream {
