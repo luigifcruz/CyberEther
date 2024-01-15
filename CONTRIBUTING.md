@@ -20,6 +20,9 @@ Contributions are welcome! Pull requests are the best way to propose changes to 
 
 ## Components 
 
+### Testing
+To enable building the tests, make sure `catch2` is installed on your system.
+
 ### Return Values
 All functions should return a `Result` type. This is an enum with the following values:
 

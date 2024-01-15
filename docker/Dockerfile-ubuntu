@@ -18,10 +18,19 @@ RUN apt install -y libgstreamer1.0-dev gstreamer1.0-libav
 RUN apt install -y gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev 
 RUN apt install -y libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev 
 RUN apt install -y gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
-RUN apt install -y catch2
 RUN apt install -y python3-yaml
 
 ###
+
+# Install Catch2 (because Ubuntu 22.04 version is 5 years old).
+
+RUN git clone https://github.com/catchorg/Catch2.git && \
+    cd Catch2 && \
+    git checkout v3.4.0 && \
+    meson setup build && \
+    cd build && \
+    ninja && \
+    ninja install
 
 COPY . /cyberether
 WORKDIR /cyberether
