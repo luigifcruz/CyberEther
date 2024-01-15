@@ -262,19 +262,6 @@ Result Implementation::createImgui() {
     };
     ImGui_ImplVulkan_Init(&init_info, renderPass); 
 
-    JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
-                                   backend->getComputeQueue(),
-                                   backend->getDefaultFence(),
-                                   backend->getDefaultCommandBuffer(),
-        [&](VkCommandBuffer& commandBuffer){
-            ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
-
-            return Result::SUCCESS;
-        }
-    ));
-
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
-
     return Result::SUCCESS;
 }
 
