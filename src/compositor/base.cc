@@ -1348,7 +1348,7 @@ Result Compositor::drawStatic() {
 
             ImGui::TextFormatted("Version: {}-{}", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
             ImGui::Text("License: MIT License");
-            ImGui::Text("Copyright (c) 2021-2023 Luigi F. Cruz");
+            ImGui::Text("Copyright (c) 2021-2024 Luigi F. Cruz");
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -1747,7 +1747,7 @@ Result Compositor::drawStatic() {
 
             ImGui::Spacing();
 
-            ImGui::Text("Copyright (c) 2021-2023 Luigi F. Cruz");
+            ImGui::Text("Copyright (c) 2021-2024 Luigi F. Cruz");
 
             ImGui::Spacing();
 
