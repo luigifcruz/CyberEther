@@ -567,7 +567,8 @@ ImVec2 GetScreenSpacePinCoordinates(const ImNodesEditorContext& editor, const Im
 bool MouseInCanvas()
 {
     // This flag should be true either when hovering or clicking something in the canvas.
-    const bool is_window_hovered_or_focused = ImGui::IsWindowHovered() || ImGui::IsWindowFocused();
+    // UPDATE-ME: Interaction with Window over Canvas.
+    const bool is_window_hovered_or_focused = ImGui::IsWindowHovered();
 
     return is_window_hovered_or_focused &&
            GImNodes->CanvasRectScreenSpace.Contains(ImGui::GetMousePos());
@@ -2404,7 +2405,8 @@ void EndNodeEditor()
             editor.ClickInteraction.Type == ImNodesClickInteractionType_BoxSelection ||
             editor.ClickInteraction.Type == ImNodesClickInteractionType_LinkCreation ||
             editor.ClickInteraction.Type == ImNodesClickInteractionType_Node;
-        if (should_auto_pan && !MouseInCanvas())
+        // UPDATE-ME: Panning incorrectly when mouse over Child window.
+        if (should_auto_pan && !MouseInCanvas() && !GImNodes->CanvasRectScreenSpace.Contains(ImGui::GetMousePos()))
         {
             ImVec2 mouse = ImGui::GetMousePos();
             ImVec2 center = GImNodes->CanvasRectScreenSpace.GetCenter();
