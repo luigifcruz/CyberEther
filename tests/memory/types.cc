@@ -1,5 +1,6 @@
 #include <sstream>
 
+#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "jetstream/memory/types.hh"
@@ -166,4 +167,8 @@ TEST_CASE("Range Struct Tests", "[Range]") {
         REQUIRE_FALSE(range2 <= range1);
         REQUIRE(range3 <= range1);
     }
+}
+
+int main(int argc, char* argv[]) {
+  return Catch::Session().run(argc, argv);
 }

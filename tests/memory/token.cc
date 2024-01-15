@@ -1,5 +1,6 @@
 #include <sstream>
 
+#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "jetstream/memory/token.hh"
@@ -119,4 +120,8 @@ TEST_CASE("Token Class Tests", "[Token]") {
         os << tokens;
         REQUIRE(os.str() == "{42, ..., 0:8:2, 24:48}");
     }
+}
+
+int main(int argc, char* argv[]) {
+  return Catch::Session().run(argc, argv);
 }

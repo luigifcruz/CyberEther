@@ -22,6 +22,19 @@ WORKDIR /cyberether
 
 RUN git submodule update --init --recursive
 
+# Install Catch2 for unit tests
+
+RUN git clone https://github.com/catchorg/Catch2.git && \
+    cd Catch2 && \
+    git checkout v3.4.0 && \
+    meson setup \
+      --cross-file /cyberether/crosscompile/windows.ini  \
+      --prefix /usr/src/mxe/usr/x86_64-w64-mingw32.static.posix \
+    build && \
+    cd build && \
+    ninja && \
+    ninja install
+
 RUN rm -fr build-static
 RUN meson setup --cross-file crosscompile/windows.ini build-static
 RUN cd build-static && ninja
