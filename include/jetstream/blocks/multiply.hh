@@ -75,12 +75,12 @@ class Multiply : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Multiply, D, IT>(
+        JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
                 .factorA = input.factorA,
                 .factorB = input.factorB,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("product", output.product, multiply->getOutputProduct()));

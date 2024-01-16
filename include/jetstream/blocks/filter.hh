@@ -3,7 +3,8 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/instance.hh"
-#include "jetstream/modules/filter.hh"
+#include "jetstream/blocks/filter_taps.hh"
+#include "jetstream/blocks/filter_engine.hh"
 
 namespace Jetstream::Blocks {
 
@@ -28,7 +29,9 @@ class Filter : public Block {
     // Input
 
     struct Input {
-        JST_SERDES();
+        Tensor<D, IT> buffer;
+
+        JST_SERDES(buffer);
     };
 
     constexpr const Input& getInput() const {
@@ -38,9 +41,9 @@ class Filter : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> coeffs;
+        Tensor<D, IT> buffer;
 
-        JST_SERDES(coeffs);
+        JST_SERDES(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -48,7 +51,7 @@ class Filter : public Block {
     }
 
     constexpr const Tensor<D, IT>& getOutputCoeffs() const {
-        return this->output.coeffs;
+        return this->output.buffer;
     }
 
     // Housekeeping
@@ -66,7 +69,7 @@ class Filter : public Block {
     }
 
     std::string summary() const {
-        return "Generates a FIR bandpass filter taps.";
+        return "Filters input signal with a bandpass filter.";
     }
 
     std::string description() const {
@@ -77,23 +80,32 @@ class Filter : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Filter, D, IT>(
-            filter, "filter", {
+        JST_CHECK(instance().addInternalBlock(
+            taps, "taps", {
                 .center = config.center,
                 .sampleRate = config.sampleRate,
                 .bandwidth = config.bandwidth,
                 .taps = config.taps,
             }, {},
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(Block::LinkOutput("coeffs", output.coeffs, filter->getOutputCoeffs()));
+        JST_CHECK(instance().addInternalBlock(
+            engine, "engine", {}, {
+                .signal = input.buffer,
+                .filter = taps->getOutputCoeffs(),
+            },
+            locale()
+        ));
+
+        JST_CHECK(Block::LinkOutput("buffer", output.buffer, engine->getOutputBuffer()));
 
         return Result::SUCCESS;
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(filter->locale()));
+        JST_CHECK(instance().eraseInternalBlock(engine));
+        JST_CHECK(instance().eraseInternalBlock(taps));
 
         return Result::SUCCESS;
     }
@@ -169,7 +181,7 @@ class Filter : public Block {
             ImGui::TextFormatted("Center #{:02}", i);
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            const std::string id = fmt::format("##filter-center-{}", i);
+            const std::string id = jst::fmt::format("##filter-center-{}", i);
             F32 center = config.center[i] / JST_MHZ;
             if (ImGui::InputFloat(id.c_str(), &center, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 config.center[i] = center * JST_MHZ;
@@ -187,14 +199,16 @@ class Filter : public Block {
     }
 
  private:
-    std::shared_ptr<Jetstream::Filter<D, IT>> filter;
+    std::shared_ptr<Blocks::FilterTaps<D, IT, OT>> taps;
+    std::shared_ptr<Blocks::FilterEngine<D, IT, OT>> engine;
 
     JST_DEFINE_IO();
 };
 
 }  // namespace Jetstream::Blocks
 
-JST_BLOCK_ENABLE(Filter, is_specialized<Jetstream::Filter<D, IT>>::value &&
+JST_BLOCK_ENABLE(Filter, is_specialized<Blocks::FilterTaps<D, IT, OT>>::value &&
+                         is_specialized<Blocks::FilterEngine<D, IT, OT>>::value &&
                          std::is_same<OT, void>::value)
 
 #endif

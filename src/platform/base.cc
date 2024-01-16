@@ -20,13 +20,22 @@ EM_JS(const char*, jst_file_path, (), {
 });
 #endif
 
+#if defined(JST_OS_WINDOWS)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <comutil.h>
+#include <commdlg.h>
+#include <stdio.h>
+#include <shellapi.h>
+#undef ERROR
+#undef FATAL
+#endif
+
 namespace Jetstream::Platform {
 
 //
 // Open URL
 //
-
-// TODO: Implement Windows support.
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -35,15 +44,25 @@ namespace Jetstream::Platform {
 #elif defined(JST_OS_BROWSER)
 
 Result OpenUrl(const std::string& url) {
-    emscripten_run_script(fmt::format("window.open('{}', '_blank');", url).c_str());
+    emscripten_run_script(jst::fmt::format("window.open('{}', '_blank');", url).c_str());
     return Result::SUCCESS;
 }
 
 #elif defined(JST_OS_LINUX)
 
 Result OpenUrl(const std::string& url) {
-    const auto res = system(fmt::format("xdg-open ""{}""", url).c_str());
+    const auto res = system(jst::fmt::format("xdg-open ""{}""", url).c_str());
     if (res != 0) {
+        JST_ERROR("Failed to open URL: {}", url);
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_WINDOWS)
+Result OpenUrl(const std::string& url) {
+    INT_PTR res = (INT_PTR)ShellExecuteA(0, 0, url.c_str(), 0, 0 , SW_SHOW );
+    if (res < 32) {
         JST_ERROR("Failed to open URL: {}", url);
         return Result::ERROR;
     }
@@ -64,7 +83,6 @@ Result OpenUrl(const std::string& url) {
 //
 
 // TODO: Implement iOS support.
-// TODO: Implement Windows support.
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -172,6 +190,45 @@ Result PickFile(std::string& path) {
     return Result::SUCCESS;
 }
 
+#elif defined(JST_OS_WINDOWS)
+
+Result PickFile(std::string& path) {
+    /* File path buffer */
+    char buf[256] = {'\0'};
+    memcpy_s(buf,256,path.c_str(),path.length());
+
+    /* Create OpenFilenameA Struct */
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(OPENFILENAME));
+
+    /* Fill struct */
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = NULL;
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = 256;
+    ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
+    ofn.nFilterIndex = 2;
+
+    bool ret = GetOpenFileNameA(&ofn);
+    if (!ret) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    path = std::string(ofn.lpstrFile);
+
+    if (path.empty()) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    if (path.back() == '\n') {
+        path.pop_back();
+    }
+
+    return Result::SUCCESS;
+}
+
 #else
 
 Result PickFile(std::string& path) {
@@ -186,7 +243,6 @@ Result PickFile(std::string& path) {
 //
 
 // TODO: Implement iOS support.
-// TODO: Implement Windows support.
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 
@@ -278,6 +334,45 @@ Result SaveFile(std::string& path) {
     }
 
     path = buffer.data();
+
+    if (path.empty()) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    if (path.back() == '\n') {
+        path.pop_back();
+    }
+
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_WINDOWS)
+
+Result SaveFile(std::string& path) {
+    /* File path buffer */
+    char buf[256] = {'\0'};
+    memcpy_s(buf,256,path.c_str(),path.length());
+
+    /* Create OpenFilenameA Struct */
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(OPENFILENAME));
+
+    /* Fill struct */
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = NULL;
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = 256;
+    ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
+    ofn.nFilterIndex = 2;
+
+    bool ret = GetSaveFileNameA(&ofn);
+    if (!ret) {
+        JST_ERROR("No file selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    path = std::string(ofn.lpstrFile);
 
     if (path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");

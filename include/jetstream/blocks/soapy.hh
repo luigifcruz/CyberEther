@@ -101,7 +101,7 @@ class Soapy : public Block {
 
         // Starting sub-modules.
 
-        JST_CHECK(instance().template addModule<Jetstream::Soapy, D, IT>(
+        JST_CHECK(instance().addModule(
             soapy, "soapy", {
                 .deviceString = deviceString,
                 .streamString = config.streamString,
@@ -112,7 +112,7 @@ class Soapy : public Block {
                 .numberOfTimeSamples = config.numberOfTimeSamples,
                 .bufferMultiplier = config.bufferMultiplier,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         // Connecting sub-modules outputs.
@@ -157,7 +157,7 @@ class Soapy : public Block {
         ImGui::TextUnformatted("Buffer Health");
         ImGui::TableSetColumnIndex(1);
         const F32 bufferUsageRatio = bufferOccupancy / bufferCapacity;
-        const auto bufferOverlay = fmt::format("{:.0f}/{:.0f} MB ({})", bufferOccupancyMB, bufferCapacityMB, buffer.getOverflows());
+        const auto bufferOverlay = jst::fmt::format("{:.0f}/{:.0f} MB ({})", bufferOccupancyMB, bufferCapacityMB, buffer.getOverflows());
         ImGui::SetNextItemWidth(-1);
         ImGui::ProgressBar(bufferUsageRatio, ImVec2(0.0f, 0.0f), bufferOverlay.c_str());
 
@@ -167,7 +167,7 @@ class Soapy : public Block {
         ImGui::TableSetColumnIndex(1);
         const F32 sdrThroughputMB = ((soapy->getConfig().sampleRate * sizeof(CF32)) / JST_MB);
         const F32 throughputRatio = (bufferThroughputMB / sdrThroughputMB) * 0.5f;
-        const auto throughputOverlay = fmt::format("{:.0f}/{:.0f} MB/s", bufferThroughputMB, sdrThroughputMB);
+        const auto throughputOverlay = jst::fmt::format("{:.0f}/{:.0f} MB/s", bufferThroughputMB, sdrThroughputMB);
         ImGui::SetNextItemWidth(-1);
         ImGui::ProgressBar(throughputRatio, ImVec2(0.0f, 0.0f), throughputOverlay.c_str());
     }

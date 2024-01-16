@@ -4,7 +4,7 @@
 #include "jetstream/viewport/adapters/webgpu.hh"
 #include "jetstream/viewport/platforms/glfw/generic.hh"
 
-#include <GLFW/glfw3.h>
+struct GLFWwindow;
 
 namespace Jetstream::Viewport {
 

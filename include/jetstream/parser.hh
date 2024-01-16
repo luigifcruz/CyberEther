@@ -249,7 +249,7 @@ class Parser {
     static Result SerializeToString(const Record& record, std::string& out) {
         if (record.device != Device::None) {
             if (!record.locale.empty()) {
-                out = fmt::format("${{graph.{}.output.{}}}", record.locale.blockId, record.locale.pinId);
+                out = jst::fmt::format("${{graph.{}.output.{}}}", record.locale.blockId, record.locale.pinId);
                 return Result::SUCCESS;
             }
 
@@ -266,42 +266,42 @@ class Parser {
             const auto& string_value = std::any_cast<std::string>(var);
 
             if (std::count(string_value.begin(), string_value.end(), '\n')) {
-                out = fmt::format("{}", string_value);
+                out = jst::fmt::format("{}", string_value);
             } else {
-                out = fmt::format("'{}'", string_value);
+                out = jst::fmt::format("'{}'", string_value);
             }
 
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(I32)) {
-            out = fmt::format("{}", std::any_cast<I32>(var));
+            out = jst::fmt::format("{}", std::any_cast<I32>(var));
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(U64)) {
-            out = fmt::format("{}", std::any_cast<U64>(var));
+            out = jst::fmt::format("{}", std::any_cast<U64>(var));
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(F32)) {
-            out = fmt::format("{}", std::any_cast<F32>(var));
+            out = jst::fmt::format("{}", std::any_cast<F32>(var));
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(F64)) {
-            out = fmt::format("{}", std::any_cast<F64>(var));
+            out = jst::fmt::format("{}", std::any_cast<F64>(var));
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(CF32)) {
             const auto& complex = std::any_cast<CF32>(var);
-            out = fmt::format("{}{}{}", complex.real(), complex.imag() < 0 ? "-" : "+", complex.imag());
+            out = jst::fmt::format("{}{}{}", complex.real(), complex.imag() < 0 ? "-" : "+", complex.imag());
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(bool)) {
-            out = fmt::format("{}", std::any_cast<bool>(var));
+            out = jst::fmt::format("{}", std::any_cast<bool>(var));
             return Result::SUCCESS;
         }
 
@@ -309,7 +309,7 @@ class Parser {
             const auto& values = std::any_cast<std::vector<U64>>(var);
             std::stringstream ss;
             std::copy(values.begin(), values.end(), std::ostream_iterator<U64>(ss, ", "));
-            out = fmt::format("[{}]", ss.str());
+            out = jst::fmt::format("[{}]", ss.str());
             return Result::SUCCESS;
         }
 
@@ -317,25 +317,25 @@ class Parser {
             const auto& values = std::any_cast<std::vector<F32>>(var);
             std::stringstream ss;
             std::copy(values.begin(), values.end(), std::ostream_iterator<F32>(ss, ", "));
-            out = fmt::format("[{}]", ss.str());
+            out = jst::fmt::format("[{}]", ss.str());
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(Range<F32>)) {
             const auto& range = std::any_cast<Range<F32>>(var);
-            out = fmt::format("[{}, {}]", range.min, range.max);
+            out = jst::fmt::format("[{}, {}]", range.min, range.max);
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(Size2D<U64>)) {
             const auto& size = std::any_cast<Size2D<U64>>(var);
-            out = fmt::format("[{}, {}]", size.width, size.height);
+            out = jst::fmt::format("[{}, {}]", size.width, size.height);
             return Result::SUCCESS;
         }
 
         if (var.type() == typeid(Size2D<F32>)) {
             const auto& size = std::any_cast<Size2D<F32>>(var);
-            out = fmt::format("[{}, {}]", size.width, size.height);
+            out = jst::fmt::format("[{}, {}]", size.width, size.height);
             return Result::SUCCESS;
         }
 

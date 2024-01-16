@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_RENDER_WEBGPU_WINDOW_HH
 #define JETSTREAM_RENDER_WEBGPU_WINDOW_HH
 
-#include "jetstream/render/tools/imgui_impl_wgpu.h"
-
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/backend/base.hh"

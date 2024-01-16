@@ -101,74 +101,74 @@ class Spectroscope : public Block {
             individualViewSize.height /= numberOfRows;
         }
 
-        JST_CHECK(instance().template addModule<Jetstream::Window, D, IT>(
+        JST_CHECK(instance().addModule(
             window, "window", {
                 .size = signalSize,
             }, {},
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Invert, D, IT>(
+        JST_CHECK(instance().addModule(
             invert, "invert", {}, {
                 .buffer = window->getOutputWindow(),
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Multiply, D, IT>(
+        JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
                 .factorA = invert->getOutputBuffer(),
                 .factorB = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::AGC, D, IT>(
+        JST_CHECK(instance().addModule(
             agc, "agc", {}, {
                 .buffer = multiply->getOutputProduct(),
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
+        JST_CHECK(instance().addModule(
             fft, "fft", {
                 .forward = true,
             }, {
                 .buffer = agc->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Amplitude, D, IT, OT>(
+        JST_CHECK(instance().addModule(
             amplitude, "amplitude", {}, {
                 .buffer = fft->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Scale, D, OT>(
+        JST_CHECK(instance().addModule(
             scale, "scale", {
                 .range = config.range,
             }, {
                 .buffer = amplitude->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         if (config.spectrogram) {
-            JST_CHECK(instance().template addModule<Jetstream::Spectrogram, D, OT>(
+            JST_CHECK(instance().addModule(
                 spectrogram, "spectrogram", {
                     .height = 512,
                     .viewSize = individualViewSize,
                 }, {
                     .buffer = scale->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
         }
 
         if (config.lineplot) {
-            JST_CHECK(instance().template addModule<Jetstream::Lineplot, D, OT>(
+            JST_CHECK(instance().addModule(
                 lineplot, "lineplot", {
                     .numberOfVerticalLines = numberOfVerticalLines,
                     .numberOfHorizontalLines = numberOfHorizontalLines,
@@ -176,12 +176,12 @@ class Spectroscope : public Block {
                 }, {
                     .buffer = scale->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
         }
 
         if (config.waterfall) {
-            JST_CHECK(instance().template addModule<Jetstream::Waterfall, D, OT>(
+            JST_CHECK(instance().addModule(
                 waterfall, "waterfall", {
                     .zoom = 1.0,
                     .offset = 0,
@@ -190,7 +190,7 @@ class Spectroscope : public Block {
                 }, {
                     .buffer = scale->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
         }
 

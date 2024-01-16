@@ -77,14 +77,14 @@ class Pad : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
+        JST_CHECK(instance().addModule(
             pad, "pad", {
                 .size = config.size,
                 .axis = config.axis,
             }, {
                 .unpadded = input.unpadded,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("padded", output.padded, pad->getOutputPadded()));

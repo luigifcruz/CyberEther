@@ -129,8 +129,8 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_REMOTE_AVAILABLE
         Blocks::Remote,
 #endif
-#ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
-        Blocks::Filter,
+#ifdef JETSTREAM_BLOCK_FILTER_TAPS_AVAILABLE
+        Blocks::FilterTaps,
 #endif
 #ifdef JETSTREAM_BLOCK_AMPLITUDE_AVAILABLE
         Blocks::Amplitude,
@@ -179,6 +179,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #endif
 #ifdef JETSTREAM_BLOCK_SPECTROSCOPE_AVAILABLE
         Blocks::Spectroscope,
+#endif
+#ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
+        Blocks::Filter,
 #endif
         // [NEW BLOCK HOOK]
     )

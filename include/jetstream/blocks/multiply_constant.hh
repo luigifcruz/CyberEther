@@ -76,11 +76,11 @@ class MultiplyConstant : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::MultiplyConstant, D, IT>(
+        JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
                 .factor = input.factor,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("product", output.product, multiply->getOutputProduct()));

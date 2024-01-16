@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_MODULES_FILTER_HH
-#define JETSTREAM_MODULES_FILTER_HH
+#ifndef JETSTREAM_MODULES_FILTER_TAPS_HH
+#define JETSTREAM_MODULES_FILTER_TAPS_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -9,11 +9,11 @@
 
 namespace Jetstream {
 
-#define JST_FILTER_CPU(MACRO) \
-    MACRO(Filter, CPU, CF32)
+#define JST_FILTER_TAPS_CPU(MACRO) \
+    MACRO(FilterTaps, CPU, CF32)
 
 template<Device D, typename T = CF32>
-class Filter : public Module, public Compute {
+class FilterTaps : public Module, public Compute {
  public:
     // Configuration 
 
@@ -108,8 +108,8 @@ class Filter : public Module, public Compute {
     JST_DEFINE_IO();
 };
 
-#ifdef JETSTREAM_MODULE_FILTER_CPU_AVAILABLE
-JST_FILTER_CPU(JST_SPECIALIZATION);
+#ifdef JETSTREAM_MODULE_FILTER_TAPS_CPU_AVAILABLE
+JST_FILTER_TAPS_CPU(JST_SPECIALIZATION);
 #endif
 
 }  // namespace Jetstream

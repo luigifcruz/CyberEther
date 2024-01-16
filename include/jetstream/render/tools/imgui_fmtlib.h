@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include <fmt/format.h>
+#include "jetstream/logger.hh"
 
 namespace ImGui
 {
-    #define TextFormatted(text, ...) TextUnformatted(fmt::format(text, ##__VA_ARGS__).c_str())
+    #define TextFormatted(text, ...) TextUnformatted(jst::fmt::format(text, ##__VA_ARGS__).c_str())
 }

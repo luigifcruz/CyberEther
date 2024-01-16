@@ -92,42 +92,42 @@ class FilterEngine : public Block {
         U64 signalMaxRank = input.signal.rank() - 1;
         const U64 signalSize = input.signal.shape()[signalMaxRank];
 
-        JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
+        JST_CHECK(instance().addModule(
             padSignal, "padSignal", {
                 .size = filterSize - 1,
                 .axis = signalMaxRank,
             }, {
                 .unpadded = input.signal,
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Pad, D, IT>(
+        JST_CHECK(instance().addModule(
             padFilter, "padFilter", {
                 .size = signalSize - 1,
                 .axis = filterMaxRank,
             }, {
                 .unpadded = input.filter,
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
+        JST_CHECK(instance().addModule(
             fftSignal, "fftSignal", {
                 .forward = true,
             }, {
                 .buffer = padSignal->getOutputPadded(),
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
+        JST_CHECK(instance().addModule(
             fftFilter, "fftFilter", {
                 .forward = true,
             }, {
                 .buffer = padFilter->getOutputPadded(),
             },
-            locale().blockId
+            locale()
         ));
 
         auto multiplySignalInput = fftSignal->getOutputBuffer();
@@ -135,7 +135,7 @@ class FilterEngine : public Block {
         if (input.filter.rank() == 2 && (input.signal.rank() == 1 || input.signal.rank() == 2)) {
             JST_DEBUG("Filter is 2D, adding a dimension to the signal.");
 
-            JST_CHECK(instance().template addModule<Jetstream::TensorModifier, D, IT>(
+            JST_CHECK(instance().addModule(
                 expandDims, "expandDims", {
                     .callback = [&](auto& mod) {
                         mod.expand_dims(signalMaxRank);
@@ -144,25 +144,25 @@ class FilterEngine : public Block {
                 }, {
                     .buffer = fftSignal->getOutputBuffer(),
                 },
-                locale().blockId
+                locale()
             ));
 
             multiplySignalInput = expandDims->getOutputBuffer();
             signalMaxRank = multiplySignalInput.rank() - 1;
         }
 
-        JST_CHECK(instance().template addModule<Jetstream::Multiply, D, IT>(
+        JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
                 .factorA = multiplySignalInput,
                 .factorB = fftFilter->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
         auto ifftInput = multiply->getOutputProduct();
 
         if (calculateResampleHeuristics(filterSize, signalSize)) {
-            JST_CHECK(instance().template addModule<Jetstream::Fold, D, IT>(
+            JST_CHECK(instance().addModule(
                 fold, "fold", {
                     .axis = std::max(filterMaxRank, signalMaxRank),
                     .offset = resamplerOffset,
@@ -170,39 +170,39 @@ class FilterEngine : public Block {
                 }, {
                     .buffer = multiply->getOutputProduct(),
                 },
-                locale().blockId
+                locale()
             ));
 
             ifftInput = fold->getOutputBuffer();
         }
 
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, IT>(
+        JST_CHECK(instance().addModule(
             ifft, "ifft", {
                 .forward = false,
             }, {
                 .buffer = ifftInput,
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::Unpad, D, IT>(
+        JST_CHECK(instance().addModule(
             unpad, "unpad", {
                 .size = padSize,
                 .axis = std::max(filterMaxRank, signalMaxRank),
             }, {
                 .padded = ifft->getOutputBuffer(),
             },
-            locale().blockId
+            locale()
         ));
 
-        JST_CHECK(instance().template addModule<Jetstream::OverlapAdd, D, IT>(
+        JST_CHECK(instance().addModule(
             overlap, "overlap", {
                 .axis = std::max(filterMaxRank, signalMaxRank),
             }, {
                 .buffer = unpad->getOutputUnpadded(),
                 .overlap = unpad->getOutputPad(),
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, overlap->getOutputBuffer()));
@@ -282,25 +282,25 @@ class FilterEngine : public Block {
             const F32 resamplerRatio = sampleRate / bandwidth;
 
             if (resamplerRatio != std::floor(resamplerRatio)) {
-                _warning = fmt::format("Bypassing resampling because filter bandwidth ({:.2f} MHz) "
-                                       "is not a multiple of the signal sample rate ({:.2f} MHz).",
-                                       bandwidth / JST_MHZ, sampleRate / JST_MHZ);
+                _warning = jst::fmt::format("Bypassing resampling because filter bandwidth ({:.2f} MHz) "
+                                            "is not a multiple of the signal sample rate ({:.2f} MHz).",
+                                            bandwidth / JST_MHZ, sampleRate / JST_MHZ);
                 return false;
             }
 
             if ((padSize / resamplerRatio) != std::floor(padSize / resamplerRatio)) {
-                _warning = fmt::format("Bypassing resampling because filter tap size minus one ({}) "
-                                       " is not a multiple of the resampler ratio ({}).", 
-                                       padSize, resamplerRatio);
+                _warning = jst::fmt::format("Bypassing resampling because filter tap size minus one ({}) "
+                                            " is not a multiple of the resampler ratio ({}).", 
+                                            padSize, resamplerRatio);
                 return false;
             }
 
             resamplerSize = (filterSize + signalSize - 1);
             if ((resamplerSize / resamplerRatio) != std::floor(resamplerSize / resamplerRatio)) {
-                _warning = fmt::format("Bypassing resampling because filter tap size minus one ({}) "
-                                       "plus signal size ({}) is not a multiple of the "
-                                       "resampler ratio ({}).", 
-                                       padSize, signalSize, resamplerRatio);
+                _warning = jst::fmt::format("Bypassing resampling because filter tap size minus one ({}) "
+                                            "plus signal size ({}) is not a multiple of the "
+                                            "resampler ratio ({}).", 
+                                            padSize, signalSize, resamplerRatio);
                 return false;
             }
 
@@ -309,12 +309,12 @@ class FilterEngine : public Block {
                 const F32 centerBin = center / frequencyPerBin;
 
                 if (centerBin != std::floor(centerBin)) {
-                    _warning = fmt::format("Output will be shifted by {} MHz because filter "
-                                           "center frequency ({:.2f} MHz) is not a multiple of the "
-                                           "frequency per bin ({} MHz).",
-                                           (centerBin - std::floor(centerBin)) * frequencyPerBin / JST_MHZ, 
-                                           center / JST_MHZ, 
-                                           frequencyPerBin / JST_MHZ);
+                    _warning = jst::fmt::format("Output will be shifted by {} MHz because filter "
+                                                "center frequency ({:.2f} MHz) is not a multiple of the "
+                                                "frequency per bin ({} MHz).",
+                                                (centerBin - std::floor(centerBin)) * frequencyPerBin / JST_MHZ, 
+                                                center / JST_MHZ, 
+                                                frequencyPerBin / JST_MHZ);
                 }
 
                 // TODO: Looks like there is a problem with the calculation of this 

@@ -106,7 +106,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     extMemHandleDesc.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     JST_CUDA_CHECK_THROW(cuImportExternalMemory(&vulkan_external_memory, &extMemHandleDesc), [&]{
-        JST_FATAL("[CUDA:BUFFER] Failed to import Vulkan buffer memory into CUDA.");
+        JST_FATAL("[CUDA:BUFFER] Failed to import Vulkan buffer memory into CUDA: {}", err);
     });
 
     CUdeviceptr devPtr;
@@ -116,7 +116,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     bufferDesc.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     JST_CUDA_CHECK_THROW(cuExternalMemoryGetMappedBuffer(&devPtr, vulkan_external_memory, &bufferDesc), [&]{
-        JST_FATAL("[CUDA:BUFFER] Failed to get CUDA buffer from Vulkan buffer memory.");
+        JST_FATAL("[CUDA:BUFFER] Failed to get CUDA buffer from Vulkan buffer memory: {}", err);
     });
 
     _buffer = reinterpret_cast<void*>(devPtr);
@@ -143,7 +143,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 #endif
 
 Implementation::~TensorBuffer() {
-    JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", fmt::ptr(_buffer));
+    JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", jst::fmt::ptr(_buffer));
 
     if (owns_data) {
         cudaFree(&_buffer);

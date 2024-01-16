@@ -76,13 +76,13 @@ class Cast : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Cast, D, IT, OT>(
+        JST_CHECK(instance().addModule(
             cast, "cast", {
                 .scaler = config.scaler,
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, cast->getOutputBuffer()));

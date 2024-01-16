@@ -5,4 +5,4 @@
 #endif
 
 #define MINIAUDIO_IMPLEMENTATION
-#include "jetstream/tools/miniaudio.h"
+#include "miniaudio.h"

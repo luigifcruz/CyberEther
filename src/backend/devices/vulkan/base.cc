@@ -276,7 +276,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         uint32_t major = VK_VERSION_MAJOR(properties.apiVersion);
         uint32_t minor = VK_VERSION_MINOR(properties.apiVersion);
         uint32_t patch = VK_VERSION_PATCH(properties.apiVersion);
-        cache.apiVersion = fmt::format("{}.{}.{}", major, minor, patch);
+        cache.apiVersion = jst::fmt::format("{}.{}.{}", major, minor, patch);
     }
 
     {

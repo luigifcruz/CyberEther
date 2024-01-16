@@ -76,14 +76,15 @@ class FM : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::FM, D, IT>(
+        JST_CHECK(instance().addModule(
             fm, "fm", {
                 .sampleRate = config.sampleRate,
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
+
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, fm->getOutputBuffer()));
 
         return Result::SUCCESS;

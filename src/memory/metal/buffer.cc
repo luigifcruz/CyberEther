@@ -105,7 +105,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 #endif
 
 Implementation::~TensorBuffer() {
-    JST_TRACE("[METAL:BUFFER] Releasing buffer {}.", fmt::ptr(buffer));
+    JST_TRACE("[METAL:BUFFER] Releasing buffer {}.", jst::fmt::ptr(buffer));
 
     if (buffer) {
         buffer->release();

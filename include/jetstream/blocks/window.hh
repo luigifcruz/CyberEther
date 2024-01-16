@@ -74,11 +74,11 @@ class Window : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Window, D, IT>(
+        JST_CHECK(instance().addModule(
             window, "window", {
                 .size = config.size,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("window", output.window, window->getOutputWindow()));

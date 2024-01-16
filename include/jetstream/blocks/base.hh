@@ -63,9 +63,9 @@
 #define JETSTREAM_BLOCK_REMOTE_AVAILABLE
 #endif
 
-#if defined(JETSTREAM_MODULE_FILTER_AVAILABLE)
-#include "jetstream/blocks/filter.hh"
-#define JETSTREAM_BLOCK_FILTER_AVAILABLE
+#if defined(JETSTREAM_MODULE_FILTER_TAPS_AVAILABLE)
+#include "jetstream/blocks/filter_taps.hh"
+#define JETSTREAM_BLOCK_FILTER_TAPS_AVAILABLE
 #endif
 
 #if defined(JETSTREAM_MODULE_AMPLITUDE_AVAILABLE)
@@ -151,6 +151,12 @@
     defined(JETSTREAM_MODULE_WINDOW_AVAILABLE)
 #include "jetstream/blocks/spectroscope.hh"
 #define JETSTREAM_BLOCK_SPECTROSCOPE_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_BLOCK_FILTER_TAPS_AVAILABLE) && \
+    defined(JETSTREAM_BLOCK_FILTER_ENGINE_AVAILABLE)
+#include "jetstream/blocks/filter.hh"
+#define JETSTREAM_BLOCK_FILTER_AVAILABLE
 #endif
 
 // [NEW BLOCK HOOK]

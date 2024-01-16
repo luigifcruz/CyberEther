@@ -77,14 +77,14 @@ class OverlapAdd : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::OverlapAdd, D, IT>(
+        JST_CHECK(instance().addModule(
             overlap_add, "overlap_add", {
                 .axis = config.axis,
             }, {
                 .buffer = input.buffer,
                 .overlap = input.overlap,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, overlap_add->getOutputBuffer()));

@@ -74,7 +74,7 @@ class Waterfall : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Waterfall, D, IT>(
+        JST_CHECK(instance().addModule(
             waterfall, "waterfall", {
                 .zoom = config.zoom,
                 .offset = config.offset,
@@ -84,7 +84,7 @@ class Waterfall : public Block {
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         return Result::SUCCESS;

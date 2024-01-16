@@ -33,6 +33,7 @@ jobs:
         run: |
           brew install soapysdr soapyrtlsdr
           brew install gstreamer
+          brew install catch2
           python -m pip install pyyaml
 
       ##
@@ -45,6 +46,7 @@ jobs:
           rm -fr build
           meson build -Dprefix=/usr
           cd build && ninja
+      # TODO: Add ninja test here.
 
       - name: Build Static
         run: |

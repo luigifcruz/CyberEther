@@ -82,7 +82,7 @@ Result Remote<D, T>::create() {
     // Send framebuffer size request command. 
 
     {
-        auto response = fmt::format("cmd:fbsize\n");
+        auto response = jst::fmt::format("cmd:fbsize\n");
         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
     }
 
@@ -134,7 +134,7 @@ Result Remote<D, T>::create() {
                         JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.width, 
                                                                                               remoteFramebufferSize.height);
                         
-                        auto response = fmt::format("cmd:framerate\n");
+                        auto response = jst::fmt::format("cmd:framerate\n");
                         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
 
                         continue;
@@ -147,7 +147,7 @@ Result Remote<D, T>::create() {
 
                         JST_DEBUG("Received `ok:framerate` from server: `framerate={}`.", remoteFramerate);
 
-                        auto response = fmt::format("cmd:codec\n");
+                        auto response = jst::fmt::format("cmd:codec\n");
                         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
 
                         continue;
@@ -189,7 +189,7 @@ Result Remote<D, T>::create() {
 
                 {
                     JST_ERROR("Received unrecognized message from server: '{}'.", line);
-                    auto response = fmt::format("err:Unrecognized message.\n");
+                    auto response = jst::fmt::format("err:Unrecognized message.\n");
                     send(brokerFileDescriptor, response.c_str(), response.size(), 0);
                     continue;
                 }
@@ -218,7 +218,7 @@ Result Remote<D, T>::create() {
     // Send streaming start command. 
 
     {
-        auto response = fmt::format("cmd:connect\n");
+        auto response = jst::fmt::format("cmd:connect\n");
         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
     }
 
@@ -233,7 +233,7 @@ Result Remote<D, T>::destroy() {
         // Send streaming stop command.
 
         if (socketStreaming) {
-            auto response = fmt::format("cmd:disconnect\n");
+            auto response = jst::fmt::format("cmd:disconnect\n");
             send(brokerFileDescriptor, response.c_str(), response.size(), 0);
         }
 

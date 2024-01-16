@@ -77,14 +77,14 @@ class Audio : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Audio, D, IT>(
+        JST_CHECK(instance().addModule(
             audio, "audio", {
                 .inSampleRate = config.inSampleRate,
                 .outSampleRate = config.outSampleRate,
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, audio->getOutputBuffer()));
 

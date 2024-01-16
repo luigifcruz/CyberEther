@@ -31,6 +31,9 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_CUDA_CHECK_THROW(cudaSetDevice(config.deviceId), [&]{
         JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", config.deviceId, err);
     });
+    JST_CUDA_CHECK_THROW(cuCtxCreate(&context, 0, device), [&]{
+        JST_FATAL("[CUDA] Cannot create context for device ID ({}): {}", config.deviceId, err);
+    });
     _isAvailable = true;
 
     // Parse device information.
@@ -46,7 +49,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         cuDeviceGetAttribute(&ccVersionMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
         int ccVersionMinor;
         cuDeviceGetAttribute(&ccVersionMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device);
-        cache.computeCapability = fmt::format("{}.{}", ccVersionMajor, ccVersionMinor);
+        cache.computeCapability = jst::fmt::format("{}.{}", ccVersionMajor, ccVersionMinor);
     }
 
     {
@@ -57,7 +60,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         int minor = runtimeVersion % 1000 / 10;
         int patch = runtimeVersion % 10;
 
-        cache.apiVersion = fmt::format("{}.{}.{}", major, minor, patch);
+        cache.apiVersion = jst::fmt::format("{}.{}.{}", major, minor, patch);
     }
 
     {
@@ -100,6 +103,12 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("Unified Memory:     {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Device Memory:      {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("-----------------------------------------------------");
+}
+
+CUDA::~CUDA() {
+    if (_isAvailable) {
+        cuCtxDestroy(context);
+    }
 }
 
 bool CUDA::isAvailable() const {

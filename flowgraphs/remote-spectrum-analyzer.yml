@@ -12,11 +12,11 @@ graph:
     device: cpu
     dataType: CF32
     config:
-      frequency: 96900000
       bufferMultiplier: 8
       sampleRate: 2500000
-      streamString: 'remote:mtu=1500,remote:window=16384000,remote:prot=udp'
+      frequency: 96900000
       hintString: 'driver=remote,remote:driver=airspy,remote=192.168.2.1'
+      streamString: 'remote:mtu=1500,remote:window=16384000,remote:prot=udp'
       numberOfTimeSamples: 1024
       numberOfBatches: 8
       automaticGain: true
@@ -143,14 +143,14 @@ graph:
     device: cpu
     config:
       note: |-
-        This is very similar to the local Spectrum Analyzer. The only difference is
-        the `Device Hint` string is modified.
+        ## Remote Spectrum Analyzer
+        This is very similar to the local Spectrum Analyzer. The only difference is the `Device Hint` string is modified.
         
+        ## Usage
         `driver=remote,remote:driver=airspy,remote=11.11.5.1`
         
-        Note that you will need to manually select which kind of device you are 
-        trying to connect (e.g. `airspy`, `rtlsdr`, etc). And the endpoint IP 
-        address.
+        ## Note
+        You will need to manually select which kind of device you are trying to connect (e.g. `airspy`, `rtlsdr`, etc). And the endpoint IP address.
     interface:
       previewEnabled: true
       viewEnabled: false

@@ -24,8 +24,10 @@ RUN pacman -S --noconfirm git cmake pkg-config ninja meson git zenity
 RUN pacman -S --noconfirm glslang glfw-wayland
 RUN pacman -S --noconfirm vulkan-icd-loader vulkan-validation-layers
 RUN pacman -S --noconfirm soapysdr soapyrtlsdr
-RUN pacman -S --noconfirm gstreamer gst-plugins-base gst-plugins-good gst-libav
+RUN pacman -S --noconfirm gstreamer gst-plugins-base gst-libav
+RUN pacman -S --noconfirm gst-plugins-good gst-plugins-bad gst-plugins-ugly
 RUN pacman -S --noconfirm python-yaml
+RUN pacman -S --noconfirm catch2
 
 ###
 
@@ -35,11 +37,11 @@ WORKDIR /cyberether
 RUN git submodule update --init --recursive
 
 RUN rm -fr build
-RUN meson build -Dprefix=/usr
+RUN meson setup build -Dprefix=/usr
 RUN cd build && ninja install
 
 RUN rm -fr build-static
-RUN meson build-static --default-library=static -Dprefix=/usr
+RUN meson setup build-static --default-library=static -Dprefix=/usr
 RUN cd build-static && ninja
 
 # Clean up

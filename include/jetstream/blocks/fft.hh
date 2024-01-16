@@ -76,13 +76,13 @@ class FFT : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::FFT, D, IT, OT>(
+        JST_CHECK(instance().addModule(
             fft, "fft", {
                 .forward = config.forward,
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, fft->getOutputBuffer()));
@@ -145,7 +145,6 @@ class FFT : public Block {
 
 }  // namespace Jetstream::Blocks
 
-// Fixme? Is this correct ?
 JST_BLOCK_ENABLE(FFT, is_specialized<Jetstream::FFT<D, IT, OT>>::value)
 
 #endif

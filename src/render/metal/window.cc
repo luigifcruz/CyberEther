@@ -1,6 +1,8 @@
 #include "jetstream/render/metal/window.hh"
 #include "jetstream/render/metal/surface.hh"
 
+#include "tools/imgui_impl_metal.h"
+
 namespace Jetstream::Render {
 
 using Implementation = WindowImp<Device::Metal>;

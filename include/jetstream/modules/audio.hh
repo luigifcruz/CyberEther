@@ -8,8 +8,6 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
-#include "jetstream/tools/miniaudio.h"
-
 namespace Jetstream {
 
 #define JST_AUDIO_CPU(MACRO) \
@@ -18,6 +16,9 @@ namespace Jetstream {
 template<Device D, typename T = F32>
 class Audio : public Module, public Compute {
  public:
+    Audio();
+    ~Audio();
+
     // Configuration 
 
     struct Config {
@@ -77,14 +78,8 @@ class Audio : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    ma_device_config deviceConfig;
-    ma_device deviceCtx;
-    ma_resampler_config resamplerConfig;
-    ma_resampler resamplerCtx;
-
-    Memory::CircularBuffer<F32> buffer;
-
-    static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
     JST_DEFINE_IO();
 };

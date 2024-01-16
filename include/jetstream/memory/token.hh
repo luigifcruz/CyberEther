@@ -77,7 +77,7 @@ struct Token {
 
 }  // namespace Jetstream
 
-template <> struct fmt::formatter<Jetstream::Token> : ostream_formatter {};
-template <> struct fmt::formatter<std::vector<Jetstream::Token>> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Token> : ostream_formatter {};
+template <> struct jst::fmt::formatter<std::vector<Jetstream::Token>> : ostream_formatter {};
 
 #endif

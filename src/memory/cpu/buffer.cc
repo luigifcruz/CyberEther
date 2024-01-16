@@ -192,7 +192,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 #endif
 
 Implementation::~TensorBuffer() {
-    JST_TRACE("[CPU:BUFFER] Trying to free buffer at {}.", fmt::ptr(buffer));
+    JST_TRACE("[CPU:BUFFER] Trying to free buffer at {}.", jst::fmt::ptr(buffer));
 
     if (owns_data) {
 #ifdef JST_OS_WINDOWS

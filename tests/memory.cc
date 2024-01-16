@@ -15,12 +15,12 @@ void PrintVarDebug(const std::string& varName, const Tensor<D, T>& a) {
     if constexpr (D == Device::CPU) {
         JST_DEBUG("{} | [C] empty = {}, size = {}, references = {}, ptr = {}", 
              varName, a.empty(), a.size(), a.references(), 
-             fmt::ptr(a.data()));
+             jst::fmt::ptr(a.data()));
     }
 
     if constexpr (D == Device::Metal) {
         JST_DEBUG("{} | [M] empty = {}, size = {}, references = {}, ptr = {}", 
-             varName, a.empty(), a.size(), a.references(), fmt::ptr(a.data()));
+             varName, a.empty(), a.size(), a.references(), jst::fmt::ptr(a.data()));
     }
 }
 
