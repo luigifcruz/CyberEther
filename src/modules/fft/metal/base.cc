@@ -2,8 +2,6 @@
 
 namespace Jetstream {
 
-// Fixme ? Not sure if this works with metal...
-
 template<Device D, typename IT, typename OT>
 Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create FFT compute core using Metal backend.");
@@ -79,6 +77,6 @@ Result FFT<D, IT, OT>::compute(const RuntimeMetadata& meta) {
 }
 
 JST_FFT_METAL(JST_INSTANTIATION)
-// JST_FFT_METAL(JST_BENCHMARK) // Fixme? benchmark with IT, OT probably fails...
+JST_FFT_METAL(JST_BENCHMARK)
 
 }  // namespace Jetstream

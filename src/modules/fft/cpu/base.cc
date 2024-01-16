@@ -58,6 +58,6 @@ Result FFT<Device::CPU, F32, CF32>::compute(const RuntimeMetadata&) {
 }
 
 JST_FFT_CPU(JST_INSTANTIATION)
-//JST_FFT_CPU(JST_BENCHMARK) // FIXME (Build fails with IT, OT)
+JST_FFT_CPU(JST_BENCHMARK)
 
 }  // namespace Jetstream
