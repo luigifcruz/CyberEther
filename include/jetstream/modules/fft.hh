@@ -8,22 +8,6 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
-#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
-// Looks like Windows static build crashes if multitheading is enabled.
-#define POCKETFFT_NO_MULTITHREADING
-#include "jetstream/tools/pocketfft.hh"
-#endif
-
-#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
-#pragma GCC diagnostic push 
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#define VKFFT_BACKEND 5
-#include "jetstream/tools/vkFFT.h"
-#pragma GCC diagnostic pop
-#endif
-
 namespace Jetstream {
 
 #define JST_FFT_CPU(MACRO) \
@@ -36,6 +20,9 @@ namespace Jetstream {
 template<Device D, typename IT = CF32, typename OT = CF32>
 class FFT : public Module, public Compute {
  public:
+    FFT();
+    ~FFT();
+
     // Configuration 
 
     struct Config {
@@ -94,23 +81,8 @@ class FFT : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
-    struct {
-        pocketfft::shape_t shape;
-        pocketfft::stride_t i_stride;
-        pocketfft::stride_t o_stride;
-        pocketfft::shape_t axes;
-    } cpu;
-#endif
-
-#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
-    struct {
-        VkFFTApplication* app;
-        VkFFTConfiguration* configuration;
-        const MTL::Buffer* input;
-        MTL::Buffer* output;
-    } metal;
-#endif
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
     U64 numberOfOperations = 0;
     U64 numberOfElements = 0;

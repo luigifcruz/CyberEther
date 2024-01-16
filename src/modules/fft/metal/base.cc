@@ -1,34 +1,59 @@
 #include "../generic.cc"
 
+#pragma GCC diagnostic push 
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#define VKFFT_BACKEND 5
+#include "vkFFT.h"
+#pragma GCC diagnostic pop
+
 namespace Jetstream {
+
+template<Device D, typename IT, typename OT>
+struct FFT<D, IT, OT>::Impl {
+    VkFFTApplication* app;
+    VkFFTConfiguration* configuration;
+    const MTL::Buffer* input;
+    MTL::Buffer* output;
+};
+
+template<Device D, typename IT, typename OT>
+FFT<D, IT, OT>::FFT() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename IT, typename OT>
+FFT<D, IT, OT>::~FFT() {
+    pimpl.reset();
+}
 
 template<Device D, typename IT, typename OT>
 Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Create FFT compute core using Metal backend.");
 
-    auto& assets = metal;
     auto& runtime = meta.metal;
 
     // Assign buffers to module assets.
-    assets.input = input.buffer.data();
-    assets.output = output.buffer.data();
+    pimpl->input = input.buffer.data();
+    pimpl->output = output.buffer.data();
 
     // Create VkFFT instance.
-    assets.app = new VkFFTApplication({});
-    assets.configuration = new VkFFTConfiguration({});
-    assets.configuration->FFTdim = 1;
-    assets.configuration->size[0] = numberOfElements;
-    assets.configuration->device = Backend::State<Device::Metal>()->getDevice();
-    assets.configuration->queue = runtime.commandQueue;
-    assets.configuration->doublePrecision = false;
-    assets.configuration->numberBatches = numberOfOperations;
-    assets.configuration->isInputFormatted = 1;
-    assets.configuration->inputBufferSize = new U64(input.buffer.size_bytes());
-    assets.configuration->inputBuffer = const_cast<MTL::Buffer**>(&assets.input);
-    assets.configuration->bufferSize = new U64(output.buffer.size_bytes());
-    assets.configuration->buffer = &assets.output;
+    pimpl->app = new VkFFTApplication({});
+    pimpl->configuration = new VkFFTConfiguration({});
+    pimpl->configuration->FFTdim = 1;
+    pimpl->configuration->size[0] = numberOfElements;
+    pimpl->configuration->device = Backend::State<Device::Metal>()->getDevice();
+    pimpl->configuration->queue = runtime.commandQueue;
+    pimpl->configuration->doublePrecision = false;
+    pimpl->configuration->numberBatches = numberOfOperations;
+    pimpl->configuration->isInputFormatted = 1;
+    pimpl->configuration->inputBufferSize = new U64(input.buffer.size_bytes());
+    pimpl->configuration->inputBuffer = const_cast<MTL::Buffer**>(&pimpl->input);
+    pimpl->configuration->bufferSize = new U64(output.buffer.size_bytes());
+    pimpl->configuration->buffer = &pimpl->output;
 
-    if (auto res = initializeVkFFT(assets.app, *assets.configuration); res != VKFFT_SUCCESS) {
+    if (auto res = initializeVkFFT(pimpl->app, *pimpl->configuration); res != VKFFT_SUCCESS) {
         JST_ERROR("Failed to initialize VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;
     }
@@ -40,25 +65,22 @@ template<Device D, typename IT, typename OT>
 Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata& meta) {
     JST_TRACE("Destroy FFT compute core using Metal backend.");
 
-    auto& assets = metal;
-
-    if (!assets.app) {
+    if (!pimpl->app) {
         return Result::SUCCESS;
     }
 
-    deleteVkFFT(assets.app);
+    deleteVkFFT(pimpl->app);
   
-    free(assets.configuration->inputBufferSize);
-    free(assets.configuration->bufferSize);
-    free(assets.configuration);
-    free(assets.app);
+    free(pimpl->configuration->inputBufferSize);
+    free(pimpl->configuration->bufferSize);
+    free(pimpl->configuration);
+    free(pimpl->app);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>
 Result FFT<D, IT, OT>::compute(const RuntimeMetadata& meta) {
-    auto& assets = metal;
     auto& runtime = meta.metal;
 
     VkFFTLaunchParams launchParams = {};
@@ -66,7 +88,7 @@ Result FFT<D, IT, OT>::compute(const RuntimeMetadata& meta) {
     launchParams.commandEncoder = runtime.commandBuffer->computeCommandEncoder();
 
     const int inverse = static_cast<int>(config.forward);
-    if (auto res = VkFFTAppend(assets.app, inverse, &launchParams); res != VKFFT_SUCCESS) {
+    if (auto res = VkFFTAppend(pimpl->app, inverse, &launchParams); res != VKFFT_SUCCESS) {
         JST_ERROR("Failed to append to VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;
     }

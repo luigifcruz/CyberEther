@@ -1,18 +1,40 @@
 #include "../generic.cc"
 
+// Looks like Windows static build crashes if multitheading is enabled.
+#define POCKETFFT_NO_MULTITHREADING
+#include "pocketfft.hh"
+
 namespace Jetstream {
+
+template<Device D, typename IT, typename OT>
+struct FFT<D, IT, OT>::Impl {
+    pocketfft::shape_t shape;
+    pocketfft::stride_t i_stride;
+    pocketfft::stride_t o_stride;
+    pocketfft::shape_t axes;
+};
+
+template<Device D, typename IT, typename OT>
+FFT<D, IT, OT>::FFT() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename IT, typename OT>
+FFT<D, IT, OT>::~FFT() {
+    pimpl.reset();
+}
 
 template<Device D, typename IT, typename OT>
 Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create FFT compute core using CPU backend.");
 
     for (U64 i = 0; i < input.buffer.rank(); ++i) {
-        cpu.shape.push_back(static_cast<U32>(input.buffer.shape()[i]));
-        cpu.i_stride.push_back(static_cast<U32>(input.buffer.stride()[i]) * sizeof(IT));
-        cpu.o_stride.push_back(static_cast<U32>(input.buffer.stride()[i]) * sizeof(OT));
+        pimpl->shape.push_back(static_cast<U32>(input.buffer.shape()[i]));
+        pimpl->i_stride.push_back(static_cast<U32>(input.buffer.stride()[i]) * sizeof(IT));
+        pimpl->o_stride.push_back(static_cast<U32>(input.buffer.stride()[i]) * sizeof(OT));
     }
 
-    cpu.axes.push_back(output.buffer.rank() - 1);
+    pimpl->axes.push_back(output.buffer.rank() - 1);
 
     return Result::SUCCESS;
 }
@@ -21,20 +43,20 @@ template<Device D, typename IT, typename OT>
 Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata&) {
     JST_TRACE("Destroy FFT compute core using CPU backend.");
 
-    cpu.shape.clear();
-    cpu.i_stride.clear();
-    cpu.o_stride.clear();
-    cpu.axes.clear();
+    pimpl->shape.clear();
+    pimpl->i_stride.clear();
+    pimpl->o_stride.clear();
+    pimpl->axes.clear();
 
     return Result::SUCCESS;
 }
 
 template<>
 Result FFT<Device::CPU, CF32, CF32>::compute(const RuntimeMetadata&) {
-    pocketfft::c2c(cpu.shape, 
-                   cpu.i_stride, 
-                   cpu.o_stride, 
-                   cpu.axes, 
+    pocketfft::c2c(pimpl->shape, 
+                   pimpl->i_stride, 
+                   pimpl->o_stride, 
+                   pimpl->axes, 
                    config.forward, 
                    input.buffer.data(), 
                    output.buffer.data(), 
@@ -45,10 +67,10 @@ Result FFT<Device::CPU, CF32, CF32>::compute(const RuntimeMetadata&) {
 
 template<>
 Result FFT<Device::CPU, F32, CF32>::compute(const RuntimeMetadata&) {
-    pocketfft::r2c(cpu.shape, 
-                   cpu.i_stride, 
-                   cpu.o_stride, 
-                   cpu.axes, 
+    pocketfft::r2c(pimpl->shape, 
+                   pimpl->i_stride, 
+                   pimpl->o_stride, 
+                   pimpl->axes, 
                    config.forward, 
                    input.buffer.data(), 
                    output.buffer.data(), 
