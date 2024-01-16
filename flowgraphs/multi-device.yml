@@ -99,7 +99,8 @@ graph:
   'fft-2':
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -180,7 +181,8 @@ graph:
   'fft-1':
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:

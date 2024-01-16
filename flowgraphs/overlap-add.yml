@@ -104,7 +104,8 @@ graph:
   fft_flt:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -133,7 +134,8 @@ graph:
   fft_soapy:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -160,7 +162,8 @@ graph:
   ifft:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: false
     input:
@@ -246,7 +249,8 @@ graph:
   fft30:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
