@@ -4,9 +4,17 @@
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
 
+#include "yaml.hh"
+
 namespace Jetstream {
 
-Flowgraph::Flowgraph(Instance& instance) : _instance(instance) {}
+Flowgraph::Flowgraph(Instance& instance) : _instance(instance) {
+    _yaml = std::make_unique<YamlImpl>();
+}
+
+Flowgraph::~Flowgraph() {
+    _yaml.reset();
+}
 
 Result Flowgraph::create() {
     JST_INFO("[FLOWGRAPH] Creating flowgraph in-memory.");
@@ -97,7 +105,7 @@ Result Flowgraph::destroy() {
     _author.clear();
     _license.clear();
     _description.clear();
-    _yaml.clear();
+    _yaml->data.clear();
 
     _filename.clear();
     _blob.clear();
@@ -144,8 +152,8 @@ Result Flowgraph::exportToBlob() {
 
     JST_DEBUG("[FLOWGRAPH] Exporting flowgraph to blob.");
 
-    _yaml = ryml::Tree();
-    ryml::NodeRef root = _yaml.rootref();
+    _yaml->data = ryml::Tree();
+    ryml::NodeRef root = _yaml->data.rootref();
     root |= ryml::MAP;
 
     root["protocolVersion"] << _protocolVersion;
@@ -285,7 +293,7 @@ Result Flowgraph::exportToBlob() {
     }
 
     // Emit YAML to blob.
-    _blob = ryml::emitrs_yaml<std::vector<char>>(_yaml);
+    _blob = ryml::emitrs_yaml<std::vector<char>>(_yaml->data);
 
     return Result::SUCCESS;
 }
@@ -296,19 +304,19 @@ Result Flowgraph::importFromBlob() {
         return Result::ERROR;
     }
 
-    _yaml = ryml::parse_in_place({_blob.data(), _blob.size()});
+    _yaml->data = ryml::parse_in_place({_blob.data(), _blob.size()});
     _imported = true;
 
-    if (_yaml.rootref().empty()) {
+    if (_yaml->data.rootref().empty()) {
         return Result::SUCCESS;
     }
 
-    auto root = _yaml.rootref()[0];
-    auto configValues = GatherNodes(root, root, {"protocolVersion",
-                                                 "cyberetherVersion"});
+    auto root = _yaml->data.rootref()[0];
+    auto configValues = YamlImpl::GatherNodes(root, root, {"protocolVersion",
+                                                           "cyberetherVersion"});
 
-    _protocolVersion = ResolveReadable(configValues["protocolVersion"]);
-    _cyberetherVersion = ResolveReadable(configValues["cyberetherVersion"]);
+    _protocolVersion = YamlImpl::ResolveReadable(configValues["protocolVersion"]);
+    _cyberetherVersion = YamlImpl::ResolveReadable(configValues["cyberetherVersion"]);
 
     if (_protocolVersion != "1.0.0") {
         JST_ERROR("[FLOWGRAPH] Invalid protocol version '{}'.", _protocolVersion);
@@ -319,34 +327,34 @@ Result Flowgraph::importFromBlob() {
         JST_WARN("[FLOWGRAPH] Flowgraph was created with a different version of CyberEther ({}).", _cyberetherVersion);
     }
 
-    auto optConfigValues = GatherNodes(root, root, {"title",
-                                                    "summary",
-                                                    "author",
-                                                    "license",
-                                                    "description"}, true);
+    auto optConfigValues = YamlImpl::GatherNodes(root, root, {"title",
+                                                              "summary",
+                                                              "author",
+                                                              "license",
+                                                              "description"}, true);
 
     if (optConfigValues.contains("title")) {
-        _title = ResolveReadable(optConfigValues["title"]);
+        _title = YamlImpl::ResolveReadable(optConfigValues["title"]);
     }
     if (optConfigValues.contains("summary")) {
-        _summary = ResolveReadable(optConfigValues["summary"]);
+        _summary = YamlImpl::ResolveReadable(optConfigValues["summary"]);
     }
     if (optConfigValues.contains("author")) {
-        _author = ResolveReadable(optConfigValues["author"]);
+        _author = YamlImpl::ResolveReadable(optConfigValues["author"]);
     }
     if (optConfigValues.contains("license")) {
-        _license = ResolveReadable(optConfigValues["license"]);
+        _license = YamlImpl::ResolveReadable(optConfigValues["license"]);
     }
     if (optConfigValues.contains("description")) {
-        _description = ResolveReadable(optConfigValues["description"]);
+        _description = YamlImpl::ResolveReadable(optConfigValues["description"]);
     }
 
-    if (!HasNode(root, root, "graph")) {
+    if (!YamlImpl::HasNode(root, root, "graph")) {
         return Result::SUCCESS;
     }
     
-    for (const auto& node : GetNode(root, root, "graph")) {
-        const auto nodeKey = ResolveReadableKey(node);
+    for (const auto& node : YamlImpl::GetNode(root, root, "graph")) {
+        const auto nodeKey = YamlImpl::ResolveReadableKey(node);
         JST_DEBUG("[FLOWGRAPH] Processing '{}' module.", nodeKey);
 
         Block::Fingerprint fingerprint;
@@ -356,36 +364,36 @@ Result Flowgraph::importFromBlob() {
 
         // Populate fingerprint.
 
-        auto values = GatherNodes(root, node, {"module", "device", "dataType", "inputDataType", "outputDataType"}, true);
-        fingerprint.id = ResolveReadable(values["module"]);
-        fingerprint.device = ResolveReadable(values["device"]);
+        auto values = YamlImpl::GatherNodes(root, node, {"module", "device", "dataType", "inputDataType", "outputDataType"}, true);
+        fingerprint.id = YamlImpl::ResolveReadable(values["module"]);
+        fingerprint.device = YamlImpl::ResolveReadable(values["device"]);
         if (values.contains("dataType")) {
-            fingerprint.inputDataType = ResolveReadable(values["dataType"]);
+            fingerprint.inputDataType = YamlImpl::ResolveReadable(values["dataType"]);
         } else if (values.contains("inputDataType") && values.contains("outputDataType")) {
-            fingerprint.inputDataType = ResolveReadable(values["inputDataType"]);
-            fingerprint.outputDataType = ResolveReadable(values["outputDataType"]);
+            fingerprint.inputDataType = YamlImpl::ResolveReadable(values["inputDataType"]);
+            fingerprint.outputDataType = YamlImpl::ResolveReadable(values["outputDataType"]);
         }
 
         // Populate data.
 
-        if (HasNode(root, node, "config")) {
-            for (const auto& element : GetNode(root, node, "config")) {
-                auto localPlaceholder = SolvePlaceholder(root, element);
-                configMap[ResolveReadableKey(element)] = solveLocalPlaceholder(localPlaceholder);
+        if (YamlImpl::HasNode(root, node, "config")) {
+            for (const auto& element : YamlImpl::GetNode(root, node, "config")) {
+                auto localPlaceholder = YamlImpl::SolvePlaceholder(root, element);
+                configMap[YamlImpl::ResolveReadableKey(element)] = _yaml->solveLocalPlaceholder(_nodes, localPlaceholder);
             }
         }
 
-        if (HasNode(root, node, "input")) {
-            for (const auto& element : GetNode(root, node, "input")) {
-                auto localPlaceholder = SolvePlaceholder(root, element);
-                inputMap[ResolveReadableKey(element)] = solveLocalPlaceholder(localPlaceholder);
+        if (YamlImpl::HasNode(root, node, "input")) {
+            for (const auto& element : YamlImpl::GetNode(root, node, "input")) {
+                auto localPlaceholder = YamlImpl::SolvePlaceholder(root, element);
+                inputMap[YamlImpl::ResolveReadableKey(element)] = _yaml->solveLocalPlaceholder(_nodes, localPlaceholder);
             }
         }
 
-        if (HasNode(root, node, "interface")) {
-            for (const auto& element : GetNode(root, node, "interface")) {
-                auto localPlaceholder = SolvePlaceholder(root, element);
-                stateMap[ResolveReadableKey(element)] = solveLocalPlaceholder(localPlaceholder);
+        if (YamlImpl::HasNode(root, node, "interface")) {
+            for (const auto& element : YamlImpl::GetNode(root, node, "interface")) {
+                auto localPlaceholder = YamlImpl::SolvePlaceholder(root, element);
+                stateMap[YamlImpl::ResolveReadableKey(element)] = _yaml->solveLocalPlaceholder(_nodes, localPlaceholder);
             }
         }
 
@@ -398,71 +406,6 @@ Result Flowgraph::importFromBlob() {
     }
 
     return Result::SUCCESS;
-}
-
-Parser::Record Flowgraph::solveLocalPlaceholder(const ryml::ConstNodeRef& node) {
-    if (!node.has_val()) {
-        return {ResolveReadable(node)};
-    }
-
-    std::string key = std::string(node.val().str, node.val().len);
-
-    std::regex placeholderPattern(R"(\$\{.*\})");
-    if (!std::regex_match(key, placeholderPattern)) {
-        return {ResolveReadable(node)};
-    }
-
-    std::vector<std::string> patternNodes = GetParameterNodes(GetParameterContents(key));
-
-    if (patternNodes.size() != 4) {
-        JST_ERROR("[PARSER] Variable '{}' not found.", key);
-        JST_CHECK_THROW(Result::ERROR);
-    }
-
-    const auto& graphKey = patternNodes[0];
-    const auto& moduleKey = patternNodes[1];
-    const auto& arrayKey = patternNodes[2];
-    const auto& elementKey = patternNodes[3];
-
-    if (graphKey.compare("graph")) {
-        JST_ERROR("[PARSER] Invalid variable '{}'.", key);
-        JST_CHECK_THROW(Result::ERROR);
-    }
-
-    if (!_nodes.contains({moduleKey})) {
-        JST_ERROR("[PARSER] Module from the variable '{}' not found.", key);
-        JST_CHECK_THROW(Result::ERROR);
-    }
-
-    if (!arrayKey.compare("input")) {
-        auto& map = _nodes.at({moduleKey})->inputMap;
-        if (!map.contains(elementKey)) {
-            JST_ERROR("[PARSER] Input element from the variable '{}' not found.", key);
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return map[elementKey];
-    }
-
-    if (!arrayKey.compare("output")) {
-        auto& map = _nodes.at({moduleKey})->outputMap;
-        if (!map.contains(elementKey)) {
-            JST_ERROR("[PARSER] Output element from the variable '{}' not found.", key);
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return map[elementKey];
-    }
-
-    if (!arrayKey.compare("interface")) {
-        auto& map = _nodes.at({moduleKey})->stateMap;
-        if (!map.contains(elementKey)) {
-            JST_ERROR("[PARSER] Interface state element from the variable '{}' not found.", key);
-            JST_CHECK_THROW(Result::ERROR);
-        }
-        return map[elementKey];
-    }
-
-    JST_ERROR("[PARSER] Invalid module array '{}'. It should be 'input', 'output', or 'interface'.", key);
-    throw Result::ERROR;
 }
 
 Result Flowgraph::setFilename(const std::string& filename) {
@@ -543,83 +486,83 @@ Result Flowgraph::print() const {
         return Result::ERROR;
     }
 
-    if (_yaml.rootref().empty()) {
+    if (_yaml->data.rootref().empty()) {
         return Result::SUCCESS;
     }
 
-    auto root = _yaml.rootref()[0];
-    auto configValues = GatherNodes(root, root, {"protocolVersion",
-                                                 "cyberetherVersion"});
+    auto root = _yaml->data.rootref()[0];
+    auto configValues = YamlImpl::GatherNodes(root, root, {"protocolVersion",
+                                                           "cyberetherVersion"});
 
-    auto optConfigValues = GatherNodes(root, root, {"title",
-                                                    "summary",
-                                                    "author",
-                                                    "license",
-                                                    "description"}, true);
+    auto optConfigValues = YamlImpl::GatherNodes(root, root, {"title",
+                                                              "summary",
+                                                              "author",
+                                                              "license",
+                                                              "description"}, true);
 
     JST_INFO("-----------------------------------------------------------");
     JST_INFO("|                  JETSTREAM CONFIG FILE                  |")
     JST_INFO("-----------------------------------------------------------");
-    JST_INFO("Protocol Version:   {}", ResolveReadable(configValues["protocolVersion"]));
-    JST_INFO("CyberEther Version: {}", ResolveReadable(configValues["cyberetherVersion"]));
+    JST_INFO("Protocol Version:   {}", YamlImpl::ResolveReadable(configValues["protocolVersion"]));
+    JST_INFO("CyberEther Version: {}", YamlImpl::ResolveReadable(configValues["cyberetherVersion"]));
     if (optConfigValues.contains("title")) {
-        JST_INFO("Title:              {}", ResolveReadable(optConfigValues["title"]));
+        JST_INFO("Title:              {}", YamlImpl::ResolveReadable(optConfigValues["title"]));
     }
     if (optConfigValues.contains("summary")) {
-        JST_INFO("Summary:        {}", ResolveReadable(optConfigValues["summary"]));
+        JST_INFO("Summary:        {}", YamlImpl::ResolveReadable(optConfigValues["summary"]));
     }
     if (optConfigValues.contains("author")) {
-        JST_INFO("Author:            {}", ResolveReadable(optConfigValues["author"]));
+        JST_INFO("Author:            {}", YamlImpl::ResolveReadable(optConfigValues["author"]));
     }
     if (optConfigValues.contains("license")) {
-        JST_INFO("License:            {}", ResolveReadable(optConfigValues["license"]));
+        JST_INFO("License:            {}", YamlImpl::ResolveReadable(optConfigValues["license"]));
     }
     if (optConfigValues.contains("description")) {
-        JST_INFO("Description:        {}", ResolveReadable(optConfigValues["description"]));
+        JST_INFO("Description:        {}", YamlImpl::ResolveReadable(optConfigValues["description"]));
     }
 
-    if (!HasNode(root, root, "graph")) {
+    if (!YamlImpl::HasNode(root, root, "graph")) {
         return Result::SUCCESS;
     }
 
     JST_INFO("------------------------- GRAPH --------------------------");
 
-    for (const auto& node : GetNode(root, root, "graph")) {
-        auto values = GatherNodes(root, node, {"module",
-                                               "device",
-                                               "dataType",
-                                               "inputDataType",
-                                               "outputDataType"}, true);
+    for (const auto& node : YamlImpl::GetNode(root, root, "graph")) {
+        auto values = YamlImpl::GatherNodes(root, node, {"module",
+                                                         "device",
+                                                         "dataType",
+                                                         "inputDataType",
+                                                         "outputDataType"}, true);
 
-        JST_INFO("[{}]:", ResolveReadableKey(node));
-        JST_INFO("  Module:            {}", ResolveReadable(values["module"]));
-        JST_INFO("  Device:            {}", ResolveReadable(values["device"]));
+        JST_INFO("[{}]:", YamlImpl::ResolveReadableKey(node));
+        JST_INFO("  Module:            {}", YamlImpl::ResolveReadable(values["module"]));
+        JST_INFO("  Device:            {}", YamlImpl::ResolveReadable(values["device"]));
 
         if (values.contains("dataType")) {
-            JST_INFO("  Data Type:         {}", ResolveReadable(values["dataType"]));
+            JST_INFO("  Data Type:         {}", YamlImpl::ResolveReadable(values["dataType"]));
         } else if (values.contains("inputDataType") && values.contains("outputDataType")) {
-            JST_INFO("  Data Type:         {} -> {}", ResolveReadable(values["inputDataType"]),
-                                                      ResolveReadable(values["outputDataType"]));
+            JST_INFO("  Data Type:         {} -> {}", YamlImpl::ResolveReadable(values["inputDataType"]),
+                                                      YamlImpl::ResolveReadable(values["outputDataType"]));
         }
 
-        if (HasNode(root, node, "config")) {
+        if (YamlImpl::HasNode(root, node, "config")) {
             JST_INFO("  Config:");
-            for (const auto& element : GetNode(root, node, "config")) {
-                JST_INFO("    {} = {}", ResolveReadableKey(element), ResolveReadable(SolvePlaceholder(root, element)));
+            for (const auto& element : YamlImpl::GetNode(root, node, "config")) {
+                JST_INFO("    {} = {}", YamlImpl::ResolveReadableKey(element), YamlImpl::ResolveReadable(YamlImpl::SolvePlaceholder(root, element)));
             }
         }
 
-        if (HasNode(root, node, "input")) {
+        if (YamlImpl::HasNode(root, node, "input")) {
             JST_INFO("  Input:");
-            for (const auto& element : GetNode(root, node, "input")) {
-                JST_INFO("    {} = {}", ResolveReadableKey(element), ResolveReadable(SolvePlaceholder(root, element)));
+            for (const auto& element : YamlImpl::GetNode(root, node, "input")) {
+                JST_INFO("    {} = {}", YamlImpl::ResolveReadableKey(element), YamlImpl::ResolveReadable(YamlImpl::SolvePlaceholder(root, element)));
             }
         }
 
-        if (HasNode(root, node, "interface")) {
+        if (YamlImpl::HasNode(root, node, "interface")) {
             JST_INFO("  Interface:");
-            for (const auto& element : GetNode(root, node, "interface")) {
-                JST_INFO("    {} = {}", ResolveReadableKey(element), ResolveReadable(SolvePlaceholder(root, element)));
+            for (const auto& element : YamlImpl::GetNode(root, node, "interface")) {
+                JST_INFO("    {} = {}", YamlImpl::ResolveReadableKey(element), YamlImpl::ResolveReadable(YamlImpl::SolvePlaceholder(root, element)));
             }
         }
     }
