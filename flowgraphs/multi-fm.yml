@@ -12,11 +12,11 @@ graph:
     device: cpu
     dataType: CF32
     config:
+      frequency: 96900000
       bufferMultiplier: 1024
       sampleRate: 2000000
-      frequency: 96900000
-      hintString: ''
       streamString: ''
+      hintString: ''
       numberOfTimeSamples: 8000
       numberOfBatches: 8
       automaticGain: true
@@ -28,7 +28,7 @@ graph:
       nodePos: [-2, 224.00002]
       controlEnabled: false
   flt:
-    module: filter-taps
+    module: 'filter-taps'
     device: cpu
     dataType: CF32
     config:
@@ -60,20 +60,15 @@ graph:
     device: cpu
     config:
       note: |-
-        This is a simplified flowgraph from what was presented in the 
-        `Overlap-Add-Fold` example. That entire mechanism was abstracted 
-        away with the `Filter Engine` block.
+        # 1. Multi-FM Example
+        This is a simplified flowgraph from what was presented in the `Overlap-Add-Fold` example. That entire mechanism was abstracted  away with the `Filter Engine` block.
         
-        Here, 2 MHz of the FM broadcast spectrum is being received and 
-        filtered. The `Filter` block generates two sets of 200 kHz bandpass
-        filter taps centered around 96.9 MHz and 97.5 MHz. The result after
-        applying the taps to the signal is two independent FM stations that
-        can be chosen by selecting the `Index` in the `Take` block.
+        Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the `Index` in the `Take` block.
     interface:
       previewEnabled: true
       viewEnabled: false
-      nodeWidth: 470
-      nodePos: [361.88336, -15.929108]
+      nodeWidth: 475.11664
+      nodePos: [355.88336, -105.92911]
       controlEnabled: false
   spe33:
     module: spectroscope
@@ -98,15 +93,16 @@ graph:
     module: note
     device: cpu
     config:
-      note: |-
+      note: |+
+        # 2. Observe!
+        The Filter Engine block will also try to resample the signal after filtering to the input filter's bandwidth. In this case, two sets of 200 kHz bandwidth centered in 0.0 MHz and 0.6 MHz.
+        
+        ## < On The Left
         On the left, you can see the entire 2 MHz of the input signal.
         
-        On the right, you can see the filtered and resampled 200 kHz
-        signal of a single FM station.
+        ## On The Right >
+        On the right, you can see the filtered and resampled 200 kHz signal of a single FM station.
         
-        The Filter Engine block will also try to resample the signal
-        after filtering to the input filter's bandwidth. In this case,
-        two sets of 200 kHz bandwidth centered in 0.0 MHz and 0.6 MHz.
     interface:
       previewEnabled: true
       viewEnabled: false
@@ -118,15 +114,14 @@ graph:
     device: cpu
     config:
       note: |-
+        # Tip
         You can also add more filters if you have 
-        more FM stations to filter. Simply increase
-        the number of `Heads` and set the correct 
-        `Center` in the `Filter` block.
+        more FM stations to filter. Simply increase the number of `Heads` and set the correct `Center` in the `Filter` block.
     interface:
       previewEnabled: true
       viewEnabled: false
-      nodeWidth: 300
-      nodePos: [855.0375, -12.5622635]
+      nodeWidth: 308.96252
+      nodePos: [855.0375, -40.562256]
       controlEnabled: false
   tak23:
     module: take

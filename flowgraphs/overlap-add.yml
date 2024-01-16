@@ -8,7 +8,7 @@ license: MIT
 description: Shows how to filter a signal in the frequency domain with FIR. Uses multiply and add to reduce blocking artifacts.
 graph:
   flt:
-    module: filter-taps
+    module: 'filter-taps'
     device: cpu
     dataType: CF32
     config:
@@ -27,28 +27,23 @@ graph:
     device: cpu
     config:
       note: |-
-        First, the signal and the filter are padded to the same length. The
-        size of the padding will depend on multiple factors. For the sake 
-        of simplicity, here the pad size will be set to `50`.
+        # 1. Padding
+        First, the signal and the filter are padded to the same length. The size of the padding will depend on multiple factors. For the sake of simplicity, here the pad size will be set to `50`.
         
-        The Pad block will add 50 zeros to the end of the signal resulting 
-        in 8050 elements. However, for the filter taps, the padding will be
-        of size `(SIGNAL_SIZE - 1) == 7999` resulting in 8050. Both tensors
-        now have 8050 elements and are ready for the next step.
+        The Pad block will add 50 zeros to the end of the signal resulting in 8050 elements. However, for the filter taps, the padding will be of size `(SIGNAL_SIZE - 1) == 7999` resulting in 8050. Both tensors now have 8050 elements and are ready for the next step.
     interface:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 471
-      nodePos: [367.40503, 76.504364]
+      nodePos: [370.40503, -8.495636]
       controlEnabled: false
   not37:
     module: note
     device: cpu
     config:
       note: |-
-        Since the filtering is being done in the frequency domain, 
-        both the signal and the filter taps are now converted from
-        the time domain to the frequency domain with the FFT block.
+        # 3. FFT
+        Since the filtering is being done in the frequency domain, both the signal and the filter taps are now converted from the time domain to the frequency domain with the FFT block.
     interface:
       previewEnabled: true
       viewEnabled: false
@@ -60,19 +55,16 @@ graph:
     device: cpu
     config:
       note: |-
-        This is the filter design block. This will need some parameters
-        from the signal coming from the SDR like the sample rate and 
-        bandwidth. The rest of the parameters should look familiar if 
-        you designed a FIR filter before.
+        # 1. Overlap-Add Example
+        This is the filter design block. This will need some parameters from the signal coming from the SDR like the sample rate and bandwidth. The rest of the parameters should look familiar if you designed a FIR filter before.
         
-        Other examples will use more features from this block. Like the
-        `multi-fm` example showing how to create multiple filters for 
-        different frequencies to demodulate multiple FM stations at once.
+        ### Suggestion
+        Other examples will use more features from this block. Like the `multi-fm` example showing how to create multiple filters for different frequencies to demodulate multiple FM stations at once.
     interface:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 455
-      nodePos: [22.40503, 729.5044]
+      nodePos: [22.40503, 730.5044]
       controlEnabled: false
   soapy:
     module: soapy
@@ -82,10 +74,12 @@ graph:
       frequency: 96900000
       bufferMultiplier: 1024
       sampleRate: 2000000
+      streamString: ''
+      hintString: ''
       numberOfTimeSamples: 8000
       numberOfBatches: 8
       automaticGain: true
-      deviceString: driver=rtlsdr,serial=00000001
+      deviceString: 'driver=rtlsdr,serial=00000001'
     interface:
       previewEnabled: false
       viewEnabled: false
@@ -325,30 +319,24 @@ graph:
     device: cpu
     config:
       note: |-
-        After multiplying the signal and the filter in the frequency domain
-        the resulting signal is now ready to be brought back to the time-
-        domain for playback. This will be done with the same FFT block but 
-        now configured in the backward direction.
+        # 4. Fast Convolution
+        After multiplying the signal and the filter in the frequency domain the resulting signal is now ready to be brought back to the time-domain for playback. This will be done with the same FFT block but now configured in the backward direction.
         
-        This is also a good place to do some extra processing. For example,
-        the signal now can be resampled to the desired output sample rate.
-        This is shown in the `Overlap-Add-Fold` example flowgraph. 
+        ### Suggestion
+        This is also a good place to do some extra processing. For example, the signal now can be resampled to the desired output sample rate. This is shown in the `Overlap-Add-Fold` example flowgraph. 
     interface:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 469
-      nodePos: [1071.405, 196.50436]
+      nodePos: [1073.405, 81.504364]
       controlEnabled: false
   not40:
     module: note
     device: cpu
     config:
       note: |-
-        This is the visualization branch, it will only display a waterfall of the filtered 
-        signal and nothing else. The pipeline is also very simple. First, the time domain data 
-        is inverted to show a linear frequency, then a forward FFT is applied to transform the 
-        data to the frequency domain, the gain is automatically adjusted, the amplitude is
-        calculated, and the signal is displayed.
+        # 5. Visualization
+        This is the visualization branch, it will only display a waterfall of the filtered signal and nothing else. The pipeline is also very simple. First, the time domain data is inverted to show a linear frequency, then a forward FFT is applied to transform the data to the frequency domain, the gain is automatically adjusted, the amplitude is calculated, and the signal is displayed.
     interface:
       previewEnabled: true
       viewEnabled: false
@@ -360,16 +348,14 @@ graph:
     device: cpu
     config:
       note: |-
-        Now that the signal is now back to the time domain, the padding added previously 
-        can be removed and added to the beginning of the next block. This will smooth out 
-        the effects of the discrete convolution performed. Remember, a multiplication in 
-        the frequency domain corresponds to a convolution in the time domain!
+        # 5. Unpadding
+        Now that the signal is now back to the time domain, the padding added previously can be removed and added to the beginning of the next block. This will smooth out the effects of the discrete convolution performed. Remember, a multiplication in the frequency domain corresponds to a convolution in the time domain!
         
-        A nice visualization is available here:
-        https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method
+        ### Reference
+        A nice visualization is available here in [Wikipedia](https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method).
     interface:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 572
-      nodePos: [1582.405, 62.504364]
+      nodePos: [1582.405, -15.495636]
       controlEnabled: false
