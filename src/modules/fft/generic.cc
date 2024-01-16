@@ -4,8 +4,8 @@
 
 namespace Jetstream {
 
-template<Device D, typename T>
-Result FFT<D, T>::create() {
+template<Device D, typename IT, typename OT>
+Result FFT<D, IT, OT>::create() {
     JST_DEBUG("Initializing FFT module.");
     JST_INIT_IO();
 
@@ -30,13 +30,13 @@ Result FFT<D, T>::create() {
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(input.buffer.shape());
+    output.buffer = Tensor<D, OT>(input.buffer.shape());
 
     return Result::SUCCESS;
 }
 
-template<Device D, typename T>
-void FFT<D, T>::info() const {
+template<Device D, typename IT, typename OT>
+void FFT<D, IT, OT>::info() const {
     JST_INFO("  Forward: {}", config.forward ? "YES" : "NO");
 }
 

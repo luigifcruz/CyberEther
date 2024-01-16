@@ -27,12 +27,13 @@
 namespace Jetstream {
 
 #define JST_FFT_CPU(MACRO) \
-    MACRO(FFT, CPU, CF32)
+    MACRO(FFT, CPU, CF32, CF32) \
+    MACRO(FFT, CPU, F32, CF32)
 
 #define JST_FFT_METAL(MACRO) \
-    MACRO(FFT, Metal, CF32)
+    MACRO(FFT, Metal, CF32, CF32)
 
-template<Device D, typename T = CF32>
+template<Device D, typename IT = CF32, typename OT = CF32>
 class FFT : public Module, public Compute {
  public:
     // Configuration 
@@ -50,7 +51,7 @@ class FFT : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> buffer;
+        Tensor<D, IT> buffer;
 
         JST_SERDES_INPUT(buffer);
     };
@@ -62,7 +63,7 @@ class FFT : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> buffer;
+        Tensor<D, OT> buffer;
 
         JST_SERDES_OUTPUT(buffer);
     };
@@ -71,7 +72,7 @@ class FFT : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputBuffer() const {
+    constexpr const Tensor<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -96,7 +97,8 @@ class FFT : public Module, public Compute {
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
     struct {
         pocketfft::shape_t shape;
-        pocketfft::stride_t stride;
+        pocketfft::stride_t i_stride;
+        pocketfft::stride_t o_stride;
         pocketfft::shape_t axes;
     } cpu;
 #endif
