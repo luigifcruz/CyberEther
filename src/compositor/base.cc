@@ -1317,6 +1317,9 @@ Result Compositor::drawStatic() {
 
     if (globalModalToggle) {
         ImGui::OpenPopup("##help_modal");
+        if (globalModalContentId == 4) {
+            filenameField = instance.flowgraph().filename();
+        }
         globalModalToggle = false;
     }
 
@@ -1664,27 +1667,25 @@ Result Compositor::drawStatic() {
 
                 ImGui::TableSetColumnIndex(0);
                 ImGui::SetNextItemWidth(-1);
-                auto filename = instance.flowgraph().filename();
-                if (ImGui::InputText("##flowgraph-info-filename", &filename)) {
-                    JST_CHECK_THROW(instance.flowgraph().setFilename(filename));
-                }
+
+                ImGui::InputText("##flowgraph-info-filename", &filenameField);
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    JST_CHECK_NOTIFY([&]{
-                        std::string filename;
-                        JST_CHECK(Platform::SaveFile(filename));
-                        JST_CHECK_THROW(instance.flowgraph().setFilename(filename));
-                        return Result::SUCCESS;
-                    }());
+                    JST_CHECK_NOTIFY(Platform::SaveFile(filenameField));
                 }
 
                 ImGui::EndTable();
             }
 
             if (ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0))) {
-                saveFlowgraphMailbox = true;
-                ImGui::CloseCurrentPopup();
+                const auto& result = instance.flowgraph().setFilename(filenameField);
+                if (result == Result::SUCCESS) {
+                    saveFlowgraphMailbox = true;
+                    ImGui::CloseCurrentPopup();
+                } else {
+                    JST_CHECK_NOTIFY(result);
+                }
             }
 
             ImGui::PopStyleVar();
