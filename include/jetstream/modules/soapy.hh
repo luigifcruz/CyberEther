@@ -10,11 +10,6 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
-#include <SoapySDR/Device.hpp>
-#include <SoapySDR/Types.hpp>
-#include <SoapySDR/Formats.hpp>
-#include <SoapySDR/Modules.hpp>
-
 namespace Jetstream {
 
 #define JST_SOAPY_CPU(MACRO) \
@@ -23,6 +18,9 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Soapy : public Module, public Compute {
  public:
+    Soapy();
+    ~Soapy();
+
     // Types
 
     struct DeviceEntry : public std::map<std::string, std::string> {
@@ -30,9 +28,7 @@ class Soapy : public Module, public Compute {
         DeviceEntry() = default;
         DeviceEntry(const std::map<std::string, std::string>& m) : std::map<std::string, std::string>(m) {}
 
-        std::string toString() const {
-            return SoapySDR::KwargsToString(*this);
-        }
+        std::string toString() const;
     };
 
     typedef std::map<std::string, DeviceEntry> DeviceList;
@@ -128,6 +124,9 @@ class Soapy : public Module, public Compute {
     Result computeReady() final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
     std::thread producer;
     bool errored = false;
     bool streaming = false;
@@ -135,18 +134,9 @@ class Soapy : public Module, public Compute {
     std::string deviceName;
     std::string deviceHardwareKey;
     Memory::CircularBuffer<T> buffer;
-
-    SoapySDR::RangeList sampleRateRanges;
-    SoapySDR::RangeList frequencyRanges;
-
-    SoapySDR::Device* soapyDevice;
-    SoapySDR::Stream* soapyStream;
-
     Tensor<Device::CPU, T> hostOutputBuffer;
 
     Result soapyThreadLoop();
-
-    static bool CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val); 
 
     JST_DEFINE_IO();
 };
