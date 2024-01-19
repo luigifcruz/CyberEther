@@ -19,13 +19,18 @@ class Audio : public Module, public Compute {
     Audio();
     ~Audio();
 
+    // Types
+
+    typedef std::vector<std::string> DeviceList;
+
     // Configuration 
 
     struct Config {
+        std::string deviceName = "Default";
         F32 inSampleRate = 48e3;
         F32 outSampleRate = 48e3;
 
-        JST_SERDES(inSampleRate, outSampleRate);
+        JST_SERDES(deviceName, inSampleRate, outSampleRate);
     };
 
     constexpr const Config& getConfig() const {
@@ -73,6 +78,14 @@ class Audio : public Module, public Compute {
     Result create();
     Result destroy();
 
+    // Miscellaneous
+
+    constexpr const std::string& getDeviceName() const {
+        return deviceName;
+    }
+
+    static DeviceList ListAvailableDevices();
+
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
@@ -80,6 +93,8 @@ class Audio : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
+
+    std::string deviceName;
 
     JST_DEFINE_IO();
 };
