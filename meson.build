@@ -16,7 +16,7 @@ project(
 jst_build_optimize = get_option('optimization')
 jst_build_debug = get_option('debug')
 jst_is_static = get_option('default_library') == 'static'
-jst_is_release = jst_build_debug
+jst_is_release = not jst_build_debug
 jst_is_crossbuild = meson.is_cross_build()
 
 jst_is_linux   = target_machine.system() == 'linux'
