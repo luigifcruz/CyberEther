@@ -25,7 +25,47 @@ struct Audio<D, T>::Impl {
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
     static std::vector<std::pair<ma_device_id, std::string>> GetAvailableDevice();
+    static void GenerateUniqueName(std::string& name, const ma_device_id& id);
 };
+
+template<Device D, typename T>
+void Audio<D, T>::Impl::GenerateUniqueName(std::string& name, const ma_device_id& id) {
+    if (id.pulse[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.pulse));
+    } else if (id.alsa[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.alsa));
+    } else if (id.jack != 0) {
+        name = jst::fmt::format("{} ({})", name, id.jack);
+    } else if (id.coreaudio[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.coreaudio));
+    } else if (id.sndio[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.sndio));
+    } else if (id.audio4[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.audio4));
+    } else if (id.oss[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.oss));
+    } else if (id.aaudio != 0) {
+        name = jst::fmt::format("{} ({})", name, id.aaudio);
+    } else if (id.opensl != 0) {
+        name = jst::fmt::format("{} ({})", name, id.opensl);
+    } else if (id.webaudio[0] != '\0') {
+        name = jst::fmt::format("{} ({})", name, std::string_view(id.webaudio));
+    } else if (id.custom.i != 0) {
+        name = jst::fmt::format("{} ({})", name, id.custom.i);
+    } else if (id.nullbackend != 0) {
+        name = jst::fmt::format("{} ({})", name, id.nullbackend);
+    } else if (id.winmm != 0) {
+        name = jst::fmt::format("{} ({})", name, id.winmm);
+    } else if (id.wasapi[0] != '\0') {
+        // TODO: Implement wchar to string conversion.
+        const U64 sum = std::accumulate(id.wasapi, id.wasapi + sizeof(id.wasapi), 0);
+        name = jst::fmt::format("{} ({:08X})", name, sum);
+    } else if (id.dsound[0] != '\0') {
+        // TODO: Implement GUID to string conversion.
+        const U64 sum = std::accumulate(id.dsound, id.dsound + sizeof(id.dsound), 0);
+        name = jst::fmt::format("{} ({:08X})", name, sum);
+    }
+}
 
 template<Device D, typename T>
 std::vector<std::pair<ma_device_id, std::string>> Audio<D, T>::Impl::GetAvailableDevice() {
@@ -52,11 +92,25 @@ std::vector<std::pair<ma_device_id, std::string>> Audio<D, T>::Impl::GetAvailabl
         return devices;
     }
 
-    for (ma_uint32 i = 0; i < playbackDeviceCount; ++i) {
-        devices.push_back({
-            pPlaybackDeviceInfos[i].id, 
-            pPlaybackDeviceInfos[i].name
-        });
+    std::unordered_map<std::string, U64> nameCount;
+
+    for (ma_uint32 i = 0; i < playbackDeviceCount; i++) {
+        nameCount[pPlaybackDeviceInfos[i].name] = 0;
+    }
+
+    for (ma_uint32 i = 0; i < playbackDeviceCount; i++) {
+        nameCount[pPlaybackDeviceInfos[i].name] += 1;
+    }
+
+    for (ma_uint32 i = 0; i < playbackDeviceCount; i++) {
+        const auto& id = pPlaybackDeviceInfos[i].id;
+        std::string name = pPlaybackDeviceInfos[i].name;
+
+        if (nameCount.at(name) > 1) {
+            Impl::GenerateUniqueName(name, id);
+        }
+
+        devices.push_back({id, name});
     }
 
     ma_context_uninit(&context);
@@ -111,15 +165,18 @@ Result Audio<D, T>::create() {
     bool useDefaultDevice = config.deviceName == "Default" || 
                             config.deviceName == "default" || 
                             config.deviceName == "";
-    
-    JST_DEBUG("Found audio device:");
-    for (U64 id = 0; id < devices.size(); id++) {
-        JST_DEBUG("    [{}]: {}", id, devices[id].second);
 
-        if (devices[id].second == config.deviceName) {
-            selectedDeviceId = devices[id].first;
+    JST_DEBUG("Found audio device:");
+    for (U64 i = 0; i < devices.size(); i++) {
+        const auto& id = devices[i].first;
+        std::string name = devices[i].second;
+
+        if (name == config.deviceName) {
+            selectedDeviceId = id;
             foundConfigDevice = true;
         }
+
+        JST_DEBUG("    [{}]: {}", i, name);
     }
 
     if (!foundConfigDevice && !useDefaultDevice) {
