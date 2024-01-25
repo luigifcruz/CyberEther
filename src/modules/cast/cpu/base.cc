@@ -25,5 +25,6 @@ Result Cast<D, IT, OT>::compute(const RuntimeMetadata&) {
 }
 
 JST_CAST_CPU(JST_INSTANTIATION)
+JST_CAST_CPU(JST_BENCHMARK)
 
 }  // namespace Jetstream

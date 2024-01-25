@@ -1,5 +1,7 @@
 #include "jetstream/modules/cast.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename IT, typename OT>
