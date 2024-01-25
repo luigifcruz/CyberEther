@@ -19,7 +19,8 @@ jst_is_static = get_option('default_library') == 'static'
 jst_is_release = not jst_build_debug
 jst_is_crossbuild = meson.is_cross_build()
 
-jst_is_linux   = target_machine.system() == 'linux'
+jst_is_linux   = target_machine.system() == 'linux' or \
+                 target_machine.system() == 'freebsd'
 jst_is_macos   = target_machine.system() == 'darwin'
 jst_is_ios     = target_machine.system() == 'ios'
 jst_is_android = target_machine.system() == 'android'
