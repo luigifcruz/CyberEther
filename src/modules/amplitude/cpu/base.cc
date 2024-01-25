@@ -11,9 +11,15 @@ Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {
+Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata&) {    
     for (U64 i = 0; i < input.buffer.size(); i++) {
-        output.buffer[i] = 20.0f * Backend::ApproxLog10(abs(input.buffer[i]) / scalingSize);
+        const auto& number = input.buffer[i];
+        const auto& real = number.real();
+        const auto& imag = number.imag();
+
+        const auto& pwr = sqrtf((real * real) + (imag * imag));
+
+        output.buffer[i] = 20.0f * Backend::ApproxLog10(pwr) + scalingCoeff;
     }
 
     return Result::SUCCESS;

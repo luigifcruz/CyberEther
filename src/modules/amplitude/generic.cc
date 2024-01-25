@@ -12,7 +12,7 @@ Result Amplitude<D, IT, OT>::create() {
     // Calculate parameters.
 
     const U64 last_axis = input.buffer.rank() - 1;
-    scalingSize = input.buffer.shape()[last_axis];
+    scalingCoeff = 20.0f * log10f(1.0f / input.buffer.shape()[last_axis]);
 
     // Allocate output.
 

@@ -76,7 +76,7 @@ class Amplitude : public Module, public Compute {
     // TODO: Remove backend specific code from header in favor of `pimpl->`.
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
-        F32 scalingSize;
+        F32 scalingCoeff;
     };
 
     struct {
@@ -85,7 +85,7 @@ class Amplitude : public Module, public Compute {
     } metal;
 #endif
 
-    U64 scalingSize = 0;
+    F32 scalingCoeff = 0.0f;
 
     JST_DEFINE_IO();
 };
