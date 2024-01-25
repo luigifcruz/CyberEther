@@ -149,6 +149,11 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
         i++;
     }
 
+    if (!indices.computeFamily.has_value()) {
+        indices.computeFamily = indices.graphicFamily;
+        JST_WARN("[VULKAN] Compute queue not found. Using graphics queue instead. This may cause issues.");
+    }
+
     return indices;
 }
 
