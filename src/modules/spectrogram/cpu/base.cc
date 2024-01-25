@@ -33,5 +33,6 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
 }
 
 JST_SPECTROGRAM_CPU(JST_INSTANTIATION)
+JST_SPECTROGRAM_CPU(JST_BENCHMARK)
 
 }  // namespace Jetstream
