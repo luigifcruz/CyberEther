@@ -195,6 +195,7 @@ class JETSTREAM_API Instance {
             auto& block = _flowgraph.nodes().at(locale.block())->block;
             block->setComplete(false);
             block->pushError(jst::fmt::format("[{}] {}", locale, JST_LOG_LAST_ERROR()));
+            // TODO: Maybe add module->destroy() here.
 
             return Result::SUCCESS;
         }
