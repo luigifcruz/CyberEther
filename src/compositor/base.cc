@@ -473,8 +473,8 @@ Result Compositor::processInteractions() {
     }
     
     if (deleteBlockMailbox) {
-        JST_DISPATCH_ASYNC([&](){
-            JST_CHECK_NOTIFY(instance.removeBlock(*deleteBlockMailbox));
+        JST_DISPATCH_ASYNC([&, block = *deleteBlockMailbox](){
+            JST_CHECK_NOTIFY(instance.removeBlock(block));
             updateFlowgraphBlobMailbox = true;
         });
         deleteBlockMailbox.reset();
