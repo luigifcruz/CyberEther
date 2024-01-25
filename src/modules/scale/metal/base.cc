@@ -56,5 +56,6 @@ Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
 }
 
 JST_SCALE_METAL(JST_INSTANTIATION)
+JST_SCALE_METAL(JST_BENCHMARK)
 
 }  // namespace Jetstream
