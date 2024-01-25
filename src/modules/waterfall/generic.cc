@@ -1,6 +1,8 @@
 #include "jetstream/modules/waterfall.hh"
 #include "shaders/waterfall_shaders.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>
