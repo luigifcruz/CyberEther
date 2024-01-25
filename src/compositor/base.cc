@@ -438,7 +438,7 @@ Result Compositor::draw() {
 }
 
 Result Compositor::processInteractions() {
-    if (createBlockMailbox) {
+    if (createBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, metadata = *createBlockMailbox](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 2500, "Adding module..." });
 
@@ -447,7 +447,6 @@ Result Compositor::processInteractions() {
             const auto moduleEntry = Store::BlockMetadataList().at(module);
             if (moduleEntry.options.at(device).empty()) {
                 ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "No compatible data types for this module." });
-                createBlockMailbox.reset();
             }
             const auto& [inputDataType, outputDataType] = moduleEntry.options.at(device).at(0);
 
@@ -472,7 +471,7 @@ Result Compositor::processInteractions() {
         createBlockMailbox.reset();
     }
     
-    if (deleteBlockMailbox) {
+    if (deleteBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, block = *deleteBlockMailbox](){
             JST_CHECK_NOTIFY(instance.removeBlock(block));
             updateFlowgraphBlobMailbox = true;
@@ -480,7 +479,7 @@ Result Compositor::processInteractions() {
         deleteBlockMailbox.reset();
     }
 
-    if (renameBlockMailbox) {
+    if (renameBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, metadata = *renameBlockMailbox](){
             const auto& [locale, id] = metadata;
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Renaming block..." });
@@ -489,7 +488,7 @@ Result Compositor::processInteractions() {
         renameBlockMailbox.reset();
     }
 
-    if (reloadBlockMailbox) {
+    if (reloadBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, locale = *reloadBlockMailbox](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
             JST_CHECK_NOTIFY(instance.reloadBlock(locale));
@@ -497,7 +496,7 @@ Result Compositor::processInteractions() {
         reloadBlockMailbox.reset();
     }
 
-    if (linkMailbox) {
+    if (linkMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, metadata = *linkMailbox](){
             const auto& [inputLocale, outputLocale] = metadata;
             JST_CHECK_NOTIFY(instance.linkBlocks(inputLocale, outputLocale));
@@ -506,7 +505,7 @@ Result Compositor::processInteractions() {
         linkMailbox.reset();
     }
 
-    if (unlinkMailbox) {
+    if (unlinkMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, metadata = *unlinkMailbox](){
             const auto& [inputLocale, outputLocale] = metadata;
             JST_CHECK_NOTIFY(instance.unlinkBlocks(inputLocale, outputLocale));
@@ -515,7 +514,7 @@ Result Compositor::processInteractions() {
         unlinkMailbox.reset();
     }
 
-    if (changeBlockBackendMailbox) {
+    if (changeBlockBackendMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, metadata = *changeBlockBackendMailbox](){
             const auto& [locale, device] = metadata;
             JST_CHECK_NOTIFY(instance.changeBlockBackend(locale, device));
@@ -524,7 +523,7 @@ Result Compositor::processInteractions() {
         changeBlockBackendMailbox.reset();
     }
 
-    if (changeBlockDataTypeMailbox) {
+    if (changeBlockDataTypeMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, metadata = *changeBlockDataTypeMailbox](){
             const auto& [locale, type] = metadata;
             JST_CHECK_NOTIFY(instance.changeBlockDataType(locale, type));
@@ -533,7 +532,7 @@ Result Compositor::processInteractions() {
         changeBlockDataTypeMailbox.reset();
     }
     
-    if (toggleBlockMailbox) {
+    if (toggleBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             // TODO: Implement.
             ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Toggling a node is not implemented yet." });
@@ -542,7 +541,7 @@ Result Compositor::processInteractions() {
         toggleBlockMailbox.reset();
     }
 
-    if (resetFlowgraphMailbox) {
+    if (resetFlowgraphMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             JST_CHECK_NOTIFY(instance.reset());
             updateFlowgraphBlobMailbox = true;
@@ -550,7 +549,7 @@ Result Compositor::processInteractions() {
         resetFlowgraphMailbox.reset();
     }
 
-    if (closeFlowgraphMailbox) {
+    if (closeFlowgraphMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             JST_CHECK_NOTIFY([&]{
                 JST_CHECK(instance.reset());
@@ -562,7 +561,7 @@ Result Compositor::processInteractions() {
         closeFlowgraphMailbox.reset();
     }
 
-    if (openFlowgraphUrlMailbox) {
+    if (openFlowgraphUrlMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             // TODO: Implement.
             ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Remote flowgraph is not implemented yet." });
@@ -571,7 +570,7 @@ Result Compositor::processInteractions() {
         openFlowgraphUrlMailbox.reset();
     }
 
-    if (openFlowgraphPathMailbox) {
+    if (openFlowgraphPathMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, filepath = *openFlowgraphPathMailbox](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
             JST_CHECK_NOTIFY([&]{
@@ -584,7 +583,7 @@ Result Compositor::processInteractions() {
         openFlowgraphPathMailbox.reset();
     }
 
-    if (openFlowgraphBlobMailbox) {
+    if (openFlowgraphBlobMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, blob = *openFlowgraphBlobMailbox](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
             JST_CHECK_NOTIFY([&]{
@@ -597,7 +596,7 @@ Result Compositor::processInteractions() {
         openFlowgraphBlobMailbox.reset();
     }
 
-    if (saveFlowgraphMailbox) {
+    if (saveFlowgraphMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Saving flowgraph..." });
             JST_CHECK_NOTIFY(instance.flowgraph().exportToFile());
@@ -605,7 +604,7 @@ Result Compositor::processInteractions() {
         saveFlowgraphMailbox.reset();
     }
 
-    if (newFlowgraphMailbox) {
+    if (newFlowgraphMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             JST_CHECK_NOTIFY(instance.flowgraph().create());
             updateFlowgraphBlobMailbox = true;
@@ -613,7 +612,7 @@ Result Compositor::processInteractions() {
         newFlowgraphMailbox.reset();
     }
 
-    if (updateFlowgraphBlobMailbox) {
+    if (updateFlowgraphBlobMailbox.has_value()) {
         if (sourceEditorEnabled) {
             JST_DISPATCH_ASYNC([&](){
                 JST_CHECK(instance.flowgraph().exportToBlob());
