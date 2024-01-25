@@ -74,5 +74,6 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
 }
 
 JST_AMPLITUDE_METAL(JST_INSTANTIATION)
+JST_AMPLITUDE_METAL(JST_BENCHMARK)
     
 }  // namespace Jetstream
