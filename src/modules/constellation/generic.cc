@@ -1,6 +1,8 @@
 #include "jetstream/modules/constellation.hh"
 #include "shaders/constellation_shaders.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>
