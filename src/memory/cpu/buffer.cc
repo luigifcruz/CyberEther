@@ -9,6 +9,10 @@
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/backend/devices/cuda/helpers.hh"
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/memory/devices/cuda/buffer.hh"
 #endif
 
@@ -70,7 +74,21 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     owns_data = true;
 
     // Null out array.
+
     memset(buffer, 0, prototype.size_bytes);
+
+    // Register with CUDA (if available).
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    JST_TRACE("[CPU:BUFFER] Registering buffer with CUDA.");
+
+    [&]{
+        JST_CUDA_CHECK(cudaHostRegister(buffer, alignedSizeBytes, cudaHostRegisterDefault), [&]{
+            JST_WARN("[CPU:BUFFER] Failed to register buffer with CUDA: {}", err);
+        });
+        return Result::SUCCESS;
+    }();
+#endif
 }
 
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
@@ -202,6 +220,8 @@ Implementation::~TensorBuffer() {
 #endif
     }
 
+    // Unmap memory if imported from Vulkan.
+
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (external_memory_device == Device::Vulkan) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
@@ -209,7 +229,20 @@ Implementation::~TensorBuffer() {
     }
 #endif
 
-    // TODO: Unmap memory if imported from Vulkan.
+    // Unregister memory if registered with CUDA.
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (owns_data) {
+        JST_TRACE("[CPU:BUFFER] Unregistering buffer from CUDA.");
+
+        [&]{
+            JST_CUDA_CHECK(cudaHostUnregister(buffer), [&]{
+                JST_WARN("[CPU:BUFFER] Failed to unregister buffer from CUDA: {}", err);
+            });
+            return Result::SUCCESS;
+        }();
+    }
+#endif
 }
 
 }  // namespace Jetstream
