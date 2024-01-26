@@ -35,7 +35,7 @@ graph:
       endpoint: '127.0.0.1:5002'
     interface:
       previewEnabled: true
-      viewEnabled: false
+      viewEnabled: true
       nodeWidth: 300
       nodePos: [459, 468]
       controlEnabled: false
