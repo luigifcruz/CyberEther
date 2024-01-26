@@ -23,7 +23,7 @@ struct RuntimeMetadata {
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     struct {
-       const cudaStream_t stream = 0; 
+       cudaStream_t stream = 0; 
     } cuda;
 #endif
 
