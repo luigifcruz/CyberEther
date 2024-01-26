@@ -19,10 +19,12 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
     }
 
     constexpr const void* data() const noexcept {
+        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 
     constexpr void* data() noexcept {
+        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 };
