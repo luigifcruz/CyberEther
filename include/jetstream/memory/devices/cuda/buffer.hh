@@ -49,6 +49,14 @@ class TensorBuffer<Device::CUDA> {
         return _host_accessible;
     }
 
+    constexpr const bool& device_native() const {
+        return _device_native;
+    }
+
+    constexpr const bool& host_native() const {
+        return _host_native;
+    }
+
     constexpr const void* data() const noexcept {
         return buffer;
     }
@@ -61,6 +69,8 @@ class TensorBuffer<Device::CUDA> {
     void* buffer;
     bool owns_data = false;
     bool _host_accessible = false;
+    bool _device_native = false;
+    bool _host_native = false;
     Device external_memory_device = Device::None;
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
