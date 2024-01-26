@@ -86,6 +86,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         JST_CUDA_CHECK(cudaHostRegister(buffer, alignedSizeBytes, cudaHostRegisterDefault), [&]{
             JST_WARN("[CPU:BUFFER] Failed to register buffer with CUDA: {}", err);
         });
+        storage->compatible_devices.insert(Device::CUDA);
         return Result::SUCCESS;
     }();
 #endif

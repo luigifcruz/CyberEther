@@ -42,11 +42,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     const auto size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
     if (host_accessible || unified) {
-        JST_CUDA_CHECK_THROW(cudaMallocManaged(&_buffer, size_bytes), [&]{
+        JST_CUDA_CHECK_THROW(cudaMallocManaged(&buffer, size_bytes), [&]{
             JST_FATAL("[CUDA:BUFFER] Failed to allocate managed CUDA memory: {}", err);
         });
     } else {
-        JST_CUDA_CHECK_THROW(cudaMalloc(&_buffer, size_bytes), [&]{
+        JST_CUDA_CHECK_THROW(cudaMalloc(&buffer, size_bytes), [&]{
             JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
         });
     }
@@ -119,7 +119,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         JST_FATAL("[CUDA:BUFFER] Failed to get CUDA buffer from Vulkan buffer memory: {}", err);
     });
 
-    _buffer = reinterpret_cast<void*>(devPtr);
+    buffer = reinterpret_cast<void*>(devPtr);
     external_memory_device = Device::Vulkan;
     owns_data = false;
 }
@@ -129,8 +129,56 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
-    throw std::runtime_error("Exporting CPU memory to CUDA not implemented.");
-    // TODO: Add CPU -> CUDA.
+    JST_TRACE("[CUDA:BUFFER] Cloning from CPU buffer.");
+
+    // Check platform.
+
+    if (!Backend::State<Device::CUDA>()->isAvailable()) {
+        JST_FATAL("[CUDA:BUFFER] CUDA is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
+    // Check size.
+
+    if (prototype.size_bytes == 0) {
+        return;
+    }
+
+    // Check with CUDA if the CPU buffer is pinned.
+
+    cudaPointerAttributes attributes;
+    JST_CUDA_CHECK_THROW(cudaPointerGetAttributes(&attributes, root_buffer->data()), [&]{
+        JST_FATAL("[CUDA:BUFFER] Failed to get CPU buffer attributes: {}", err);
+    });
+
+    // If the CPU buffer is already pinned, use it directly.
+
+    if (attributes.type == cudaMemoryTypeHost) {
+        JST_TRACE("[CUDA:BUFFER] CPU buffer is pinned. Using it directly.");
+
+        _host_accessible = true;
+        buffer = root_buffer->data();
+        owns_data = false;
+        return;
+    }
+
+    // If the CPU buffer is not pinned, try to register it if it's aligned.
+
+    if (attributes.type == cudaMemoryTypeUnregistered && JST_IS_ALIGNED(root_buffer->data())) {
+        JST_TRACE("[CUDA:BUFFER] CPU buffer is not pinned. Registering it.");
+
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+        JST_CUDA_CHECK_THROW(cudaHostRegister(root_buffer->data(), alignedSizeBytes, cudaHostRegisterDefault), [&]{
+            JST_FATAL("[CUDA:BUFFER] Failed to register CPU buffer: {}", err);
+        });
+
+        _host_accessible = true;
+        buffer = root_buffer->data();
+        owns_data = false;
+        return;
+    }
+
+    throw std::runtime_error("This CPU buffer cannot be converted to CUDA.");
 }
 #endif
 
@@ -143,10 +191,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 #endif
 
 Implementation::~TensorBuffer() {
-    JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", jst::fmt::ptr(_buffer));
+    JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", jst::fmt::ptr(buffer));
 
     if (owns_data) {
-        cudaFree(&_buffer);
+        cudaFree(&buffer);
     }
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE

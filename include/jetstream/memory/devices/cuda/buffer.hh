@@ -9,6 +9,10 @@
 #include "jetstream/memory/devices/vulkan/buffer.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+#include "jetstream/memory/devices/cpu/buffer.hh"
+#endif
+
 namespace Jetstream {
 
 template<>
@@ -46,15 +50,15 @@ class TensorBuffer<Device::CUDA> {
     }
 
     constexpr const void* data() const noexcept {
-        return _buffer;
+        return buffer;
     }
 
     constexpr void* data() noexcept {
-        return _buffer;
+        return buffer;
     }
 
  private:
-    void* _buffer;
+    void* buffer;
     bool owns_data = false;
     bool _host_accessible = false;
     Device external_memory_device = Device::None;

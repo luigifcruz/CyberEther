@@ -108,6 +108,14 @@ class Parser {
                     return Result::SUCCESS;
                 }
 #endif
+            } else if (variable.device() == Device::CUDA) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+                if (anyVar.type() == typeid(Tensor<Device::CPU, typename T::DataType>)) {
+                    JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<CPU>' into 'Tensor<CUDA>'.", name);
+                    variable = std::move(T(std::any_cast<Tensor<Device::CPU, typename T::DataType>>(anyVar)));
+                    return Result::SUCCESS;
+                }
+#endif
             }
         }
 
