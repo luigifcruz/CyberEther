@@ -525,10 +525,10 @@ namespace ImGui
     inline void Markdown( const char* markdown_, size_t markdownLength_, const MarkdownConfig& mdConfig_ )
     {
         static const char* linkHoverStart = NULL; // we need to preserve status of link hovering between frames
-        Line        line;
-        Link        link;
-        Emphasis    em;
-        TextRegion  textRegion;
+        Line        line         = Line();
+        Link        link         = Link();
+        Emphasis    em           = Emphasis();
+        TextRegion  textRegion   = TextRegion();
 
         char c = 0;
         for( int i=0; i < (int)markdownLength_; ++i )
