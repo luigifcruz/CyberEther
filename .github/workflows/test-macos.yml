@@ -24,16 +24,16 @@ jobs:
       #
 
       - name: Install core dependencies
-        run: brew install cmake pkg-config ninja meson
+        run: brew install --force --overwrite cmake pkg-config ninja meson
 
       - name: Install graphical dependencies
-        run: brew install spirv-cross glslang glfw
+        run: brew install --force --overwrite spirv-cross glslang glfw
 
       - name: Install optional dependencies for SoapySDR and Remote capabilities
         run: |
-          brew install soapysdr soapyrtlsdr
-          brew install gstreamer
-          brew install catch2
+          brew install --force --overwrite soapysdr soapyrtlsdr
+          brew install --force --overwrite gstreamer
+          brew install --force --overwrite catch2
           python -m pip install pyyaml
 
       ##
