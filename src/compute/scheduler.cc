@@ -238,7 +238,7 @@ Result Scheduler::compute() {
         return Result::SUCCESS;
     }
 
-    JST_FATAL("SCHEDULER] Fatal error code: {}", static_cast<uint8_t>(res));
+    JST_FATAL("[SCHEDULER] Fatal error code: {}", static_cast<uint8_t>(res));
     return res;
 }
 
