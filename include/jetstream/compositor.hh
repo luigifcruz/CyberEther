@@ -158,8 +158,8 @@ class JETSTREAM_API Compositor {
 
     static const U32 CpuColor              = IM_COL32(224, 146,   0, 255);
     static const U32 CpuColorSelected      = IM_COL32(184, 119,   0, 255);
-    static const U32 CudaColor             = IM_COL32(118, 201,   3, 255);
-    static const U32 CudaColorSelected     = IM_COL32( 95, 161,   2, 255);
+    static const U32 CudaColor             = IM_COL32( 95, 161,   2, 255);
+    static const U32 CudaColorSelected     = IM_COL32( 85, 140,   2, 255);
     static const U32 MetalColor            = IM_COL32( 98,  60, 234, 255);
     static const U32 MetalColorSelected    = IM_COL32( 76,  33, 232, 255);
     static const U32 VulkanColor           = IM_COL32(238,  27,  52, 255);
