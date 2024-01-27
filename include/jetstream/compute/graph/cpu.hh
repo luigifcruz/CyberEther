@@ -8,6 +8,7 @@ namespace Jetstream {
 class CPU : public Graph {
  public:
     CPU();
+    ~CPU();
 
     constexpr Device device() const {
         return Device::CPU;
