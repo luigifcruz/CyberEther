@@ -55,8 +55,8 @@ Result Multiply<D, T>::create() {
     b = input.factorB;
     c = output.product;
 
-    a.broadcast_to(c.shape());
-    b.broadcast_to(c.shape());
+    JST_CHECK(a.broadcast_to(c.shape()));
+    JST_CHECK(b.broadcast_to(c.shape()));
 
     return Result::SUCCESS;
 }
