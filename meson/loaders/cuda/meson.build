@@ -1,5 +1,5 @@
 deps = [
-    dependency('cuda', version : '>=10', modules: ['cuda', 'nvidia-ml'], required: false),
+    dependency('cuda', version : '>=10', modules: ['cuda', 'nvidia-ml', 'nvrtc'], required: false),
 ]
 
 all_deps_found = true

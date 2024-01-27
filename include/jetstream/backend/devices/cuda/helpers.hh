@@ -28,6 +28,30 @@
 }
 #endif  // JST_CUDA_CHECK_THROW
 
+#ifndef JST_NVRTC_CHECK
+#define JST_NVRTC_CHECK(x, callback) { \
+    nvrtcResult val = static_cast<nvrtcResult>((x)); \
+    if (val != NVRTC_SUCCESS) { \
+        const char* err = nvrtcGetErrorString(val); \
+        (void)(err); \
+        callback(); \
+        return Result::ERROR; \
+    } \
+}
+#endif  // JST_NVRTC_CHECK
+
+#ifndef JST_NVRTC_CHECK_THROW
+#define JST_NVRTC_CHECK_THROW(x, callback) { \
+    nvrtcResult val = static_cast<nvrtcResult>((x)); \
+    if (val != NVRTC_SUCCESS) { \
+        const char* err = nvrtcGetErrorString(val, &err); \
+        (void)(err); \
+        callback(); \
+        throw Result::ERROR; \
+    } \
+}
+#endif  // JST_NVRTC_CHECK_THROW
+
 namespace Jetstream::Backend {
 
 }  // namespace Jetstream::Backend
