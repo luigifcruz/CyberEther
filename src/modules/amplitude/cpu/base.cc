@@ -5,6 +5,19 @@
 namespace Jetstream {
 
 template<Device D, typename IT, typename OT>
+struct Amplitude<D, IT, OT>::Impl {};
+
+template<Device D, typename IT, typename OT>
+Amplitude<D, IT, OT>::Amplitude() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename IT, typename OT>
+Amplitude<D, IT, OT>::~Amplitude() {
+    pimpl.reset();
+}
+
+template<Device D, typename IT, typename OT>
 Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata&) {
     JST_TRACE("Create Amplitude compute core using CPU backend.");
     return Result::SUCCESS;

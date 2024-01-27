@@ -18,6 +18,9 @@ namespace Jetstream {
 template<Device D, typename IT = CF32, typename OT = F32>
 class Amplitude : public Module, public Compute {
  public:
+    Amplitude();
+    ~Amplitude();
+
     // Configuration 
 
     struct Config {
@@ -73,17 +76,8 @@ class Amplitude : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct MetalConstants {
-        F32 scalingCoeff;
-    };
-
-    struct {
-        MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
     F32 scalingCoeff = 0.0f;
 
