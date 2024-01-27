@@ -5,11 +5,12 @@
 #include <memory>
 
 #include "jetstream/memory/types.hh"
-#include "jetstream/metadata.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 
 namespace Jetstream { 
+
+struct RuntimeMetadata;
 
 class Graph {
  public:

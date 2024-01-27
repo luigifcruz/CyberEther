@@ -15,19 +15,24 @@
 
 namespace Jetstream {
 
+class CPU;
+class CUDA;
+
 struct RuntimeMetadata {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     struct {
+        CPU* graph;
     } cpu;
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     struct {
-       cudaStream_t stream = 0; 
+        CUDA* graph;
     } cuda;
 #endif
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    // TODO: Replace with Metal class pointer.
     struct {
         MTL::CommandQueue* commandQueue;
         MTL::CommandBuffer* commandBuffer;

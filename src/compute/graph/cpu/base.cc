@@ -5,6 +5,11 @@ namespace Jetstream {
 CPU::CPU() {
     JST_DEBUG("Creating new CPU compute graph.");
     metadata = std::make_shared<RuntimeMetadata>();
+    metadata->cpu.graph = this;
+}
+
+CPU::~CPU() {
+    metadata.reset();
 }
 
 Result CPU::create() {
