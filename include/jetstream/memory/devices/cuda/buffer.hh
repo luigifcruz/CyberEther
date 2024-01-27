@@ -57,6 +57,14 @@ class TensorBuffer<Device::CUDA> {
         return buffer;
     }
 
+    constexpr const void* data_ptr() const noexcept {
+        return &buffer;
+    }
+
+    constexpr void* data_ptr() noexcept {
+        return &buffer;
+    }
+
  private:
     void* buffer;
     bool owns_data = false;

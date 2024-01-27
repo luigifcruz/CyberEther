@@ -27,6 +27,14 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
         // TODO: This disregards the offset.
         return this->buffer->data();
     }
+
+    constexpr const void* data_ptr() const noexcept {
+        return this->buffer->data_ptr();
+    }
+
+    constexpr void* data_ptr() noexcept {
+        return this->buffer->data_ptr();
+    }
 };
 
 }  // namespace Jetstream
