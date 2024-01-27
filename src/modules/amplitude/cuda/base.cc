@@ -45,9 +45,8 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
 
     // Initialize kernel size.
 
-    static U64 numElements = input.buffer.size();
-    U64 threadsPerBlock = 256;
-    U64 blocksPerGrid = (numElements + threadsPerBlock - 1) / threadsPerBlock;
+    U64 threadsPerBlock = 512;
+    U64 blocksPerGrid = (numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
 
     pimpl->grid = { blocksPerGrid, 1, 1 };
     pimpl->block = { threadsPerBlock, 1, 1 };
@@ -66,7 +65,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
         pimpl->input.data_ptr(),
         output.buffer.data_ptr(),
         &scalingCoeff,
-        &numElements,
+        &numberOfElements,
     };
 
     return Result::SUCCESS;

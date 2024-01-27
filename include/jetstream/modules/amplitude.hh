@@ -83,6 +83,7 @@ class Amplitude : public Module, public Compute {
     std::unique_ptr<Impl> pimpl;
 
     F32 scalingCoeff = 0.0f;
+    U64 numberOfElements = 0;
 
     JST_DEFINE_IO();
 };
