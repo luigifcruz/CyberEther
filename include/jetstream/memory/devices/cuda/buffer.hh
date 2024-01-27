@@ -5,14 +5,6 @@
 
 #include "jetstream/memory/devices/base/buffer.hh"
 
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-#include "jetstream/memory/devices/vulkan/buffer.hh"
-#endif
-
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-#include "jetstream/memory/devices/cpu/buffer.hh"
-#endif
-
 namespace Jetstream {
 
 template<>
