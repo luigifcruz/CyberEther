@@ -211,14 +211,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 Implementation::~TensorBuffer() {
     JST_TRACE("[CPU:BUFFER] Trying to free buffer at {}.", jst::fmt::ptr(buffer));
 
-    if (owns_data) {
-#ifdef JST_OS_WINDOWS
-        VirtualFree(buffer, 0, MEM_RELEASE);
-#else
-        free(buffer);
-#endif
-    }
-
     // Unmap memory if imported from Vulkan.
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
@@ -242,6 +234,16 @@ Implementation::~TensorBuffer() {
         }();
     }
 #endif
+
+    // Free memory.
+
+    if (owns_data) {
+#ifdef JST_OS_WINDOWS
+        VirtualFree(buffer, 0, MEM_RELEASE);
+#else
+        free(buffer);
+#endif
+    }
 }
 
 }  // namespace Jetstream
