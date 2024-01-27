@@ -14,8 +14,12 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
 
     Tensor(const TensorBase<Device::CUDA, T>& base) : TensorBase<Device::CUDA, T>(base) {}
 
-    constexpr const bool& managed() const {
-        return this->buffer->managed();
+    constexpr const bool& device_native() const noexcept {
+        return this->buffer->device_native();
+    }
+
+    constexpr const bool& host_native() const noexcept {
+        return this->buffer->host_native();
     }
 
     constexpr const void* data() const noexcept {
