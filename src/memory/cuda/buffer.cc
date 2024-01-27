@@ -197,7 +197,7 @@ Implementation::~TensorBuffer() {
     JST_TRACE("[CUDA:BUFFER] Releasing buffer {}.", jst::fmt::ptr(buffer));
 
     if (owns_data) {
-        cudaFree(&buffer);
+        cudaFree(buffer);
     }
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
