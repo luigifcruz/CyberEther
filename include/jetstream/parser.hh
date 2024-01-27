@@ -90,6 +90,7 @@ class Parser {
         }
 
         if constexpr (IsTensor<T>::value) {
+            // TODO: Check if conversion is possible before trying to cast.
             JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Tensor'.", name);
 
             if (variable.device() == Device::CPU) {
@@ -97,6 +98,13 @@ class Parser {
                 if (anyVar.type() == typeid(Tensor<Device::Metal, typename T::DataType>)) {
                     JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<Metal>' into 'Tensor<CPU>'.", name);
                     variable = std::move(T(std::any_cast<Tensor<Device::Metal, typename T::DataType>>(anyVar)));
+                    return Result::SUCCESS;
+                }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+                if (anyVar.type() == typeid(Tensor<Device::CUDA, typename T::DataType>)) {
+                    JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<CUDA>' into 'Tensor<CPU>'.", name);
+                    variable = std::move(T(std::any_cast<Tensor<Device::CUDA, typename T::DataType>>(anyVar)));
                     return Result::SUCCESS;
                 }
 #endif
