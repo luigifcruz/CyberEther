@@ -92,7 +92,7 @@ class FilterTaps : public Module, public Compute {
     Result taps(U64& taps);
 
  protected:
-    Result compute(const RuntimeMetadata& meta) final;
+    Result compute(const Context& ctx) final;
 
  private:
     Tensor<D, typename T::value_type> sincCoeffs;

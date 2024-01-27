@@ -38,7 +38,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Spectrogram<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
     auto& assets = metal;
@@ -58,12 +58,11 @@ Result Spectrogram<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
+Result Spectrogram<D, T>::compute(const Context& ctx) {
     auto& assets = metal;
-    auto& runtime = meta.metal;
 
     {
-        auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
+        auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
         cmdEncoder->setComputePipelineState(assets.stateDecay);
         cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
         cmdEncoder->setBuffer(frequencyBins.data(), 0, 1);
@@ -78,7 +77,7 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata& meta) {
     }
 
     {
-        auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
+        auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
         cmdEncoder->setComputePipelineState(assets.stateActivate);
         cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
         cmdEncoder->setBuffer(input.buffer.data(), 0, 1);

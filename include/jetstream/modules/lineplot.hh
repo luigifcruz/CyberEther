@@ -79,8 +79,8 @@ class Lineplot : public Module, public Compute, public Present {
     Render::Texture& getTexture();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
     Result createPresent() final;
     Result present() final;

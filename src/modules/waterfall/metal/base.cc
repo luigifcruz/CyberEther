@@ -3,10 +3,8 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
-    auto& runtime = meta.metal;
-
-    auto blitEncoder = runtime.commandBuffer->blitCommandEncoder();
+Result Waterfall<D, T>::underlyingCompute(const Context& ctx) {
+    auto blitEncoder = ctx.metal->commandBuffer()->blitCommandEncoder();
 
     auto batchByteSize = input.buffer.size_bytes();
     const auto sampleByteSize = batchByteSize / numberOfBatches;

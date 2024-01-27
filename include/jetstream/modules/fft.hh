@@ -76,9 +76,9 @@ class FFT : public Module, public Compute {
     Result create();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result destroyCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result destroyCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
  private:
     struct Impl;

@@ -20,7 +20,7 @@ std::string to_timestamp(int64_t t, bool comma = false) {
 namespace Jetstream {
 
 template<Device D, typename T>
-Result SpeechRecognition<D, T>::createCompute(const RuntimeMetadata&) {
+Result SpeechRecognition<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Speech Recognition compute core using CPU backend.");
 
     struct whisper_context_params cparams;
@@ -45,7 +45,7 @@ Result SpeechRecognition<D, T>::createCompute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename T>
-Result SpeechRecognition<D, T>::compute(const RuntimeMetadata&) {
+Result SpeechRecognition<D, T>::compute(const Context&) {
     if (whisper_full(ctx, wparams, input.buffer.data(), input.buffer.size()) != 0) {
         JST_FATAL("failed to process audio\n");
     }

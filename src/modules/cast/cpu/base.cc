@@ -5,13 +5,13 @@
 namespace Jetstream {
 
 template<Device D, typename IT, typename OT>
-Result Cast<D, IT, OT>::createCompute(const RuntimeMetadata&) {
+Result Cast<D, IT, OT>::createCompute(const Context&) {
     JST_TRACE("Create Cast compute core using CPU backend.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>
-Result Cast<D, IT, OT>::compute(const RuntimeMetadata&) {
+Result Cast<D, IT, OT>::compute(const Context&) {
     const IT maxValue = std::numeric_limits<OT>::max();
     const IT minValue = std::numeric_limits<OT>::min();
 

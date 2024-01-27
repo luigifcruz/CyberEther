@@ -25,12 +25,12 @@ Amplitude<D, IT, OT>::~Amplitude() {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using CUDA backend.");
 
     // Create CUDA kernel.
 
-    meta.cuda.graph->createKernel("amplitude", R"""(
+    ctx.cuda->createKernel("amplitude", R"""(
         __global__ void amplitude(const float2* input, float* output, float scalingCoeff, size_t size) {
             size_t id = blockIdx.x * blockDim.x + threadIdx.x;
             if (id < size) {
@@ -73,15 +73,15 @@ Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
     if (!input.buffer.device_native()) {
-        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, meta.cuda.graph->stream()));
+        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 
-    JST_CHECK(meta.cuda.graph->launchKernel("amplitude", 
-                                            pimpl->grid, 
-                                            pimpl->block, 
-                                            pimpl->arguments.data()));
+    JST_CHECK(ctx.cuda->launchKernel("amplitude", 
+                                     pimpl->grid, 
+                                     pimpl->block, 
+                                     pimpl->arguments.data()));
 
     return Result::SUCCESS;
 }

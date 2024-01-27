@@ -83,8 +83,8 @@ class Scale : public Module, public Compute {
     }
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
  private:
     // TODO: Remove backend specific code from header in favor of `pimpl->`.

@@ -15,14 +15,14 @@ struct CUDA::Impl {
 };
 
 CUDA::CUDA() {
-    metadata = std::make_shared<RuntimeMetadata>();
-    metadata->cuda.graph = this;
+    context = std::make_shared<Compute::Context>();
+    context->cuda = this;
 
     pimpl = std::make_unique<Impl>();
 }
 
 CUDA::~CUDA() {
-    metadata.reset();
+    context.reset();
     pimpl.reset();
 }
 
@@ -38,7 +38,7 @@ Result CUDA::create() {
     // Create blocks.
 
     for (const auto& block : blocks) {
-        JST_CHECK(block->createCompute(*metadata));
+        JST_CHECK(block->createCompute(*context));
     }
 
     return Result::SUCCESS;
@@ -55,7 +55,7 @@ Result CUDA::compute() {
     // Execute blocks.
 
     for (const auto& block : blocks) {
-        JST_CHECK(block->compute(*metadata));
+        JST_CHECK(block->compute(*context));
 
         // Check for CUDA errors.
 
@@ -77,7 +77,7 @@ Result CUDA::destroy() {
     // Destroy blocks.
 
     for (const auto& block : blocks) {
-        JST_CHECK(block->destroyCompute(*metadata));
+        JST_CHECK(block->destroyCompute(*context));
     }
     blocks.clear();
 

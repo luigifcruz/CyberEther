@@ -158,13 +158,13 @@ Result Waterfall<D, T>::present() {
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::createCompute(const RuntimeMetadata&) {
+Result Waterfall<D, T>::createCompute(const Context&) {
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::compute(const RuntimeMetadata& meta) {
-    auto res = underlyingCompute(meta);
+Result Waterfall<D, T>::compute(const Context& ctx) {
+    auto res = underlyingCompute(ctx);
     inc = (inc + numberOfBatches) % config.height;
     return res;
 }

@@ -10,8 +10,6 @@
 
 namespace Jetstream { 
 
-struct RuntimeMetadata;
-
 class Graph {
  public:
     virtual ~Graph() = default;
@@ -46,7 +44,7 @@ class Graph {
     virtual Result destroy() = 0;
 
  protected:
-    std::shared_ptr<RuntimeMetadata> metadata;
+    std::shared_ptr<Compute::Context> context;
     std::vector<std::shared_ptr<Compute>> blocks;
     std::set<U64> wiredInputSet;
     std::set<U64> wiredOutputSet;

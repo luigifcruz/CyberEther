@@ -23,7 +23,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result Scale<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
     auto& assets = metal;
@@ -35,15 +35,14 @@ Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
+Result Scale<D, T>::compute(const Context& ctx) {
     auto& assets = metal;
-    auto& runtime = meta.metal;
 
     auto* constants = Metal::Constants<MetalConstants>(assets);
     constants->min = config.range.min;
     constants->max = config.range.max;
 
-    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
+    auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(metal.state);
     cmdEncoder->setBuffer(metal.constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);

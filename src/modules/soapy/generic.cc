@@ -238,7 +238,7 @@ Result Soapy<D, T>::setAutomaticGain(bool& automaticGain) {
 }
 
 template<Device D, typename T>
-Result Soapy<D, T>::createCompute(const RuntimeMetadata&) {
+Result Soapy<D, T>::createCompute(const Context&) {
     JST_TRACE("Create SoapySDR compute core.");
     return Result::SUCCESS;
 }
@@ -253,7 +253,7 @@ Result Soapy<D, T>::computeReady() {
 }
 
 template<Device D, typename T>
-Result Soapy<D, T>::compute(const RuntimeMetadata&) {
+Result Soapy<D, T>::compute(const Context&) {
     if (errored) {
         return Result::ERROR;
     }

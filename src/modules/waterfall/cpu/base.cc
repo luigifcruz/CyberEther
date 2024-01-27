@@ -3,7 +3,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata&) {
+Result Waterfall<D, T>::underlyingCompute(const Context&) {
     const auto totalSize = input.buffer.size();
     const auto fftSize = numberOfElements;
     const auto offset = inc * fftSize;

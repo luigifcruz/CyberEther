@@ -71,7 +71,7 @@ class Fold : public Module, public Compute {
     Result create();
 
  protected:
-    Result compute(const RuntimeMetadata& meta) final;
+    Result compute(const Context& ctx) final;
 
  private:
     U64 decimationFactor;

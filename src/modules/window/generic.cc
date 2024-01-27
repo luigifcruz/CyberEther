@@ -17,7 +17,7 @@ Result Window<D, T>::create() {
 }
 
 template<Device D, typename T>
-Result Window<D, T>::compute(const RuntimeMetadata&) {
+Result Window<D, T>::compute(const Context&) {
     if (baked) {
         return Result::SUCCESS;
     }

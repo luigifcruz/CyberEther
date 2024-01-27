@@ -3,14 +3,14 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result OverlapAdd<D, T>::createCompute(const RuntimeMetadata&) {
+Result OverlapAdd<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Overlap Add compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result OverlapAdd<D, T>::compute(const RuntimeMetadata&) {
+Result OverlapAdd<D, T>::compute(const Context&) {
     // Copy input buffer to output buffer.
 
     for (U64 i = 0; i < input.buffer.size(); i++) {

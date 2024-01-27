@@ -45,7 +45,7 @@ Amplitude<D, IT, OT>::~Amplitude() {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &pimpl->state));
@@ -56,10 +56,8 @@ Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
-    auto& runtime = meta.metal;
-
-    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
+Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
+    auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(pimpl->state);
     cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);

@@ -3,14 +3,14 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Lineplot<D, T>::createCompute(const RuntimeMetadata&) {
+Result Lineplot<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Lineplot<D, T>::compute(const RuntimeMetadata&) {
+Result Lineplot<D, T>::compute(const Context&) {
     const F32 normalizationFactor = 1.0f / (0.5f * numberOfBatches);
     std::vector<F32> sums(numberOfElements, 0.0f);
 

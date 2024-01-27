@@ -76,7 +76,7 @@ class TensorModifier : public Module, public Compute {
     }
 
  protected:
-    Result compute(const RuntimeMetadata& meta) final {
+    Result compute(const Context& ctx) final {
         return Result::SUCCESS;
     }
 

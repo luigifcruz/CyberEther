@@ -244,13 +244,13 @@ void Audio<D, T>::Impl::callback(ma_device* pDevice, void* pOutput, const void*,
 }
 
 template<Device D, typename T>
-Result Audio<D, T>::createCompute(const RuntimeMetadata&) {
+Result Audio<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Audio compute core.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Audio<D, T>::compute(const RuntimeMetadata&) {
+Result Audio<D, T>::compute(const Context&) {
     ma_uint64 frameCountIn  = input.buffer.size();
     ma_uint64 frameCountOut = output.buffer.size();
 

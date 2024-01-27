@@ -29,10 +29,8 @@ FFT<D, IT, OT>::~FFT() {
 }
 
 template<Device D, typename IT, typename OT>
-Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create FFT compute core using Metal backend.");
-
-    auto& runtime = meta.metal;
 
     // Assign buffers to module assets.
     pimpl->input = input.buffer.data();
@@ -44,7 +42,7 @@ Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
     pimpl->configuration->FFTdim = 1;
     pimpl->configuration->size[0] = numberOfElements;
     pimpl->configuration->device = Backend::State<Device::Metal>()->getDevice();
-    pimpl->configuration->queue = runtime.commandQueue;
+    pimpl->configuration->queue = ctx.metal->commandQueue();
     pimpl->configuration->doublePrecision = false;
     pimpl->configuration->numberBatches = numberOfOperations;
     pimpl->configuration->isInputFormatted = 1;
@@ -62,7 +60,7 @@ Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename IT, typename OT>
-Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata& meta) {
+Result FFT<D, IT, OT>::destroyCompute(const Context& ctx) {
     JST_TRACE("Destroy FFT compute core using Metal backend.");
 
     if (!pimpl->app) {
@@ -80,12 +78,10 @@ Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename IT, typename OT>
-Result FFT<D, IT, OT>::compute(const RuntimeMetadata& meta) {
-    auto& runtime = meta.metal;
-
+Result FFT<D, IT, OT>::compute(const Context& ctx) {
     VkFFTLaunchParams launchParams = {};
-    launchParams.commandBuffer = runtime.commandBuffer;
-    launchParams.commandEncoder = runtime.commandBuffer->computeCommandEncoder();
+    launchParams.commandBuffer = ctx.metal->commandBuffer();
+    launchParams.commandEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
 
     const int inverse = static_cast<int>(config.forward);
     if (auto res = VkFFTAppend(pimpl->app, inverse, &launchParams); res != VKFFT_SUCCESS) {

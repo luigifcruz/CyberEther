@@ -5,7 +5,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result AGC<D, T>::compute(const RuntimeMetadata&) {
+Result AGC<D, T>::compute(const Context&) {
     const F32 desiredLevel = 1.0f;
 
     // TODO: This is a dog shit implementation. Improve.

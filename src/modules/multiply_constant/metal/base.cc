@@ -32,7 +32,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-Result MultiplyConstant<D, T>::createCompute(const RuntimeMetadata& meta) {
+Result MultiplyConstant<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Multiply Constant compute core using Metal backend.");
 
     auto& assets = metal;
@@ -51,11 +51,10 @@ Result MultiplyConstant<D, T>::createCompute(const RuntimeMetadata& meta) {
 }
 
 template<Device D, typename T>
-Result MultiplyConstant<D, T>::compute(const RuntimeMetadata& meta) {
+Result MultiplyConstant<D, T>::compute(const Context& ctx) {
     auto& assets = metal;
-    auto& runtime = meta.metal;
 
-    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
+    auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
     cmdEncoder->setComputePipelineState(assets.state);
     cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.factor.data(), 0, 1);

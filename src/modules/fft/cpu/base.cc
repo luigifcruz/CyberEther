@@ -25,7 +25,7 @@ FFT<D, IT, OT>::~FFT() {
 }
 
 template<Device D, typename IT, typename OT>
-Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata&) {
+Result FFT<D, IT, OT>::createCompute(const Context&) {
     JST_TRACE("Create FFT compute core using CPU backend.");
 
     for (U64 i = 0; i < input.buffer.rank(); ++i) {
@@ -40,7 +40,7 @@ Result FFT<D, IT, OT>::createCompute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename IT, typename OT>
-Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata&) {
+Result FFT<D, IT, OT>::destroyCompute(const Context&) {
     JST_TRACE("Destroy FFT compute core using CPU backend.");
 
     pimpl->shape.clear();
@@ -52,7 +52,7 @@ Result FFT<D, IT, OT>::destroyCompute(const RuntimeMetadata&) {
 }
 
 template<>
-Result FFT<Device::CPU, CF32, CF32>::compute(const RuntimeMetadata&) {
+Result FFT<Device::CPU, CF32, CF32>::compute(const Context&) {
     pocketfft::c2c(pimpl->shape, 
                    pimpl->i_stride, 
                    pimpl->o_stride, 
@@ -66,7 +66,7 @@ Result FFT<Device::CPU, CF32, CF32>::compute(const RuntimeMetadata&) {
 }
 
 template<>
-Result FFT<Device::CPU, F32, CF32>::compute(const RuntimeMetadata&) {
+Result FFT<Device::CPU, F32, CF32>::compute(const Context&) {
     pocketfft::r2c(pimpl->shape, 
                    pimpl->i_stride, 
                    pimpl->o_stride, 

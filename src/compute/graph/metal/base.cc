@@ -4,20 +4,21 @@ namespace Jetstream {
 
 Metal::Metal() {
     JST_DEBUG("Creating new Metal compute graph.");
-    metadata = std::make_shared<RuntimeMetadata>();
+    context = std::make_shared<Compute::Context>();
+}
 
-    metadata->metal.commandBuffer = nullptr;
-
-    auto device = Backend::State<Device::Metal>()->getDevice();
-    metadata->metal.commandQueue = device->newCommandQueue();
+Metal::~Metal() {
+    context.reset();
 }
 
 Result Metal::create() {
-    // TODO: Check if necessary.
-    //outerPool = NS::AutoreleasePool::alloc()->init();
+    // TODO: Check if a inner pool is necessary.
+
+    auto& device = Backend::State<Device::Metal>()->getDevice();
+    _commandQueue = device->newCommandQueue();
 
     for (const auto& block : blocks) {
-        JST_CHECK(block->createCompute(*metadata));
+        JST_CHECK(block->createCompute(*context));
     }
 
     return Result::SUCCESS;
@@ -33,14 +34,14 @@ Result Metal::computeReady() {
 Result Metal::compute() {
     innerPool = NS::AutoreleasePool::alloc()->init();
 
-    metadata->metal.commandBuffer = metadata->metal.commandQueue->commandBuffer();
+    _commandBuffer = _commandQueue->commandBuffer();
 
     for (const auto& block : blocks) {
-        JST_CHECK(block->compute(*metadata));
+        JST_CHECK(block->compute(*context));
     }
 
-    metadata->metal.commandBuffer->commit();
-    metadata->metal.commandBuffer->waitUntilCompleted();
+    _commandBuffer->commit();
+    _commandBuffer->waitUntilCompleted();
 
     innerPool->release();
 
@@ -49,12 +50,11 @@ Result Metal::compute() {
 
 Result Metal::destroy() {
     for (const auto& block : blocks) {
-        JST_CHECK(block->destroyCompute(*metadata));
+        JST_CHECK(block->destroyCompute(*context));
     }
     blocks.clear();
     
-    // TODO: Check if necessary.
-    //outerPool->release();
+    // TODO: Check if a inner pool is necessary.
 
     return Result::SUCCESS;
 }
