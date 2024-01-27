@@ -2557,9 +2557,6 @@ Result Compositor::drawGraph() {
         const auto& state = nodeStates.at(locale.block());
         const auto moduleEntry = Store::BlockMetadataList().at(state.fingerprint.id);
 
-        ImGui::Text("Node ID: %d", nodeContextMenuNodeId);
-        ImGui::Separator();
-
         // Delete node.
         if (ImGui::MenuItem("Delete Node")) {
             deleteBlockMailbox = locale;
