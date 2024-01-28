@@ -19,8 +19,12 @@ class CUDA {
     std::string getDriverVersion() const;
     std::string getComputeCapability() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
-    bool hasUnifiedMemory() const;
     U64 getPhysicalMemory() const;
+
+    bool hasUnifiedMemory() const;
+    bool canExportDeviceMemory() const;
+    bool canImportDeviceMemory() const;
+    bool canImportDeviceMemory() const;
     
  private:
     Config config;

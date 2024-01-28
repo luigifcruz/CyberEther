@@ -139,6 +139,21 @@ bool CUDA::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
 }
 
+bool CUDA::canExportDeviceMemory() const {
+    // TODO: Implement logic for this.
+    return true;
+}
+
+bool CUDA::canImportDeviceMemory() const {
+    // TODO: Implement logic for this.
+    return true;
+}
+
+bool CUDA::canImportDeviceMemory() const {
+    // TODO: Implement logic for this.
+    return true;
+}
+
 U64 CUDA::getPhysicalMemory() const {
     return cache.physicalMemory;
 }

@@ -528,8 +528,16 @@ bool Vulkan::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
 }
 
-bool Vulkan::canExportMemory() const {
+bool Vulkan::canExportDeviceMemory() const {
     return availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+}
+
+bool Vulkan::canImportDeviceMemory() const {
+    return availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+}
+
+bool Vulkan::canImportHostMemory() const {
+    return availableOptionalDeviceCapabilities.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
 }
 
 U64 Vulkan::getPhysicalMemory() const {

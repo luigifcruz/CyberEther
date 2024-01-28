@@ -35,12 +35,15 @@ class Vulkan {
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
-    bool hasUnifiedMemory() const;
-    bool canExportMemory() const;
     U64 getPhysicalMemory() const;
     U64 getTotalProcessorCount() const;
     bool getLowPowerStatus() const;
     U64 getThermalState() const;
+
+    bool hasUnifiedMemory() const;
+    bool canExportDeviceMemory() const;
+    bool canImportDeviceMemory() const;
+    bool canImportDeviceMemory() const;
 
     constexpr const bool& headless() const {
         return config.headless;
