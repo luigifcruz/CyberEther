@@ -169,6 +169,7 @@ Result Instance::linkBlocks(Locale inputLocale, Locale outputLocale) {
     JST_DEBUG("[INSTANCE] Linking '{}' -> '{}'.", outputLocale, inputLocale);
 
     // Verify input parameters.
+    // TODO: Improve error messages.
 
     if (!_flowgraph.nodes().contains(inputLocale.block())) {
         JST_ERROR("[INSTANCE] Link input block '{}' doesn't exist.", inputLocale);
