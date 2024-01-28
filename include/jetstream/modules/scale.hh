@@ -19,6 +19,9 @@ namespace Jetstream {
 template<Device D, typename T = F32>
 class Scale : public Module, public Compute {
  public:
+    Scale();
+    ~Scale();
+
     // Configuration 
 
     struct Config {
@@ -77,28 +80,19 @@ class Scale : public Module, public Compute {
         return this->config.range;
     }
 
-    const Range<T>& range(const Range<T>& range) {
-        this->config.range = range;
-        return range;
-    }
+    const Range<T>& range(const Range<T>& range);
 
  protected:
     Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
 
  private:
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct MetalConstants {
-        F32 min;
-        F32 max;
-    };
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
-    struct {
-        MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
+    F32 scalingCoeff;
+    F32 offsetCoeff;
+    U64 numberOfElements;
 
     JST_DEFINE_IO();
 };
