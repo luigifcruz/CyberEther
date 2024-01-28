@@ -18,18 +18,21 @@ class TensorBuffer<Device::CUDA> {
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
                           const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer);
+    static bool CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept;
 #endif
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
-                          const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);
+                          const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);\
+    static bool CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept;
 #endif
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
                           const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer);
+    static bool CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept;
 #endif
 
     ~TensorBuffer();

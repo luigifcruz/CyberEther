@@ -36,15 +36,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CPU,
     };
 
-    // Check alignment.
-
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    if (Backend::State<Device::Metal>()->hasUnifiedMemory()) {
-        JST_TRACE("[CPU:BUFFER] Platform is unified. Enabling Metal compatibility.");
-        storage->compatible_devices.insert(Device::Metal);
-    }
-#endif
-
     // Check size.
 
     if (prototype.size_bytes == 0) {
@@ -75,18 +66,24 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     memset(buffer, 0, prototype.size_bytes);
 
-    // Register with CUDA (if available).
+    // Add compatible devices.
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if (TensorBuffer<Device::Metal>::CanImport(*this)) {
+        storage->compatible_devices.insert(Device::Metal);
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (TensorBuffer<Device::Vulkan>::CanImport(*this)) {
+        storage->compatible_devices.insert(Device::Vulkan);
+    }
+#endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    JST_TRACE("[CPU:BUFFER] Registering buffer with CUDA.");
-
-    [&]{
-        JST_CUDA_CHECK(cudaHostRegister(buffer, alignedSizeBytes, cudaHostRegisterDefault), [&]{
-            JST_WARN("[CPU:BUFFER] Failed to register buffer with CUDA: {}", err);
-        });
+    if (TensorBuffer<Device::CUDA>::CanImport(*this)) {
         storage->compatible_devices.insert(Device::CUDA);
-        return Result::SUCCESS;
-    }();
+    }
 #endif
 }
 
@@ -123,10 +120,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Metal buffer.");
 
-    // Check platform.
+    // Check if root buffer can be imported.
 
-    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
-        JST_ERROR("[CPU:BUFFER] Metal buffer is not unified. Cannot share data between CPU and GPU.");
+    if (!TensorBuffer<Device::CPU>::CanImport(*root_buffer)) {
+        JST_ERROR("[CPU:BUFFER] Metal buffer is not compatible with CPU.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -142,6 +139,26 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     owns_data = false;
     external_memory_device = Device::Metal;
 }
+
+bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
+    JST_TRACE("[CPU:BUFFER] Checking if Metal buffer can be imported.");
+
+    // Check if Metal is available.
+
+    if (!Backend::State<Device::Metal>()->isAvailable()) {
+        JST_TRACE("[CPU:BUFFER] Metal is not available.");
+        return false;
+    }
+
+    // Check if Metal buffer is host accessible.
+
+    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
+        JST_TRACE("[CPU:BUFFER] Metal buffer is not unified.");
+        return false;
+    }
+
+    return true;
+}
 #endif
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
@@ -150,10 +167,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Vulkan buffer.");
 
-    // Check platform.
+    // Check if root buffer can be imported.
 
-    if (!root_buffer->host_accessible()) {
-        JST_ERROR("[CPU:BUFFER] Vulkan buffer is not host accessible. Cannot share data with CPU.");
+    if (!TensorBuffer<Device::CPU>::CanImport(*root_buffer)) {
+        JST_ERROR("[CPU:BUFFER] Vulkan buffer is not compatible with CPU.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -179,18 +196,38 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     owns_data = false;
     external_memory_device = Device::Vulkan;
 }
+
+bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
+    JST_TRACE("[CPU:BUFFER] Checking if Vulkan buffer can be imported.");
+
+    // Check if Vulkan is available.
+
+    if (!Backend::State<Device::Vulkan>()->isAvailable()) {
+        JST_TRACE("[CPU:BUFFER] Vulkan is not available.");
+        return false;
+    }
+
+    // Check if Vulkan buffer is host accessible.
+
+    if (!root_buffer.host_accessible()) {
+        JST_TRACE("[CPU:BUFFER] Vulkan buffer is not host accessible.");
+        return false;
+    }
+
+    return true;
+}
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from CUDA buffer.");
 
-    // Check platform.
+    // Check if root buffer can be imported.
 
-    if (!root_buffer->host_accessible()) {
-        JST_ERROR("[CPU:BUFFER] CUDA buffer is not host accessible. It cannot share data with the CPU.");
+    if (!TensorBuffer<Device::CPU>::CanImport(*root_buffer)) {
+        JST_ERROR("[CPU:BUFFER] CUDA buffer is not compatible with CPU.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -206,6 +243,26 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     owns_data = false;
     external_memory_device = Device::CUDA;
 }
+
+bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
+    JST_TRACE("[CPU:BUFFER] Checking if CUDA buffer can be imported.");
+
+    // Check if CUDA is available.
+
+    if (!Backend::State<Device::CUDA>()->isAvailable()) {
+        JST_TRACE("[CPU:BUFFER] CUDA is not available.");
+        return false;
+    }
+
+    // Check if CUDA buffer is host accessible.
+
+    if (!root_buffer.host_accessible()) {
+        JST_TRACE("[CPU:BUFFER] CUDA buffer is not host accessible.");
+        return false;
+    }
+
+    return true;
+}
 #endif
 
 Implementation::~TensorBuffer() {
@@ -217,21 +274,6 @@ Implementation::~TensorBuffer() {
     if (external_memory_device == Device::Vulkan) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
         vkUnmapMemory(device, vulkan_memory);
-    }
-#endif
-
-    // Unregister memory if registered with CUDA.
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    if (owns_data) {
-        JST_TRACE("[CPU:BUFFER] Unregistering buffer from CUDA.");
-
-        [&]{
-            JST_CUDA_CHECK(cudaHostUnregister(buffer), [&]{
-                JST_WARN("[CPU:BUFFER] Failed to unregister buffer from CUDA: {}", err);
-            });
-            return Result::SUCCESS;
-        }();
     }
 #endif
 
