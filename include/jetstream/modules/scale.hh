@@ -16,6 +16,9 @@ namespace Jetstream {
 #define JST_SCALE_METAL(MACRO) \
     MACRO(Scale, Metal, F32)
 
+#define JST_SCALE_CUDA(MACRO) \
+    MACRO(Scale, CUDA, F32)
+
 template<Device D, typename T = F32>
 class Scale : public Module, public Compute {
  public:
@@ -99,6 +102,9 @@ class Scale : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE
 JST_SCALE_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_SCALE_CUDA_AVAILABLE
+JST_SCALE_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_SCALE_METAL_AVAILABLE
 JST_SCALE_METAL(JST_SPECIALIZATION);
