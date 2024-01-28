@@ -143,13 +143,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Metal buffer can be imported.");
 
-    // Check if Metal is available.
-
-    if (!Backend::State<Device::Metal>()->isAvailable()) {
-        JST_TRACE("[CPU:BUFFER] Metal is not available.");
-        return false;
-    }
-
     // Check if Metal buffer is host accessible.
 
     if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
@@ -200,13 +193,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Vulkan buffer can be imported.");
 
-    // Check if Vulkan is available.
-
-    if (!Backend::State<Device::Vulkan>()->isAvailable()) {
-        JST_TRACE("[CPU:BUFFER] Vulkan is not available.");
-        return false;
-    }
-
     // Check if Vulkan buffer is host accessible.
 
     if (!root_buffer.host_accessible()) {
@@ -246,13 +232,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
 bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if CUDA buffer can be imported.");
-
-    // Check if CUDA is available.
-
-    if (!Backend::State<Device::CUDA>()->isAvailable()) {
-        JST_TRACE("[CPU:BUFFER] CUDA is not available.");
-        return false;
-    }
 
     // Check if CUDA buffer is host accessible.
 

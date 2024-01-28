@@ -20,6 +20,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const TensorPrototypeMetadata& prototype) {
     JST_TRACE("[METAL:BUFFER] Allocating new buffer.");
 
+    // Check if Metal is available.
+
+    if (!Backend::State<Device::Metal>()->isAvailable()) {
+        JST_TRACE("[METAL:BUFFER] Metal is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
     // Initialize storage.
 
     storage->root_device = Device::Metal;
@@ -74,6 +81,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
     JST_TRACE("[METAL:BUFFER] Cloning from CPU buffer.");
+
+    // Check if Metal is available.
+
+    if (!Backend::State<Device::Metal>()->isAvailable()) {
+        JST_TRACE("[METAL:BUFFER] Metal is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
 
     // Check if root buffer can be imported.
 

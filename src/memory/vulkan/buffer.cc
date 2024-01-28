@@ -23,6 +23,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const VkBufferUsageFlags& usage) {
     JST_TRACE("[VULKAN:BUFFER] Allocating new buffer.");
 
+    // Check if Vulkan is available.
+
+    if (!Backend::State<Device::Vulkan>()->isAvailable()) {
+        JST_TRACE("[VULKAN:BUFFER] Vulkan is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
     // Initialize storage.
 
     storage->root_device = Device::Vulkan;

@@ -23,6 +23,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const bool& host_accessible) {
     JST_TRACE("[CUDA:BUFFER] Allocating new buffer.");
 
+    // Check if CUDA is available.
+
+    if (!Backend::State<Device::CUDA>()->isAvailable()) {
+        JST_FATAL("[CUDA:BUFFER] CUDA is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
     // Initialize storage.
 
     storage->root_device = Device::CUDA;
@@ -85,6 +92,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
     JST_TRACE("[CUDA:BUFFER] Cloning from Vulkan buffer.");
+
+    // Check if CUDA is available.
+
+    if (!Backend::State<Device::CUDA>()->isAvailable()) {
+        JST_ERROR("[CUDA:BUFFER] CUDA is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
 
     // Check if root buffer can be imported.
 
@@ -181,6 +195,13 @@ bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) 
         return false;
     }
 
+    // Check if memory is device native. 
+
+    if (!root_buffer.device_native()) {
+        JST_TRACE("[CUDA:BUFFER] Vulkan buffer is not device native.");
+        return false;
+    }
+
     return true;
 }
 #endif
@@ -190,6 +211,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
     JST_TRACE("[CUDA:BUFFER] Cloning from CPU buffer.");
+
+    // Check if CUDA is available.
+
+    if (!Backend::State<Device::CUDA>()->isAvailable()) {
+        JST_FATAL("[CUDA:BUFFER] CUDA is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
 
     // Check if root buffer can be imported.
 
@@ -236,6 +264,13 @@ bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noe
 
     if (!Backend::State<Device::CUDA>()->isAvailable()) {
         JST_TRACE("[CUDA:BUFFER] CUDA is not available.");
+        return false;
+    }
+
+    // Check if CUDA can import host memory.
+
+    if (!Backend::State<Device::CUDA>()->canImportHostMemory()) {
+        JST_TRACE("[CUDA:BUFFER] CUDA cannot import host memory.");
         return false;
     }
 
