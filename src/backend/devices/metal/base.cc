@@ -20,6 +20,10 @@ Metal::Metal(const Config& config) {
     // Import generic information.
     info = NS::ProcessInfo::processInfo();
 
+    // Signal device is available.
+
+    _isAvailable = true;
+
     // Print device information.
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [METAL]")
@@ -36,6 +40,10 @@ Metal::Metal(const Config& config) {
 Metal::~Metal() {
     info->release();
     device->release();
+}
+
+bool Metal::isAvailable() const {
+    return _isAvailable;
 }
 
 std::string Metal::getDeviceName() const {

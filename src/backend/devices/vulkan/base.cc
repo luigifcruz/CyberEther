@@ -477,6 +477,10 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         });
     }
 
+    // Signal device is available.
+
+    _isAvailable = true;
+
     // Print device information.
 
     JST_INFO("-----------------------------------------------------");
@@ -510,6 +514,10 @@ Vulkan::~Vulkan() {
 
     vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
+}
+
+bool Vulkan::isAvailable() const {
+    return _isAvailable;
 }
 
 std::string Vulkan::getDeviceName() const {

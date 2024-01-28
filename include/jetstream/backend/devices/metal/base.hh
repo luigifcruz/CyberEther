@@ -11,6 +11,7 @@ class Metal {
     explicit Metal(const Config& config);
     ~Metal();
 
+    bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     bool hasUnifiedMemory() const;
@@ -28,6 +29,7 @@ class Metal {
  private:
     MTL::Device* device;
     NS::ProcessInfo* info;
+    bool _isAvailable = false;
 };
 
 }  // namespace Jetstream::Backend

@@ -32,6 +32,7 @@ class Vulkan {
     explicit Vulkan(const Config& config);
     ~Vulkan();
 
+    bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
@@ -107,7 +108,6 @@ class Vulkan {
 
  private:
     Config config;
-
     VkDevice device;
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
@@ -123,6 +123,7 @@ class Vulkan {
     VkQueue computeQueue;
     VkQueue presentQueue;
     std::set<std::string> availableOptionalDeviceCapabilities;
+    bool _isAvailable = false;
 
     struct {
         std::string deviceName;
