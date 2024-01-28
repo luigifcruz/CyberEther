@@ -26,7 +26,7 @@ static const char shadersSrc[] = R"""(
 
 template<Device D, typename IT, typename OT>
 struct Amplitude<D, IT, OT>::Impl {
-    struct MetalConstants {
+    struct Constants {
         F32 scalingCoeff;
     };
 
@@ -49,7 +49,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &pimpl->state));
-    auto* constants = Metal::CreateConstants<MetalConstants>(assets);
+    auto* constants = Metal::CreateConstants<Impl::Constants>(assets);
     constants->scalingCoeff = scalingCoeff;
 
     return Result::SUCCESS;
