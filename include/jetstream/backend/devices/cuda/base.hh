@@ -24,7 +24,7 @@ class CUDA {
     bool hasUnifiedMemory() const;
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
-    bool canImportDeviceMemory() const;
+    bool canImportHostMemory() const;
     
  private:
     Config config;

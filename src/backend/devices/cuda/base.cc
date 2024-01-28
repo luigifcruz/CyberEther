@@ -149,7 +149,7 @@ bool CUDA::canImportDeviceMemory() const {
     return true;
 }
 
-bool CUDA::canImportDeviceMemory() const {
+bool CUDA::canImportHostMemory() const {
     // TODO: Implement logic for this.
     return true;
 }
