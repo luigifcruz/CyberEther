@@ -23,7 +23,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
-    const auto& canExport = Backend::State<Device::Vulkan>()->canExportMemory();
+    const auto& canExport = Backend::State<Device::Vulkan>()->canExportDeviceMemory();
 
     // Add CPU and CUDA support if unified memory is enabled.
 

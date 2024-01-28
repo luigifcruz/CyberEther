@@ -80,7 +80,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         JST_CHECK_THROW(Result::ERROR);
     }
 
-    if (!Backend::State<Device::Vulkan>()->canExportMemory()) {
+    if (!Backend::State<Device::Vulkan>()->canExportDeviceMemory()) {
         JST_FATAL("[CUDA:BUFFER] Vulkan buffer cannot export memory. It cannot share data with CUDA.");
         JST_CHECK_THROW(Result::ERROR);
     }
