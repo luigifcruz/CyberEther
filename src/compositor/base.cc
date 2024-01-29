@@ -2465,6 +2465,10 @@ Result Compositor::drawGraph() {
             ImGui::BeginTooltip();
             ImGui::TextWrapped(ICON_FA_MEMORY " Tensor Metadata");
             ImGui::Separator();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+            ImGui::Text(ICON_FA_CIRCLE_INFO " Click on the end of the link to detach it.");
+            ImGui::PopStyleColor();
+            ImGui::Separator();
 
             const auto firstLine  = jst::fmt::format("[{} -> {}]", outputLocale, inputLocale);
             const auto secondLine = jst::fmt::format("[{}] {} [Device::{}]", rec.dataType, rec.shape, rec.device);
