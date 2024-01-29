@@ -119,7 +119,7 @@ std::vector<std::pair<ma_device_id, std::string>> Audio<D, T>::Impl::GetAvailabl
 }
 
 template<Device D, typename T>
-Audio<D, T>::DeviceList Audio<D, T>::ListAvailableDevices() {
+typename Audio<D, T>::DeviceList Audio<D, T>::ListAvailableDevices() {
     const auto& devices = Impl::GetAvailableDevice();
 
     DeviceList deviceList;
