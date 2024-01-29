@@ -31,6 +31,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--backend") {
+            // TODO: Add check for valid backend.
+
             if (i + 1 < argc) {
                 prefferedBackend = StringToDevice(argv[++i]);
             }
@@ -57,6 +59,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--benchmark") {
+            // TODO: Add check for valid output type.
+
             std::string outputType = "markdown";
 
             if (i + 1 < argc) {
@@ -86,6 +90,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--codec") {
+            // TODO: Add check for valid codec.
+
             if (i + 1 < argc) {
                 viewportConfig.codec = Render::StringToVideoCodec(argv[++i]);
             }
