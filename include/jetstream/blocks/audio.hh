@@ -170,7 +170,7 @@ class Audio : public Block {
  private:
     std::shared_ptr<AudioModule> audio;
 
-    AudioModule::DeviceList availableDeviceList;
+    typename AudioModule::DeviceList availableDeviceList;
 
     JST_DEFINE_IO();
 };
