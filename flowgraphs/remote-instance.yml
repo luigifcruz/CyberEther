@@ -12,16 +12,15 @@ graph:
     device: cpu
     config:
       note: |-
-        The Remote block can connect to a remote CyberEther instance running in
-        another machine via the network. The mouse and keyboard inputs will
-        also be sent to the remote instance. Just like any VNC!
+        ## The Remote View Block
+        The Remote block can connect to a remote CyberEther instance running in another machine via the network. The mouse and keyboard inputs will also be sent to the remote instance. Just like any VNC!
         
+        ## Usage
         Run in the remote machine:
         `./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264`
         
-        Note: This block will use two ports, the first one is shown in the
-        block below (TCP:5002) for telemetry and control and a second one
-        (UDP:5003) for data streaming.
+        ## Note
+        This block will use two ports, the first one is shown in the block below (TCP:5002) for telemetry and control and a second one (UDP:5003) for data streaming.
     interface:
       previewEnabled: true
       viewEnabled: false
@@ -36,7 +35,7 @@ graph:
       endpoint: '127.0.0.1:5002'
     interface:
       previewEnabled: true
-      viewEnabled: false
+      viewEnabled: true
       nodeWidth: 300
-      nodePos: [456, 308.99997]
+      nodePos: [459, 468]
       controlEnabled: false

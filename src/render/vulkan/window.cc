@@ -2,6 +2,8 @@
 #include "jetstream/render/vulkan/surface.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
+#include "tools/imgui_impl_vulkan.h"
+
 const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace Jetstream::Render {
@@ -259,19 +261,6 @@ Result Implementation::createImgui() {
         .CheckVkResultFn = nullptr
     };
     ImGui_ImplVulkan_Init(&init_info, renderPass); 
-
-    JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
-                                   backend->getComputeQueue(),
-                                   backend->getDefaultFence(),
-                                   backend->getDefaultCommandBuffer(),
-        [&](VkCommandBuffer& commandBuffer){
-            ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
-
-            return Result::SUCCESS;
-        }
-    ));
-
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
 
     return Result::SUCCESS;
 }

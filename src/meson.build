@@ -1,6 +1,5 @@
 src_lst += files([
    'instance.cc',
-   'compositor.cc',
    'store.cc',
    'parser.cc',
    'logger.cc',
@@ -16,3 +15,4 @@ subdir('compute')
 subdir('flowgraph')
 subdir('platform')
 subdir('tools')
+subdir('compositor')

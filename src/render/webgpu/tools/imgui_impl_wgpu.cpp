@@ -10,8 +10,11 @@
 
 // You can use unmodified imgui_impl_* files in your project. See examples/ folder for examples of using this.
 // Prefer including the entire imgui/ repository into your project (either as a copy or as a submodule), and only build the backends you need.
-// If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
-// Read online: https://github.com/ocornut/imgui/tree/master/docs
+// Learn about Dear ImGui:
+// - FAQ                  https://dearimgui.com/faq
+// - Getting Started      https://dearimgui.com/getting-started
+// - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
+// - Introduction, links and more at the top of imgui.cpp
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
@@ -328,7 +331,9 @@ static void ImGui_ImplWGPU_SetupRenderState(ImDrawData* draw_data, WGPURenderPas
 void ImGui_ImplWGPU_RenderDrawData(ImDrawData* draw_data, WGPURenderPassEncoder pass_encoder)
 {
     // Avoid rendering when minimized
-    if (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f)
+    int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+    int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
+    if (fb_width <= 0 || fb_height <= 0 || draw_data->CmdListsCount == 0)
         return;
 
     // FIXME: Assuming that this only gets called once per frame!
@@ -447,21 +452,17 @@ void ImGui_ImplWGPU_RenderDrawData(ImDrawData* draw_data, WGPURenderPassEncoder 
                 // Project scissor/clipping rectangles into framebuffer space
                 ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
                 ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
+
+                // Clamp to viewport as wgpuRenderPassEncoderSetScissorRect() won't accept values that are off bounds
+                if (clip_min.x < 0.0f) { clip_min.x = 0.0f; }
+                if (clip_min.y < 0.0f) { clip_min.y = 0.0f; }
+                if (clip_max.x > fb_width) { clip_max.x = (float)fb_width; }
+                if (clip_max.y > fb_height) { clip_max.y = (float)fb_height; }
                 if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
                     continue;
 
                 // Apply scissor/clipping rectangle, Draw
-
-                // UPDATE-ME: Out of bounds Scissor Rect on WebGPU (Chrome) fix.
-                ImGuiIO& io = ImGui::GetIO();
-                uint32_t w = clip_max.x - clip_min.x;
-                uint32_t h = clip_max.y - clip_min.y;
-                if ((io.DisplayFramebufferScale.x * io.DisplaySize.x) < w)
-                    w = (uint32_t)(io.DisplayFramebufferScale.x * io.DisplaySize.x);
-                if ((io.DisplayFramebufferScale.y * io.DisplaySize.y) < h)
-                    h = (uint32_t)(io.DisplayFramebufferScale.y * io.DisplaySize.y);
-
-                wgpuRenderPassEncoderSetScissorRect(pass_encoder, (uint32_t)clip_min.x, (uint32_t)clip_min.y, w, h);
+                wgpuRenderPassEncoderSetScissorRect(pass_encoder, (uint32_t)clip_min.x, (uint32_t)clip_min.y, (uint32_t)(clip_max.x - clip_min.x), (uint32_t)(clip_max.y - clip_min.y));
                 wgpuRenderPassEncoderDrawIndexed(pass_encoder, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);
             }
         }
@@ -610,9 +611,9 @@ bool ImGui_ImplWGPU_CreateDeviceObjects()
     // Vertex input configuration
     WGPUVertexAttribute attribute_desc[] =
     {
-        { WGPUVertexFormat_Float32x2, (uint64_t)IM_OFFSETOF(ImDrawVert, pos), 0 },
-        { WGPUVertexFormat_Float32x2, (uint64_t)IM_OFFSETOF(ImDrawVert, uv),  1 },
-        { WGPUVertexFormat_Unorm8x4,  (uint64_t)IM_OFFSETOF(ImDrawVert, col), 2 },
+        { WGPUVertexFormat_Float32x2, (uint64_t)offsetof(ImDrawVert, pos), 0 },
+        { WGPUVertexFormat_Float32x2, (uint64_t)offsetof(ImDrawVert, uv),  1 },
+        { WGPUVertexFormat_Unorm8x4,  (uint64_t)offsetof(ImDrawVert, col), 2 },
     };
 
     WGPUVertexBufferLayout buffer_layouts[1];

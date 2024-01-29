@@ -4,8 +4,6 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
-#include "jetstream/render/tools/imgui_impl_glfw.h"
-
 namespace Jetstream::Viewport {
 
 template<Device DeviceId>

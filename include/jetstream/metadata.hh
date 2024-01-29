@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_METADATA_HH
 #define JETSTREAM_METADATA_HH
 
+// TODO: Rename to RuntimeContext.
+
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/base.hh"
 #endif
@@ -21,7 +23,7 @@ struct RuntimeMetadata {
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     struct {
-       const cudaStream_t stream = 0; 
+       cudaStream_t stream = 0; 
     } cuda;
 #endif
 

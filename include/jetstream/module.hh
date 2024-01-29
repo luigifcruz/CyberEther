@@ -64,7 +64,11 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
             
-        buffer.set_locale({locale.blockId, locale.moduleId, name});
+        buffer.set_locale({
+            locale.blockId, 
+            locale.moduleId, 
+            name
+        });
 
         if (!buffer.empty()) {
             JST_ERROR("The output buffer should be empty during initialization.");

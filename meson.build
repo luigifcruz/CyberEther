@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.0.0',
+    version: '1.0.0-alpha2',
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
@@ -16,9 +16,11 @@ project(
 jst_build_optimize = get_option('optimization')
 jst_build_debug = get_option('debug')
 jst_is_static = get_option('default_library') == 'static'
-jst_is_release = jst_build_debug
+jst_is_release = not jst_build_debug
+jst_is_crossbuild = meson.is_cross_build()
 
-jst_is_linux   = target_machine.system() == 'linux'
+jst_is_linux   = target_machine.system() == 'linux' or \
+                 target_machine.system() == 'freebsd'
 jst_is_macos   = target_machine.system() == 'darwin'
 jst_is_ios     = target_machine.system() == 'ios'
 jst_is_android = target_machine.system() == 'android'
@@ -46,7 +48,6 @@ cfg_lst = configuration_data()
 src_lst = []
 dep_lst = [
     dependency('threads'),
-    dependency('fmt', version: '>=9.1', fallback: 'fmt', default_options: ['default_library=static']),
 ]
 inc_lst = [
     include_directories('include'),
@@ -63,6 +64,7 @@ cfg_lst.set('version', meson.project_version())
 cfg_lst.set('buildtype', get_option('buildtype'))
 cfg_lst.set('optimization', get_option('optimization'))
 cfg_lst.set('debug', get_option('debug'))
+cfg_lst.set('native', get_option('native'))
 
 cfg_lst.set('JST_IS_STATIC', jst_is_static)
 cfg_lst.set('JST_IS_SHARED', not jst_is_static)
@@ -130,11 +132,9 @@ endif
 
 if not jst_is_browser and \
    not jst_is_android and \
-   not jst_is_ios and \
-   not jst_is_windows
+   not jst_is_ios
     subdir('tests')
 endif
-
 
 if not jst_is_browser and \
    not jst_is_android and \
@@ -150,5 +150,5 @@ summary({
     'cpp_std': get_option('cpp_std'),
     'prefix': get_option('prefix'),
     'buildtype': get_option('buildtype'),
-    'crossbuild': meson.is_cross_build(),
+    'crossbuild': jst_is_crossbuild,
 }, section: 'General', bool_yn: true)

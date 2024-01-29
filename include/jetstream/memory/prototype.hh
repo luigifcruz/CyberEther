@@ -36,6 +36,18 @@ class TensorPrototype {
         return prototype.offset;
     }
 
+    constexpr const U64& offset_bytes() const noexcept {
+        return prototype.offset_bytes;
+    }
+
+    constexpr const std::vector<U64>& shape() const noexcept {
+        return prototype.shape;
+    }
+
+    constexpr const std::vector<U64>& stride() const noexcept {
+        return prototype.stride;
+    }
+
     constexpr const std::vector<U64>& shape_minus_one() const noexcept {
         return prototype.shape_minus_one;
     }
@@ -48,14 +60,6 @@ class TensorPrototype {
         return prototype.hash;
     }
 
-    constexpr const std::vector<U64>& shape() const noexcept {
-        return prototype.shape;
-    }
-
-    constexpr const std::vector<U64>& stride() const noexcept {
-        return prototype.stride;
-    }
-
     constexpr bool empty() const noexcept {
         return prototype.size == 0;
     }
@@ -66,14 +70,6 @@ class TensorPrototype {
 
     constexpr const Locale& locale() const noexcept {
         return prototype.locale;
-    }
-
-    constexpr bool operator==(const TensorPrototype& other) const noexcept {
-        return prototype.hash == other.prototype.hash;
-    }
-
-    constexpr bool operator!=(const TensorPrototype& other) const noexcept {
-        return prototype.hash != other.prototype.hash;
     }
 
     const U64& shape(const U64& idx) const noexcept {
@@ -102,13 +98,13 @@ class TensorPrototype {
         U64 index = prototype.offset;
         U64 pad = shape.size() - prototype.stride.size();
         for (U64 i = 0; i < prototype.stride.size(); i++) {
-            // TODO: This is a hack. This should be done by modifiying the stride.
-            index += ((shape[pad + i] >= prototype.shape[i]) ? 0 : shape[pad + i]) * prototype.stride[i];
+            index += shape[pad + i] * prototype.stride[i];
         }
         return index;
     }
 
     void offset_to_shape(U64 index, std::vector<U64>& shape) const {
+        index -= prototype.offset;
         for (U64 i = 0; i < prototype.stride.size(); i++) {
             shape[i] = index / prototype.stride[i];
             index -= shape[i] * prototype.stride[i];
@@ -117,7 +113,8 @@ class TensorPrototype {
 
     void expand_dims(const U64& axis) {
         prototype.shape.insert(prototype.shape.begin() + axis, 1);
-        prototype.stride.insert(prototype.stride.begin() + axis, 1);
+        const U64& stride = (axis == 0) ? prototype.stride[0] : prototype.stride[axis - 1];
+        prototype.stride.insert(prototype.stride.begin() + axis, stride);
         update_cache();
     }
 
@@ -189,7 +186,8 @@ class TensorPrototype {
             switch (token.get_type()) {
                 case Token::Type::Number: {
                     if (dim >= prototype.shape.size()) {
-                        throw std::runtime_error("Index exceeds array dimensions.");
+                        JST_ERROR("[MEMORY] Index exceeds array dimensions.");
+                        return Result::ERROR;
                     }
                     offset += token.get_a() * prototype.stride[dim];
                     dim++;
@@ -197,7 +195,8 @@ class TensorPrototype {
                 }
                 case Token::Type::Colon: {
                     if (dim >= prototype.shape.size()) {
-                        throw std::runtime_error("Index exceeds array dimensions.");
+                        JST_ERROR("[MEMORY] Index exceeds array dimensions.");
+                        return Result::ERROR;
                     }
                     const U64 start = token.get_a();
                     U64 end = token.get_b();
@@ -215,7 +214,8 @@ class TensorPrototype {
                 }
                 case Token::Type::Ellipsis: {
                     if (ellipsis_used) {
-                        throw std::runtime_error("Ellipsis used more than once.");
+                        JST_ERROR("[MEMORY] Ellipsis used more than once.");
+                        return Result::ERROR;
                     }
                     ellipsis_used = true;
                     const U64 remaining_dims = prototype.shape.size() - (tokens.size() - 1) + 1;
@@ -255,8 +255,13 @@ class TensorPrototype {
     TensorPrototypeMetadata prototype;
 
     void initialize(const std::vector<U64>& shape, const U64& element_size) {
-        prototype.shape = shape;
         prototype.element_size = element_size;
+
+        if (shape.empty()) {
+            return;
+        }
+
+        prototype.shape = shape;
 
         prototype.stride.resize(prototype.shape.size());
         for (U64 i = 0; i < prototype.shape.size(); i++) {
@@ -290,6 +295,9 @@ class TensorPrototype {
 
         prototype.size_bytes = prototype.size * 
                                prototype.element_size;
+
+        prototype.offset_bytes = prototype.offset * 
+                                 prototype.element_size;
     }
 };
 

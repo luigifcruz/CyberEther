@@ -8,38 +8,19 @@ static const char shadersSrc[] = R"""(
 
     using namespace metal;
 
-    // ported from cuComplex
-    float jsAbs(float2 x) {
-        float a = x.x;
-        float b = x.y;
-        float v, w, t;
-        a = abs(a);
-        b = abs(b);
-        if (a > b) {
-            v = a;
-            w = b; 
-        } else {
-            v = b;
-            w = a;
-        }
-        t = w / v;
-        t = 1.0f + t * t;
-        t = v * sqrt(t);
-        if ((v == 0.0f) || (v > 3.402823466e38f) || (w > 3.402823466e38f)) {
-            t = v + w;
-        }
-        return t;
-    }
-
     struct Constants {
-        float scalingSize;
+        float scalingCoeff;
     };
 
     kernel void amplitude(constant Constants& constants [[ buffer(0) ]],
                           constant const float2 *input [[ buffer(1) ]],
                           device float *output [[ buffer(2) ]],
                           uint id[[ thread_position_in_grid ]]) {
-        output[id] = 20.0 * log10(jsAbs(input[id]) / constants.scalingSize);
+        float2 number = input[id];
+        float real = number.x;
+        float imag = number.y;
+        float pwr = sqrt((real * real) + (imag * imag));
+        output[id] = 20.0 * log10(pwr) + constants.scalingCoeff;
     }
 )""";
 
@@ -51,7 +32,7 @@ Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &assets.state));
     auto* constants = Metal::CreateConstants<MetalConstants>(assets);
-    constants->scalingSize = scalingSize;
+    constants->scalingCoeff = scalingCoeff;
 
     return Result::SUCCESS;
 }
@@ -74,5 +55,6 @@ Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
 }
 
 JST_AMPLITUDE_METAL(JST_INSTANTIATION)
+JST_AMPLITUDE_METAL(JST_BENCHMARK)
     
 }  // namespace Jetstream

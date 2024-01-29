@@ -19,6 +19,8 @@ namespace Jetstream::Blocks {
     JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, void, void) \
     JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, CF32, void) \
     JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, F32, void) \
+    JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, void, CF32) \
+    JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, void, F32) \
     JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, CF32, CF32) \
     JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, CF32, F32) \
     JST_BLOCKS_MANIFEST_ADD(BLOCK, DEVICE, F32, CF32) \
@@ -129,8 +131,8 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_REMOTE_AVAILABLE
         Blocks::Remote,
 #endif
-#ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
-        Blocks::Filter,
+#ifdef JETSTREAM_BLOCK_FILTER_TAPS_AVAILABLE
+        Blocks::FilterTaps,
 #endif
 #ifdef JETSTREAM_BLOCK_AMPLITUDE_AVAILABLE
         Blocks::Amplitude,
@@ -179,6 +181,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #endif
 #ifdef JETSTREAM_BLOCK_SPECTROSCOPE_AVAILABLE
         Blocks::Spectroscope,
+#endif
+#ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
+        Blocks::Filter,
 #endif
         // [NEW BLOCK HOOK]
     )

@@ -8,8 +8,6 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
-#include "jetstream/tools/miniaudio.h"
-
 namespace Jetstream {
 
 #define JST_AUDIO_CPU(MACRO) \
@@ -18,13 +16,21 @@ namespace Jetstream {
 template<Device D, typename T = F32>
 class Audio : public Module, public Compute {
  public:
+    Audio();
+    ~Audio();
+
+    // Types
+
+    typedef std::vector<std::string> DeviceList;
+
     // Configuration 
 
     struct Config {
+        std::string deviceName = "Default";
         F32 inSampleRate = 48e3;
         F32 outSampleRate = 48e3;
 
-        JST_SERDES(inSampleRate, outSampleRate);
+        JST_SERDES(deviceName, inSampleRate, outSampleRate);
     };
 
     constexpr const Config& getConfig() const {
@@ -72,19 +78,23 @@ class Audio : public Module, public Compute {
     Result create();
     Result destroy();
 
+    // Miscellaneous
+
+    constexpr const std::string& getDeviceName() const {
+        return deviceName;
+    }
+
+    static DeviceList ListAvailableDevices();
+
  protected:
     Result createCompute(const RuntimeMetadata& meta) final;
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-    ma_device_config deviceConfig;
-    ma_device deviceCtx;
-    ma_resampler_config resamplerConfig;
-    ma_resampler resamplerCtx;
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
-    Memory::CircularBuffer<F32> buffer;
-
-    static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
+    std::string deviceName;
 
     JST_DEFINE_IO();
 };

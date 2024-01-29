@@ -266,7 +266,7 @@ Result Endpoint::createSocketEndpoint() {
                     // Parse command `ping`.
 
                     if (line.compare(0, 4, "ping") == 0) {
-                        auto response = fmt::format("pong\n");
+                        auto response = jst::fmt::format("pong\n");
                         send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                         continue;
                     }
@@ -348,7 +348,7 @@ Result Endpoint::createSocketEndpoint() {
 
                             if (socketConnected) {
                                 JST_ERROR("[ENDPOINT] Socket is already connected.");
-                                auto response = fmt::format("err:Socket is already connected.\n");
+                                auto response = jst::fmt::format("err:Socket is already connected.\n");
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                                 continue;
                             }
@@ -359,7 +359,7 @@ Result Endpoint::createSocketEndpoint() {
                             socklen_t brokerEndpointClientAddressLength = sizeof(brokerEndpointClientAddress);
                             if (getpeername(brokerClientFileDescriptor, (struct sockaddr*)&brokerEndpointClientAddress, &brokerEndpointClientAddressLength) < 0) {
                                 JST_ERROR("[ENDPOINT] Failed to get client address from broker endpoint.");
-                                auto response = fmt::format("err:Failed to get client address.\n");
+                                auto response = jst::fmt::format("err:Failed to get client address.\n");
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                                 continue;
                             }
@@ -375,7 +375,7 @@ Result Endpoint::createSocketEndpoint() {
                             // Create Gstreamer endpoint.
 
                             if (startGstreamerEndpoint() != Result::SUCCESS) {
-                                auto response = fmt::format("err:{}\n", JST_LOG_LAST_ERROR());
+                                auto response = jst::fmt::format("err:{}\n", JST_LOG_LAST_ERROR());
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                                 continue;
                             }
@@ -383,7 +383,7 @@ Result Endpoint::createSocketEndpoint() {
                             // Send response.
 
                             {
-                                auto response = fmt::format("ok:connect\n");
+                                auto response = jst::fmt::format("ok:connect\n");
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                             }
 
@@ -397,7 +397,7 @@ Result Endpoint::createSocketEndpoint() {
 
                             if (!socketConnected) {
                                 JST_ERROR("[ENDPOINT] Socket is already disconnected.");
-                                auto response = fmt::format("err:Socket is already disconnected.\n");
+                                auto response = jst::fmt::format("err:Socket is already disconnected.\n");
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                                 continue;
                             }
@@ -405,7 +405,7 @@ Result Endpoint::createSocketEndpoint() {
                             // Send response.
 
                             {
-                                auto response = fmt::format("ok:disconnect\n", socketAddress, socketPort);
+                                auto response = jst::fmt::format("ok:disconnect\n", socketAddress, socketPort);
                                 send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                             }
 
@@ -416,7 +416,7 @@ Result Endpoint::createSocketEndpoint() {
                         // Parse command `cmd:fbsize`.
 
                         if (line.compare(0, 10, "cmd:fbsize") == 0) {
-                            auto response = fmt::format("ok:fbsize:{:05},{:05}\n", config.size.width, config.size.height);
+                            auto response = jst::fmt::format("ok:fbsize:{:05},{:05}\n", config.size.width, config.size.height);
                             send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
 
                             continue;
@@ -425,7 +425,7 @@ Result Endpoint::createSocketEndpoint() {
                         // Parse command `cmd:framerate`.
 
                         if (line.compare(0, 13, "cmd:framerate") == 0) {
-                            auto response = fmt::format("ok:framerate:{}\n", config.framerate);
+                            auto response = jst::fmt::format("ok:framerate:{}\n", config.framerate);
                             send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
 
                             continue;
@@ -434,7 +434,7 @@ Result Endpoint::createSocketEndpoint() {
                         // Parse command `cmd:codec`.
 
                         if (line.compare(0, 9, "cmd:codec") == 0) {
-                            auto response = fmt::format("ok:codec:{}\n", Render::VideoCodecToString(config.codec));
+                            auto response = jst::fmt::format("ok:codec:{}\n", Render::VideoCodecToString(config.codec));
                             send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
 
                             continue;
@@ -459,7 +459,7 @@ Result Endpoint::createSocketEndpoint() {
 
                     {
                         JST_ERROR("[ENDPOINT] Received unrecognized message from client: '{}'.", line);
-                        auto response = fmt::format("err:Unrecognized message.\n");
+                        auto response = jst::fmt::format("err:Unrecognized message.\n");
                         send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
                         continue;
                     }
@@ -483,7 +483,7 @@ Result Endpoint::destroySocketEndpoint() {
 
     if (socketConnected) {
         socketConnected = false;
-        auto response = fmt::format("err:Server is closing down.\n");
+        auto response = jst::fmt::format("err:Server is closing down.\n");
         send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
         close(brokerClientFileDescriptor);
     }
@@ -589,9 +589,11 @@ Result Endpoint::createGstreamerEndpoint() {
 
             return Result::SUCCESS;
         }
+        JST_DEBUG("[ENDPOINT] Failed to find plugins: {}", plugins);
     }
 
     JST_ERROR("[ENDPOINT] No encoding combination is available.");
+    JST_ERROR("[ENDPOINT] This is tipically caused by missing plugins.");
     return Result::ERROR;
 }
 
@@ -746,7 +748,11 @@ Result Endpoint::startGstreamerEndpoint() {
     gst_caps_unref(caps);
 
     if (_encodingStrategy == Strategy::Software || _encodingStrategy == Strategy::HardwareV4L2) {
-        g_object_set(elements["rawparser"], "use-sink-caps", 1, nullptr);
+        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
+        g_object_set(elements["rawparser"], "format", 12, nullptr);
+        g_object_set(elements["rawparser"], "width", config.size.width, nullptr);
+        g_object_set(elements["rawparser"], "height", config.size.height, nullptr);
+        g_object_set(elements["rawparser"], "framerate", 1.0f/config.framerate, nullptr);
     }
 
     if (config.codec == Render::VideoCodec::H264) {

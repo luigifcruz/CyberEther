@@ -19,6 +19,7 @@
 #include "jetstream/render/tools/imnodes.h"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 #include "jetstream/render/tools/imgui_notify_ext.h"
+#include "jetstream/render/tools/imgui_markdown.hh"
 
 namespace Jetstream::Render {
 
@@ -83,6 +84,26 @@ class Window {
         return _scalingFactor;
     }
 
+    constexpr ImGui::MarkdownConfig& markdownConfig() {
+        return _markdownConfig;
+    }
+
+    constexpr ImFont* bodyFont() {
+        return _bodyFont;
+    }
+
+    constexpr ImFont* boldFont() {
+        return _boldFont;
+    }
+
+    constexpr ImFont* h1Font() {
+        return _h1Font;
+    }
+
+    constexpr ImFont* h2Font() {
+        return _h2Font;
+    }
+
  protected:
     Config config;
 
@@ -95,6 +116,13 @@ class Window {
     virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
 
  private:
+    ImFont* _bodyFont;
+    ImFont* _h1Font;
+    ImFont* _h2Font;
+    ImFont* _boldFont;
+
+    ImGui::MarkdownConfig _markdownConfig;
+
     bool graphicalLoopThreadStarted;
     std::thread::id graphicalLoopThreadId;
 
@@ -104,10 +132,15 @@ class Window {
     std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
     std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;
 
+    void ImGuiLoadFonts();
+    void ImGuiMarkdownSetup();
     void ImGuiStyleSetup();
     void ImGuiStyleScale();
     void ImNodesStyleSetup();
     void ImNodesStyleScale();
+
+    static void ImGuiMarkdownLinkCallback(ImGui::MarkdownLinkCallbackData data);
+    static void ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_info, bool start);
 };
 
 }  // namespace Jetstream::Render

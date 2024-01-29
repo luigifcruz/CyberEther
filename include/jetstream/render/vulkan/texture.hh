@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_RENDER_VULKAN_TEXTURE_HH
 #define JETSTREAM_RENDER_VULKAN_TEXTURE_HH
 
-#include "jetstream/render/tools/imgui_impl_vulkan.h"
-
 #include "jetstream/render/base/texture.hh"
 #include "jetstream/backend/base.hh"
 

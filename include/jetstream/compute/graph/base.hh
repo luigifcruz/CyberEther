@@ -9,6 +9,9 @@
 #ifdef JETSTREAM_GRAPH_METAL_AVAILABLE
 #include "jetstream/compute/graph/metal.hh"
 #endif
+#ifdef JETSTREAM_GRAPH_CUDA_AVAILABLE
+#include "jetstream/compute/graph/cuda.hh"
+#endif
 
 namespace Jetstream {
 
@@ -18,11 +21,11 @@ inline std::unique_ptr<Graph> NewGraph(const Device& device) {
         case Device::CPU:
             return std::make_unique<CPU>();
 #endif
-// #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE 
-//         case Device::CUDA:
-//             return std::make_unique<CUDA>();
-// #endif
-// #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE 
+#ifdef JETSTREAM_GRAPH_CUDA_AVAILABLE 
+        case Device::CUDA:
+            return std::make_unique<CUDA>();
+#endif
+// #ifdef JETSTREAM_GRAPH_VULKAN_AVAILABLE 
 //         case Device::Vulkan:
 //             return std::make_unique<Vulkan>();
 // #endif

@@ -11,6 +11,7 @@ namespace Jetstream::Backend {
 class CUDA {
  public:
     explicit CUDA(const Config& config);
+    ~CUDA();
 
     bool isAvailable() const;
     std::string getDeviceName() const;
@@ -24,6 +25,7 @@ class CUDA {
  private:
     Config config;
     CUdevice device;
+    CUcontext context;
     bool _isAvailable = false;
 
     struct {

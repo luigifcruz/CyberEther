@@ -1,4 +1,4 @@
-#include "jetstream/modules/filter.hh"
+#include "jetstream/modules/filter_taps.hh"
 
 namespace Jetstream {
 
@@ -11,7 +11,7 @@ inline F64 n(U64 len, U64 index) {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::generateSincFunction() {
+Result FilterTaps<D, T>::generateSincFunction() {
     const F64 filterWidth = (config.bandwidth / config.sampleRate) / 2.0;
 
     for (U64 i = 0; i < config.taps; i++) {
@@ -22,7 +22,7 @@ Result Filter<D, T>::generateSincFunction() {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::generateWindow() {
+Result FilterTaps<D, T>::generateWindow() {
     for (U64 i = 0; i < config.taps; i++) {
         windowCoeffs[i] = 0.42 - 0.50 * cos(2.0 * JST_PI * i / (config.taps - 1)) + \
                           0.08 * cos(4.0 * JST_PI * i / (config.taps - 1));
@@ -32,7 +32,7 @@ Result Filter<D, T>::generateWindow() {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::generateUpconvert() {
+Result FilterTaps<D, T>::generateUpconvert() {
     const std::complex<F64> j(0.0, 1.0);
 
     for (U64 c = 0; c < config.center.size(); c++) {
@@ -47,7 +47,7 @@ Result Filter<D, T>::generateUpconvert() {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::sampleRate(F32& sampleRate) {
+Result FilterTaps<D, T>::sampleRate(F32& sampleRate) {
     if (sampleRate < 0) {
         JST_ERROR("Invalid signal sample rate: {} MHz. Signal sample "
                   "rate should be positive.", sampleRate / JST_MHZ);
@@ -61,7 +61,7 @@ Result Filter<D, T>::sampleRate(F32& sampleRate) {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::bandwidth(F32& bandwith) {
+Result FilterTaps<D, T>::bandwidth(F32& bandwith) {
     if (bandwith < 0 or bandwith > config.sampleRate) {
         JST_ERROR("Invalid filter sample rate: {} MHz. Filter sample rate "
                   "should be between 0 MHz and {} MHz.", bandwith / JST_MHZ, 
@@ -76,7 +76,7 @@ Result Filter<D, T>::bandwidth(F32& bandwith) {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::center(const U64& idx, F32& center) {
+Result FilterTaps<D, T>::center(const U64& idx, F32& center) {
     const F32 halfSampleRate = config.sampleRate / 2.0;
     if (center > halfSampleRate or center < -halfSampleRate) {
         JST_ERROR("Invalid center frequency: {} MHz. Center frequency should "
@@ -93,7 +93,7 @@ Result Filter<D, T>::center(const U64& idx, F32& center) {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::taps(U64& taps) {
+Result FilterTaps<D, T>::taps(U64& taps) {
     if ((taps % 2) == 0) {
         JST_ERROR("Invalid number of taps: '{}'. Number of taps should be odd.", taps);
         taps = config.taps;
@@ -105,7 +105,7 @@ Result Filter<D, T>::taps(U64& taps) {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::compute(const RuntimeMetadata&) {
+Result FilterTaps<D, T>::compute(const RuntimeMetadata&) {
     if (baked) {
         return Result::SUCCESS;
     }
@@ -132,8 +132,8 @@ Result Filter<D, T>::compute(const RuntimeMetadata&) {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::create() {
-    JST_DEBUG("Initializing Filter module.");
+Result FilterTaps<D, T>::create() {
+    JST_DEBUG("Initializing Filter Taps module.");
     JST_INIT_IO();
 
     // Allocate internal data.
@@ -165,18 +165,18 @@ Result Filter<D, T>::create() {
 }
 
 template<Device D, typename T>
-Result Filter<D, T>::destroy() {
+Result FilterTaps<D, T>::destroy() {
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-void Filter<D, T>::info() const {
+void FilterTaps<D, T>::info() const {
     JST_INFO("  Signal Sample Rate: {}", config.sampleRate);
     JST_INFO("  Filter Sample Rate: {}", config.bandwidth);
     JST_INFO("  Filter Center:      {}", config.center);
     JST_INFO("  Number Of Taps:     {}", config.taps);
 }
 
-JST_FILTER_CPU(JST_INSTANTIATION)
+JST_FILTER_TAPS_CPU(JST_INSTANTIATION)
 
 }  // namespace Jetstream

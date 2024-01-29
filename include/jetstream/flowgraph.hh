@@ -17,7 +17,6 @@
 #include "jetstream/parser.hh"
 #include "jetstream/block.hh"
 #include "jetstream/module.hh"
-#include "jetstream/tools/rapidyaml.hh"
 
 namespace Jetstream {
 
@@ -26,6 +25,7 @@ class Instance;
 class JETSTREAM_API Flowgraph {
  public:
     explicit Flowgraph(Instance& instance);
+    ~Flowgraph();
 
     Result create();
     Result create(const std::string& path);
@@ -168,7 +168,9 @@ class JETSTREAM_API Flowgraph {
     Nodes _nodes;
     std::vector<Locale> _nodesOrder;
 
-    ryml::Tree _yaml;
+    struct YamlImpl;
+    std::unique_ptr<YamlImpl> _yaml;
+
     std::string _filename;
     std::vector<char> _blob;
     bool _imported = false;
@@ -181,27 +183,7 @@ class JETSTREAM_API Flowgraph {
     std::string _license;
     std::string _description;
 
-    Result importFromBlob();
-
-    // YAML.
-
-    Parser::Record solveLocalPlaceholder(const ryml::ConstNodeRef& node);
-
-    // Helpers.
-
-    static std::vector<std::string> GetMissingKeys(const std::unordered_map<std::string, ryml::ConstNodeRef>& m,
-                                                   const std::vector<std::string>& v);
-    static std::string GetParameterContents(const std::string& str);
-    static std::vector<std::string> GetParameterNodes(const std::string& str);
-    static ryml::ConstNodeRef SolvePlaceholder(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node);
-    static std::unordered_map<std::string, ryml::ConstNodeRef> GatherNodes(const ryml::ConstNodeRef& root,
-                                                                           const ryml::ConstNodeRef& node,
-                                                                           const std::vector<std::string>& keys,
-                                                                           const bool& acceptLess = false);
-    static ryml::ConstNodeRef GetNode(const ryml::ConstNodeRef& root, const ryml::ConstNodeRef& node, const std::string& key);
-    static bool HasNode(const ryml::ConstNodeRef&, const ryml::ConstNodeRef& node, const std::string& key);
-    static std::string ResolveReadable(const ryml::ConstNodeRef& var, const bool& optional = false);
-    static std::string ResolveReadableKey(const ryml::ConstNodeRef& var);
+    Result importFromBlob();    
 };
 
 }  // namespace Jetstream

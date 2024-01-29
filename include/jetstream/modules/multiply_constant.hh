@@ -78,6 +78,7 @@ class MultiplyConstant : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
+    // TODO: Remove backend specific code from header in favor of `pimpl->`.
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
         F32 constantReal;

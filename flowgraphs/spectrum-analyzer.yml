@@ -24,11 +24,11 @@ graph:
     device: cpu
     dataType: CF32
     config:
-      frequency: 94900000
       bufferMultiplier: 512
       sampleRate: 2000000
-      streamString: ''
+      frequency: 94900000
       hintString: ''
+      streamString: ''
       numberOfTimeSamples: 2048
       numberOfBatches: 8
       automaticGain: true
@@ -67,7 +67,8 @@ graph:
   fft:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -161,14 +162,10 @@ graph:
     module: note
     device: cpu
     config:
-      note: |-
-        The `Spectroscope` blocks is a higher level way to 
-        visualize the signal. It basically implements all 
-        modules you see above with multiple options to 
-        visualize it.
+      note: 'The `Spectroscope` blocks is a higher level way to visualize the signal. It basically implements all modules you see above with multiple options to visualize it.'
     interface:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 368.99426
-      nodePos: [875.8815, 381.20804]
+      nodePos: [875.8815, 381.208]
       controlEnabled: false

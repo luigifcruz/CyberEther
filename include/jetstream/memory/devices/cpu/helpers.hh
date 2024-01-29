@@ -36,6 +36,8 @@ inline void AutomaticIterator(const Function& function, Args&... args) {
         }
     };
 
+    // TODO: If the strides and offsets are the same, iterate with a single counter.
+
     // Iterators 1D and Contiguous.
 
     const auto iterator_1d = [](const U64& i, 

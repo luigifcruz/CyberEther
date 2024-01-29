@@ -69,12 +69,12 @@ class Remote : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Remote, D>(
+        JST_CHECK(instance().addModule(
             remote, "remote", {
                 .endpoint = config.endpoint,
                 .viewSize = config.viewSize,
             }, {},
-            locale().blockId
+            locale()
         ));
 
         // Initialize mouse state.

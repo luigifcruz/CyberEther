@@ -12,11 +12,11 @@ graph:
     device: cpu
     dataType: CF32
     config:
-      frequency: 96900000
       bufferMultiplier: 512
       sampleRate: 30000000
-      streamString: ''
+      frequency: 96900000
       hintString: ''
+      streamString: ''
       numberOfTimeSamples: 2048
       numberOfBatches: 16
       automaticGain: true
@@ -44,11 +44,11 @@ graph:
     device: cpu
     dataType: CF32
     config:
-      frequency: 96900000
       bufferMultiplier: 512
       sampleRate: 30000000
-      streamString: ''
+      frequency: 96900000
       hintString: ''
+      streamString: ''
       numberOfTimeSamples: 2048
       numberOfBatches: 16
       automaticGain: true
@@ -99,7 +99,8 @@ graph:
   'fft-2':
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -180,7 +181,8 @@ graph:
   'fft-1':
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -238,16 +240,14 @@ graph:
     device: cpu
     config:
       note: |-
-        This flowgraph shows that is possible to run multiple
-        radios at the same time.
+        # Usage
+        This flowgraph shows that is possible to run multiple radios at the same time.
         
-        
-        Note: Due to a limination in the scheduler, the flowgraph
-        might not work corretly when a SDR has a larger sample-rate
-        than the other. This is expected to be fixed soon.
+        ### Note
+        Due to a limination in the scheduler, the flowgraph might not work corretly when a SDR has a larger sample-rate than the other. This is expected to be fixed soon.
     interface:
       previewEnabled: true
       viewEnabled: false
-      nodeWidth: 409
-      nodePos: [536, 253]
+      nodeWidth: 429
+      nodePos: [543, 219]
       controlEnabled: false

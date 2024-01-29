@@ -8,33 +8,21 @@
 #include "jetstream/memory/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
-#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
-// Looks like Windows static build crashes if multitheading is enabled.
-#define POCKETFFT_NO_MULTITHREADING
-#include "jetstream/tools/pocketfft.hh"
-#endif
-
-#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
-#pragma GCC diagnostic push 
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#define VKFFT_BACKEND 5
-#include "jetstream/tools/vkFFT.h"
-#pragma GCC diagnostic pop
-#endif
-
 namespace Jetstream {
 
 #define JST_FFT_CPU(MACRO) \
-    MACRO(FFT, CPU, CF32)
+    MACRO(FFT, CPU, CF32, CF32) \
+    MACRO(FFT, CPU, F32, CF32)
 
 #define JST_FFT_METAL(MACRO) \
-    MACRO(FFT, Metal, CF32)
+    MACRO(FFT, Metal, CF32, CF32)
 
-template<Device D, typename T = CF32>
+template<Device D, typename IT = CF32, typename OT = CF32>
 class FFT : public Module, public Compute {
  public:
+    FFT();
+    ~FFT();
+
     // Configuration 
 
     struct Config {
@@ -50,7 +38,7 @@ class FFT : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> buffer;
+        Tensor<D, IT> buffer;
 
         JST_SERDES_INPUT(buffer);
     };
@@ -62,7 +50,7 @@ class FFT : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> buffer;
+        Tensor<D, OT> buffer;
 
         JST_SERDES_OUTPUT(buffer);
     };
@@ -71,7 +59,7 @@ class FFT : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputBuffer() const {
+    constexpr const Tensor<D, OT>& getOutputBuffer() const {
         return this->output.buffer;
     }
 
@@ -93,22 +81,8 @@ class FFT : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
-#ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
-    struct {
-        pocketfft::shape_t shape;
-        pocketfft::stride_t stride;
-        pocketfft::shape_t axes;
-    } cpu;
-#endif
-
-#ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
-    struct {
-        VkFFTApplication* app;
-        VkFFTConfiguration* configuration;
-        const MTL::Buffer* input;
-        MTL::Buffer* output;
-    } metal;
-#endif
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
     U64 numberOfOperations = 0;
     U64 numberOfElements = 0;

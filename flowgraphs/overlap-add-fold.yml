@@ -12,20 +12,16 @@ graph:
     device: cpu
     config:
       note: |-
-        To understand the Overlap-Add section of this flowgraph, please, 
-        open the `Overlap-Add` example flowgraph. This is a continuation
-        of that example that adds a `Fold` block for resampling the 
-        filtered signal. This decreases the computation necessary by 
-        reducing the IFFT size for each station.
+        # Overlap-Add-Fold Example
+        To understand the Overlap-Add section of this flowgraph, please, open the `Overlap-Add` example flowgraph. This is a continuationof that example that adds a `Fold` block for resampling the filtered signal. This decreases the computation necessary by reducing the IFFT size for each station.
         
-        The next example flowgraph `Multi-FM` abstracts this whole mechanism
-        in a single `Filter Engine` block. Making it more practical for 
-        reuse.
+        ### Suggestion
+        The next example flowgraph `Multi-FM` abstracts this whole mechanism in a single `Filter Engine` block. Making it more practical for reuse.
     interface:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 479.77533
-      nodePos: [364.22467, -36.036713]
+      nodePos: [349.22467, -58.036713]
       controlEnabled: false
   soapy:
     module: soapy
@@ -45,10 +41,10 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [0, 0]
+      nodePos: [-2, 61]
       controlEnabled: false
   flt:
-    module: filter
+    module: 'filter-taps'
     device: cpu
     dataType: CF32
     config:
@@ -60,7 +56,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [0, 371]
+      nodePos: [-2, 432]
       controlEnabled: false
   pad_flt:
     module: pad
@@ -75,12 +71,13 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [351.5, 404]
+      nodePos: [349.5, 465]
       controlEnabled: false
   fft_flt:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -89,7 +86,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [694, 410]
+      nodePos: [692, 471]
       controlEnabled: false
   pad_soapy:
     module: pad
@@ -104,12 +101,13 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [350.5, 200]
+      nodePos: [348.5, 261]
       controlEnabled: false
   fft_soapy:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:
@@ -118,7 +116,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [698, 221]
+      nodePos: [696, 282]
       controlEnabled: false
   exp_dims27:
     module: 'expand-dims'
@@ -132,7 +130,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [1031.7026, 181.6622]
+      nodePos: [1029.7026, 271.6622]
       controlEnabled: false
   mul:
     module: multiply
@@ -145,7 +143,7 @@ graph:
       previewEnabled: false
       viewEnabled: false
       nodeWidth: 140
-      nodePos: [1372.5, 314]
+      nodePos: [1370.5, 345]
       controlEnabled: false
   fol36:
     module: fold
@@ -166,7 +164,8 @@ graph:
   ifft:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: false
     input:
@@ -267,7 +266,8 @@ graph:
   fft30:
     module: fft
     device: cpu
-    dataType: CF32
+    inputDataType: CF32
+    outputDataType: CF32
     config:
       forward: true
     input:

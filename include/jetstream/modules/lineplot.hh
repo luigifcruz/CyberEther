@@ -107,6 +107,7 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
 
+    // TODO: Remove backend specific code from header in favor of `pimpl->`.
 #ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
     struct MetalConstants {
         U16 batchSize;

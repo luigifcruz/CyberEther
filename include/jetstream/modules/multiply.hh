@@ -80,6 +80,7 @@ class Multiply : public Module, public Compute {
     Tensor<D, T> b;
     Tensor<D, T> c;
 
+    // TODO: Remove backend specific code from header in favor of `pimpl->`.
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct {
         MTL::ComputePipelineState* state;

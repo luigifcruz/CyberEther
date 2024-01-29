@@ -106,6 +106,7 @@ class JETSTREAM_API Compositor {
     U64 globalModalContentId;
     I32 nodeContextMenuNodeId;
     bool benchmarkRunning;
+    std::string filenameField;
 
     std::atomic_flag interfaceHalt{false};
 

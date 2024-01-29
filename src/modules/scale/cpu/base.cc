@@ -26,5 +26,6 @@ Result Scale<D, T>::compute(const RuntimeMetadata&) {
 }
 
 JST_SCALE_CPU(JST_INSTANTIATION)
+JST_SCALE_CPU(JST_BENCHMARK)
     
 }  // namespace Jetstream

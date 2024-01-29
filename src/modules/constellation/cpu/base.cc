@@ -48,5 +48,6 @@ Result Constellation<D, T>::compute(const RuntimeMetadata&) {
 }
 
 JST_CONSTELLATION_CPU(JST_INSTANTIATION)
+JST_CONSTELLATION_CPU(JST_BENCHMARK)
 
 }  // namespace Jetstream

@@ -152,10 +152,10 @@ int main(int argc, char* argv[]) {
 
     Instance instance;
 
-    JST_CHECK_THROW(instance.buildDefaultInterface(prefferedBackend,
-                                                   backendConfig,
-                                                   viewportConfig,
-                                                   renderConfig));
+    JST_CHECK_THROW(instance.buildInterface(prefferedBackend,
+                                            backendConfig,
+                                            viewportConfig,
+                                            renderConfig));
 
     if (!flowgraphPath.empty()) {
         JST_CHECK_THROW(instance.flowgraph().create(flowgraphPath));

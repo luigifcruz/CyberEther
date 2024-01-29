@@ -7,8 +7,8 @@
 #include "jetstream/modules/fft.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_FILTER_AVAILABLE
-#include "jetstream/modules/filter.hh"
+#ifdef JETSTREAM_MODULE_FILTER_TAPS_AVAILABLE
+#include "jetstream/modules/filter_taps.hh"
 #endif
 
 #ifdef JETSTREAM_MODULE_WINDOW_AVAILABLE

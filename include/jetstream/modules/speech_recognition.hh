@@ -73,6 +73,7 @@ class SpeechRecognition : public Module, public Compute {
     Result compute(const RuntimeMetadata& meta) final;
 
  private:
+    // TODO: Remove backend specific code from header in favor of `pimpl->`.
     struct whisper_context* ctx;
     whisper_full_params wparams;
     std::vector<whisper_token> promptTokens;

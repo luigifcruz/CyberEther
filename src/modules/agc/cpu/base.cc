@@ -25,5 +25,6 @@ Result AGC<D, T>::compute(const RuntimeMetadata&) {
 }
 
 JST_AGC_CPU(JST_INSTANTIATION)
+JST_AGC_CPU(JST_BENCHMARK)
 
 }  // namespace Jetstream

@@ -1,6 +1,8 @@
 #include "jetstream/modules/spectrogram.hh"
 #include "shaders/spectrogram_shaders.hh"
 
+#include "benchmark.cc"
+
 namespace Jetstream {
 
 template<Device D, typename T>

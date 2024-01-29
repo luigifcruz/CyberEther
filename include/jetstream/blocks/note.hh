@@ -77,10 +77,23 @@ class Note : public Block {
     // Interface
 
     void drawPreview(const F32& maxWidth) {
-        // TODO: Add support for markdown with links and images.
-        const I32 numActualLines = std::count(config.note.begin(), config.note.end(), '\n');
-        const I32 numLines = std::min(std::max(5, numActualLines + 2), 20);
-        ImGui::InputTextMultiline("##note", &config.note, ImVec2(maxWidth, numLines * ImGui::GetTextLineHeight()), ImGuiInputTextFlags_NoHorizontalScroll);
+        if (editing) {
+            const I32 numActualLines = std::count(config.note.begin(), config.note.end(), '\n');
+            const I32 textHeight = std::min(std::max(5, numActualLines + 2) * ImGui::GetTextLineHeight(), 500.0f);
+            // TODO: Implement automatic line wrapping.
+            ImGui::InputTextMultiline("##note", 
+                                      &config.note, 
+                                      ImVec2(maxWidth, textHeight), 
+                                      ImGuiInputTextFlags_NoHorizontalScroll);
+        } else {
+            ImGui::SetNextWindowSizeConstraints(ImVec2(maxWidth, 50.0f), ImVec2(maxWidth, 500.0f));
+            ImGui::BeginChild("##note-markdown", ImVec2(maxWidth, 0.0f), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground);
+            ImGui::Markdown(config.note.c_str(), config.note.length(), instance().window().markdownConfig());
+            ImGui::EndChild();
+        }
+        if (ImGui::Button((editing) ? "Done" : "Edit", ImVec2(maxWidth, 0))) {
+            editing = !editing;
+        }
     }
 
     constexpr bool shouldDrawPreview() const {
@@ -88,6 +101,8 @@ class Note : public Block {
     }
 
  private:
+    bool editing = false;
+
     JST_DEFINE_IO();
 };
 

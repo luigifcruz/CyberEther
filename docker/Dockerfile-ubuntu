@@ -14,10 +14,23 @@ RUN apt install -y git build-essential cmake pkg-config ninja-build meson git ze
 RUN apt install -y spirv-cross glslang-tools libglfw3-dev
 RUN apt install -y mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
 RUN apt install -y libsoapysdr-dev soapysdr-module-rtlsdr
-RUN apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav 
+RUN apt install -y libgstreamer1.0-dev gstreamer1.0-libav
+RUN apt install -y gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev 
+RUN apt install -y libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev 
+RUN apt install -y gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 RUN apt install -y python3-yaml
 
 ###
+
+# Install Catch2 (because Ubuntu 22.04 version is 5 years old).
+
+RUN git clone https://github.com/catchorg/Catch2.git && \
+    cd Catch2 && \
+    git checkout v3.4.0 && \
+    meson setup build && \
+    cd build && \
+    ninja && \
+    ninja install
 
 COPY . /cyberether
 WORKDIR /cyberether
@@ -25,11 +38,11 @@ WORKDIR /cyberether
 RUN git submodule update --init --recursive
 
 RUN rm -fr build
-RUN meson build -Dprefix=/usr
+RUN meson setup build -Dprefix=/usr
 RUN cd build && ninja install
 
 RUN rm -fr build-static
-RUN meson build-static --default-library=static -Dprefix=/usr
+RUN meson setup build-static --default-library=static -Dprefix=/usr
 RUN cd build-static && ninja
 
 WORKDIR /

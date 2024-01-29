@@ -76,13 +76,13 @@ class Scale : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Scale, D, IT>(
+        JST_CHECK(instance().addModule(
             scale, "scale", {
                 .range = config.range,
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, scale->getOutputBuffer()));

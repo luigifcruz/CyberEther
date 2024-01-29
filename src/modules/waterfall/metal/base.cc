@@ -25,5 +25,6 @@ Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
 }
 
 JST_WATERFALL_METAL(JST_INSTANTIATION)
+JST_WATERFALL_METAL(JST_BENCHMARK)
     
 }  // namespace Jetstream

@@ -112,6 +112,7 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
+    // TODO: Remove backend specific code from header in favor of `pimpl->`.
 #ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
     struct MetalConstants {
         U32 width;

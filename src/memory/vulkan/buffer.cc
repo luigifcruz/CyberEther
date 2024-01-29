@@ -137,7 +137,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 #endif
 
 Implementation::~TensorBuffer() {
-    JST_TRACE("[VULKAN:BUFFER] Releasing buffer {}.", fmt::ptr(_buffer));
+    JST_TRACE("[VULKAN:BUFFER] Releasing buffer {}.", jst::fmt::ptr(_buffer));
 
     if (owns_data) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();

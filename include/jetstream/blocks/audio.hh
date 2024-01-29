@@ -10,13 +10,16 @@ namespace Jetstream::Blocks {
 template<Device D, typename IT, typename OT>
 class Audio : public Block {
  public:
+    using AudioModule = Jetstream::Audio<D, IT>;
+
     // Configuration
 
     struct Config {
+        std::string deviceName = "Default";
         F32 inSampleRate = 48e3;
         F32 outSampleRate = 48e3;
 
-        JST_SERDES(inSampleRate, outSampleRate);
+        JST_SERDES(deviceName, inSampleRate, outSampleRate);
     };
 
     constexpr const Config& getConfig() const {
@@ -77,14 +80,21 @@ class Audio : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Audio, D, IT>(
+        // Populate internal state.
+
+        availableDeviceList = AudioModule::ListAvailableDevices();
+
+        // Starting audio module.
+
+        JST_CHECK(instance().addModule(
             audio, "audio", {
+                .deviceName = config.deviceName,
                 .inSampleRate = config.inSampleRate,
                 .outSampleRate = config.outSampleRate,
             }, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, audio->getOutputBuffer()));
 
@@ -114,6 +124,43 @@ class Audio : public Block {
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
             });
         }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Device List");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        static const char* noDeviceMessage = "No device found";
+        if (ImGui::BeginCombo("##DeviceList", availableDeviceList.empty() ? noDeviceMessage : audio->getDeviceName().c_str())) {
+            for (const auto& device : availableDeviceList) {
+                bool isSelected = (config.deviceName == device);
+                if (ImGui::Selectable(device.c_str(), isSelected)) {
+                    config.deviceName = device;
+
+                    JST_DISPATCH_ASYNC([&](){
+                        ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                        JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+                    });
+                }
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+
+                }
+            }
+            ImGui::EndCombo();
+        }
+        
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TableSetColumnIndex(1);
+        const F32 fullWidth = ImGui::GetContentRegionAvail().x;
+        if (ImGui::Button("Reload Device List", ImVec2(fullWidth, 0))) {
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading device list..." });
+                availableDeviceList = AudioModule::ListAvailableDevices();
+                JST_CHECK_NOTIFY(Result::SUCCESS);
+            });
+        }
     }
 
     constexpr bool shouldDrawControl() const {
@@ -121,7 +168,9 @@ class Audio : public Block {
     }
 
  private:
-    std::shared_ptr<Jetstream::Audio<D, IT>> audio;
+    std::shared_ptr<AudioModule> audio;
+
+    typename AudioModule::DeviceList availableDeviceList;
 
     JST_DEFINE_IO();
 };

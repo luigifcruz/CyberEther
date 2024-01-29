@@ -1,5 +1,9 @@
 #include "jetstream/viewport/platforms/glfw/webgpu.hh"
 
+#include <GLFW/glfw3.h>
+
+#include "tools/imgui_impl_glfw.h"
+
 EM_JS(int, getWindowWidth, (), {
     return window.innerWidth;
 });
@@ -37,6 +41,7 @@ Result Implementation::create() {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
     swapchainSize = {
         static_cast<U64>(getWindowWidth()),

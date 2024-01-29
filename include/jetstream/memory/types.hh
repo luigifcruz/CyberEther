@@ -321,6 +321,18 @@ struct Locale {
     std::string moduleId = "";
     std::string pinId = "";
 
+    bool isBlock() const {
+        return !blockId.empty() && moduleId.empty() && pinId.empty();
+    }
+
+    bool isModule() const {
+        return !blockId.empty() && !moduleId.empty() && pinId.empty();
+    }
+
+    bool isPin() const {
+        return !blockId.empty() && !moduleId.empty() && !pinId.empty();
+    }
+
     Locale block() const {
         return Locale{blockId};
     }
@@ -362,22 +374,22 @@ struct Locale {
             return h1 ^ (h2 << 1) ^ (h3 << 2);
         }
     };
-};
 
-inline std::ostream& operator<<(std::ostream& os, const Locale& locale) {
-    if (!locale.blockId.empty() && !locale.moduleId.empty()) {
-        os << fmt::format("{}-", locale.blockId);
-    } else {
-        os << fmt::format("{}", locale.blockId);
+    friend inline std::ostream& operator<<(std::ostream& os, const Locale& locale) {
+        if (!locale.blockId.empty() && !locale.moduleId.empty()) {
+            os << jst::fmt::format("{}-", locale.blockId);
+        } else {
+            os << jst::fmt::format("{}", locale.blockId);
+        }
+        if (!locale.moduleId.empty()) {
+            os << jst::fmt::format("{}", locale.moduleId);
+        }
+        if (!locale.pinId.empty()) {
+            os << jst::fmt::format(".{}", locale.pinId);
+        }
+        return os;
     }
-    if (!locale.moduleId.empty()) {
-        os << fmt::format("{}", locale.moduleId);
-    }
-    if (!locale.pinId.empty()) {
-        os << fmt::format(".{}", locale.pinId);
-    }
-    return os;
-}
+};
 
 //
 // Range
@@ -399,13 +411,15 @@ struct JETSTREAM_API Range {
     bool operator<=(const Range<T>& a) const {
         return (min <= a.min || max <= a.max);
     }
-};
 
-// TODO Add print for Range.
+    friend inline std::ostream& operator<<(std::ostream& os, const Range<T>& range) {
+        return os << jst::fmt::format("[{}, {}]", range.min, range.max);
+    }
+};
 
 }  // namespace Jetstream
 
-template <> struct fmt::formatter<Jetstream::Device> : ostream_formatter {};
-template <> struct fmt::formatter<Jetstream::Locale> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Device> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Locale> : ostream_formatter {};
 
 #endif

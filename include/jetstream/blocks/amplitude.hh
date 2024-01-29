@@ -74,11 +74,11 @@ class Amplitude : public Block {
     // Constructor
 
     Result create() {
-        JST_CHECK(instance().template addModule<Jetstream::Amplitude, D, IT, OT>(
+        JST_CHECK(instance().addModule(
             amplitude, "amplitude", {}, {
                 .buffer = input.buffer,
             },
-            locale().blockId
+            locale()
         ));
 
         JST_CHECK(Block::LinkOutput("buffer", output.buffer, amplitude->getOutputBuffer()));
