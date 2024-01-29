@@ -72,8 +72,7 @@ std::vector<std::pair<ma_device_id, std::string>> Audio<D, T>::Impl::GetAvailabl
     std::vector<std::pair<ma_device_id, std::string>> devices;
 
     devices.push_back({
-        {0},
-        "Default"
+        {}, "Default",
     });
 
     ma_context context;
