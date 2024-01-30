@@ -46,6 +46,10 @@ class Vulkan {
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
 
+    constexpr const U64& getDeviceId() const {
+        return config.deviceId;
+    }
+
     constexpr const bool& headless() const {
         return config.headless;
     }

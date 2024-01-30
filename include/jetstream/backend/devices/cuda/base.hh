@@ -25,6 +25,10 @@ class CUDA {
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
+
+    constexpr const U64& getDeviceId() const {
+        return config.deviceId;
+    }
     
  private:
     Config config;
