@@ -48,6 +48,18 @@ class TensorBase : public TensorStorage<T> {
         return D;
     }
 
+    constexpr bool host_acessible() const noexcept {
+        return buffer->host_accessible();
+    }
+
+    constexpr bool device_native() const noexcept {
+        return buffer->device_native();
+    }
+
+    constexpr bool host_native() const noexcept {
+        return buffer->host_native();
+    }
+
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     Tensor<Device::CPU, T>& cpu() {
         if (!cpu_tensor_cache) {

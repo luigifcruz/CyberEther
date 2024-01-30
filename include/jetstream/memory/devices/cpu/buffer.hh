@@ -44,6 +44,18 @@ class TensorBuffer<Device::CPU> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
+    constexpr bool host_accessible() const noexcept {
+        return true;
+    }
+
+    constexpr bool device_native() const noexcept {
+        return false;
+    }
+
+    constexpr bool host_native() const noexcept {
+        return false;
+    }
+
     constexpr const void* data() const noexcept {
         return buffer;
     }

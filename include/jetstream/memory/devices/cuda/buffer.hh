@@ -40,15 +40,15 @@ class TensorBuffer<Device::CUDA> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr const bool& host_accessible() const {
+    constexpr bool host_accessible() const noexcept {
         return _host_accessible;
     }
 
-    constexpr const bool& device_native() const {
+    constexpr bool device_native() const noexcept {
         return _device_native;
     }
 
-    constexpr const bool& host_native() const {
+    constexpr bool host_native() const noexcept {
         return _host_native;
     }
 
