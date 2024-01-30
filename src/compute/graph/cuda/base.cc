@@ -94,7 +94,7 @@ Result CUDA::destroy() {
     // Destroy CUDA stream.
 
     JST_CUDA_CHECK(cudaStreamDestroy(_stream), [&]{
-        JST_ERROR("[CUDA] Can't destroy stream.");
+        JST_ERROR("[CUDA] Can't destroy stream: {}", err);
     });
 
     return Result::SUCCESS;
