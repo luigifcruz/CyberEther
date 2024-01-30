@@ -34,7 +34,7 @@ class Metal : public Graph {
 
     template<typename ConstantsType>
     static ConstantsType* Constants(auto& assets) {
-        return reinterpret_cast<ConstantsType*>(assets.constants.cpu().data());
+        return reinterpret_cast<ConstantsType*>(MapOn<Device::CPU>(assets.constants).data());
     }
 
     template<typename ConstantsType>

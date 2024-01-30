@@ -76,7 +76,7 @@ Result Waterfall<D, T>::createPresent() {
     JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
     Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = frequencyBins.cpu().data();
+    bufferCfg.buffer = MapOn<Device::CPU>(frequencyBins).data();
     bufferCfg.size = frequencyBins.size();
     bufferCfg.elementByteSize = sizeof(F32);
     bufferCfg.target = Render::Buffer::Target::STORAGE;

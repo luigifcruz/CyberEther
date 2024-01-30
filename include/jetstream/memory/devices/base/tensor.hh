@@ -113,6 +113,60 @@ class TensorBase : public TensorStorage<T> {
 #endif
 };
 
+template<Device CloneDevice>
+inline auto& MapOn(auto& tensor) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    if constexpr (CloneDevice == Device::CPU) {
+        return tensor.cpu();
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if constexpr (CloneDevice == Device::Metal) {
+        return tensor.metal();
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if constexpr (CloneDevice == Device::Vulkan) {
+        return tensor.vulkan();
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if constexpr (CloneDevice == Device::CUDA) {
+        return tensor.cuda();
+    }
+#endif
+
+    JST_ERROR("[TENSOR] Device not supported.");
+    JST_CHECK_THROW(Result::ERROR);
+}
+
+inline auto& MapOn(const Device& device, auto& tensor) {
+    switch (device) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        case Device::CPU:
+            return tensor.cpu();
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+        case Device::Metal:
+            return tensor.metal();
+#endif
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+        case Device::Vulkan:
+            return tensor.vulkan();
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        case Device::CUDA:
+            return tensor.cuda();
+#endif
+        default:
+            JST_ERROR("[TENSOR] Device not supported.");
+            JST_CHECK_THROW(Result::ERROR);
+    }
+}
+
 template<Device D, typename T>
 class Tensor : public TensorBase<D, T> {};
 

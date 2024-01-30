@@ -72,7 +72,7 @@ Result Spectrogram<D, T>::createPresent() {
     JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
     Render::Texture::Config bufferCfg;
-    bufferCfg.buffer = (U8*)(frequencyBins.cpu().data());
+    bufferCfg.buffer = (U8*)(MapOn<Device::CPU>(frequencyBins).data());
     bufferCfg.size = {frequencyBins.shape()[0], frequencyBins.shape()[1]};
     bufferCfg.dfmt = Render::Texture::DataFormat::F32;
     bufferCfg.pfmt = Render::Texture::PixelFormat::RED;

@@ -120,13 +120,13 @@ Result Implementation::createSwapchain() {
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
         if (inputMemoryDevice == Device::CUDA) {
-            swapchainMemoryMapped[i] = stagingBuffers[i].cuda().data();
+            swapchainMemoryMapped[i] = MapOn<Device::CUDA>(stagingBuffers[i]).data();
             continue;
         }
 #endif
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         if (inputMemoryDevice == Device::CPU) {
-            swapchainMemoryMapped[i] = stagingBuffers[i].cpu().data();
+            swapchainMemoryMapped[i] = MapOn<Device::CPU>(stagingBuffers[i]).data();
             continue;
         }
 #endif
