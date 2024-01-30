@@ -24,7 +24,7 @@ class TensorBuffer<Device::CUDA> {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
-                          const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);\
+                          const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);
     static bool CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept;
 #endif
 
