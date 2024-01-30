@@ -77,6 +77,7 @@ class TensorBuffer<Device::Vulkan> {
     bool _host_accessible = false;
     bool _device_native = false;
     bool _host_native = false;
+    Device external_memory_Device = Device::None;
 };
 
 }  // namespace Jetstream

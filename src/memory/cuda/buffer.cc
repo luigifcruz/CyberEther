@@ -45,9 +45,9 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Allocate memory.
 
-    const auto size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+    if (host_accessible) {
+        size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
-    if (host_accessible || Backend::State<Device::CUDA>()->hasUnifiedMemory()) {
         JST_CUDA_CHECK_THROW(cudaMallocManaged(&buffer, size_bytes), [&]{
             JST_FATAL("[CUDA:BUFFER] Failed to allocate managed CUDA memory: {}", err);
         });
@@ -56,9 +56,48 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         _host_native = true;
         _host_accessible = true;
     } else {
-        JST_CUDA_CHECK_THROW(cudaMalloc(&buffer, size_bytes), [&]{
-            JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
-        });
+        if (Backend::State<Device::CUDA>()->canExportDeviceMemory()) {
+            CUmemAllocationProp allocationProp = {};
+            allocationProp.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+            allocationProp.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+            allocationProp.location.id = Backend::State<Device::CUDA>()->getDeviceId();
+            allocationProp.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+
+            U64 granularity = 0;
+            cuMemGetAllocationGranularity(&granularity, 
+                                          &allocationProp, 
+                                          CU_MEM_ALLOC_GRANULARITY_MINIMUM);
+            size_bytes = JST_ROUND_UP(prototype.size_bytes, granularity);
+
+            JST_CUDA_CHECK_THROW(cuMemCreate(&alloc_handle, size_bytes, &allocationProp, 0), [&]{
+                JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
+            });
+
+            JST_CUDA_CHECK_THROW(cuMemAddressReserve(&device_ptr, size_bytes, 0, 0, 0), [&]{
+                JST_FATAL("[CUDA:BUFFER] Failed to reserve CUDA memory: {}", err);
+            });
+
+            JST_CUDA_CHECK_THROW(cuMemMap(device_ptr, size_bytes, 0, alloc_handle, 0), [&]{
+                JST_FATAL("[CUDA:BUFFER] Failed to map CUDA memory: {}", err);
+            });
+
+            CUmemAccessDesc accessDesc = {};
+            accessDesc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+            accessDesc.location.id = Backend::State<Device::CUDA>()->getDeviceId();
+            accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+
+            JST_CUDA_CHECK_THROW(cuMemSetAccess(device_ptr, size_bytes, &accessDesc, 1), [&]{
+                JST_FATAL("[CUDA:BUFFER] Failed to set CUDA memory access: {}", err);
+            });
+
+            buffer = reinterpret_cast<void*>(device_ptr);
+        } else {
+            size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+
+            JST_CUDA_CHECK_THROW(cudaMalloc(&buffer, size_bytes), [&]{
+                JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
+            });
+        }
 
         _device_native = true;
         _host_native = false;
@@ -174,14 +213,7 @@ bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) 
         return false;
     }
 
-    // Check if Vulkan is available.
-
-    if (!Backend::State<Device::Vulkan>()->isAvailable()) {
-        JST_TRACE("[CUDA:BUFFER] Vulkan is not available.");
-        return false;
-    }
-
-    // Check if Vulkan buffer can export memory.
+    // Check if Vulkan can export memory.
 
     if (!Backend::State<Device::Vulkan>()->canExportDeviceMemory()) {
         JST_TRACE("[CUDA:BUFFER] Vulkan buffer cannot export memory.");
@@ -248,7 +280,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Initialize storage.
 
-    _device_native = Backend::State<Device::CUDA>()->hasUnifiedMemory();
+    _device_native = false;
     _host_native = true;
     _host_accessible = true;
 
@@ -334,7 +366,13 @@ Implementation::~TensorBuffer() {
     // Free memory.
 
     if (owns_data) {
-        cudaFree(buffer);
+        if (Backend::State<Device::CUDA>()->canExportDeviceMemory() && !_host_accessible) {
+            cuMemUnmap(device_ptr, size_bytes);
+            cuMemRelease(alloc_handle);
+            cuMemAddressFree(device_ptr, size_bytes);
+        } else {
+            cudaFree(buffer);
+        }
     }
 }
 

@@ -68,8 +68,17 @@ class TensorBuffer<Device::CUDA> {
         return &buffer;
     }
 
+    constexpr CUmemGenericAllocationHandle& handle() noexcept {
+        return alloc_handle;
+    } 
+
  private:
     void* buffer;
+    U64 size_bytes;
+
+    CUdeviceptr device_ptr;
+    CUmemGenericAllocationHandle alloc_handle;
+    
     bool owns_data = false;
     bool _host_accessible = false;
     bool _device_native = false;
