@@ -21,6 +21,9 @@ namespace Jetstream {
 template<Device D, typename T = F32>
 class Lineplot : public Module, public Compute, public Present {
  public:
+    Lineplot();
+    ~Lineplot();
+
     // Configuration 
 
     struct Config {
@@ -87,6 +90,9 @@ class Lineplot : public Module, public Compute, public Present {
     Result destroyPresent() final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
     Tensor<Device::CPU, F32> plot;
     Tensor<Device::CPU, F32> grid;
 
@@ -106,19 +112,6 @@ class Lineplot : public Module, public Compute, public Present {
 
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
-
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
-    struct MetalConstants {
-        U16 batchSize;
-        U16 gridSize;
-    };
-
-    struct {
-        MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
