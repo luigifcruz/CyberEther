@@ -40,6 +40,9 @@ class CUDA {
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;
         U64 physicalMemory;
+        bool canImportDeviceMemory;
+        bool canImportHostMemory;
+        bool canExportDeviceMemory;
     } cache;
 };
 

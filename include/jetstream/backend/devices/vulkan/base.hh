@@ -134,6 +134,9 @@ class Vulkan {
         U64 totalProcessorCount;
         bool lowPowerStatus;
         U64 getThermalState;
+        bool canImportDeviceMemory;
+        bool canImportHostMemory;
+        bool canExportDeviceMemory;
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};

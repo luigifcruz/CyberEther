@@ -9,7 +9,7 @@
 
 namespace Jetstream::Backend {
 
-Metal::Metal(const Config& config) {
+Metal::Metal(const Config& config) : config(config) {
     // Get default Metal device.
     // TODO: Respect config.deviceId.
     if (!(device = MTL::CreateSystemDefaultDevice())) {
