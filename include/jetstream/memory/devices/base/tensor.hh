@@ -143,30 +143,6 @@ inline auto& MapOn(auto& tensor) {
     JST_CHECK_THROW(Result::ERROR);
 }
 
-inline auto& MapOn(const Device& device, auto& tensor) {
-    switch (device) {
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-        case Device::CPU:
-            return tensor.cpu();
-#endif
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-        case Device::Metal:
-            return tensor.metal();
-#endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-        case Device::Vulkan:
-            return tensor.vulkan();
-#endif
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        case Device::CUDA:
-            return tensor.cuda();
-#endif
-        default:
-            JST_ERROR("[TENSOR] Device not supported.");
-            JST_CHECK_THROW(Result::ERROR);
-    }
-}
-
 template<Device D, typename T>
 class Tensor : public TensorBase<D, T> {};
 
