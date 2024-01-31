@@ -1,5 +1,6 @@
 #include "jetstream/modules/spectrogram.hh"
 #include "shaders/spectrogram_shaders.hh"
+#include "jetstream/render/utils.hh"
 
 #include "benchmark.cc"
 
@@ -71,12 +72,14 @@ Result Spectrogram<D, T>::createPresent() {
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
     JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
-    Render::Texture::Config bufferCfg;
-    bufferCfg.buffer = (U8*)(MapOn<Device::CPU>(frequencyBins).data());
-    bufferCfg.size = {frequencyBins.shape()[0], frequencyBins.shape()[1]};
-    bufferCfg.dfmt = Render::Texture::DataFormat::F32;
-    bufferCfg.pfmt = Render::Texture::PixelFormat::RED;
-    bufferCfg.ptype = Render::Texture::PixelType::F32;
+    auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
+
+    Render::Buffer::Config bufferCfg;
+    bufferCfg.buffer = buffer;
+    bufferCfg.size = frequencyBins.size();
+    bufferCfg.elementByteSize = sizeof(F32);
+    bufferCfg.target = Render::Buffer::Target::STORAGE;
+    bufferCfg.enableZeroCopy = enableZeroCopy;
     JST_CHECK(window->build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
@@ -95,10 +98,11 @@ Result Spectrogram<D, T>::createPresent() {
     Render::Program::Config programCfg;
     programCfg.shaders = ShadersPackage["signal"];
     programCfg.draw = drawVertex;
-    programCfg.textures = {binTexture, lutTexture};
+    programCfg.textures = {lutTexture};
     programCfg.buffers = {
         {uniformBuffer, Render::Program::Target::VERTEX |
                         Render::Program::Target::FRAGMENT},
+        {binTexture, Render::Program::Target::FRAGMENT},
     };
     JST_CHECK(window->build(program, programCfg));
 
@@ -124,7 +128,7 @@ Result Spectrogram<D, T>::destroyPresent() {
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::present() {
-    binTexture->fill();
+    binTexture->update();
 
     shaderUniforms.width = numberOfElements;
     shaderUniforms.height = config.height;

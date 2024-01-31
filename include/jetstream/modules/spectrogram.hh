@@ -104,7 +104,7 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
 
     std::shared_ptr<Render::Texture> texture;
-    std::shared_ptr<Render::Texture> binTexture;
+    std::shared_ptr<Render::Buffer> binTexture;
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;

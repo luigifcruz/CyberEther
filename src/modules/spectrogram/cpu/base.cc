@@ -24,7 +24,8 @@ Result Spectrogram<D, T>::compute(const Context&) {
             const U16 index = input.buffer[{b, x}] * config.height;
 
             if (index < config.height && index > 0) {
-                frequencyBins[x + (index * numberOfElements)] += 0.02; 
+                auto& val = frequencyBins[x + (index * numberOfElements)];
+                val = std::min(val + 0.02, 1.0); 
             }
         }
     }
