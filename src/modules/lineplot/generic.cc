@@ -1,5 +1,6 @@
 #include "jetstream/modules/lineplot.hh"
 #include "shaders/lineplot_shaders.hh"
+#include "jetstream/render/utils.hh"
 
 #include "benchmark.cc"
 
@@ -31,7 +32,7 @@ Result Lineplot<D, T>::create() {
         const U64 num_cols = config.numberOfVerticalLines;
         const U64 num_rows = config.numberOfHorizontalLines;
 
-        grid = Tensor<Device::CPU, F32>({num_cols + num_rows, 2, 3});
+        auto tmp = Tensor<Device::CPU, F32>({num_cols + num_rows, 2, 3});
 
         const F32 x_step  = +2.0f / (num_cols - 1);
         const F32 y_step  = +2.0f / (num_rows - 1);
@@ -43,32 +44,38 @@ Result Lineplot<D, T>::create() {
         for (U64 row = 0; row < num_rows; row++) {
             const F32 y = y_start + row * y_step;
 
-            grid[{row, 0, 0}] = x_start;
-            grid[{row, 0, 1}] = y;
+            tmp[{row, 0, 0}] = x_start;
+            tmp[{row, 0, 1}] = y;
 
-            grid[{row, 1, 0}] = x_end;
-            grid[{row, 1, 1}] = y;
+            tmp[{row, 1, 0}] = x_end;
+            tmp[{row, 1, 1}] = y;
         }
 
         for (U64 col = 0; col < num_cols; col++) {
             const F32 x = x_start + col * x_step;
 
-            grid[{col + num_rows, 0, 0}] = x;
-            grid[{col + num_rows, 0, 1}] = y_start;
+            tmp[{col + num_rows, 0, 0}] = x;
+            tmp[{col + num_rows, 0, 1}] = y_start;
 
-            grid[{col + num_rows, 1, 0}] = x;
-            grid[{col + num_rows, 1, 1}] = y_end;
+            tmp[{col + num_rows, 1, 0}] = x;
+            tmp[{col + num_rows, 1, 1}] = y_end;
         }
+
+        grid = Tensor<D, T>(tmp.shape());
+        JST_CHECK(Memory::Copy(grid, MapOn<D>(tmp)));
     }
 
     {
         // Generate Plot coordinates.
 
-        plot = Tensor<Device::CPU, F32>({numberOfElements, 3});
+        auto tmp = Tensor<Device::CPU, F32>({numberOfElements, 3});
 
         for (U64 j = 0; j < numberOfElements; j++) {
-            plot[{j, 0}] = j * 2.0f / (numberOfElements - 1) - 1.0f;
+            tmp[{j, 0}] = j * 2.0f / (numberOfElements - 1) - 1.0f;
         }
+
+        plot = Tensor<D, T>(tmp.shape());
+        JST_CHECK(Memory::Copy(plot, MapOn<D>(tmp)));
     }
 
     return Result::SUCCESS;
@@ -81,12 +88,14 @@ void Lineplot<D, T>::info() const {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::createPresent() {
+    auto [gridBuffer, gridEnableZeroCopy] = ConvertToOptimalStorage(window, grid);
+
     Render::Buffer::Config gridVerticesConf;
-    gridVerticesConf.buffer = grid.data();
+    gridVerticesConf.buffer = gridBuffer;
     gridVerticesConf.elementByteSize = sizeof(F32);
     gridVerticesConf.size = grid.size();
     gridVerticesConf.target = Render::Buffer::Target::VERTEX;
-    gridVerticesConf.enableZeroCopy = true;
+    gridVerticesConf.enableZeroCopy = gridEnableZeroCopy;
     JST_CHECK(window->build(gridVerticesBuffer, gridVerticesConf));
 
     Render::Vertex::Config gridVertexCfg;
@@ -100,12 +109,14 @@ Result Lineplot<D, T>::createPresent() {
     drawGridVertexCfg.mode = Render::Draw::Mode::LINES;
     JST_CHECK(window->build(drawGridVertex, drawGridVertexCfg));
 
+    auto [plotBuffer, plotEnableZeroCopy] = ConvertToOptimalStorage(window, plot);
+
     Render::Buffer::Config lineVerticesConf;
-    lineVerticesConf.buffer = plot.data();
+    lineVerticesConf.buffer = plotBuffer;
     lineVerticesConf.elementByteSize = sizeof(F32);
     lineVerticesConf.size = plot.size();
     lineVerticesConf.target = Render::Buffer::Target::VERTEX;
-    lineVerticesConf.enableZeroCopy = true;
+    lineVerticesConf.enableZeroCopy = plotEnableZeroCopy;
     JST_CHECK(window->build(lineVerticesBuffer, lineVerticesConf));
 
     Render::Vertex::Config lineVertexCfg;
