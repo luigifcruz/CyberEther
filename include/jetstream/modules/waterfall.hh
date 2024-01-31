@@ -21,6 +21,9 @@ namespace Jetstream {
 template<Device D, typename T = F32>
 class Waterfall : public Module, public Compute, public Present {
  public:
+    Waterfall();
+    ~Waterfall();
+
     // Configuration 
 
     struct Config {
@@ -104,6 +107,9 @@ class Waterfall : public Module, public Compute, public Present {
     Result destroyPresent() final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
     struct {
         int width;
         int height;
