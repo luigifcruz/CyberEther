@@ -8,12 +8,13 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Window>& window, 
-                                                Tensor<D, T>& tensor) {
+inline std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Window>& window, 
+                                                       Tensor<D, T>& tensor) {
     void* buffer = nullptr;
     bool enableZeroCopy = false;
 
     Device renderDevice = window->device();
+    Device optimalDevice = Device::None;
 
     if (tensor.compatible_devices().contains(renderDevice)) {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
@@ -23,6 +24,7 @@ std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Wi
                 enableZeroCopy = true;
             }
             buffer = optimal.data();
+            optimalDevice = Device::CPU;
         }
 #endif
 
@@ -33,6 +35,7 @@ std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Wi
                 enableZeroCopy = true;
             }
             buffer = optimal.data();
+            optimalDevice = Device::Metal;
         }
 #endif
 
@@ -43,6 +46,7 @@ std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Wi
                 enableZeroCopy = true;
             }
             buffer = optimal.data();
+            optimalDevice = Device::Vulkan;
         }
 #endif
 
@@ -53,12 +57,17 @@ std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Wi
                 enableZeroCopy = true;
             }
             buffer = optimal.data();
+            optimalDevice = Device::CUDA;
         }
 #endif
     } else {
         buffer = MapOn<Device::CPU>(tensor).data();
         enableZeroCopy = false;
+        optimalDevice = Device::CPU;
     }
+
+    JST_TRACE("[RENDER] Tensor Device: {} | Render Device: {} | Optimal Device: {} | Zero-Copy: {}", 
+              tensor.device(), renderDevice, optimalDevice, enableZeroCopy ? "YES" : "NO");
 
     return {buffer, enableZeroCopy};
 }
