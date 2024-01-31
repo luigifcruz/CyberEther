@@ -1,5 +1,6 @@
 #include "jetstream/modules/waterfall.hh"
 #include "shaders/waterfall_shaders.hh"
+#include "jetstream/render/utils.hh"
 
 #include "benchmark.cc"
 
@@ -75,12 +76,14 @@ Result Waterfall<D, T>::createPresent() {
     drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
     JST_CHECK(window->build(drawVertex, drawVertexCfg));
 
+    auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
+
     Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = MapOn<Device::CPU>(frequencyBins).data();
+    bufferCfg.buffer = buffer;
     bufferCfg.size = frequencyBins.size();
     bufferCfg.elementByteSize = sizeof(F32);
     bufferCfg.target = Render::Buffer::Target::STORAGE;
-    bufferCfg.enableZeroCopy = true;
+    bufferCfg.enableZeroCopy = enableZeroCopy;
     JST_CHECK(window->build(binTexture, bufferCfg));
 
     Render::Texture::Config lutTextureCfg;
