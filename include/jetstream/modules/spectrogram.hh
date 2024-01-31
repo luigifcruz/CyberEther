@@ -21,6 +21,9 @@ namespace Jetstream {
 template<Device D, typename T = F32>
 class Spectrogram : public Module, public Compute, public Present {
  public:
+    Spectrogram();
+    ~Spectrogram();
+
     // Configuration 
 
     struct Config {
@@ -86,12 +89,16 @@ class Spectrogram : public Module, public Compute, public Present {
     Result destroyPresent() final;
 
  private:
+    struct Impl;
+
     struct {
         U32 width;
         U32 height;
         F32 offset;
         F32 zoom;
     } shaderUniforms;
+
+    std::unique_ptr<Impl> pimpl;
 
     F32 decayFactor;
     Tensor<D, F32> frequencyBins;
@@ -111,22 +118,6 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Surface> surface;
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
-
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct MetalConstants {
-        U32 width;
-        U32 height;
-        F32 decayFactor;
-        U32 batchSize;
-    };
-
-    struct {
-        MTL::ComputePipelineState* stateDecay;
-        MTL::ComputePipelineState* stateActivate;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
 
     JST_DEFINE_IO();
 };

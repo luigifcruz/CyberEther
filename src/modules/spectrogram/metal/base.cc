@@ -38,17 +38,39 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
+struct Spectrogram<D, T>::Impl {
+    struct Constants {
+        U32 width;
+        U32 height;
+        F32 decayFactor;
+        U32 batchSize;
+    };
+
+    MTL::ComputePipelineState* stateDecay;
+    MTL::ComputePipelineState* stateActivate;
+    Tensor<Device::Metal, U8> constants;
+};
+
+template<Device D, typename T>
+Spectrogram<D, T>::Spectrogram() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Spectrogram<D, T>::~Spectrogram() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
 Result Spectrogram<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
-    auto& assets = metal;
-
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &assets.stateDecay));
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &assets.stateActivate));
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &pimpl->stateDecay));
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &pimpl->stateActivate));
 
     decayFactor = pow(0.999, numberOfBatches);
 
-    auto* constants = Metal::CreateConstants<MetalConstants>(assets);
+    auto* constants = Metal::CreateConstants<Impl::Constants>(assets);
     constants->width = numberOfElements;
     constants->height = config.height; 
     constants->decayFactor = decayFactor;
@@ -59,16 +81,14 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::compute(const Context& ctx) {
-    auto& assets = metal;
-
     {
         auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
-        cmdEncoder->setComputePipelineState(assets.stateDecay);
-        cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+        cmdEncoder->setComputePipelineState(pimpl->stateDecay);
+        cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
         cmdEncoder->setBuffer(frequencyBins.data(), 0, 1);
 
-        auto w = assets.stateDecay->threadExecutionWidth();
-        auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
+        auto w = pimpl->stateDecay->threadExecutionWidth();
+        auto h = pimpl->stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
         auto threadsPerGrid = MTL::Size(numberOfElements, config.height, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
@@ -78,13 +98,13 @@ Result Spectrogram<D, T>::compute(const Context& ctx) {
 
     {
         auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
-        cmdEncoder->setComputePipelineState(assets.stateActivate);
-        cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+        cmdEncoder->setComputePipelineState(pimpl->stateActivate);
+        cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
         cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
         cmdEncoder->setBuffer(frequencyBins.data(), 0, 2);
 
-        auto w = assets.stateDecay->threadExecutionWidth();
-        auto h = assets.stateDecay->maxTotalThreadsPerThreadgroup() / w;
+        auto w = pimpl->stateDecay->threadExecutionWidth();
+        auto h = pimpl->stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
         auto threadsPerGrid = MTL::Size(numberOfElements, numberOfBatches, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);

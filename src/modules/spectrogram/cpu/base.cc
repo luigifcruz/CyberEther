@@ -3,6 +3,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Spectrogram<D, T>::Impl {};
+
+template<Device D, typename T>
+Spectrogram<D, T>::Spectrogram() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Spectrogram<D, T>::~Spectrogram() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
 Result Spectrogram<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Spectrogram compute core using CPU backend.");
 
