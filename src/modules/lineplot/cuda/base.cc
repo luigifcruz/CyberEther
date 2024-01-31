@@ -31,16 +31,15 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Create CUDA kernel.
 
     ctx.cuda->createKernel("lineplot", R"""(
-        __global__ void lineplot(const float* input, float* output, size_t numberOfBatches, size_t numberOfElements) {
+        __global__ void lineplot(const float* input, float* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements) {
             size_t id = blockIdx.x * blockDim.x + threadIdx.x;
             if (id < numberOfElements) {
                 float sum = 0.0f;
                 for (size_t i = 0; i < numberOfBatches; ++i) {
                     sum += input[id + (i * numberOfElements)];
                 }
-
                 const size_t plot_idx = id * 3 + 1;
-                output[plot_idx] = (sum / (0.5f * numberOfBatches)) - 1.0f;
+                output[plot_idx] = (sum * normalizationFactor) - 1.0f;
             }
         }
     )""");
@@ -66,6 +65,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     pimpl->arguments = {
         pimpl->input.data_ptr(),
         plot.data_ptr(),
+        &normalizationFactor,
         &numberOfBatches,
         &numberOfElements,
     };

@@ -10,6 +10,7 @@ static const char shadersSrc[] = R"""(
     struct Constants {
         ushort batchSize;
         ushort gridSize;
+        float normalizationFactor;
     };
 
     // TODO: This can be ported to use shared memory and other tricks.
@@ -22,9 +23,8 @@ static const char shadersSrc[] = R"""(
         for (uint i = 0; i < constants.batchSize; ++i) {
             sum += input[id + (i * constants.gridSize)];
         }
-
         const uint plot_idx = id * 3 + 1;
-        bins[plot_idx] = (sum / (0.5f * constants.batchSize)) - 1.0f;
+        bins[plot_idx] = (sum * constants.normalizationFactor) - 1.0f;
     }
 )""";
 
@@ -57,6 +57,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     auto* constants = Metal::CreateConstants<Impl::Constants>(assets);
     constants->batchSize = numberOfBatches;
     constants->gridSize = numberOfElements;
+    constants->normalizationFactor = normalizationFactor;
 
     return Result::SUCCESS;
 }

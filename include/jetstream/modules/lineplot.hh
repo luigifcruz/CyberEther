@@ -118,6 +118,7 @@ class Lineplot : public Module, public Compute, public Present {
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
+    F32 normalizationFactor = 0.0f;
 
     JST_DEFINE_IO();
 };

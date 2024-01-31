@@ -23,6 +23,7 @@ Result Lineplot<D, T>::create() {
     const U64 last_axis = input.buffer.rank() - 1;
     numberOfElements = input.buffer.shape()[last_axis];
     numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
+    normalizationFactor = 1.0f / (0.5f * numberOfBatches);
 
     // Allocate internal buffers.
 
