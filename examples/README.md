@@ -20,8 +20,5 @@ Static mode is the traditional method of setting up a graph in CyberEther. In th
 
 - **Reusing Bundle Interfaces:** Even in static mode, interfaces from Bundles can be incorporated.
 
-#### Hello World
-This example provides the essentials needed to describe a flowgraph in CyberEther.
-
 #### Custom Interface
 This example delves deeper, illustrating an intermediate graph that includes hand-coded interactive interface elements.
