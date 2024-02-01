@@ -216,13 +216,17 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Create buffer object.
 
+    VkExternalMemoryImageCreateInfo extImageCreateInfo = {};
+    extImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+    extImageCreateInfo.handleTypes |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
     bufferInfo.usage =  VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferInfo.pNext = nullptr;
+    bufferInfo.pNext = &extImageCreateInfo;
 
     JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &_buffer), [&]{
         JST_ERROR("[VULKAN] Can't create memory buffer.");
