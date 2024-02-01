@@ -11,7 +11,9 @@ struct CUDA::Impl {
         CUmodule module;
     };
 
-    std::unordered_map<std::string, Kernel> kernels;
+    U64 block_in_context;
+
+    std::unordered_map<U64, std::unordered_map<std::string, Kernel>> kernels;
 };
 
 CUDA::CUDA() {
@@ -37,8 +39,10 @@ Result CUDA::create() {
 
     // Create blocks.
 
-    for (const auto& block : blocks) {
-        JST_CHECK(block->createCompute(*context));
+    for (U64 i = 0; i < blocks.size(); i++) {
+        pimpl->block_in_context = i;
+
+        JST_CHECK(blocks[i]->createCompute(*context));
     }
 
     return Result::SUCCESS;
@@ -54,8 +58,10 @@ Result CUDA::computeReady() {
 Result CUDA::compute() {
     // Execute blocks.
 
-    for (const auto& block : blocks) {
-        JST_CHECK(block->compute(*context));
+    for (U64 i = 0; i < blocks.size(); i++) {
+        pimpl->block_in_context = i;
+
+        JST_CHECK(blocks[i]->compute(*context));
 
         // Check for CUDA errors.
 
@@ -83,12 +89,16 @@ Result CUDA::destroy() {
 
     // Destroy kernels.
 
-    std::vector<std::string> kernel_names;
-    for (const auto& [name, _] : pimpl->kernels) {
-        kernel_names.push_back(name);
-    }
-    for (const auto& name : kernel_names) {
-        JST_CHECK(destroyKernel(name));
+    for (U64 i = 0; i < blocks.size(); i++) {
+        pimpl->block_in_context = i;
+
+        std::vector<std::string> kernel_names;
+        for (const auto& [name, _] : pimpl->kernels[i]) {
+            kernel_names.push_back(name);
+        }
+        for (const auto& name : kernel_names) {
+            JST_CHECK(destroyKernel(name));
+        }
     }
 
     // Destroy CUDA stream.
@@ -103,10 +113,10 @@ Result CUDA::destroy() {
 Result CUDA::createKernel(const std::string& name, 
                           const std::string& source,
                           const std::vector<KernelHeader>& headers) {
-    if (pimpl->kernels.contains(name)) {
+    if (pimpl->kernels[pimpl->block_in_context].contains(name)) {
         JST_ERROR("[CUDA] Kernel with name '{}' already exists.", name);
     }
-    auto& kernel = pimpl->kernels[name];
+    auto& kernel = pimpl->kernels[pimpl->block_in_context][name];
 
     // Create program.
 
@@ -181,13 +191,13 @@ Result CUDA::createKernel(const std::string& name,
 }
 
 Result CUDA::destroyKernel(const std::string& name) {
-    auto& kernel = pimpl->kernels[name];
+    auto& kernel = pimpl->kernels[pimpl->block_in_context][name];
 
     JST_CUDA_CHECK(cuModuleUnload(kernel.module), [&]{
         JST_ERROR("[CUDA] Can't unload module: {}", err);
     });
 
-    pimpl->kernels.erase(name);
+    pimpl->kernels[pimpl->block_in_context].erase(name);
 
     return Result::SUCCESS;
 }
@@ -196,7 +206,7 @@ Result CUDA::launchKernel(const std::string& name,
                           const std::vector<U64>& grid,
                           const std::vector<U64>& block,
                           void** arguments) {
-    const auto& kernel = pimpl->kernels.at(name);
+    const auto& kernel = pimpl->kernels.at(pimpl->block_in_context).at(name);
 
     JST_CUDA_CHECK(cuLaunchKernel(kernel.function, 
                                   grid[0], grid[1], grid[2], 

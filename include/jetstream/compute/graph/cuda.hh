@@ -44,8 +44,6 @@ class CUDA : public Graph {
 
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    
 };
 
 }  // namespace Jetstream
