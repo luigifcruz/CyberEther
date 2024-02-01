@@ -23,6 +23,8 @@ Result Spectrogram<D, T>::create() {
     const U64 last_axis = input.buffer.rank() - 1;
     numberOfElements = input.buffer.shape()[last_axis];
     numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
+    totalFrequencyBins = numberOfElements * config.height;
+    decayFactor = pow(0.999, numberOfBatches);
 
     // Allocate internal buffers.
 

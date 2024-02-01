@@ -19,8 +19,6 @@ template<Device D, typename T>
 Result Spectrogram<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Spectrogram compute core using CPU backend.");
 
-    decayFactor = pow(0.999, numberOfBatches);
-
     return Result::SUCCESS;
 }
 

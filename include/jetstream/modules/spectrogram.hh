@@ -18,6 +18,9 @@ namespace Jetstream {
 #define JST_SPECTROGRAM_METAL(MACRO) \
     MACRO(Spectrogram, Metal, F32)
 
+#define JST_SPECTROGRAM_CUDA(MACRO) \
+    MACRO(Spectrogram, CUDA, F32)
+
 template<Device D, typename T = F32>
 class Spectrogram : public Module, public Compute, public Present {
  public:
@@ -105,6 +108,7 @@ class Spectrogram : public Module, public Compute, public Present {
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
+    U64 totalFrequencyBins = 0;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
@@ -124,6 +128,9 @@ class Spectrogram : public Module, public Compute, public Present {
 
 #ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
 JST_SPECTROGRAM_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_SPECTROGRAM_CUDA_AVAILABLE
+JST_SPECTROGRAM_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE
 JST_SPECTROGRAM_METAL(JST_SPECIALIZATION);

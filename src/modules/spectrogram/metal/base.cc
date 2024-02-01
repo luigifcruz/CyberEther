@@ -68,8 +68,6 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &pimpl->stateDecay));
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &pimpl->stateActivate));
 
-    decayFactor = pow(0.999, numberOfBatches);
-
     auto* constants = Metal::CreateConstants<Impl::Constants>(assets);
     constants->width = numberOfElements;
     constants->height = config.height; 
