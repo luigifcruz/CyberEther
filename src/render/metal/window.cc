@@ -183,6 +183,10 @@ Result Implementation::underlyingEnd() {
     return Result::SUCCESS;
 }
 
+Result Implementation::underlyingSynchronize() {
+    return Result::SUCCESS;
+}
+
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Metal>();
 

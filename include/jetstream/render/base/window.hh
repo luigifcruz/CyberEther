@@ -40,11 +40,13 @@ class Window {
     explicit Window(const Config& config) : config(config) {}
     virtual ~Window() = default;
 
-    virtual Result create();
-    virtual Result destroy();
+    Result create();
+    Result destroy();
 
-    virtual Result begin();
-    virtual Result end();
+    Result begin();
+    Result end();
+
+    Result synchronize();
 
     virtual const Stats& stats() const = 0;
     virtual void drawDebugMessage() const = 0;
@@ -121,6 +123,8 @@ class Window {
 
     virtual Result underlyingBegin() = 0;
     virtual Result underlyingEnd() = 0;
+
+    virtual Result underlyingSynchronize() = 0;
 
  private:
     ImFont* _bodyFont;

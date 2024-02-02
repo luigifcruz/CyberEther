@@ -74,6 +74,19 @@ Result Window::end() {
     return res;
 }
 
+Result Window::synchronize() {
+    // Lock the frame queue.
+    newFrameQueueMutex.lock();
+
+    // Call frame synchronize.
+    const auto& res = underlyingSynchronize();
+
+    // Unlock the frame queue.
+    newFrameQueueMutex.unlock();
+
+    return res;
+}
+
 Result Window::bind(const std::shared_ptr<Surface>& surface) {
     // Push new surface to the bind queue.
     surfaceBindQueue.push(surface);

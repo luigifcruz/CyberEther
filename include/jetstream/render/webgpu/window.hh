@@ -31,6 +31,8 @@ class WindowImp<Device::WebGPU> : public Window {
     Result underlyingBegin() override;
     Result underlyingEnd() override;
 
+    Result underlyingSynchronize() override;
+
  private:
     Stats statsData;
     ImGuiIO* io = nullptr;

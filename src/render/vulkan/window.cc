@@ -404,6 +404,14 @@ Result Implementation::underlyingEnd() {
     return result;
 }
 
+Result Implementation::underlyingSynchronize() {
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't synchronize graphics queue.");
+    });
+
+    return Result::SUCCESS;
+}
+
 Result Implementation::createSynchronizationObjects() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
