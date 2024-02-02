@@ -8,26 +8,18 @@ using namespace Jetstream;
 constexpr static Device ComputeDevice = Device::CPU;
 
 // Selects the graphical backend to use.
-#ifdef JST_OS_BROWSER
-constexpr static Device RenderDevice  = Device::WebGPU;
-#else
 constexpr static Device RenderDevice  = Device::Vulkan;
-#endif
 
 // Selects the viewport platform to use.
 using Platform = Viewport::GLFW<RenderDevice>;
 
 class UI {
  public:
-    UI(Instance& instance) : instance(instance) {
-        JST_CHECK_THROW(create());
-    }
+    UI(Instance& instance) : instance(instance) {}
 
-    ~UI() {
-        destroy();
-    }
+    Result run() {
+        // Add modules to the instance.
 
-    Result create() {
         JST_CHECK(instance.addModule(
             sdr, "soapy", {
                 .deviceString = "driver=rtlsdr",
@@ -92,37 +84,48 @@ class UI {
             }
         ));
 
-        streaming = true;
-        frequency = sdr->getConfig().frequency / 1e6;
-        
+        // Start the instance.
+
+        instance.start();
+
         computeWorker = std::thread([&]{
-            while(streaming && instance.viewport().keepRunning()) {
+            while (instance.computing()) {
                 this->computeThreadLoop();
             }
         });
 
-#ifdef JST_OS_BROWSER
-        emscripten_set_main_loop_arg(callRenderLoop, this, 0, 1);
-#else
         graphicalWorker = std::thread([&]{
-            while (streaming && instance.viewport().keepRunning()) {
+            closing = false;
+            frequency = sdr->getConfig().frequency / 1e6;
+
+            while (instance.presenting()) {
                 this->graphicalThreadLoop(); 
             }
         });
-#endif
 
-        return Result::SUCCESS;
-    }
+        // Wait user to close the window.
 
-    Result destroy() {
-        streaming = false;
-        computeWorker.join();
-#ifndef JST_OS_BROWSER
-        graphicalWorker.join();
-#endif
+        while (instance.viewport().keepRunning()) {
+            instance.viewport().pollEvents();
+        }
+
+        // Stop the instance and wait for threads.
+
+        closing = true;
+        instance.reset();
+        instance.stop();
+
+        if (computeWorker.joinable()) {
+            computeWorker.join();
+        }
+
+        if (graphicalWorker.joinable()) {
+            graphicalWorker.join();
+        }
+
+        // Destroy the instance.
+
         instance.destroy();
-
-        JST_DEBUG("The UI was destructed.");
 
         return Result::SUCCESS;
     }
@@ -131,9 +134,9 @@ class UI {
     std::thread graphicalWorker;
     std::thread computeWorker;
     Instance& instance;
-    bool streaming = false;
     F32 stepSize = 10.0f;
     F32 frequency = 10.0f;
+    bool closing;
 
     std::shared_ptr<Soapy<ComputeDevice>> sdr;
     std::shared_ptr<Window<ComputeDevice>> win;
@@ -150,15 +153,22 @@ class UI {
         JST_CHECK_THROW(instance.compute());
     }
 
-    static void callRenderLoop(void* ui_ptr) {
-        reinterpret_cast<UI*>(ui_ptr)->graphicalThreadLoop();
-    }
-
     void graphicalThreadLoop() {
         if (instance.begin() == Result::SKIP) {
             return;
         }
 
+        if (!closing) {
+            JST_CHECK_THROW(drawCustomViews());
+        }
+
+        JST_CHECK_THROW(instance.present());
+        if (instance.end() == Result::SKIP) {
+            return;
+        }
+    }
+
+    Result drawCustomViews() {
         {
             ImGui::Begin("Control");
 
@@ -258,10 +268,7 @@ class UI {
             ImGui::End();
         }
 
-        JST_CHECK_THROW(instance.present());
-        if (instance.end() == Result::SKIP) {
-            return;
-        }
+        return Result::SUCCESS;
     }
 };
 
@@ -295,19 +302,12 @@ int main() {
     renderCfg.scale = 1.0;
     JST_CHECK_THROW(instance.buildRender<RenderDevice>(renderCfg));
 
-    {
-        auto ui = UI(instance);
+    UI(instance).run();
 
-#ifdef JST_OS_BROWSER
-        emscripten_runtime_keepalive_push();
-#else
-        while (instance.viewport().keepRunning()) {
-            instance.viewport().pollEvents();
-        }
-#endif
-    }
-
-    Backend::DestroyAll();
+    Backend::Destroy<RenderDevice>();
+    Backend::Destroy<ComputeDevice>();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
+
+    return 0;
 }

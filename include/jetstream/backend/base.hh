@@ -9,6 +9,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/backend/config.hh"
 
+// TODO: Refactor this entire thing. It's a mess.
+
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/devices/metal/base.hh"
 #endif
@@ -88,11 +90,10 @@ class JETSTREAM_API Instance {
         return Result::SUCCESS;
     }
 
-    template<Device DeviceId>
-    Result destroy() {
-        if (backends.contains(DeviceId)) {
-            JST_DEBUG("Destroying {} backend.", DeviceId);
-            backends.erase(DeviceId);
+    Result destroy(const Device& id) {
+        if (backends.contains(id)) {
+            JST_DEBUG("Destroying {} backend.", id);
+            backends.erase(id);
         }
         return Result::SUCCESS;
     }
@@ -105,6 +106,10 @@ class JETSTREAM_API Instance {
             JST_CHECK_THROW(initialize<DeviceId>({}));
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
+    }
+
+    bool initialized(const Device& id) {
+        return backends.contains(id);
     }
 
     Result destroyAll() {
@@ -148,7 +153,20 @@ Result Initialize(const Config& config) {
 
 template<Device D>
 Result Destroy() {
-    return Get().destroy<D>();
+    return Get().destroy(D);
+}
+
+inline Result Destroy(const Device& id) {
+    return Get().destroy(id);
+}
+
+template<Device D>
+bool Initialized() {
+    return Get().initialized(D);
+}
+
+inline bool Initialized(const Device& id) {
+    return Get().initialized(id);
 }
 
 inline Result DestroyAll() {

@@ -3,7 +3,12 @@
 
 namespace Jetstream {
 
+Instance::Instance() : _scheduler(), _flowgraph(*this) {
+    JST_DEBUG("[INSTANCE] Creating instance.");
+}
+
 Result Instance::buildInterface(const Device& preferredDevice,
+                                const bool& enableCompositor,
                                 const Backend::Config& backendConfig,
                                 const Viewport::Config& viewportConfig,
                                 const Render::Window::Config& renderConfig) {
@@ -30,6 +35,9 @@ Result Instance::buildInterface(const Device& preferredDevice,
                     JST_CHECK(Backend::Initialize<Device::Vulkan>(backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::Headless<Device::Vulkan>>(viewportConfig));
                     JST_CHECK(this->buildRender<Device::Vulkan>(renderConfig));
+                    if (enableCompositor) {
+                        JST_CHECK(this->buildCompositor());
+                    }
                     return Result::SUCCESS;
 #endif
 #endif
@@ -49,6 +57,9 @@ Result Instance::buildInterface(const Device& preferredDevice,
                     JST_CHECK(Backend::Initialize<Device::Metal>(backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(viewportConfig));
                     JST_CHECK(this->buildRender<Device::Metal>(renderConfig));
+                    if (enableCompositor) {
+                        JST_CHECK(this->buildCompositor());
+                    }
                     return Result::SUCCESS;
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
@@ -56,6 +67,9 @@ Result Instance::buildInterface(const Device& preferredDevice,
                     JST_CHECK(Backend::Initialize<Device::Vulkan>(backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(viewportConfig));
                     JST_CHECK(this->buildRender<Device::Vulkan>(renderConfig));
+                    if (enableCompositor) {
+                        JST_CHECK(this->buildCompositor());
+                    }
                     return Result::SUCCESS;
 #endif
 #ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
@@ -63,6 +77,9 @@ Result Instance::buildInterface(const Device& preferredDevice,
                     JST_CHECK(Backend::Initialize<Device::WebGPU>(backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(viewportConfig));
                     JST_CHECK(this->buildRender<Device::WebGPU>(renderConfig));
+                    if (enableCompositor) {
+                        JST_CHECK(this->buildCompositor());
+                    }
                     return Result::SUCCESS;
 #endif
 #endif
@@ -413,7 +430,9 @@ Result Instance::eraseBlock(Locale locale) {
     }
 
     // Remove block from compositor.
-    JST_CHECK(_compositor.removeBlock(locale));
+    if (_compositor) {
+        JST_CHECK(_compositor->removeBlock(locale));
+    }
 
     // Remove module from state.
     auto state = _flowgraph.nodes().extract(locale).mapped();
@@ -430,9 +449,14 @@ Result Instance::eraseBlock(Locale locale) {
 Result Instance::reset() {
     JST_DEBUG("[INSTANCE] Reseting instance.");
 
-    // Destroying compositor and scheduler.
+    // Destroying compositor.
 
-    JST_CHECK(_compositor.destroy());
+    if (_compositor) {
+        JST_CHECK(_compositor->destroy());
+    }
+
+    // Destroying scheduler.
+
     JST_CHECK(_scheduler.destroy());
 
     // Destroying blocks.
@@ -448,6 +472,21 @@ Result Instance::reset() {
     for (const auto& locale : block_erase_list) {
         JST_TRACE("[INSTANCE] Resetting block '{}'.", locale);
         JST_CHECK(eraseBlock(locale));
+    }
+
+    // Destroying unbount modules.
+
+    std::vector<Locale> module_erase_list;
+
+    for (const auto& [locale, state] : _flowgraph.nodes()) {
+        if (state->module) {
+            module_erase_list.push_back(locale);
+        }
+    }
+
+    for (const auto& locale : module_erase_list) {
+        JST_TRACE("[INSTANCE] Resetting unbounded module '{}'.", locale);
+        JST_CHECK(eraseModule(locale));
     }
 
     return Result::SUCCESS;
@@ -484,20 +523,54 @@ Result Instance::fetchDependencyTree(Locale locale, std::vector<Locale>& storage
     return Result::SUCCESS;
 }
 
+Result Instance::start() {
+    JST_DEBUG("[INSTANCE] Starting instance.");
+
+    computeRunning = true;
+    presentRunning = true;
+
+    return Result::SUCCESS;
+}
+
+Result Instance::stop() {
+    JST_DEBUG("[INSTANCE] Stopping instance.");
+
+    computeRunning = false;
+    presentRunning = false;
+
+    return Result::SUCCESS;
+}
+
 Result Instance::destroy() {
     JST_DEBUG("[INSTANCE] Destroying instance.");
 
-    // Clear modules.
-    JST_CHECK(reset());
+    // Destroy compositor.
 
-    // Destroy window and viewport.
+    if (_compositor) {
+        JST_CHECK(_compositor->destroy());
+        _compositor = nullptr;
+    }
+
+    // Destroy window.
 
     if (_window) {
         JST_CHECK(_window->destroy());
+        _window = nullptr;
     }
+
+    // Destroy viewport.
 
     if (_viewport) {
         JST_CHECK(_viewport->destroy());
+        _viewport = nullptr;
+    }
+
+    // Destroy backends.
+
+    for (const auto& device : enabled_backend_devices) {
+        if (Backend::Initialized(device)) {
+            JST_CHECK(Backend::Destroy(device));
+        }
     }
 
     return Result::SUCCESS;
@@ -508,6 +581,14 @@ Result Instance::compute() {
     JST_CHECK(_scheduler.compute());
 
     return Result::SUCCESS;
+}
+
+bool Instance::computing() {
+    return computeRunning;
+}
+
+bool Instance::presenting() {
+    return presentRunning;
 }
 
 Result Instance::begin() {
@@ -526,13 +607,19 @@ Result Instance::present() {
 
 Result Instance::end() {
     // Draw the main interface.
-    JST_CHECK(_compositor.draw());
+
+    if (_compositor) {
+        JST_CHECK(_compositor->draw());
+    }
 
     // Finish the render frame.
     JST_CHECK(_window->end());
 
     // Process interactions after finishing frame.
-    JST_CHECK(_compositor.processInteractions());
+
+    if (_compositor) {
+        JST_CHECK(_compositor->processInteractions());
+    }
 
     return Result::SUCCESS;
 }

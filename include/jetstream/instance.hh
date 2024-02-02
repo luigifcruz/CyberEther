@@ -17,26 +17,21 @@
 #include "jetstream/compositor.hh"
 #include "jetstream/compute/base.hh"
 
-// TODO: Add way to disable compositor completely.
-
 namespace Jetstream {
 
 class JETSTREAM_API Instance {
  public:
-    Instance()
-         : _scheduler(),
-           _compositor(*this),
-           _flowgraph(*this) {
-        JST_DEBUG("[INSTANCE] Started.");
-    };
+    Instance();
 
     Result buildInterface(const Device& preferredDevice = Device::None,
+                          const bool& enableCompositor = false,
                           const Backend::Config& backendConfig = {},
                           const Viewport::Config& viewportConfig = {},
                           const Render::Window::Config& renderConfig = {});
 
     template<Device D>
     Result buildBackend(const Backend::Config& config) {
+        enabled_backend_devices.insert(D);
         return Backend::Initialize<D>(config);
     }
 
@@ -47,8 +42,9 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        _viewport = std::make_shared<Platform>(config, args...);
+        // Create viewport.
 
+        _viewport = std::make_shared<Platform>(config, args...);
         JST_CHECK(_viewport->create());
 
         return Result::SUCCESS;
@@ -71,11 +67,33 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
+        // Check if backend is enabled.
+
+        if (!Backend::Initialized<D>()) {
+            enabled_backend_devices.insert(D);
+        }
+
+        // Create window.
+
         auto viewport = std::dynamic_pointer_cast<Viewport::Adapter<D>>(_viewport);
         _window = std::make_shared<Render::WindowImp<D>>(config, viewport);
-
         JST_CHECK(_window->create());
 
+        return Result::SUCCESS;
+    }
+
+    Result buildCompositor() {
+        if (!_window) {
+            JST_ERROR("[INSTANCE] A window is necessary to create a compositor.");
+            return Result::ERROR;
+        }
+
+        if (_compositor) {
+            JST_ERROR("[INSTANCE] A compositor was already created.");
+            return Result::ERROR;
+        }
+
+        _compositor = std::make_shared<Compositor>(*this);
         return Result::SUCCESS;
     }
 
@@ -86,6 +104,12 @@ class JETSTREAM_API Instance {
                             const typename T<D, C...>::Input& input,
                             const Locale& blockLocale = {"main"}) {
         using B = T<D, C...>;
+
+        // Check if backend is enabled.
+
+        if (!Backend::Initialized<D>()) {
+            enabled_backend_devices.insert(D);
+        }
 
         // Allocate module.
 
@@ -138,6 +162,12 @@ class JETSTREAM_API Instance {
                      const typename T<D, C...>::Input& input,
                      const Locale& blockLocale = {"main"}) {
         using B = T<D, C...>;
+
+        // Check if backend is enabled.
+
+        if (!Backend::Initialized<D>()) {
+            enabled_backend_devices.insert(D);
+        }
 
         // Validate module type.
 
@@ -258,6 +288,12 @@ class JETSTREAM_API Instance {
                     const typename T<D, C...>::State& state) {
         using B = T<D, C...>;
 
+        // Check if backend is enabled.
+
+        if (!Backend::Initialized<D>()) {
+            enabled_backend_devices.insert(D);
+        }
+
         // Allocate module.
         block = std::make_shared<B>();
 
@@ -358,12 +394,14 @@ class JETSTREAM_API Instance {
         
         // Add block to the compositor.
 
-        JST_CHECK(_compositor.addBlock(locale, 
-                                       block, 
-                                       node->inputMap, 
-                                       node->outputMap, 
-                                       node->stateMap, 
-                                       node->fingerprint));
+        if (_compositor) {
+            JST_CHECK(_compositor->addBlock(locale, 
+                                            block, 
+                                            node->inputMap, 
+                                            node->outputMap, 
+                                            node->stateMap, 
+                                            node->fingerprint));
+        }
 
         return Result::SUCCESS;
     }
@@ -399,6 +437,12 @@ class JETSTREAM_API Instance {
     Result eraseModule(Locale locale);
     Result eraseBlock(Locale locale);
 
+    bool computing();
+    bool presenting();
+
+    Result start();
+    Result stop();
+
     Result destroy();
     Result compute();
     Result begin();
@@ -406,7 +450,7 @@ class JETSTREAM_API Instance {
     Result end();
 
     Compositor& compositor() {
-        return _compositor;
+        return *_compositor;
     }
 
     Scheduler& scheduler() {
@@ -427,11 +471,16 @@ class JETSTREAM_API Instance {
 
  private:
     Scheduler _scheduler;
-    Compositor _compositor;
     Flowgraph _flowgraph;
 
+    std::shared_ptr<Compositor> _compositor;
     std::shared_ptr<Render::Window> _window;
     std::shared_ptr<Viewport::Generic> _viewport;
+
+    bool presentRunning;
+    bool computeRunning;
+
+    std::set<Device> enabled_backend_devices;
 
     Result fetchDependencyTree(Locale locale, std::vector<Locale>& storage);
 
