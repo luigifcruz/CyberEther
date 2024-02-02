@@ -29,7 +29,7 @@ void Benchmark::add(const std::string& module,
                     const std::string& device, 
                     const std::string& type, 
                     const BenchmarkFuncType& benchmark) {
-    JST_DEBUG("[BENCHMARK] Adding benchmark: {} - {} - {}", module, device, type);
+    JST_TRACE("[BENCHMARK] Adding benchmark: {} - {} - {}", module, device, type);
     benchmarks[module].push_back({jst::fmt::format("{} - {} - ", device, type), benchmark});
 }
 
