@@ -239,5 +239,9 @@ int main(int argc, char* argv[]) {
 
     instance.destroy();
 
+    // Destroy backend.
+
+    Backend::DestroyAll();
+
     return 0;
 }
