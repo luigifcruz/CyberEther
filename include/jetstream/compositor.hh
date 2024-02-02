@@ -26,6 +26,7 @@ class Instance;
 class JETSTREAM_API Compositor {
  public:
     Compositor(Instance& instance);
+    ~Compositor();
 
     Compositor& showStore(const bool& enabled) {
         moduleStoreEnabled = enabled;
@@ -110,14 +111,11 @@ class JETSTREAM_API Compositor {
 
     std::atomic_flag interfaceHalt{false};
 
-    bool assetsLoaded = false;
     std::shared_ptr<Render::Texture> primaryBannerTexture;
     std::shared_ptr<Render::Texture> secondaryBannerTexture;
     Result loadImageAsset(const uint8_t* binary_data, 
                           const U64& binary_len, 
                           std::shared_ptr<Render::Texture>& texture);
-    Result loadAssets();
-    Result unloadAssets();
 
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
     std::unordered_map<Locale, std::vector<Locale>, Locale::Hasher> outputInputCache;

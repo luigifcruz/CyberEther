@@ -27,8 +27,27 @@ Compositor::Compositor(Instance& instance)
        nodeContextMenuNodeId(0),
        benchmarkRunning(false),
        globalModalToggle(false) {
+    JST_DEBUG("[COMPOSITOR] Creating compositor.");
+
+    // Set default stacks.
     stacks["Graph"] = {true, 0};
+
+    // Initialize state.
     JST_CHECK_THROW(refreshState());
+
+    // Load assets.
+
+    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_primary_bin, 
+                                  Resources::compositor_banner_primary_len,
+                                  primaryBannerTexture));
+    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_secondary_bin, 
+                                   Resources::compositor_banner_secondary_len,
+                                   secondaryBannerTexture));
+}
+
+Compositor::~Compositor() {
+    primaryBannerTexture->destroy();
+    secondaryBannerTexture->destroy();
 }
 
 Result Compositor::addBlock(const Locale& locale,
@@ -357,11 +376,6 @@ Result Compositor::destroy() {
 
     stacks["Graph"] = {true, 0};
 
-    // Unload assets.
-    if (assetsLoaded) {
-        JST_CHECK(unloadAssets());
-    }
-
     return Result::SUCCESS;
 }
 
@@ -396,34 +410,7 @@ Result Compositor::loadImageAsset(const uint8_t* binary_data,
     return Result::SUCCESS;
 }
 
-Result Compositor::loadAssets() {
-    JST_DEBUG("[COMPOSITOR] Loading assets.");
-
-    JST_CHECK(loadImageAsset(Resources::compositor_banner_primary_bin, 
-                             Resources::compositor_banner_primary_len,
-                             primaryBannerTexture));
-
-    JST_CHECK(loadImageAsset(Resources::compositor_banner_secondary_bin, 
-                             Resources::compositor_banner_secondary_len,
-                             secondaryBannerTexture));
-
-    assetsLoaded = true;
-    return Result::SUCCESS;
-}
-
-Result Compositor::unloadAssets() {
-    JST_CHECK(primaryBannerTexture->destroy());
-    JST_CHECK(secondaryBannerTexture->destroy());
-
-    assetsLoaded = false;
-    return Result::SUCCESS;
-}
-
 Result Compositor::draw() {
-    if (!assetsLoaded) {
-        JST_CHECK(loadAssets());
-    }
-
     // Prevent state from refreshing while drawing these methods.
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
@@ -1234,21 +1221,19 @@ Result Compositor::drawStatic() {
         const char* largestText = "To get started, create a new flowgraph or open an existing one using";
         const auto largestTextSize = ImGui::CalcTextSize(largestText).x;
 
-        if (assetsLoaded) {
-            static bool usePrimaryTexture = true;
-            auto texture = usePrimaryTexture ? primaryBannerTexture : secondaryBannerTexture;
-            const auto& [w, h] = texture->size();
-            const auto ratio = static_cast<F32>(w) / static_cast<F32>(h);
-            ImGui::Image(texture->raw(), ImVec2(largestTextSize, largestTextSize / ratio));
+        static bool usePrimaryTexture = true;
+        auto texture = usePrimaryTexture ? primaryBannerTexture : secondaryBannerTexture;
+        const auto& [w, h] = texture->size();
+        const auto ratio = static_cast<F32>(w) / static_cast<F32>(h);
+        ImGui::Image(texture->raw(), ImVec2(largestTextSize, largestTextSize / ratio));
 
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                usePrimaryTexture = false;
-            } else {
-                usePrimaryTexture = true;
-            }
-
-            ImGui::Spacing();
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            usePrimaryTexture = false;
+        } else {
+            usePrimaryTexture = true;
         }
+
+        ImGui::Spacing();
 
         ImGui::Text("CyberEther is a tool designed for graphical visualization of radio");
         ImGui::Text("signals and general computing focusing in heterogeneous systems.");
