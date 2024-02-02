@@ -8,12 +8,37 @@
 namespace Jetstream::Render {
 
 Result Window::create() {
+    // Set variables.
+
     _scalingFactor = 0.0f;
     _previousScalingFactor = 0.0f;
-
     graphicalLoopThreadStarted = false;
 
-    return Result::SUCCESS;
+    // Lock the frame queue.
+    newFrameQueueMutex.lock();
+
+    // Call underlying create.
+    const auto& res = underlyingCreate();
+
+    // Unlock the frame queue.
+    newFrameQueueMutex.unlock();
+
+    return res;
+}
+
+Result Window::destroy() {
+    graphicalLoopThreadStarted = false;
+
+    // Lock the frame queue.
+    newFrameQueueMutex.lock();
+
+    // Call underlying destroy.
+    const auto& res = underlyingDestroy();
+
+    // Unlock the frame queue.
+    newFrameQueueMutex.unlock();
+
+    return res;
 }
 
 Result Window::begin() {
@@ -25,7 +50,28 @@ Result Window::begin() {
     graphicalLoopThreadStarted = true;
     graphicalLoopThreadId = std::this_thread::get_id();
 
-    return Result::SUCCESS;
+    // Lock the frame queue.
+    newFrameQueueMutex.lock();
+
+    // Call frame begin.
+    const auto& res = underlyingBegin();
+
+    // Unlock the frame queue if failed.
+    if (res != Result::SUCCESS) {
+        newFrameQueueMutex.unlock();
+    }
+    
+    return res;
+}
+
+Result Window::end() {
+    // Call frame end.
+    const auto& res = underlyingEnd();
+
+    // Unlock the frame queue.
+    newFrameQueueMutex.unlock();
+
+    return res;
 }
 
 Result Window::bind(const std::shared_ptr<Surface>& surface) {
@@ -58,12 +104,23 @@ Result Window::unbind(const std::shared_ptr<Surface>& surface) {
     // Push new surface to the unbind queue.
     surfaceUnbindQueue.push(surface);
 
-    // Return immediately.
+    // Wait completion.
+    if (graphicalLoopThreadId != std::this_thread::get_id()) {
+        while (!surfaceUnbindQueue.empty()) {
+            std::this_thread::yield();
+        }
+    }
+    // Call the function directly as fallback.
+    else {
+        JST_CHECK(processSurfaceUnbindQueue());
+    }
 
     return Result::SUCCESS;
 }
 
 Result Window::processSurfaceBindQueue() {
+    std::lock_guard<std::mutex> lock(newFrameQueueMutex);
+
     while (!surfaceBindQueue.empty()) {
         JST_CHECK(bindSurface(surfaceBindQueue.front()));
         surfaceBindQueue.pop();
@@ -73,6 +130,8 @@ Result Window::processSurfaceBindQueue() {
 }
 
 Result Window::processSurfaceUnbindQueue() {
+    std::lock_guard<std::mutex> lock(newFrameQueueMutex);
+
     while (!surfaceUnbindQueue.empty()) {
         JST_CHECK(unbindSurface(surfaceUnbindQueue.front()));
         surfaceUnbindQueue.pop();

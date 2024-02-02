@@ -14,12 +14,6 @@ class WindowImp<Device::WebGPU> : public Window {
     explicit WindowImp(const Config& config,
                        std::shared_ptr<Viewport::Adapter<Device::WebGPU>>& viewport);
 
-    Result create() override;
-    Result destroy() override;
-
-    Result begin() override;
-    Result end() override;
-
     const Stats& stats() const override;
     void drawDebugMessage() const override;
 
@@ -30,6 +24,12 @@ class WindowImp<Device::WebGPU> : public Window {
  protected:
     Result bindSurface(const std::shared_ptr<Surface>& surface) override;
     Result unbindSurface(const std::shared_ptr<Surface>& surface) override;
+
+    Result underlyingCreate() override;
+    Result underlyingDestroy() override;
+
+    Result underlyingBegin() override;
+    Result underlyingEnd() override;
 
  private:
     Stats statsData;
