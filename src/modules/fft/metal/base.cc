@@ -83,7 +83,7 @@ Result FFT<D, IT, OT>::compute(const Context& ctx) {
     launchParams.commandBuffer = ctx.metal->commandBuffer();
     launchParams.commandEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
 
-    const int inverse = static_cast<int>(config.forward);
+    const int inverse = static_cast<int>(!config.forward);
     if (auto res = VkFFTAppend(pimpl->app, inverse, &launchParams); res != VKFFT_SUCCESS) {
         JST_ERROR("Failed to append to VkFFT: {}", static_cast<int>(res));
         return Result::ERROR;
