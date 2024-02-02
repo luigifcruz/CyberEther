@@ -42,7 +42,7 @@ jobs:
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
           brew install --force --overwrite catch2
-          python -m pip install pyyaml
+          python3 -m pip install pyyaml
 
       ##
 
