@@ -46,19 +46,15 @@ template<Device D, typename T>
 Result Scale<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
-    auto& assets = metal;
-
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &assets.state));
-    Metal::CreateConstants<Impl::Constants>(assets);
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &pimpl->state));
+    Metal::CreateConstants<typename Impl::Constants>(*pimpl);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Scale<D, T>::compute(const Context& ctx) {
-    auto& assets = metal;
-
-    auto* constants = Metal::Constants<Impl::Constants>(assets);
+    auto* constants = Metal::Constants<typename Impl::Constants>(*pimpl);
     constants->min = scalingCoeff;
     constants->max = offsetCoeff;
 

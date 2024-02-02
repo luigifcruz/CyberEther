@@ -30,9 +30,10 @@ static const char shadersSrc[] = R"""(
 
 template<Device D, typename T>
 struct Lineplot<D, T>::Impl {
-    struct MetalConstants {
+    struct Constants {
         U16 batchSize;
         U16 gridSize;
+        F32 normalizationFactor;
     };
 
     MTL::ComputePipelineState* state;
@@ -54,7 +55,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &pimpl->state));
-    auto* constants = Metal::CreateConstants<Impl::Constants>(assets);
+    auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
     constants->batchSize = numberOfBatches;
     constants->gridSize = numberOfElements;
     constants->normalizationFactor = normalizationFactor;

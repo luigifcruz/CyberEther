@@ -49,7 +49,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &pimpl->state));
-    auto* constants = Metal::CreateConstants<Impl::Constants>(assets);
+    auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
     constants->scalingCoeff = scalingCoeff;
 
     return Result::SUCCESS;

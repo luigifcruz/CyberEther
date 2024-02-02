@@ -23,7 +23,7 @@ template<Device D, typename T>
 Result Multiply<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
-    auto& assets = metal;
+    auto& assets = this->metal;
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply", &assets.state));
 
@@ -32,7 +32,7 @@ Result Multiply<D, T>::createCompute(const Context& ctx) {
 
 template<Device D, typename T>
 Result Multiply<D, T>::compute(const Context& ctx) {
-    auto& assets = metal;
+    auto& assets = this->metal;
 
     // TODO: Implement new multiplication logic.
     
