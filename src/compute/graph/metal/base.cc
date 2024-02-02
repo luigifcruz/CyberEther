@@ -5,6 +5,7 @@ namespace Jetstream {
 Metal::Metal() {
     JST_DEBUG("Creating new Metal compute graph.");
     context = std::make_shared<Compute::Context>();
+    context->metal = this;
 }
 
 Metal::~Metal() {
@@ -14,7 +15,7 @@ Metal::~Metal() {
 Result Metal::create() {
     // TODO: Check if a inner pool is necessary.
 
-    auto& device = Backend::State<Device::Metal>()->getDevice();
+    const auto& device = Backend::State<Device::Metal>()->getDevice();
     _commandQueue = device->newCommandQueue();
 
     for (const auto& block : blocks) {
