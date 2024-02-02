@@ -8,7 +8,11 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-13
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [ macos-13, macos-14 ]
+        name: [ x86_64, arm64 ] 
 
     steps:
       - uses: actions/checkout@v2
@@ -58,5 +62,5 @@ jobs:
       - name: Upload binary.
         uses: actions/upload-artifact@v4
         with:
-          name: cyberether-macos-x86_64
+          name: ${{ format('cyberether-macos-{0}', matrix.version) }}
           path: ./build-static/cyberether
