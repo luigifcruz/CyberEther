@@ -49,6 +49,9 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
         JST_CHECK_THROW(Result::ERROR);
     }
+    _host_native = true;
+    _device_native = true;
+    _host_accessible = true;
     owns_data = true;
 
     // Null out array.
