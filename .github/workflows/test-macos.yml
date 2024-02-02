@@ -11,8 +11,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        runner: [ macos-13, macos-14 ]
-        name: [ x86_64, arm64 ] 
+        include:
+          - os: macos-13
+            label: "x86_64"
+          - os: macos-14
+            label: "arm64"
 
     steps:
       - uses: actions/checkout@v2
@@ -62,5 +65,5 @@ jobs:
       - name: Upload binary.
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ format('cyberether-macos-{0}', matrix.version) }}
+          name: ${{ format('cyberether-macos-{0}', matrix.label) }}
           path: ./build-static/cyberether
