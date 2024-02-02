@@ -538,6 +538,10 @@ Result Instance::stop() {
     computeRunning = false;
     presentRunning = false;
 
+    if (_window) {
+        JST_CHECK(_window->synchronize());
+    }
+
     return Result::SUCCESS;
 }
 
