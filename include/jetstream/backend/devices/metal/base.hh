@@ -31,6 +31,7 @@ class Metal {
     }
 
  private:
+    Config config;
     MTL::Device* device;
     NS::ProcessInfo* info;
     bool _isAvailable = false;
