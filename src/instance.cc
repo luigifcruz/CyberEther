@@ -569,14 +569,6 @@ Result Instance::destroy() {
         _viewport = nullptr;
     }
 
-    // Destroy backends.
-
-    for (const auto& device : enabled_backend_devices) {
-        if (Backend::Initialized(device)) {
-            JST_CHECK(Backend::Destroy(device));
-        }
-    }
-
     return Result::SUCCESS;
 }
 

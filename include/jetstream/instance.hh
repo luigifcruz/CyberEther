@@ -31,7 +31,6 @@ class JETSTREAM_API Instance {
 
     template<Device D>
     Result buildBackend(const Backend::Config& config) {
-        enabled_backend_devices.insert(D);
         return Backend::Initialize<D>(config);
     }
 
@@ -67,12 +66,6 @@ class JETSTREAM_API Instance {
             return Result::ERROR;
         }
 
-        // Check if backend is enabled.
-
-        if (!Backend::Initialized<D>()) {
-            enabled_backend_devices.insert(D);
-        }
-
         // Create window.
 
         auto viewport = std::dynamic_pointer_cast<Viewport::Adapter<D>>(_viewport);
@@ -104,12 +97,6 @@ class JETSTREAM_API Instance {
                             const typename T<D, C...>::Input& input,
                             const Locale& blockLocale = {"main"}) {
         using B = T<D, C...>;
-
-        // Check if backend is enabled.
-
-        if (!Backend::Initialized<D>()) {
-            enabled_backend_devices.insert(D);
-        }
 
         // Allocate module.
 
@@ -162,12 +149,6 @@ class JETSTREAM_API Instance {
                      const typename T<D, C...>::Input& input,
                      const Locale& blockLocale = {"main"}) {
         using B = T<D, C...>;
-
-        // Check if backend is enabled.
-
-        if (!Backend::Initialized<D>()) {
-            enabled_backend_devices.insert(D);
-        }
 
         // Validate module type.
 
@@ -287,12 +268,6 @@ class JETSTREAM_API Instance {
                     const typename T<D, C...>::Input& input,
                     const typename T<D, C...>::State& state) {
         using B = T<D, C...>;
-
-        // Check if backend is enabled.
-
-        if (!Backend::Initialized<D>()) {
-            enabled_backend_devices.insert(D);
-        }
 
         // Allocate module.
         block = std::make_shared<B>();
@@ -479,8 +454,6 @@ class JETSTREAM_API Instance {
 
     bool presentRunning;
     bool computeRunning;
-
-    std::set<Device> enabled_backend_devices;
 
     Result fetchDependencyTree(Locale locale, std::vector<Locale>& storage);
 

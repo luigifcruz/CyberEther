@@ -304,8 +304,7 @@ int main() {
 
     UI(instance).run();
 
-    Backend::Destroy<RenderDevice>();
-    Backend::Destroy<ComputeDevice>();
+    Backend::DestroyAll();
 
     std::cout << "Goodbye from CyberEther!" << std::endl;
 
