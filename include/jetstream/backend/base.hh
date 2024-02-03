@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <variant>
+#include <mutex>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
@@ -83,6 +84,7 @@ class JETSTREAM_API Instance {
     template<Device DeviceId>
     Result initialize(const Config& config) {
         using BackendType = typename GetBackend<DeviceId>::Type;
+        std::lock_guard lock(mutex);
         if (!backends.contains(DeviceId)) {
             JST_DEBUG("Initializing {} backend.", DeviceId);
             backends[DeviceId] = std::make_unique<BackendType>(config);
@@ -91,6 +93,7 @@ class JETSTREAM_API Instance {
     }
 
     Result destroy(const Device& id) {
+        std::lock_guard lock(mutex);
         if (backends.contains(id)) {
             JST_DEBUG("Destroying {} backend.", id);
             backends.erase(id);
@@ -137,6 +140,7 @@ class JETSTREAM_API Instance {
     > BackendHolder;
 
     std::unordered_map<Device, BackendHolder> backends;
+    std::mutex mutex;
 };
 
 Instance& Get();
