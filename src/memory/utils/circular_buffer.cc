@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <compare>
 
-#include "jetstream/memory/buffer.hh"
+#include "jetstream/memory/utils/circular_buffer.hh"
 
 using namespace std::chrono_literals;
 

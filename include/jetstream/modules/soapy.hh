@@ -8,6 +8,7 @@
 #include "jetstream/types.hh"
 
 #include "jetstream/memory/base.hh"
+#include "jetstream/memory/utils/circular_buffer.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {

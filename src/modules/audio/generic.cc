@@ -1,3 +1,4 @@
+#include "jetstream/memory/utils/circular_buffer.hh"
 #include "jetstream/modules/audio.hh"
 
 #include "miniaudio.h"
