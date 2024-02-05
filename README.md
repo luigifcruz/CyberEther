@@ -104,7 +104,7 @@ $ pacman -S soapysdr soapyrtlsdr
 $ pacman -S gstreamer gst-plugins-base gst-libav
 $ pacman -S gst-plugins-good gst-plugins-bad gst-plugins-ugly
 
-# Pre-loaded examples metadata.
+# For examples metadata.
 $ pacman -S python-yaml
 ```
 
@@ -135,12 +135,12 @@ $ apt install gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev
 $ apt install libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev 
 $ apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 
-# Pre-loaded examples metadata.
+# For examples metadata.
 $ apt install python3-yaml
 ```
 
 #### macOS 13+ (Apple Silicon)
-This assumes [Homebrew](https://brew.sh) is installed. Older versions of macOS might work but installing a newer Clang compiler (14+) will be necessary.
+This assumes [Homebrew](https://brew.sh) is installed. Older versions of macOS might work but installing a newer Clang compiler (14+) will be necessary. Metal on Intel-based Macs is not supported by CyberEther. As a workaround, make sure to install the optional Vulkan dependencies listed below.
 
 Core dependencies (you probably already have them).
 ```bash
@@ -160,8 +160,11 @@ $ brew install soapysdr soapyrtlsdr
 # For Remote capabilities.
 $ brew install gstreamer
 
-# Pre-loaded examples metadata.
+# For examples metadata.
 $ python -m pip install PyYAML
+
+# For Vulkan backend (required for Intel-based Macs).
+$ brew install molten-vk vulkan-tools vulkan-headers
 ```
 
 #### Browser (Chrome)
