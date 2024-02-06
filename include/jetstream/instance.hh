@@ -21,13 +21,17 @@ namespace Jetstream {
 
 class JETSTREAM_API Instance {
  public:
+    struct Config {
+        Device preferredDevice = Device::None;
+        bool enableCompositor = false;
+        Backend::Config backendConfig = {};
+        Viewport::Config viewportConfig = {};
+        Render::Window::Config renderConfig = {};
+    };
+
     Instance();
 
-    Result buildInterface(const Device& preferredDevice = Device::None,
-                          const bool& enableCompositor = false,
-                          const Backend::Config& backendConfig = {},
-                          const Viewport::Config& viewportConfig = {},
-                          const Render::Window::Config& renderConfig = {});
+    Result build(const Config& config);
 
     template<Device D>
     Result buildBackend(const Backend::Config& config) {

@@ -7,11 +7,7 @@ Instance::Instance() : _scheduler(), _flowgraph(*this) {
     JST_DEBUG("[INSTANCE] Creating instance.");
 }
 
-Result Instance::buildInterface(const Device& preferredDevice,
-                                const bool& enableCompositor,
-                                const Backend::Config& backendConfig,
-                                const Viewport::Config& viewportConfig,
-                                const Render::Window::Config& renderConfig) {
+Result Instance::build(const Config& config) {
     JST_DEBUG("[INSTANCE] Building interface");
 
     if (_viewport || _window) {
@@ -20,22 +16,22 @@ Result Instance::buildInterface(const Device& preferredDevice,
     }
 
     std::vector<Device> devicePriority = {
-        preferredDevice,
+        config.preferredDevice,
         Device::Metal,
         Device::Vulkan,
         Device::WebGPU,
     };
 
-    if (backendConfig.headless) {
+    if (config.backendConfig.headless) {
         for (const auto& device : devicePriority) {
             switch (device) {
 #ifdef JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE
 #if   defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
                 case Device::Vulkan:
-                    JST_CHECK(Backend::Initialize<Device::Vulkan>(backendConfig));
-                    JST_CHECK(this->buildViewport<Viewport::Headless<Device::Vulkan>>(viewportConfig));
-                    JST_CHECK(this->buildRender<Device::Vulkan>(renderConfig));
-                    if (enableCompositor) {
+                    JST_CHECK(Backend::Initialize<Device::Vulkan>(config.backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::Headless<Device::Vulkan>>(config.viewportConfig));
+                    JST_CHECK(this->buildRender<Device::Vulkan>(config.renderConfig));
+                    if (config.enableCompositor) {
                         JST_CHECK(this->buildCompositor());
                     }
                     return Result::SUCCESS;
@@ -54,30 +50,30 @@ Result Instance::buildInterface(const Device& preferredDevice,
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
                 case Device::Metal:
-                    JST_CHECK(Backend::Initialize<Device::Metal>(backendConfig));
-                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(viewportConfig));
-                    JST_CHECK(this->buildRender<Device::Metal>(renderConfig));
-                    if (enableCompositor) {
+                    JST_CHECK(Backend::Initialize<Device::Metal>(config.backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(config.viewportConfig));
+                    JST_CHECK(this->buildRender<Device::Metal>(config.renderConfig));
+                    if (config.enableCompositor) {
                         JST_CHECK(this->buildCompositor());
                     }
                     return Result::SUCCESS;
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
                 case Device::Vulkan:
-                    JST_CHECK(Backend::Initialize<Device::Vulkan>(backendConfig));
-                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(viewportConfig));
-                    JST_CHECK(this->buildRender<Device::Vulkan>(renderConfig));
-                    if (enableCompositor) {
+                    JST_CHECK(Backend::Initialize<Device::Vulkan>(config.backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(config.viewportConfig));
+                    JST_CHECK(this->buildRender<Device::Vulkan>(config.renderConfig));
+                    if (config.enableCompositor) {
                         JST_CHECK(this->buildCompositor());
                     }
                     return Result::SUCCESS;
 #endif
 #ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
                 case Device::WebGPU:
-                    JST_CHECK(Backend::Initialize<Device::WebGPU>(backendConfig));
-                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(viewportConfig));
-                    JST_CHECK(this->buildRender<Device::WebGPU>(renderConfig));
-                    if (enableCompositor) {
+                    JST_CHECK(Backend::Initialize<Device::WebGPU>(config.backendConfig));
+                    JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(config.viewportConfig));
+                    JST_CHECK(this->buildRender<Device::WebGPU>(config.renderConfig));
+                    if (config.enableCompositor) {
                         JST_CHECK(this->buildCompositor());
                     }
                     return Result::SUCCESS;

@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
     Viewport::Config viewportConfig;
     Render::Window::Config renderConfig;
     std::string flowgraphPath;
-    Device prefferedBackend;
+    Device prefferedBackend = Device::None;
 
     for (int i = 1; i < argc; i++) {
         const std::string arg = std::string(argv[i]);
@@ -160,11 +160,15 @@ int main(int argc, char* argv[]) {
 
     // Configure instance.
 
-    JST_CHECK_THROW(instance.buildInterface(prefferedBackend,
-                                            true,
-                                            backendConfig,
-                                            viewportConfig,
-                                            renderConfig));
+    Instance::Config config = {
+        .preferredDevice = prefferedBackend,
+        .enableCompositor = true,
+        .backendConfig = backendConfig,
+        .viewportConfig = viewportConfig,
+        .renderConfig = renderConfig
+    };
+
+    JST_CHECK_THROW(instance.build(config));
 
     // Load flowgraph if provided.
 
