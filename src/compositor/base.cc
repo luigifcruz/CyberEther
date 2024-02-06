@@ -2050,7 +2050,7 @@ Result Compositor::drawGraph() {
         // Set node position according to the internal state.
         for (const auto& [locale, state] : nodeStates) {
             const auto& [x, y] = state.block->getState().nodePos;
-            ImNodes::SetNodeGridSpacePos(state.id, ImVec2(x, y));
+            ImNodes::SetNodeGridSpacePos(state.id, ImVec2(x * scalingFactor, y * scalingFactor));
         }
 
         ImNodes::BeginNodeEditor();
@@ -2060,7 +2060,7 @@ Result Compositor::drawGraph() {
             const auto& block = state.block;
             const auto& moduleEntry = Store::BlockMetadataList().at(block->id());
 
-            F32& nodeWidth = block->state.nodeWidth;
+            F32 nodeWidth = block->state.nodeWidth * scalingFactor;
             const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x +
                                    ImGui::CalcTextSize(" " ICON_FA_CIRCLE_QUESTION).x +
                                    ((!block->complete()) ? 
@@ -2322,6 +2322,9 @@ Result Compositor::drawGraph() {
             ImNodes::PopColorStyle(); // TitleBarSelected
             ImNodes::PopColorStyle(); // Pin
             ImNodes::PopColorStyle(); // PinHovered
+
+            // Update node width.
+            block->state.nodeWidth = nodeWidth / scalingFactor;
         }
 
         // Draw node links.
@@ -2384,6 +2387,12 @@ Result Compositor::drawGraph() {
             ImGui::EndDragDropTarget();
         }
 
+        // Update internal state node position.
+        for (const auto& [locale, state] : nodeStates) {
+            const auto& [x, y] = ImNodes::GetNodeGridSpacePos(state.id);
+            state.block->state.nodePos = {x, y};
+        }
+
         // Spatially organize graph.
         if (!graphSpatiallyOrganized) {
             JST_DEBUG("[COMPOSITOR] Running graph auto-route.");
@@ -2399,7 +2408,12 @@ Result Compositor::drawGraph() {
                     F32 previousNodesHeight = 0.0f;
 
                     for (const auto& nodeId : column) {
-                        const auto& dims = ImNodes::GetNodeDimensions(nodeId);
+                        auto dims = ImNodes::GetNodeDimensions(nodeId);
+
+                        // Unpack dimensions.
+                        dims.x /= scalingFactor;
+                        dims.y /= scalingFactor;
+
                         auto& block = nodeStates.at(nodeLocaleMap.at(nodeId)).block;
                         auto& [x, y] = block->state.nodePos;
 
@@ -2408,7 +2422,7 @@ Result Compositor::drawGraph() {
                         // Add previous clusters and rows vertical offset.
                         y = previousNodesHeight + previousClustersHeight;
 
-                        previousNodesHeight += dims.y + (25.0f * scalingFactor);
+                        previousNodesHeight += dims.y + 25.0f;
                         largestNodeWidth = std::max({
                             dims.x,
                             largestNodeWidth,
@@ -2416,8 +2430,6 @@ Result Compositor::drawGraph() {
 
                         // Add left padding to nodes in the same column.
                         x += (largestNodeWidth - dims.x);
-
-                        ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(x, y));
                     }
 
                     largestColumnHeight = std::max({
@@ -2425,20 +2437,14 @@ Result Compositor::drawGraph() {
                         largestColumnHeight,
                     });
 
-                    previousColumnsWidth += largestNodeWidth + (37.5f * scalingFactor);
+                    previousColumnsWidth += largestNodeWidth + 37.5f;
                 }
 
-                previousClustersHeight += largestColumnHeight + (12.5f * scalingFactor);
+                previousClustersHeight += largestColumnHeight + 12.5;
             }
 
             ImNodes::EditorContextResetPanning({0.0f, 0.0f});
             graphSpatiallyOrganized = true;
-        }
-
-        // Update internal state node position.
-        for (const auto& [locale, state] : nodeStates) {
-            const auto& [x, y] = ImNodes::GetNodeGridSpacePos(state.id);
-            state.block->state.nodePos = {x, y};
         }
 
         // Render underlying buffer information about the link.
@@ -2483,10 +2489,12 @@ Result Compositor::drawGraph() {
         // TODO: I think there might be a bug here when initializing the flowgraph.
         I32 nodeId;
         if (ImNodes::IsNodeHovered(&nodeId)) {
+            auto& node = nodeStates.at(nodeLocaleMap.at(nodeId)).block;
+
             const auto nodeDims = ImNodes::GetNodeDimensions(nodeId);
             const auto nodeOrigin = ImNodes::GetNodeScreenSpacePos(nodeId);
 
-            F32& nodeWidth = nodeStates.at(nodeLocaleMap.at(nodeId)).block->state.nodeWidth;
+            F32 nodeWidth = node->state.nodeWidth * scalingFactor;
 
             bool isNearRightEdge =
                 std::abs((nodeOrigin.x + nodeDims.x) - ImGui::GetMousePos().x) < 10.0f &&
@@ -2505,6 +2513,8 @@ Result Compositor::drawGraph() {
             if (isNearRightEdge || nodeDragId) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
             }
+
+            node->state.nodeWidth = nodeWidth / scalingFactor;
         }
 
         if (ImGui::IsMouseReleased(0)) {
