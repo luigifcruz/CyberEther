@@ -147,6 +147,11 @@ Result Soapy<D, T>::destroy() {
         producer.join();
     }
 
+    pimpl->soapyDevice->deactivateStream(pimpl->soapyStream, 0, 0);
+    pimpl->soapyDevice->closeStream(pimpl->soapyStream);
+
+    SoapySDR::Device::unmake(pimpl->soapyDevice);
+
     return Result::SUCCESS;
 }
 
@@ -165,11 +170,6 @@ Result Soapy<D, T>::soapyThreadLoop() {
             buffer.put(tmp, ret);
         }
     }
-
-    pimpl->soapyDevice->deactivateStream(pimpl->soapyStream, 0, 0);
-    pimpl->soapyDevice->closeStream(pimpl->soapyStream);
-
-    SoapySDR::Device::unmake(pimpl->soapyDevice);
 
     JST_TRACE("SDR Thread Safed");
     return Result::SUCCESS;
