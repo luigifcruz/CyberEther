@@ -26,7 +26,7 @@ class Program {
         std::shared_ptr<Draw> draw;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::pair<std::shared_ptr<Buffer>, Target>> buffers;
-        std::unordered_map<Device, std::vector<std::span<const U8>>> shaders;
+        std::unordered_map<Device, std::vector<std::vector<U8>>> shaders;
     };
 
     explicit Program(const Config& config) : config(config) {}

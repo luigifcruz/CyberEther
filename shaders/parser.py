@@ -10,12 +10,12 @@ def bin_to_header(path, stub):
     with open(os.path.join(path, f'{stub}_shaders.hh'), 'w') as f:
         f.write('#pragma once\n\n')
 
-        f.write('#include <span>\n')
-        f.write('#include <array>\n')
         f.write('#include <vector>\n')
         f.write('#include <unordered_map>\n\n')
 
         f.write('#include "jetstream/memory/types.hh"\n\n')
+
+        f.write('using namespace Jetstream;\n\n')
 
         targets = set()
         names = set()
@@ -33,15 +33,14 @@ def bin_to_header(path, stub):
 
                 with open(os.path.join(path, f'{stub}_{name}.{type}.{target}'), 'rb') as fr:
                     data = fr.read()
-                size = str(len(data) + 1)
 
-                f.write('static const std::array<unsigned char, ' + size + '> ' + varname + ' = {')
+                f.write('static const std::vector<U8> ' + varname + ' = {')
                 f.write(','.join(f'0x{byte:02x}' for byte in data))
                 f.write(',0x00};\n')
 
         f.write('\n')
         f.write('static std::unordered_map<std::string, std::unordered_map<Jetstream::Device, '
-                'std::vector<std::span<const unsigned char>>>> ShadersPackage = {\n')
+                'std::vector<std::vector<U8>>>> ShadersPackage = {\n')
 
         for name in names:
             f.write('    { "' + name + '", { ')

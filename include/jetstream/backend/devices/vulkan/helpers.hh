@@ -173,11 +173,11 @@ inline U32 FindMemoryType(const VkPhysicalDevice& device, const U32& typeFilter,
     return 0;
 }
 
-inline VkShaderModule LoadShader(const std::span<const U8>& data, VkDevice device) {
+inline VkShaderModule LoadShader(const std::vector<U8>& data, VkDevice device) {
     VkShaderModule shaderModule;
     VkShaderModuleCreateInfo moduleCreateInfo{};
     moduleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    moduleCreateInfo.codeSize = data.size_bytes() - 1;  // -1 to remove terminator
+    moduleCreateInfo.codeSize = data.size() - 1;  // -1 to remove terminator
     moduleCreateInfo.pCode = reinterpret_cast<const U32*>(data.data());
 
     JST_VK_CHECK_THROW(vkCreateShaderModule(device, &moduleCreateInfo, nullptr, &shaderModule), [&]{

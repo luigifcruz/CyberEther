@@ -2,7 +2,6 @@
 #define JETSTREAM_MEMORY_TYPES_HH
 
 #include <map>
-#include <span>
 #include <vector>
 #include <complex>
 #include <unordered_map>
