@@ -14,6 +14,7 @@ namespace Jetstream {
 Compositor::Compositor(Instance& instance)
      : instance(instance),
        running(true),
+       nodeDragId(0),
        graphSpatiallyOrganized(false),
        rightClickMenuEnabled(false),
        sourceEditorEnabled(false),
@@ -2486,7 +2487,6 @@ Result Compositor::drawGraph() {
         }
 
         // Resize node by dragging interface logic.
-        // TODO: I think there might be a bug here when initializing the flowgraph.
         I32 nodeId;
         if (ImNodes::IsNodeHovered(&nodeId)) {
             auto& node = nodeStates.at(nodeLocaleMap.at(nodeId)).block;
