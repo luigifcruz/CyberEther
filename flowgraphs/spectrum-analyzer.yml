@@ -122,7 +122,7 @@ graph:
       previewEnabled: true
       viewEnabled: false
       nodeWidth: 300
-      nodePos: [1654.6304, 250]
+      nodePos: [1654.6304, 350]
       controlEnabled: false
   spc:
     module: spectrogram
