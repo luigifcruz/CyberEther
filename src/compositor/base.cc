@@ -447,7 +447,8 @@ Result Compositor::processInteractions() {
             // Create node where the mouse dropped the module.
             Parser::RecordMap configMap, inputMap, stateMap;
             const auto [x, y] = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
-            stateMap["nodePos"] = {Size2D<F32>{x, y}};
+            const auto& scalingFactor = instance.window().scalingFactor();
+            stateMap["nodePos"] = {Size2D<F32>{x / scalingFactor, y / scalingFactor}};
 
             // Create module.
             JST_CHECK_NOTIFY(Store::BlockConstructorList().at(fingerprint)(instance, "", configMap, inputMap, stateMap));
@@ -2391,7 +2392,7 @@ Result Compositor::drawGraph() {
         // Update internal state node position.
         for (const auto& [locale, state] : nodeStates) {
             const auto& [x, y] = ImNodes::GetNodeGridSpacePos(state.id);
-            state.block->state.nodePos = {x, y};
+            state.block->state.nodePos = {x / scalingFactor, y / scalingFactor};
         }
 
         // Spatially organize graph.
