@@ -1,3 +1,5 @@
+#include <ranges>
+
 #include "jetstream/compute/scheduler.hh"
 
 namespace Jetstream {

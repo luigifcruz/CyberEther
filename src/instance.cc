@@ -1,3 +1,5 @@
+#include <ranges>
+
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
 
