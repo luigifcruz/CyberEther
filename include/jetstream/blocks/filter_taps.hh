@@ -153,7 +153,7 @@ class FilterTaps : public Block {
         ImGui::SetNextItemWidth(-1);
         F32 heads = config.center.size();
         if (ImGui::InputFloat("##filter-heads", &heads, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if (heads != config.center.size()) {
+            if (heads != config.center.size() && heads > 0) {
                 config.center.resize(heads);
     
                 JST_DISPATCH_ASYNC([&](){
