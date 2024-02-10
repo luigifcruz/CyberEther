@@ -33,6 +33,10 @@ class Parser {
         std::string dataType = "";
         std::vector<U64> shape = {};
         std::map<std::string, std::string> attributes = {};
+        bool host_accessible = false;
+        bool device_native = false;
+        bool host_native = false;
+        bool contiguous = false;
     };
 
     typedef std::unordered_map<std::string, Record> RecordMap;
@@ -60,6 +64,10 @@ class Parser {
             metadata.dataType = NumericTypeInfo<typename T::DataType>::name;
             metadata.shape = variable.shape();
             metadata.locale = variable.locale();
+            metadata.host_accessible = variable.host_accessible();
+            metadata.device_native = variable.device_native();
+            metadata.host_native = variable.host_native();
+            metadata.contiguous = variable.contiguous();
 
             for (const auto& [key, attribute] : variable.attributes()) {
                 JST_CHECK(AnyToString(attribute.get(), metadata.attributes[key], true));

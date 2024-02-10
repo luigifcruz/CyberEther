@@ -2464,12 +2464,16 @@ Result Compositor::drawGraph() {
             ImGui::Separator();
 
             const auto firstLine  = jst::fmt::format("[{} -> {}]", outputLocale, inputLocale);
-            const auto secondLine = jst::fmt::format("[{}] {} [Device::{}]", rec.dataType, rec.shape, rec.device);
-            const auto thirdLine  = jst::fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(rec.data), rec.hash);
+            const auto secondLine = jst::fmt::format("[{}] {} [{}] [Device::{}]", rec.dataType, rec.shape, rec.contiguous ? "C" : "NC", rec.device);
+            const auto thirdLine  = jst::fmt::format("[Host Acessible: {}] [Device Native: {}] [Host Native: {}]", rec.host_accessible ? "YES" : "NO",
+                                                                                                                   rec.device_native ? "YES" : "NO",
+                                                                                                                   rec.host_native ? "YES" : "NO");
+            const auto forthLine  = jst::fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(rec.data), rec.hash);
 
             ImGui::TextUnformatted(firstLine.c_str());
             ImGui::TextUnformatted(secondLine.c_str());
             ImGui::TextUnformatted(thirdLine.c_str());
+            ImGui::TextUnformatted(forthLine.c_str());
 
             if (!rec.attributes.empty()) {
                 std::string attributes;

@@ -48,7 +48,7 @@ class TensorBase : public TensorStorage<T> {
         return D;
     }
 
-    constexpr bool host_acessible() const noexcept {
+    constexpr bool host_accessible() const noexcept {
         return buffer->host_accessible();
     }
 
