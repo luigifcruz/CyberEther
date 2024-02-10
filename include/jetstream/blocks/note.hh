@@ -87,7 +87,10 @@ class Note : public Block {
                                       ImGuiInputTextFlags_NoHorizontalScroll);
         } else {
             ImGui::SetNextWindowSizeConstraints(ImVec2(maxWidth, 50.0f), ImVec2(maxWidth, 500.0f));
-            ImGui::BeginChild("##note-markdown", ImVec2(maxWidth, 0.0f), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground);
+            // UPDATE-ME: Markdown rendering.
+            ImGui::BeginChild("##note-markdown", ImVec2(maxWidth, 0.0f), ImGuiChildFlags_AutoResizeY | 
+                                                                         ImGuiChildFrags_AlwaysUseParentDrawList, 
+                                                                         ImGuiWindowFlags_NoBackground);
             ImGui::Markdown(config.note.c_str(), config.note.length(), instance().window().markdownConfig());
             ImGui::EndChild();
         }

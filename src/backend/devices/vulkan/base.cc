@@ -313,6 +313,10 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
     }
 
+    cache.canImportDeviceMemory = availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    cache.canExportDeviceMemory = availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    cache.canImportHostMemory = availableOptionalDeviceCapabilities.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+
     // Create logical device.
 
     {
@@ -477,18 +481,26 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         });
     }
 
+    // Signal device is available.
+
+    _isAvailable = true;
+
     // Print device information.
 
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [VULKAN]")
     JST_INFO("-----------------------------------------------------");
-    JST_INFO("Device Name:     {}", getDeviceName());
-    JST_INFO("Device Type:     {}", getPhysicalDeviceType());
-    JST_INFO("API Version:     {}", getApiVersion());
-    JST_INFO("Unified Memory:  {}", hasUnifiedMemory() ? "YES" : "NO");
-    JST_INFO("Processor Count: {}", getTotalProcessorCount());
-    JST_INFO("Device Memory:   {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
-    JST_INFO("Staging Buffer:  {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / JST_MB);
+    JST_INFO("Device Name:      {}", getDeviceName());
+    JST_INFO("Device Type:      {}", getPhysicalDeviceType());
+    JST_INFO("API Version:      {}", getApiVersion());
+    JST_INFO("Unified Memory:   {}", hasUnifiedMemory() ? "YES" : "NO");
+    JST_INFO("Processor Count:  {}", getTotalProcessorCount());
+    JST_INFO("Device Memory:    {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
+    JST_INFO("Staging Buffer:   {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / JST_MB);
+    JST_INFO("Interoperability:");
+    JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Export Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
     JST_INFO("-----------------------------------------------------");
 }
 
@@ -512,6 +524,10 @@ Vulkan::~Vulkan() {
     vkDestroyInstance(instance, nullptr);
 }
 
+bool Vulkan::isAvailable() const {
+    return _isAvailable;
+}
+
 std::string Vulkan::getDeviceName() const {
     return cache.deviceName;
 }
@@ -528,8 +544,16 @@ bool Vulkan::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
 }
 
-bool Vulkan::canExportMemory() const {
-    return availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+bool Vulkan::canExportDeviceMemory() const {
+    return cache.canExportDeviceMemory;
+}
+
+bool Vulkan::canImportDeviceMemory() const {
+    return cache.canImportDeviceMemory;
+}
+
+bool Vulkan::canImportHostMemory() const {
+    return cache.canImportHostMemory;
 }
 
 U64 Vulkan::getPhysicalMemory() const {

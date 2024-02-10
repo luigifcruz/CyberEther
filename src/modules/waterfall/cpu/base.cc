@@ -3,7 +3,20 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata&) {
+struct Waterfall<D, T>::Impl {};
+
+template<Device D, typename T>
+Waterfall<D, T>::Waterfall() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Waterfall<D, T>::~Waterfall() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Waterfall<D, T>::underlyingCompute(const Context&) {
     const auto totalSize = input.buffer.size();
     const auto fftSize = numberOfElements;
     const auto offset = inc * fftSize;

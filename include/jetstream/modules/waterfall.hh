@@ -18,9 +18,15 @@ namespace Jetstream {
 #define JST_WATERFALL_METAL(MACRO) \
     MACRO(Waterfall, Metal, F32)
 
+#define JST_WATERFALL_CUDA(MACRO) \
+    MACRO(Waterfall, CUDA, F32)
+
 template<Device D, typename T = F32>
 class Waterfall : public Module, public Compute, public Present {
  public:
+    Waterfall();
+    ~Waterfall();
+
     // Configuration 
 
     struct Config {
@@ -96,14 +102,17 @@ class Waterfall : public Module, public Compute, public Present {
     Render::Texture& getTexture();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
     Result createPresent() final;
     Result present() final;
     Result destroyPresent() final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
     struct {
         int width;
         int height;
@@ -133,13 +142,16 @@ class Waterfall : public Module, public Compute, public Present {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    Result underlyingCompute(const RuntimeMetadata& meta);
+    Result underlyingCompute(const Context& ctx);
 
     JST_DEFINE_IO();
 };
 
 #ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE
 JST_WATERFALL_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_WATERFALL_CUDA_AVAILABLE
+JST_WATERFALL_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_WATERFALL_METAL_AVAILABLE
 JST_WATERFALL_METAL(JST_SPECIALIZATION);

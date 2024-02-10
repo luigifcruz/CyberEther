@@ -4,7 +4,6 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/metadata.hh"
 #include "jetstream/benchmark.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/memory/base.hh"
@@ -88,18 +87,34 @@ class JETSTREAM_API Module {
     friend Instance;
 };
 
+class CPU;
+class CUDA;
+class Metal;
+
 class JETSTREAM_API Compute {
  public:
     virtual ~Compute() = default;
 
-    virtual constexpr Result createCompute(const RuntimeMetadata& meta) {
+    struct Context {
+#ifdef JETSTREAM_GRAPH_CPU_AVAILABLE
+        CPU* cpu;
+#endif
+#ifdef JETSTREAM_GRAPH_CUDA_AVAILABLE
+        CUDA* cuda;
+#endif
+#ifdef JETSTREAM_GRAPH_METAL_AVAILABLE
+        Metal* metal;
+#endif
+    };
+
+    virtual constexpr Result createCompute(const Context& ctx) {
         return Result::SUCCESS;
     }
-    virtual constexpr Result compute(const RuntimeMetadata& meta) = 0;
+    virtual constexpr Result compute(const Context& ctx) = 0;
     virtual constexpr Result computeReady() {
         return Result::SUCCESS;
     }
-    virtual constexpr Result destroyCompute(const RuntimeMetadata&) {
+    virtual constexpr Result destroyCompute(const Context&) {
         return Result::SUCCESS;
     }
 

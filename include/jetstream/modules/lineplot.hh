@@ -18,9 +18,15 @@ namespace Jetstream {
 #define JST_LINEPLOT_METAL(MACRO) \
     MACRO(Lineplot, Metal, F32)
 
+#define JST_LINEPLOT_CUDA(MACRO) \
+    MACRO(Lineplot, CUDA, F32)
+
 template<Device D, typename T = F32>
 class Lineplot : public Module, public Compute, public Present {
  public:
+    Lineplot();
+    ~Lineplot();
+
     // Configuration 
 
     struct Config {
@@ -79,16 +85,19 @@ class Lineplot : public Module, public Compute, public Present {
     Render::Texture& getTexture();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
     Result createPresent() final;
     Result present() final;
     Result destroyPresent() final;
 
  private:
-    Tensor<Device::CPU, F32> plot;
-    Tensor<Device::CPU, F32> grid;
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
+    Tensor<D, F32> plot;
+    Tensor<D, F32> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;
@@ -107,27 +116,18 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawLineVertex;
 
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
-    struct MetalConstants {
-        U16 batchSize;
-        U16 gridSize;
-    };
-
-    struct {
-        MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
-
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
+    F32 normalizationFactor = 0.0f;
 
     JST_DEFINE_IO();
 };
 
 #ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE
 JST_LINEPLOT_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_LINEPLOT_CUDA_AVAILABLE
+JST_LINEPLOT_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_LINEPLOT_METAL_AVAILABLE
 JST_LINEPLOT_METAL(JST_SPECIALIZATION);

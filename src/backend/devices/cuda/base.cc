@@ -90,6 +90,27 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         nvmlShutdown();
     }
 
+    {
+        int query = 0;
+
+        // TODO: Find a valid attribute for this.
+        cache.canImportDeviceMemory = true;
+
+        JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query, 
+                                                  CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR_SUPPORTED, 
+                                                  device), [&]{
+            JST_FATAL("[CUDA] Cannot get device attribute: {}", err);
+        });
+        cache.canExportDeviceMemory = query;
+
+        JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query, 
+                                                  CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM, 
+                                                  device), [&]{
+            JST_FATAL("[CUDA] Cannot get device attribute: {}", err);
+        });
+        cache.canImportHostMemory = query;
+    }
+
     // Print device information.
 
     JST_INFO("-----------------------------------------------------");
@@ -102,6 +123,10 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("Driver Version:     {}", getDriverVersion());
     JST_INFO("Unified Memory:     {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Device Memory:      {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
+    JST_INFO("Interoperability:");
+    JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Export Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
     JST_INFO("-----------------------------------------------------");
 }
 
@@ -137,6 +162,18 @@ PhysicalDeviceType CUDA::getPhysicalDeviceType() const {
 
 bool CUDA::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
+}
+
+bool CUDA::canExportDeviceMemory() const {
+    return cache.canExportDeviceMemory;
+}
+
+bool CUDA::canImportDeviceMemory() const {
+    return cache.canImportDeviceMemory;
+}
+
+bool CUDA::canImportHostMemory() const {
+    return cache.canImportHostMemory;
 }
 
 U64 CUDA::getPhysicalMemory() const {

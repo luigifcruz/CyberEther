@@ -9,7 +9,7 @@
 
 namespace Jetstream::Backend {
 
-Metal::Metal(const Config& config) {
+Metal::Metal(const Config& config) : config(config) {
     // Get default Metal device.
     // TODO: Respect config.deviceId.
     if (!(device = MTL::CreateSystemDefaultDevice())) {
@@ -19,6 +19,10 @@ Metal::Metal(const Config& config) {
 
     // Import generic information.
     info = NS::ProcessInfo::processInfo();
+
+    // Signal device is available.
+
+    _isAvailable = true;
 
     // Print device information.
     JST_INFO("-----------------------------------------------------");
@@ -36,6 +40,10 @@ Metal::Metal(const Config& config) {
 Metal::~Metal() {
     info->release();
     device->release();
+}
+
+bool Metal::isAvailable() const {
+    return _isAvailable;
 }
 
 std::string Metal::getDeviceName() const {

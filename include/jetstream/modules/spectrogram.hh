@@ -18,9 +18,15 @@ namespace Jetstream {
 #define JST_SPECTROGRAM_METAL(MACRO) \
     MACRO(Spectrogram, Metal, F32)
 
+#define JST_SPECTROGRAM_CUDA(MACRO) \
+    MACRO(Spectrogram, CUDA, F32)
+
 template<Device D, typename T = F32>
 class Spectrogram : public Module, public Compute, public Present {
  public:
+    Spectrogram();
+    ~Spectrogram();
+
     // Configuration 
 
     struct Config {
@@ -78,14 +84,16 @@ class Spectrogram : public Module, public Compute, public Present {
     Render::Texture& getTexture();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
     Result createPresent() final;
     Result present() final;
     Result destroyPresent() final;
 
  private:
+    struct Impl;
+
     struct {
         U32 width;
         U32 height;
@@ -93,18 +101,21 @@ class Spectrogram : public Module, public Compute, public Present {
         F32 zoom;
     } shaderUniforms;
 
+    std::unique_ptr<Impl> pimpl;
+
     F32 decayFactor;
     Tensor<D, F32> frequencyBins;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
+    U64 totalFrequencyBins = 0;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
 
     std::shared_ptr<Render::Texture> texture;
-    std::shared_ptr<Render::Texture> binTexture;
+    std::shared_ptr<Render::Buffer> binTexture;
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Texture> lutTexture;
     std::shared_ptr<Render::Program> program;
@@ -112,27 +123,14 @@ class Spectrogram : public Module, public Compute, public Present {
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> drawVertex;
 
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct MetalConstants {
-        U32 width;
-        U32 height;
-        F32 decayFactor;
-        U32 batchSize;
-    };
-
-    struct {
-        MTL::ComputePipelineState* stateDecay;
-        MTL::ComputePipelineState* stateActivate;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
-
     JST_DEFINE_IO();
 };
 
 #ifdef JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE
 JST_SPECTROGRAM_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_SPECTROGRAM_CUDA_AVAILABLE
+JST_SPECTROGRAM_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_SPECTROGRAM_METAL_AVAILABLE
 JST_SPECTROGRAM_METAL(JST_SPECIALIZATION);

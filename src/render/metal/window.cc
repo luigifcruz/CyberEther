@@ -42,10 +42,8 @@ Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
     return Result::SUCCESS;
 }
 
-Result Implementation::create() {
+Result Implementation::underlyingCreate() {
     JST_DEBUG("Creating Metal window.");
-
-    JST_CHECK(Window::create());
 
     outerPool = NS::AutoreleasePool::alloc()->init();
 
@@ -66,7 +64,7 @@ Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-Result Implementation::destroy() {
+Result Implementation::underlyingDestroy() {
     JST_DEBUG("Destroying Metal window.");
 
     for (auto& surface : surfaces) {
@@ -142,10 +140,8 @@ Result Implementation::endImgui() {
     return Result::SUCCESS;
 }
 
-Result Implementation::begin() {
+Result Implementation::underlyingBegin() {
     innerPool = NS::AutoreleasePool::alloc()->init();
-
-    JST_CHECK(Window::begin());
 
     drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
 
@@ -167,7 +163,7 @@ Result Implementation::begin() {
     return Result::SUCCESS;
 }
 
-Result Implementation::end() {
+Result Implementation::underlyingEnd() {
     commandBuffer = commandQueue->commandBuffer();
 
     for (auto &surface : surfaces) {
@@ -184,6 +180,10 @@ Result Implementation::end() {
 
     innerPool->release();
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::underlyingSynchronize() {
     return Result::SUCCESS;
 }
 

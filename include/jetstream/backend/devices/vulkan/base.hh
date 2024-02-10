@@ -32,15 +32,23 @@ class Vulkan {
     explicit Vulkan(const Config& config);
     ~Vulkan();
 
+    bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
-    bool hasUnifiedMemory() const;
-    bool canExportMemory() const;
     U64 getPhysicalMemory() const;
     U64 getTotalProcessorCount() const;
     bool getLowPowerStatus() const;
     U64 getThermalState() const;
+
+    bool hasUnifiedMemory() const;
+    bool canExportDeviceMemory() const;
+    bool canImportDeviceMemory() const;
+    bool canImportHostMemory() const;
+
+    constexpr const U64& getDeviceId() const {
+        return config.deviceId;
+    }
 
     constexpr const bool& headless() const {
         return config.headless;
@@ -104,7 +112,6 @@ class Vulkan {
 
  private:
     Config config;
-
     VkDevice device;
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
@@ -120,6 +127,7 @@ class Vulkan {
     VkQueue computeQueue;
     VkQueue presentQueue;
     std::set<std::string> availableOptionalDeviceCapabilities;
+    bool _isAvailable = false;
 
     struct {
         std::string deviceName;
@@ -130,6 +138,9 @@ class Vulkan {
         U64 totalProcessorCount;
         bool lowPowerStatus;
         U64 getThermalState;
+        bool canImportDeviceMemory;
+        bool canImportHostMemory;
+        bool canExportDeviceMemory;
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};

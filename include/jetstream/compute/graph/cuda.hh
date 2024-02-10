@@ -8,9 +8,14 @@ namespace Jetstream {
 class CUDA : public Graph {
  public:
     CUDA();
+    ~CUDA();
 
     constexpr Device device() const {
         return Device::CUDA;
+    }
+
+    constexpr const cudaStream_t& stream() const {
+        return _stream;
     }
 
     Result create();
@@ -18,8 +23,27 @@ class CUDA : public Graph {
     Result computeReady();
     Result destroy();
 
+    enum class KernelHeader {
+        NONE,
+        COMPLEX,
+    };
+
+    Result createKernel(const std::string& name, 
+                        const std::string& source,
+                        const std::vector<KernelHeader>& headers = {});
+
+    Result launchKernel(const std::string& name, 
+                        const std::vector<U64>& grid,
+                        const std::vector<U64>& block,
+                        void** arguments);
+
+    Result destroyKernel(const std::string& name);
+
  private:
-    cudaStream_t stream;
+    cudaStream_t _stream;
+
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 };
 
 }  // namespace Jetstream

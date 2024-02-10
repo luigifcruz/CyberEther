@@ -50,16 +50,12 @@ Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
     return Result::SUCCESS;
 }
 
-Result Implementation::create() {
+Result Implementation::underlyingCreate() {
     JST_DEBUG("[VULKAN] Creating window.");
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& headless = Backend::State<Device::Vulkan>()->headless();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
-
-    // Create base window class.
-
-    JST_CHECK(Window::create());
 
     // Reseting internal variables.
  
@@ -146,7 +142,7 @@ Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-Result Implementation::destroy() {
+Result Implementation::underlyingDestroy() {
     JST_DEBUG("[VULKAN] Destroying window.");
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
@@ -293,10 +289,8 @@ Result Implementation::endImgui() {
     return Result::SUCCESS;
 }
 
-Result Implementation::begin() {
+Result Implementation::underlyingBegin() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
-
-    JST_CHECK(Window::begin());
 
     // Wait for a frame to be available.
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
@@ -357,7 +351,7 @@ Result Implementation::begin() {
     return Result::SUCCESS;
 }
 
-Result Implementation::end() {
+Result Implementation::underlyingEnd() {
     // End secondary renders.
 
     if (config.imgui) {
@@ -408,6 +402,14 @@ Result Implementation::end() {
         return recreate();
     }
     return result;
+}
+
+Result Implementation::underlyingSynchronize() {
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't synchronize graphics queue.");
+    });
+
+    return Result::SUCCESS;
 }
 
 Result Implementation::createSynchronizationObjects() {

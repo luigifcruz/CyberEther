@@ -3,13 +3,13 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Pad<D, T>::createCompute(const RuntimeMetadata&) {
+Result Pad<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Pad compute core using CPU backend.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Pad<D, T>::compute(const RuntimeMetadata&) {
+Result Pad<D, T>::compute(const Context&) {
     std::vector<U64> shape = input.unpadded.shape();
 
     for (U64 i = 0; i < input.unpadded.size(); i++) {

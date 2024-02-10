@@ -14,10 +14,14 @@
 #else
 #define JST_PAGESIZE() getpagesize()
 #endif
-#endif 
+#endif
+
+#ifndef JST_ROUND_UP
+#define JST_ROUND_UP(X, Y) (((X) + (Y) - 1) / (Y)) * (Y)
+#endif
 
 #ifndef JST_PAGE_ALIGNED_SIZE
-#define JST_PAGE_ALIGNED_SIZE(X) (X + JST_PAGESIZE() - 1) & ~(JST_PAGESIZE() - 1)
+#define JST_PAGE_ALIGNED_SIZE(X) JST_ROUND_UP(X, JST_PAGESIZE())
 #endif 
 
 #ifndef JST_IS_ALIGNED

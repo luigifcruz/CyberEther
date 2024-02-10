@@ -17,17 +17,19 @@ Result Window<D, T>::create() {
 }
 
 template<Device D, typename T>
-Result Window<D, T>::compute(const RuntimeMetadata&) {
+Result Window<D, T>::compute(const Context&) {
     if (baked) {
         return Result::SUCCESS;
     }
 
     // Generate FFT window.
 
+    auto& window = MapOn<Device::CPU>(output.window);
+
     for (U64 i = 0; i < output.window.size(); i++) {
         F64 tap = 0.42 - 0.50 * std::cos(2.0 * JST_PI * i / (output.window.size() - 1)) + \
                   0.08 * std::cos(4.0 * JST_PI * i / (output.window.size() - 1));
-        output.window.cpu()[i] = T(tap, 0.0);
+        window[i] = T(tap, 0.0);
     }
 
     baked = true;

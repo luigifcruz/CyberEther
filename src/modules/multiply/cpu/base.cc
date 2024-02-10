@@ -1,19 +1,18 @@
 #include "../generic.cc"
 
 #pragma GCC optimize("unroll-loops")
-
 #include "jetstream/memory/devices/cpu/helpers.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Multiply<D, T>::createCompute(const RuntimeMetadata&) {
+Result Multiply<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using CPU backend.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Multiply<D, T>::compute(const RuntimeMetadata&) {
+Result Multiply<D, T>::compute(const Context&) {
     Memory::CPU::AutomaticIterator([](const auto& a, const auto& b, auto& c) {
         if constexpr (std::is_same_v<T, CF32>) {
             c = std::complex<F32>(a.real() * b.real() - a.imag() * b.imag(),

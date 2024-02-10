@@ -5,7 +5,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Fold<D, T>::compute(const RuntimeMetadata&) {
+Result Fold<D, T>::compute(const Context&) {
     // Zero-out output buffer.
 
     for (U64 i = 0; i < output.buffer.size(); i++) {

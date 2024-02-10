@@ -42,10 +42,8 @@ Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
     return Result::SUCCESS;
 }
 
-Result Implementation::create() {
+Result Implementation::underlyingCreate() {
     JST_DEBUG("[WebGPU] Creating window.");
-
-    JST_CHECK(Window::create());
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
@@ -60,7 +58,7 @@ Result Implementation::create() {
     return Result::SUCCESS;
 }
 
-Result Implementation::destroy() {
+Result Implementation::underlyingDestroy() {
     JST_DEBUG("[WebGPU] Destroying window.");
 
     for (auto& surface : surfaces) {
@@ -138,9 +136,7 @@ Result Implementation::endImgui() {
     return Result::SUCCESS;
 }
 
-Result Implementation::begin() {
-    JST_CHECK(Window::begin());
-
+Result Implementation::underlyingBegin() {
     const auto& result = viewport->nextDrawable();
 
     if (result == Result::SKIP) {
@@ -160,7 +156,7 @@ Result Implementation::begin() {
     return Result::SUCCESS;
 }
 
-Result Implementation::end() {
+Result Implementation::underlyingEnd() {
     wgpu::TextureView framebufferTexture;
     JST_CHECK(viewport->commitDrawable(framebufferTexture));
 
@@ -195,6 +191,10 @@ Result Implementation::end() {
     wgpu::CommandBuffer cmdBuffer = encoder.Finish(&cmdBufferDesc);
     device.GetQueue().Submit(1, &cmdBuffer);
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::underlyingSynchronize() {
     return Result::SUCCESS;
 }
 

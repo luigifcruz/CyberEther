@@ -3,11 +3,14 @@
 
 #include <unordered_map>
 #include <variant>
+#include <mutex>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/backend/config.hh"
+
+// TODO: Refactor this entire thing. It's a mess.
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/devices/metal/base.hh"
@@ -81,6 +84,7 @@ class JETSTREAM_API Instance {
     template<Device DeviceId>
     Result initialize(const Config& config) {
         using BackendType = typename GetBackend<DeviceId>::Type;
+        std::lock_guard lock(mutex);
         if (!backends.contains(DeviceId)) {
             JST_DEBUG("Initializing {} backend.", DeviceId);
             backends[DeviceId] = std::make_unique<BackendType>(config);
@@ -88,11 +92,11 @@ class JETSTREAM_API Instance {
         return Result::SUCCESS;
     }
 
-    template<Device DeviceId>
-    Result destroy() {
-        if (backends.contains(DeviceId)) {
-            JST_DEBUG("Destroying {} backend.", DeviceId);
-            backends.erase(DeviceId);
+    Result destroy(const Device& id) {
+        std::lock_guard lock(mutex);
+        if (backends.contains(id)) {
+            JST_DEBUG("Destroying {} backend.", id);
+            backends.erase(id);
         }
         return Result::SUCCESS;
     }
@@ -105,6 +109,10 @@ class JETSTREAM_API Instance {
             JST_CHECK_THROW(initialize<DeviceId>({}));
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
+    }
+
+    bool initialized(const Device& id) {
+        return backends.contains(id);
     }
 
     Result destroyAll() {
@@ -132,6 +140,7 @@ class JETSTREAM_API Instance {
     > BackendHolder;
 
     std::unordered_map<Device, BackendHolder> backends;
+    std::mutex mutex;
 };
 
 Instance& Get();
@@ -148,7 +157,20 @@ Result Initialize(const Config& config) {
 
 template<Device D>
 Result Destroy() {
-    return Get().destroy<D>();
+    return Get().destroy(D);
+}
+
+inline Result Destroy(const Device& id) {
+    return Get().destroy(id);
+}
+
+template<Device D>
+bool Initialized() {
+    return Get().initialized(D);
+}
+
+inline bool Initialized(const Device& id) {
+    return Get().initialized(id);
 }
 
 inline Result DestroyAll() {

@@ -105,7 +105,7 @@ Result FilterTaps<D, T>::taps(U64& taps) {
 }
 
 template<Device D, typename T>
-Result FilterTaps<D, T>::compute(const RuntimeMetadata&) {
+Result FilterTaps<D, T>::compute(const Context&) {
     if (baked) {
         return Result::SUCCESS;
     }

@@ -8,7 +8,14 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-13
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13
+            label: "x86_64"
+          - runner: macos-14
+            label: "arm64"
 
     steps:
       - uses: actions/checkout@v2
@@ -35,7 +42,8 @@ jobs:
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
           brew install --force --overwrite catch2
-          python -m pip install pyyaml
+          brew install --force --overwrite molten-vk vulkan-tools vulkan-headers
+          python3 -m pip install pyyaml
 
       ##
 
@@ -58,5 +66,5 @@ jobs:
       - name: Upload binary.
         uses: actions/upload-artifact@v4
         with:
-          name: cyberether-macos-x86_64
+          name: ${{ format('cyberether-macos-{0}', matrix.label) }}
           path: ./build-static/cyberether

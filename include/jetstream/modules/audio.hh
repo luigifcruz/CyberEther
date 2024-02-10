@@ -87,8 +87,8 @@ class Audio : public Module, public Compute {
     static DeviceList ListAvailableDevices();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
  private:
     struct Impl;

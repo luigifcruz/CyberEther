@@ -71,8 +71,8 @@ class Pad : public Module, public Compute {
     Result create();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
     JST_DEFINE_IO();
 };

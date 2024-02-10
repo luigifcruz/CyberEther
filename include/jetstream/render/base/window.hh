@@ -4,6 +4,7 @@
 #include <queue>
 #include <memory>
 #include <thread>
+#include <mutex>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -39,11 +40,13 @@ class Window {
     explicit Window(const Config& config) : config(config) {}
     virtual ~Window() = default;
 
-    virtual Result create();
-    virtual Result destroy() = 0;
+    Result create();
+    Result destroy();
 
-    virtual Result begin();
-    virtual Result end() = 0;
+    Result begin();
+    Result end();
+
+    Result synchronize();
 
     virtual const Stats& stats() const = 0;
     virtual void drawDebugMessage() const = 0;
@@ -115,6 +118,14 @@ class Window {
     virtual Result bindSurface(const std::shared_ptr<Surface>& surface) = 0;
     virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
 
+    virtual Result underlyingCreate() = 0;
+    virtual Result underlyingDestroy() = 0;
+
+    virtual Result underlyingBegin() = 0;
+    virtual Result underlyingEnd() = 0;
+
+    virtual Result underlyingSynchronize() = 0;
+
  private:
     ImFont* _bodyFont;
     ImFont* _h1Font;
@@ -125,6 +136,7 @@ class Window {
 
     bool graphicalLoopThreadStarted;
     std::thread::id graphicalLoopThreadId;
+    std::mutex newFrameQueueMutex;
 
     Result processSurfaceBindQueue();
     Result processSurfaceUnbindQueue();

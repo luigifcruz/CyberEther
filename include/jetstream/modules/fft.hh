@@ -17,6 +17,9 @@ namespace Jetstream {
 #define JST_FFT_METAL(MACRO) \
     MACRO(FFT, Metal, CF32, CF32)
 
+#define JST_FFT_CUDA(MACRO) \
+    MACRO(FFT, CUDA, CF32, CF32)
+
 template<Device D, typename IT = CF32, typename OT = CF32>
 class FFT : public Module, public Compute {
  public:
@@ -76,9 +79,9 @@ class FFT : public Module, public Compute {
     Result create();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result destroyCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result destroyCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
  private:
     struct Impl;
@@ -93,6 +96,9 @@ class FFT : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE
 JST_FFT_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_FFT_CUDA_AVAILABLE
+JST_FFT_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_FFT_METAL_AVAILABLE
 JST_FFT_METAL(JST_SPECIALIZATION);

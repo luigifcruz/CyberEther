@@ -14,16 +14,22 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
 
     Tensor(const TensorBase<Device::CUDA, T>& base) : TensorBase<Device::CUDA, T>(base) {}
 
-    constexpr const bool& managed() const {
-        return this->buffer->managed();
-    }
-
     constexpr const void* data() const noexcept {
+        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 
     constexpr void* data() noexcept {
+        // TODO: This disregards the offset.
         return this->buffer->data();
+    }
+
+    constexpr const void* data_ptr() const noexcept {
+        return this->buffer->data_ptr();
+    }
+
+    constexpr void* data_ptr() noexcept {
+        return this->buffer->data_ptr();
     }
 };
 

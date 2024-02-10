@@ -1441,7 +1441,12 @@ void ImGui::SeparatorEx(ImGuiSeparatorFlags flags, float thickness)
         if (ItemAdd(bb, 0))
         {
             // Draw
-            window->DrawList->AddRectFilled(bb.Min, bb.Max, GetColorU32(ImGuiCol_Separator));
+            // UPDATE-ME: Markdown rendering.
+            if ((window->ChildFlags & ImGuiChildFrags_AlwaysUseParentDrawList)) {
+                window->ParentWindow->DrawList->AddRectFilled(bb.Min, bb.Max, GetColorU32(ImGuiCol_Separator));
+            } else {
+                window->DrawList->AddRectFilled(bb.Min, bb.Max, GetColorU32(ImGuiCol_Separator));
+            }
             if (g.LogEnabled)
                 LogRenderedText(&bb.Min, "--------------------------------\n");
 

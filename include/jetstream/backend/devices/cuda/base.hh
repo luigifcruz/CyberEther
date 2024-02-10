@@ -19,8 +19,16 @@ class CUDA {
     std::string getDriverVersion() const;
     std::string getComputeCapability() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
-    bool hasUnifiedMemory() const;
     U64 getPhysicalMemory() const;
+
+    bool hasUnifiedMemory() const;
+    bool canExportDeviceMemory() const;
+    bool canImportDeviceMemory() const;
+    bool canImportHostMemory() const;
+
+    constexpr const U64& getDeviceId() const {
+        return config.deviceId;
+    }
     
  private:
     Config config;
@@ -36,6 +44,9 @@ class CUDA {
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;
         U64 physicalMemory;
+        bool canImportDeviceMemory;
+        bool canImportHostMemory;
+        bool canExportDeviceMemory;
     } cache;
 };
 

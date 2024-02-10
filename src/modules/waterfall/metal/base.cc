@@ -3,10 +3,21 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Waterfall<D, T>::underlyingCompute(const RuntimeMetadata& meta) {
-    auto& runtime = meta.metal;
+struct Waterfall<D, T>::Impl {};
 
-    auto blitEncoder = runtime.commandBuffer->blitCommandEncoder();
+template<Device D, typename T>
+Waterfall<D, T>::Waterfall() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Waterfall<D, T>::~Waterfall() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Waterfall<D, T>::underlyingCompute(const Context& ctx) {
+    auto blitEncoder = ctx.metal->commandBuffer()->blitCommandEncoder();
 
     auto batchByteSize = input.buffer.size_bytes();
     const auto sampleByteSize = batchByteSize / numberOfBatches;

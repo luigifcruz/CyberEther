@@ -15,10 +15,7 @@ Result Implementation::create() {
     const auto& byteSize = config.size * config.elementByteSize;
 
     if (config.enableZeroCopy) {
-        buffer = device->newBuffer(config.buffer,
-                                   JST_PAGE_ALIGNED_SIZE(byteSize), 
-                                   MTL::ResourceStorageModeShared,
-                                   nullptr); 
+        buffer = reinterpret_cast<MTL::Buffer*>(config.buffer);
     } else {
         buffer = device->newBuffer(config.buffer,
                                    byteSize, 
@@ -32,7 +29,7 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal buffer.");
 
-    if (buffer) {
+    if (!config.enableZeroCopy && buffer) {
         buffer->release();
     }
     buffer = nullptr;
@@ -45,20 +42,18 @@ Result Implementation::update() {
 }
 
 Result Implementation::update(const U64& offset, const U64& size) {
-    if (size == 0) {
+    if (size == 0 || config.enableZeroCopy) {
         return Result::SUCCESS;
     }
 
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
-    if (!config.enableZeroCopy) {
-        uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-        memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
+    uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
+    memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
 #if !defined(TARGET_OS_IOS)
-        buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
+    buffer->didModifyRange(NS::Range(byteOffset, byteOffset + byteSize));
 #endif
-    }
 
     return Result::SUCCESS;
 }

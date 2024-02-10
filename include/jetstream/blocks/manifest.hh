@@ -185,6 +185,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
         Blocks::Filter,
 #endif
+#ifdef JETSTREAM_BLOCK_DUPLICATE_AVAILABLE
+        Blocks::Duplicate,
+#endif
         // [NEW BLOCK HOOK]
     )
 }

@@ -14,73 +14,91 @@ Result Implementation::create() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
-    // Convert usage flags.
-    // TODO: Implement implicit specification.
-
-    VkBufferUsageFlags bufferUsageFlag = 0;
-    bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     switch (config.target) {
         case Target::VERTEX:
-            bufferUsageFlag |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
             break;
         case Target::VERTEX_INDICES:
-            bufferUsageFlag |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
             break;
         case Target::STORAGE:
-            bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             break;
         case Target::UNIFORM:
-            bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
             descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             break;
         case Target::STORAGE_DYNAMIC:
-            bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
             break;
         case Target::UNIFORM_DYNAMIC:
-            bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
             descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             break;
     }
 
-    // Create buffer.
+    if (config.enableZeroCopy) {
+        buffer = reinterpret_cast<VkBuffer>(config.buffer);
+    } else {
+        // Convert usage flags.
 
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = byteSize();
-    bufferInfo.usage = bufferUsageFlag;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkBufferUsageFlags bufferUsageFlag = 0;
+        bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        switch (config.target) {
+            case Target::VERTEX:
+                bufferUsageFlag |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+                break;
+            case Target::VERTEX_INDICES:
+                bufferUsageFlag |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+                break;
+            case Target::STORAGE:
+                bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                break;
+            case Target::UNIFORM:
+                bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+                break;
+            case Target::STORAGE_DYNAMIC:
+                bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                break;
+            case Target::UNIFORM_DYNAMIC:
+                bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+                break;
+        }
 
-    JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), [&]{
-        JST_ERROR("[VULKAN] Can't create memory buffer.");
-    });
+        // Create buffer.
 
-    // Allocate backing memory.
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = byteSize();
+        bufferInfo.usage = bufferUsageFlag;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VkMemoryRequirements memoryRequirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+        JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), [&]{
+            JST_ERROR("[VULKAN] Can't create memory buffer.");
+        });
 
-    VkMemoryAllocateInfo memoryAllocateInfo = {};
-    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                                 memoryRequirements.memoryTypeBits,
-                                                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        // Allocate backing memory.
 
-    JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
-        JST_ERROR("[VULKAN] Failed to allocate buffer memory.");
-    });
+        VkMemoryRequirements memoryRequirements;
+        vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
 
-    JST_VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0), [&]{
-        JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
-    });
+        VkMemoryAllocateInfo memoryAllocateInfo = {};
+        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryAllocateInfo.allocationSize = memoryRequirements.size;
+        memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                                    memoryRequirements.memoryTypeBits,
+                                                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    // Populate memory with initial data.
+        JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
+            JST_ERROR("[VULKAN] Failed to allocate buffer memory.");
+        });
+
+        JST_VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0), [&]{
+            JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
+        });
     
-    if (config.buffer) {
-        JST_CHECK(update());
+        // Populate memory with initial data.
+    
+        if (config.buffer) {
+            JST_CHECK(update());
+        }
     }
 
     return Result::SUCCESS;
@@ -89,9 +107,11 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying buffer.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    vkDestroyBuffer(device, buffer, nullptr);
-    vkFreeMemory(device, memory, nullptr);
+    if (!config.enableZeroCopy) {
+        auto& device = Backend::State<Device::Vulkan>()->getDevice();
+        vkDestroyBuffer(device, buffer, nullptr);
+        vkFreeMemory(device, memory, nullptr);
+    }
 
     return Result::SUCCESS;
 }
@@ -101,11 +121,9 @@ Result Implementation::update() {
 }
 
 Result Implementation::update(const U64& offset, const U64& size) {
-    if (size == 0) {
+    if (size == 0 || config.enableZeroCopy) {
         return Result::SUCCESS;
     }
-
-    // TODO: Implement zero-copy option.
 
     auto& backend = Backend::State<Device::Vulkan>();
 

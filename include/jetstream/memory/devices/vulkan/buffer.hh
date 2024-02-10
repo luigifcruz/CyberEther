@@ -20,18 +20,21 @@ class TensorBuffer<Device::Vulkan> {
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
                           const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer);
+    static bool CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept;
 #endif
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
                           const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer);
+    static bool CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept;
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
                           const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer);
+    static bool CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept;
 #endif
 
     ~TensorBuffer();
@@ -39,8 +42,16 @@ class TensorBuffer<Device::Vulkan> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr const bool& host_accessible() const {
+    constexpr bool host_accessible() const noexcept {
         return _host_accessible;
+    }
+
+    constexpr bool device_native() const noexcept {
+        return _device_native;
+    }
+
+    constexpr bool host_native() const noexcept {
+        return _host_native;
     }
 
     constexpr const VkDeviceMemory& memory() const noexcept {
@@ -64,6 +75,9 @@ class TensorBuffer<Device::Vulkan> {
     VkDeviceMemory _memory;
     bool owns_data = false;
     bool _host_accessible = false;
+    bool _device_native = false;
+    bool _host_native = false;
+    Device external_memory_Device = Device::None;
 };
 
 }  // namespace Jetstream

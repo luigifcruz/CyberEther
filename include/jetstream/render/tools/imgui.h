@@ -1087,6 +1087,9 @@ enum ImGuiChildFlags_
     ImGuiChildFlags_AutoResizeY             = 1 << 5,   // Enable auto-resizing height. Read "IMPORTANT: Size measurement" details above.
     ImGuiChildFlags_AlwaysAutoResize        = 1 << 6,   // Combined with AutoResizeX/AutoResizeY. Always measure size even when child is hidden, always return true, always disable clipping optimization! NOT RECOMMENDED.
     ImGuiChildFlags_FrameStyle              = 1 << 7,   // Style the child window like a framed item: use FrameBg, FrameRounding, FrameBorderSize, FramePadding instead of ChildBg, ChildRounding, ChildBorderSize, WindowPadding.
+
+    // UPDATE-ME: Markdown rendering.
+    ImGuiChildFrags_AlwaysUseParentDrawList = 1 << 8,
 };
 
 // Flags for ImGui::InputText()

@@ -5,13 +5,13 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Invert<D, T>::createCompute(const RuntimeMetadata&) {
+Result Invert<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Invert compute core.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Invert<D, T>::compute(const RuntimeMetadata&) {
+Result Invert<D, T>::compute(const Context&) {
     const auto* in = reinterpret_cast<std::pair<T, T>*>(input.buffer.data());
     auto* out = reinterpret_cast<std::pair<T, T>*>(output.buffer.data());
 

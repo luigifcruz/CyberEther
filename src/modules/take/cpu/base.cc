@@ -5,7 +5,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Take<D, T>::compute(const RuntimeMetadata&) {
+Result Take<D, T>::compute(const Context&) {
     std::vector<U64> shape = input.buffer.shape();
     for (U64 i = 0; i < output.buffer.size(); i++) {
         output.buffer.offset_to_shape(i, shape);

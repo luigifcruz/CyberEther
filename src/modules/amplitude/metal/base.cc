@@ -25,30 +25,45 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::createCompute(const RuntimeMetadata& meta) {
+struct Amplitude<D, IT, OT>::Impl {
+    struct Constants {
+        F32 scalingCoeff;
+    };
+
+    MTL::ComputePipelineState* state;
+    Tensor<Device::Metal, U8> constants;
+};
+
+template<Device D, typename IT, typename OT>
+Amplitude<D, IT, OT>::Amplitude() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename IT, typename OT>
+Amplitude<D, IT, OT>::~Amplitude() {
+    pimpl.reset();
+}
+
+template<Device D, typename IT, typename OT>
+Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
-    auto& assets = metal;
-
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &assets.state));
-    auto* constants = Metal::CreateConstants<MetalConstants>(assets);
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &pimpl->state));
+    auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
     constants->scalingCoeff = scalingCoeff;
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::compute(const RuntimeMetadata& meta) {
-    auto& assets = metal;
-    auto& runtime = meta.metal;
-
-    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(assets.state);
-    cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
+    auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
+    cmdEncoder->setComputePipelineState(pimpl->state);
+    cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
     cmdEncoder->setBuffer(output.buffer.data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(output.buffer.size(), 1, 1),
-                                MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
+                                MTL::Size(pimpl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;

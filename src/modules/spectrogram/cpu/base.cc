@@ -3,16 +3,27 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::createCompute(const RuntimeMetadata&) {
-    JST_TRACE("Create Spectrogram compute core using CPU backend.");
+struct Spectrogram<D, T>::Impl {};
 
-    decayFactor = pow(0.999, numberOfBatches);
+template<Device D, typename T>
+Spectrogram<D, T>::Spectrogram() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Spectrogram<D, T>::~Spectrogram() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Spectrogram<D, T>::createCompute(const Context&) {
+    JST_TRACE("Create Spectrogram compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
+Result Spectrogram<D, T>::compute(const Context&) {
     const U64& size = frequencyBins.size();
     const F32 factor = decayFactor;
     for (U64 x = 0; x < size; ++x) {
@@ -24,7 +35,8 @@ Result Spectrogram<D, T>::compute(const RuntimeMetadata&) {
             const U16 index = input.buffer[{b, x}] * config.height;
 
             if (index < config.height && index > 0) {
-                frequencyBins[x + (index * numberOfElements)] += 0.02; 
+                auto& val = frequencyBins[x + (index * numberOfElements)];
+                val = std::min(val + 0.02, 1.0); 
             }
         }
     }

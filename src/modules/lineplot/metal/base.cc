@@ -10,6 +10,7 @@ static const char shadersSrc[] = R"""(
     struct Constants {
         ushort batchSize;
         ushort gridSize;
+        float normalizationFactor;
     };
 
     // TODO: This can be ported to use shared memory and other tricks.
@@ -22,38 +23,55 @@ static const char shadersSrc[] = R"""(
         for (uint i = 0; i < constants.batchSize; ++i) {
             sum += input[id + (i * constants.gridSize)];
         }
-
         const uint plot_idx = id * 3 + 1;
-        bins[plot_idx] = (sum / (0.5f * constants.batchSize)) - 1.0f;
+        bins[plot_idx] = (sum * constants.normalizationFactor) - 1.0f;
     }
 )""";
 
 template<Device D, typename T>
-Result Lineplot<D, T>::createCompute(const RuntimeMetadata& meta) {
+struct Lineplot<D, T>::Impl {
+    struct Constants {
+        U16 batchSize;
+        U16 gridSize;
+        F32 normalizationFactor;
+    };
+
+    MTL::ComputePipelineState* state;
+    Tensor<Device::Metal, U8> constants;
+};
+
+template<Device D, typename T>
+Lineplot<D, T>::Lineplot() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Lineplot<D, T>::~Lineplot() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Lineplot<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
-    auto& assets = metal;
-
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &assets.state));
-    auto* constants = Metal::CreateConstants<MetalConstants>(assets);
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &pimpl->state));
+    auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
     constants->batchSize = numberOfBatches;
     constants->gridSize = numberOfElements;
+    constants->normalizationFactor = normalizationFactor;
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Lineplot<D, T>::compute(const RuntimeMetadata& meta) {
-    auto& assets = metal;
-    auto& runtime = meta.metal;
-    
-    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(assets.state);
-    cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+Result Lineplot<D, T>::compute(const Context& ctx) {
+    auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
+    cmdEncoder->setComputePipelineState(pimpl->state);
+    cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
-    cmdEncoder->setBuffer(plot.metal().data(), 0, 2);
+    cmdEncoder->setBuffer(MapOn<Device::Metal>(plot).data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(numberOfElements, 1, 1),
-                                MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
+                                MTL::Size(pimpl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;

@@ -48,6 +48,18 @@ class TensorBase : public TensorStorage<T> {
         return D;
     }
 
+    constexpr bool host_accessible() const noexcept {
+        return buffer->host_accessible();
+    }
+
+    constexpr bool device_native() const noexcept {
+        return buffer->device_native();
+    }
+
+    constexpr bool host_native() const noexcept {
+        return buffer->host_native();
+    }
+
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     Tensor<Device::CPU, T>& cpu() {
         if (!cpu_tensor_cache) {
@@ -100,6 +112,36 @@ class TensorBase : public TensorStorage<T> {
     std::shared_ptr<Tensor<Device::CUDA, T>> cuda_tensor_cache;
 #endif
 };
+
+template<Device CloneDevice>
+inline auto& MapOn(auto& tensor) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    if constexpr (CloneDevice == Device::CPU) {
+        return tensor.cpu();
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+    if constexpr (CloneDevice == Device::Metal) {
+        return tensor.metal();
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if constexpr (CloneDevice == Device::Vulkan) {
+        return tensor.vulkan();
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if constexpr (CloneDevice == Device::CUDA) {
+        return tensor.cuda();
+    }
+#endif
+
+    JST_ERROR("[TENSOR] Device not supported.");
+    JST_CHECK_THROW(Result::ERROR);
+}
 
 template<Device D, typename T>
 class Tensor : public TensorBase<D, T> {};

@@ -14,6 +14,7 @@ namespace Jetstream {
 Compositor::Compositor(Instance& instance)
      : instance(instance),
        running(true),
+       nodeDragId(0),
        graphSpatiallyOrganized(false),
        rightClickMenuEnabled(false),
        sourceEditorEnabled(false),
@@ -27,8 +28,27 @@ Compositor::Compositor(Instance& instance)
        nodeContextMenuNodeId(0),
        benchmarkRunning(false),
        globalModalToggle(false) {
+    JST_DEBUG("[COMPOSITOR] Creating compositor.");
+
+    // Set default stacks.
     stacks["Graph"] = {true, 0};
+
+    // Initialize state.
     JST_CHECK_THROW(refreshState());
+
+    // Load assets.
+
+    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_primary_bin, 
+                                  Resources::compositor_banner_primary_len,
+                                  primaryBannerTexture));
+    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_secondary_bin, 
+                                   Resources::compositor_banner_secondary_len,
+                                   secondaryBannerTexture));
+}
+
+Compositor::~Compositor() {
+    primaryBannerTexture->destroy();
+    secondaryBannerTexture->destroy();
 }
 
 Result Compositor::addBlock(const Locale& locale,
@@ -357,11 +377,6 @@ Result Compositor::destroy() {
 
     stacks["Graph"] = {true, 0};
 
-    // Unload assets.
-    if (assetsLoaded) {
-        JST_CHECK(unloadAssets());
-    }
-
     return Result::SUCCESS;
 }
 
@@ -396,34 +411,7 @@ Result Compositor::loadImageAsset(const uint8_t* binary_data,
     return Result::SUCCESS;
 }
 
-Result Compositor::loadAssets() {
-    JST_DEBUG("[COMPOSITOR] Loading assets.");
-
-    JST_CHECK(loadImageAsset(Resources::compositor_banner_primary_bin, 
-                             Resources::compositor_banner_primary_len,
-                             primaryBannerTexture));
-
-    JST_CHECK(loadImageAsset(Resources::compositor_banner_secondary_bin, 
-                             Resources::compositor_banner_secondary_len,
-                             secondaryBannerTexture));
-
-    assetsLoaded = true;
-    return Result::SUCCESS;
-}
-
-Result Compositor::unloadAssets() {
-    JST_CHECK(primaryBannerTexture->destroy());
-    JST_CHECK(secondaryBannerTexture->destroy());
-
-    assetsLoaded = false;
-    return Result::SUCCESS;
-}
-
 Result Compositor::draw() {
-    if (!assetsLoaded) {
-        JST_CHECK(loadAssets());
-    }
-
     // Prevent state from refreshing while drawing these methods.
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
@@ -459,7 +447,8 @@ Result Compositor::processInteractions() {
             // Create node where the mouse dropped the module.
             Parser::RecordMap configMap, inputMap, stateMap;
             const auto [x, y] = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
-            stateMap["nodePos"] = {Size2D<F32>{x, y}};
+            const auto& scalingFactor = instance.window().scalingFactor();
+            stateMap["nodePos"] = {Size2D<F32>{x / scalingFactor, y / scalingFactor}};
 
             // Create module.
             JST_CHECK_NOTIFY(Store::BlockConstructorList().at(fingerprint)(instance, "", configMap, inputMap, stateMap));
@@ -1234,21 +1223,19 @@ Result Compositor::drawStatic() {
         const char* largestText = "To get started, create a new flowgraph or open an existing one using";
         const auto largestTextSize = ImGui::CalcTextSize(largestText).x;
 
-        if (assetsLoaded) {
-            static bool usePrimaryTexture = true;
-            auto texture = usePrimaryTexture ? primaryBannerTexture : secondaryBannerTexture;
-            const auto& [w, h] = texture->size();
-            const auto ratio = static_cast<F32>(w) / static_cast<F32>(h);
-            ImGui::Image(texture->raw(), ImVec2(largestTextSize, largestTextSize / ratio));
+        static bool usePrimaryTexture = true;
+        auto texture = usePrimaryTexture ? primaryBannerTexture : secondaryBannerTexture;
+        const auto& [w, h] = texture->size();
+        const auto ratio = static_cast<F32>(w) / static_cast<F32>(h);
+        ImGui::Image(texture->raw(), ImVec2(largestTextSize, largestTextSize / ratio));
 
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                usePrimaryTexture = false;
-            } else {
-                usePrimaryTexture = true;
-            }
-
-            ImGui::Spacing();
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            usePrimaryTexture = false;
+        } else {
+            usePrimaryTexture = true;
         }
+
+        ImGui::Spacing();
 
         ImGui::Text("CyberEther is a tool designed for graphical visualization of radio");
         ImGui::Text("signals and general computing focusing in heterogeneous systems.");
@@ -2065,7 +2052,7 @@ Result Compositor::drawGraph() {
         // Set node position according to the internal state.
         for (const auto& [locale, state] : nodeStates) {
             const auto& [x, y] = state.block->getState().nodePos;
-            ImNodes::SetNodeGridSpacePos(state.id, ImVec2(x, y));
+            ImNodes::SetNodeGridSpacePos(state.id, ImVec2(x * scalingFactor, y * scalingFactor));
         }
 
         ImNodes::BeginNodeEditor();
@@ -2075,7 +2062,7 @@ Result Compositor::drawGraph() {
             const auto& block = state.block;
             const auto& moduleEntry = Store::BlockMetadataList().at(block->id());
 
-            F32& nodeWidth = block->state.nodeWidth;
+            F32 nodeWidth = block->state.nodeWidth * scalingFactor;
             const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x +
                                    ImGui::CalcTextSize(" " ICON_FA_CIRCLE_QUESTION).x +
                                    ((!block->complete()) ? 
@@ -2337,6 +2324,9 @@ Result Compositor::drawGraph() {
             ImNodes::PopColorStyle(); // TitleBarSelected
             ImNodes::PopColorStyle(); // Pin
             ImNodes::PopColorStyle(); // PinHovered
+
+            // Update node width.
+            block->state.nodeWidth = nodeWidth / scalingFactor;
         }
 
         // Draw node links.
@@ -2399,6 +2389,12 @@ Result Compositor::drawGraph() {
             ImGui::EndDragDropTarget();
         }
 
+        // Update internal state node position.
+        for (const auto& [locale, state] : nodeStates) {
+            const auto& [x, y] = ImNodes::GetNodeGridSpacePos(state.id);
+            state.block->state.nodePos = {x / scalingFactor, y / scalingFactor};
+        }
+
         // Spatially organize graph.
         if (!graphSpatiallyOrganized) {
             JST_DEBUG("[COMPOSITOR] Running graph auto-route.");
@@ -2414,7 +2410,12 @@ Result Compositor::drawGraph() {
                     F32 previousNodesHeight = 0.0f;
 
                     for (const auto& nodeId : column) {
-                        const auto& dims = ImNodes::GetNodeDimensions(nodeId);
+                        auto dims = ImNodes::GetNodeDimensions(nodeId);
+
+                        // Unpack dimensions.
+                        dims.x /= scalingFactor;
+                        dims.y /= scalingFactor;
+
                         auto& block = nodeStates.at(nodeLocaleMap.at(nodeId)).block;
                         auto& [x, y] = block->state.nodePos;
 
@@ -2423,7 +2424,7 @@ Result Compositor::drawGraph() {
                         // Add previous clusters and rows vertical offset.
                         y = previousNodesHeight + previousClustersHeight;
 
-                        previousNodesHeight += dims.y + (25.0f * scalingFactor);
+                        previousNodesHeight += dims.y + 25.0f;
                         largestNodeWidth = std::max({
                             dims.x,
                             largestNodeWidth,
@@ -2431,8 +2432,6 @@ Result Compositor::drawGraph() {
 
                         // Add left padding to nodes in the same column.
                         x += (largestNodeWidth - dims.x);
-
-                        ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(x, y));
                     }
 
                     largestColumnHeight = std::max({
@@ -2440,20 +2439,14 @@ Result Compositor::drawGraph() {
                         largestColumnHeight,
                     });
 
-                    previousColumnsWidth += largestNodeWidth + (37.5f * scalingFactor);
+                    previousColumnsWidth += largestNodeWidth + 37.5f;
                 }
 
-                previousClustersHeight += largestColumnHeight + (12.5f * scalingFactor);
+                previousClustersHeight += largestColumnHeight + 12.5;
             }
 
             ImNodes::EditorContextResetPanning({0.0f, 0.0f});
             graphSpatiallyOrganized = true;
-        }
-
-        // Update internal state node position.
-        for (const auto& [locale, state] : nodeStates) {
-            const auto& [x, y] = ImNodes::GetNodeGridSpacePos(state.id);
-            state.block->state.nodePos = {x, y};
         }
 
         // Render underlying buffer information about the link.
@@ -2465,14 +2458,22 @@ Result Compositor::drawGraph() {
             ImGui::BeginTooltip();
             ImGui::TextWrapped(ICON_FA_MEMORY " Tensor Metadata");
             ImGui::Separator();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+            ImGui::Text(ICON_FA_CIRCLE_INFO " Click on the end of the link to detach it.");
+            ImGui::PopStyleColor();
+            ImGui::Separator();
 
             const auto firstLine  = jst::fmt::format("[{} -> {}]", outputLocale, inputLocale);
-            const auto secondLine = jst::fmt::format("[{}] {} [Device::{}]", rec.dataType, rec.shape, rec.device);
-            const auto thirdLine  = jst::fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(rec.data), rec.hash);
+            const auto secondLine = jst::fmt::format("[{}] {} [{}] [Device::{}]", rec.dataType, rec.shape, rec.contiguous ? "C" : "NC", rec.device);
+            const auto thirdLine  = jst::fmt::format("[Host Acessible: {}] [Device Native: {}] [Host Native: {}]", rec.host_accessible ? "YES" : "NO",
+                                                                                                                   rec.device_native ? "YES" : "NO",
+                                                                                                                   rec.host_native ? "YES" : "NO");
+            const auto forthLine  = jst::fmt::format("[PTR: 0x{:016X}] [HASH: 0x{:016X}]", reinterpret_cast<uintptr_t>(rec.data), rec.hash);
 
             ImGui::TextUnformatted(firstLine.c_str());
             ImGui::TextUnformatted(secondLine.c_str());
             ImGui::TextUnformatted(thirdLine.c_str());
+            ImGui::TextUnformatted(forthLine.c_str());
 
             if (!rec.attributes.empty()) {
                 std::string attributes;
@@ -2491,13 +2492,14 @@ Result Compositor::drawGraph() {
         }
 
         // Resize node by dragging interface logic.
-        // TODO: I think there might be a bug here when initializing the flowgraph.
         I32 nodeId;
         if (ImNodes::IsNodeHovered(&nodeId)) {
+            auto& node = nodeStates.at(nodeLocaleMap.at(nodeId)).block;
+
             const auto nodeDims = ImNodes::GetNodeDimensions(nodeId);
             const auto nodeOrigin = ImNodes::GetNodeScreenSpacePos(nodeId);
 
-            F32& nodeWidth = nodeStates.at(nodeLocaleMap.at(nodeId)).block->state.nodeWidth;
+            F32 nodeWidth = node->state.nodeWidth * scalingFactor;
 
             bool isNearRightEdge =
                 std::abs((nodeOrigin.x + nodeDims.x) - ImGui::GetMousePos().x) < 10.0f &&
@@ -2516,6 +2518,8 @@ Result Compositor::drawGraph() {
             if (isNearRightEdge || nodeDragId) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
             }
+
+            node->state.nodeWidth = nodeWidth / scalingFactor;
         }
 
         if (ImGui::IsMouseReleased(0)) {
@@ -2552,9 +2556,6 @@ Result Compositor::drawGraph() {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& state = nodeStates.at(locale.block());
         const auto moduleEntry = Store::BlockMetadataList().at(state.fingerprint.id);
-
-        ImGui::Text("Node ID: %d", nodeContextMenuNodeId);
-        ImGui::Separator();
 
         // Delete node.
         if (ImGui::MenuItem("Delete Node")) {

@@ -159,6 +159,11 @@
 #define JETSTREAM_BLOCK_FILTER_AVAILABLE
 #endif
 
+#if defined(JETSTREAM_MODULE_DUPLICATE_AVAILABLE)
+#include "jetstream/blocks/duplicate.hh"
+#define JETSTREAM_BLOCK_DUPLICATE_AVAILABLE
+#endif
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH

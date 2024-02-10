@@ -3,13 +3,13 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-Result Unpad<D, T>::createCompute(const RuntimeMetadata&) {
+Result Unpad<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Unpad compute core using CPU backend.");
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Unpad<D, T>::compute(const RuntimeMetadata&) {
+Result Unpad<D, T>::compute(const Context&) {
     std::vector<U64> shape = input.padded.shape();
     const U64 pad_offset = shape[config.axis] - config.size;
 

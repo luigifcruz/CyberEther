@@ -5,7 +5,6 @@
 #include <memory>
 
 #include "jetstream/memory/types.hh"
-#include "jetstream/metadata.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 
@@ -45,7 +44,7 @@ class Graph {
     virtual Result destroy() = 0;
 
  protected:
-    std::shared_ptr<RuntimeMetadata> metadata;
+    std::shared_ptr<Compute::Context> context;
     std::vector<std::shared_ptr<Compute>> blocks;
     std::set<U64> wiredInputSet;
     std::set<U64> wiredOutputSet;

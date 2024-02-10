@@ -4,6 +4,14 @@
 #include "jetstream/memory/devices/cpu/buffer.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/memory/devices/vulkan/buffer.hh"
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/memory/devices/cuda/buffer.hh"
+#endif
+
 namespace Jetstream {
 
 using Implementation = TensorBuffer<Device::Metal>;
@@ -12,10 +20,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const TensorPrototypeMetadata& prototype) {
     JST_TRACE("[METAL:BUFFER] Allocating new buffer.");
 
-    // Check platform.
+    // Check if Metal is available.
 
-    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
-        JST_ERROR("[METAL:BUFFER] Platform is not unified. Cannot allocate Metal memory.");
+    if (!Backend::State<Device::Metal>()->isAvailable()) {
+        JST_TRACE("[METAL:BUFFER] Metal is not available.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -23,8 +31,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     storage->root_device = Device::Metal;
     storage->compatible_devices = {
-        Device::Metal,
-        Device::CPU
+        Device::Metal
     };
 
     // Check size.
@@ -42,10 +49,34 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
         JST_CHECK_THROW(Result::ERROR);
     }
+    _host_native = true;
+    _device_native = true;
+    _host_accessible = true;
     owns_data = true;
 
     // Null out array.
+
     memset(buffer->contents(), 0, prototype.size_bytes);
+
+    // Add compatible devices.
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    if (TensorBuffer<Device::CPU>::CanImport(*this)) {
+        storage->compatible_devices.insert(Device::CPU);
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (TensorBuffer<Device::Vulkan>::CanImport(*this)) {
+        storage->compatible_devices.insert(Device::Vulkan);
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (TensorBuffer<Device::CUDA>::CanImport(*this)) {
+        storage->compatible_devices.insert(Device::CUDA);
+    }
+#endif
 }
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
@@ -54,10 +85,17 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
     JST_TRACE("[METAL:BUFFER] Cloning from CPU buffer.");
 
-    // Check platform.
+    // Check if Metal is available.
 
-    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
-        JST_ERROR("[METAL:BUFFER] Platform is not unified. Cannot clone CPU memory.");
+    if (!Backend::State<Device::Metal>()->isAvailable()) {
+        JST_TRACE("[METAL:BUFFER] Metal is not available.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
+    // Check if root buffer can be imported.
+
+    if (!TensorBuffer<Device::Metal>::CanImport(*root_buffer)) {
+        JST_TRACE("[METAL:BUFFER] CPU buffer is not compatible with Metal.");
         JST_CHECK_THROW(Result::ERROR);
     }
 
@@ -85,6 +123,32 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         JST_CHECK_THROW(Result::ERROR);
     }
     owns_data = false;
+
+    // Add metadata.
+
+    _device_native = true;
+    _host_native = true;
+    _host_accessible = true;
+}
+
+bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
+    JST_TRACE("[METAL:BUFFER] Checking if CPU buffer can be imported.");
+
+    // Check if Metal is available.
+
+    if (!Backend::State<Device::Metal>()->isAvailable()) {
+        JST_TRACE("[METAL:BUFFER] Metal is not available.");
+        return false;
+    }
+
+    // Check if Metal buffer is host accessible.
+
+    if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
+        JST_TRACE("[METAL:BUFFER] Metal buffer is not unified.");
+        return false;
+    }
+
+    return true;
 }
 #endif
 
@@ -93,6 +157,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
     throw std::runtime_error("Exporting Vulkan memory to Metal not implemented.");
+    // TODO: Add Vulkan -> Metal.
+}
+
+bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
+    return false;
 }
 #endif
 
@@ -100,7 +169,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
-    throw std::runtime_error("Exporting CUDA memory to Metal not implemented.");
+    throw std::runtime_error("CUDA buffers are not supported on Metal.");
+}
+
+bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
+    return false;
 }
 #endif
 

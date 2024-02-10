@@ -33,6 +33,10 @@ class Parser {
         std::string dataType = "";
         std::vector<U64> shape = {};
         std::map<std::string, std::string> attributes = {};
+        bool host_accessible = false;
+        bool device_native = false;
+        bool host_native = false;
+        bool contiguous = false;
     };
 
     typedef std::unordered_map<std::string, Record> RecordMap;
@@ -60,6 +64,10 @@ class Parser {
             metadata.dataType = NumericTypeInfo<typename T::DataType>::name;
             metadata.shape = variable.shape();
             metadata.locale = variable.locale();
+            metadata.host_accessible = variable.host_accessible();
+            metadata.device_native = variable.device_native();
+            metadata.host_native = variable.host_native();
+            metadata.contiguous = variable.contiguous();
 
             for (const auto& [key, attribute] : variable.attributes()) {
                 JST_CHECK(AnyToString(attribute.get(), metadata.attributes[key], true));
@@ -95,17 +103,24 @@ class Parser {
             if (variable.device() == Device::CPU) {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
                 if (anyVar.type() == typeid(Tensor<Device::Metal, typename T::DataType>)) {
-                    JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<Metal>' into 'Tensor<CPU>'.", name);
-                    variable = std::move(T(std::any_cast<Tensor<Device::Metal, typename T::DataType>>(anyVar)));
-                    return Result::SUCCESS;
+                    return SafeTensorCast<Device::Metal>(name, anyVar, variable);
+                }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+                if (anyVar.type() == typeid(Tensor<Device::CUDA, typename T::DataType>)) {
+                    return SafeTensorCast<Device::CUDA>(name, anyVar, variable);
                 }
 #endif
             } else if (variable.device() == Device::Metal) {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
                 if (anyVar.type() == typeid(Tensor<Device::CPU, typename T::DataType>)) {
-                    JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<CPU>' into 'Tensor<Metal>'.", name);
-                    variable = std::move(T(std::any_cast<Tensor<Device::CPU, typename T::DataType>>(anyVar)));
-                    return Result::SUCCESS;
+                    return SafeTensorCast<Device::CPU>(name, anyVar, variable);
+                }
+#endif
+            } else if (variable.device() == Device::CUDA) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+                if (anyVar.type() == typeid(Tensor<Device::CPU, typename T::DataType>)) {
+                    return SafeTensorCast<Device::CPU>(name, anyVar, variable);
                 }
 #endif
             }
@@ -371,6 +386,21 @@ class Parser {
         }
 
         return T(real, imag);
+    }
+
+    template<Device SrcD, Device DstD, typename T>
+    static Result SafeTensorCast(const std::string& name, std::any& anyVar, Tensor<DstD, T>& variable) {
+        JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<Device::{}>' into 'Tensor<Device::{}>'.", name, SrcD, DstD);
+        const auto& tensor = std::any_cast<Tensor<SrcD, T>>(anyVar);
+
+        if (!tensor.compatible_devices().contains(variable.device())) {
+            JST_ERROR("[PARSER] Failed to cast variable '{}'. Check if the input and output are compatible.", name);
+            JST_TRACE("[PARSER] Supported casts: {} -> {}", variable.device(), variable.compatible_devices());
+            return Result::ERROR;
+        }
+
+        variable = std::move(Tensor<DstD, T>(tensor));
+        return Result::SUCCESS;
     }
 };
 

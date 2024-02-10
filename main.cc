@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
     Viewport::Config viewportConfig;
     Render::Window::Config renderConfig;
     std::string flowgraphPath;
-    Device prefferedBackend;
+    Device prefferedBackend = Device::None;
 
     for (int i = 1; i < argc; i++) {
         const std::string arg = std::string(argv[i]);
@@ -31,6 +31,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--backend") {
+            // TODO: Add check for valid backend.
+
             if (i + 1 < argc) {
                 prefferedBackend = StringToDevice(argv[++i]);
             }
@@ -57,6 +59,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--benchmark") {
+            // TODO: Add check for valid output type.
+
             std::string outputType = "markdown";
 
             if (i + 1 < argc) {
@@ -86,6 +90,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--codec") {
+            // TODO: Add check for valid codec.
+
             if (i + 1 < argc) {
                 viewportConfig.codec = Render::StringToVideoCodec(argv[++i]);
             }
@@ -152,19 +158,32 @@ int main(int argc, char* argv[]) {
 
     Instance instance;
 
-    JST_CHECK_THROW(instance.buildInterface(prefferedBackend,
-                                            backendConfig,
-                                            viewportConfig,
-                                            renderConfig));
+    // Configure instance.
+
+    Instance::Config config = {
+        .preferredDevice = prefferedBackend,
+        .enableCompositor = true,
+        .backendConfig = backendConfig,
+        .viewportConfig = viewportConfig,
+        .renderConfig = renderConfig
+    };
+
+    JST_CHECK_THROW(instance.build(config));
+
+    // Load flowgraph if provided.
 
     if (!flowgraphPath.empty()) {
         JST_CHECK_THROW(instance.flowgraph().create(flowgraphPath));
     }
+
+    // Start instance.
+
+    instance.start();
     
     // Start compute thread.
 
     auto computeThread = std::thread([&]{
-        while (instance.viewport().keepRunning()) {
+        while (instance.computing()) {
             JST_CHECK_THROW(instance.compute());
         }
     });
@@ -187,7 +206,7 @@ int main(int argc, char* argv[]) {
     emscripten_set_main_loop_arg(graphicalThreadLoop, &instance, 0, 1);
 #else
     auto graphicalThread = std::thread([&]{
-        while (instance.viewport().keepRunning()) {
+        while (instance.presenting()) {
             graphicalThreadLoop(&instance);
         }
     });
@@ -203,14 +222,28 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
-    // Destruction.
+    // Stop instance and wait for threads.
 
-    computeThread.join();
-#ifndef JST_OS_BROWSER
-    graphicalThread.join();
+    instance.reset();
+    instance.stop();
+
+    if (computeThread.joinable()) {
+        computeThread.join();
+    }
+
+#ifdef JST_OS_BROWSER
+    emscripten_cancel_main_loop();
+#else
+    if (graphicalThread.joinable()) {
+        graphicalThread.join();
+    }
 #endif
-    
+
+    // Destroy instance.
+
     instance.destroy();
+
+    // Destroy backend.
 
     Backend::DestroyAll();
 

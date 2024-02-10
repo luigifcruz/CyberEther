@@ -15,9 +15,15 @@ namespace Jetstream {
 #define JST_AMPLITUDE_METAL(MACRO) \
     MACRO(Amplitude, Metal, CF32, F32)
 
+#define JST_AMPLITUDE_CUDA(MACRO) \
+    MACRO(Amplitude, CUDA, CF32, F32)
+
 template<Device D, typename IT = CF32, typename OT = F32>
 class Amplitude : public Module, public Compute {
  public:
+    Amplitude();
+    ~Amplitude();
+
     // Configuration 
 
     struct Config {
@@ -69,29 +75,24 @@ class Amplitude : public Module, public Compute {
     Result create();
 
  protected:
-    Result createCompute(const RuntimeMetadata& meta) final;
-    Result compute(const RuntimeMetadata& meta) final;
+    Result createCompute(const Context& ctx) final;
+    Result compute(const Context& ctx) final;
 
  private:
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct MetalConstants {
-        F32 scalingCoeff;
-    };
-
-    struct {
-        MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
 
     F32 scalingCoeff = 0.0f;
+    U64 numberOfElements = 0;
 
     JST_DEFINE_IO();
 };
 
 #ifdef JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE
 JST_AMPLITUDE_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_AMPLITUDE_CUDA_AVAILABLE
+JST_AMPLITUDE_CUDA(JST_SPECIALIZATION);
 #endif
 #ifdef JETSTREAM_MODULE_AMPLITUDE_METAL_AVAILABLE
 JST_AMPLITUDE_METAL(JST_SPECIALIZATION);

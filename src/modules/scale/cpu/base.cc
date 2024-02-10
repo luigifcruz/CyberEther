@@ -2,24 +2,30 @@
 
 namespace Jetstream {
 
-template<typename T>
-static inline T scale(const T x, const T min, const T max) {
-    return (x - min) / (max - min);
+template<Device D, typename T>
+struct Scale<D, T>::Impl {};
+
+template<Device D, typename T>
+Scale<D, T>::Scale() {
+    pimpl = std::make_unique<Impl>();
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::createCompute(const RuntimeMetadata&) {
+Scale<D, T>::~Scale() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Scale<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::compute(const RuntimeMetadata&) {
-    auto [min, max] = config.range;
-
+Result Scale<D, T>::compute(const Context&) {
     for (U64 i = 0; i < input.buffer.size(); i++) {
-        output.buffer[i] = scale<T>(input.buffer[i], min, max);
+        output.buffer[i] = input.buffer[i] * scalingCoeff + offsetCoeff;
     }
 
     return Result::SUCCESS;

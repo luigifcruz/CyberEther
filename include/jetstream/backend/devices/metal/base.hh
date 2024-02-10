@@ -11,6 +11,7 @@ class Metal {
     explicit Metal(const Config& config);
     ~Metal();
 
+    bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     bool hasUnifiedMemory() const;
@@ -21,13 +22,19 @@ class Metal {
     U64 getThermalState() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
 
+    constexpr const U64& getDeviceId() const {
+        return config.deviceId;
+    }
+
     constexpr MTL::Device* getDevice() {
         return device;
     }
 
  private:
+    Config config;
     MTL::Device* device;
     NS::ProcessInfo* info;
+    bool _isAvailable = false;
 };
 
 }  // namespace Jetstream::Backend

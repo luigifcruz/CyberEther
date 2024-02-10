@@ -3346,7 +3346,12 @@ void ImGui::RenderText(ImVec2 pos, const char* text, const char* text_end, bool 
 
     if (text != text_display_end)
     {
-        window->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_display_end);
+        // UPDATE-ME: Markdown rendering.
+        if ((window->ChildFlags & ImGuiChildFrags_AlwaysUseParentDrawList)) {
+            window->ParentWindow->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_display_end);
+        } else {
+            window->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_display_end);
+        }
         if (g.LogEnabled)
             LogRenderedText(&pos, text, text_display_end);
     }
@@ -3362,7 +3367,13 @@ void ImGui::RenderTextWrapped(ImVec2 pos, const char* text, const char* text_end
 
     if (text != text_end)
     {
-        window->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_end, wrap_width);
+        // UPDATE-ME: Markdown rendering.
+        if ((window->ChildFlags & ImGuiChildFrags_AlwaysUseParentDrawList)) {
+            window->ParentWindow->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_end, wrap_width);
+        } else {
+            window->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_end, wrap_width);
+        }
+
         if (g.LogEnabled)
             LogRenderedText(&pos, text, text_end);
     }
@@ -5695,7 +5706,8 @@ bool ImGui::BeginChildEx(const char* name, ImGuiID id, const ImVec2& size_arg, I
     IM_ASSERT(id != 0);
 
     // Sanity check as it is likely that some user will accidentally pass ImGuiWindowFlags into the ImGuiChildFlags argument.
-    const ImGuiChildFlags ImGuiChildFlags_SupportedMask_ = ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_ResizeX | ImGuiChildFlags_ResizeY | ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_FrameStyle;
+    // UPDATE-ME: Markdown rendering.
+    const ImGuiChildFlags ImGuiChildFlags_SupportedMask_ = ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_ResizeX | ImGuiChildFlags_ResizeY | ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_FrameStyle | ImGuiChildFrags_AlwaysUseParentDrawList;
     IM_UNUSED(ImGuiChildFlags_SupportedMask_);
     IM_ASSERT((child_flags & ~ImGuiChildFlags_SupportedMask_) == 0 && "Illegal ImGuiChildFlags value. Did you pass ImGuiWindowFlags values instead of ImGuiChildFlags?");
     IM_ASSERT((window_flags & ImGuiWindowFlags_AlwaysAutoResize) == 0 && "Cannot specify ImGuiWindowFlags_AlwaysAutoResize for BeginChild(). Use ImGuiChildFlags_AlwaysAutoResize!");

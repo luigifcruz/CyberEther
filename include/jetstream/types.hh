@@ -2,7 +2,6 @@
 #define JETSTREAM_TYPE_HH
 
 #include <any>
-#include <span>
 #include <vector>
 #include <complex>
 #include <typeindex>

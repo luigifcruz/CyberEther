@@ -9,47 +9,62 @@ static const char shadersSrc[] = R"""(
     using namespace metal;
 
     struct Constants {
-        float min;
-        float max;
+        float scaling;
+        float offset;
     };
 
     kernel void scale(constant Constants& constants [[ buffer(0) ]],
                       constant const float *input [[ buffer(1) ]],
                       device float *output [[ buffer(2) ]],
                       uint id[[ thread_position_in_grid ]]) {
-        // TODO: Can cache constants.max - constants.min.
-        output[id] = (input[id] - constants.min) / (constants.max - constants.min);
+        output[id] = input[id] * constants.scaling + constants.offset;
     }
 )""";
 
 template<Device D, typename T>
-Result Scale<D, T>::createCompute(const RuntimeMetadata& meta) {
+struct Scale<D, T>::Impl {
+    struct Constants {
+        F32 min;
+        F32 max;
+    };
+
+    MTL::ComputePipelineState* state;
+    Tensor<Device::Metal, U8> constants;
+};
+
+template<Device D, typename T>
+Scale<D, T>::Scale() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Scale<D, T>::~Scale() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Scale<D, T>::createCompute(const Context& ctx) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
-    auto& assets = metal;
-
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &assets.state));
-    Metal::CreateConstants<MetalConstants>(assets);
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &pimpl->state));
+    Metal::CreateConstants<typename Impl::Constants>(*pimpl);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::compute(const RuntimeMetadata& meta) {
-    auto& assets = metal;
-    auto& runtime = meta.metal;
+Result Scale<D, T>::compute(const Context& ctx) {
+    auto* constants = Metal::Constants<typename Impl::Constants>(*pimpl);
+    constants->min = scalingCoeff;
+    constants->max = offsetCoeff;
 
-    auto* constants = Metal::Constants<MetalConstants>(assets);
-    constants->min = config.range.min;
-    constants->max = config.range.max;
-
-    auto cmdEncoder = runtime.commandBuffer->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(metal.state);
-    cmdEncoder->setBuffer(metal.constants.data(), 0, 0);
+    auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
+    cmdEncoder->setComputePipelineState(pimpl->state);
+    cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
     cmdEncoder->setBuffer(output.buffer.data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(output.buffer.size(), 1, 1), 
-                                MTL::Size(metal.state->maxTotalThreadsPerThreadgroup(), 1, 1));
+                                MTL::Size(pimpl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;

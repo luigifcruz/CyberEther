@@ -7,7 +7,12 @@
 namespace Jetstream {
 
 template<Device D>
-class TensorBuffer {};
+class TensorBuffer {
+ public:
+    virtual bool host_accessible() const noexcept = 0;
+    virtual bool device_native() const noexcept = 0;
+    virtual bool host_native() const noexcept = 0;
+};
 
 }  // namespace Jetstream
 
