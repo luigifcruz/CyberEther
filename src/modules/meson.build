@@ -20,6 +20,7 @@ subdir('speech_recognition')
 subdir('invert')
 subdir('multiply_constant')
 subdir('take')
+subdir('duplicate')
 
 # Graphical
 subdir('lineplot')

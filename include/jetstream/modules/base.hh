@@ -101,6 +101,10 @@
 #include "jetstream/modules/take.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_DUPLICATE_AVAILABLE
+#include "jetstream/modules/duplicate.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH
