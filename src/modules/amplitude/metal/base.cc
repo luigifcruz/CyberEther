@@ -2,7 +2,7 @@
 
 namespace Jetstream {
 
-static const char shadersSrc[] = R"""(
+static const char shadersSrcComplex[] = R"""(
     #include <metal_stdlib>
     #include <metal_math>
 
@@ -20,6 +20,25 @@ static const char shadersSrc[] = R"""(
         float real = number.x;
         float imag = number.y;
         float pwr = sqrt((real * real) + (imag * imag));
+        output[id] = 20.0 * log10(pwr) + constants.scalingCoeff;
+    }
+)""";
+
+static const char shadersSrcReal[] = R"""(
+    #include <metal_stdlib>
+    #include <metal_math>
+
+    using namespace metal;
+
+    struct Constants {
+        float scalingCoeff;
+    };
+
+    kernel void amplitude(constant Constants& constants [[ buffer(0) ]],
+                          constant const float *input [[ buffer(1) ]],
+                          device float *output [[ buffer(2) ]],
+                          uint id[[ thread_position_in_grid ]]) {
+        float pwr = fabs(input[id]);
         output[id] = 20.0 * log10(pwr) + constants.scalingCoeff;
     }
 )""";
@@ -48,7 +67,12 @@ template<Device D, typename IT, typename OT>
 Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "amplitude", &pimpl->state));
+    if constexpr (std::is_same_v<IT, CF32> && std::is_same_v<OT, F32>) {
+        return JST_CHECK(Metal::CompileKernel(shadersSrcComplex, "amplitude", &pimpl->state));
+    } else if constexpr (std::is_same_v<IT, F32> && std::is_same_v<OT, F32>) {
+        return JST_CHECK(Metal::CompileKernel(shadersSrcReal, "amplitude", &pimpl->state));
+    }
+
     auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
     constants->scalingCoeff = scalingCoeff;
 

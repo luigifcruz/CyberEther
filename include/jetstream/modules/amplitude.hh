@@ -10,13 +10,16 @@
 namespace Jetstream {
 
 #define JST_AMPLITUDE_CPU(MACRO) \
-    MACRO(Amplitude, CPU, CF32, F32)
+    MACRO(Amplitude, CPU, CF32, F32) \
+    MACRO(Amplitude, CPU, F32, F32)
 
 #define JST_AMPLITUDE_METAL(MACRO) \
-    MACRO(Amplitude, Metal, CF32, F32)
+    MACRO(Amplitude, Metal, CF32, F32) \
+    MACRO(Amplitude, Metal, F32, F32)
 
 #define JST_AMPLITUDE_CUDA(MACRO) \
-    MACRO(Amplitude, CUDA, CF32, F32)
+    MACRO(Amplitude, CUDA, CF32, F32) \
+    MACRO(Amplitude, CUDA, F32, F32)
 
 template<Device D, typename IT = CF32, typename OT = F32>
 class Amplitude : public Module, public Compute {
