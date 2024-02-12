@@ -32,24 +32,24 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
 
     if constexpr (std::is_same_v<IT, CF32> && std::is_same_v<OT, F32>) {
         ctx.cuda->createKernel("amplitude", R"""(
-            __global__ void amplitude(const float2* input, float* output, float* scalingCoeff, size_t* size) {
+            __global__ void amplitude(const float2* input, float* output, float scalingCoeff, size_t size) {
                 size_t id = blockIdx.x * blockDim.x + threadIdx.x;
-                if (id < *size) {
+                if (id < size) {
                     float2 number = input[id];
                     float real = number.x;
                     float imag = number.y;
                     float pwr = sqrtf((real * real) + (imag * imag));
-                    output[id] = 20.0f * log10f(pwr) + *scalingCoeff;
+                    output[id] = 20.0f * log10f(pwr) + scalingCoeff;
                 }
             }
         )""");
     } else if constexpr (std::is_same_v<IT, F32> && std::is_same_v<OT, F32>) {
         ctx.cuda->createKernel("amplitude", R"""(
-            __global__ void amplitude(const float* input, float* output, float* scalingCoeff, size_t* size) {
+            __global__ void amplitude(const float* input, float* output, float scalingCoeff, size_t size) {
                 size_t id = blockIdx.x * blockDim.x + threadIdx.x;
-                if (id < *size) {
+                if (id < size) {
                     float pwr = fabs(input[id]);
-                    output[id] = 20.0f * log10f(pwr) + *scalingCoeff;
+                    output[id] = 20.0f * log10f(pwr) + scalingCoeff;
                 }
             }
         )""");
