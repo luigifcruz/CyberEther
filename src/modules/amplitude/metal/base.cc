@@ -68,9 +68,9 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     if constexpr (std::is_same_v<IT, CF32> && std::is_same_v<OT, F32>) {
-        return JST_CHECK(Metal::CompileKernel(shadersSrcComplex, "amplitude", &pimpl->state));
+        JST_CHECK(Metal::CompileKernel(shadersSrcComplex, "amplitude", &pimpl->state));
     } else if constexpr (std::is_same_v<IT, F32> && std::is_same_v<OT, F32>) {
-        return JST_CHECK(Metal::CompileKernel(shadersSrcReal, "amplitude", &pimpl->state));
+        JST_CHECK(Metal::CompileKernel(shadersSrcReal, "amplitude", &pimpl->state));
     }
 
     auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
