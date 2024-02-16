@@ -104,7 +104,7 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::compute(const Context& ctx) {\
+Result Spectrogram<D, T>::compute(const Context& ctx) {
     if (!input.buffer.device_native()) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
