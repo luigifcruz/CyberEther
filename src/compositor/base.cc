@@ -1803,6 +1803,7 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("Catch2 - Boost Software License");
             ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
             ImGui::BulletText("imgui_markdown - Zlib License");
+            ImGui::BulletText("GLM - Happy Bunny License");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
