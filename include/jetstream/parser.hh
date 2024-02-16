@@ -46,6 +46,12 @@ class Parser {
         Deserialize,
     };
 
+    struct Adapter {
+     public:
+        virtual Result deserialize(const std::any& var) = 0;
+        virtual Result serialize(std::any& var) const = 0;
+    };
+
     template<typename T>
     static Result Ser(RecordMap& map, const std::string& name, T& variable) {
         if (map.contains(name) != 0) {
@@ -55,7 +61,11 @@ class Parser {
 
         auto& metadata = map[name];
 
-        metadata.object = std::any(variable);
+        if constexpr (std::is_base_of<Adapter, T>::value) {
+            variable.serialize(metadata.object);
+        } else {
+            metadata.object = std::any(variable);
+        }
 
         if constexpr (IsTensor<T>::value) {
             metadata.hash = variable.hash();
@@ -94,6 +104,12 @@ class Parser {
             JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'T'.", name);
 
             variable = std::move(std::any_cast<T>(anyVar));
+            return Result::SUCCESS;
+        }
+
+        if constexpr (std::is_base_of<Adapter, T>::value) {
+            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'T' with custom deserialize method.", name);
+            JST_CHECK(variable.deserialize(anyVar));
             return Result::SUCCESS;
         }
 
