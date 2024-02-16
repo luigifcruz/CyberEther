@@ -164,6 +164,11 @@
 #define JETSTREAM_BLOCK_DUPLICATE_AVAILABLE
 #endif
 
+#if defined(JETSTREAM_MODULE_ARITHMETIC_AVAILABLE)
+#include "jetstream/blocks/arithmetic.hh"
+#define JETSTREAM_BLOCK_ARITHMETIC_AVAILABLE
+#endif
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH

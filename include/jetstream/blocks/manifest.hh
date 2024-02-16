@@ -188,6 +188,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_DUPLICATE_AVAILABLE
         Blocks::Duplicate,
 #endif
+#ifdef JETSTREAM_BLOCK_ARITHMETIC_AVAILABLE
+        Blocks::Arithmetic,
+#endif
         // [NEW BLOCK HOOK]
     )
 }

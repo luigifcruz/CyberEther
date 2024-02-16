@@ -21,6 +21,7 @@ subdir('invert')
 subdir('multiply_constant')
 subdir('take')
 subdir('duplicate')
+subdir('arithmetic')
 
 # Graphical
 subdir('lineplot')
