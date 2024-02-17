@@ -29,7 +29,7 @@ Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
     MTL::PrimitiveType mode;
 
     switch (config.mode) {
-        case Mode::TRIANGLE_FAN:
+        case Mode::TRIANGLE_STRIP:
             mode = MTL::PrimitiveTypeTriangleStrip;
             break;
         case Draw::Mode::TRIANGLES:

@@ -15,7 +15,7 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
     auto topology = wgpu::PrimitiveTopology::PointList;
         
     switch (config.mode) {
-        case Mode::TRIANGLE_FAN:
+        case Mode::TRIANGLE_STRIP:
             topology = wgpu::PrimitiveTopology::TriangleStrip;
             break;
         case Mode::TRIANGLES:
