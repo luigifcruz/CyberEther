@@ -121,9 +121,9 @@ class Waterfall : public Block {
 
         if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
             if (position == 0) {
-                position = (getRelativeMousePos().x / waterfall->zoom()) + waterfall->offset();
+                position = (GetRelativeMousePos().x / waterfall->zoom()) + waterfall->offset();
             }
-            waterfall->offset(position - (getRelativeMousePos().x / waterfall->zoom()));
+            waterfall->offset(position - (GetRelativeMousePos().x / waterfall->zoom()));
         } else {
             position = 0;
         }
@@ -162,13 +162,6 @@ class Waterfall : public Block {
  private:
     std::shared_ptr<Jetstream::Waterfall<D, IT>> waterfall;
     I32 position;
-
-    ImVec2 getRelativeMousePos() {
-        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
-        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
-        return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
-                      mousePositionAbsolute.y - screenPositionAbsolute.y);
-    }
 
     JST_DEFINE_IO();
 };

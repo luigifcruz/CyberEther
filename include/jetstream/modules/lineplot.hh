@@ -33,8 +33,10 @@ class Lineplot : public Module, public Compute, public Present {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
         Size2D<U64> viewSize = {512, 384};
+        F32 zoom = 1.0f;
+        F32 translation = 0.0f;
 
-        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize);
+        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation);
     };
 
     constexpr const Config& getConfig() const {
@@ -82,6 +84,16 @@ class Lineplot : public Module, public Compute, public Present {
     }
     const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
 
+    constexpr const F32& zoom() const {
+        return config.zoom;
+    }
+    std::pair<F32, F32> zoom(const std::pair<F32, F32>& mouse_pos, const F32& zoom);
+
+    constexpr const F32& translation() const {
+        return config.translation;
+    }
+    const F32& translation(const F32& translation);
+
     Render::Texture& getTexture();
 
  protected:
@@ -95,6 +107,9 @@ class Lineplot : public Module, public Compute, public Present {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
+
+    struct GImpl;
+    std::unique_ptr<GImpl> gimpl;
 
     Tensor<D, F32> plot;
     Tensor<D, F32> grid;
@@ -110,6 +125,8 @@ class Lineplot : public Module, public Compute, public Present {
 
     std::shared_ptr<Render::Surface> surface;
 
+    std::shared_ptr<Render::Buffer> uniformBuffer;
+
     std::shared_ptr<Render::Vertex> gridVertex;
     std::shared_ptr<Render::Vertex> lineVertex;
 
@@ -119,6 +136,9 @@ class Lineplot : public Module, public Compute, public Present {
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
     F32 normalizationFactor = 0.0f;
+
+    void updateTransform();
+    F32 windowToPlotCoords(const std::pair<F32, F32>& mouse_pos);
 
     JST_DEFINE_IO();
 };

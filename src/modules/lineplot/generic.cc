@@ -2,9 +2,19 @@
 #include "shaders/lineplot_shaders.hh"
 #include "jetstream/render/utils.hh"
 
+#include <glm/mat4x4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include "benchmark.cc"
 
 namespace Jetstream {
+
+template<Device D, typename T>
+struct Lineplot<D, T>::GImpl {
+    struct {
+        glm::mat4 transform;
+    } shaderUniforms;
+};
 
 template<Device D, typename T>
 Result Lineplot<D, T>::create() {
@@ -89,6 +99,8 @@ void Lineplot<D, T>::info() const {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::createPresent() {
+    // Configure render pipeline.
+
     auto [gridBuffer, gridEnableZeroCopy] = ConvertToOptimalStorage(window, grid);
 
     Render::Buffer::Config gridVerticesConf;
@@ -136,6 +148,13 @@ Result Lineplot<D, T>::createPresent() {
     lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
     JST_CHECK(window->build(lutTexture, lutTextureCfg));
 
+    Render::Buffer::Config uniformCfg;
+    uniformCfg.buffer = &gimpl->shaderUniforms;
+    uniformCfg.elementByteSize = sizeof(gimpl->shaderUniforms);
+    uniformCfg.size = 1;
+    uniformCfg.target = Render::Buffer::Target::UNIFORM;
+    JST_CHECK(window->build(uniformBuffer, uniformCfg));
+
     Render::Program::Config gridProgramCfg;
     gridProgramCfg.shaders = ShadersPackage["grid"];
     gridProgramCfg.draw = drawGridVertex;
@@ -145,6 +164,10 @@ Result Lineplot<D, T>::createPresent() {
     signalProgramCfg.shaders = ShadersPackage["signal"];
     signalProgramCfg.draw = drawLineVertex;
     signalProgramCfg.textures = {lutTexture};
+    signalProgramCfg.buffers = {
+        {uniformBuffer, Render::Program::Target::VERTEX | 
+                        Render::Program::Target::FRAGMENT},
+    };
     JST_CHECK(window->build(signalProgram, signalProgramCfg));
 
     Render::Texture::Config textureCfg;
@@ -156,6 +179,10 @@ Result Lineplot<D, T>::createPresent() {
     surfaceCfg.programs = {gridProgram, signalProgram};
     JST_CHECK(window->build(surface, surfaceCfg));
     JST_CHECK(window->bind(surface));
+
+    // Set initial transform.
+
+    updateTransform();
 
     return Result::SUCCESS;
 }
@@ -180,6 +207,55 @@ const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
     }
     return this->viewSize();
 }
+
+template<Device D, typename T>
+std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, const F32& zoom) {
+    const auto& before_mouse_x = windowToPlotCoords(mouse_pos);
+
+    if (zoom < 1.0f) {
+        config.zoom = 1.0f;
+        config.translation = 0.0f;
+    } else {
+        config.zoom = zoom;
+        const auto& after_mouse_x = windowToPlotCoords(mouse_pos);
+        config.translation += after_mouse_x - before_mouse_x;
+    }
+
+    updateTransform();
+
+    return {config.zoom, config.translation};
+}
+
+template<Device D, typename T>
+const F32& Lineplot<D, T>::translation(const F32& translation) {
+    config.translation = translation;
+    updateTransform();
+    return config.translation;
+}
+
+template<Device D, typename T>
+void Lineplot<D, T>::updateTransform() {
+    const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
+    config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);
+
+    glm::mat4 transform = glm::mat4(1.0f);
+    transform = glm::translate(transform, glm::vec3(config.translation * config.zoom, 0.0f, 0.0f));
+    transform = glm::scale(transform, glm::vec3(config.zoom, 1.0f, 1.0f));
+
+    gimpl->shaderUniforms.transform = transform;
+    uniformBuffer->update();
+}
+
+template<Device D, typename T>
+F32 Lineplot<D, T>::windowToPlotCoords(const std::pair<F32, F32>& mouse_pos) {
+    const auto& [x, _1] = mouse_pos;
+    const auto& [width, _2] = config.viewSize;
+
+    const F32 norm_x = (x / width) * 2.0f - 1.0f;
+    const F32 plot_x = norm_x / config.zoom;
+
+    return plot_x;
+};
 
 template<Device D, typename T>
 Render::Texture& Lineplot<D, T>::getTexture() {

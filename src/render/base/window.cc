@@ -312,6 +312,11 @@ void Window::ImGuiLoadFonts() {
 }
 
 void Window::ImGuiStyleSetup() {
+    // Setup Options
+
+    auto& io = ImGui::GetIO();
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
+
     // Setup Theme
 
     // Inspired from: https://github.com/ocornut/imgui/issues/707#issuecomment-917151020

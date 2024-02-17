@@ -18,6 +18,8 @@
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/render/base.hh"
+
 
 namespace Jetstream {
 
@@ -150,6 +152,15 @@ class JETSTREAM_API Block {
     virtual void drawInfo() {}
     virtual constexpr bool shouldDrawInfo() const {
         return false;
+    }
+
+    // Helpers
+
+    static ImVec2 GetRelativeMousePos() {
+        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
+        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
+        return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
+                      mousePositionAbsolute.y - screenPositionAbsolute.y);
     }
 
  protected:

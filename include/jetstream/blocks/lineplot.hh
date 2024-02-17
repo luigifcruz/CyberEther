@@ -16,8 +16,10 @@ class Lineplot : public Block {
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
         Size2D<U64> viewSize = {512, 384};
+        F32 zoom = 1.0f;
+        F32 translation = 0.0f;
 
-        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize);
+        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation);
     };
 
     constexpr const Config& getConfig() const {
@@ -77,6 +79,8 @@ class Lineplot : public Block {
                 .numberOfVerticalLines = config.numberOfVerticalLines,
                 .numberOfHorizontalLines = config.numberOfHorizontalLines,
                 .viewSize = config.viewSize,
+                .zoom = config.zoom,
+                .translation = config.translation
             }, {
                 .buffer = input.buffer,
             },
@@ -114,6 +118,37 @@ class Lineplot : public Block {
             static_cast<U64>(y*scale.y)
         });
         ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+
+        if (ImGui::IsItemHovered()) {
+            // Handle zoom interaction.
+
+            const auto& scroll = ImGui::GetIO().MouseWheel;    
+
+            if (scroll != 0.0f) {
+                auto [mouse_x, mouse_y] = GetRelativeMousePos();
+                config.zoom += (1.0f / scroll);
+
+                mouse_x *= scale.x;
+                mouse_y *= scale.y;
+
+                const auto& [zoom, translation] = lineplot->zoom({mouse_x, mouse_y}, config.zoom);
+
+                config.zoom = zoom;
+                config.translation = translation;
+            }
+
+            // Handle translation interaction.
+
+            if (ImGui::IsAnyMouseDown()) {
+                const auto& [dx, _] = ImGui::GetMouseDragDelta(0);
+
+                if (dx != 0.0f) {
+                    lineplot->translation((((dx * (1.0f / x)) * 2.0f) / config.zoom) + config.translation);
+                }
+            } else {
+                config.translation = lineplot->translation();
+            }
+        }
     }
 
     constexpr bool shouldDrawView() const {

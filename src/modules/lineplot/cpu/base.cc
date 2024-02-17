@@ -10,11 +10,13 @@ struct Lineplot<D, T>::Impl {
 template<Device D, typename T>
 Lineplot<D, T>::Lineplot() {
     pimpl = std::make_unique<Impl>();
+    gimpl = std::make_unique<GImpl>();
 }
 
 template<Device D, typename T>
 Lineplot<D, T>::~Lineplot() {
     pimpl.reset();
+    gimpl.reset();
 }
 
 template<Device D, typename T>
