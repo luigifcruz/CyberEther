@@ -35,8 +35,9 @@ class Lineplot : public Module, public Compute, public Present {
         Size2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
+        F32 thickness = 2.0f;
 
-        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation);
+        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
 
     constexpr const Config& getConfig() const {
@@ -111,8 +112,8 @@ class Lineplot : public Module, public Compute, public Present {
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
 
-    Tensor<D, F32> plot;
-    Tensor<D, F32> grid;
+    Tensor<D, F32> signal;
+    Tensor<Device::CPU, F32> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> lineVerticesBuffer;
@@ -125,7 +126,8 @@ class Lineplot : public Module, public Compute, public Present {
 
     std::shared_ptr<Render::Surface> surface;
 
-    std::shared_ptr<Render::Buffer> uniformBuffer;
+    std::shared_ptr<Render::Buffer> gridUniformBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
 
     std::shared_ptr<Render::Vertex> gridVertex;
     std::shared_ptr<Render::Vertex> lineVertex;
@@ -137,7 +139,12 @@ class Lineplot : public Module, public Compute, public Present {
     U64 numberOfBatches = 0;
     F32 normalizationFactor = 0.0f;
 
+    std::pair<F32, F32> thickness = {0.0f, 0.0f};
+
+    void updateScaling();
     void updateTransform();
+    void updateGridVertices();
+
     F32 windowToPlotCoords(const std::pair<F32, F32>& mouse_pos);
 
     JST_DEFINE_IO();

@@ -18,8 +18,9 @@ class Lineplot : public Block {
         Size2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
+        F32 thickness = 2.0f;
 
-        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation);
+        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
 
     constexpr const Config& getConfig() const {
@@ -80,7 +81,8 @@ class Lineplot : public Block {
                 .numberOfHorizontalLines = config.numberOfHorizontalLines,
                 .viewSize = config.viewSize,
                 .zoom = config.zoom,
-                .translation = config.translation
+                .translation = config.translation,
+                .thickness = config.thickness,
             }, {
                 .buffer = input.buffer,
             },
@@ -126,7 +128,7 @@ class Lineplot : public Block {
 
             if (scroll != 0.0f) {
                 auto [mouse_x, mouse_y] = GetRelativeMousePos();
-                config.zoom += (1.0f / scroll);
+                config.zoom += (scroll > 0.0f) ? 0.1f : -0.1f;
 
                 mouse_x *= scale.x;
                 mouse_y *= scale.y;

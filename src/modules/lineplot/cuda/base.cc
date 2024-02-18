@@ -9,9 +9,11 @@ struct Lineplot<D, T>::Impl {
     std::vector<U64> grid;
     std::vector<U64> block;
 
-    std::vector<void*> arguments;
+    std::vector<void*> argumentsLineplot;
+    std::vector<void*> argumentsThickness;
 
     Tensor<Device::CUDA, T> input;
+    Tensor<Device::CUDA, T> intermediate;
 };
 
 template<Device D, typename T>
@@ -33,15 +35,62 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Create CUDA kernel.
 
     ctx.cuda->createKernel("lineplot", R"""(
-        __global__ void lineplot(const float* input, float* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements) {
+        __global__ void lineplot(const float* input, float2* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements) {
             size_t id = blockIdx.x * blockDim.x + threadIdx.x;
             if (id < numberOfElements) {
                 float sum = 0.0f;
                 for (size_t i = 0; i < numberOfBatches; ++i) {
                     sum += input[id + (i * numberOfElements)];
                 }
-                const size_t plot_idx = id * 3 + 1;
-                output[plot_idx] = (sum * normalizationFactor) - 1.0f;
+                output[id].x = id * 2.0f / (numberOfElements - 1) - 1.0f;
+                output[id].y = (sum * normalizationFactor) - 1.0f;
+            }
+        }
+    )""");
+
+    ctx.cuda->createKernel("thickness", R"""(
+        __device__ inline float2 ComputePerpendicular(float2 d, float2 thickness) {
+            // Compute length
+            const float length = sqrtf(d.x * d.x + d.y * d.y);
+
+            // Normalize
+            d.x /= length;
+            d.y /= length;
+
+            // Return perperdicular (normalized)
+            return make_float2(-d.y * thickness.x, d.x * thickness.y);
+        }
+
+        __global__ void thickness(const float2* input, float* output, size_t numberOfElements, float2 thickness) {
+            size_t id = blockIdx.x * blockDim.x + threadIdx.x;
+            if (id < numberOfElements - 1) {
+                const float2 p1 = input[id + 0];
+                const float2 p2 = input[id + 1];
+
+                const float2 d = make_float2(p2.x - p1.x, p2.y - p1.y);
+                const float2 perp = ComputePerpendicular(d, thickness);
+
+                const size_t idx = id * 4 * 3;
+
+                // Upper left
+                output[idx] = p1.x + perp.x;
+                output[idx + 1] = p1.y + perp.y;
+                output[idx + 2] = 0.0f;
+
+                // Lower left
+                output[idx + 3] = p1.x - perp.x;
+                output[idx + 4] = p1.y - perp.y;
+                output[idx + 5] = 0.0f;
+                
+                // Upper right
+                output[idx + 6] = p2.x + perp.x;
+                output[idx + 7] = p2.y + perp.y;
+                output[idx + 8] = 0.0f;
+
+                // Lower right
+                output[idx + 9] = p2.x - perp.x;
+                output[idx + 10] = p2.y - perp.y;
+                output[idx + 11] = 0.0f;
             }
         }
     )""");
@@ -62,14 +111,25 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
         pimpl->input = input.buffer;
     }
 
+    // Allocate intermediate memory.
+
+    pimpl->intermediate = Tensor<Device::CUDA, T>({numberOfElements, 2});
+
     // Initialize kernel arguments.
 
-    pimpl->arguments = {
+    pimpl->argumentsLineplot = {
         pimpl->input.data_ptr(),
-        plot.data_ptr(),
+        pimpl->intermediate.data_ptr(),
         &normalizationFactor,
         &numberOfBatches,
         &numberOfElements,
+    };
+
+    pimpl->argumentsThickness = {
+        pimpl->intermediate.data_ptr(),
+        signal.data_ptr(),
+        &numberOfElements,
+        &thickness,
     };
 
     return Result::SUCCESS;
@@ -81,10 +141,17 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 
+    // TODO: Join kernels.
+
     JST_CHECK(ctx.cuda->launchKernel("lineplot", 
                                      pimpl->grid, 
                                      pimpl->block, 
-                                     pimpl->arguments.data()));
+                                     pimpl->argumentsLineplot.data()));
+    
+    JST_CHECK(ctx.cuda->launchKernel("thickness",
+                                     pimpl->grid,
+                                     pimpl->block,
+                                     pimpl->argumentsThickness.data()));
 
     return Result::SUCCESS;
 }

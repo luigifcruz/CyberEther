@@ -2,6 +2,8 @@
 
 namespace Jetstream {
 
+// TODO: Implement thickline generation for Metal backend.
+
 static const char shadersSrc[] = R"""(
     #include <metal_stdlib>
 
@@ -71,7 +73,7 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
     cmdEncoder->setComputePipelineState(pimpl->state);
     cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
-    cmdEncoder->setBuffer(MapOn<Device::Metal>(plot).data(), 0, 2);
+    cmdEncoder->setBuffer(MapOn<Device::Metal>(signal).data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(numberOfElements, 1, 1),
                                 MTL::Size(pimpl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();

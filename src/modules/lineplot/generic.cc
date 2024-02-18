@@ -37,57 +37,8 @@ Result Lineplot<D, T>::create() {
 
     // Allocate internal buffers.
 
-    {
-        // Generate Grid coordinates.
-
-        const U64 num_cols = config.numberOfVerticalLines;
-        const U64 num_rows = config.numberOfHorizontalLines;
-
-        auto tmp = Tensor<Device::CPU, F32>({num_cols + num_rows, 2, 3});
-
-        const F32 x_step  = +2.0f / (num_cols - 1);
-        const F32 y_step  = +2.0f / (num_rows - 1);
-        const F32 x_start = -1.0f;
-        const F32 y_start = -1.0f;
-        const F32 x_end   = +1.0f;
-        const F32 y_end   = +1.0f;
-
-        for (U64 row = 0; row < num_rows; row++) {
-            const F32 y = y_start + row * y_step;
-
-            tmp[{row, 0, 0}] = x_start;
-            tmp[{row, 0, 1}] = y;
-
-            tmp[{row, 1, 0}] = x_end;
-            tmp[{row, 1, 1}] = y;
-        }
-
-        for (U64 col = 0; col < num_cols; col++) {
-            const F32 x = x_start + col * x_step;
-
-            tmp[{col + num_rows, 0, 0}] = x;
-            tmp[{col + num_rows, 0, 1}] = y_start;
-
-            tmp[{col + num_rows, 1, 0}] = x;
-            tmp[{col + num_rows, 1, 1}] = y_end;
-        }
-
-        grid = Tensor<D, T>(tmp.shape());
-        JST_CHECK(Memory::Copy(grid, MapOn<D>(tmp)));
-    }
-
-    {
-        // Generate Plot coordinates.
-
-        auto tmp = Tensor<Device::CPU, F32>({numberOfElements, 3});
-
-        for (U64 j = 0; j < numberOfElements; j++) {
-            tmp[{j, 0}] = j * 2.0f / (numberOfElements - 1) - 1.0f;
-        }
-
-        plot = Tensor<D, T>(tmp.shape());
-        JST_CHECK(Memory::Copy(plot, MapOn<D>(tmp)));
-    }
+    grid = Tensor<Device::CPU, T>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 3});
+    signal = Tensor<D, T>({numberOfElements - 1, 4, 3});
 
     return Result::SUCCESS;
 }
@@ -101,14 +52,12 @@ template<Device D, typename T>
 Result Lineplot<D, T>::createPresent() {
     // Configure render pipeline.
 
-    auto [gridBuffer, gridEnableZeroCopy] = ConvertToOptimalStorage(window, grid);
-
     Render::Buffer::Config gridVerticesConf;
-    gridVerticesConf.buffer = gridBuffer;
+    gridVerticesConf.buffer = grid.data();
     gridVerticesConf.elementByteSize = sizeof(F32);
     gridVerticesConf.size = grid.size();
     gridVerticesConf.target = Render::Buffer::Target::VERTEX;
-    gridVerticesConf.enableZeroCopy = gridEnableZeroCopy;
+    gridVerticesConf.enableZeroCopy = false;
     JST_CHECK(window->build(gridVerticesBuffer, gridVerticesConf));
 
     Render::Vertex::Config gridVertexCfg;
@@ -119,17 +68,17 @@ Result Lineplot<D, T>::createPresent() {
 
     Render::Draw::Config drawGridVertexCfg;
     drawGridVertexCfg.buffer = gridVertex;
-    drawGridVertexCfg.mode = Render::Draw::Mode::LINES;
+    drawGridVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
     JST_CHECK(window->build(drawGridVertex, drawGridVertexCfg));
 
-    auto [plotBuffer, plotEnableZeroCopy] = ConvertToOptimalStorage(window, plot);
+    auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, signal);
 
     Render::Buffer::Config lineVerticesConf;
-    lineVerticesConf.buffer = plotBuffer;
+    lineVerticesConf.buffer = buffer;
     lineVerticesConf.elementByteSize = sizeof(F32);
-    lineVerticesConf.size = plot.size();
+    lineVerticesConf.size = signal.size();
     lineVerticesConf.target = Render::Buffer::Target::VERTEX;
-    lineVerticesConf.enableZeroCopy = plotEnableZeroCopy;
+    lineVerticesConf.enableZeroCopy = enableZeroCopy;
     JST_CHECK(window->build(lineVerticesBuffer, lineVerticesConf));
 
     Render::Vertex::Config lineVertexCfg;
@@ -140,7 +89,7 @@ Result Lineplot<D, T>::createPresent() {
 
     Render::Draw::Config drawLineVertexCfg;
     drawLineVertexCfg.buffer = lineVertex;
-    drawLineVertexCfg.mode = Render::Draw::Mode::LINE_STRIP;
+    drawLineVertexCfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
     JST_CHECK(window->build(drawLineVertex, drawLineVertexCfg));
 
     Render::Texture::Config lutTextureCfg;
@@ -153,11 +102,16 @@ Result Lineplot<D, T>::createPresent() {
     uniformCfg.elementByteSize = sizeof(gimpl->shaderUniforms);
     uniformCfg.size = 1;
     uniformCfg.target = Render::Buffer::Target::UNIFORM;
-    JST_CHECK(window->build(uniformBuffer, uniformCfg));
+    JST_CHECK(window->build(gridUniformBuffer, uniformCfg));
+    JST_CHECK(window->build(signalUniformBuffer, uniformCfg));
 
     Render::Program::Config gridProgramCfg;
     gridProgramCfg.shaders = ShadersPackage["grid"];
     gridProgramCfg.draw = drawGridVertex;
+    gridProgramCfg.buffers = {
+        {gridUniformBuffer, Render::Program::Target::VERTEX | 
+                            Render::Program::Target::FRAGMENT},
+    };
     JST_CHECK(window->build(gridProgram, gridProgramCfg));
 
     Render::Program::Config signalProgramCfg;
@@ -165,8 +119,8 @@ Result Lineplot<D, T>::createPresent() {
     signalProgramCfg.draw = drawLineVertex;
     signalProgramCfg.textures = {lutTexture};
     signalProgramCfg.buffers = {
-        {uniformBuffer, Render::Program::Target::VERTEX | 
-                        Render::Program::Target::FRAGMENT},
+        {signalUniformBuffer, Render::Program::Target::VERTEX | 
+                              Render::Program::Target::FRAGMENT},
     };
     JST_CHECK(window->build(signalProgram, signalProgramCfg));
 
@@ -180,9 +134,11 @@ Result Lineplot<D, T>::createPresent() {
     JST_CHECK(window->build(surface, surfaceCfg));
     JST_CHECK(window->bind(surface));
 
-    // Set initial transform.
+    // Initialize variables.
 
     updateTransform();
+    updateScaling();
+    updateGridVertices();
 
     return Result::SUCCESS;
 }
@@ -205,6 +161,10 @@ const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         config.viewSize = surface->size();
     }
+
+    updateScaling();
+    updateGridVertices();
+
     return this->viewSize();
 }
 
@@ -222,6 +182,8 @@ std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, c
     }
 
     updateTransform();
+    updateScaling();
+    updateGridVertices();
 
     return {config.zoom, config.translation};
 }
@@ -229,7 +191,10 @@ std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, c
 template<Device D, typename T>
 const F32& Lineplot<D, T>::translation(const F32& translation) {
     config.translation = translation;
+
     updateTransform();
+    updateGridVertices();
+
     return config.translation;
 }
 
@@ -238,12 +203,111 @@ void Lineplot<D, T>::updateTransform() {
     const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
     config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);
 
-    glm::mat4 transform = glm::mat4(1.0f);
+    auto& transform = gimpl->shaderUniforms.transform;
+
+    // Reset transform.
+    transform = glm::mat4(1.0f);
+
+    // Apply the translation according to the mouse position.
     transform = glm::translate(transform, glm::vec3(config.translation * config.zoom, 0.0f, 0.0f));
+
+    // Apply the zoom.
     transform = glm::scale(transform, glm::vec3(config.zoom, 1.0f, 1.0f));
 
-    gimpl->shaderUniforms.transform = transform;
-    uniformBuffer->update();
+    // Update the signal and grid uniform buffers.
+    signalUniformBuffer->update();
+    gridUniformBuffer->update();
+}
+
+template<Device D, typename T>
+void Lineplot<D, T>::updateScaling() {
+    auto& [x, y] = thickness;
+    x = ((2.0f / config.viewSize.width) * config.thickness) / config.zoom / 2.0f;
+    y = ((2.0f / config.viewSize.height) * config.thickness) / 2.0f;
+}
+
+template<Device D, typename T>
+void Lineplot<D, T>::updateGridVertices() {
+    const U64& num_cols = config.numberOfVerticalLines;
+    const U64& num_rows = config.numberOfHorizontalLines;
+    const auto& [thickness_x, thickness_y] = thickness;
+
+    const F32 x_step  = +2.0f / (num_cols - 1);
+    const F32 y_step  = +2.0f / (num_rows - 1);
+    const F32 x_start = -1.0f;
+    const F32 y_start = -1.0f;
+    const F32 x_end   = +1.0f;
+    const F32 y_end   = +1.0f;
+
+    for (U64 row = 0; row < num_rows; row++) {
+        const F32 y = y_start + row * y_step;
+
+        // 0
+        grid[{row, 0, 0}] = x_start;
+        grid[{row, 0, 1}] = y + thickness_y;
+        grid[{row, 0, 2}] = 0.0f;
+
+        // 1
+        grid[{row, 1, 0}] = x_start;
+        grid[{row, 1, 1}] = y - thickness_y;
+        grid[{row, 1, 2}] = 0.0f;
+
+        // 2
+        grid[{row, 2, 0}] = x_end;
+        grid[{row, 2, 1}] = y + thickness_y;
+        grid[{row, 2, 2}] = 0.0f;
+
+        // 2
+        grid[{row, 3, 0}] = x_end;
+        grid[{row, 3, 1}] = y + thickness_y;
+        grid[{row, 3, 2}] = 0.0f;
+
+        // 3
+        grid[{row, 4, 0}] = x_end;
+        grid[{row, 4, 1}] = y - thickness_y;
+        grid[{row, 4, 2}] = 0.0f;
+
+        // 0
+        grid[{row, 5, 0}] = x_start;
+        grid[{row, 5, 1}] = y - thickness_y;
+        grid[{row, 5, 2}] = 0.0f;
+    }
+
+    for (U64 col = 0; col < num_cols; col++) {
+        const F32 x = x_start + col * x_step;
+
+        // 0
+        grid[{col + num_rows, 0, 0}] = x + thickness_x;
+        grid[{col + num_rows, 0, 1}] = y_start;
+        grid[{col + num_rows, 0, 2}] = 0.0f;
+
+        // 1
+        grid[{col + num_rows, 1, 0}] = x - thickness_x;
+        grid[{col + num_rows, 1, 1}] = y_start;
+        grid[{col + num_rows, 1, 2}] = 0.0f;
+
+        // 2
+        grid[{col + num_rows, 2, 0}] = x + thickness_x;
+        grid[{col + num_rows, 2, 1}] = y_end;
+        grid[{col + num_rows, 2, 2}] = 0.0f;
+
+        // 2
+        grid[{col + num_rows, 3, 0}] = x + thickness_x;
+        grid[{col + num_rows, 3, 1}] = y_end;
+        grid[{col + num_rows, 3, 2}] = 0.0f;
+
+        // 3
+        grid[{col + num_rows, 4, 0}] = x - thickness_x;
+        grid[{col + num_rows, 4, 1}] = y_end;
+        grid[{col + num_rows, 4, 2}] = 0.0f;
+
+        // 0
+        grid[{col + num_rows, 5, 0}] = x - thickness_x;
+        grid[{col + num_rows, 5, 1}] = y_start;
+        grid[{col + num_rows, 5, 2}] = 0.0f;
+    }
+
+    gridVerticesBuffer->update();
 }
 
 template<Device D, typename T>
