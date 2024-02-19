@@ -321,6 +321,8 @@ class Spectroscope : public Block {
             availableHeight / numberOfRows,
         };
 
+        // TODO: Add support for zoom and translation.
+
         if (spectrogram) {
             auto [width, height] = spectrogram->viewSize(blockSize);
             ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));

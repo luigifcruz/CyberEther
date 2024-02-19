@@ -119,6 +119,8 @@ class Waterfall : public Block {
         });
         ImGui::Image(waterfall->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
 
+        // TODO: Upgrade zoom and panning API.
+
         if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
             if (position == 0) {
                 position = (GetRelativeMousePos().x / waterfall->zoom()) + waterfall->offset();
