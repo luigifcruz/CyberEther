@@ -29,6 +29,10 @@ class Draw {
     explicit Draw(const Config& config) : config(config) {}
     virtual ~Draw() = default;
 
+    const Config& getConfig() const {
+        return config;
+    }
+
     template<Device D> 
     static std::shared_ptr<Draw> Factory(const Config& config) {
         return std::make_shared<DrawImp<D>>(config);

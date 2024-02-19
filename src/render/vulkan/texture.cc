@@ -40,8 +40,13 @@ Result Implementation::create() {
                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | 
                             VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                             VK_IMAGE_USAGE_SAMPLED_BIT;
-    imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (config.multisampled) {
+        imageCreateInfo.samples = Backend::State<Device::Vulkan>()->getMultisampling();
+    } else {
+        imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    }
 
     JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &texture), [&]{
         JST_ERROR("[VULKAN] Failed to create texture.");   

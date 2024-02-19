@@ -373,6 +373,25 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
     }
 
+    // Validate multisampling level from configuration.
+
+    {
+        VkSampleCountFlags counts = properties.limits.framebufferColorSampleCounts &
+                                    properties.limits.framebufferDepthSampleCounts;
+
+        const U64 maxSamples = counts & VK_SAMPLE_COUNT_64_BIT ? 64 :
+                               counts & VK_SAMPLE_COUNT_32_BIT ? 32 :
+                               counts & VK_SAMPLE_COUNT_16_BIT ? 16 :
+                               counts & VK_SAMPLE_COUNT_8_BIT  ?  8 :
+                               counts & VK_SAMPLE_COUNT_4_BIT  ?  4 :
+                               counts & VK_SAMPLE_COUNT_2_BIT  ?  2 : 1;
+
+        if (config.multisampling > maxSamples) {
+            JST_WARN("[VULKAN] Requested multisampling level ({}) is not supported. Using {} instead.", config.multisampling, maxSamples);
+            config.multisampling = maxSamples;
+        }
+    }
+
     // Create descriptor pool.
 
     {
@@ -522,6 +541,18 @@ Vulkan::~Vulkan() {
 
     vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
+}
+
+VkSampleCountFlagBits Vulkan::getMultisampling() const {
+    switch (config.multisampling) {
+        case  1: return VK_SAMPLE_COUNT_1_BIT;
+        case  2: return VK_SAMPLE_COUNT_2_BIT;
+        case  4: return VK_SAMPLE_COUNT_4_BIT;
+        case  8: return VK_SAMPLE_COUNT_8_BIT;
+        case 16: return VK_SAMPLE_COUNT_16_BIT;
+        case 32: return VK_SAMPLE_COUNT_32_BIT;
+        case 64: return VK_SAMPLE_COUNT_64_BIT;
+    }
 }
 
 bool Vulkan::isAvailable() const {

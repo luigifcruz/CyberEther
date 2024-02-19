@@ -131,6 +131,7 @@ Result Lineplot<D, T>::createPresent() {
     Render::Surface::Config surfaceCfg;
     surfaceCfg.framebuffer = texture;
     surfaceCfg.programs = {gridProgram, signalProgram};
+    surfaceCfg.multisampled = true;
     JST_CHECK(window->build(surface, surfaceCfg));
     JST_CHECK(window->bind(surface));
 

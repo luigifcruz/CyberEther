@@ -32,6 +32,10 @@ class Program {
     explicit Program(const Config& config) : config(config) {}
     virtual ~Program() = default;
 
+    const Config& getConfig() const {
+        return config;
+    }
+
     template<Device D> 
     static std::shared_ptr<Program> Factory(const Config& config) {
         return std::make_shared<ProgramImp<D>>(config);

@@ -80,6 +80,14 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
+        if (arg == "--multisampling") {
+            if (i + 1 < argc) {
+                backendConfig.multisampling = std::stoul(argv[++i]);
+            }
+
+            continue;
+        }
+
         if (arg == "--size") {
             if (i + 2 < argc) {
                 viewportConfig.size.width = std::stoul(argv[++i]);
@@ -130,6 +138,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --endpoint [endpoint]   Set the endpoint of the headless viewport (`1.1.1.1:8000`, `./vid.mp4`, etc). Default: `/tmp/cyberether`" << std::endl;
             std::cout << "  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`)." << std::endl;
             std::cout << "  --framerate [value]     Set the framerate of the headless viewport (FPS). Default: `60`" << std::endl;
+            std::cout << "  --multisampling [value] Set the multisampling anti-aliasing factor (`1`, `4`, or `8`). Default: `4`" << std::endl;
             std::cout << "  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`" << std::endl;
             std::cout << "  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`" << std::endl;
             std::cout << "  --scale [scale]         Set the scale of the render window. Default: `1.0`" << std::endl;

@@ -18,10 +18,19 @@ class Surface {
     struct Config {
         std::shared_ptr<Texture> framebuffer;
         std::vector<std::shared_ptr<Program>> programs;
+        bool multisampled = false;
     };
 
     explicit Surface(const Config& config) : config(config) {}
     virtual ~Surface() = default;
+
+    const Config& getConfig() const {
+        return config;
+    }
+
+    constexpr const bool& multisampled() const {
+        return config.multisampled;
+    }
 
     const Size2D<U64>& size() const {
         if (config.framebuffer) {

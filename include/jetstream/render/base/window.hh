@@ -40,6 +40,10 @@ class Window {
     explicit Window(const Config& config) : config(config) {}
     virtual ~Window() = default;
 
+    const Config& getConfig() const {
+        return config;
+    }
+
     Result create();
     Result destroy();
 

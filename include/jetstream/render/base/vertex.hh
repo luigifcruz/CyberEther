@@ -22,6 +22,10 @@ class Vertex {
     explicit Vertex(const Config& config) : config(config) {}
     virtual ~Vertex() = default;
 
+    const Config& getConfig() const {
+        return config;
+    }
+
     template<Device D> 
     static std::shared_ptr<Vertex> Factory(const Config& config) {
         return std::make_shared<VertexImp<D>>(config);
