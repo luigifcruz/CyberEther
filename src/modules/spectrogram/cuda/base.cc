@@ -55,9 +55,12 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
         __global__ void rise(const float* input, float* bins, size_t numberOfElements, size_t numberOfBatches, size_t height) {
             const size_t id = blockIdx.x * blockDim.x + threadIdx.x;
 
-            for (size_t b = 0; b < numberOfBatches; b++) {
-                const size_t offset = b * numberOfElements;
-                const size_t index = input[id + offset] * height;
+            if (id >= numberOfElements) {
+                return;
+            }
+
+            for (size_t b = 0; b < numberOfBatches * numberOfElements; b += numberOfElements) {
+                const size_t index = input[id + b] * height;
 
                 if (index < height && index > 0) {
                     atomicAdd(&bins[id + (index * numberOfElements)], 0.02f);
