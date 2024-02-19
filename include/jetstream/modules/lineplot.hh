@@ -122,7 +122,7 @@ class Lineplot : public Module, public Compute, public Present {
     Tensor<Device::CPU, F32> grid;
 
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
-    std::shared_ptr<Render::Buffer> lineVerticesBuffer;
+    std::shared_ptr<Render::Buffer> signalVerticesBuffer;
 
     std::shared_ptr<Render::Texture> texture;
     std::shared_ptr<Render::Texture> lutTexture;
@@ -146,6 +146,11 @@ class Lineplot : public Module, public Compute, public Present {
     F32 normalizationFactor = 0.0f;
 
     std::pair<F32, F32> thickness = {0.0f, 0.0f};
+
+    bool updateGridVerticesFlag = false;
+    bool updateSignalVerticesFlag = false;
+    bool updateSignalUniformBufferFlag = false;
+    bool updateGridUniformBufferFlag = false;
 
     void updateScaling();
     void updateTransform();

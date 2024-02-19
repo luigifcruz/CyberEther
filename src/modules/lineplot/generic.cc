@@ -79,11 +79,11 @@ Result Lineplot<D, T>::createPresent() {
     lineVerticesConf.size = signal.size();
     lineVerticesConf.target = Render::Buffer::Target::VERTEX;
     lineVerticesConf.enableZeroCopy = enableZeroCopy;
-    JST_CHECK(window->build(lineVerticesBuffer, lineVerticesConf));
+    JST_CHECK(window->build(signalVerticesBuffer, lineVerticesConf));
 
     Render::Vertex::Config lineVertexCfg;
     lineVertexCfg.buffers = {
-        {lineVerticesBuffer, 3},
+        {signalVerticesBuffer, 3},
     };
     JST_CHECK(window->build(lineVertex, lineVertexCfg));
 
@@ -153,7 +153,26 @@ Result Lineplot<D, T>::destroyPresent() {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::present() {
-    lineVerticesBuffer->update();
+    if (updateGridVerticesFlag) {
+        gridVerticesBuffer->update();
+        updateGridVerticesFlag = false;
+    }
+
+    if (updateSignalVerticesFlag) {
+        signalVerticesBuffer->update();
+        updateSignalVerticesFlag = false;
+    }
+
+    if (updateGridUniformBufferFlag) {
+        gridUniformBuffer->update();
+        updateGridUniformBufferFlag = false;
+    }
+
+    if (updateSignalUniformBufferFlag) {
+        signalUniformBuffer->update();
+        updateSignalUniformBufferFlag = false;
+    }
+
     return Result::SUCCESS;
 }
 
@@ -223,8 +242,8 @@ void Lineplot<D, T>::updateTransform() {
     transform = glm::scale(transform, glm::vec3(config.zoom, 1.0f, 1.0f));
 
     // Update the signal and grid uniform buffers.
-    signalUniformBuffer->update();
-    gridUniformBuffer->update();
+    updateGridUniformBufferFlag = true;
+    updateSignalUniformBufferFlag = true;
 }
 
 template<Device D, typename T>
@@ -315,7 +334,7 @@ void Lineplot<D, T>::updateGridVertices() {
         grid[{col + num_rows, 5, 2}] = 0.0f;
     }
 
-    gridVerticesBuffer->update();
+    updateGridVerticesFlag = true;
 }
 
 template<Device D, typename T>

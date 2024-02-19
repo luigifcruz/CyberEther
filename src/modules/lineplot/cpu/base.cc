@@ -66,6 +66,8 @@ Result Lineplot<D, T>::compute(const Context&) {
 
     JST_CHECK(Backend::GenerateThickenedLine(signal, pimpl->line, thickness));
 
+    updateSignalVerticesFlag = true;
+
     return Result::SUCCESS;
 }
 

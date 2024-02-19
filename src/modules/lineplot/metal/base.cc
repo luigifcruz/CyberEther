@@ -78,6 +78,8 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
                                 MTL::Size(pimpl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
+    updateSignalVerticesFlag = true;
+
     return Result::SUCCESS;
 }
 

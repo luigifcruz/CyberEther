@@ -166,6 +166,8 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
                                      pimpl->block,
                                      pimpl->argumentsThickness.data()));
 
+    updateSignalVerticesFlag = true;
+
     return Result::SUCCESS;
 }
 
