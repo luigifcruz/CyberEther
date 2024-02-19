@@ -150,7 +150,7 @@ class Waterfall : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto zoom = waterfall->zoom();
-        if (ImGui::DragFloat("##Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
+        if (ImGui::DragFloat("##Zoom", &zoom, 0.01, 1.0, 5.0, "%f", ImGuiSliderFlags_AlwaysClamp)) {
             waterfall->zoom(zoom);
         }
     }

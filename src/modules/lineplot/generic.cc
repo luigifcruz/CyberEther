@@ -199,6 +199,13 @@ const F32& Lineplot<D, T>::translation(const F32& translation) {
 }
 
 template<Device D, typename T>
+const U64& Lineplot<D, T>::averaging(const U64& averaging) {
+    config.averaging = averaging;
+
+    return config.averaging;
+}
+
+template<Device D, typename T>
 void Lineplot<D, T>::updateTransform() {
     const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
     config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);

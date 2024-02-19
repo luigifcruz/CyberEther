@@ -35,15 +35,24 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Create CUDA kernel.
 
     ctx.cuda->createKernel("lineplot", R"""(
-        __global__ void lineplot(const float* input, float2* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements) {
+        __global__ void lineplot(const float* input, float2* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements, size_t averaging) {
             size_t id = blockIdx.x * blockDim.x + threadIdx.x;
             if (id < numberOfElements) {
-                float sum = 0.0f;
+                // Compute average amplitude within a batch.
+                float amplitude = 0.0f;
                 for (size_t i = 0; i < numberOfBatches; ++i) {
-                    sum += input[id + (i * numberOfElements)];
+                    amplitude += input[id + (i * numberOfElements)];
                 }
+                amplitude = (amplitude * normalizationFactor) - 1.0f;
+
+                // Calculate moving average.
+                float average = output[id].y;
+                average -= average / averaging;
+                average += amplitude / averaging;
+
+                // Store result.
                 output[id].x = id * 2.0f / (numberOfElements - 1) - 1.0f;
-                output[id].y = (sum * normalizationFactor) - 1.0f;
+                output[id].y = average;
             }
         }
     )""");
@@ -114,6 +123,9 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Allocate intermediate memory.
 
     pimpl->intermediate = Tensor<Device::CUDA, T>({numberOfElements, 2});
+    JST_CUDA_CHECK(cudaMemset(pimpl->intermediate.data(), 0, pimpl->intermediate.size_bytes()), [&]{
+        JST_ERROR("Failed to initialize intermediate memory: {}", err);
+    });
 
     // Initialize kernel arguments.
 
@@ -123,6 +135,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
         &normalizationFactor,
         &numberOfBatches,
         &numberOfElements,
+        &config.averaging,
     };
 
     pimpl->argumentsThickness = {
