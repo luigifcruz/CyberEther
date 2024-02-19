@@ -553,6 +553,7 @@ VkSampleCountFlagBits Vulkan::getMultisampling() const {
         case 32: return VK_SAMPLE_COUNT_32_BIT;
         case 64: return VK_SAMPLE_COUNT_64_BIT;
     }
+    return VK_SAMPLE_COUNT_1_BIT;
 }
 
 bool Vulkan::isAvailable() const {
