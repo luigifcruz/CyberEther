@@ -65,7 +65,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
 
     // Initialize kernel input.
 
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         pimpl->input = Tensor<Device::CUDA, IT>(input.buffer.shape());
     } else {
         pimpl->input = input.buffer;
@@ -85,7 +85,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
 
 template<Device D, typename IT, typename OT>
 Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 

@@ -114,7 +114,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
 
     // Initialize kernel input.
 
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         pimpl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
     } else {
         pimpl->input = input.buffer;
@@ -150,7 +150,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::compute(const Context& ctx) {
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 
