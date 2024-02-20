@@ -48,6 +48,8 @@ class Parser {
 
     struct Adapter {
      public:
+        virtual ~Adapter() = default;
+
         virtual Result deserialize(const std::any& var) = 0;
         virtual Result serialize(std::any& var) const = 0;
     };
