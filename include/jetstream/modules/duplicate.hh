@@ -13,9 +13,16 @@ namespace Jetstream {
     MACRO(Duplicate, CPU, CF32) \
     MACRO(Duplicate, CPU, F32)
 
+#define JST_DUPLICATE_CUDA(MACRO) \
+    MACRO(Duplicate, CUDA, CF32) \
+    MACRO(Duplicate, CUDA, F32)
+
 template<Device D, typename T = CF32>
 class Duplicate : public Module, public Compute {
  public:
+    Duplicate();
+    ~Duplicate();
+
     // Configuration 
 
     struct Config {
@@ -67,14 +74,21 @@ class Duplicate : public Module, public Compute {
     Result create();
 
  protected:
+    Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
     JST_DEFINE_IO();
 };
 
 #ifdef JETSTREAM_MODULE_DUPLICATE_CPU_AVAILABLE
 JST_DUPLICATE_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_DUPLICATE_CUDA_AVAILABLE
+JST_DUPLICATE_CUDA(JST_SPECIALIZATION);
 #endif
 
 }  // namespace Jetstream

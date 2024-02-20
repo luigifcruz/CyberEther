@@ -6,6 +6,27 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Duplicate<D, T>::Impl {
+};
+
+template<Device D, typename T>
+Duplicate<D, T>::Duplicate() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Duplicate<D, T>::~Duplicate() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Duplicate<D, T>::createCompute(const Context& ctx) {
+    JST_TRACE("Create Duplicate compute core using CPU backend.");
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
 Result Duplicate<D, T>::compute(const Context&) {
     if (input.buffer.contiguous()) {
         Memory::Copy(output.buffer, input.buffer);
