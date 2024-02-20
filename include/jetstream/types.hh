@@ -34,7 +34,7 @@ enum class Taint : uint64_t {
     DISCONTIGUOUS       = 1 << 1, ///< Accepts non-contiguous data buffers for input tensors.
 };
 
-inline constexpr Taint operator&(const Taint& lhs, const Taint& rhs) {
+inline Taint operator&(const Taint& lhs, const Taint& rhs) {
     return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
 }
 
