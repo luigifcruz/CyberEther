@@ -27,6 +27,15 @@ inline constexpr Result& operator|=(Result& lhs, const Result& rhs) {
     return lhs;
 }
 
+enum class Taint : uint64_t {
+    CLEAN               = 0 << 0,
+    ALLOW_DISCONTIGUOUS = 1 << 0,
+};
+
+inline constexpr Taint operator&(const Taint& lhs, const Taint& rhs) {
+    return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
+}
+
 template<typename T = U64>
 struct Size2D {
     T width;

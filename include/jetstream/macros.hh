@@ -91,7 +91,7 @@
 #define JST_INIT_IO() \
     if (!under_benchmark) { \
         JST_CHECK(output.init(locale())); \
-        JST_CHECK(input.init()); \
+        JST_CHECK(input.init(taint())); \
     }
 #endif  // JST_INIT_IO
 
@@ -179,13 +179,13 @@
 
 #ifndef JST_INIT_INPUT_ACTION
 #define JST_INIT_INPUT_ACTION(var) \
-    JST_CHECK(Module::InitInput(var));
+    JST_CHECK(Module::InitInput(var, taint));
 #endif  // JST_INIT_INPUT_ACTION
 
 #ifndef JST_SERDES_INPUT
 #define JST_SERDES_INPUT(...) \
     JST_SERDES(__VA_ARGS__) \
-    Result init() { \
+    Result init(const Taint& taint) { \
         FOR_EACH(JST_INIT_INPUT_ACTION, __VA_ARGS__) \
         return Result::SUCCESS; \
     }
