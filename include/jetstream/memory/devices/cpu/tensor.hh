@@ -16,12 +16,10 @@ class Tensor<Device::CPU, T> : public TensorBase<Device::CPU, T> {
     Tensor(const TensorBase<Device::CPU, T>& base) : TensorBase<Device::CPU, T>(base) {}
 
     constexpr const T* data() const noexcept {
-        // TODO: This disregards the offset.
         return reinterpret_cast<T*>(this->buffer->data());
     }
 
     constexpr T* data() noexcept {
-        // TODO: This disregards the offset.
         return reinterpret_cast<T*>(this->buffer->data());
     }
 
