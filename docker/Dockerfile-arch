@@ -27,7 +27,6 @@ RUN pacman -S --noconfirm soapysdr soapyrtlsdr
 RUN pacman -S --noconfirm gstreamer gst-plugins-base gst-libav
 RUN pacman -S --noconfirm gst-plugins-good gst-plugins-bad gst-plugins-ugly
 RUN pacman -S --noconfirm python-yaml
-RUN pacman -S --noconfirm catch2
 
 ###
 

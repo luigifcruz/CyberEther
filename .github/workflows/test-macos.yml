@@ -41,7 +41,6 @@ jobs:
           brew install --force --overwrite python@3.12
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
-          brew install --force --overwrite catch2
           brew install --force --overwrite molten-vk vulkan-tools vulkan-headers
           python3 -m pip install pyyaml
 
