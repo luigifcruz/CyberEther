@@ -295,6 +295,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             case VK_PHYSICAL_DEVICE_TYPE_MAX_ENUM:
                 cache.physicalDeviceType = PhysicalDeviceType::UNKNOWN;
                 break;
+            default:
+                cache.physicalDeviceType = PhysicalDeviceType::UNKNOWN;
+                break;
         }
     }
 
