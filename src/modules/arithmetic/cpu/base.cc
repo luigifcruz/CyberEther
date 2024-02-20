@@ -6,6 +6,27 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Arithmetic<D, T>::Impl {
+};
+
+template<Device D, typename T>
+Arithmetic<D, T>::Arithmetic() {
+    pimpl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Arithmetic<D, T>::~Arithmetic() {
+    pimpl.reset();
+}
+
+template<Device D, typename T>
+Result Arithmetic<D, T>::createCompute(const Context&) {
+    JST_TRACE("Create Arithmetic compute core using CPU backend.");
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
 Result Arithmetic<D, T>::compute(const Context&) {
     for (U64 i = 0; i < output.buffer.size(); i++) {
         output.buffer[i] = 0;

@@ -26,6 +26,11 @@ Result Arithmetic<D, T>::create() {
         return Result::ERROR;
     }
 
+    if (config.operation != ArithmeticOp::Add && D == Device::CUDA) {
+        JST_ERROR("Only addition is supported for CUDA arithmetic.");
+        return Result::ERROR;
+    }
+
     // Calculate output shape.
 
     std::vector<U64> output_shape(input.buffer.shape());

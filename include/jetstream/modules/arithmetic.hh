@@ -13,6 +13,10 @@ namespace Jetstream {
     MACRO(Arithmetic, CPU, CF32) \
     MACRO(Arithmetic, CPU, F32)
 
+#define JST_ARITHMETIC_CUDA(MACRO) \
+    MACRO(Arithmetic, CUDA, CF32) \
+    MACRO(Arithmetic, CUDA, F32)
+
 // TODO: Convert this to a generic macro.
 //       JST_SERDES_ENUM(ArithmeticOp, Add, Sub, Mul, Div);
 
@@ -86,6 +90,9 @@ class ArithmeticOp : public Parser::Adapter {
 template<Device D, typename T = CF32>
 class Arithmetic : public Module, public Compute {
  public:
+    Arithmetic();
+    ~Arithmetic();
+
     // Configuration 
 
     struct Config {
@@ -140,9 +147,13 @@ class Arithmetic : public Module, public Compute {
     Result create();
 
  protected:
+    Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl;
+
     Tensor<D, T> broadcasted_output;
 
     JST_DEFINE_IO();
@@ -150,6 +161,9 @@ class Arithmetic : public Module, public Compute {
 
 #ifdef JETSTREAM_MODULE_ARITHMETIC_CPU_AVAILABLE
 JST_ARITHMETIC_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_MODULE_ARITHMETIC_CUDA_AVAILABLE
+JST_ARITHMETIC_CUDA(JST_SPECIALIZATION);
 #endif
 
 }  // namespace Jetstream
