@@ -19,13 +19,13 @@ jst_is_static = get_option('default_library') == 'static'
 jst_is_release = not jst_build_debug
 jst_is_crossbuild = meson.is_cross_build()
 
-jst_is_linux   = target_machine.system() == 'linux' or \
-                 target_machine.system() == 'freebsd'
-jst_is_macos   = target_machine.system() == 'darwin'
-jst_is_ios     = target_machine.system() == 'ios'
-jst_is_android = target_machine.system() == 'android'
-jst_is_browser = target_machine.system() == 'emscripten'
-jst_is_windows = target_machine.system() == 'windows'
+jst_is_linux   = target_machine.system().startswith('linux') or \
+                 target_machine.system().startswith('freebsd')
+jst_is_macos   = target_machine.system().startswith('darwin')
+jst_is_ios     = target_machine.system().startswith('ios')
+jst_is_android = target_machine.system().startswith('android')
+jst_is_browser = target_machine.system().startswith('emscripten')
+jst_is_windows = target_machine.system().startswith('windows')
 
 if not jst_is_linux   and \
    not jst_is_macos   and \
