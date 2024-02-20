@@ -89,7 +89,7 @@ class TensorPrototype {
 
     Result broadcast_to(const std::vector<U64>& shape);
 
-    Result view(const std::vector<Token>& tokens);
+    Result slice(const std::vector<Token>& tokens);
     
  protected:
     TensorPrototypeMetadata prototype;

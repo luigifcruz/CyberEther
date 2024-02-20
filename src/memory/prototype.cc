@@ -151,7 +151,7 @@ Result TensorPrototype::broadcast_to(const std::vector<U64>& shape) {
     return Result::SUCCESS;
 }
 
-Result TensorPrototype::view(const std::vector<Token>& tokens) {
+Result TensorPrototype::slice(const std::vector<Token>& tokens) {
     std::vector<U64> shape;
     std::vector<U64> stride;
     U64 offset = 0;
@@ -213,9 +213,9 @@ Result TensorPrototype::view(const std::vector<Token>& tokens) {
         }
     }
 
-    JST_TRACE("[MEMORY] View shape: {} -> {}.", prototype.shape, shape);
-    JST_TRACE("[MEMORY] View stride: {} -> {}.", prototype.stride, stride);
-    JST_TRACE("[MEMORY] View offset: {}.", offset);
+    JST_TRACE("[MEMORY] Slice shape: {} -> {}.", prototype.shape, shape);
+    JST_TRACE("[MEMORY] Slice stride: {} -> {}.", prototype.stride, stride);
+    JST_TRACE("[MEMORY] Slice offset: {}.", offset);
 
     prototype.shape = shape;
     prototype.stride = stride;

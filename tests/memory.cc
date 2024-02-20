@@ -404,7 +404,7 @@ int main() {
         og_array[{1, 2, 2}] = 23;
         og_array[{1, 2, 3}] = 24;
 
-        og_array.view({0, {}, 0});  // og_array[0, :, 0]
+        og_array.slice({0, {}, 0});  // og_array[0, :, 0]
         PrintVarDebug("og_array", og_array);
 
         assert(og_array.rank() == 1);
@@ -428,7 +428,7 @@ int main() {
         Tensor<Device::CPU, F32> array({64});
         PrintVarDebug("array", array);
 
-        array.view({{0, 0, 2}});
+        array.slice({{0, 0, 2}});
 
         assert(array.shape() == std::vector<U64>{32});
         assert(array.stride() == std::vector<U64>{2});

@@ -21,8 +21,8 @@ void benchmark(ankerl::nanobench::Bench& bench, std::string name) {
         Tensor<D, T> factorA({128, 1, 8000});
         Tensor<D, T> factorB({128, 1, 8000});
 
-        factorA.view({{}, 0, {}});
-        factorB.view({{}, 0, {}});
+        factorA.slice({{}, 0, {}});
+        factorB.slice({{}, 0, {}});
 
         JST_BENCHMARK_RUN("128x8000 * 128x8000 (2D-NC/NC) AL", {}, {
             .factorA = factorA COMMA
@@ -41,7 +41,7 @@ void benchmark(ankerl::nanobench::Bench& bench, std::string name) {
         Tensor<D, T> factorA({128, 1, 8000});
         Tensor<D, T> factorB({1, 8000});
 
-        factorA.view({{}, 0, {}});
+        factorA.slice({{}, 0, {}});
 
         JST_BENCHMARK_RUN("128x8000 * 1x8000 (B-2D-NC/NC)", {}, {
             .factorA = factorA COMMA
@@ -60,8 +60,8 @@ void benchmark(ankerl::nanobench::Bench& bench, std::string name) {
         Tensor<D, T> factorA({2, 1, 64, 8000});
         Tensor<D, T> factorB({2, 1, 64, 8000});
 
-        factorA.view({{}, 0, {}, {}});
-        factorB.view({{}, 0, {}, {}});
+        factorA.slice({{}, 0, {}, {}});
+        factorB.slice({{}, 0, {}, {}});
 
         JST_BENCHMARK_RUN("2x64x8000 * 2x64x8000 (3D-NC/NC) AL", {}, {
             .factorA = factorA COMMA
