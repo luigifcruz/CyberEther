@@ -116,7 +116,7 @@ Result Duplicate<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel arguments.
 
     pimpl->inputMeta = {
-        input.buffer.data(),
+        reinterpret_cast<uint8_t*>(input.buffer.data()) + input.buffer.offset_bytes(),
         input.buffer.rank(),
     };
 
@@ -126,7 +126,7 @@ Result Duplicate<D, T>::createCompute(const Context& ctx) {
     }
 
     pimpl->outputMeta = {
-        output.buffer.data(),
+        reinterpret_cast<uint8_t*>(output.buffer.data()) + output.buffer.offset_bytes(),
         output.buffer.rank(),
     };
 

@@ -138,7 +138,7 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel arguments.
 
     pimpl->inputMeta = {
-        pimpl->input.data(),
+        reinterpret_cast<uint8_t*>(pimpl->input.data()) + pimpl->input.offset_bytes(),
         pimpl->input.rank(),
     };
 
@@ -148,7 +148,7 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
     }
 
     pimpl->outputMeta = {
-        broadcasted_output.data(),
+        reinterpret_cast<uint8_t*>(broadcasted_output.data()) + broadcasted_output.offset_bytes(),
         broadcasted_output.rank(),
     };
 
