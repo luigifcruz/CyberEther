@@ -13,7 +13,9 @@ class Duplicate : public Block {
     // Configuration
 
     struct Config {
-        JST_SERDES();
+        bool hostAccessible = true;
+
+        JST_SERDES(hostAccessible);
     };
 
     constexpr const Config& getConfig() const {
@@ -69,14 +71,17 @@ class Duplicate : public Block {
     std::string description() const {
         // TODO: Add decent block description describing internals and I/O.
         return "Duplicates the input signal by copying it to the output buffer. "
-               "This block also converts non-contiguous input buffers to contiguous output buffers.";
+               "This block also converts non-contiguous input buffers to contiguous output buffers. "
+               "This block is also useful to transfer data between host and device with the `Host Acessible` option.";
     }
 
     // Constructor
 
     Result create() {
         JST_CHECK(instance().addModule(
-            duplicate, "duplicate", {}, {
+            duplicate, "duplicate", {
+                .hostAccessible = config.hostAccessible,
+            }, {
                 .buffer = input.buffer,
             },
             locale()
@@ -91,6 +96,24 @@ class Duplicate : public Block {
         JST_CHECK(instance().eraseModule(duplicate->locale()));
 
         return Result::SUCCESS;
+    }
+
+    void drawControl() {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Host Accessible");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Checkbox("##HostAccessible", &config.hostAccessible)) {
+            JST_DISPATCH_ASYNC([&](){ \
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." }); \
+                JST_CHECK_NOTIFY(instance().reloadBlock(locale())); \
+            });
+        }
+    }
+
+    constexpr bool shouldDrawControl() const {
+        return true;
     }
 
  private:

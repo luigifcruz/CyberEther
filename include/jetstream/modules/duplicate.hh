@@ -26,7 +26,9 @@ class Duplicate : public Module, public Compute {
     // Configuration 
 
     struct Config {
-        JST_SERDES();
+        bool hostAccessible = true;
+
+        JST_SERDES(hostAccessible);
     };
 
     constexpr const Config& getConfig() const {

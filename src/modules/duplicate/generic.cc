@@ -11,7 +11,11 @@ Result Duplicate<D, T>::create() {
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(input.buffer.shape());
+    if constexpr (D == Device::CUDA) {
+        output.buffer = Tensor<D, T>(input.buffer.shape(), config.hostAccessible);
+    } else {
+        output.buffer = Tensor<D, T>(input.buffer.shape());
+    }
 
     return Result::SUCCESS;
 }
