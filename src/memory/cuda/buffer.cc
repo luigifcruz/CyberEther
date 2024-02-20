@@ -328,12 +328,12 @@ bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noe
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::Metal>>&) {
     throw std::runtime_error("Metal buffers are not supported on CUDA.");
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::Metal>&) noexcept {
     return false;
 }
 #endif

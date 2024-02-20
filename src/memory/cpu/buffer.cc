@@ -115,7 +115,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 }
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Metal buffer.");
@@ -205,7 +205,7 @@ bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) 
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from CUDA buffer.");

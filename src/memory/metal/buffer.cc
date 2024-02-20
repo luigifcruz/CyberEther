@@ -80,7 +80,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 }
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
     JST_TRACE("[METAL:BUFFER] Cloning from CPU buffer.");
@@ -131,7 +131,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     _host_accessible = true;
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::CPU>&) noexcept {
     JST_TRACE("[METAL:BUFFER] Checking if CPU buffer can be imported.");
 
     // Check if Metal is available.
@@ -153,26 +153,26 @@ bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noe
 #endif
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::Vulkan>>&) {
     throw std::runtime_error("Exporting Vulkan memory to Metal not implemented.");
     // TODO: Add Vulkan -> Metal.
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>&) noexcept {
     return false;
 }
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::CUDA>>&) {
     throw std::runtime_error("CUDA buffers are not supported on Metal.");
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::CUDA>&) noexcept {
     return false;
 }
 #endif

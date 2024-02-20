@@ -149,33 +149,33 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 }
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::CPU>>&) {
     throw std::runtime_error("Exporting CPU memory to Vulkan not implemented.");
     // TODO: Add CPU -> Vulkan.
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::CPU>&) noexcept {
     return false;
 }
 #endif
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::Metal>>&) {
     throw std::runtime_error("Exporting Metal memory to Vulkan not implemented.");
     // TODO: Add Metal -> Vulkan.
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::Metal>&) noexcept {
     return false;
 }
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
     JST_TRACE("[VULKAN:BUFFER] Importing CUDA buffer.");
