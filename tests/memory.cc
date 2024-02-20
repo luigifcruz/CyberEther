@@ -304,6 +304,7 @@ int main() {
 
         F32* data = array.data();
         assert(data != nullptr);
+        (void)data;
 
         JST_INFO("Tensor storage test successful!");
     }
