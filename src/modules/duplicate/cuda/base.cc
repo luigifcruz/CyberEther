@@ -118,6 +118,8 @@ Result Duplicate<D, T>::createCompute(const Context& ctx) {
     pimpl->inputMeta = {
         reinterpret_cast<uint8_t*>(input.buffer.data()) + input.buffer.offset_bytes(),
         input.buffer.rank(),
+        {},
+        {},
     };
 
     for (U64 i = 0; i < input.buffer.rank(); i++) {
@@ -128,6 +130,8 @@ Result Duplicate<D, T>::createCompute(const Context& ctx) {
     pimpl->outputMeta = {
         reinterpret_cast<uint8_t*>(output.buffer.data()) + output.buffer.offset_bytes(),
         output.buffer.rank(),
+        {},
+        {},
     };
 
     for (U64 i = 0; i < output.buffer.rank(); i++) {

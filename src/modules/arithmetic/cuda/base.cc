@@ -140,6 +140,8 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
     pimpl->inputMeta = {
         reinterpret_cast<uint8_t*>(pimpl->input.data()) + pimpl->input.offset_bytes(),
         pimpl->input.rank(),
+        {},
+        {},
     };
 
     for (U64 i = 0; i < pimpl->input.rank(); i++) {
@@ -150,6 +152,8 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
     pimpl->outputMeta = {
         reinterpret_cast<uint8_t*>(broadcasted_output.data()) + broadcasted_output.offset_bytes(),
         broadcasted_output.rank(),
+        {},
+        {},
     };
 
     for (U64 i = 0; i < broadcasted_output.rank(); i++) {
