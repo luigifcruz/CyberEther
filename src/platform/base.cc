@@ -158,7 +158,8 @@ Result PickFile(std::string& path) {
     std::array<char, 1024> buffer;
     std::string command = "zenity --file-selection --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
 
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+    auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
+    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
 
     if (!pipe) {
         JST_ERROR("Failed to open file selection dialog.");
@@ -315,7 +316,8 @@ Result SaveFile(std::string& path) {
     std::array<char, 1024> buffer;
     std::string command = "zenity --file-selection --save --confirm-overwrite --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
 
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+    auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
+    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
 
     if (!pipe) {
         JST_ERROR("Failed to open save file dialog.");
