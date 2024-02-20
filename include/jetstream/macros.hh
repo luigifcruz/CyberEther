@@ -186,6 +186,7 @@
 #define JST_SERDES_INPUT(...) \
     JST_SERDES(__VA_ARGS__) \
     Result init(const Taint& taint) { \
+        (void)taint; \
         FOR_EACH(JST_INIT_INPUT_ACTION, __VA_ARGS__) \
         return Result::SUCCESS; \
     }
@@ -200,6 +201,7 @@
 #define JST_SERDES_OUTPUT(...) \
     JST_SERDES(__VA_ARGS__) \
     Result init(const Locale& locale) { \
+        (void)locale; \
         FOR_EACH(JST_INIT_OUTPUT_ACTION, __VA_ARGS__) \
         return Result::SUCCESS; \
     }
