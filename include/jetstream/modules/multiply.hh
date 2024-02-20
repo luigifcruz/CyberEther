@@ -65,6 +65,15 @@ class Multiply : public Module, public Compute {
         return D;
     }
 
+    constexpr Taint taint() const {
+        if constexpr (D == Device::CPU) {
+            return Taint::DISCONTIGUOUS;
+        } else {
+            // TODO: Implement discontiguous support for Metal.
+            return Taint::CLEAN;
+        }
+    }
+
     void info() const final;
 
     // Constructor

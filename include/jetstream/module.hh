@@ -22,7 +22,7 @@ class JETSTREAM_API Module {
         return Result::SUCCESS;
     }
 
-    virtual Taint taint() const {
+    virtual constexpr Taint taint() const {
         return Taint::CLEAN;
     }
 
@@ -53,7 +53,7 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
 
-        if ((taint & Taint::ALLOW_DISCONTIGUOUS) == Taint::ALLOW_DISCONTIGUOUS && !buffer.contiguous()) {
+        if ((taint & Taint::DISCONTIGUOUS) == Taint::DISCONTIGUOUS && !buffer.contiguous()) {
             JST_ERROR("Input is not contiguous during initialization.");
             return Result::ERROR;
         }

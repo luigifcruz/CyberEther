@@ -69,6 +69,10 @@ class Duplicate : public Module, public Compute {
         return D;
     }
 
+    constexpr Taint taint() const {
+        return Taint::DISCONTIGUOUS;
+    }
+
     void info() const final;
 
     // Constructor

@@ -27,9 +27,16 @@ inline constexpr Result& operator|=(Result& lhs, const Result& rhs) {
     return lhs;
 }
 
+/**
+ * @enum Taint
+ * @brief Represents the taint status of a module's input or output.
+ *
+ * This enum class is used to describe various taint or state conditions of data being processed by a module. 
+ */
 enum class Taint : uint64_t {
-    CLEAN               = 0 << 0,
-    ALLOW_DISCONTIGUOUS = 1 << 0,
+    CLEAN               = 0 << 0, ///< No taint set, data is in its original state.
+    IN_PLACE            = 1 << 0, ///< Module will overwrite input, modifying it directly.
+    DISCONTIGUOUS       = 1 << 1, ///< Accepts non-contiguous data buffers for input tensors.
 };
 
 inline constexpr Taint operator&(const Taint& lhs, const Taint& rhs) {
