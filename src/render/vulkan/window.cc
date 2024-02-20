@@ -253,8 +253,10 @@ Result Implementation::createImgui() {
         .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+        .UseDynamicRendering = false,
         .Allocator = {},
-        .CheckVkResultFn = nullptr
+        .CheckVkResultFn = nullptr,
+        .MinAllocationSize = 0,
     };
     ImGui_ImplVulkan_Init(&init_info, renderPass); 
 
