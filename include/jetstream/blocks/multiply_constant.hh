@@ -99,7 +99,7 @@ class MultiplyConstant : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Constant");
+        ImGui::TextUnformatted("Constant");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 constant = config.constant;

@@ -101,7 +101,7 @@ class Duplicate : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Host Accessible");
+        ImGui::TextUnformatted("Host Accessible");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::Checkbox("##HostAccessible", &config.hostAccessible)) {

@@ -138,7 +138,7 @@ class Waterfall : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Interpolate");
+        ImGui::TextUnformatted("Interpolate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto interpolate = waterfall->interpolate();
@@ -148,7 +148,7 @@ class Waterfall : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Zoom");
+        ImGui::TextUnformatted("Zoom");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto zoom = waterfall->zoom();

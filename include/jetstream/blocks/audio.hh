@@ -127,7 +127,7 @@ class Audio : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Device List");
+        ImGui::TextUnformatted("Device List");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         static const char* noDeviceMessage = "No device found";

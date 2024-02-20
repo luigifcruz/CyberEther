@@ -621,32 +621,32 @@ Result Scheduler::createExecutionGraphs() {
 void Scheduler::drawDebugMessage() const {
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Pipeline:");
+    ImGui::TextUnformatted("Pipeline:");
     ImGui::TableSetColumnIndex(1);
     ImGui::TextFormatted("{} graph(s)", graphs.size());
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Stale:");
+    ImGui::TextUnformatted("Stale:");
     ImGui::TableSetColumnIndex(1);
     ImGui::TextFormatted("{} block(s)", computeModuleStates.size() - validComputeModuleStates.size());
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Present:");
+    ImGui::TextUnformatted("Present:");
     ImGui::TableSetColumnIndex(1);
     ImGui::TextFormatted("{} block(s)", validPresentModuleStates.size());
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Compute:");
+    ImGui::TextUnformatted("Compute:");
     ImGui::TableSetColumnIndex(1);
     ImGui::SetNextItemWidth(-1);
     ImGui::TextFormatted("{} block(s)", validComputeModuleStates.size());
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    ImGui::TextFormatted("Graph List:");
+    ImGui::TextUnformatted("Graph List:");
     ImGui::TableSetColumnIndex(1);
     ImGui::TextUnformatted("");
 

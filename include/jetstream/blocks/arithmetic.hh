@@ -103,7 +103,7 @@ class Arithmetic : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Operation");
+        ImGui::TextUnformatted("Operation");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::BeginCombo("##DeviceList", config.operation.string().c_str())) {

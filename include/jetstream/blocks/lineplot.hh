@@ -169,7 +169,7 @@ class Lineplot : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Averaging");
+        ImGui::TextUnformatted("Averaging");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 averaging = lineplot->averaging();

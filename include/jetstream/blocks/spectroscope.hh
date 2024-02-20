@@ -228,7 +228,7 @@ class Spectroscope : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Range (dBFS)");
+        ImGui::TextUnformatted("Range (dBFS)");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto [min, max] = scale->range();
@@ -239,7 +239,7 @@ class Spectroscope : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Views");
+        ImGui::TextUnformatted("Views");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
 

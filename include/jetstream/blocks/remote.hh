@@ -227,7 +227,7 @@ class Remote : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Address");
+        ImGui::TextUnformatted("Address");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##EndpointAddress", &config.endpoint, ImGuiInputTextFlags_EnterReturnsTrue)) {

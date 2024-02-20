@@ -875,7 +875,7 @@ Result Compositor::drawStatic() {
 
                 const auto& title = instance.flowgraph().title();
                 if (title.empty()) {
-                    ImGui::TextFormatted("Title: N/A", title);
+                    ImGui::TextUnformatted("Title: N/A");
                 } else {
                     ImGui::TextFormatted("Title: {}", title);
                 }
