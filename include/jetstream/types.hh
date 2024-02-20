@@ -22,11 +22,6 @@ enum class Result : uint8_t {
     TIMEOUT     = 7,
 };
 
-inline constexpr Result& operator|=(Result& lhs, const Result& rhs) {
-    lhs = ((lhs != Result::SUCCESS) || (rhs != Result::SUCCESS)) ? Result::ERROR : Result::SUCCESS;
-    return lhs;
-}
-
 /**
  * @enum Taint
  * @brief Represents the taint status of a module's input or output.
