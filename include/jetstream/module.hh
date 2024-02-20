@@ -116,7 +116,7 @@ class JETSTREAM_API Compute {
 #endif
     };
 
-    virtual constexpr Result createCompute(const Context& ctx) {
+    virtual constexpr Result createCompute(const Context&) {
         return Result::SUCCESS;
     }
     virtual constexpr Result compute(const Context& ctx) = 0;

@@ -55,7 +55,7 @@ Lineplot<D, T>::~Lineplot() {
 }
 
 template<Device D, typename T>
-Result Lineplot<D, T>::createCompute(const Context& ctx) {
+Result Lineplot<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "lineplot", &pimpl->state));

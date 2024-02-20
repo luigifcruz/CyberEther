@@ -20,7 +20,7 @@ Duplicate<D, T>::~Duplicate() {
 }
 
 template<Device D, typename T>
-Result Duplicate<D, T>::createCompute(const Context& ctx) {
+Result Duplicate<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Duplicate compute core using CPU backend.");
 
     return Result::SUCCESS;

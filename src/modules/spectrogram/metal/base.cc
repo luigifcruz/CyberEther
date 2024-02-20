@@ -62,7 +62,7 @@ Spectrogram<D, T>::~Spectrogram() {
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::createCompute(const Context& ctx) {
+Result Spectrogram<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &pimpl->stateDecay));

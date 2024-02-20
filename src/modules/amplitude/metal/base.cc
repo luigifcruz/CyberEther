@@ -64,7 +64,7 @@ Amplitude<D, IT, OT>::~Amplitude() {
 }
 
 template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
+Result Amplitude<D, IT, OT>::createCompute(const Context&) {
     JST_TRACE("Create Amplitude compute core using Metal backend.");
 
     if constexpr (std::is_same_v<IT, CF32> && std::is_same_v<OT, F32>) {

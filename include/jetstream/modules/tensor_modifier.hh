@@ -80,7 +80,7 @@ class TensorModifier : public Module, public Compute {
     }
 
  protected:
-    Result compute(const Context& ctx) final {
+    Result compute(const Context&) final {
         return Result::SUCCESS;
     }
 

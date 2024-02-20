@@ -43,7 +43,7 @@ Scale<D, T>::~Scale() {
 }
 
 template<Device D, typename T>
-Result Scale<D, T>::createCompute(const Context& ctx) {
+Result Scale<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &pimpl->state));
