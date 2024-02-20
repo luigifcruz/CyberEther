@@ -172,7 +172,7 @@ class Audio : public Block {
 
     typename AudioModule::DeviceList availableDeviceList;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

@@ -290,7 +290,7 @@ class Soapy : public Block {
     
     std::shared_ptr<SoapyModule> soapy;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

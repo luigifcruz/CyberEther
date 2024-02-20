@@ -120,7 +120,7 @@ class MultiplyConstant : public Block {
  private:
     std::shared_ptr<Jetstream::MultiplyConstant<D, IT>> multiply;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

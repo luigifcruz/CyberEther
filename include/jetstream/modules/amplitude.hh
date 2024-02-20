@@ -88,7 +88,7 @@ class Amplitude : public Module, public Compute {
     F32 scalingCoeff = 0.0f;
     U64 numberOfElements = 0;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE

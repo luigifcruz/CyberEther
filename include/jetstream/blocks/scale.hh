@@ -118,7 +118,7 @@ class Scale : public Block {
  private:
     std::shared_ptr<Jetstream::Scale<D, IT>> scale;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

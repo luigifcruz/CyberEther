@@ -95,7 +95,7 @@ class AGC : public Block {
  private:
     std::shared_ptr<Jetstream::AGC<D, IT>> agc;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

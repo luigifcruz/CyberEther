@@ -131,7 +131,7 @@ class SqueezeDims : public Block {
  private:
     std::shared_ptr<Jetstream::TensorModifier<D, IT>> modifier;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

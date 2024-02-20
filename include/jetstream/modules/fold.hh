@@ -76,7 +76,7 @@ class Fold : public Module, public Compute {
  private:
     U64 decimationFactor;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_FOLD_CPU_AVAILABLE

@@ -71,7 +71,7 @@ class Window : public Module, public Compute {
  private:
     bool baked = false;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE

@@ -160,7 +160,7 @@ class Arithmetic : public Module, public Compute {
 
     Tensor<D, T> broadcasted_output;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_ARITHMETIC_CPU_AVAILABLE

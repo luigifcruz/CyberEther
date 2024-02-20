@@ -360,7 +360,7 @@ class Spectroscope : public Block {
     std::shared_ptr<Jetstream::Lineplot<D, OT>> lineplot;
     std::shared_ptr<Jetstream::Waterfall<D, OT>> waterfall;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

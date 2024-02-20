@@ -158,7 +158,7 @@ class Lineplot : public Module, public Compute, public Present {
 
     F32 windowToPlotCoords(const std::pair<F32, F32>& mouse_pos);
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE

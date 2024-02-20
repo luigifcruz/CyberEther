@@ -165,7 +165,7 @@ class Waterfall : public Block {
     std::shared_ptr<Jetstream::Waterfall<D, IT>> waterfall;
     I32 position;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

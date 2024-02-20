@@ -119,7 +119,7 @@ class Duplicate : public Block {
  private:
     std::shared_ptr<Jetstream::Duplicate<D, IT>> duplicate;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

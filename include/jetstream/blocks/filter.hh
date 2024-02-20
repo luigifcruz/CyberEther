@@ -202,7 +202,7 @@ class Filter : public Block {
     std::shared_ptr<Blocks::FilterTaps<D, IT, OT>> taps;
     std::shared_ptr<Blocks::FilterEngine<D, IT, OT>> engine;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

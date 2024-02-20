@@ -87,7 +87,7 @@ class Duplicate : public Module, public Compute {
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_DUPLICATE_CPU_AVAILABLE

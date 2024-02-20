@@ -79,7 +79,7 @@ class SpeechRecognition : public Module, public Compute {
     std::vector<whisper_token> promptTokens;
     std::string textBuffer;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_SPEECH_RECOGNITION_CPU_AVAILABLE

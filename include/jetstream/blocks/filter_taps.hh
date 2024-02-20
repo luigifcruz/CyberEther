@@ -189,7 +189,7 @@ class FilterTaps : public Block {
  private:
     std::shared_ptr<Jetstream::FilterTaps<D, IT>> taps;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

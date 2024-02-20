@@ -118,7 +118,7 @@ class Window : public Block {
  private:
     std::shared_ptr<Jetstream::Window<D, IT>> window;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

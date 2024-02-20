@@ -95,7 +95,7 @@ class Amplitude : public Block {
  private:
     std::shared_ptr<Jetstream::Amplitude<D, IT, OT>> amplitude;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

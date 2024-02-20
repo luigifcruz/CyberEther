@@ -85,7 +85,7 @@ class TensorModifier : public Module, public Compute {
     }
 
  private:
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream

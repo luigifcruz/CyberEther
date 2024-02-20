@@ -185,7 +185,7 @@ class Lineplot : public Block {
  private:
     std::shared_ptr<Jetstream::Lineplot<D, IT>> lineplot;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

@@ -166,7 +166,7 @@ class Remote : public Module, public Present {
 
     static GstFlowReturn OnSampleCallback(GstElement* sink, gpointer data);
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_REMOTE_CPU_AVAILABLE

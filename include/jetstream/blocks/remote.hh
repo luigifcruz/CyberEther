@@ -277,7 +277,7 @@ class Remote : public Block {
                       mousePositionAbsolute.y - screenPositionAbsolute.y);
     }
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks
