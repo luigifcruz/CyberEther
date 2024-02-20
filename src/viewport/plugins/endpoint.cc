@@ -919,7 +919,10 @@ void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
 Result Endpoint::pushNewFrame(const void* data) {
 #ifndef JST_OS_WINDOWS
     if (type == Endpoint::Type::Pipe) {
-        write(pipeFileDescriptor, data, config.size.width * config.size.height * 4);
+        if (write(pipeFileDescriptor, data, config.size.width * config.size.height * 4) < 0) {
+            JST_ERROR("[ENDPOINT] Failed to write to pipe.");
+            return Result::ERROR;
+        }
     }
 #endif
 
