@@ -4,6 +4,10 @@
 #include "jetstream/types.hh"
 #include "jetstream/memory/types.hh"
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize("unroll-loops")
+#endif
+
 namespace Jetstream::Memory::CPU {
 
 template<class Function, class... Args>
