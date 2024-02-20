@@ -184,25 +184,17 @@ void Window::ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_inf
             break;
         case ImGui::MarkdownFormatType::EMPHASIS: {
             ImGui::MarkdownHeadingFormat fmt;
-            if (md_info.level == 1) {
-                // normal emphasis
-                if (start) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                } else {
-                    ImGui::PopStyleColor();
+            fmt = md_info.config->headingFormats[ImGui::MarkdownConfig::NUMHEADINGS - 1];
+            if (start) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                if (fmt.font) {
+                    ImGui::PushFont( fmt.font );
                 }
             } else {
-                // strong emphasis
-                fmt = md_info.config->headingFormats[ImGui::MarkdownConfig::NUMHEADINGS - 1];
-                if (start) {
-                    if (fmt.font) {
-                        ImGui::PushFont( fmt.font );
-                    }
-                } else {
-                    if (fmt.font) {
-                        ImGui::PopFont();
-                    }
+                if (fmt.font) {
+                    ImGui::PopFont();
                 }
+                ImGui::PopStyleColor();
             }
             break;
         }
