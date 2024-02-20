@@ -254,6 +254,7 @@ Result Implementation::createImgui() {
         .ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .UseDynamicRendering = false,
+        .ColorAttachmentFormat = VK_FORMAT_UNDEFINED,
         .Allocator = {},
         .CheckVkResultFn = nullptr,
         .MinAllocationSize = 0,
