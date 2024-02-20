@@ -25,43 +25,8 @@ struct TensorPrototypeMetadata {
     std::vector<U64> shape_minus_one = {0};
     std::vector<U64> backstride = {0};
 
-    TensorPrototypeMetadata& operator=(const TensorPrototypeMetadata& other) {
-        if (locale.empty()) {
-            locale = other.locale;
-        }
-        shape = other.shape;
-        stride = other.stride;
-        element_size = other.element_size;
-        offset = other.offset;
-        contiguous = other.contiguous;
-        hash = other.hash;
-
-        size = other.size;
-        size_bytes = other.size_bytes;
-        offset_bytes = other.offset_bytes;
-        shape_minus_one = other.shape_minus_one;
-        backstride = other.backstride;
-        return *this;
-    }
-
-    TensorPrototypeMetadata& operator=(TensorPrototypeMetadata&& other) noexcept {
-        if (locale.empty()) {
-            locale = std::move(other.locale);
-        }
-        shape = std::move(other.shape);
-        stride = std::move(other.stride);
-        element_size = std::move(other.element_size);
-        offset = std::move(other.offset);
-        contiguous = std::move(other.contiguous);
-        hash = std::move(other.hash);
-
-        size = std::move(other.size);
-        size_bytes = std::move(other.size_bytes);
-        offset_bytes = std::move(other.offset_bytes);
-        shape_minus_one = std::move(other.shape_minus_one);
-        backstride = std::move(other.backstride);
-        return *this;
-    }
+    TensorPrototypeMetadata& operator=(const TensorPrototypeMetadata& other);
+    TensorPrototypeMetadata& operator=(TensorPrototypeMetadata&& other) noexcept;
 };
 
 struct TensorStorageMetadata {
@@ -88,36 +53,17 @@ struct TensorStorageMetadata {
             return std::any_cast<const T&>(storage);
         }
 
-        const std::any& get() const {
+        constexpr const std::any& get() const {
             return storage;
         }
 
-        std::any& get() {
+        constexpr std::any& get() {
             return storage;
         }
 
-        Result subscribe(const Locale& locale, const std::function<void()>& callback) {
-            if (subscribers.contains(locale)) {
-                JST_ERROR("[METADATA] Attribute already has a subscriber for locale {}.", locale);
-                return Result::ERROR;
-            }
-            subscribers[locale] = callback;
-            return Result::SUCCESS;
-        }
-
-        Result unsubscribe(const Locale& locale) {
-            if (!subscribers.contains(locale)) {
-                return Result::SUCCESS;
-            }
-            subscribers.erase(locale);
-            return Result::SUCCESS;
-        }
-
-        void notify() {
-            for (const auto& [locale, callback] : subscribers) {
-                callback();
-            }
-        }
+        Result subscribe(const Locale& locale, const std::function<void()>& callback);
+        Result unsubscribe(const Locale& locale);
+        void notify();
     
      private:
         std::any storage;
