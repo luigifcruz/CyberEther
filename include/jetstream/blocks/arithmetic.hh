@@ -1,5 +1,5 @@
 #ifndef JETSTREAM_BLOCK_ARITHMETIC_BASE_HH
-#define JETSTREAM_BLOCK_AMPLITUDE_BASE_HH
+#define JETSTREAM_BLOCK_ARITHMETIC_BASE_HH
 
 #include "jetstream/block.hh"
 #include "jetstream/instance.hh"
