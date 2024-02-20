@@ -1,4 +1,5 @@
 deps = [
+    'JETSTREAM_BACKEND_CUDA_AVAILABLE',
 ]
 
 all_deps_found = true
