@@ -35,6 +35,13 @@ Result Lineplot<D, T>::create() {
     numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
     normalizationFactor = 1.0f / (0.5f * numberOfBatches);
 
+    // Check shape.
+
+    if (numberOfElements < 2) {
+        JST_ERROR("Invalid number of elements ({}). It should be at least '2'.", numberOfElements);
+        return Result::ERROR;
+    }
+
     // Allocate internal buffers.
 
     grid = Tensor<Device::CPU, T>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 3});
