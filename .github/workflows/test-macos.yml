@@ -38,6 +38,7 @@ jobs:
 
       - name: Install optional dependencies for SoapySDR and Remote capabilities
         run: |
+          rm -rf /usr/local/bin/2to3-3.12
           brew install --force --overwrite python@3.12
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
