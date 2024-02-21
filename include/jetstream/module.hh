@@ -53,7 +53,7 @@ class JETSTREAM_API Module {
             return Result::ERROR;
         }
 
-        if ((taint & Taint::DISCONTIGUOUS) == Taint::DISCONTIGUOUS && !buffer.contiguous()) {
+        if ((taint & Taint::DISCONTIGUOUS) != Taint::DISCONTIGUOUS && !buffer.contiguous()) {
             JST_ERROR("Input is not contiguous during initialization.");
             return Result::ERROR;
         }
