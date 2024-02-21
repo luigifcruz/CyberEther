@@ -169,6 +169,9 @@
 #define JETSTREAM_BLOCK_ARITHMETIC_AVAILABLE
 #endif
 
+#include "jetstream/blocks/slice.hh"
+#define JETSTREAM_BLOCK_SLICE_AVAILABLE
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH

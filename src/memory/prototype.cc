@@ -194,7 +194,7 @@ Result TensorPrototype::slice(const std::vector<Token>& tokens) {
                     return Result::ERROR;
                 }
                 ellipsis_used = true;
-                const U64 remaining_dims = prototype.shape.size() - (tokens.size() - 1) + 1;
+                const U64 remaining_dims = prototype.shape.size() - (tokens.size() - 1);
                 while (dim < remaining_dims) {
                     shape.push_back(prototype.shape[dim]);
                     stride.push_back(prototype.stride[dim]);

@@ -190,6 +190,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_ARITHMETIC_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::Arithmetic);
 #endif
+#ifdef JETSTREAM_BLOCK_SLICE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Slice);
+#endif
     // [NEW BLOCK HOOK]
 }
 
