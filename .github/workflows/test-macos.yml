@@ -12,8 +12,8 @@ jobs:
     strategy:
       matrix:
         include:
-          #- runner: macos-13
-          #  label: "x86_64"
+          - runner: macos-13
+            label: "x86_64"
           - runner: macos-14
             label: "arm64"
 
