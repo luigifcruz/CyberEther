@@ -737,10 +737,11 @@ Result Endpoint::startGstreamerEndpoint() {
                                         "height", G_TYPE_INT, config.size.height,
                                         "framerate", GST_TYPE_FRACTION, config.framerate, 1,
                                         "interlace-mode", G_TYPE_STRING, "progressive",
+                                        "colorimetry", G_TYPE_STRING, "bt709",
                                         nullptr);
     
     if (_encodingStrategy == Strategy::HardwareNVENC && _inputMemoryDevice == Device::CUDA) {
-        GstCapsFeatures *features = gst_caps_features_new("memory:CUDAMemory", NULL);
+        GstCapsFeatures *features = gst_caps_features_new("memory:CUDAMemory", nullptr);
         gst_caps_set_features(caps, 0, features);
     }
 
