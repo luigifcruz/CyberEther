@@ -44,7 +44,7 @@ jobs:
         run: |
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
-          brew install --force --overwrite molten-vk vulkan-tools vulkan-headers
+          brew install --force --overwrite molten-vk vulkan-headers
           python3 -m pip install pyyaml
 
       ##
