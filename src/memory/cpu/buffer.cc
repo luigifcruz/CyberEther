@@ -140,7 +140,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     external_memory_device = Device::Metal;
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::Metal>&) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Metal buffer can be imported.");
 
     // Check if Metal buffer is host accessible.
