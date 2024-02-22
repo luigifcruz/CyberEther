@@ -149,7 +149,7 @@ class Slice : public Block {
                 // Parse Numbers.
 
                 if (std::regex_match(element, std::regex(R"(\d+)"))) {
-                    tokens.emplace_back(std::stoull(element));
+                    tokens.emplace_back(static_cast<U64>(std::stoull(element)));
                     JST_TRACE("[SLICE] Found number token: {}.", element);
                     continue;
                 }
