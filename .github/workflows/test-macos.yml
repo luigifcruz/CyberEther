@@ -24,6 +24,10 @@ jobs:
         run: |
           which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
+      - name: Cleanup GHA mess
+        run: |
+          rm -rf /usr/local/bin/2to3-3.12
+          brew install --force --overwrite python@3.12
       #
       # [NEW DEPENDENCY HOOK]
       # This is copy-pasta from the README.md file.
@@ -38,8 +42,6 @@ jobs:
 
       - name: Install optional dependencies for SoapySDR and Remote capabilities
         run: |
-          rm -rf /usr/local/bin/2to3-3.12
-          brew install --force --overwrite python@3.12
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
           brew install --force --overwrite molten-vk vulkan-tools vulkan-headers
