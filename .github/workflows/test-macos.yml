@@ -40,12 +40,12 @@ jobs:
       - name: Install graphical dependencies
         run: brew install --force --overwrite spirv-cross glslang glfw
 
-      - name: Install optional dependencies for SoapySDR and Remote capabilities
+      - name: Install optional dependencies
         run: |
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
-          brew install --force --overwrite molten-vk vulkan-headers
-          python3 -m pip install pyyaml
+          brew install --force --overwrite molten-vk vulkan-tools vulkan-headers
+          brew install --force --overwrite pyyaml
 
       ##
 
