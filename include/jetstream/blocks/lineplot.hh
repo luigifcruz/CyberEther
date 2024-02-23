@@ -19,7 +19,7 @@ class Lineplot : public Block {
         Size2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
-        F32 thickness = 3.0f;
+        F32 thickness = 1.5f;
 
         JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
@@ -84,7 +84,7 @@ class Lineplot : public Block {
                 .viewSize = config.viewSize,
                 .zoom = config.zoom,
                 .translation = config.translation,
-                .thickness = config.thickness,
+                .thickness = config.thickness * ImGui::GetIO().DisplayFramebufferScale.x,
             }, {
                 .buffer = input.buffer,
             },
@@ -130,7 +130,8 @@ class Lineplot : public Block {
 
             if (scroll != 0.0f) {
                 auto [mouse_x, mouse_y] = GetRelativeMousePos();
-                config.zoom += (scroll > 0.0f) ? 0.1f : -0.1f;
+                config.zoom += (scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
+                                                 std::min(config.zoom * -0.02f, -0.02f);
 
                 mouse_x *= scale.x;
                 mouse_y *= scale.y;
