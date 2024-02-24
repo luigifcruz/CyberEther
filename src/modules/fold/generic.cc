@@ -42,9 +42,9 @@ Result Fold<D, T>::create() {
 
 template<Device D, typename T>
 void Fold<D, T>::info() const {
-    JST_INFO("  Axis:   {}", config.axis);
-    JST_INFO("  Size:   {}", config.size);
-    JST_INFO("  Offset: {}", config.offset);
+    JST_DEBUG("  Axis:   {}", config.axis);
+    JST_DEBUG("  Size:   {}", config.size);
+    JST_DEBUG("  Offset: {}", config.offset);
 }
 
 }  // namespace Jetstream

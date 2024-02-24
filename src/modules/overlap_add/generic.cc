@@ -44,7 +44,7 @@ Result OverlapAdd<D, T>::create() {
 
 template<Device D, typename T>
 void OverlapAdd<D, T>::info() const {
-    JST_INFO("  Axis:   {}", config.axis);
+    JST_DEBUG("  Axis:   {}", config.axis);
 }
 
 }  // namespace Jetstream

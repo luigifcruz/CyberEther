@@ -22,7 +22,7 @@ Result Duplicate<D, T>::create() {
 
 template<Device D, typename T>
 void Duplicate<D, T>::info() const {
-    JST_INFO("  None");
+    JST_DEBUG("  Host Accessible: {}", config.hostAccessible);
 }
 
 }  // namespace Jetstream

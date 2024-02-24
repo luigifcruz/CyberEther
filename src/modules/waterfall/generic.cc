@@ -33,11 +33,11 @@ Result Waterfall<D, T>::create() {
 
 template<Device D, typename T>
 void Waterfall<D, T>::info() const {
-    JST_INFO("  Offset:       {}", config.offset);
-    JST_INFO("  Zoom:         {}", config.zoom);
-    JST_INFO("  Interpolate:  {}", config.interpolate ? "YES" : "NO");
-    JST_INFO("  Height:       {}", config.height);
-    JST_INFO("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Offset:       {}", config.offset);
+    JST_DEBUG("  Zoom:         {}", config.zoom);
+    JST_DEBUG("  Interpolate:  {}", config.interpolate ? "YES" : "NO");
+    JST_DEBUG("  Height:       {}", config.height);
+    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>

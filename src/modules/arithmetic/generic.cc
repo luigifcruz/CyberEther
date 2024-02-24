@@ -48,7 +48,8 @@ Result Arithmetic<D, T>::create() {
 
 template<Device D, typename T>
 void Arithmetic<D, T>::info() const {
-    JST_INFO("  Operation: {}", config.operation);
+    JST_DEBUG("  Operation: {}", config.operation);
+    JST_DEBUG("  Axis: {}", config.axis);
 }
 
 }  // namespace Jetstream

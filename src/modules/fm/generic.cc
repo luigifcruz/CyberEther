@@ -21,7 +21,7 @@ Result FM<D, IT, OT>::create() {
 
 template<Device D, typename IT, typename OT>
 void FM<D, IT, OT>::info() const {
-    JST_INFO("  Sample Rate: {:.2f} MHz", config.sampleRate / JST_MHZ);
+    JST_DEBUG("  Sample Rate: {:.2f} MHz", config.sampleRate / JST_MHZ);
 }
 
 }  // namespace Jetstream

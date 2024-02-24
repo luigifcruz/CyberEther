@@ -32,28 +32,28 @@ Result Scheduler::addModule(const Locale& locale,
     running = true;
 
     // Print new module metadata.
-    JST_INFO("----------------------------------------------------------------------------------------------------------------------");
-    JST_INFO("[{}] [Device::{}] [C: {}, P: {}]", locale,
+    JST_DEBUG("----------------------------------------------------------------------------------------------------------------------");
+    JST_DEBUG("[{}] [Device::{}] [C: {}, P: {}]", locale,
                                                  module->device(),
                                                  (compute) ? "YES" : "NO",
                                                  (present) ? "YES" : "NO");
-    JST_INFO("----------------------------------------------------------------------------------------------------------------------");
+    JST_DEBUG("----------------------------------------------------------------------------------------------------------------------");
 
     {
-        JST_INFO("Configuration:");
+        JST_DEBUG("Configuration:");
         module->info();
     }
 
     {
-        JST_INFO("Block I/O:");
+        JST_DEBUG("Block I/O:");
 
         U64 inputCount = 0;
-        JST_INFO("  Inputs:");
+        JST_DEBUG("  Inputs:");
         if (inputMap.empty()) {
-            JST_INFO("    None")
+            JST_DEBUG("    None")
         }
         for (const auto& [_, meta] : inputMap) {
-            JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | [{}]", inputCount++,
+            JST_DEBUG("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | [{}]", inputCount++,
                                                                                                          meta.dataType,
                                                                                                          meta.shape,
                                                                                                          meta.device,
@@ -63,12 +63,12 @@ Result Scheduler::addModule(const Locale& locale,
         }
 
         U64 outputCount = 0;
-        JST_INFO("  Outputs:");
+        JST_DEBUG("  Outputs:");
         if (outputMap.empty()) {
-            JST_INFO("    None")
+            JST_DEBUG("    None")
         }
         for (const auto& [_, meta] : outputMap) {
-            JST_INFO("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | [{}]", outputCount++,
+            JST_DEBUG("    {}: [{:>4s}] {} | [Device::{}] | Pointer: 0x{:016X} | Hash: 0x{:016X} | [{}]", outputCount++,
                                                                                                          meta.dataType,
                                                                                                          meta.shape,
                                                                                                          meta.device,
@@ -77,7 +77,7 @@ Result Scheduler::addModule(const Locale& locale,
                                                                                                          meta.locale);
         }
     }
-    JST_INFO("----------------------------------------------------------------------------------------------------------------------");
+    JST_DEBUG("----------------------------------------------------------------------------------------------------------------------");
 
     JST_CHECK(lockState([&]{
         // Destroy compute logic from modules.
@@ -498,14 +498,14 @@ Result Scheduler::arrangeDependencyOrder() {
         deviceExecutionOrder.back().second.push_back(name);
     }
 
-    JST_INFO("---------------------------------------------------");
-    JST_INFO("Device execution order:");
-    JST_INFO("---------------------------------------------------");
+    JST_DEBUG("---------------------------------------------------");
+    JST_DEBUG("Device execution order:");
+    JST_DEBUG("---------------------------------------------------");
     for (U64 i = 0; i < deviceExecutionOrder.size(); i++) {
         const auto& [device, blocksNames] = deviceExecutionOrder[i];
-        JST_INFO("  [{:02}] [Device::{}]: {}", i, device, blocksNames);
+        JST_DEBUG("  [{:02}] [Device::{}]: {}", i, device, blocksNames);
     }
-    JST_INFO("---------------------------------------------------");
+    JST_DEBUG("---------------------------------------------------");
 
     return Result::SUCCESS;
 }

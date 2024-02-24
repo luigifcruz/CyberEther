@@ -63,7 +63,7 @@ Result Multiply<D, T>::create() {
 
 template<Device D, typename T>
 void Multiply<D, T>::info() const {
-    JST_INFO("  None");
+    JST_DEBUG("  None");
 }
 
 }  // namespace Jetstream

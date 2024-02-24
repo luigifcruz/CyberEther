@@ -252,8 +252,8 @@ Result Remote<D, T>::destroy() {
 
 template<Device D, typename T>
 void Remote<D, T>::info() const {
-    JST_INFO("  Endpoint:     {}", config.endpoint);
-    JST_INFO("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Endpoint:     {}", config.endpoint);
+    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>

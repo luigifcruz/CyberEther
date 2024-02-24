@@ -177,13 +177,13 @@ Result Soapy<D, T>::soapyThreadLoop() {
 
 template<Device D, typename T>
 void Soapy<D, T>::info() const {
-    JST_INFO("  Device String:          {}", config.deviceString);
-    JST_INFO("  Stream String:          {}", config.streamString);
-    JST_INFO("  Frequency:              {:.2f} MHz", config.frequency / JST_MHZ);
-    JST_INFO("  Sample Rate:            {:.2f} MHz", config.sampleRate / JST_MHZ);
-    JST_INFO("  Automatic Gain:         {}", config.automaticGain ? "YES" : "NO");
-    JST_INFO("  Number of Batches:      {}", config.numberOfBatches);
-    JST_INFO("  Number of Time Samples: {}", config.numberOfTimeSamples);
+    JST_DEBUG("  Device String:          {}", config.deviceString);
+    JST_DEBUG("  Stream String:          {}", config.streamString);
+    JST_DEBUG("  Frequency:              {:.2f} MHz", config.frequency / JST_MHZ);
+    JST_DEBUG("  Sample Rate:            {:.2f} MHz", config.sampleRate / JST_MHZ);
+    JST_DEBUG("  Automatic Gain:         {}", config.automaticGain ? "YES" : "NO");
+    JST_DEBUG("  Number of Batches:      {}", config.numberOfBatches);
+    JST_DEBUG("  Number of Time Samples: {}", config.numberOfTimeSamples);
 }
 
 template<Device D, typename T>

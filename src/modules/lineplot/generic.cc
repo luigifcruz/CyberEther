@@ -52,7 +52,13 @@ Result Lineplot<D, T>::create() {
 
 template<Device D, typename T>
 void Lineplot<D, T>::info() const {
-    JST_INFO("  Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Averaging: {}", config.averaging);
+    JST_DEBUG("  Number of Vertical Lines: {}", config.numberOfVerticalLines);
+    JST_DEBUG("  Number of Horizontal Lines: {}", config.numberOfHorizontalLines);
+    JST_DEBUG("  Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Zoom: {}", config.zoom);
+    JST_DEBUG("  Translation: {}", config.translation);
+    JST_DEBUG("  Thickness: {}", config.thickness);
 }
 
 template<Device D, typename T>
