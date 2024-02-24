@@ -145,7 +145,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --benchmark [type]      Run the benchmark and output the results (`markdown`, `json`, or `csv`). Default: `markdown`" << std::endl;
             std::cout << "  --no-hw-acceleration    Disable hardware acceleration. Enabled otherwise." << std::endl;
             std::cout << "Other Options:" << std::endl;
-            std::cout << "  --staging-buffer [size] Set the staging buffer size (MB). Default: `32`" << std::endl;
+            std::cout << "  --staging-buffer [size] Set the staging buffer size (MB). Default: `64`" << std::endl;
             std::cout << "  --device-id [id]        Set the physical device ID. Default: `0`" << std::endl;
             std::cout << "  --no-validation         Disable Vulkan validation layers. Enabled otherwise." << std::endl;
             std::cout << "  --no-vsync              Disable vsync. Enabled otherwise." << std::endl;
