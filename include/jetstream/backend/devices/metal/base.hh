@@ -21,6 +21,7 @@ class Metal {
     std::string getApiVersion() const;
     bool hasUnifiedMemory() const;
     bool getLowPowerStatus() const;
+    U64 getMultisampling() const;
     U64 getPhysicalMemory() const;
     U64 getActiveProcessorCount() const; 
     U64 getTotalProcessorCount() const;
