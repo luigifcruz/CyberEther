@@ -103,6 +103,7 @@ class JETSTREAM_API Compositor {
     bool flowgraphEnabled;
     bool debugDemoEnabled;
     bool debugLatencyEnabled;
+    bool fullscreenEnabled;
     bool debugEnableTrace;
     U64 globalModalContentId;
     I32 nodeContextMenuNodeId;
@@ -147,6 +148,7 @@ class JETSTREAM_API Compositor {
     std::optional<bool> updateFlowgraphBlobMailbox;
     std::optional<bool> saveFlowgraphMailbox;
     std::optional<bool> newFlowgraphMailbox;
+    std::optional<bool> exitFullscreenMailbox;
 
     ImGuiID mainNodeId;
     bool globalModalToggle;

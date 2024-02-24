@@ -224,6 +224,10 @@ class Remote : public Block {
         return remote->isSocketStreaming();
     }
 
+    constexpr bool shouldDrawFullscreen() const {
+        return remote->isSocketStreaming();
+    }
+
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);

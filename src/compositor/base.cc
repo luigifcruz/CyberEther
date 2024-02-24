@@ -23,6 +23,7 @@ Compositor::Compositor(Instance& instance)
        flowgraphEnabled(true),
        debugDemoEnabled(false),
        debugLatencyEnabled(false),
+       fullscreenEnabled(false),
        debugEnableTrace(false),
        globalModalContentId(0),
        nodeContextMenuNodeId(0),
@@ -659,6 +660,11 @@ Result Compositor::drawStatic() {
         interactionTrigger = 5;
     }
 
+    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_F, 0, flag)) {
+        JST_TRACE("[COMPOSITOR] Exit fullscreen shortcut pressed.");
+        interactionTrigger = 9;
+    }
+
     //
     // Menu Bar.
     //
@@ -978,6 +984,11 @@ Result Compositor::drawStatic() {
         globalModalContentId = 4;
     }
 
+    // Exit fullscreen
+    if (interactionTrigger == 9) {
+        exitFullscreenMailbox = true;
+    }
+
     //
     // Docking Arena.
     //
@@ -1102,7 +1113,7 @@ Result Compositor::drawStatic() {
     //
 
     [&](){
-        if (!infoPanelEnabled) {
+        if (!infoPanelEnabled || fullscreenEnabled) {
             return;
         }
 
@@ -1127,7 +1138,7 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowViewport(viewport->ID);
 
         ImGui::SetNextWindowBgAlpha(0.35f);
-        ImGui::Begin("Info", nullptr, windowFlags);
+        ImGui::Begin("Info HUD", nullptr, windowFlags);
 
         if (ImGui::TreeNodeEx("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
@@ -1178,6 +1189,45 @@ Result Compositor::drawStatic() {
         }
 
         ImGui::Dummy(ImVec2(variableWidth * 2.3f, 0.0f));
+
+        ImGui::End();
+    }();
+
+    //
+    // Fullscreen HUD.
+    //
+
+    [&](){
+        if (!fullscreenEnabled) {
+            return;
+        }
+
+        const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
+                                             ImGuiWindowFlags_NoDocking |
+                                             ImGuiWindowFlags_AlwaysAutoResize |
+                                             ImGuiWindowFlags_NoSavedSettings |
+                                             ImGuiWindowFlags_NoFocusOnAppearing |
+                                             ImGuiWindowFlags_NoNav |
+                                             ImGuiWindowFlags_NoMove |
+                                             ImGuiWindowFlags_Tooltip;
+
+        const F32 windowPad = 12.0f * scalingFactor;
+        ImVec2 workPos = viewport->WorkPos;
+        ImVec2 workSize = viewport->WorkSize;
+        ImVec2 windowPos, windowPosPivot;
+        windowPos.x = workPos.x + workSize.x - windowPad;
+        windowPos.y = windowPad;
+        windowPosPivot.x = 1.0f;
+        windowPosPivot.y = 0.0f;
+        ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, windowPosPivot);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGui::SetNextWindowBgAlpha(0.5f);
+        ImGui::Begin("Fullscreen HUD", nullptr, windowFlags);
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
+        ImGui::TextUnformatted(ICON_FA_EXPAND " Fullscreen Mode (Press CTRL+L to exit)");
+        ImGui::PopStyleColor();
 
         ImGui::End();
     }();
@@ -2010,6 +2060,53 @@ Result Compositor::drawGraph() {
     }
 
     //
+    // Fullscreen Render
+    //
+
+    for (const auto& [_, state] : nodeStates) {
+        if (!state.block->getState().fullscreenEnabled ||
+            !state.block->shouldDrawFullscreen() ||
+            !state.block->complete()) {
+            fullscreenEnabled = false;
+            continue;
+        }
+
+        if (exitFullscreenMailbox.has_value()) {
+            state.block->state.fullscreenEnabled = false;
+            exitFullscreenMailbox.reset();
+            fullscreenEnabled = false;
+            break;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(io.DisplaySize);
+
+        const auto flags = ImGuiWindowFlags_NoTitleBar |
+                           ImGuiWindowFlags_NoResize | 
+                           ImGuiWindowFlags_NoMove | 
+                           ImGuiWindowFlags_NoScrollbar | 
+                           ImGuiWindowFlags_NoScrollWithMouse | 
+                           ImGuiWindowFlags_NoCollapse | 
+                           ImGuiWindowFlags_NoSavedSettings;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        if (!ImGui::Begin(jst::fmt::format("Fullscreen - {}", state.title).c_str(), &state.block->state.viewEnabled, flags)) {
+            ImGui::End();
+            ImGui::PopStyleVar();
+            ImGui::PopStyleVar();
+            continue;
+        }
+        state.block->drawView();
+        ImGui::End();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleVar();
+
+        fullscreenEnabled = true;
+        break;
+    }
+
+    //
     // Control Render
     //
 
@@ -2293,6 +2390,17 @@ Result Compositor::drawGraph() {
 
                 if (block->shouldDrawView()) {
                     ImGui::Checkbox("Window", &block->state.viewEnabled);
+
+                    if (block->shouldDrawControl() ||
+                        block->shouldDrawInfo()    ||
+                        block->shouldDrawPreview() ||
+                        block->shouldDrawFullscreen()) {
+                        ImGui::SameLine();
+                    }
+                }
+
+                if (block->shouldDrawFullscreen()) {
+                    ImGui::Checkbox("Fullscreen", &block->state.fullscreenEnabled);
 
                     if (block->shouldDrawControl() ||
                         block->shouldDrawInfo()    ||

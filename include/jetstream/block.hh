@@ -34,9 +34,10 @@ class JETSTREAM_API Block {
         bool viewEnabled = false;
         bool previewEnabled = false;
         bool controlEnabled = false;
+        bool fullscreenEnabled = false;
         Size2D<F32> nodePos = {0.0f, 0.0f};
 
-        JST_SERDES(nodeWidth, viewEnabled, previewEnabled, controlEnabled, nodePos);
+        JST_SERDES(nodeWidth, viewEnabled, previewEnabled, controlEnabled, fullscreenEnabled, nodePos);
     };
 
     constexpr const State& getState() const {
@@ -141,6 +142,9 @@ class JETSTREAM_API Block {
 
     virtual void drawView() {}
     virtual constexpr bool shouldDrawView() const {
+        return false;
+    }
+    virtual constexpr bool shouldDrawFullscreen() const {
         return false;
     }
 
