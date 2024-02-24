@@ -128,7 +128,7 @@ class Lineplot : public Block {
             const auto& scroll = ImGui::GetIO().MouseWheel;    
 
             if (scroll != 0.0f) {
-                const auto& [mouse_x, mouse_y] = GetRelativeMousePos();
+                const auto& [mouse_x, mouse_y] = GetRelativeMousePos({x, y}, config.zoom);
                 config.zoom += (scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
                                                  std::min(config.zoom * -0.02f, -0.02f);
 
@@ -140,11 +140,8 @@ class Lineplot : public Block {
             // Handle translation interaction.
 
             if (ImGui::IsAnyMouseDown()) {
-                const auto& [dx, _] = ImGui::GetMouseDragDelta(0);
-
-                if (dx != 0.0f) {
-                    lineplot->translation((((dx * (1.0f / x)) * 2.0f) / config.zoom) + config.translation);
-                }
+                const auto& [translation, _] = GetRelativeMouseTranslation({x, y}, config.zoom);
+                lineplot->translation(translation + config.translation);
             } else {
                 config.translation = lineplot->translation();
             }

@@ -204,14 +204,13 @@ const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
 
 template<Device D, typename T>
 std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, const F32& zoom) {
-    const auto& before_mouse_x = windowToPlotCoords(mouse_pos);
-
     if (zoom < 1.0f) {
         config.zoom = 1.0f;
         config.translation = 0.0f;
     } else {
+        const auto& before_mouse_x = mouse_pos.first;
+        const auto& after_mouse_x = (before_mouse_x * config.zoom) / zoom;
         config.zoom = zoom;
-        const auto& after_mouse_x = windowToPlotCoords(mouse_pos);
         config.translation += after_mouse_x - before_mouse_x;
     }
 
@@ -365,17 +364,6 @@ void Lineplot<D, T>::updateGridVertices() {
 
     updateGridVerticesFlag = true;
 }
-
-template<Device D, typename T>
-F32 Lineplot<D, T>::windowToPlotCoords(const std::pair<F32, F32>& mouse_pos) {
-    const auto& [x, _1] = mouse_pos;
-    const auto& [width, _2] = config.viewSize * config.scale;
-
-    const F32 norm_x = ((x * config.scale) / width) * 2.0f - 1.0f;
-    const F32 plot_x = norm_x / config.zoom;
-
-    return plot_x;
-};
 
 template<Device D, typename T>
 Render::Texture& Lineplot<D, T>::getTexture() {
