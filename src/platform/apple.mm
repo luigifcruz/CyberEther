@@ -7,6 +7,7 @@
 #import <UIKit/UIKit.h>
 #else
 #import <AppKit/AppKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #endif
 
 namespace Jetstream::Platform {
@@ -48,6 +49,10 @@ Result PickFile(std::string& path) {
         [panel setCanChooseFiles:YES];
         [panel setCanChooseDirectories:NO];
         [panel setAllowsMultipleSelection:NO];
+
+        UTType* yamlType = [UTType typeWithFilenameExtension:@"yaml"];
+        UTType* ymlType = [UTType typeWithFilenameExtension:@"yml"];
+        [panel setAllowedContentTypes:@[yamlType, ymlType]];
 
         if ([panel runModal] == NSModalResponseOK) {
             NSURL* url = [[panel URLs] objectAtIndex:0];
