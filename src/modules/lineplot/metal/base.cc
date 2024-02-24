@@ -35,10 +35,13 @@ static const char shadersSrc[] = R"""(
         amplitude = (amplitude * constants.normalizationFactor) - 1.0f;
 
         // Calculate moving average.
+        float average = bins[id].y;
+        average -= average / constants.average;
+        average += amplitude / constants.average;
 
         // Store result.
         bins[id].x = id * 2.0f / (constants.gridSize - 1) - 1.0f;
-        bins[id].y = amplitude;
+        bins[id].y = average;
     }
 
     inline float2 ComputePerpendicular(float2 d, float2 thickness) {
