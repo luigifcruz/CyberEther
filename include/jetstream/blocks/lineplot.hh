@@ -19,7 +19,7 @@ class Lineplot : public Block {
         Size2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
-        F32 thickness = 1.5f;
+        F32 thickness = 3.0f;
 
         JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
@@ -84,7 +84,8 @@ class Lineplot : public Block {
                 .viewSize = config.viewSize,
                 .zoom = config.zoom,
                 .translation = config.translation,
-                .thickness = config.thickness * ImGui::GetIO().DisplayFramebufferScale.x,
+                .thickness = config.thickness,
+                .scale = 1.0f,
             }, {
                 .buffer = input.buffer,
             },
@@ -115,13 +116,11 @@ class Lineplot : public Block {
     }
 
     void drawView() {
-        auto [x, y] = ImGui::GetContentRegionAvail();
-        auto scale = ImGui::GetIO().DisplayFramebufferScale;
-        auto [width, height] = lineplot->viewSize({
-            static_cast<U64>(x*scale.x),
-            static_cast<U64>(y*scale.y)
-        });
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        lineplot->scale(ImGui::GetIO().DisplayFramebufferScale.x);
+
+        const auto& [x, y] = GetContentRegion();
+        const auto& [width, height] = lineplot->viewSize({x, y});
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, height));
 
         if (ImGui::IsItemHovered()) {
             // Handle zoom interaction.
@@ -129,12 +128,9 @@ class Lineplot : public Block {
             const auto& scroll = ImGui::GetIO().MouseWheel;    
 
             if (scroll != 0.0f) {
-                auto [mouse_x, mouse_y] = GetRelativeMousePos();
+                const auto& [mouse_x, mouse_y] = GetRelativeMousePos();
                 config.zoom += (scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
                                                  std::min(config.zoom * -0.02f, -0.02f);
-
-                mouse_x *= scale.x;
-                mouse_y *= scale.y;
 
                 const auto& [zoom, translation] = lineplot->zoom({mouse_x, mouse_y}, config.zoom);
                 config.zoom = zoom;

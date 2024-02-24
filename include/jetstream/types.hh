@@ -60,6 +60,16 @@ struct Size2D {
     }
 };
 
+template<typename T>
+Size2D<T> operator*(const Size2D<T>& a, const F32& b) {
+    return {static_cast<T>(a.width * b), static_cast<T>(a.height * b)};
+}
+
+template<typename T>
+Size2D<T> operator/(const Size2D<T>& a, const F32& b) {
+    return {static_cast<T>(a.width / b), static_cast<T>(a.height / b)};
+}
+
 inline Size2D<U64> NullSize = {0, 0};
 
 }  // namespace Jetstream

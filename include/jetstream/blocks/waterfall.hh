@@ -123,9 +123,9 @@ class Waterfall : public Block {
 
         if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
             if (position == 0) {
-                position = (GetRelativeMousePos().x / waterfall->zoom()) + waterfall->offset();
+                position = (GetRelativeMousePos().first / waterfall->zoom()) + waterfall->offset();
             }
-            waterfall->offset(position - (GetRelativeMousePos().x / waterfall->zoom()));
+            waterfall->offset(position - (GetRelativeMousePos().first / waterfall->zoom()));
         } else {
             position = 0;
         }

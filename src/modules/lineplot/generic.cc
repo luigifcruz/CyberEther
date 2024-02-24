@@ -58,6 +58,7 @@ void Lineplot<D, T>::info() const {
     JST_DEBUG("  Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
     JST_DEBUG("  Zoom: {}", config.zoom);
     JST_DEBUG("  Translation: {}", config.translation);
+    JST_DEBUG("  Scale: {}", config.scale);
     JST_DEBUG("  Thickness: {}", config.thickness);
 }
 
@@ -138,7 +139,7 @@ Result Lineplot<D, T>::createPresent() {
     JST_CHECK(window->build(signalProgram, signalProgramCfg));
 
     Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize;
+    textureCfg.size = config.viewSize * config.scale;
     JST_CHECK(window->build(texture, textureCfg));
 
     Render::Surface::Config surfaceCfg;
@@ -191,8 +192,8 @@ Result Lineplot<D, T>::present() {
 
 template<Device D, typename T>
 const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
-    if (surface->size(viewSize) != this->viewSize()) {
-        config.viewSize = surface->size();
+    if (surface->size(viewSize * config.scale) != this->viewSize()) {
+        config.viewSize = surface->size() / config.scale;
     }
 
     updateScaling();
@@ -239,6 +240,21 @@ const U64& Lineplot<D, T>::averaging(const U64& averaging) {
 }
 
 template<Device D, typename T>
+const F32& Lineplot<D, T>::scale(const F32& scale) {
+    if (scale < 0.0f) {
+        JST_ERROR("Invalid scale ({}). It should be positive.", scale);
+        return config.scale;
+    }
+
+    if (scale != config.scale) {
+        config.scale = scale;
+        updateGridVertices();
+    }
+
+    return config.scale;
+}
+
+template<Device D, typename T>
 void Lineplot<D, T>::updateTransform() {
     const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
     config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);
@@ -262,8 +278,8 @@ void Lineplot<D, T>::updateTransform() {
 template<Device D, typename T>
 void Lineplot<D, T>::updateScaling() {
     auto& [x, y] = thickness;
-    x = ((2.0f / config.viewSize.width) * config.thickness) / config.zoom / 2.0f;
-    y = ((2.0f / config.viewSize.height) * config.thickness) / 2.0f;
+    x = ((2.0f / (config.viewSize.width * config.scale)) * config.thickness) / config.zoom / 2.0f;
+    y = ((2.0f / (config.viewSize.height * config.scale)) * config.thickness) / 2.0f;
 }
 
 template<Device D, typename T>
@@ -353,9 +369,9 @@ void Lineplot<D, T>::updateGridVertices() {
 template<Device D, typename T>
 F32 Lineplot<D, T>::windowToPlotCoords(const std::pair<F32, F32>& mouse_pos) {
     const auto& [x, _1] = mouse_pos;
-    const auto& [width, _2] = config.viewSize;
+    const auto& [width, _2] = config.viewSize * config.scale;
 
-    const F32 norm_x = (x / width) * 2.0f - 1.0f;
+    const F32 norm_x = ((x * config.scale) / width) * 2.0f - 1.0f;
     const F32 plot_x = norm_x / config.zoom;
 
     return plot_x;

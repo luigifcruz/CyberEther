@@ -156,11 +156,21 @@ class JETSTREAM_API Block {
 
     // Helpers
 
-    static ImVec2 GetRelativeMousePos() {
+    static std::pair<U64, U64> GetRelativeMousePos() {
         ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
         ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
-        return ImVec2(mousePositionAbsolute.x - screenPositionAbsolute.x,
-                      mousePositionAbsolute.y - screenPositionAbsolute.y);
+        return {
+            static_cast<U64>(mousePositionAbsolute.x - screenPositionAbsolute.x),
+            static_cast<U64>(mousePositionAbsolute.y - screenPositionAbsolute.y)
+        };
+    }
+
+    static std::pair<U64, U64> GetContentRegion() {
+        ImVec2 contentRegion = ImGui::GetContentRegionAvail();
+        return {
+            static_cast<U64>(contentRegion.x),
+            static_cast<U64>(contentRegion.y)
+        };
     }
 
  protected:
