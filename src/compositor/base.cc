@@ -1525,6 +1525,8 @@ Result Compositor::drawStatic() {
             ImGui::Spacing();
             ImGui::Separator();
 
+            bool openFile = false;
+
             ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path or URL of a flowgraph file here:");
             static std::string globalModalPath;
             if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody | 
@@ -1536,18 +1538,25 @@ Result Compositor::drawStatic() {
 
                 ImGui::TableSetColumnIndex(0);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::InputText("##FlowgraphPath", &globalModalPath);
+                if (ImGui::InputText("##FlowgraphPath", &globalModalPath, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    openFile |= true;
+                }
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    JST_CHECK_NOTIFY(Platform::PickFile(globalModalPath));
+                    const auto& res = Platform::PickFile(globalModalPath);
+                    if (res == Result::SUCCESS) {
+                        openFile |= true;
+                    }
+                    JST_CHECK_NOTIFY(res);
                 }
 
                 ImGui::EndTable();
             }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 6.0f, scalingFactor * 6.0f));
-            if (ImGui::Button(ICON_FA_PLAY " Load")) {
+            openFile |= ImGui::Button(ICON_FA_PLAY " Load");
+            if (openFile) {
                 if (globalModalPath.size() == 0) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
                 } else if (std::regex_match(globalModalPath, std::regex("^(https?)://.*$"))) {
@@ -1644,6 +1653,8 @@ Result Compositor::drawStatic() {
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 5.0f, scalingFactor * 5.0f));
 
+            bool saveFile = false;
+
             if (ImGui::BeginTable("##flowgraph-info-path", 2, ImGuiTableFlags_NoBordersInBody | 
                                                               ImGuiTableFlags_NoBordersInBodyUntilResize)) {
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 80.0f);
@@ -1654,17 +1665,24 @@ Result Compositor::drawStatic() {
                 ImGui::TableSetColumnIndex(0);
                 ImGui::SetNextItemWidth(-1);
 
-                ImGui::InputText("##flowgraph-info-filename", &filenameField);
+                if (ImGui::InputText("##flowgraph-info-filename", &filenameField, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    saveFile |= true;
+                }
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    JST_CHECK_NOTIFY(Platform::SaveFile(filenameField));
+                    const auto& res = Platform::SaveFile(filenameField);
+                    if (res == Result::SUCCESS) {
+                        saveFile |= true;
+                    }
+                    JST_CHECK_NOTIFY(res);
                 }
 
                 ImGui::EndTable();
             }
 
-            if (ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0))) {
+            saveFile |= ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0));
+            if (saveFile) {
                 const auto& result = instance.flowgraph().setFilename(filenameField);
                 if (result == Result::SUCCESS) {
                     saveFlowgraphMailbox = true;
