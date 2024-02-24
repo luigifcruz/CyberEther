@@ -660,7 +660,7 @@ Result Compositor::drawStatic() {
         interactionTrigger = 5;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_F, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_L, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Exit fullscreen shortcut pressed.");
         interactionTrigger = 9;
     }
