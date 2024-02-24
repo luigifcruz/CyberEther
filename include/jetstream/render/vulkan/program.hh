@@ -13,7 +13,7 @@ class ProgramImp<Device::Vulkan> : public Program {
 
  protected:
     Result create(VkRenderPass& renderPass,
-                  std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer);
+                  const std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer);
     Result encode(VkCommandBuffer& commandBuffer, VkRenderPass& renderPass);
     Result destroy();
 

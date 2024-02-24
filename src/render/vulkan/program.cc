@@ -25,7 +25,7 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 }
 
 Result Implementation::create(VkRenderPass& renderPass,
-                              std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
+                              const std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
     JST_DEBUG("[VULKAN] Creating program.");
 
     auto& backend = Backend::State<Device::Vulkan>();
