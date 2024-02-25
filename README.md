@@ -290,6 +290,9 @@ Another option other than using the graphical interface is to use CyberEther as 
 
 ## Frequently Asked Questions
 
+#### Q. Is CyberEther web-based?
+No. CyberEther is a native application that can run on any modern device. It does not use a Browser, Electron, Qt, or any other multi-platform framework. It is built on top of low-level APIs such as Vulkan, Metal, and WebGPU. The CyberEther version that runs in the browser is a fully-featured application that is compiled to WebAssembly and runs on top of WebGPU. It is not a web-based application in the traditional sense and it does not use JavaScript for the core functionality.
+
 #### Q. Why is CyberEther written in C++?
 The short answer to this question is that compatibility is king. The longer answer is that one of the design choices is to be as low-level as possible. This allows me to have full control over the code and to be able to optimize it for a specific platform without being locked down by a framework. That is why CyberEther can run inside the browser while being able to scale towards a supercomputer. Currently, one of the problems with other languages is that they have too many wrappers and abstractions that make it difficult to debug and optimize the code. I expect this to change in the future as first-party support grows but for now, C++ is the best option. As John Carmack once said, "[...] externalities that can overwhelm the benefits of a language [...]". I am also a big fan of Rust and I am looking forward to finding a good project to use it in the future.
 
