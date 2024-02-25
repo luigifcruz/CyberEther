@@ -12,7 +12,7 @@ namespace Jetstream {
 template<Device D, typename T>
 class TensorModifier : public Module, public Compute {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         std::function<Result(Tensor<D, T>&)> callback;
@@ -63,7 +63,7 @@ class TensorModifier : public Module, public Compute {
     }
 
     void info() const final {
-        JST_INFO("  None");
+        JST_DEBUG("  None");
     }
 
     // Constructor
