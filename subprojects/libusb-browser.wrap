@@ -1,0 +1,10 @@
+[wrap-file]
+directory = libusb-master
+source_url = https://github.com/libusb/libusb/archive/refs/heads/master.zip
+source_filename = libusb-master.zip
+source_hash = 465cd02dd4e056174023b3b1757217fdb3e72affa1f8b0fe5374d08c410949c1
+patch_directory = libusb-browser
+wrapdb_version = 1.0.26-3
+
+[provide]
+libusb-browser = libusb_dep
