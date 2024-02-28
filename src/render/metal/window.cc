@@ -156,6 +156,12 @@ Result Implementation::underlyingBegin() {
     colorAttachDescriptor->setStoreAction(MTL::StoreActionStore);
     colorAttachDescriptor->setClearColor(MTL::ClearColor(0, 0, 0, 1.0));
 
+    commandBuffer = commandQueue->commandBuffer();
+
+    for (auto &surface : surfaces) {
+        JST_CHECK(surface->draw(commandBuffer));
+    }
+
     if (config.imgui) {
         JST_CHECK(beginImgui());
     }
@@ -164,11 +170,6 @@ Result Implementation::underlyingBegin() {
 }
 
 Result Implementation::underlyingEnd() {
-    commandBuffer = commandQueue->commandBuffer();
-
-    for (auto &surface : surfaces) {
-        JST_CHECK(surface->draw(commandBuffer));
-    }
 
     if (config.imgui) {
         JST_CHECK(endImgui());
