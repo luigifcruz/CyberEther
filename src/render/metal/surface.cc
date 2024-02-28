@@ -35,6 +35,8 @@ Result Implementation::create() {
         JST_CHECK(program->create((config.multisampled) ? framebuffer : framebufferResolve));
     }
 
+    requestedSize = framebufferResolve->size();
+
     return Result::SUCCESS;
 }
 
@@ -93,6 +95,15 @@ Result Implementation::destroyFramebuffer() {
 }
 
 Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
+    if (framebufferResolve->size(requestedSize)) {
+        if (config.multisampled) {
+            framebuffer->size(requestedSize);
+        }
+
+        JST_CHECK(destroyFramebuffer());
+        JST_CHECK(createFramebuffer());
+    }
+
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
     for (auto& program : programs) {
         JST_CHECK(program->draw(renderCmdEncoder));
@@ -107,14 +118,7 @@ const Size2D<U64>& Implementation::size(const Size2D<U64>& size) {
         return NullSize;
     }
 
-    if (framebufferResolve->size(size)) {
-        if (config.multisampled) {
-            framebuffer->size(size);
-        }
-
-        destroyFramebuffer();
-        createFramebuffer();
-    }
+    requestedSize = size;
 
     return framebufferResolve->size();
 } 
