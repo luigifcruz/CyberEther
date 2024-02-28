@@ -170,7 +170,6 @@ Result Implementation::underlyingBegin() {
 }
 
 Result Implementation::underlyingEnd() {
-
     if (config.imgui) {
         JST_CHECK(endImgui());
     }
