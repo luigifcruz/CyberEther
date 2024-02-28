@@ -2043,7 +2043,8 @@ Result Compositor::drawGraph() {
     for (const auto& [_, state] : nodeStates) {
         if (!state.block->getState().viewEnabled ||
             !state.block->shouldDrawView() ||
-            !state.block->complete()) {
+            !state.block->complete() ||
+            fullscreenEnabled) {
             continue;
         }
 
@@ -2112,7 +2113,8 @@ Result Compositor::drawGraph() {
 
     for (const auto& [_, state] : nodeStates) {
         if (!state.block->getState().controlEnabled ||
-            !state.block->shouldDrawControl()) {
+            !state.block->shouldDrawControl() ||
+            fullscreenEnabled) {
             continue;
         }
 
@@ -2154,7 +2156,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!flowgraphEnabled || !instance.flowgraph().imported()) {
+        if (!flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
             return;
         }
 
@@ -2746,7 +2748,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!moduleStoreEnabled || !flowgraphEnabled || !instance.flowgraph().imported()) {
+        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
             return;
         }
 
