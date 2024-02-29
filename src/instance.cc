@@ -266,11 +266,6 @@ Result Instance::changeBlockDataType(Locale input, std::tuple<std::string, std::
         node->fingerprint.inputDataType = inputDataType;
         node->fingerprint.outputDataType = outputDataType;
 
-        // Clean-up every state because they will most likely be incompatible.
-        node->inputMap.clear();
-        node->outputMap.clear();
-        node->configMap.clear();
-
         return Result::SUCCESS;
     }));
 
