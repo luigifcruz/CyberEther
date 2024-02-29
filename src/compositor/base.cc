@@ -1206,8 +1206,6 @@ Result Compositor::drawStatic() {
                                              ImGuiWindowFlags_NoDocking |
                                              ImGuiWindowFlags_AlwaysAutoResize |
                                              ImGuiWindowFlags_NoSavedSettings |
-                                             ImGuiWindowFlags_NoFocusOnAppearing |
-                                             ImGuiWindowFlags_NoNav |
                                              ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_Tooltip;
 
@@ -2681,7 +2679,7 @@ Result Compositor::drawGraph() {
     }
 
     // Draw node context menu.
-    if (ImGui::BeginPopup("##node_context_menu")) {
+    if (ImGui::BeginPopup("##node_context_menu") && !fullscreenEnabled) {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& state = nodeStates.at(locale.block());
         const auto moduleEntry = Store::BlockMetadataList().at(state.fingerprint.id);
