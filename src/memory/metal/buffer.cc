@@ -34,29 +34,25 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::Metal
     };
 
-    // Check size.
-
-    if (prototype.size_bytes == 0) {
-        return;
-    }
-
     // Allocate memory buffer.
 
-    auto device = Backend::State<Device::Metal>()->getDevice();
-    const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
-    buffer = device->newBuffer(alignedSizeBytes, MTL::ResourceStorageModeShared);
-    if (!buffer) {
-        JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
-        JST_CHECK_THROW(Result::ERROR);
+    if (prototype.size_bytes > 0) {
+        auto device = Backend::State<Device::Metal>()->getDevice();
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+        buffer = device->newBuffer(alignedSizeBytes, MTL::ResourceStorageModeShared);
+        if (!buffer) {
+            JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
+        _host_native = true;
+        _device_native = true;
+        _host_accessible = true;
+        owns_data = true;
+
+        // Null out array.
+
+        memset(buffer->contents(), 0, prototype.size_bytes);
     }
-    _host_native = true;
-    _device_native = true;
-    _host_accessible = true;
-    owns_data = true;
-
-    // Null out array.
-
-    memset(buffer->contents(), 0, prototype.size_bytes);
 
     // Add compatible devices.
 
@@ -131,7 +127,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     _host_accessible = true;
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::CPU>&) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
     JST_TRACE("[METAL:BUFFER] Checking if CPU buffer can be imported.");
 
     // Check if Metal is available.
@@ -145,6 +141,13 @@ bool Implementation::CanImport(const TensorBuffer<Device::CPU>&) noexcept {
 
     if (!Backend::State<Device::Metal>()->hasUnifiedMemory()) {
         JST_TRACE("[METAL:BUFFER] Metal buffer is not unified.");
+        return false;
+    }
+
+    // Check if Metal buffer size is aligned.
+
+    if (!JST_IS_ALIGNED(root_buffer.data())) {
+        JST_TRACE("[METAL:BUFFER] Buffer is not aligned. Cannot import CPU memory.");
         return false;
     }
 

@@ -37,73 +37,75 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CUDA
     };
 
-    // Check size.
-
-    if (prototype.size_bytes == 0) {
-        return;
-    }
-
     // Allocate memory.
 
-    if (host_accessible) {
-        size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
-
-        JST_CUDA_CHECK_THROW(cudaMallocManaged(&buffer, size_bytes), [&]{
-            JST_FATAL("[CUDA:BUFFER] Failed to allocate managed CUDA memory: {}", err);
-        });
-
-        _device_native = true;
-        _host_native = true;
-        _host_accessible = true;
-    } else {
-        if (Backend::State<Device::CUDA>()->canExportDeviceMemory()) {
-            CUmemAllocationProp allocationProp = {};
-            allocationProp.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-            allocationProp.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-            allocationProp.location.id = Backend::State<Device::CUDA>()->getDeviceId();
-            allocationProp.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-
-            U64 granularity = 0;
-            cuMemGetAllocationGranularity(&granularity, 
-                                          &allocationProp, 
-                                          CU_MEM_ALLOC_GRANULARITY_MINIMUM);
-            size_bytes = JST_ROUND_UP(prototype.size_bytes, granularity);
-
-            JST_CUDA_CHECK_THROW(cuMemCreate(&alloc_handle, size_bytes, &allocationProp, 0), [&]{
-                JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
-            });
-
-            JST_CUDA_CHECK_THROW(cuMemAddressReserve(&device_ptr, size_bytes, 0, 0, 0), [&]{
-                JST_FATAL("[CUDA:BUFFER] Failed to reserve CUDA memory: {}", err);
-            });
-
-            JST_CUDA_CHECK_THROW(cuMemMap(device_ptr, size_bytes, 0, alloc_handle, 0), [&]{
-                JST_FATAL("[CUDA:BUFFER] Failed to map CUDA memory: {}", err);
-            });
-
-            CUmemAccessDesc accessDesc = {};
-            accessDesc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-            accessDesc.location.id = Backend::State<Device::CUDA>()->getDeviceId();
-            accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-
-            JST_CUDA_CHECK_THROW(cuMemSetAccess(device_ptr, size_bytes, &accessDesc, 1), [&]{
-                JST_FATAL("[CUDA:BUFFER] Failed to set CUDA memory access: {}", err);
-            });
-
-            buffer = reinterpret_cast<void*>(device_ptr);
-        } else {
+    if (prototype.size_bytes > 0) {
+        if (host_accessible) {
             size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 
-            JST_CUDA_CHECK_THROW(cudaMalloc(&buffer, size_bytes), [&]{
-                JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
+            JST_CUDA_CHECK_THROW(cudaMallocManaged(&buffer, size_bytes), [&]{
+                JST_FATAL("[CUDA:BUFFER] Failed to allocate managed CUDA memory: {}", err);
             });
-        }
 
-        _device_native = true;
-        _host_native = false;
-        _host_accessible = false;
+            _device_native = true;
+            _host_native = true;
+            _host_accessible = true;
+        } else {
+            if (Backend::State<Device::CUDA>()->canExportDeviceMemory()) {
+                CUmemAllocationProp allocationProp = {};
+                allocationProp.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+                allocationProp.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+                allocationProp.location.id = Backend::State<Device::CUDA>()->getDeviceId();
+                allocationProp.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+
+                U64 granularity = 0;
+                cuMemGetAllocationGranularity(&granularity, 
+                                            &allocationProp, 
+                                            CU_MEM_ALLOC_GRANULARITY_MINIMUM);
+                size_bytes = JST_ROUND_UP(prototype.size_bytes, granularity);
+
+                JST_CUDA_CHECK_THROW(cuMemCreate(&alloc_handle, size_bytes, &allocationProp, 0), [&]{
+                    JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
+                });
+
+                JST_CUDA_CHECK_THROW(cuMemAddressReserve(&device_ptr, size_bytes, 0, 0, 0), [&]{
+                    JST_FATAL("[CUDA:BUFFER] Failed to reserve CUDA memory: {}", err);
+                });
+
+                JST_CUDA_CHECK_THROW(cuMemMap(device_ptr, size_bytes, 0, alloc_handle, 0), [&]{
+                    JST_FATAL("[CUDA:BUFFER] Failed to map CUDA memory: {}", err);
+                });
+
+                CUmemAccessDesc accessDesc = {};
+                accessDesc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+                accessDesc.location.id = Backend::State<Device::CUDA>()->getDeviceId();
+                accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+
+                JST_CUDA_CHECK_THROW(cuMemSetAccess(device_ptr, size_bytes, &accessDesc, 1), [&]{
+                    JST_FATAL("[CUDA:BUFFER] Failed to set CUDA memory access: {}", err);
+                });
+
+                buffer = reinterpret_cast<void*>(device_ptr);
+            } else {
+                size_bytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+
+                JST_CUDA_CHECK_THROW(cudaMalloc(&buffer, size_bytes), [&]{
+                    JST_FATAL("[CUDA:BUFFER] Failed to allocate CUDA memory: {}", err);
+                });
+            }
+
+            _device_native = true;
+            _host_native = false;
+            _host_accessible = false;
+        }
+        owns_data = true;
+
+        // Null out array.
+
+        JST_CUDA_CHECK_THROW(cudaMemset(buffer, 0, size_bytes), [&]{
+            JST_FATAL("[CUDA:BUFFER] Failed to zero out CUDA memory: {}", err);
+        });
     }
-    owns_data = true;
 
     // Add compatible devices.
 

@@ -38,94 +38,104 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::Vulkan
     };
 
-    // Get device types.
+    // Allocate memory buffer.
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
-    const auto& unified = Backend::State<Device::Vulkan>()->hasUnifiedMemory();
-    const auto& canExport = Backend::State<Device::Vulkan>()->canExportDeviceMemory();
+    if (prototype.size_bytes > 0) {
+        // Get device types.
 
-    // Check size.
+        auto& backend = Backend::State<Device::Vulkan>();
 
-    if (prototype.size_bytes == 0) {
-        return;
-    }
+        auto& device = backend->getDevice();
+        auto& physicalDevice = backend->getPhysicalDevice();
+        auto& queue = backend->getComputeQueue();
+        auto& fence = backend->getDefaultFence();
+        auto& commandBuffer = backend->getDefaultCommandBuffer();
+        const auto& unified = backend->hasUnifiedMemory();
+        const auto& canExport = backend->canExportDeviceMemory();
 
-    // Create buffer object. 
+        // Create buffer object. 
 
-    VkExternalMemoryImageCreateInfo extImageCreateInfo = {};
-    extImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
-    extImageCreateInfo.handleTypes |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+        VkExternalMemoryImageCreateInfo extImageCreateInfo = {};
+        extImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+        extImageCreateInfo.handleTypes |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
 
-    VkBufferCreateInfo bufferInfo = {};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferInfo.pNext = (canExport) ? &extImageCreateInfo : nullptr;
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.pNext = (canExport) ? &extImageCreateInfo : nullptr;
 
-    JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &_buffer), [&]{
-        JST_ERROR("[VULKAN] Can't create memory buffer.");
-    });
+        JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &_buffer), [&]{
+            JST_ERROR("[VULKAN] Can't create memory buffer.");
+        });
 
-    // Allocate backing memory.
+        // Allocate backing memory.
 
-    VkMemoryRequirements memoryRequirements;
-    vkGetBufferMemoryRequirements(device, _buffer, &memoryRequirements);
+        VkMemoryRequirements memoryRequirements;
+        vkGetBufferMemoryRequirements(device, _buffer, &memoryRequirements);
 
-    VkMemoryPropertyFlags memoryProperties = 0;
+        VkMemoryPropertyFlags memoryProperties = 0;
 
-    if (unified) {
-        memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-        _host_accessible = true;
-        _device_native = true;
-        _host_native = true;
-
-        JST_TRACE("[VULKAN:BUFFER] Using unified memory (DL, HV, HC).");
-    } else {
-        if (host_accessible) {
+        if (unified) {
+            memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
             _host_accessible = true;
-            _device_native = false;
+            _device_native = true;
             _host_native = true;
 
-            JST_TRACE("[VULKAN:BUFFER] Using host accessible memory (HV, HC).");
+            JST_TRACE("[VULKAN:BUFFER] Using unified memory (DL, HV, HC).");
         } else {
-            memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            if (host_accessible) {
+                memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+                memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-            _host_accessible = false;
-            _device_native = true;
-            _host_native = false;
+                _host_accessible = true;
+                _device_native = false;
+                _host_native = true;
 
-            JST_TRACE("[VULKAN:BUFFER] Using device local memory (DL).");
+                JST_TRACE("[VULKAN:BUFFER] Using host accessible memory (HV, HC).");
+            } else {
+                memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+                _host_accessible = false;
+                _device_native = true;
+                _host_native = false;
+
+                JST_TRACE("[VULKAN:BUFFER] Using device local memory (DL).");
+            }
         }
+
+        VkExportMemoryAllocateInfo exportInfo = {};
+        exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+        exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+
+        VkMemoryAllocateInfo memoryAllocateInfo = {};
+        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryAllocateInfo.allocationSize = memoryRequirements.size;
+        memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                                    memoryRequirements.memoryTypeBits,
+                                                                    memoryProperties);
+        memoryAllocateInfo.pNext = (canExport) ? &exportInfo : nullptr;
+
+        JST_VK_CHECK_THROW(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &_memory), [&]{
+            JST_ERROR("[VULKAN:BUFFER] Failed to allocate buffer memory.");
+        });
+
+        JST_VK_CHECK_THROW(vkBindBufferMemory(device, _buffer, _memory, 0), [&]{
+            JST_ERROR("[VULKAN:BUFFER] Failed to bind memory to the buffer.");
+        });
+        owns_data = true;
+
+        // Null out array.
+
+        JST_CHECK_THROW(Backend::ExecuteOnce(device, queue, fence, commandBuffer, [&](VkCommandBuffer& commandBuffer){
+            vkCmdFillBuffer(commandBuffer, _buffer, 0, VK_WHOLE_SIZE, 0);
+            return Result::SUCCESS;
+        }));
     }
-
-    VkExportMemoryAllocateInfo exportInfo = {};
-    exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-    exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-
-    VkMemoryAllocateInfo memoryAllocateInfo = {};
-    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memoryAllocateInfo.allocationSize = memoryRequirements.size;
-    memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                                 memoryRequirements.memoryTypeBits,
-                                                                 memoryProperties);
-    memoryAllocateInfo.pNext = (canExport) ? &exportInfo : nullptr;
-
-    JST_VK_CHECK_THROW(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &_memory), [&]{
-        JST_ERROR("[VULKAN:BUFFER] Failed to allocate buffer memory.");
-    });
-
-    JST_VK_CHECK_THROW(vkBindBufferMemory(device, _buffer, _memory, 0), [&]{
-        JST_ERROR("[VULKAN:BUFFER] Failed to bind memory to the buffer.");
-    });
-    owns_data = true;
 
     // Add compatible devices.
 

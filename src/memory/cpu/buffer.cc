@@ -36,35 +36,31 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CPU,
     };
 
-    // Check size.
-
-    if (prototype.size_bytes == 0) {
-        return;
-    }
-
     // Allocate memory.
 
-    void* memoryAddr = nullptr;
-    const auto pageSize = JST_PAGESIZE();
-    const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+    if (prototype.size_bytes > 0) {
+        void* memoryAddr = nullptr;
+        const auto pageSize = JST_PAGESIZE();
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 #ifdef JST_OS_WINDOWS
-    buffer = VirtualAlloc(nullptr, alignedSizeBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (buffer == nullptr) {
-        JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
-        JST_CHECK_THROW(Result::ERROR);
-    }
+        buffer = VirtualAlloc(nullptr, alignedSizeBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (buffer == nullptr) {
+            JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
 #else
-    const auto result = posix_memalign(&memoryAddr, pageSize, alignedSizeBytes);
-    if (result < 0 || (buffer = static_cast<void*>(memoryAddr)) == nullptr) {
-        JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
-        JST_CHECK_THROW(Result::ERROR);
-    }
+        const auto result = posix_memalign(&memoryAddr, pageSize, alignedSizeBytes);
+        if (result < 0 || (buffer = static_cast<void*>(memoryAddr)) == nullptr) {
+            JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
 #endif
-    owns_data = true;
+        owns_data = true;
 
-    // Null out array.
+        // Null out array.
 
-    memset(buffer, 0, prototype.size_bytes);
+        memset(buffer, 0, prototype.size_bytes);
+    }
 
     // Add compatible devices.
 
@@ -99,11 +95,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CPU,
     };
 
-    // Check alignment and platform.
+    // Add compatible devices.
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    if (JST_IS_ALIGNED(ptr) && ptr != nullptr && Backend::State<Device::Metal>()->hasUnifiedMemory()) {
-        JST_TRACE("[CPU:BUFFER] Buffer is aligned and platform is unified. Enabling Metal compatibility.");
+    if (TensorBuffer<Device::Metal>::CanImport(*this)) {
         storage->compatible_devices.insert(Device::Metal);
     }
 #endif
