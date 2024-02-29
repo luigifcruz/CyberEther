@@ -395,8 +395,6 @@ Result Instance::blockUpdater(Locale locale,
         dependencyEraseList.push_back({dependencyRecord->id});
     }
 
-    JST_LOG_LAST_ERROR() = errorCodeBackup;
-
     if (dependencyRes != Result::SUCCESS) {
         JST_TRACE("[INSTANCE] Dependency recreation failed. Rewinding state.");
 
@@ -443,8 +441,12 @@ Result Instance::blockUpdater(Locale locale,
                                                                                       dependencyRecord->stateMap));
         }
 
+        JST_LOG_LAST_ERROR() = errorCodeBackup;
+
         return dependencyRes;
     }
+
+    JST_LOG_LAST_ERROR() = errorCodeBackup;
 
     return res;
 }
