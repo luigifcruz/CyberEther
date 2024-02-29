@@ -142,6 +142,9 @@ class Parser {
                 }
 #endif
             }
+
+            JST_ERROR("[PARSER] Failed to cast Tensor. Check if the type and device are compatible.");
+            return Result::ERROR;
         }
 
         if constexpr (std::is_same<T, std::string>::value) {
@@ -411,9 +414,9 @@ class Parser {
         JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<Device::{}>' into 'Tensor<Device::{}>'.", name, SrcD, DstD);
         const auto& tensor = std::any_cast<Tensor<SrcD, T>>(anyVar);
 
-        if (!tensor.compatible_devices().contains(variable.device())) {
-            JST_ERROR("[PARSER] Failed to cast variable '{}'. Check if the input and output are compatible.", name);
-            JST_TRACE("[PARSER] Supported casts: {} -> {}", variable.device(), variable.compatible_devices());
+        if (!tensor.compatible_devices().contains(DstD)) {
+            JST_ERROR("[PARSER] Failed to cast Tensor ('{}'). Check if the input and output are compatible.", name);
+            JST_TRACE("[PARSER] Supported casts: {} -> {}", tensor.device(), tensor.compatible_devices());
             return Result::ERROR;
         }
 
