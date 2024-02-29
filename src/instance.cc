@@ -133,7 +133,7 @@ Result Instance::removeBlock(Locale locale) {
     }
 
     for (const auto& [inputLocale, outputLocale] : unlinkList) {
-        JST_CHECK(unlinkBlocks(inputLocale.block(), outputLocale.block()));
+        JST_CHECK(unlinkBlocks(inputLocale.pin(), outputLocale.pin()));
     }
 
     // Delete block.
@@ -158,7 +158,7 @@ Result Instance::unlinkBlocks(Locale inputLocale, Locale outputLocale) {
     }
 
     if (inputLocale.pinId.empty() || outputLocale.pinId.empty()) {
-        JST_ERROR("[INSTANCE] The pin ID of the input and output locale must not be empty.");
+        JST_ERROR("[INSTANCE] The Locale Pin ID of the input and output locale must be set.");
         return Result::ERROR;
     }
 
@@ -197,7 +197,7 @@ Result Instance::linkBlocks(Locale inputLocale, Locale outputLocale) {
     }
 
     if (inputLocale.pinId.empty() || outputLocale.pinId.empty()) {
-        JST_ERROR("[INSTANCE] The pin ID of the input and output locale must not be empty.");
+        JST_ERROR("[INSTANCE] The Locale Pin ID of the input and output locale must be set.");
         return Result::ERROR;
     }
 
