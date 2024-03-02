@@ -47,9 +47,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                 JST_FATAL("[CUDA:BUFFER] Failed to allocate managed CUDA memory: {}", err);
             });
 
-            _device_native = true;
-            _host_native = true;
-            _host_accessible = true;
+            // Set buffer flags.
+
+            set_allocated();
+            set_device_native();
+            set_host_native();
+            set_host_accessible();
         } else {
             if (Backend::State<Device::CUDA>()->canExportDeviceMemory()) {
                 CUmemAllocationProp allocationProp = {};
@@ -94,11 +97,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                 });
             }
 
-            _device_native = true;
-            _host_native = false;
-            _host_accessible = false;
+            // Set buffer flags.
+
+            set_allocated();
+            set_device_native();
         }
-        owns_data = true;
 
         // Null out array.
 
@@ -196,13 +199,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Initialize storage.
 
-    _device_native = true;
-    _host_native = false;
-    _host_accessible = false;
-
     buffer = reinterpret_cast<void*>(devPtr);
-    external_memory_device = Device::Vulkan;
-    owns_data = false;
+
+    // Set buffer flags.
+
+    set_device_native();
+    set_external_memory_device(Device::Vulkan);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
@@ -282,13 +284,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Initialize storage.
 
-    _device_native = false;
-    _host_native = true;
-    _host_accessible = true;
-
     buffer = root_buffer->data();
-    external_memory_device = Device::CPU;
-    owns_data = false;
+
+    // Set buffer flags.
+
+    set_host_native();
+    set_host_accessible();
+    set_external_memory_device(Device::CPU);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
@@ -346,7 +348,7 @@ Implementation::~TensorBuffer() {
     // Close Vulkan file descriptor.
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    if (external_memory_device == Device::Vulkan) {
+    if (external_memory_device() == Device::Vulkan) {
         cuDestroyExternalMemory(vulkan_external_memory);
         close(vulkan_file_descriptor);
     }
@@ -355,7 +357,7 @@ Implementation::~TensorBuffer() {
     // Unregister CPU buffer from CUDA.
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    if (external_memory_device == Device::CPU) {
+    if (external_memory_device() == Device::CPU) {
         [&]{
             JST_CUDA_CHECK(cudaHostUnregister(buffer), [&]{
                 JST_WARN("[CPU:BUFFER] Failed to unregister buffer from CUDA: {}", err);
@@ -367,8 +369,8 @@ Implementation::~TensorBuffer() {
 
     // Free memory.
 
-    if (owns_data) {
-        if (Backend::State<Device::CUDA>()->canExportDeviceMemory() && !_host_accessible) {
+    if (allocated()) {
+        if (Backend::State<Device::CUDA>()->canExportDeviceMemory() && !host_accessible()) {
             cuMemUnmap(device_ptr, size_bytes);
             cuMemRelease(alloc_handle);
             cuMemAddressFree(device_ptr, size_bytes);

@@ -82,9 +82,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-            _host_accessible = true;
-            _device_native = true;
-            _host_native = true;
+            // Set buffer flags.
+
+            set_allocated();
+            set_host_accessible();
+            set_device_native();
+            set_host_native();
 
             JST_TRACE("[VULKAN:BUFFER] Using unified memory (DL, HV, HC).");
         } else {
@@ -92,17 +95,20 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                 memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
                 memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-                _host_accessible = true;
-                _device_native = false;
-                _host_native = true;
+                // Set buffer flags.
+
+                set_allocated();
+                set_host_accessible();
+                set_host_native();
 
                 JST_TRACE("[VULKAN:BUFFER] Using host accessible memory (HV, HC).");
             } else {
                 memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-                _host_accessible = false;
-                _device_native = true;
-                _host_native = false;
+                // Set buffer flags.
+
+                set_allocated();
+                set_device_native();
 
                 JST_TRACE("[VULKAN:BUFFER] Using device local memory (DL).");
             }
@@ -127,7 +133,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         JST_VK_CHECK_THROW(vkBindBufferMemory(device, _buffer, _memory, 0), [&]{
             JST_ERROR("[VULKAN:BUFFER] Failed to bind memory to the buffer.");
         });
-        owns_data = true;
 
         // Null out array.
 
@@ -256,9 +261,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
         memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-        _host_accessible = true;
-        _device_native = true;
-        _host_native = true;
+        // Set buffer flags.
+
+        set_host_accessible();
+        set_device_native();
+        set_host_native();
 
         JST_TRACE("[VULKAN:BUFFER] Importing unified memory (DL, HV, HC).");
     } else {
@@ -266,17 +273,18 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             memoryProperties |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-            _host_accessible = true;
-            _device_native = false;
-            _host_native = true;
+            // Set buffer flags.
+
+            set_host_accessible();
+            set_host_native();
 
             JST_TRACE("[VULKAN:BUFFER] Importing host accessible memory (HV, HC).");
         } else {
             memoryProperties |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-            _host_accessible = false;
-            _device_native = true;
-            _host_native = false;
+            // Set buffer flags.
+
+            set_device_native();
 
             JST_TRACE("[VULKAN:BUFFER] Importing device local memory (DL).");
         }
@@ -303,9 +311,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     JST_VK_CHECK_THROW(vkBindBufferMemory(device, _buffer, _memory, 0), [&]{
         JST_ERROR("[VULKAN:BUFFER] Failed to bind memory to the buffer.");
     });
-    owns_data = false;
 
-    external_memory_Device = Device::CUDA;
+    // Set buffer flags.
+
+    set_external_memory_device(Device::CUDA);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
@@ -356,7 +365,7 @@ Implementation::~TensorBuffer() {
     // Release imported CUDA memory.
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    if (external_memory_Device == Device::CUDA) {
+    if (external_memory_device() == Device::CUDA) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
         vkFreeMemory(device, _memory, nullptr);
@@ -366,7 +375,7 @@ Implementation::~TensorBuffer() {
 
     // Release buffer.
 
-    if (owns_data) {
+    if (allocated()) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
         vkFreeMemory(device, _memory, nullptr);

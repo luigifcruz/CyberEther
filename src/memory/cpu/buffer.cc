@@ -55,7 +55,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
             JST_CHECK_THROW(Result::ERROR);
         }
 #endif
-        owns_data = true;
+        // Set buffer flags.
+
+        set_allocated();
+        set_host_accessible();
 
         // Null out array.
 
@@ -105,7 +108,6 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 
     // Initialize buffer.
 
-    owns_data = false;
     buffer = ptr;
 }
 
@@ -131,8 +133,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     // Initialize buffer.
 
     buffer = root_buffer->data()->contents();
-    owns_data = false;
-    external_memory_device = Device::Metal;
+
+    // Set buffer flags.
+
+    set_host_accessible();
+    set_external_memory_device(Device::Metal);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::Metal>&) noexcept {
@@ -181,8 +186,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         JST_FATAL("[CPU:BUFFER] Failed to map buffer memory.");
     });
 
-    owns_data = false;
-    external_memory_device = Device::Vulkan;
+    // Set buffer flags.
+
+    set_host_accessible();
+    set_external_memory_device(Device::Vulkan);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
@@ -221,8 +228,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     // Initialize buffer.
 
     buffer = root_buffer->data();
-    owns_data = false;
-    external_memory_device = Device::CUDA;
+
+    // Set buffer flags.
+
+    set_host_accessible();
+    set_external_memory_device(Device::CUDA);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
@@ -245,7 +255,7 @@ Implementation::~TensorBuffer() {
     // Unmap memory if imported from Vulkan.
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    if (external_memory_device == Device::Vulkan) {
+    if (external_memory_device() == Device::Vulkan) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
         vkUnmapMemory(device, vulkan_memory);
     }
@@ -253,7 +263,7 @@ Implementation::~TensorBuffer() {
 
     // Free memory.
 
-    if (owns_data) {
+    if (allocated()) {
 #ifdef JST_OS_WINDOWS
         VirtualFree(buffer, 0, MEM_RELEASE);
 #else

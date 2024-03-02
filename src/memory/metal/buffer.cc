@@ -44,10 +44,13 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
             JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
             JST_CHECK_THROW(Result::ERROR);
         }
-        _host_native = true;
-        _device_native = true;
-        _host_accessible = true;
-        owns_data = true;
+
+        // Set buffer flags.
+
+        set_allocated();
+        set_host_accessible()
+        set_device_native();
+        set_host_native();
 
         // Null out array.
 
@@ -118,13 +121,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
         JST_CHECK_THROW(Result::ERROR);
     }
-    owns_data = false;
 
-    // Add metadata.
+    // Set buffer flags.
 
-    _device_native = true;
-    _host_native = true;
-    _host_accessible = true;
+    set_host_accessible()
+    set_device_native();
+    set_host_native();
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {

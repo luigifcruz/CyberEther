@@ -9,7 +9,7 @@
 namespace Jetstream {
 
 template<>
-class TensorBuffer<Device::CPU> {
+class TensorBuffer<Device::CPU> : public TensorBufferBase {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype);
@@ -44,18 +44,6 @@ class TensorBuffer<Device::CPU> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr bool host_accessible() const noexcept {
-        return true;
-    }
-
-    constexpr bool device_native() const noexcept {
-        return false;
-    }
-
-    constexpr bool host_native() const noexcept {
-        return false;
-    }
-
     constexpr const void* data() const noexcept {
         return buffer;
     }
@@ -66,8 +54,6 @@ class TensorBuffer<Device::CPU> {
 
  private:
     void* buffer = nullptr;
-    bool owns_data = false;
-    Device external_memory_device = Device::None;
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     VkDeviceMemory vulkan_memory = VK_NULL_HANDLE;
