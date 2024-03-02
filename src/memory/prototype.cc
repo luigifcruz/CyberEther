@@ -212,7 +212,14 @@ Result TensorPrototype::slice(const std::vector<Token>& slice) {
                     JST_ERROR("[MEMORY] Index exceeds array dimensions.");
                     return Result::ERROR;
                 }
-                offset += token.get_a() * prototype.stride[dim];
+
+                const U64 index = token.get_a();
+                if (index >= prototype.shape[dim]) {
+                    JST_ERROR("[MEMORY] Index exceeds array dimensions.");
+                    return Result::ERROR;
+                }
+
+                offset += index * prototype.stride[dim];
                 dim++;
                 break;
             }
@@ -221,12 +228,28 @@ Result TensorPrototype::slice(const std::vector<Token>& slice) {
                     JST_ERROR("[MEMORY] Index exceeds array dimensions.");
                     return Result::ERROR;
                 }
+
                 const U64 start = token.get_a();
                 U64 end = token.get_b();
                 const U64 step = token.get_c();
 
                 if (end == 0) {
                     end = prototype.shape[dim];
+                }
+
+                if (step == 0) {
+                    JST_ERROR("[MEMORY] Slice step cannot be zero.");
+                    return Result::ERROR;
+                }
+
+                if (start >= prototype.shape[dim] || end > prototype.shape[dim]) {
+                    JST_ERROR("[MEMORY] Slice index exceeds array dimensions.");
+                    return Result::ERROR;
+                }
+
+                if (start >= end) {
+                    JST_ERROR("[MEMORY] Slice start index must be less than end index.");
+                    return Result::ERROR;
                 }
 
                 shape.push_back((end - start + step - 1) / step);
@@ -241,6 +264,7 @@ Result TensorPrototype::slice(const std::vector<Token>& slice) {
                     return Result::ERROR;
                 }
                 ellipsis_used = true;
+
                 const U64 remaining_dims = prototype.shape.size() - (slice.size() - 1);
                 while (dim < remaining_dims) {
                     shape.push_back(prototype.shape[dim]);
