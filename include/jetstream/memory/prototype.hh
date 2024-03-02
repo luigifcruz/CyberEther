@@ -85,11 +85,13 @@ class TensorPrototype {
 
     void squeeze_dims(const U64& axis);
 
-    // TODO: Add permutation() function.
+    Result permutation(const std::vector<U64>& permutation);
+
+    Result reshape(const std::vector<U64>& shape);
 
     Result broadcast_to(const std::vector<U64>& shape);
 
-    Result slice(const std::vector<Token>& tokens);
+    Result slice(const std::vector<Token>& slice);
     
  protected:
     TensorPrototypeMetadata prototype;

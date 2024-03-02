@@ -73,7 +73,7 @@ class Slice : public Block {
 
     std::string description() const {
         // TODO: Add decent block description describing internals and I/O.
-        return "Creates a slice of a tensor. Similar to Numpy slicing.";
+        return "Creates a slice of a tensor. Similar to Numpy's slicing.";
     }
 
     // Constructor

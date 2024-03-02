@@ -101,7 +101,54 @@ void TensorPrototype::squeeze_dims(const U64& axis) {
     update_cache();
 }
 
-// TODO: Add permutation() function.
+Result TensorPrototype::permutation(const std::vector<U64>& permutation) {
+    // TODO: Implement permutation.
+    throw std::runtime_error("Not implemented");
+    return Result::SUCCESS;
+}
+
+Result TensorPrototype::reshape(const std::vector<U64>& shape) {
+    if (shape.empty()) {
+        JST_ERROR("[MEMORY] Cannot reshape to empty shape.");
+        return Result::ERROR;
+    }
+
+    if (!prototype.contiguous) {
+        // TODO: Implement reshape for non-contiguous tensors.
+        JST_ERROR("[MEMORY] Cannot reshape non-contiguous tensor.");
+        return Result::ERROR;
+    }
+
+    const U64& og_size = prototype.size;
+
+    U64 new_size = 1;
+    for (const auto& dim : shape) {
+        if (dim == 0) {
+            JST_ERROR("[MEMORY] Cannot reshape to shape with zero dimension.");
+            return Result::ERROR;
+        }
+        new_size *= dim;
+    }
+
+    if (og_size != new_size) {
+        JST_ERROR("[MEMORY] Cannot reshape from size {} to size {}.", og_size, new_size);
+        return Result::ERROR;
+    }
+
+    prototype.shape = shape;
+
+    prototype.stride.resize(prototype.shape.size());
+    for (U64 i = 0; i < prototype.shape.size(); i++) {
+        prototype.stride[i] = 1;
+        for (U64 j = i + 1; j < prototype.shape.size(); j++) {
+            prototype.stride[i] *= prototype.shape[j];
+        }
+    }
+
+    update_cache();
+
+    return Result::SUCCESS;
+}
 
 Result TensorPrototype::broadcast_to(const std::vector<U64>& shape) {
     if (shape.size() < prototype.shape.size()) {
@@ -151,14 +198,14 @@ Result TensorPrototype::broadcast_to(const std::vector<U64>& shape) {
     return Result::SUCCESS;
 }
 
-Result TensorPrototype::slice(const std::vector<Token>& tokens) {
+Result TensorPrototype::slice(const std::vector<Token>& slice) {
     std::vector<U64> shape;
     std::vector<U64> stride;
     U64 offset = 0;
     U64 dim = 0;
     bool ellipsis_used = false;
 
-    for (const auto& token : tokens) {
+    for (const auto& token : slice) {
         switch (token.get_type()) {
             case Token::Type::Number: {
                 if (dim >= prototype.shape.size()) {
@@ -194,7 +241,7 @@ Result TensorPrototype::slice(const std::vector<Token>& tokens) {
                     return Result::ERROR;
                 }
                 ellipsis_used = true;
-                const U64 remaining_dims = prototype.shape.size() - (tokens.size() - 1);
+                const U64 remaining_dims = prototype.shape.size() - (slice.size() - 1);
                 while (dim < remaining_dims) {
                     shape.push_back(prototype.shape[dim]);
                     stride.push_back(prototype.stride[dim]);

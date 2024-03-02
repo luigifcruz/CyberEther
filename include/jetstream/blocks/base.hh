@@ -172,6 +172,9 @@
 #include "jetstream/blocks/slice.hh"
 #define JETSTREAM_BLOCK_SLICE_AVAILABLE
 
+#include "jetstream/blocks/reshape.hh"
+#define JETSTREAM_BLOCK_RESHAPE_AVAILABLE
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH
