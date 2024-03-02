@@ -48,7 +48,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         // Set buffer flags.
 
         set_allocated();
-        set_host_accessible()
+        set_host_accessible();
         set_device_native();
         set_host_native();
 
@@ -124,7 +124,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
     // Set buffer flags.
 
-    set_host_accessible()
+    set_host_accessible();
     set_device_native();
     set_host_native();
 }
