@@ -140,8 +140,14 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     set_external_memory_device(Device::Metal);
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::Metal>&) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Metal buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if Metal buffer is host accessible.
 
@@ -195,6 +201,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Vulkan buffer can be imported.");
 
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
+
     // Check if Vulkan buffer is host accessible.
 
     if (!root_buffer.host_accessible()) {
@@ -237,6 +249,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
 bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if CUDA buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if CUDA buffer is host accessible.
 

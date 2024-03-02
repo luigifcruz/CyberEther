@@ -210,6 +210,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
     JST_TRACE("[CUDA:BUFFER] Checking if Vulkan buffer can be imported.");
 
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
+
     // Check if CUDA is available.
 
     if (!Backend::State<Device::CUDA>()->isAvailable()) {
@@ -295,6 +301,12 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
 
 bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
     JST_TRACE("[CUDA:BUFFER] Checking if CPU buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if CUDA is available.
 
