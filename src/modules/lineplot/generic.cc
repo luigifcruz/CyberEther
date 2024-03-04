@@ -277,8 +277,8 @@ void Lineplot<D, T>::updateTransform() {
 template<Device D, typename T>
 void Lineplot<D, T>::updateScaling() {
     auto& [x, y] = thickness;
-    x = ((2.0f / (config.viewSize.width * config.scale)) * config.thickness) / config.zoom / 2.0f;
-    y = ((2.0f / (config.viewSize.height * config.scale)) * config.thickness) / 2.0f;
+    x = ((2.0f / config.viewSize.width) * config.thickness) / config.zoom / 2.0f;
+    y = ((2.0f / config.viewSize.height) * config.thickness) / 2.0f;
 }
 
 template<Device D, typename T>

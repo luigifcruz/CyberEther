@@ -36,7 +36,7 @@ class Lineplot : public Module, public Compute, public Present {
         Size2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
-        F32 thickness = 3.0f;
+        F32 thickness = 2.0f;
         F32 scale = 1.0f;
 
         JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness, scale);
@@ -161,8 +161,6 @@ class Lineplot : public Module, public Compute, public Present {
     void updateScaling();
     void updateTransform();
     void updateGridVertices();
-
-    F32 windowToPlotCoords(const std::pair<F32, F32>& mouse_pos);
 
     JST_DEFINE_IO()
 };
