@@ -233,6 +233,70 @@ template class Class<Device:: DeviceType, __VA_ARGS__>;
     }();
 
 //
+// Enum serialization macros.
+//
+
+#ifndef JST_NAME
+#define JST_NAME(x) #x,
+#endif  // JST_NAME
+
+#ifndef JST_SERDES_ENUM
+#define JST_SERDES_ENUM(EnumName, ...) \
+class EnumName : public Parser::Adapter { \
+ public: \
+    enum Value : uint8_t { __VA_ARGS__ }; \
+    EnumName() = default; \
+    EnumName(Value val) : value(val) {} \
+    operator int() const { return value; } \
+    bool operator==(const Value& other) const { return value == other; } \
+    bool operator!=(const Value& other) const { return value != other; } \
+    static const std::map<Value, std::string>& rmap() { \
+        static const std::map<Value, std::string> rmap = EnumName::CreateReverseMap(); \
+        return rmap; \
+    } \
+    static const std::map<std::string, Value>& map() { \
+        static const std::map<std::string, Value> map = EnumName::CreateMap(); \
+        return map; \
+    } \
+    const std::string& string() const { \
+        return rmap().at(value); \
+    } \
+    Result serialize(std::any& var) const override { \
+        var = std::any(string()); \
+        return Result::SUCCESS; \
+    } \
+    Result deserialize(const std::any& var) override { \
+        const auto& str = std::any_cast<std::string>(var); \
+        value = map().at(str); \
+        return Result::SUCCESS; \
+    } \
+    friend std::ostream& operator<<(std::ostream& os, const EnumName& m) { \
+        return os << m.string(); \
+    } \
+ private: \
+    Value value; \
+    static std::map<Value, std::string> CreateReverseMap() { \
+        std::map<Value, std::string> rmap; \
+        const char* names[] = {FOR_EACH(JST_NAME, __VA_ARGS__) nullptr}; \
+        Value vals[] = {__VA_ARGS__}; \
+        for (int i = 0; names[i]; i++) { \
+            rmap[vals[i]] = names[i]; \
+        } \
+        return rmap; \
+    } \
+    static std::map<std::string, Value> CreateMap() { \
+        std::map<std::string, Value> map; \
+        const char* names[] = {FOR_EACH(JST_NAME, __VA_ARGS__) nullptr}; \
+        Value vals[] = {__VA_ARGS__}; \
+        for (int i = 0; names[i]; i++) { \
+            map[names[i]] = vals[i]; \
+        } \
+        return map; \
+    } \
+};
+#endif  // JST_SERDES_ENUM
+
+//
 // Block specialization macros.
 //
 

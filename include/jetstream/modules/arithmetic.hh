@@ -17,75 +17,7 @@ namespace Jetstream {
     MACRO(Arithmetic, CUDA, CF32) \
     MACRO(Arithmetic, CUDA, F32)
 
-// TODO: Convert this to a generic macro.
-//       JST_SERDES_ENUM(ArithmeticOp, Add, Sub, Mul, Div);
-
-class ArithmeticOp : public Parser::Adapter {
- public:
-    enum Value : uint8_t {
-        Add,
-        Sub,
-        Mul,
-        Div
-    };
-
-    ArithmeticOp() = default;
-    ArithmeticOp(Value val) : value(val) {}
-
-    operator int() const {
-        return value;
-    }
-
-    bool operator==(const Value& other) const {
-        return value == other;
-    }
-
-    bool operator!=(const Value& other) const {
-        return value != other;
-    }
-
-    static const std::map<Value, std::string>& rmap() {
-        static std::map<Value, std::string> rmap = {
-            {Value::Add, "Add"},
-            {Value::Sub, "Sub"},
-            {Value::Mul, "Mul"},
-            {Value::Div, "Div"}
-        };
-        return rmap;
-    }
-
-    static const std::map<std::string, Value>& map() {
-        static std::map<std::string, Value> map = {
-            {"Add", Value::Add},
-            {"Sub", Value::Sub},
-            {"Mul", Value::Mul},
-            {"Div", Value::Div}
-        };
-        return map;
-    }
-
-    const std::string& string() const {
-        return rmap().at(value);
-    }
-
-    Result serialize(std::any& var) const {
-        var = std::any(string());
-        return Result::SUCCESS;
-    }
-
-    Result deserialize(const std::any& var) {
-        const auto& str = std::any_cast<std::string>(var);
-        value = map().at(str);
-        return Result::SUCCESS;
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const ArithmeticOp& m) {
-        return os << m.string();
-    }
-
- private:
-    Value value;
-};
+JST_SERDES_ENUM(ArithmeticOp, Add, Sub, Mul, Div);
 
 template<Device D, typename T = CF32>
 class Arithmetic : public Module, public Compute {
