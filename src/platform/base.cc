@@ -249,9 +249,8 @@ Result PickFile(std::string& path) {
 
 // Defined on apple.mm.
 
-#elif defined(JST_OS_BROWSER)
-
 // TODO: Implement folder picker for browsers.
+// #elif defined(JST_OS_BROWSER)
 
 #elif defined(JST_OS_LINUX)
 
@@ -284,9 +283,8 @@ Result PickFolder(std::string& path) {
     return Result::SUCCESS;
 }
 
-#elif defined(JST_OS_WINDOWS)
-
 // TODO: Implement folder picker for Windows.
+//#elif defined(JST_OS_WINDOWS)
 
 #else
 
