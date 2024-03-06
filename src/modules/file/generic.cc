@@ -161,16 +161,17 @@ Result FileWriter<D, T>::startRecording() {
     gimpl->metaFile << "    \"core:datatype\": \"cf32_le\",\n";
     gimpl->metaFile << "    \"core:description\": \"" << config.description << "\",\n";
     gimpl->metaFile << "    \"core:recorder\": \"CyberEther v" << JETSTREAM_VERSION_STR << "\",\n";
-    gimpl->metaFile << "    \"core:sample_rate\": " << jst::fmt::format("{:.1f}", config.sampleRate) << ",\n";
+    gimpl->metaFile << "    \"core:sample_rate\": " << jst::fmt::format("{}", config.sampleRate) << ",\n";
     gimpl->metaFile << "    \"core:version\": \"v1.0.0\"\n";
     gimpl->metaFile << "  },\n";
     gimpl->metaFile << "  \"captures\": [\n";
     gimpl->metaFile << "    {\n";
-    gimpl->metaFile << "      \"core:frequency\": " << jst::fmt::format("{:.1f}", config.centerFrequency) << ",\n";
-    gimpl->metaFile << "      \"core:sample_start\": 0\n";
+    gimpl->metaFile << "      \"core:frequency\": " << jst::fmt::format("{}", config.centerFrequency) << ",\n";
+    gimpl->metaFile << "      \"core:sample_start\": 0,\n";
     gimpl->metaFile << "      \"core:datetime\": \"" << jst::fmt::format("{:%Y-%m-%dT%H:%M:%SZ}", t) << "\"\n";
     gimpl->metaFile << "    }\n";
-    gimpl->metaFile << "  ]\n";
+    gimpl->metaFile << "  ],\n";
+    gimpl->metaFile << "  \"annotations\": []\n";
     gimpl->metaFile << "}\n";
 
     // Start underlying recording.
