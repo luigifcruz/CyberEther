@@ -32,8 +32,9 @@ class FileWriter : public Module, public Compute {
         F32 sampleRate = 0.0f;
         F32 centerFrequency = 0.0f;
         bool overwrite = false;
+        bool recording = false;
 
-        JST_SERDES(fileFormat, name, filepath, description, author, sampleRate, centerFrequency, overwrite);
+        JST_SERDES(fileFormat, name, filepath, description, author, sampleRate, centerFrequency, overwrite, recording);
     };
 
     constexpr const Config& getConfig() const {
@@ -78,12 +79,13 @@ class FileWriter : public Module, public Compute {
     // Constructor
 
     Result create();
+    Result destroy();
 
     // Miscellaneous
 
     Result recording(const bool& recording);
     constexpr const bool& recording() const {
-        return this->_recording;
+        return config.recording;
     }
 
  protected:
@@ -97,8 +99,6 @@ class FileWriter : public Module, public Compute {
 
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
-
-    bool _recording = false;
 
     Result startRecording();
     Result stopRecording();

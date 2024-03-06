@@ -22,8 +22,9 @@ class FileWriter : public Block {
         F32 sampleRate = 0.0f;
         F32 centerFrequency = 0.0f;
         bool overwrite = false;
+        bool recording = false;
 
-        JST_SERDES(fileFormat, name, filepath, description, author, sampleRate, centerFrequency, overwrite);
+        JST_SERDES(fileFormat, name, filepath, description, author, sampleRate, centerFrequency, overwrite, recording);
     };
 
     constexpr const Config& getConfig() const {
@@ -88,6 +89,7 @@ class FileWriter : public Block {
                 .sampleRate = config.sampleRate,
                 .centerFrequency = config.centerFrequency,
                 .overwrite = config.overwrite,
+                .recording = config.recording,
             }, {
                 .buffer = input.buffer,
             },
@@ -122,11 +124,6 @@ class FileWriter : public Block {
                 bool isSelected = (config.fileFormat == key);
                 if (ImGui::Selectable(value.c_str(), isSelected)) {
                     config.fileFormat = key;
-
-                    JST_DISPATCH_ASYNC([&](){
-                        ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                        JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-                    });
                 }
                 if (isSelected) {
                     ImGui::SetItemDefaultFocus();
@@ -140,24 +137,14 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Name");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##FileName", &config.name, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
-        }
+        ImGui::InputText("##FileName", &config.name);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Path");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##FilePath", &config.filepath, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
-        }
+        ImGui::InputText("##FilePath", &config.filepath);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -165,10 +152,6 @@ class FileWriter : public Block {
         const F32 fullWidth = ImGui::GetContentRegionAvail().x;
         if (ImGui::Button("Pick File Path", ImVec2(fullWidth, 0))) {
             JST_CHECK_NOTIFY(Platform::PickFolder(config.filepath));
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
         }
 
         ImGui::TableNextRow();
@@ -176,24 +159,14 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Description");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##Description", &config.description, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
-        }
+        ImGui::InputText("##Description", &config.description);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Author");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##Author", &config.author, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
-        }
+        ImGui::InputText("##Author", &config.author);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -201,13 +174,8 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / 1e6f;
-        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz")) {
             config.sampleRate = sampleRate * 1e6;
-            
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
         }
 
         ImGui::TableNextRow();
@@ -216,13 +184,8 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 centerFrequency = config.centerFrequency / 1e6f;
-        if (ImGui::InputFloat("##Frequency", &centerFrequency, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##Frequency", &centerFrequency, 1.0f, 2.0f, "%.3f MHz")) {
             config.centerFrequency = centerFrequency * 1e6;
-            
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
         }
 
         ImGui::TableNextRow();
@@ -230,19 +193,10 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Overwrite");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::Checkbox("##Overwrite", &config.overwrite)) {
-            JST_DISPATCH_ASYNC([&](){
-                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
-                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
-            });
-        }
+        ImGui::Checkbox("##Overwrite", &config.overwrite);
 
         if (file_writer->recording()) {
             ImGui::EndDisabled();
-        }
-
-        if (!complete()) {
-            ImGui::BeginDisabled();
         }
 
         ImGui::TableNextRow();
@@ -250,20 +204,22 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         if (!file_writer->recording()) {
             if (ImGui::Button("Start Recording", ImVec2(fullWidth, 0))) {
+                config.recording = true;
+
                 JST_DISPATCH_ASYNC([&](){
-                    JST_CHECK_NOTIFY(file_writer->recording(true));
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Starting recording..." });
+                    JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
                 });
             }
         } else {
             if (ImGui::Button("Stop Recording", ImVec2(fullWidth, 0))) {
+                config.recording = false;
+
                 JST_DISPATCH_ASYNC([&](){
                     JST_CHECK_NOTIFY(file_writer->recording(false));
+                    instance().reloadBlock(locale());
                 });
             }
-        }
-
-        if (!complete()) {
-            ImGui::EndDisabled();
         }
     }
 

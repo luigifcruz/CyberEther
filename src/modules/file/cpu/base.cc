@@ -36,7 +36,7 @@ Result FileWriter<D, T>::destroyCompute(const Context&) {
 
 template<Device D, typename T>
 Result FileWriter<D, T>::compute(const Context&) {
-    if (_recording) {
+    if (config.recording) {
         gimpl->dataFile.write(reinterpret_cast<const char*>(input.buffer.data()), input.buffer.size_bytes());
     }
 

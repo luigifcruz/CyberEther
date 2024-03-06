@@ -25,6 +25,51 @@ Result FileWriter<D, T>::create() {
     JST_DEBUG("Initializing File Writer module.");
     JST_INIT_IO();
 
+    if (config.recording) {
+        const auto& res = startRecording();
+
+        if (res != Result::SUCCESS) {
+            config.recording = false;
+            return res;
+        }
+
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("Recording was not initiated.");
+    return Result::ERROR;
+}
+
+template<Device D, typename T>
+Result FileWriter<D, T>::destroy() {
+    JST_DEBUG("Destroying File Writer module.");
+
+    JST_CHECK(stopRecording());
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result FileWriter<D, T>::recording(const bool& recording) {
+    if (recording) {
+        if (!config.recording) {
+            JST_CHECK(startRecording());
+            config.recording = true;
+        }
+    } else {
+        if (config.recording) {
+            config.recording = false;
+            JST_CHECK(stopRecording());
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+Result FileWriter<D, T>::startRecording() {
+    std::chrono::time_point<std::chrono::system_clock> t = std::chrono::system_clock::now();
+
     // Check file format type.
 
     if (config.fileFormat != FileFormatType::SigMF) {
@@ -60,31 +105,6 @@ Result FileWriter<D, T>::create() {
         JST_ERROR("Directory '{}' does not exist.", gimpl->dirname.string());
         return Result::ERROR;
     }
-
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-Result FileWriter<D, T>::recording(const bool& recording) {
-    if (!_recording && recording) {
-        JST_CHECK(startRecording());
-    } else if (_recording && !recording) {
-        JST_CHECK(stopRecording());
-    }
-
-    _recording = recording;
-
-    return Result::SUCCESS;
-}
-
-template<Device D, typename T>
-Result FileWriter<D, T>::startRecording() {
-    if (_recording) {
-        JST_ERROR("Recording is already active.");
-        return Result::ERROR;
-    }
-
-    std::chrono::time_point<std::chrono::system_clock> t = std::chrono::system_clock::now();
 
     // Generate basename with datetime.
 
@@ -160,22 +180,15 @@ Result FileWriter<D, T>::startRecording() {
     // Start Recording.
 
     JST_INFO("Starting recording.");
-    _recording = true;
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result FileWriter<D, T>::stopRecording() {
-    if (!_recording) {
-        JST_ERROR("Recording is not active.");
-        return Result::ERROR;
-    }
-
     // Stop Recording.
 
     JST_INFO("Stopping recording.");
-    _recording = false;
 
     // Close the SigMF files.
 
