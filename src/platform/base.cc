@@ -194,15 +194,15 @@ Result PickFile(std::string& path) {
 #elif defined(JST_OS_WINDOWS)
 
 Result PickFile(std::string& path) {
-    /* File path buffer */
+    // File path buffer
     char buf[256] = {'\0'};
-    memcpy_s(buf,256,path.c_str(),path.length());
+    memcpy_s(buf, 256, path.c_str(), path.length());
 
-    /* Create OpenFilenameA Struct */
+    // Create OpenFilenameA Struct
     OPENFILENAMEA ofn;
     ZeroMemory(&ofn, sizeof(OPENFILENAME));
 
-    /* Fill struct */
+    // Fill struct
     ofn.lStructSize = sizeof(OPENFILENAME);
     ofn.hwndOwner = NULL;
     ofn.lpstrFile = buf;
@@ -233,6 +233,64 @@ Result PickFile(std::string& path) {
 #else
 
 Result PickFile(std::string& path) {
+    JST_ERROR("Picking files is not supported in this platform.");
+    return Result::ERROR;
+}
+
+#endif
+
+//
+// Pick Folder
+//
+
+// TODO: Implement iOS support.
+
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+
+// Defined on apple.mm.
+
+#elif defined(JST_OS_BROWSER)
+
+// TODO: Implement folder picker for browsers.
+
+#elif defined(JST_OS_LINUX)
+
+Result PickFolder(std::string& path) {
+    std::array<char, 1024> buffer;
+    std::string command = "zenity --file-selection --directory 2>/dev/null";
+
+    auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
+    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
+
+    if (!pipe) {
+        JST_ERROR("Failed to open folder selection dialog.");
+        return Result::ERROR;
+    }
+
+    if (pipe.get() == nullptr) {
+        JST_ERROR("No folder selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    const auto res = fgets(buffer.data(), buffer.size(), pipe.get());
+
+    if (res == nullptr) {
+        JST_ERROR("No folder selected or operation cancelled.");
+        return Result::ERROR;
+    }
+
+    path = buffer.data();
+
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_WINDOWS)
+
+// TODO: Implement folder picker for Windows.
+
+#else
+
+Result PickFolder(std::string& path) {
     JST_ERROR("Picking files is not supported in this platform.");
     return Result::ERROR;
 }

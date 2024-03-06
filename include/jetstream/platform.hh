@@ -9,6 +9,7 @@ namespace Jetstream::Platform {
 
 Result OpenUrl(const std::string& url);
 Result PickFile(std::string& path);
+Result PickFolder(std::string& path);
 Result SaveFile(std::string& path);
 
 }  // namespace Jetstream::Platform

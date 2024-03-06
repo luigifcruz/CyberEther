@@ -72,6 +72,36 @@ Result PickFile(std::string& path) {
     return result;
 }
 
+Result PickFolder(std::string& path) {
+    __block Result result = Result::ERROR;
+
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+#ifdef JST_OS_MAC
+        NSOpenPanel* panel = [NSOpenPanel openPanel];
+        [panel setCanChooseFiles:NO];
+        [panel setCanChooseDirectories:YES];
+        [panel setAllowsMultipleSelection:NO];
+
+        if ([panel runModal] == NSModalResponseOK) {
+            NSURL* url = [[panel URLs] objectAtIndex:0];
+            NSString* folderPath = [url path];
+            path = std::string([folderPath UTF8String]);
+            result = Result::SUCCESS;
+        } else {
+            JST_ERROR("Cannot pick folder.");
+            result = Result::ERROR;
+        }
+#endif
+        dispatch_semaphore_signal(semaphore);
+    });
+
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+    return result;
+}
+
 Result SaveFile(std::string& path) {
     __block Result result = Result::ERROR;
 
