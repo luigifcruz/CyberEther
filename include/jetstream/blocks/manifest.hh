@@ -196,6 +196,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_RESHAPE_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::Reshape);
 #endif
+#ifdef JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::FileWriter);
+#endif
     // [NEW BLOCK HOOK]
 }
 
