@@ -103,6 +103,10 @@ Result Instance::reloadBlock(Locale locale) {
         return Result::SUCCESS;
     }));
 
+    if (!_flowgraph.nodes().at(locale)->block->complete()) {
+        return Result::ERROR;
+    }
+
     return Result::SUCCESS;
 }
 
