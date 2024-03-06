@@ -140,7 +140,7 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Name");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##FileName", &config.name)) {
+        if (ImGui::InputText("##FileName", &config.name, ImGuiInputTextFlags_EnterReturnsTrue)) {
             JST_DISPATCH_ASYNC([&](){
                 ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
@@ -152,7 +152,7 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Path");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##FilePath", &config.filepath)) {
+        if (ImGui::InputText("##FilePath", &config.filepath, ImGuiInputTextFlags_EnterReturnsTrue)) {
             JST_DISPATCH_ASYNC([&](){
                 ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
@@ -176,7 +176,7 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Description");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##Description", &config.description)) {
+        if (ImGui::InputText("##Description", &config.description, ImGuiInputTextFlags_EnterReturnsTrue)) {
             JST_DISPATCH_ASYNC([&](){
                 ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
@@ -188,7 +188,7 @@ class FileWriter : public Block {
         ImGui::TextUnformatted("Author");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##Author", &config.author)) {
+        if (ImGui::InputText("##Author", &config.author, ImGuiInputTextFlags_EnterReturnsTrue)) {
             JST_DISPATCH_ASYNC([&](){
                 ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
@@ -201,7 +201,7 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / 1e6f;
-        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz")) {
+        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.sampleRate = sampleRate * 1e6;
             
             JST_DISPATCH_ASYNC([&](){
@@ -216,7 +216,7 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 centerFrequency = config.centerFrequency / 1e6f;
-        if (ImGui::InputFloat("##Frequency", &centerFrequency, 1.0f, 2.0f, "%.3f MHz")) {
+        if (ImGui::InputFloat("##Frequency", &centerFrequency, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.centerFrequency = centerFrequency * 1e6;
             
             JST_DISPATCH_ASYNC([&](){
