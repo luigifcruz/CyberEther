@@ -26,8 +26,8 @@ jobs:
 
       - name: Cleanup GHA mess
         run: |
-          rm -rf /usr/local/bin/2to3-3.12
-          brew install --force --overwrite python@3.12
+          rm -rf /usr/local/bin/2to3-3.12 /usr/local/bin/2to3-3.11
+          brew install --force --overwrite python@3.12 python@3.11
       #
       # [NEW DEPENDENCY HOOK]
       # This is copy-pasta from the README.md file.
