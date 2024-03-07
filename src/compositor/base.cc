@@ -2679,7 +2679,7 @@ Result Compositor::drawGraph() {
     }
 
     // Draw node context menu.
-    if (ImGui::BeginPopup("##node_context_menu") && !fullscreenEnabled) {
+    if (!fullscreenEnabled && ImGui::BeginPopup("##node_context_menu")) {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& state = nodeStates.at(locale.block());
         const auto moduleEntry = Store::BlockMetadataList().at(state.fingerprint.id);
