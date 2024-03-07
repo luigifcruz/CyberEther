@@ -148,7 +148,7 @@ class FilterTaps : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextFormatted("Heads");
+        ImGui::TextUnformatted("Heads");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 heads = config.center.size();
@@ -189,7 +189,7 @@ class FilterTaps : public Block {
  private:
     std::shared_ptr<Jetstream::FilterTaps<D, IT>> taps;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

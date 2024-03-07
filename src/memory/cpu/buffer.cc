@@ -36,35 +36,34 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CPU,
     };
 
-    // Check size.
-
-    if (prototype.size_bytes == 0) {
-        return;
-    }
-
     // Allocate memory.
 
-    void* memoryAddr = nullptr;
-    const auto pageSize = JST_PAGESIZE();
-    const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+    if (prototype.size_bytes > 0) {
+        void* memoryAddr = nullptr;
+        const auto pageSize = JST_PAGESIZE();
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
 #ifdef JST_OS_WINDOWS
-    buffer = VirtualAlloc(nullptr, alignedSizeBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (buffer == nullptr) {
-        JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
-        JST_CHECK_THROW(Result::ERROR);
-    }
+        buffer = VirtualAlloc(nullptr, alignedSizeBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (buffer == nullptr) {
+            JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
 #else
-    const auto result = posix_memalign(&memoryAddr, pageSize, alignedSizeBytes);
-    if (result < 0 || (buffer = static_cast<void*>(memoryAddr)) == nullptr) {
-        JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
-        JST_CHECK_THROW(Result::ERROR);
-    }
+        const auto result = posix_memalign(&memoryAddr, pageSize, alignedSizeBytes);
+        if (result < 0 || (buffer = static_cast<void*>(memoryAddr)) == nullptr) {
+            JST_ERROR("[CPU:BUFFER] Failed to allocate CPU memory.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
 #endif
-    owns_data = true;
+        // Set buffer flags.
 
-    // Null out array.
+        set_allocated();
+        set_host_accessible();
 
-    memset(buffer, 0, prototype.size_bytes);
+        // Null out array.
+
+        memset(buffer, 0, prototype.size_bytes);
+    }
 
     // Add compatible devices.
 
@@ -99,23 +98,21 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CPU,
     };
 
-    // Check alignment and platform.
+    // Add compatible devices.
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-    if (JST_IS_ALIGNED(ptr) && ptr != nullptr && Backend::State<Device::Metal>()->hasUnifiedMemory()) {
-        JST_TRACE("[CPU:BUFFER] Buffer is aligned and platform is unified. Enabling Metal compatibility.");
+    if (TensorBuffer<Device::Metal>::CanImport(*this)) {
         storage->compatible_devices.insert(Device::Metal);
     }
 #endif
 
     // Initialize buffer.
 
-    owns_data = false;
     buffer = ptr;
 }
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::Metal>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from Metal buffer.");
@@ -136,12 +133,21 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     // Initialize buffer.
 
     buffer = root_buffer->data()->contents();
-    owns_data = false;
-    external_memory_device = Device::Metal;
+
+    // Set buffer flags.
+
+    set_host_accessible();
+    set_external_memory_device(Device::Metal);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::Metal>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Metal buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if Metal buffer is host accessible.
 
@@ -186,12 +192,20 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
         JST_FATAL("[CPU:BUFFER] Failed to map buffer memory.");
     });
 
-    owns_data = false;
-    external_memory_device = Device::Vulkan;
+    // Set buffer flags.
+
+    set_host_accessible();
+    set_external_memory_device(Device::Vulkan);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if Vulkan buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if Vulkan buffer is host accessible.
 
@@ -205,7 +219,7 @@ bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) 
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
     JST_TRACE("[CPU:BUFFER] Cloning from CUDA buffer.");
@@ -226,12 +240,21 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     // Initialize buffer.
 
     buffer = root_buffer->data();
-    owns_data = false;
-    external_memory_device = Device::CUDA;
+
+    // Set buffer flags.
+
+    set_host_accessible();
+    set_external_memory_device(Device::CUDA);
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
     JST_TRACE("[CPU:BUFFER] Checking if CUDA buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if CUDA buffer is host accessible.
 
@@ -250,7 +273,7 @@ Implementation::~TensorBuffer() {
     // Unmap memory if imported from Vulkan.
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-    if (external_memory_device == Device::Vulkan) {
+    if (external_memory_device() == Device::Vulkan) {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
         vkUnmapMemory(device, vulkan_memory);
     }
@@ -258,7 +281,7 @@ Implementation::~TensorBuffer() {
 
     // Free memory.
 
-    if (owns_data) {
+    if (allocated()) {
 #ifdef JST_OS_WINDOWS
         VirtualFree(buffer, 0, MEM_RELEASE);
 #else

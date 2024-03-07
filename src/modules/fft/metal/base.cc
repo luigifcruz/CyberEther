@@ -4,6 +4,8 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #define VKFFT_BACKEND 5
 #include "vkFFT.h"
 #pragma GCC diagnostic pop
@@ -60,7 +62,7 @@ Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
 }
 
 template<Device D, typename IT, typename OT>
-Result FFT<D, IT, OT>::destroyCompute(const Context& ctx) {
+Result FFT<D, IT, OT>::destroyCompute(const Context&) {
     JST_TRACE("Destroy FFT compute core using Metal backend.");
 
     if (!pimpl->app) {

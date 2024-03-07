@@ -19,8 +19,10 @@ class SurfaceImp<Device::Metal> : public Surface {
     Result draw(MTL::CommandBuffer* commandBuffer);
 
  private:
+    Size2D<U64> requestedSize;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::shared_ptr<TextureImp<Device::Metal>> framebuffer;
+    std::shared_ptr<TextureImp<Device::Metal>> framebufferResolve;
     std::vector<std::shared_ptr<ProgramImp<Device::Metal>>> programs;
 
     Result createFramebuffer();

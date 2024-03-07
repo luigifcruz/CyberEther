@@ -19,6 +19,7 @@ class SurfaceImp<Device::Vulkan> : public Surface {
     Result destroy();
 
  private:
+    std::shared_ptr<TextureImp<Device::Vulkan>> framebufferResolve;
     std::shared_ptr<TextureImp<Device::Vulkan>> framebuffer;
     VkFramebuffer framebufferObject;
     VkRenderPass renderPass;

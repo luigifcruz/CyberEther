@@ -91,7 +91,7 @@ class FFT : public Module, public Compute {
     U64 numberOfElements = 0;
     U64 elementStride = 0;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_FFT_CPU_AVAILABLE

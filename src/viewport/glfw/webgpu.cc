@@ -16,7 +16,7 @@ EM_JS(int, getPixelRatio, (), {
     return window.devicePixelRatio;
 });
 
-static void PrintGLFWError(int error, const char* description) {
+static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[WebGPU] GLFW error: {}", description);
 }
 

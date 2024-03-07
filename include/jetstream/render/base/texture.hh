@@ -35,13 +35,22 @@ class Texture {
         DataFormat dfmt = DataFormat::RGBA;
         PixelFormat pfmt = PixelFormat::RGBA;
         PixelType ptype = PixelType::UI8;
+        bool multisampled = false;
     };
 
     explicit Texture(const Config& config) : config(config) {}
     virtual ~Texture() = default;
 
+    const Config& getConfig() const {
+        return config;
+    }
+
     virtual Result create() = 0;
     virtual Result destroy() = 0;
+
+    constexpr const bool& multisampled() const {
+        return config.multisampled;
+    }
 
     constexpr const Size2D<U64>& size() const {
         return config.size;

@@ -124,7 +124,7 @@ class Cast : public Block {
  private:
     std::shared_ptr<Jetstream::Cast<D, IT, OT>> cast;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

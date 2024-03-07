@@ -16,6 +16,13 @@ Result Implementation::create() {
             pixelFormat, config.size.width, config.size.height, false);
     JST_ASSERT(textureDesc);
 
+    if (config.multisampled) {
+        textureDesc->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
+        textureDesc->setTextureType(MTL::TextureType2DMultisample);
+    }
+
+    // TODO: Check if memoryless is an option here.
+
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView | 
                           MTL::TextureUsageRenderTarget |
                           MTL::TextureUsageShaderRead);

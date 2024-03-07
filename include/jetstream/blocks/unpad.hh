@@ -149,7 +149,7 @@ class Unpad : public Block {
  private:
     std::shared_ptr<Jetstream::Unpad<D, IT>> unpad;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

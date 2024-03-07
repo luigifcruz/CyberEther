@@ -15,12 +15,10 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
     Tensor(const TensorBase<Device::CUDA, T>& base) : TensorBase<Device::CUDA, T>(base) {}
 
     constexpr const void* data() const noexcept {
-        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 
     constexpr void* data() noexcept {
-        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 

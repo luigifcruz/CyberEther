@@ -24,7 +24,7 @@ Result Amplitude<D, IT, OT>::create() {
 
 template<Device D, typename IT, typename OT>
 void Amplitude<D, IT, OT>::info() const {
-    JST_INFO("  None");
+    JST_DEBUG("  None");
 }
 
 }  // namespace Jetstream

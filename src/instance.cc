@@ -1,3 +1,5 @@
+#include <ranges>
+
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
 
@@ -101,6 +103,10 @@ Result Instance::reloadBlock(Locale locale) {
         return Result::SUCCESS;
     }));
 
+    if (!_flowgraph.nodes().at(locale)->block->complete()) {
+        return Result::ERROR;
+    }
+
     return Result::SUCCESS;
 }
 
@@ -131,7 +137,7 @@ Result Instance::removeBlock(Locale locale) {
     }
 
     for (const auto& [inputLocale, outputLocale] : unlinkList) {
-        JST_CHECK(unlinkBlocks(inputLocale.block(), outputLocale.block()));
+        JST_CHECK(unlinkBlocks(inputLocale.pin(), outputLocale.pin()));
     }
 
     // Delete block.
@@ -156,7 +162,7 @@ Result Instance::unlinkBlocks(Locale inputLocale, Locale outputLocale) {
     }
 
     if (inputLocale.pinId.empty() || outputLocale.pinId.empty()) {
-        JST_ERROR("[INSTANCE] The pin ID of the input and output locale must not be empty.");
+        JST_ERROR("[INSTANCE] The Locale Pin ID of the input and output locale must be set.");
         return Result::ERROR;
     }
 
@@ -195,7 +201,7 @@ Result Instance::linkBlocks(Locale inputLocale, Locale outputLocale) {
     }
 
     if (inputLocale.pinId.empty() || outputLocale.pinId.empty()) {
-        JST_ERROR("[INSTANCE] The pin ID of the input and output locale must not be empty.");
+        JST_ERROR("[INSTANCE] The Locale Pin ID of the input and output locale must be set.");
         return Result::ERROR;
     }
 
@@ -263,11 +269,6 @@ Result Instance::changeBlockDataType(Locale input, std::tuple<std::string, std::
         const auto& [inputDataType, outputDataType] = type;
         node->fingerprint.inputDataType = inputDataType;
         node->fingerprint.outputDataType = outputDataType;
-
-        // Clean-up every state because they will most likely be incompatible.
-        node->inputMap.clear();
-        node->outputMap.clear();
-        node->configMap.clear();
 
         return Result::SUCCESS;
     }));
@@ -337,6 +338,7 @@ Result Instance::blockUpdater(Locale locale,
     JST_CHECK(updater(record));
 
     auto res = Result::SUCCESS;
+    auto dependencyRes = Result::SUCCESS;
 
     // Check if the module store has such a record fingerprint.
     if (!Store::BlockConstructorList().contains(record->fingerprint)) {
@@ -351,7 +353,7 @@ Result Instance::blockUpdater(Locale locale,
     }
 
     // Create new input block using saved records.
-    const auto errorCodeBackup = JST_LOG_LAST_ERROR();
+    auto errorCodeBackup = JST_LOG_LAST_ERROR();
 
     // If recreation fails, rewind the module state.
     if (res != Result::SUCCESS) {
@@ -364,27 +366,88 @@ Result Instance::blockUpdater(Locale locale,
     }
 
     // Create new dependency block using saved records.
+    std::vector<Locale> dependencyEraseList;
+
     for (auto& dependencyRecord : dependencyRecords | std::ranges::views::reverse) {
         // Update input of dependency block record.
         for (auto& [inputName, inputRecord] : dependencyRecord->inputMap) {
             auto inputLocale = inputRecord.locale;
 
             // Update block ID if necessary.
-            if (inputLocale.blockId == recordBackup.id) {
+            if (inputLocale.blockId == recordBackup.id && recordBackup.id != record->id) {
                 JST_TRACE("[INSTANCE] Updating block ID of input '{}' to '{}'.", inputLocale.blockId, record->id)
                 inputLocale.blockId = record->id;
             }
 
+            // Update input of dependency block record.
             const auto& outputRecord = _flowgraph.nodes().at(inputLocale.block());
             inputRecord = outputRecord->outputMap.at(inputLocale.pinId);
         }
 
         // Create new dependency block with updated inputs.
-        JST_CHECK(Store::BlockConstructorList().at(dependencyRecord->fingerprint)(*this,
-                                                                                  dependencyRecord->id,
-                                                                                  dependencyRecord->configMap,
-                                                                                  dependencyRecord->inputMap,
-                                                                                  dependencyRecord->stateMap));
+        dependencyRes = Store::BlockConstructorList().at(dependencyRecord->fingerprint)(*this,
+                                                                                        dependencyRecord->id,
+                                                                                        dependencyRecord->configMap,
+                                                                                        dependencyRecord->inputMap,
+                                                                                        dependencyRecord->stateMap);
+
+        if (dependencyRes != Result::SUCCESS) {
+            errorCodeBackup = JST_LOG_LAST_ERROR();
+            break;
+        }
+
+        dependencyEraseList.push_back({dependencyRecord->id});
+    }
+
+    if (dependencyRes != Result::SUCCESS) {
+        JST_TRACE("[INSTANCE] Dependency recreation failed. Rewinding state.");
+
+        // Remove block dependencies.
+
+        for (const auto& dependencyLocale : dependencyEraseList) {
+            JST_CHECK(eraseBlock(dependencyLocale));
+        }
+
+        // Remove block.
+
+        JST_CHECK(eraseBlock(locale.block()));
+
+        // Rewind the block state.
+
+        JST_CHECK(Store::BlockConstructorList().at(recordBackup.fingerprint)(*this,
+                                                                             recordBackup.id,
+                                                                             recordBackup.configMap,
+                                                                             recordBackup.inputMap,
+                                                                             recordBackup.stateMap));
+
+        // Rewind the dependency block state.
+
+        for (auto& dependencyRecord : dependencyRecords | std::ranges::views::reverse) {
+            // Update input of dependency block record.
+            for (auto& [inputName, inputRecord] : dependencyRecord->inputMap) {
+                auto inputLocale = inputRecord.locale;
+
+                // Update block ID if necessary.
+                if (inputLocale.blockId == record->id && recordBackup.id != record->id) {
+                    inputLocale.blockId = recordBackup.id;
+                }
+                
+                // Update input of dependency block record.
+                const auto& outputRecord = _flowgraph.nodes().at(inputLocale.block());
+                inputRecord = outputRecord->outputMap.at(inputLocale.pinId);
+            }
+
+            // Create new dependency block with updated inputs.
+            JST_CHECK(Store::BlockConstructorList().at(dependencyRecord->fingerprint)(*this,
+                                                                                      dependencyRecord->id,
+                                                                                      dependencyRecord->configMap,
+                                                                                      dependencyRecord->inputMap,
+                                                                                      dependencyRecord->stateMap));
+        }
+
+        JST_LOG_LAST_ERROR() = errorCodeBackup;
+
+        return dependencyRes;
     }
 
     JST_LOG_LAST_ERROR() = errorCodeBackup;

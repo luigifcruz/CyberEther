@@ -15,12 +15,10 @@ class Tensor<Device::Metal, T> : public TensorBase<Device::Metal, T> {
     Tensor(const TensorBase<Device::Metal, T>& base) : TensorBase<Device::Metal, T>(base) {}
 
     constexpr const MTL::Buffer* data() const noexcept {
-        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 
     constexpr MTL::Buffer* data() noexcept {
-        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 };

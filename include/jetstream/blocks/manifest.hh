@@ -93,103 +93,113 @@ inline void AddBlockToMetadataManifest(Block::MetadataManifest& manifest) {
 inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest, 
                                Block::MetadataManifest& metadataManifest) {
     JST_TRACE("[BLOCKS] Getting default block manifest list.");
-    
-    JST_BLOCKS_MANIFEST(
+
 #ifdef JETSTREAM_BLOCK_FFT_AVAILABLE
-        Blocks::FFT,
+    JST_BLOCKS_MANIFEST(Blocks::FFT);
 #endif
 #ifdef JETSTREAM_BLOCK_LINEPLOT_AVAILABLE
-        Blocks::Lineplot,
+    JST_BLOCKS_MANIFEST(Blocks::Lineplot);
 #endif
 #ifdef JETSTREAM_BLOCK_WATERFALL_AVAILABLE
-        Blocks::Waterfall,
+    JST_BLOCKS_MANIFEST(Blocks::Waterfall);
 #endif
 #ifdef JETSTREAM_BLOCK_SPECTROGRAM_AVAILABLE
-        Blocks::Spectrogram,
+    JST_BLOCKS_MANIFEST(Blocks::Spectrogram);
 #endif
 #ifdef JETSTREAM_BLOCK_CONSTELLATION_AVAILABLE
-        Blocks::Constellation,
+    JST_BLOCKS_MANIFEST(Blocks::Constellation);
 #endif
 #ifdef JETSTREAM_BLOCK_SOAPY_AVAILABLE
-        Blocks::Soapy,
+    JST_BLOCKS_MANIFEST(Blocks::Soapy);
 #endif
 #ifdef JETSTREAM_BLOCK_MULTIPLY_AVAILABLE
-        Blocks::Multiply,
+    JST_BLOCKS_MANIFEST(Blocks::Multiply);
 #endif
 #ifdef JETSTREAM_BLOCK_SCALE_AVAILABLE
-        Blocks::Scale,
+    JST_BLOCKS_MANIFEST(Blocks::Scale);
 #endif
 #ifdef JETSTREAM_BLOCK_PAD_AVAILABLE
-        Blocks::Pad,
+    JST_BLOCKS_MANIFEST(Blocks::Pad);
 #endif
 #ifdef JETSTREAM_BLOCK_UNPAD_AVAILABLE
-        Blocks::Unpad,
+    JST_BLOCKS_MANIFEST(Blocks::Unpad);
 #endif
 #ifdef JETSTREAM_BLOCK_OVERLAP_ADD_AVAILABLE
-        Blocks::OverlapAdd,
+    JST_BLOCKS_MANIFEST(Blocks::OverlapAdd);
 #endif
 #ifdef JETSTREAM_BLOCK_REMOTE_AVAILABLE
-        Blocks::Remote,
+    JST_BLOCKS_MANIFEST(Blocks::Remote);
 #endif
 #ifdef JETSTREAM_BLOCK_FILTER_TAPS_AVAILABLE
-        Blocks::FilterTaps,
+    JST_BLOCKS_MANIFEST(Blocks::FilterTaps);
 #endif
 #ifdef JETSTREAM_BLOCK_AMPLITUDE_AVAILABLE
-        Blocks::Amplitude,
+    JST_BLOCKS_MANIFEST(Blocks::Amplitude);
 #endif
 #ifdef JETSTREAM_BLOCK_AGC_AVAILABLE
-        Blocks::AGC,
+    JST_BLOCKS_MANIFEST(Blocks::AGC);
 #endif
 #ifdef JETSTREAM_BLOCK_FM_AVAILABLE
-        Blocks::FM,
+    JST_BLOCKS_MANIFEST(Blocks::FM);
 #endif
 #ifdef JETSTREAM_BLOCK_AUDIO_AVAILABLE
-        Blocks::Audio,
+    JST_BLOCKS_MANIFEST(Blocks::Audio);
 #endif
 #ifdef JETSTREAM_BLOCK_INVERT_AVAILABLE
-        Blocks::Invert,
+    JST_BLOCKS_MANIFEST(Blocks::Invert);
 #endif
 #ifdef JETSTREAM_BLOCK_WINDOW_AVAILABLE
-        Blocks::Window,
+    JST_BLOCKS_MANIFEST(Blocks::Window);
 #endif
 #ifdef JETSTREAM_BLOCK_MULTIPLY_CONSTANT_AVAILABLE
-        Blocks::MultiplyConstant,
+    JST_BLOCKS_MANIFEST(Blocks::MultiplyConstant);
 #endif
 #ifdef JETSTREAM_BLOCK_EXPAND_DIMS_AVAILABLE
-        Blocks::ExpandDims,
+    JST_BLOCKS_MANIFEST(Blocks::ExpandDims);
 #endif
 #ifdef JETSTREAM_BLOCK_FILTER_ENGINE_AVAILABLE
-        Blocks::FilterEngine,
+    JST_BLOCKS_MANIFEST(Blocks::FilterEngine);
 #endif
 #ifdef JETSTREAM_BLOCK_FOLD_AVAILABLE
-        Blocks::Fold,
+    JST_BLOCKS_MANIFEST(Blocks::Fold);
 #endif
 #ifdef JETSTREAM_BLOCK_CAST_AVAILABLE
-        Blocks::Cast,
+    JST_BLOCKS_MANIFEST(Blocks::Cast);
 #endif
 #ifdef JETSTREAM_BLOCK_SPEECH_RECOGNITION_AVAILABLE
-        Blocks::SpeechRecognition,
+    JST_BLOCKS_MANIFEST(Blocks::SpeechRecognition);
 #endif
 #ifdef JETSTREAM_BLOCK_NOTE_AVAILABLE
-        Blocks::Note,
+    JST_BLOCKS_MANIFEST(Blocks::Note);
 #endif
 #ifdef JETSTREAM_BLOCK_TAKE_AVAILABLE
-        Blocks::Take,
+    JST_BLOCKS_MANIFEST(Blocks::Take);
 #endif
 #ifdef JETSTREAM_BLOCK_SQUEEZE_DIMS_AVAILABLE
-        Blocks::SqueezeDims,
+    JST_BLOCKS_MANIFEST(Blocks::SqueezeDims);
 #endif
 #ifdef JETSTREAM_BLOCK_SPECTROSCOPE_AVAILABLE
-        Blocks::Spectroscope,
+    JST_BLOCKS_MANIFEST(Blocks::Spectroscope);
 #endif
 #ifdef JETSTREAM_BLOCK_FILTER_AVAILABLE
-        Blocks::Filter,
+    JST_BLOCKS_MANIFEST(Blocks::Filter);
 #endif
 #ifdef JETSTREAM_BLOCK_DUPLICATE_AVAILABLE
-        Blocks::Duplicate,
+    JST_BLOCKS_MANIFEST(Blocks::Duplicate);
 #endif
-        // [NEW BLOCK HOOK]
-    )
+#ifdef JETSTREAM_BLOCK_ARITHMETIC_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Arithmetic);
+#endif
+#ifdef JETSTREAM_BLOCK_SLICE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Slice);
+#endif
+#ifdef JETSTREAM_BLOCK_RESHAPE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Reshape);
+#endif
+#ifdef JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::FileWriter);
+#endif
+    // [NEW BLOCK HOOK]
 }
 
 }  // namespace Jetstream::Blocks

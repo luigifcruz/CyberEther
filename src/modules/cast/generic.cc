@@ -29,8 +29,8 @@ Result Cast<D, IT, OT>::create() {
 
 template<Device D, typename IT, typename OT>
 void Cast<D, IT, OT>::info() const {
-    JST_INFO("  Scaler:         {}", config.scaler);
-    JST_INFO("  Cast Operation: {} -> {}", NumericTypeInfo<IT>::name, NumericTypeInfo<OT>::name);
+    JST_DEBUG("  Scaler:         {}", config.scaler);
+    JST_DEBUG("  Cast Operation: {} -> {}", NumericTypeInfo<IT>::name, NumericTypeInfo<OT>::name);
 }
 
 }  // namespace Jetstream

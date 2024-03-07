@@ -12,7 +12,7 @@ void benchmark(ankerl::nanobench::Bench& bench, std::string name) {
     // Non-Contiguous
     {
         Tensor<D, IT> buffer({128, 16000});
-        buffer.view({{}, {0, 0, 2}});
+        buffer.slice({{}, {0, 0, 2}});
         JST_BENCHMARK_RUN("128x8000 (NC)", {}, {
             .buffer = buffer COMMA
         }, IT);

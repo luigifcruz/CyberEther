@@ -76,7 +76,7 @@ class FM : public Module, public Compute {
     F32 kf;
     F32 ref;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_FM_CPU_AVAILABLE

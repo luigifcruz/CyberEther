@@ -22,9 +22,20 @@ enum class Result : uint8_t {
     TIMEOUT     = 7,
 };
 
-inline constexpr Result& operator|=(Result& lhs, const Result& rhs) {
-    lhs = ((lhs != Result::SUCCESS) || (rhs != Result::SUCCESS)) ? Result::ERROR : Result::SUCCESS;
-    return lhs;
+/**
+ * @enum Taint
+ * @brief Represents the taint status of a module's input or output.
+ *
+ * This enum class is used to describe various taint or state conditions of data being processed by a module. 
+ */
+enum class Taint : uint64_t {
+    CLEAN               = 0 << 0, ///< No taint set, data is in its original state.
+    IN_PLACE            = 1 << 0, ///< Module will overwrite input, modifying it directly.
+    DISCONTIGUOUS       = 1 << 1, ///< Accepts non-contiguous data buffers for input tensors.
+};
+
+inline Taint operator&(const Taint& lhs, const Taint& rhs) {
+    return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
 }
 
 template<typename T = U64>
@@ -48,6 +59,16 @@ struct Size2D {
         return (width <= a.width || height <= a.height);
     }
 };
+
+template<typename T>
+Size2D<T> operator*(const Size2D<T>& a, const F32& b) {
+    return {static_cast<T>(a.width * b), static_cast<T>(a.height * b)};
+}
+
+template<typename T>
+Size2D<T> operator/(const Size2D<T>& a, const F32& b) {
+    return {static_cast<T>(a.width / b), static_cast<T>(a.height / b)};
+}
 
 inline Size2D<U64> NullSize = {0, 0};
 

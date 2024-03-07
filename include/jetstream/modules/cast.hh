@@ -73,7 +73,7 @@ class Cast : public Module, public Compute {
     Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_CAST_CPU_AVAILABLE

@@ -42,6 +42,7 @@ struct Config {
     bool validationEnabled = false;
 #endif
     U64 stagingBufferSize = 64*1024*1024;
+    U64 multisampling = 4;
     bool headless = false;
 };
 

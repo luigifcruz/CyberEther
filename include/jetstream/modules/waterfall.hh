@@ -144,7 +144,7 @@ class Waterfall : public Module, public Compute, public Present {
 
     Result underlyingCompute(const Context& ctx);
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE

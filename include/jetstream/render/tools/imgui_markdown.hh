@@ -692,7 +692,7 @@ namespace ImGui
                 {
                     int next = i + 1;
                     int prev = i - 1;
-                    if( ( c == '*' || c == '_' )
+                    if( ( c == '*' || c == '_' || c == '`' )
                         && ( i == line.lineStart
                             || markdown_[ prev ] == ' '
                             || markdown_[ prev ] == '\t' ) // empasis must be preceded by whitespace or line start

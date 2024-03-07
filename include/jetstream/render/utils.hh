@@ -16,6 +16,9 @@ inline std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Ren
     Device renderDevice = window->device();
     Device optimalDevice = Device::None;
 
+    (void)optimalDevice;
+    (void)renderDevice;
+
     if (tensor.compatible_devices().contains(renderDevice)) {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         if (renderDevice == Device::CPU) {

@@ -22,6 +22,10 @@ class JETSTREAM_API Module {
         return Result::SUCCESS;
     }
 
+    virtual constexpr Taint taint() const {
+        return Taint::CLEAN;
+    }
+
     virtual void info() const = 0;
     virtual constexpr Device device() const = 0;
 
@@ -31,7 +35,7 @@ class JETSTREAM_API Module {
 
  protected:
     template<Device DeviceId, typename DataType>
-    static Result InitInput(Tensor<DeviceId, DataType>& buffer) {
+    static Result InitInput(Tensor<DeviceId, DataType>& buffer, const Taint& taint) {
         JST_TRACE("[MODULE] Init input locale: '{}'", buffer.locale());
 
         if (buffer.empty()) {
@@ -46,6 +50,11 @@ class JETSTREAM_API Module {
 
         if (!buffer.valid_shape()) {
             JST_ERROR("Input has invalid shape during initialization: {}", buffer.shape());
+            return Result::ERROR;
+        }
+
+        if ((taint & Taint::DISCONTIGUOUS) != Taint::DISCONTIGUOUS && !buffer.contiguous()) {
+            JST_ERROR("Input is not contiguous during initialization.");
             return Result::ERROR;
         }
 
@@ -107,7 +116,7 @@ class JETSTREAM_API Compute {
 #endif
     };
 
-    virtual constexpr Result createCompute(const Context& ctx) {
+    virtual constexpr Result createCompute(const Context&) {
         return Result::SUCCESS;
     }
     virtual constexpr Result compute(const Context& ctx) = 0;

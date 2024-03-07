@@ -53,6 +53,7 @@
 #include "jetstream/tools/fmt/color.h"
 #include "jetstream/tools/fmt/ostream.h"
 #include "jetstream/tools/fmt/ranges.h"
+#include "jetstream/tools/fmt/chrono.h"
 
 #undef FMT_BEGIN_NAMESPACE
 #undef FMT_END_NAMESPACE

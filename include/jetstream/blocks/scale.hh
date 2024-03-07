@@ -101,7 +101,7 @@ class Scale : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Range (dBFS)");
+        ImGui::TextUnformatted("Range (dBFS)");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto [min, max] = scale->range();
@@ -118,7 +118,7 @@ class Scale : public Block {
  private:
     std::shared_ptr<Jetstream::Scale<D, IT>> scale;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

@@ -39,7 +39,7 @@ Result Window<D, T>::compute(const Context&) {
 
 template<Device D, typename T>
 void Window<D, T>::info() const {
-    JST_INFO("  Window Size: {}", config.size);
+    JST_DEBUG("  Window Size: {}", config.size);
 }
 
 JST_WINDOW_CPU(JST_INSTANTIATION)

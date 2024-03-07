@@ -8,7 +8,7 @@
 namespace Jetstream {
 
 template<>
-class TensorBuffer<Device::Metal> {
+class TensorBuffer<Device::Metal> : public TensorBufferBase {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype);
@@ -39,18 +39,6 @@ class TensorBuffer<Device::Metal> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr bool host_accessible() const noexcept {
-        return _host_accessible;
-    }
-
-    constexpr bool device_native() const noexcept {
-        return _device_native;
-    }
-
-    constexpr bool host_native() const noexcept {
-        return _host_native;
-    }
-
     constexpr const MTL::Buffer* data() const noexcept {
         return buffer;
     }
@@ -61,10 +49,6 @@ class TensorBuffer<Device::Metal> {
 
  private:
     MTL::Buffer* buffer;
-    bool owns_data = false;
-    bool _host_accessible = false;
-    bool _device_native = false;
-    bool _host_native = false;
 };
 
 }  // namespace Jetstream

@@ -20,9 +20,9 @@ template<Device D, typename T>
 void MultiplyConstant<D, T>::info() const {
     // TODO: Add custom formater for complex type.
     if constexpr (IsComplex<T>::value) {
-        JST_INFO("  Constant: ({}, {})", config.constant.real(), config.constant.imag());
+        JST_DEBUG("  Constant: ({}, {})", config.constant.real(), config.constant.imag());
     } else {
-        JST_INFO("  Constant: {}", config.constant);
+        JST_DEBUG("  Constant: {}", config.constant);
     }
 }
 

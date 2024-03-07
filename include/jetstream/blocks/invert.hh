@@ -95,7 +95,7 @@ class Invert : public Block {
  private:
     std::shared_ptr<Jetstream::Invert<D, IT>> invert;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

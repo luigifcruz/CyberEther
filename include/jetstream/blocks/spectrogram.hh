@@ -121,7 +121,7 @@ class Spectrogram : public Block {
  private:
     std::shared_ptr<Jetstream::Spectrogram<D, IT>> spectrogram;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

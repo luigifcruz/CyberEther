@@ -38,8 +38,8 @@ Result Unpad<D, T>::create() {
 
 template<Device D, typename T>
 void Unpad<D, T>::info() const {
-    JST_INFO("  Pad Size:   {}", config.size);
-    JST_INFO("  Pad Axis:   {}", config.axis);
+    JST_DEBUG("  Pad Size:   {}", config.size);
+    JST_DEBUG("  Pad Axis:   {}", config.axis);
 }
 
 }  // namespace Jetstream

@@ -11,7 +11,7 @@
 
 namespace Jetstream::Viewport {
 
-static void PrintGLFWError(int error, const char* description) {
+static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[Metal] GLFW error: {}", description);
 }
 

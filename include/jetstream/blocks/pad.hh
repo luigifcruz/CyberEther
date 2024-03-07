@@ -143,7 +143,7 @@ class Pad : public Block {
  private:
     std::shared_ptr<Jetstream::Pad<D, IT>> pad;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

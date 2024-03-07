@@ -34,6 +34,10 @@ class Buffer {
     explicit Buffer(const Config& config) : config(config) {}
     virtual ~Buffer() = default;
 
+    const Config& getConfig() const {
+        return config;
+    }
+
     virtual Result create() = 0;
     virtual Result destroy() = 0;
 

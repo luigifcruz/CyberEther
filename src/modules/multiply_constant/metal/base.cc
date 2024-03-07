@@ -32,7 +32,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-Result MultiplyConstant<D, T>::createCompute(const Context& ctx) {
+Result MultiplyConstant<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply Constant compute core using Metal backend.");
 
     auto& assets = metal;

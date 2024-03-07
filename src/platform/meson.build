@@ -10,7 +10,7 @@ endif
 
 if jst_is_macos
     dep_lst += [
-        dependency('appleframeworks', modules: ['Foundation', 'AppKit']),
+        dependency('appleframeworks', modules: ['Foundation', 'AppKit', 'UniformTypeIdentifiers']),
     ]
 endif
 

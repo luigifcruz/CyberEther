@@ -1,6 +1,5 @@
 #include "../generic.cc"
 
-#pragma GCC optimize("unroll-loops")
 #include "jetstream/memory/devices/cpu/helpers.hh"
 
 namespace Jetstream {

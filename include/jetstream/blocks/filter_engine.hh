@@ -330,7 +330,7 @@ class FilterEngine : public Block {
         return true;
     }
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

@@ -11,7 +11,7 @@ constexpr static Device ComputeDevice = Device::CPU;
 constexpr static Device RenderDevice  = Device::Vulkan;
 
 // Selects the viewport platform to use.
-using Platform = Viewport::GLFW<RenderDevice>;
+using ViewportPlatform = Viewport::GLFW<RenderDevice>;
 
 class UI {
  public:
@@ -294,7 +294,7 @@ int main() {
     viewportCfg.vsync = true;
     viewportCfg.size = {3130, 1140};
     viewportCfg.title = "CyberEther";
-    JST_CHECK_THROW(instance.buildViewport<Platform>(viewportCfg));
+    JST_CHECK_THROW(instance.buildViewport<ViewportPlatform>(viewportCfg));
 
     // Initialize Window.
     Render::Window::Config renderCfg;

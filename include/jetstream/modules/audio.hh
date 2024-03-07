@@ -96,7 +96,7 @@ class Audio : public Module, public Compute {
 
     std::string deviceName;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_AUDIO_CPU_AVAILABLE

@@ -106,7 +106,7 @@ class Note : public Block {
  private:
     bool editing = false;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

@@ -97,7 +97,7 @@ class Scale : public Module, public Compute {
     F32 offsetCoeff;
     U64 numberOfElements;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_SCALE_CPU_AVAILABLE

@@ -1,5 +1,6 @@
 deps = [
     'JETSTREAM_BACKEND_CUDA_AVAILABLE',
+    'JETSTREAM_LOADER_GLM_AVAILABLE',
 ]
 
 all_deps_found = true

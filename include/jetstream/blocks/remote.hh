@@ -224,10 +224,14 @@ class Remote : public Block {
         return remote->isSocketStreaming();
     }
 
+    constexpr bool shouldDrawFullscreen() const {
+        return remote->isSocketStreaming();
+    }
+
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Address");
+        ImGui::TextUnformatted("Address");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::InputText("##EndpointAddress", &config.endpoint, ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -277,7 +281,7 @@ class Remote : public Block {
                       mousePositionAbsolute.y - screenPositionAbsolute.y);
     }
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

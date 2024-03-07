@@ -18,6 +18,8 @@
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/render/base.hh"
+
 
 namespace Jetstream {
 
@@ -32,9 +34,10 @@ class JETSTREAM_API Block {
         bool viewEnabled = false;
         bool previewEnabled = false;
         bool controlEnabled = false;
+        bool fullscreenEnabled = false;
         Size2D<F32> nodePos = {0.0f, 0.0f};
 
-        JST_SERDES(nodeWidth, viewEnabled, previewEnabled, controlEnabled, nodePos);
+        JST_SERDES(nodeWidth, viewEnabled, previewEnabled, controlEnabled, fullscreenEnabled, nodePos);
     };
 
     constexpr const State& getState() const {
@@ -141,6 +144,9 @@ class JETSTREAM_API Block {
     virtual constexpr bool shouldDrawView() const {
         return false;
     }
+    virtual constexpr bool shouldDrawFullscreen() const {
+        return false;
+    }
 
     virtual void drawControl() {}
     virtual constexpr bool shouldDrawControl() const {
@@ -150,6 +156,38 @@ class JETSTREAM_API Block {
     virtual void drawInfo() {}
     virtual constexpr bool shouldDrawInfo() const {
         return false;
+    }
+
+    // Helpers
+
+    static std::pair<U64, U64> GetContentRegion() {
+        ImVec2 contentRegion = ImGui::GetContentRegionAvail();
+        return {
+            static_cast<U64>(contentRegion.x),
+            static_cast<U64>(contentRegion.y)
+        };
+    }
+
+    static std::pair<F32, F32> GetRelativeMousePos(const std::pair<U64, U64> dim, const F32& zoom = 1.0f) {
+        const auto& [x, y] = dim;
+
+        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
+        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
+
+        return {
+            (((mousePositionAbsolute.x - screenPositionAbsolute.x) / x) * 2.0f - 1.0f) / zoom,
+            (((mousePositionAbsolute.y - screenPositionAbsolute.y) / y) * 2.0f - 1.0f) / zoom,
+        };
+    }
+
+    static std::pair<F32, F32> GetRelativeMouseTranslation(const std::pair<U64, U64> dim, const F32& zoom = 1.0f) {
+        const auto& [dx, dy] = ImGui::GetMouseDragDelta(0);
+        const auto& [x, y] = dim;
+
+        return {
+            ((dx * (1.0f / x)) * 2.0f) / zoom,
+            ((dy * (1.0f / y)) * 2.0f) / zoom
+        };
     }
 
  protected:

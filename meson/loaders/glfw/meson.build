@@ -1,5 +1,13 @@
 deps = [
-    dependency('glfw3', required: false, fallback: 'glfw', default_options: ['default_library=static']),
+    dependency(
+        'glfw3', 
+        required: false, 
+        fallback: 'glfw', 
+        default_options: [
+            'default_library=static',
+            'install=false',
+        ]
+    ),
 ]
 
 all_deps_found = true

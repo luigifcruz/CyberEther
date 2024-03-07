@@ -26,6 +26,8 @@ Result Implementation::create() {
         JST_CHECK(program->create(framebuffer->getTextureFormat()));
     }
 
+    requestedSize = framebuffer->size();
+
     return Result::SUCCESS;
 }
 
@@ -54,6 +56,11 @@ Result Implementation::destroyFramebuffer() {
 }
 
 Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
+    if (framebuffer->size(requestedSize)) {
+        JST_CHECK(destroyFramebuffer());
+        JST_CHECK(createFramebuffer());
+    }
+
     wgpu::RenderPassColorAttachment colorAttachment{};
     colorAttachment.view = framebuffer->getViewHandle();
     colorAttachment.loadOp = wgpu::LoadOp::Clear;
@@ -84,10 +91,7 @@ const Size2D<U64>& Implementation::size(const Size2D<U64>& size) {
         return NullSize;
     }
 
-    if (framebuffer->size(size)) {
-        destroyFramebuffer();
-        createFramebuffer();
-    }
+    requestedSize = size;
 
     return framebuffer->size();
 } 

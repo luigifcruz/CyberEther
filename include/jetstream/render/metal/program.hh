@@ -12,7 +12,7 @@ class ProgramImp<Device::Metal> : public Program {
     explicit ProgramImp(const Config& config);
 
  protected:
-    Result create(const MTL::PixelFormat& pixelFormat);
+    Result create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer);
     Result destroy();
     Result draw(MTL::RenderCommandEncoder* renderCmdEncoder);
 

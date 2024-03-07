@@ -62,6 +62,10 @@ bool Metal::hasUnifiedMemory() const {
     return device->hasUnifiedMemory();
 }
 
+U64 Metal::getMultisampling() const {
+    return 4;
+}
+
 U64 Metal::getPhysicalMemory() const {
     return info->physicalMemory();
 }

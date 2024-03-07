@@ -18,7 +18,7 @@ Result AGC<D, T>::create() {
 
 template<Device D, typename T>
 void AGC<D, T>::info() const {
-    JST_INFO("  None");
+    JST_DEBUG("  None");
 }
 
 }  // namespace Jetstream

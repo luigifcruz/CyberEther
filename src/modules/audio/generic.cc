@@ -230,9 +230,9 @@ Result Audio<D, T>::destroy() {
 
 template<Device D, typename T>
 void Audio<D, T>::info() const {
-    JST_INFO("  Device Name:        {}", config.deviceName);
-    JST_INFO("  Input Sample Rate:  {:.2f} kHz", config.inSampleRate / 1000);
-    JST_INFO("  Output Sample Rate: {:.2f} kHz", config.outSampleRate / 1000);
+    JST_DEBUG("  Device Name:        {}", config.deviceName);
+    JST_DEBUG("  Input Sample Rate:  {:.2f} kHz", config.inSampleRate / 1000);
+    JST_DEBUG("  Output Sample Rate: {:.2f} kHz", config.outSampleRate / 1000);
 }
 
 template<Device D, typename T>

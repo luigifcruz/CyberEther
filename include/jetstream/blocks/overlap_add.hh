@@ -126,7 +126,7 @@ class OverlapAdd : public Block {
  private:
     std::shared_ptr<Jetstream::OverlapAdd<D, IT>> overlap_add;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

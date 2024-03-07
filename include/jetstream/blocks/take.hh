@@ -158,7 +158,7 @@ class Take : public Block {
     std::shared_ptr<Jetstream::Take<D, IT>> take;
     std::shared_ptr<Jetstream::TensorModifier<D, IT>> squeezeDims;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

@@ -35,7 +35,8 @@ Result Spectrogram<D, T>::create() {
 
 template<Device D, typename T>
 void Spectrogram<D, T>::info() const {
-    JST_INFO("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Height: {}", config.height);
 }
 
 template<Device D, typename T>

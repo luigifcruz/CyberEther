@@ -121,7 +121,7 @@ class Constellation : public Module, public Compute, public Present {
     } metal;
 #endif
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_CONSTELLATION_CPU_AVAILABLE

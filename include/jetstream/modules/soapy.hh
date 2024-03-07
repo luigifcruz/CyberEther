@@ -139,7 +139,7 @@ class Soapy : public Module, public Compute {
 
     Result soapyThreadLoop();
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE

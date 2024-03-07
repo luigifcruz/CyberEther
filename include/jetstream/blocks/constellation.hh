@@ -120,7 +120,7 @@ class Constellation : public Block {
  private:
     std::shared_ptr<Jetstream::Constellation<D, IT>> constellation;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

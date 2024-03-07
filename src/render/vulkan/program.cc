@@ -25,7 +25,7 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 }
 
 Result Implementation::create(VkRenderPass& renderPass,
-                              std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
+                              const std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
     JST_DEBUG("[VULKAN] Creating program.");
 
     auto& backend = Backend::State<Device::Vulkan>();
@@ -235,7 +235,11 @@ Result Implementation::create(VkRenderPass& renderPass,
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    if (framebuffer->multisampled()) {
+        multisampling.rasterizationSamples = Backend::State<Device::Vulkan>()->getMultisampling();
+    } else {
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask =  VK_COLOR_COMPONENT_R_BIT | 

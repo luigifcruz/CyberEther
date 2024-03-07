@@ -17,8 +17,8 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
         
     switch (config.mode) {
-        case Mode::TRIANGLE_FAN:
-            topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+        case Mode::TRIANGLE_STRIP:
+            topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
             break;
         case Mode::TRIANGLES:
             topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

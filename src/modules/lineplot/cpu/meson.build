@@ -1,4 +1,5 @@
 deps = [
+    'JETSTREAM_LOADER_GLM_AVAILABLE',
 ]
 
 all_deps_found = true

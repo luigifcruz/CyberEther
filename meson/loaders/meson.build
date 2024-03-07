@@ -9,6 +9,8 @@ subdir('webgpu')
 subdir('audiotoolbox')
 subdir('gstreamer')
 subdir('whispercpp')
+subdir('glm')
+subdir('objcpp')
 # [NEW DEPENDENCY HOOK]
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

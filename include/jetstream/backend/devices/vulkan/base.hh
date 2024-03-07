@@ -36,6 +36,7 @@ class Vulkan {
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
+    VkSampleCountFlagBits getMultisampling() const;
     U64 getPhysicalMemory() const;
     U64 getTotalProcessorCount() const;
     bool getLowPowerStatus() const;

@@ -14,7 +14,7 @@ namespace Jetstream::Render {
 class Draw {
  public:
     enum class Mode : U64 {
-        TRIANGLE_FAN,
+        TRIANGLE_STRIP,
         TRIANGLES, 
         LINE_STRIP,
         LINES,
@@ -28,6 +28,10 @@ class Draw {
 
     explicit Draw(const Config& config) : config(config) {}
     virtual ~Draw() = default;
+
+    const Config& getConfig() const {
+        return config;
+    }
 
     template<Device D> 
     static std::shared_ptr<Draw> Factory(const Config& config) {

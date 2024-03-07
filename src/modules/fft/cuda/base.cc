@@ -27,7 +27,7 @@ Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
 
     // Initialize kernel input.
 
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         pimpl->input = Tensor<Device::CUDA, IT>(input.buffer.shape());
     } else {
         pimpl->input = input.buffer;
@@ -103,7 +103,7 @@ Result FFT<D, IT, OT>::destroyCompute(const Context&) {
 
 template<>
 Result FFT<Device::CUDA, CF32, CF32>::compute(const Context& ctx) {
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 

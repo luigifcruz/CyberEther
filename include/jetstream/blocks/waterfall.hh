@@ -119,6 +119,8 @@ class Waterfall : public Block {
         });
         ImGui::Image(waterfall->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
 
+        // TODO: Upgrade zoom and panning API.
+
         if (ImGui::IsItemHovered() && ImGui::IsAnyMouseDown()) {
             if (position == 0) {
                 position = (getRelativeMousePos().x / waterfall->zoom()) + waterfall->offset();
@@ -136,7 +138,7 @@ class Waterfall : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Interpolate");
+        ImGui::TextUnformatted("Interpolate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto interpolate = waterfall->interpolate();
@@ -146,11 +148,11 @@ class Waterfall : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Zoom");
+        ImGui::TextUnformatted("Zoom");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         auto zoom = waterfall->zoom();
-        if (ImGui::DragFloat("##Zoom", &zoom, 0.01, 1.0, 5.0, "%f", 0)) {
+        if (ImGui::DragFloat("##Zoom", &zoom, 0.01, 1.0, 5.0, "%f", ImGuiSliderFlags_AlwaysClamp)) {
             waterfall->zoom(zoom);
         }
     }
@@ -170,7 +172,7 @@ class Waterfall : public Block {
                       mousePositionAbsolute.y - screenPositionAbsolute.y);
     }
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

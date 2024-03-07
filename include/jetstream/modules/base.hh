@@ -105,6 +105,10 @@
 #include "jetstream/modules/duplicate.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_FILE_AVAILABLE
+#include "jetstream/modules/file.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH

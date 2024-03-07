@@ -23,8 +23,8 @@ Result Amplitude<D, IT, OT>::createCompute(const Context&) {
     return Result::SUCCESS;
 }
 
-template<Device D, typename IT, typename OT>
-Result Amplitude<D, IT, OT>::compute(const Context&) {    
+template<>
+Result Amplitude<Device::CPU, CF32, F32>::compute(const Context&) {    
     for (U64 i = 0; i < input.buffer.size(); i++) {
         const auto& number = input.buffer[i];
         const auto& real = number.real();
@@ -32,6 +32,16 @@ Result Amplitude<D, IT, OT>::compute(const Context&) {
 
         const auto& pwr = sqrtf((real * real) + (imag * imag));
 
+        output.buffer[i] = 20.0f * Backend::ApproxLog10(pwr) + scalingCoeff;
+    }
+
+    return Result::SUCCESS;
+}
+
+template<>
+Result Amplitude<Device::CPU, F32, F32>::compute(const Context&) {    
+    for (U64 i = 0; i < input.buffer.size(); i++) {
+        const auto& pwr = fabs(input.buffer[i]);
         output.buffer[i] = 20.0f * Backend::ApproxLog10(pwr) + scalingCoeff;
     }
 

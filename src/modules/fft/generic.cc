@@ -37,7 +37,7 @@ Result FFT<D, IT, OT>::create() {
 
 template<Device D, typename IT, typename OT>
 void FFT<D, IT, OT>::info() const {
-    JST_INFO("  Forward: {}", config.forward ? "YES" : "NO");
+    JST_DEBUG("  Forward: {}", config.forward ? "YES" : "NO");
 }
 
 }  // namespace Jetstream

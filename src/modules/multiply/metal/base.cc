@@ -20,7 +20,7 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
-Result Multiply<D, T>::createCompute(const Context& ctx) {
+Result Multiply<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
     auto& assets = this->metal;
