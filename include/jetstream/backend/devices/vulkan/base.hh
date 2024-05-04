@@ -22,6 +22,9 @@
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 #include <vulkan/vulkan_metal.h>
 #endif
+#if defined(JST_OS_ANDROID)
+#include <vulkan/vulkan_android.h>
+#endif
 
 #include "jetstream/backend/config.hh"
 

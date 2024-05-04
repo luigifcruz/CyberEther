@@ -30,6 +30,12 @@ if jst_is_browser
 endif
 
 all_deps_found = true
+
+if jst_is_android
+    # TODO: Implement SoapySDR for Android.
+    all_deps_found = false
+endif
+
 foreach x_dep : deps
     all_deps_found = all_deps_found and x_dep.found()
 endforeach
