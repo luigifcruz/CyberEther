@@ -9,7 +9,7 @@ if not jst_is_ios and \
         default_options: [
             'default_library=static',
             'tests=false',
-            'install=false',
+            'cpp_std=c++20',
         ]
     )
     tools_lst += {'Catch2': catch2_dep.found()}
