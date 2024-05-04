@@ -1,6 +1,8 @@
 #include "jetstream/render/metal/program.hh"
 #include "jetstream/render/metal/texture.hh"
 #include "jetstream/render/metal/surface.hh"
+#include "jetstream/render/metal/kernel.hh"
+#include "jetstream/render/metal/buffer.hh"
 
 namespace Jetstream::Render {
 
@@ -21,6 +23,18 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
             std::dynamic_pointer_cast<ProgramImp<Device::Metal>>(program)
         );
     }
+
+    for (auto& kernel : config.kernels) {
+        kernels.push_back(
+            std::dynamic_pointer_cast<KernelImp<Device::Metal>>(kernel)
+        );
+    }
+
+    for (auto& buffer : config.buffers) {
+        buffers.push_back(
+            std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer)
+        );
+    }
 }
 
 Result Implementation::create() {
@@ -31,8 +45,16 @@ Result Implementation::create() {
 
     JST_CHECK(createFramebuffer());
 
+    for (auto& buffer : buffers) {
+        JST_CHECK(buffer->create());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->create((config.multisampled) ? framebuffer : framebufferResolve));
+    }
+
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->create());
     }
 
     requestedSize = framebufferResolve->size();
@@ -43,8 +65,16 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal surface.");
 
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->destroy());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
+    }
+
+    for (auto& buffer : buffers) {
+        JST_CHECK(buffer->destroy());
     }
 
     JST_CHECK(destroyFramebuffer());
@@ -103,6 +133,16 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
         JST_CHECK(destroyFramebuffer());
         JST_CHECK(createFramebuffer());
     }
+
+    // Encode kernels.
+
+    auto computeCmdEncoder = commandBuffer->computeCommandEncoder();
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->encode(computeCmdEncoder));
+    }
+    computeCmdEncoder->endEncoding();
+
+    // Encode programs.
 
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
     for (auto& program : programs) {

@@ -7,6 +7,7 @@ namespace Jetstream::Render {
 
 template<Device D> class BufferImp;
 template<Device D> class ProgramImp;
+template<Device D> class KernelImp;
 template<Device D> class DrawImp;
 template<Device D> class SurfaceImp;
 template<Device D> class TextureImp;

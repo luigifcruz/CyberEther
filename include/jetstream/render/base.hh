@@ -20,6 +20,7 @@
 #include "jetstream/render/metal/window.hh"
 #include "jetstream/render/metal/surface.hh"
 #include "jetstream/render/metal/program.hh"
+#include "jetstream/render/metal/kernel.hh"
 #include "jetstream/render/metal/buffer.hh"
 #include "jetstream/render/metal/draw.hh"
 #include "jetstream/render/metal/texture.hh"

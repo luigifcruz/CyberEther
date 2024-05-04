@@ -92,10 +92,6 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
         JST_CHECK(texture->create());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->create());
-    }
-
     return Result::SUCCESS;
 }
 
@@ -104,10 +100,6 @@ Result Implementation::destroy() {
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->destroy());
-    }
-
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     renderPipelineState->release();

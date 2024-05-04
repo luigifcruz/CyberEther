@@ -1,0 +1,60 @@
+#version 450
+#extension GL_ARB_compute_shader : enable
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(set = 0, binding = 0) uniform ShaderUniforms {
+    mat4 transform;
+    vec2 thickness;
+    float zoom;
+    uint numberOfLines;
+} uniforms;
+
+layout(std430, set = 0, binding = 1) readonly buffer A {
+    vec2 points[];
+};
+
+layout(std430, set = 0, binding = 2) writeonly buffer B {
+    vec4 line[];
+};
+
+vec2 normal(vec2 p) {
+    return p / max(length(p), 1e-6);
+}
+
+vec2 perpendicular(vec2 p) {
+    return vec2(-p.y, p.x);
+}
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+
+    if (i >= uniforms.numberOfLines) {
+        return;
+    }
+
+    vec2 pointA = points[(i * 2) + 0];
+    vec2 pointB = points[(i * 2) + 1];
+
+    pointA.x *= uniforms.zoom;
+    pointB.x *= uniforms.zoom;
+
+    vec2 dir = normal(pointB - pointA);
+    vec2 offset = perpendicular(dir) * uniforms.thickness;
+
+    // Line Vertices
+
+    vec2 pointAX = pointA + offset;
+    vec2 pointAY = pointA - offset;
+
+    vec2 pointBX = pointB + offset;
+    vec2 pointBY = pointB - offset;
+
+    // Triangle Vertices
+
+    line[(i * 6) + 0] = vec4(pointAX, 0.0f, 1.0f); // 0
+    line[(i * 6) + 1] = vec4(pointAY, 0.0f, 0.0f); // 1
+    line[(i * 6) + 2] = vec4(pointBX, 0.0f, 1.0f); // 2
+    line[(i * 6) + 3] = vec4(pointBX, 0.0f, 1.0f); // 2
+    line[(i * 6) + 4] = vec4(pointAY, 0.0f, 0.0f); // 3
+    line[(i * 6) + 5] = vec4(pointBY, 0.0f, 0.0f); // 0
+}
