@@ -45,7 +45,7 @@ std::set<std::string> Vulkan::getRequiredInstanceExtensions() {
     // Validation extensions.
 
     if (config.validationEnabled) {
-        extensions.insert(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+        extensions.insert(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
     return extensions;
@@ -238,11 +238,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 
         if (config.validationEnabled) {
-            const auto validationLayers = getRequiredValidationLayers();
+            vulkanValidationLayers.resize(requiredValidationLayers.size());
 
-            vulkanValidationLayers.resize(validationLayers.size());
-
-            std::transform(validationLayers.begin(), validationLayers.end(), vulkanValidationLayers.begin(),
+            std::transform(requiredValidationLayers.begin(), requiredValidationLayers.end(), vulkanValidationLayers.begin(),
                            [](const std::string& str) { return str.c_str(); });
 
             instanceCreateInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
