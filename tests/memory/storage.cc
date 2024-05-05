@@ -41,5 +41,7 @@ TEST_CASE("Storage Class Tests", "[Storage]") {
 }
 
 int main(int argc, char* argv[]) {
-  return Catch::Session().run(argc, argv);
+    JST_LOG_SET_DEBUG_LEVEL(4);
+
+    return Catch::Session().run(argc, argv);
 }

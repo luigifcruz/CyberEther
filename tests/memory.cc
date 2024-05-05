@@ -25,6 +25,8 @@ void PrintVarDebug(const std::string& varName, const Tensor<D, T>& a) {
 }
 
 int main() {
+    JST_LOG_SET_DEBUG_LEVEL(4);
+
     {
         Tensor<Device::CPU, F32> a;
 
