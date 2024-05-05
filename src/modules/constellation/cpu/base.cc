@@ -3,6 +3,22 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Constellation<D, T>::Impl {
+};
+
+template<Device D, typename T>
+Constellation<D, T>::Constellation() {
+    pimpl = std::make_unique<Impl>();
+    gimpl = std::make_unique<GImpl>();
+}
+
+template<Device D, typename T>
+Constellation<D, T>::~Constellation() {
+    pimpl.reset();
+    gimpl.reset();
+}
+
+template<Device D, typename T>
 Result Constellation<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Constellation compute core using CPU backend.");
 
