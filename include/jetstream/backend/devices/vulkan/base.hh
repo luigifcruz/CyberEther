@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_beta.h>
 #if defined(JST_OS_LINUX)
 #include <xcb/xcb.h>
 #include <vulkan/vulkan_xcb.h>
@@ -131,6 +132,7 @@ class Vulkan {
     VkQueue computeQueue;
     VkQueue presentQueue;
     std::set<std::string> availableOptionalDeviceCapabilities;
+    std::set<std::string> availableOptionalInstanceCapabilities;
     bool _isAvailable = false;
 
     struct {
@@ -148,14 +150,22 @@ class Vulkan {
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};
-        
-    bool checkValidationLayerSupport();
+    
     std::vector<const char*> getRequiredInstanceExtensions();
+    bool checkRequiredInstanceExtensionSupport();
+
+    std::vector<const char*> getOptionalInstanceExtensions();
+    std::set<std::string> checkOptionalInstanceExtensionSupport();
+
     std::vector<const char*> getRequiredValidationLayers();
+    bool checkRequiredValidationLayerSupport();
+
     std::vector<std::string> getRequiredDeviceExtensions();
+    bool checkRequiredDeviceExtensionSupport(const VkPhysicalDevice& device);
+
     std::vector<std::string> getOptionalDeviceExtensions();
-    bool checkDeviceExtensionSupport(const VkPhysicalDevice& device);
-    std::set<std::string> checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device);
+    std::set<std::string> checkOptionalDeviceExtensionSupport();
+
     bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
 
