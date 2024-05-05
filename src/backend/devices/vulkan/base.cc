@@ -5,81 +5,6 @@
 
 namespace Jetstream::Backend {
 
-std::vector<const char*> Vulkan::getRequiredInstanceExtensions() {
-    std::vector<const char*> extensions;
-
-    if (!config.headless) {
-        extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-
-#if defined(JST_OS_LINUX)
-        extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-        if (Backend::WindowMightBeWayland()) {
-            extensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
-        }
-#endif
-#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
-        extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
-#endif
-#if defined(JST_OS_WINDOWS)
-        extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-#endif
-#if defined(JST_OS_ANDROID)
-        extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
-#endif
-    }
-
-    // Validation extensions.
-
-    if (config.validationEnabled) {
-        extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-    }
-
-    return extensions;
-}
-
-std::vector<const char*> Vulkan::getOptionalInstanceExtensions() {
-    std::vector<const char*> extensions;
-
-#if defined(VK_KHR_portability_enumeration)
-    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-#endif
-
-    return extensions;
-}
-
-std::vector<const char*> Vulkan::getRequiredValidationLayers() {
-    std::vector<const char*> layers;
-
-    layers.push_back("VK_LAYER_KHRONOS_validation");
-
-    return layers;
-}
-
-std::vector<std::string> Vulkan::getRequiredDeviceExtensions() {
-    std::vector<std::string> extensions;
-
-    if (!config.headless) {
-        extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-    }
-
-    return extensions;
-}
-
-std::vector<std::string> Vulkan::getOptionalDeviceExtensions() {
-    std::vector<std::string> extensions;
-
-#if defined(VK_KHR_external_memory_fd)
-    extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
-    extensions.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
-#endif
-
-#if defined(VK_KHR_portability_subset)
-    extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
-#endif
-
-    return extensions;
-}
-
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT,
                                                            VkDebugReportObjectTypeEXT,
                                                            uint64_t,
@@ -92,128 +17,181 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT
     return VK_FALSE;
 }
 
-bool Vulkan::checkRequiredInstanceExtensionSupport() {
-    uint32_t extensionCount;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, availableExtensions.data());
-    const auto requiredExtensions = getRequiredInstanceExtensions();
-    std::set<std::string> required(requiredExtensions.begin(), requiredExtensions.end());
+std::set<std::string> Vulkan::getRequiredInstanceExtensions() {
+    std::set<std::string> extensions;
 
-    for (const auto& extension : availableExtensions) {
-        required.erase(extension.extensionName);
+    // Presentation extensions.
+
+    if (!config.headless) {
+        extensions.insert(VK_KHR_SURFACE_EXTENSION_NAME);
+
+#if defined(JST_OS_LINUX)
+        extensions.insert(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+        if (Backend::WindowMightBeWayland()) {
+            extensions.insert(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+        }
+#endif
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+        extensions.insert(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+#endif
+#if defined(JST_OS_WINDOWS)
+        extensions.insert(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#endif
+#if defined(JST_OS_ANDROID)
+        extensions.insert(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+#endif
     }
 
-    if (!required.empty()) {
-        JST_WARN("[VULKAN] Required instance extensions not found: {}", required);
+    // Validation extensions.
+
+    if (config.validationEnabled) {
+        extensions.insert(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
 
-    return required.empty();
+    return extensions;
 }
 
-std::set<std::string> Vulkan::checkOptionalInstanceExtensionSupport() {
+std::set<std::string> Vulkan::getOptionalInstanceExtensions() {
+    std::set<std::string> extensions;
+
+#if defined(VK_KHR_portability_enumeration)
+    extensions.insert(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#endif
+
+    return extensions;
+}
+
+std::set<std::string> Vulkan::getRequiredValidationLayers() {
+    std::set<std::string> layers;
+
+    layers.insert("VK_LAYER_KHRONOS_validation");
+
+    return layers;
+}
+
+std::set<std::string> Vulkan::getRequiredDeviceExtensions() {
+    std::set<std::string> extensions;
+
+    if (!config.headless) {
+        extensions.insert(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    }
+
+    return extensions;
+}
+
+std::set<std::string> Vulkan::getOptionalDeviceExtensions() {
+    std::set<std::string> extensions;
+
+#if defined(VK_KHR_external_memory_fd)
+    extensions.insert(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    extensions.insert(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+#endif
+
+#if defined(VK_KHR_portability_subset)
+    extensions.insert(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+#endif
+
+    return extensions;
+}
+
+std::set<std::string> Vulkan::checkInstanceExtensionSupport(const std::set<std::string>& extensions) {
     uint32_t extensionCount;
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, availableExtensions.data());
 
-    const auto& optionalInstanceExtensions = getOptionalInstanceExtensions();
-    std::set<std::string> optionalExtensions(optionalInstanceExtensions.begin(), optionalInstanceExtensions.end());
-    std::set<std::string> supportedOptionalExtensions;
+    std::set<std::string> supportedExtensions;
 
     for (const auto& extension : availableExtensions) {
-        if (optionalExtensions.contains(extension.extensionName)) {
-            supportedOptionalExtensions.insert(extension.extensionName);
+        if (extensions.contains(extension.extensionName)) {
+            supportedExtensions.insert(extension.extensionName);
         }
     }
 
-    return supportedOptionalExtensions;
+    return supportedExtensions;
 }
 
-bool Vulkan::checkRequiredValidationLayerSupport() {
+std::set<std::string> Vulkan::checkValidationLayerSupport(const std::set<std::string>& layers) {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
     std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-    const auto validationLayers = getRequiredValidationLayers();
-    std::set<std::string> requiredLayers(validationLayers.begin(), validationLayers.end());
+
+    std::set<std::string> supportedLayers;
 
     for (const auto& layer : availableLayers) {
-        requiredLayers.erase(layer.layerName);
+        if (layers.contains(layer.layerName)) {
+            supportedLayers.insert(layer.layerName);
+        }
     }
 
-    if (!requiredLayers.empty()) {
-        JST_WARN("[VULKAN] Required validation layers not found: {}", requiredLayers);
-    }
-
-    return requiredLayers.empty();
+    return supportedLayers;
 }
 
-bool Vulkan::checkRequiredDeviceExtensionSupport(const VkPhysicalDevice& device) {
+std::set<std::string> Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice& device, const std::set<std::string>& extensions) {
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
-    const auto& requiredDeviceExtensions = getRequiredDeviceExtensions();
-    std::set<std::string> requiredExtensions(requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
+    std::set<std::string> supportedExtensions;
 
     for (const auto& extension : availableExtensions) {
-        requiredExtensions.erase(extension.extensionName);
-    }
-
-    auto indices = FindQueueFamilies(device);
-
-    return indices.isComplete() && requiredExtensions.empty();
-}
-
-std::set<std::string> Vulkan::checkOptionalDeviceExtensionSupport() {
-    uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
-
-    const auto& optionalDeviceExtensions = getOptionalDeviceExtensions();
-    std::set<std::string> optionalExtensions(optionalDeviceExtensions.begin(), optionalDeviceExtensions.end());
-    std::set<std::string> supportedOptionalExtensions;
-
-    for (const auto& extension : availableExtensions) {
-        if (optionalExtensions.contains(extension.extensionName)) {
-            supportedOptionalExtensions.insert(extension.extensionName);
+        if (extensions.contains(extension.extensionName)) {
+            supportedExtensions.insert(extension.extensionName);
         }
     }
 
-    return supportedOptionalExtensions;
+    return supportedExtensions;
 }
 
 Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
+    std::vector<const char*> vulkanDeviceExtensions;
+    std::vector<const char*> vulkanInstanceExtensions;
+    std::vector<const char*> vulkanValidationLayers;
+
     // Gather instance extensions.
 
     std::vector<std::string> instanceExtensions;
 
     {
         const auto& requiredExtensions = getRequiredInstanceExtensions();
-        const auto& optionalExtensions = checkOptionalInstanceExtensionSupport();
+        const auto& optionalExtensions = getOptionalInstanceExtensions();
     
         JST_DEBUG("[VULKAN] Required instance extensions: {}", requiredExtensions);
-        JST_DEBUG("[VULKAN] Supported optional instance extensions: {}", optionalExtensions);
+        JST_DEBUG("[VULKAN] Optional instance extensions: {}", optionalExtensions);
 
-        instanceExtensions.insert(instanceExtensions.end(), requiredExtensions.begin(), requiredExtensions.end());
-        instanceExtensions.insert(instanceExtensions.end(), optionalExtensions.begin(), optionalExtensions.end());
+        supportedInstanceExtensions.merge(checkInstanceExtensionSupport(requiredExtensions));
 
-        availableOptionalInstanceCapabilities = optionalExtensions;
-    }
+        std::set<std::string> unsupportedInstanceExtensions;
 
-    // Check required instance extensions.
+        for (const auto& extension : requiredExtensions) {
+            if (!supportedInstanceExtensions.contains(extension)) {
+                unsupportedInstanceExtensions.insert(extension);
+            }
+        }
+        
+        if (!unsupportedInstanceExtensions.empty()) {
+            JST_FATAL("[VULKAN] Required instance extensions are not supported: {}.", unsupportedInstanceExtensions);
+            JST_CHECK_THROW(Result::FATAL);
+        }
 
-    if (!checkRequiredInstanceExtensionSupport()) {
-        JST_FATAL("[VULKAN] Required instance extensions are not supported.");
-        JST_CHECK_THROW(Result::FATAL);
+        supportedInstanceExtensions.merge(checkInstanceExtensionSupport(optionalExtensions));
+
+        for (const auto& extension : optionalExtensions) {
+            if (!supportedInstanceExtensions.contains(extension)) {
+                JST_WARN("[VULKAN] Optional instance extension '{}' is not supported.", extension);
+            }
+        }
+
+        instanceExtensions.insert(instanceExtensions.end(), supportedInstanceExtensions.begin(), supportedInstanceExtensions.end());
     }
 
     // Create application.
 
     {
+        // Configure instance.
+
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "Jetstream";
@@ -226,25 +204,20 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         // 2. Support for VK_KHR_external_memory.
         appInfo.apiVersion = VK_API_VERSION_1_1;
 
-        // Create instance.
-
         VkInstanceCreateInfo instanceCreateInfo{};
         instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instanceCreateInfo.pApplicationInfo = &appInfo;
 
+        // Enable instance extensions.
+
 #if defined(VK_KHR_portability_enumeration)
-        if (availableOptionalInstanceCapabilities.contains(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+        if (supportedInstanceExtensions.contains(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
             JST_DEBUG("[VULKAN] Enabling portability enumeration.");
             instanceCreateInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
         }
 #endif
 
-        if (config.validationEnabled && !checkRequiredValidationLayerSupport()) {
-            JST_WARN("[VULKAN] Couldn't find validation layers. Disabling Vulkan debug.");
-            config.validationEnabled = false;
-        }
-
-        std::vector<const char*> vulkanInstanceExtensions(instanceExtensions.size());
+        vulkanInstanceExtensions.resize(instanceExtensions.size());
 
         std::transform(instanceExtensions.begin(), instanceExtensions.end(), vulkanInstanceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
@@ -253,11 +226,30 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         instanceCreateInfo.ppEnabledExtensionNames = vulkanInstanceExtensions.data();
         instanceCreateInfo.enabledLayerCount = 0;
 
-        const auto validationLayers = getRequiredValidationLayers();
-        if (config.validationEnabled) {
-            instanceCreateInfo.enabledLayerCount = validationLayers.size();
-            instanceCreateInfo.ppEnabledLayerNames = validationLayers.data();
+        // Enable validation layers.
+
+        const auto& requiredValidationLayers = getRequiredValidationLayers();
+        const auto& supportedValidationLayers = checkValidationLayerSupport(requiredValidationLayers);
+        const auto& validationLayerCheck = requiredValidationLayers.size() == supportedValidationLayers.size();
+
+        if (config.validationEnabled && !validationLayerCheck) {
+            JST_WARN("[VULKAN] Couldn't find validation layers. Disabling Vulkan debug.");
+            config.validationEnabled = false;
         }
+
+        if (config.validationEnabled) {
+            const auto validationLayers = getRequiredValidationLayers();
+
+            vulkanValidationLayers.resize(validationLayers.size());
+
+            std::transform(validationLayers.begin(), validationLayers.end(), vulkanValidationLayers.begin(),
+                           [](const std::string& str) { return str.c_str(); });
+
+            instanceCreateInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
+            instanceCreateInfo.ppEnabledLayerNames = vulkanValidationLayers.data();
+        }
+
+        // Create instance.
 
         JST_VK_CHECK_THROW(vkCreateInstance(&instanceCreateInfo, nullptr, &instance), [&]{
             JST_FATAL("[VULKAN] Couldn't create instance.");        
@@ -304,7 +296,17 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
         std::vector<VkPhysicalDevice> validPhysicalDevices;
         for (const auto& candidatePhysicalDevice : physicalDevices) {
-            if (checkRequiredDeviceExtensionSupport(candidatePhysicalDevice)) {
+            const auto& requiredExtensions = getRequiredDeviceExtensions();
+            const auto& supportedExtensions = checkDeviceExtensionSupport(candidatePhysicalDevice, requiredExtensions);
+            const auto& extensionCheck = requiredExtensions.size() == supportedExtensions.size();
+
+            const auto& queueFamilyIndices = FindQueueFamilies(candidatePhysicalDevice);
+            const auto& queueFamilyCheck = queueFamilyIndices.isComplete();
+
+            JST_DEBUG("[VULKAN] Candidate device - Extension check: {}, Queue family check: {}",
+                      extensionCheck ? "OK" : "FAIL", queueFamilyCheck ? "OK" : "FAIL");
+
+            if (extensionCheck && queueFamilyCheck) {
                 validPhysicalDevices.push_back(candidatePhysicalDevice);
             }
         }
@@ -327,15 +329,21 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
     {
         const auto& requiredExtensions = getRequiredDeviceExtensions();
-        const auto& optionalExtensions = checkOptionalDeviceExtensionSupport();
+        const auto& optionalExtensions = getOptionalDeviceExtensions();
 
         JST_DEBUG("[VULKAN] Required device extensions: {}", requiredExtensions);
-        JST_DEBUG("[VULKAN] Supported optional device extensions: {}", optionalExtensions);
+        JST_DEBUG("[VULKAN] Optional device extensions: {}", optionalExtensions);
 
-        deviceExtensions.insert(deviceExtensions.end(), requiredExtensions.begin(), requiredExtensions.end());
-        deviceExtensions.insert(deviceExtensions.end(), optionalExtensions.begin(), optionalExtensions.end());
+        supportedDeviceExtensions.merge(checkDeviceExtensionSupport(physicalDevice, requiredExtensions));
+        supportedDeviceExtensions.merge(checkDeviceExtensionSupport(physicalDevice, optionalExtensions));
 
-        availableOptionalDeviceCapabilities = optionalExtensions;
+        for (const auto& extension : optionalExtensions) {
+            if (!supportedDeviceExtensions.contains(extension)) {
+                JST_WARN("[VULKAN] Optional device extension '{}' is not supported.", extension);
+            }
+        }
+
+        deviceExtensions.insert(deviceExtensions.end(), supportedDeviceExtensions.begin(), supportedDeviceExtensions.end());
     }
 
     // Populate information cache.
@@ -389,9 +397,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
     }
 
-    cache.canImportDeviceMemory = availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
-    cache.canExportDeviceMemory = availableOptionalDeviceCapabilities.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
-    cache.canImportHostMemory = availableOptionalDeviceCapabilities.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+    cache.canImportDeviceMemory = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    cache.canExportDeviceMemory = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    cache.canImportHostMemory = supportedDeviceExtensions.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
 
     // Create logical device.
 
@@ -424,7 +432,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
         createInfo.pEnabledFeatures = &deviceFeatures;
 
-        std::vector<const char*> vulkanDeviceExtensions(deviceExtensions.size());
+        vulkanDeviceExtensions.resize(deviceExtensions.size());
 
         std::transform(deviceExtensions.begin(), deviceExtensions.end(), vulkanDeviceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
@@ -432,10 +440,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.enabledExtensionCount = static_cast<U32>(vulkanDeviceExtensions.size());
         createInfo.ppEnabledExtensionNames = vulkanDeviceExtensions.data();
 
-        const auto validationLayers = getRequiredValidationLayers();
         if (config.validationEnabled) {
-            createInfo.enabledLayerCount = validationLayers.size();
-            createInfo.ppEnabledLayerNames = validationLayers.data();
+            createInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
+            createInfo.ppEnabledLayerNames = vulkanValidationLayers.data();
         } else {
             createInfo.enabledLayerCount = 0;
         }

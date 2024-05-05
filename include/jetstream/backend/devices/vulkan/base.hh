@@ -131,8 +131,8 @@ class Vulkan {
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;
-    std::set<std::string> availableOptionalDeviceCapabilities;
-    std::set<std::string> availableOptionalInstanceCapabilities;
+    std::set<std::string> supportedDeviceExtensions;
+    std::set<std::string> supportedInstanceExtensions;
     bool _isAvailable = false;
 
     struct {
@@ -151,20 +151,17 @@ class Vulkan {
 
     VkDebugReportCallbackEXT debugReportCallback{};
     
-    std::vector<const char*> getRequiredInstanceExtensions();
-    bool checkRequiredInstanceExtensionSupport();
+    std::set<std::string> getRequiredInstanceExtensions();
+    std::set<std::string> getOptionalInstanceExtensions();
+    std::set<std::string> checkInstanceExtensionSupport(const std::set<std::string>& extensions);
 
-    std::vector<const char*> getOptionalInstanceExtensions();
-    std::set<std::string> checkOptionalInstanceExtensionSupport();
+    std::set<std::string> getRequiredValidationLayers();
+    std::set<std::string> checkValidationLayerSupport(const std::set<std::string>& layers);
 
-    std::vector<const char*> getRequiredValidationLayers();
-    bool checkRequiredValidationLayerSupport();
-
-    std::vector<std::string> getRequiredDeviceExtensions();
-    bool checkRequiredDeviceExtensionSupport(const VkPhysicalDevice& device);
-
-    std::vector<std::string> getOptionalDeviceExtensions();
-    std::set<std::string> checkOptionalDeviceExtensionSupport();
+    std::set<std::string> getRequiredDeviceExtensions();
+    std::set<std::string> getOptionalDeviceExtensions();
+    std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device, 
+                                                      const std::set<std::string>& extensions);
 
     bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
