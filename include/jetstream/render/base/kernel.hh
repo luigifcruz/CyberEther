@@ -30,6 +30,8 @@ class Kernel {
         return config;
     }
 
+    // TODO: Add an update method.
+
     template<Device D> 
     static std::shared_ptr<Kernel> Factory(const Config& config) {
         return std::make_shared<KernelImp<D>>(config);

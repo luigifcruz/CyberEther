@@ -31,6 +31,7 @@
 #include "jetstream/render/vulkan/window.hh"
 #include "jetstream/render/vulkan/surface.hh"
 #include "jetstream/render/vulkan/program.hh"
+#include "jetstream/render/vulkan/kernel.hh"
 #include "jetstream/render/vulkan/buffer.hh"
 #include "jetstream/render/vulkan/draw.hh"
 #include "jetstream/render/vulkan/texture.hh"
