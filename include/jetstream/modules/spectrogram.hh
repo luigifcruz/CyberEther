@@ -93,35 +93,34 @@ class Spectrogram : public Module, public Compute, public Present {
 
  private:
     struct Impl;
-
-    struct {
-        U32 width;
-        U32 height;
-        F32 offset;
-        F32 zoom;
-    } shaderUniforms;
-
     std::unique_ptr<Impl> pimpl;
 
-    F32 decayFactor;
-    Tensor<D, F32> frequencyBins;
+    struct GImpl;
+    std::unique_ptr<GImpl> gimpl;
 
-    U64 numberOfElements = 0;
-    U64 numberOfBatches = 0;
-    U64 totalFrequencyBins = 0;
+    Tensor<D, F32> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
+    std::shared_ptr<Render::Buffer> signalBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
 
-    std::shared_ptr<Render::Texture> texture;
-    std::shared_ptr<Render::Buffer> binTexture;
-    std::shared_ptr<Render::Buffer> uniformBuffer;
+    std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Texture> lutTexture;
-    std::shared_ptr<Render::Program> program;
+
+    std::shared_ptr<Render::Program> signalProgram;
+
     std::shared_ptr<Render::Surface> surface;
+
     std::shared_ptr<Render::Vertex> vertex;
+
     std::shared_ptr<Render::Draw> drawVertex;
+
+    F32 decayFactor;
+    U64 numberOfElements = 0;
+    U64 numberOfBatches = 0;
+    U64 totalFrequencyBins = 0;
 
     JST_DEFINE_IO()
 };
