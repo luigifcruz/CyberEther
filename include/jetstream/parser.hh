@@ -417,6 +417,8 @@ class Parser {
 
     template<Device SrcD, Device DstD, typename T>
     static Result SafeTensorCast(const std::string& name, std::any& anyVar, Tensor<DstD, T>& variable) {
+        (void)name;
+
         JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<Device::{}>' into 'Tensor<Device::{}>'.", name, SrcD, DstD);
         const auto& tensor = std::any_cast<Tensor<SrcD, T>>(anyVar);
 
