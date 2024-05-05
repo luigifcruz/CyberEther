@@ -146,10 +146,6 @@ std::set<std::string> Vulkan::checkDeviceExtensionSupport(const VkPhysicalDevice
 }
 
 Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
-    std::vector<const char*> vulkanDeviceExtensions;
-    std::vector<const char*> vulkanInstanceExtensions;
-    std::vector<const char*> vulkanValidationLayers;
-
     // Gather instance extensions.
 
     std::vector<std::string> instanceExtensions;
@@ -217,7 +213,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 #endif
 
-        vulkanInstanceExtensions.resize(instanceExtensions.size());
+        std::vector<const char*> vulkanInstanceExtensions(instanceExtensions.size());
 
         std::transform(instanceExtensions.begin(), instanceExtensions.end(), vulkanInstanceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
@@ -238,9 +234,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 
         if (config.validationEnabled) {
-            vulkanValidationLayers.resize(requiredValidationLayers.size());
+            std::vector<const char*> vulkanValidationLayers(supportedValidationLayers.size());
 
-            std::transform(requiredValidationLayers.begin(), requiredValidationLayers.end(), vulkanValidationLayers.begin(),
+            std::transform(supportedValidationLayers.begin(), supportedValidationLayers.end(), vulkanValidationLayers.begin(),
                            [](const std::string& str) { return str.c_str(); });
 
             instanceCreateInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
@@ -430,19 +426,26 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
         createInfo.pEnabledFeatures = &deviceFeatures;
 
-        vulkanDeviceExtensions.resize(deviceExtensions.size());
+        std::vector<const char*> vulkanDeviceExtensions(deviceExtensions.size());
 
         std::transform(deviceExtensions.begin(), deviceExtensions.end(), vulkanDeviceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
 
         createInfo.enabledExtensionCount = static_cast<U32>(vulkanDeviceExtensions.size());
         createInfo.ppEnabledExtensionNames = vulkanDeviceExtensions.data();
+        createInfo.enabledLayerCount = 0;
 
         if (config.validationEnabled) {
+            const auto& requiredValidationLayers = getRequiredValidationLayers();
+            const auto& supportedValidationLayers = checkValidationLayerSupport(requiredValidationLayers);
+
+            std::vector<const char*> vulkanValidationLayers(supportedValidationLayers.size());
+
+            std::transform(supportedValidationLayers.begin(), supportedValidationLayers.end(), vulkanValidationLayers.begin(),
+                           [](const std::string& str) { return str.c_str(); });
+
             createInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
             createInfo.ppEnabledLayerNames = vulkanValidationLayers.data();
-        } else {
-            createInfo.enabledLayerCount = 0;
         }
 
         JST_VK_CHECK_THROW(vkCreateDevice(physicalDevice, &createInfo, nullptr, &device), [&]{
