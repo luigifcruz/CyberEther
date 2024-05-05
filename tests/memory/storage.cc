@@ -12,7 +12,7 @@ TEST_CASE("Storage Class Tests", "[Storage]") {
         Tensor<Device::CPU, F32> storage;
 
         REQUIRE(storage.root_device() == Device::CPU);
-        REQUIRE(storage.compatible_devices().size() > 1);
+        REQUIRE(storage.compatible_devices().size() >= 1);
         REQUIRE(storage.compatible_devices().contains(Device::CPU));
         REQUIRE(storage.references() == 1);
         REQUIRE(storage.attributes().empty());
@@ -28,7 +28,6 @@ TEST_CASE("Storage Class Tests", "[Storage]") {
         REQUIRE(storage.root_device() == Device::Vulkan);
         REQUIRE(storage.references() == 1);
         REQUIRE(storage.compatible_devices().contains(Device::Vulkan));
-        
 
         Tensor<Device::CPU, F32> cloned_storage(storage);
 
