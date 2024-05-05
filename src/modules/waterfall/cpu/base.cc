@@ -8,11 +8,13 @@ struct Waterfall<D, T>::Impl {};
 template<Device D, typename T>
 Waterfall<D, T>::Waterfall() {
     pimpl = std::make_unique<Impl>();
+    gimpl = std::make_unique<GImpl>();
 }
 
 template<Device D, typename T>
 Waterfall<D, T>::~Waterfall() {
     pimpl.reset();
+    gimpl.reset();
 }
 
 template<Device D, typename T>

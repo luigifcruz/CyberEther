@@ -113,34 +113,31 @@ class Waterfall : public Module, public Compute, public Present {
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
-    struct {
-        int width;
-        int height;
-        int maxSize;
-        float index;
-        float offset;
-        float zoom;
-        bool interpolate;
-    } shaderUniforms;
+    struct GImpl;
+    std::unique_ptr<GImpl> gimpl;
 
-    U64 numberOfElements = 0;
-    U64 numberOfBatches = 0;
-
-    int inc = 0, last = 0, ymax = 0;
     Tensor<D, F32> frequencyBins;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
+    std::shared_ptr<Render::Buffer> signalBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
 
-    std::shared_ptr<Render::Texture> texture;
-    std::shared_ptr<Render::Buffer> binTexture;
-    std::shared_ptr<Render::Buffer> uniformBuffer;
+    std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Texture> lutTexture;
-    std::shared_ptr<Render::Program> program;
+
+    std::shared_ptr<Render::Program> signalProgram;
+
     std::shared_ptr<Render::Surface> surface;
+
     std::shared_ptr<Render::Vertex> vertex;
+
     std::shared_ptr<Render::Draw> drawVertex;
+
+    U64 numberOfElements = 0;
+    U64 numberOfBatches = 0;
+    int inc = 0, last = 0, ymax = 0;
 
     Result underlyingCompute(const Context& ctx);
 
