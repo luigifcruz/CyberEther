@@ -1,10 +1,13 @@
 [wrap-file]
-directory = libusb-master
-source_url = https://github.com/libusb/libusb/archive/refs/heads/master.zip
-source_filename = libusb-master.zip
-source_hash = 465cd02dd4e056174023b3b1757217fdb3e72affa1f8b0fe5374d08c410949c1
-patch_directory = libusb-browser
-wrapdb_version = 1.0.26-3
+directory = libusb-1.0.27
+source_url = https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
+source_filename = libusb-1.0.27.tar.bz2
+source_hash = ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
+patch_filename = libusb_1.0.27-1_patch.zip
+patch_url = https://wrapdb.mesonbuild.com/v2/libusb_1.0.27-1/get_patch
+patch_hash = 3379a0d4dd31b8d8338cf20c689ab091654d0213b28bbaeedb728227c61cb7b6
+source_fallback_url = https://github.com/mesonbuild/wrapdb/releases/download/libusb_1.0.27-1/libusb-1.0.27.tar.bz2
+wrapdb_version = 1.0.27-1
 
 [provide]
 libusb-browser = libusb_dep
