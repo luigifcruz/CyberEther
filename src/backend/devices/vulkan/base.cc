@@ -183,29 +183,37 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         instanceExtensions.insert(instanceExtensions.end(), supportedInstanceExtensions.begin(), supportedInstanceExtensions.end());
     }
 
+    // Gather validation layers.
+
+    std::vector<std::string> validationLayers;
+
+    {
+        const auto& requiredValidationLayers = getRequiredValidationLayers();
+        const auto& supportedValidationLayers = checkValidationLayerSupport(requiredValidationLayers);
+        const auto& validationLayerCheck = requiredValidationLayers.size() == supportedValidationLayers.size();
+
+        if (config.validationEnabled && !validationLayerCheck) {
+            JST_WARN("[VULKAN] Couldn't find validation layers. Disabling Vulkan debug.");
+            config.validationEnabled = false;
+        }
+
+        validationLayers.insert(validationLayers.end(), supportedValidationLayers.begin(), supportedValidationLayers.end());
+    }
+
     // Create application.
 
     {
-        // Configure instance.
-
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "Jetstream";
         appInfo.applicationVersion = VK_MAKE_VERSION(0, 0, 1);
         appInfo.pEngineName = "Jetstream Vulkan Backend";
         appInfo.engineVersion = VK_MAKE_VERSION(0, 0, 1);
-
-        // Reasons why this is Vulkan 1.1:
-        // 1. Negative viewport support for compatibility with Metal.
-        // 2. Support for VK_KHR_external_memory.
         appInfo.apiVersion = VK_API_VERSION_1_1;
 
         VkInstanceCreateInfo instanceCreateInfo{};
         instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instanceCreateInfo.pApplicationInfo = &appInfo;
-
-        // Enable instance extensions.
-
 #if defined(VK_KHR_portability_enumeration)
         if (supportedInstanceExtensions.contains(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
             JST_DEBUG("[VULKAN] Enabling portability enumeration.");
@@ -214,6 +222,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 #endif
 
         std::vector<const char*> vulkanInstanceExtensions(instanceExtensions.size());
+        std::vector<const char*> vulkanValidationLayers(validationLayers.size());
+
+        // Enable instance extensions.
 
         std::transform(instanceExtensions.begin(), instanceExtensions.end(), vulkanInstanceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
@@ -224,19 +235,8 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
         // Enable validation layers.
 
-        const auto& requiredValidationLayers = getRequiredValidationLayers();
-        const auto& supportedValidationLayers = checkValidationLayerSupport(requiredValidationLayers);
-        const auto& validationLayerCheck = requiredValidationLayers.size() == supportedValidationLayers.size();
-
-        if (config.validationEnabled && !validationLayerCheck) {
-            JST_WARN("[VULKAN] Couldn't find validation layers. Disabling Vulkan debug.");
-            config.validationEnabled = false;
-        }
-
         if (config.validationEnabled) {
-            std::vector<const char*> vulkanValidationLayers(supportedValidationLayers.size());
-
-            std::transform(supportedValidationLayers.begin(), supportedValidationLayers.end(), vulkanValidationLayers.begin(),
+            std::transform(validationLayers.begin(), validationLayers.end(), vulkanValidationLayers.begin(),
                            [](const std::string& str) { return str.c_str(); });
 
             instanceCreateInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
@@ -427,6 +427,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.pEnabledFeatures = &deviceFeatures;
 
         std::vector<const char*> vulkanDeviceExtensions(deviceExtensions.size());
+        std::vector<const char*> vulkanValidationLayers(validationLayers.size());
 
         std::transform(deviceExtensions.begin(), deviceExtensions.end(), vulkanDeviceExtensions.begin(),
                        [](const std::string& str) { return str.c_str(); });
@@ -436,12 +437,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         createInfo.enabledLayerCount = 0;
 
         if (config.validationEnabled) {
-            const auto& requiredValidationLayers = getRequiredValidationLayers();
-            const auto& supportedValidationLayers = checkValidationLayerSupport(requiredValidationLayers);
-
-            std::vector<const char*> vulkanValidationLayers(supportedValidationLayers.size());
-
-            std::transform(supportedValidationLayers.begin(), supportedValidationLayers.end(), vulkanValidationLayers.begin(),
+            std::transform(validationLayers.begin(), validationLayers.end(), vulkanValidationLayers.begin(),
                            [](const std::string& str) { return str.c_str(); });
 
             createInfo.enabledLayerCount = static_cast<U32>(vulkanValidationLayers.size());
