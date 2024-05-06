@@ -45,7 +45,7 @@ std::set<std::string> Vulkan::getRequiredInstanceExtensions() {
     // Validation extensions.
 
     if (config.validationEnabled) {
-        extensions.insert(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        extensions.insert(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
 
     return extensions;
