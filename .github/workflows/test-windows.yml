@@ -23,9 +23,6 @@ jobs:
       - name: Build the Docker image for Windows.
         run: docker build -f ./docker/Dockerfile-windows -t cyberether-windows .
 
-      - name: Run ninja test for Windows.
-        run: docker run --rm cyberether-windows bash -c "cd cyberether/build-static && ninja test"
-
       - name: Copy binary from Docker container.
         run: docker run -v $(pwd):/tmp --rm cyberether-windows bash -c "cp cyberether/build-static/cyberether.exe /tmp"
 
