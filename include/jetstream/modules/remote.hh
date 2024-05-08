@@ -147,15 +147,22 @@ class Remote : public Module, public Present {
     // Local framebuffer.
     bool localFramebufferAvailable = false;
     std::mutex localFramebufferMutex;
+
+    // Rendering.
+
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
 
-    std::shared_ptr<Render::Texture> texture;
+    std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Texture> remoteFramebufferTexture;
+
     std::shared_ptr<Render::Program> program;
+
     std::shared_ptr<Render::Surface> surface;
+
     std::shared_ptr<Render::Vertex> vertex;
+
     std::shared_ptr<Render::Draw> drawVertex;
 
     Statistics _statistics;

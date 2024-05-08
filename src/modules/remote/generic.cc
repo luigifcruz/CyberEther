@@ -483,60 +483,87 @@ Result Remote<D, T>::destroyGstreamerEndpoint() {
 
 template<Device D, typename T>
 Result Remote<D, T>::createPresent() {
-    Render::Buffer::Config fillScreenVerticesConf;
-    fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
-    fillScreenVerticesConf.elementByteSize = sizeof(float);
-    fillScreenVerticesConf.size = 12;
-    fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenVerticesBuffer, fillScreenVerticesConf));
+    // Frame rendering.
 
-    Render::Buffer::Config fillScreenTextureVerticesConf;
-    fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVerticesXYFlip;
-    fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
-    fillScreenTextureVerticesConf.size = 8;
-    fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 12;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+    }
 
-    Render::Buffer::Config fillScreenIndicesConf;
-    fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
-    fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
-    fillScreenIndicesConf.size = 6;
-    fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
-    JST_CHECK(window->build(fillScreenIndicesBuffer, fillScreenIndicesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenTextureVerticesXYFlip;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 8;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+    }
 
-    Render::Vertex::Config vertexCfg;
-    vertexCfg.buffers = {
-        {fillScreenVerticesBuffer, 3},
-        {fillScreenTextureVerticesBuffer, 2},
-    };
-    vertexCfg.indices = fillScreenIndicesBuffer;
-    JST_CHECK(window->build(vertex, vertexCfg));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.elementByteSize = sizeof(uint32_t);
+        cfg.size = 6;
+        cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+        JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+    }
 
-    Render::Draw::Config drawVertexCfg;
-    drawVertexCfg.buffer = vertex;
-    drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(window->build(drawVertex, drawVertexCfg));
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {fillScreenVerticesBuffer, 3},
+            {fillScreenTextureVerticesBuffer, 2},
+        };
+        cfg.indices = fillScreenIndicesBuffer;
+        JST_CHECK(window->build(vertex, cfg));
+    }
 
-    Render::Texture::Config remoteFramebufferTextureCfg;
-    remoteFramebufferTextureCfg.size = remoteFramebufferSize;
-    remoteFramebufferTextureCfg.buffer = remoteFramebufferMemory.data();
-    JST_CHECK(window->build(remoteFramebufferTexture, remoteFramebufferTextureCfg));
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = vertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLES;
+        JST_CHECK(window->build(drawVertex, cfg));
+    }
 
-    Render::Program::Config programCfg;
-    programCfg.shaders = ShadersPackage["framebuffer"];
-    programCfg.draw = drawVertex;
-    programCfg.textures = {remoteFramebufferTexture};
-    JST_CHECK(window->build(program, programCfg));
+    {
+        Render::Texture::Config cfg;
+        cfg.size = remoteFramebufferSize;
+        cfg.buffer = remoteFramebufferMemory.data();
+        JST_CHECK(window->build(remoteFramebufferTexture, cfg));
+    }
 
-    Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize;
-    JST_CHECK(window->build(texture, textureCfg));
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["framebuffer"];
+        cfg.draw = drawVertex;
+        cfg.textures = {remoteFramebufferTexture};
+        JST_CHECK(window->build(program, cfg));
+    }
 
-    Render::Surface::Config surfaceCfg;
-    surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {program};
-    JST_CHECK(window->build(surface, surfaceCfg));
-    JST_CHECK(window->bind(surface));
+    // Surface.
+
+    {
+        Render::Texture::Config cfg;
+        cfg.size = config.viewSize;
+        JST_CHECK(window->build(framebufferTexture, cfg));
+    }
+
+    {
+        Render::Surface::Config cfg;
+        cfg.framebuffer = framebufferTexture;
+        cfg.programs = {program};
+        cfg.buffers = {
+            fillScreenVerticesBuffer,
+            fillScreenTextureVerticesBuffer,
+            fillScreenIndicesBuffer,
+        };
+        JST_CHECK(window->build(surface, cfg));
+        JST_CHECK(window->bind(surface));
+    }
 
     return Result::SUCCESS;
 }
@@ -646,7 +673,7 @@ const Size2D<U64>& Remote<D, T>::viewSize(const Size2D<U64>& viewSize) {
 
 template<Device D, typename T>
 Render::Texture& Remote<D, T>::getTexture() {
-    return *texture;
+    return *framebufferTexture;
 };
 
 JST_REMOTE_CPU(JST_INSTANTIATION)
