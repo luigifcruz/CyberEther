@@ -29,12 +29,10 @@ Result Lineplot<D, T>::createCompute(const Context&) {
 
     pimpl->sums = Tensor<Device::CPU, F32>({numberOfElements});
     pimpl->averaging = Tensor<Device::CPU, F32>({numberOfElements});
-    pimpl->line = Tensor<Device::CPU, F32>({numberOfElements, 3});
 
     for (U64 i = 0; i < numberOfElements; i++) {
-        pimpl->line[(i * 3) + 0] = i * 2.0f / (numberOfElements - 1) - 1.0f;
-        pimpl->line[(i * 3) + 1] = 0.0f;
-        pimpl->line[(i * 3) + 2] = 0.0f;
+        signalPoints[(i * 2) + 0] = i * 2.0f / (numberOfElements - 1) - 1.0f;
+        signalPoints[(i * 2) + 1] = 0.0f;
     }
 
     return Result::SUCCESS;
@@ -61,12 +59,10 @@ Result Lineplot<D, T>::compute(const Context&) {
         average -= average / config.averaging;
         average += amplitude / config.averaging;
 
-        pimpl->line[(i * 3) + 1] = average;
+        signalPoints[(i * 2) + 1] = average;
     }
 
-    JST_CHECK(Backend::GenerateThickenedLine(signal, pimpl->line, thickness));
-
-    updateSignalVerticesFlag = true;
+    updateSignalPointsFlag = true;
 
     return Result::SUCCESS;
 }

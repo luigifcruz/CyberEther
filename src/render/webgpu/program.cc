@@ -143,6 +143,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
 
     renderPipelineDescriptor = {};
 
+    // TODO: Add blending support for SDF.
     wgpu::BlendState blend{};
     blend.color.operation = wgpu::BlendOperation::Add;
     blend.color.srcFactor = wgpu::BlendFactor::One;

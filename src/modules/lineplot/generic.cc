@@ -1,9 +1,12 @@
-#include "jetstream/modules/lineplot.hh"
-#include "shaders/lineplot_shaders.hh"
-#include "jetstream/render/utils.hh"
-
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+#include "jetstream/backend/devices/cpu/helpers.hh"
+#include "jetstream/modules/lineplot.hh"
+#include "jetstream/render/utils.hh"
+
+#include "shaders/lineplot_shaders.hh"
+#include "shaders/global_shaders.hh"
 
 #include "benchmark.cc"
 
@@ -13,7 +16,17 @@ template<Device D, typename T>
 struct Lineplot<D, T>::GImpl {
     struct {
         glm::mat4 transform;
-    } shaderUniforms;
+        F32 thickness[2];
+        F32 zoom;
+        U32 numberOfLines;
+    } gridUniforms;
+
+    struct {
+        glm::mat4 transform;
+        F32 thickness[2];
+        F32 zoom;
+        U32 numberOfPoints;
+    } signalUniforms;
 };
 
 template<Device D, typename T>
@@ -44,8 +57,11 @@ Result Lineplot<D, T>::create() {
 
     // Allocate internal buffers.
 
-    grid = Tensor<Device::CPU, T>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 3});
-    signal = Tensor<D, T>({numberOfElements - 1, 4, 3});
+    signalPoints = Tensor<D, F32>({numberOfElements, 2});
+    signalVertices = Tensor<D, F32>({numberOfElements - 1, 4, 2});
+
+    gridPoints = Tensor<Device::CPU, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 2, 2});
+    gridVertices = Tensor<D, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4});    
 
     return Result::SUCCESS;
 }
@@ -64,96 +80,183 @@ void Lineplot<D, T>::info() const {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::createPresent() {
-    // Configure render pipeline.
+    // Grid element.
 
-    Render::Buffer::Config gridVerticesConf;
-    gridVerticesConf.buffer = grid.data();
-    gridVerticesConf.elementByteSize = sizeof(F32);
-    gridVerticesConf.size = grid.size();
-    gridVerticesConf.target = Render::Buffer::Target::VERTEX;
-    gridVerticesConf.enableZeroCopy = false;
-    JST_CHECK(window->build(gridVerticesBuffer, gridVerticesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &gimpl->gridUniforms;
+        cfg.elementByteSize = sizeof(gimpl->gridUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(gridUniformBuffer, cfg));
+    }
 
-    Render::Vertex::Config gridVertexCfg;
-    gridVertexCfg.buffers = {
-        {gridVerticesBuffer, 3},
-    };
-    JST_CHECK(window->build(gridVertex, gridVertexCfg));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = gridPoints.data();
+        cfg.elementByteSize = sizeof(F32);
+        cfg.size = gridPoints.size();
+        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.enableZeroCopy = false;
+        JST_CHECK(window->build(gridPointsBuffer, cfg));
+    }
 
-    Render::Draw::Config drawGridVertexCfg;
-    drawGridVertexCfg.buffer = gridVertex;
-    drawGridVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(window->build(drawGridVertex, drawGridVertexCfg));
+    {
+        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, gridVertices);
 
-    auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, signal);
+        Render::Buffer::Config cfg;
+        cfg.buffer = buffer;
+        cfg.elementByteSize = sizeof(F32);
+        cfg.size = gridVertices.size();
+        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.enableZeroCopy = enableZeroCopy;
+        JST_CHECK(window->build(gridVerticesBuffer, cfg));
+    }
 
-    Render::Buffer::Config lineVerticesConf;
-    lineVerticesConf.buffer = buffer;
-    lineVerticesConf.elementByteSize = sizeof(F32);
-    lineVerticesConf.size = signal.size();
-    lineVerticesConf.target = Render::Buffer::Target::VERTEX;
-    lineVerticesConf.enableZeroCopy = enableZeroCopy;
-    JST_CHECK(window->build(signalVerticesBuffer, lineVerticesConf));
+    {
+        Render::Kernel::Config cfg;
+        cfg.gridSize = {config.numberOfVerticalLines + config.numberOfHorizontalLines, 1, 1};
+        cfg.shaders = GlobalKernelsPackage["thicklines"];
+        cfg.buffers = {gridUniformBuffer, gridPointsBuffer, gridVerticesBuffer};
+        JST_CHECK(window->build(gridKernel, cfg));
+    }
 
-    Render::Vertex::Config lineVertexCfg;
-    lineVertexCfg.buffers = {
-        {signalVerticesBuffer, 3},
-    };
-    JST_CHECK(window->build(lineVertex, lineVertexCfg));
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {gridVerticesBuffer, 4},
+        };
+        JST_CHECK(window->build(gridVertex, cfg));
+    }
 
-    Render::Draw::Config drawLineVertexCfg;
-    drawLineVertexCfg.buffer = lineVertex;
-    drawLineVertexCfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
-    JST_CHECK(window->build(drawLineVertex, drawLineVertexCfg));
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = gridVertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLES;
+        JST_CHECK(window->build(drawGridVertex, cfg));
+    }
 
-    Render::Texture::Config lutTextureCfg;
-    lutTextureCfg.size = {256, 1};
-    lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    JST_CHECK(window->build(lutTexture, lutTextureCfg));
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["grid"];
+        cfg.draw = drawGridVertex;
+        cfg.buffers = {
+            {gridUniformBuffer, Render::Program::Target::VERTEX | 
+                                Render::Program::Target::FRAGMENT},
+        };
+        JST_CHECK(window->build(gridProgram, cfg));
+    }
 
-    Render::Buffer::Config uniformCfg;
-    uniformCfg.buffer = &gimpl->shaderUniforms;
-    uniformCfg.elementByteSize = sizeof(gimpl->shaderUniforms);
-    uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::UNIFORM;
-    JST_CHECK(window->build(gridUniformBuffer, uniformCfg));
-    JST_CHECK(window->build(signalUniformBuffer, uniformCfg));
+    // Signal element.
 
-    Render::Program::Config gridProgramCfg;
-    gridProgramCfg.shaders = ShadersPackage["grid"];
-    gridProgramCfg.draw = drawGridVertex;
-    gridProgramCfg.buffers = {
-        {gridUniformBuffer, Render::Program::Target::VERTEX | 
-                            Render::Program::Target::FRAGMENT},
-    };
-    JST_CHECK(window->build(gridProgram, gridProgramCfg));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &gimpl->signalUniforms;
+        cfg.elementByteSize = sizeof(gimpl->signalUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(signalUniformBuffer, cfg));
+    }
 
-    Render::Program::Config signalProgramCfg;
-    signalProgramCfg.shaders = ShadersPackage["signal"];
-    signalProgramCfg.draw = drawLineVertex;
-    signalProgramCfg.textures = {lutTexture};
-    signalProgramCfg.buffers = {
-        {signalUniformBuffer, Render::Program::Target::VERTEX | 
-                              Render::Program::Target::FRAGMENT},
-    };
-    JST_CHECK(window->build(signalProgram, signalProgramCfg));
+    {
+        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, signalPoints);
 
-    Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize * config.scale;
-    JST_CHECK(window->build(texture, textureCfg));
+        Render::Buffer::Config cfg;
+        cfg.buffer = buffer;
+        cfg.elementByteSize = sizeof(F32);
+        cfg.size = signalPoints.size();
+        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.enableZeroCopy = enableZeroCopy;
+        JST_CHECK(window->build(signalPointsBuffer, cfg));
+    }
 
-    Render::Surface::Config surfaceCfg;
-    surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {gridProgram, signalProgram};
-    surfaceCfg.multisampled = true;
-    JST_CHECK(window->build(surface, surfaceCfg));
-    JST_CHECK(window->bind(surface));
+    {
+        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, signalVertices);
+
+        Render::Buffer::Config cfg;
+        cfg.buffer = buffer;
+        cfg.elementByteSize = sizeof(F32);
+        cfg.size = signalVertices.size();
+        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.enableZeroCopy = enableZeroCopy;
+        JST_CHECK(window->build(signalVerticesBuffer, cfg));
+    }
+
+    {
+        Render::Kernel::Config cfg;
+        cfg.gridSize = {numberOfElements - 1, 1, 1};
+        cfg.shaders = GlobalKernelsPackage["thicklinestrip"];
+        cfg.buffers = {signalUniformBuffer, signalPointsBuffer, signalVerticesBuffer};
+        JST_CHECK(window->build(signalKernel, cfg));
+    }
+
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {signalVerticesBuffer, 2},
+        };
+        JST_CHECK(window->build(signalVertex, cfg));
+    }
+
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = signalVertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
+        JST_CHECK(window->build(drawSignalVertex, cfg));
+    }
+    
+    {
+        Render::Texture::Config cfg;
+        cfg.size = {256, 1};
+        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        JST_CHECK(window->build(lutTexture, cfg));
+    }
+
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["signal"];
+        cfg.draw = drawSignalVertex;
+        cfg.textures = {lutTexture};
+        cfg.buffers = {
+            {signalUniformBuffer, Render::Program::Target::VERTEX | 
+                                  Render::Program::Target::FRAGMENT},
+        };
+        JST_CHECK(window->build(signalProgram, cfg));
+    }
+
+    // Surface.
+
+    {
+        Render::Texture::Config cfg;
+        cfg.size = config.viewSize * config.scale;
+        JST_CHECK(window->build(framebufferTexture, cfg));
+    }
+
+    {
+        Render::Surface::Config cfg;
+        cfg.framebuffer = framebufferTexture;
+        cfg.kernels = {gridKernel, signalKernel};
+        cfg.programs = {gridProgram, signalProgram};
+        cfg.buffers = {
+            signalPointsBuffer,
+            signalVerticesBuffer,
+            gridPointsBuffer,
+            gridVerticesBuffer,
+            gridUniformBuffer,
+            signalUniformBuffer
+        };
+        cfg.multisampled = true;
+        JST_CHECK(window->build(surface, cfg));
+        JST_CHECK(window->bind(surface));
+    }
+
+    // Generate resources.
+
+    generateGridPoints();
 
     // Initialize variables.
 
-    updateTransform();
-    updateScaling();
-    updateGridVertices();
+    updateState();
 
     return Result::SUCCESS;
 }
@@ -167,14 +270,14 @@ Result Lineplot<D, T>::destroyPresent() {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::present() {
-    if (updateGridVerticesFlag) {
-        gridVerticesBuffer->update();
-        updateGridVerticesFlag = false;
+    if (updateGridPointsFlag) {
+        gridPointsBuffer->update();
+        updateGridPointsFlag = false;
     }
 
-    if (updateSignalVerticesFlag) {
-        signalVerticesBuffer->update();
-        updateSignalVerticesFlag = false;
+    if (updateSignalPointsFlag) {
+        signalPointsBuffer->update();
+        updateSignalPointsFlag = false;
     }
 
     if (updateGridUniformBufferFlag) {
@@ -196,8 +299,7 @@ const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
         config.viewSize = surface->size() / config.scale;
     }
 
-    updateScaling();
-    updateGridVertices();
+    updateState();
 
     return this->viewSize();
 }
@@ -214,9 +316,7 @@ std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, c
         config.translation += after_mouse_x - before_mouse_x;
     }
 
-    updateTransform();
-    updateScaling();
-    updateGridVertices();
+    updateState();
 
     return {config.zoom, config.translation};
 }
@@ -225,8 +325,7 @@ template<Device D, typename T>
 const F32& Lineplot<D, T>::translation(const F32& translation) {
     config.translation = translation;
 
-    updateTransform();
-    updateGridVertices();
+    updateState();
 
     return config.translation;
 }
@@ -247,45 +346,54 @@ const F32& Lineplot<D, T>::scale(const F32& scale) {
 
     if (scale != config.scale) {
         config.scale = scale;
-        updateGridVertices();
     }
 
     return config.scale;
 }
 
 template<Device D, typename T>
-void Lineplot<D, T>::updateTransform() {
+void Lineplot<D, T>::updateState() {
     const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
     config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);
 
-    auto& transform = gimpl->shaderUniforms.transform;
+    // Update thickness.
 
-    // Reset transform.
-    transform = glm::mat4(1.0f);
+    auto& [x, y] = thickness;
+    x = ((2.0f / config.viewSize.width) * config.thickness) / 2.0f;
+    y = ((2.0f / config.viewSize.height) * config.thickness) / 2.0f;
+
+    // Update the transform.
+
+    // The transform matrix is initialized as an identity matrix.
+    auto transform = glm::mat4(1.0f);
 
     // Apply the translation according to the mouse position.
     transform = glm::translate(transform, glm::vec3(config.translation * config.zoom, 0.0f, 0.0f));
 
-    // Apply the zoom.
-    transform = glm::scale(transform, glm::vec3(config.zoom, 1.0f, 1.0f));
-
     // Update the signal and grid uniform buffers.
+
+    gimpl->signalUniforms.transform = transform;
+    gimpl->signalUniforms.thickness[0] = thickness.first;
+    gimpl->signalUniforms.thickness[1] = thickness.second;
+    gimpl->signalUniforms.zoom = config.zoom;
+    gimpl->signalUniforms.numberOfPoints = numberOfElements;
+
+    gimpl->gridUniforms.transform = transform;
+    gimpl->gridUniforms.thickness[0] = thickness.first;
+    gimpl->gridUniforms.thickness[1] = thickness.second;
+    gimpl->gridUniforms.zoom = config.zoom;
+    gimpl->gridUniforms.numberOfLines = config.numberOfVerticalLines + config.numberOfHorizontalLines;
+
+    // Schedule the uniform buffers for update.
+
     updateGridUniformBufferFlag = true;
     updateSignalUniformBufferFlag = true;
 }
 
 template<Device D, typename T>
-void Lineplot<D, T>::updateScaling() {
-    auto& [x, y] = thickness;
-    x = ((2.0f / config.viewSize.width) * config.thickness) / config.zoom / 2.0f;
-    y = ((2.0f / config.viewSize.height) * config.thickness) / 2.0f;
-}
-
-template<Device D, typename T>
-void Lineplot<D, T>::updateGridVertices() {
+void Lineplot<D, T>::generateGridPoints() {
     const U64& num_cols = config.numberOfVerticalLines;
     const U64& num_rows = config.numberOfHorizontalLines;
-    const auto& [thickness_x, thickness_y] = thickness;
 
     const F32 x_step  = +2.0f / (num_cols - 1);
     const F32 y_step  = +2.0f / (num_rows - 1);
@@ -297,77 +405,29 @@ void Lineplot<D, T>::updateGridVertices() {
     for (U64 row = 0; row < num_rows; row++) {
         const F32 y = y_start + row * y_step;
 
-        // 0
-        grid[{row, 0, 0}] = x_start;
-        grid[{row, 0, 1}] = y + thickness_y;
-        grid[{row, 0, 2}] = 0.0f;
+        gridPoints[{row, 0, 0}] = x_start;
+        gridPoints[{row, 0, 1}] = y;
 
-        // 1
-        grid[{row, 1, 0}] = x_start;
-        grid[{row, 1, 1}] = y - thickness_y;
-        grid[{row, 1, 2}] = 0.0f;
-
-        // 2
-        grid[{row, 2, 0}] = x_end;
-        grid[{row, 2, 1}] = y + thickness_y;
-        grid[{row, 2, 2}] = 0.0f;
-
-        // 2
-        grid[{row, 3, 0}] = x_end;
-        grid[{row, 3, 1}] = y + thickness_y;
-        grid[{row, 3, 2}] = 0.0f;
-
-        // 3
-        grid[{row, 4, 0}] = x_end;
-        grid[{row, 4, 1}] = y - thickness_y;
-        grid[{row, 4, 2}] = 0.0f;
-
-        // 0
-        grid[{row, 5, 0}] = x_start;
-        grid[{row, 5, 1}] = y - thickness_y;
-        grid[{row, 5, 2}] = 0.0f;
+        gridPoints[{row, 1, 0}] = x_end;
+        gridPoints[{row, 1, 1}] = y;
     }
 
     for (U64 col = 0; col < num_cols; col++) {
         const F32 x = x_start + col * x_step;
 
-        // 0
-        grid[{col + num_rows, 0, 0}] = x + thickness_x;
-        grid[{col + num_rows, 0, 1}] = y_start;
-        grid[{col + num_rows, 0, 2}] = 0.0f;
+        gridPoints[{col + num_rows, 0, 0}] = x;
+        gridPoints[{col + num_rows, 0, 1}] = y_start;
 
-        // 1
-        grid[{col + num_rows, 1, 0}] = x - thickness_x;
-        grid[{col + num_rows, 1, 1}] = y_start;
-        grid[{col + num_rows, 1, 2}] = 0.0f;
-
-        // 2
-        grid[{col + num_rows, 2, 0}] = x + thickness_x;
-        grid[{col + num_rows, 2, 1}] = y_end;
-        grid[{col + num_rows, 2, 2}] = 0.0f;
-
-        // 2
-        grid[{col + num_rows, 3, 0}] = x + thickness_x;
-        grid[{col + num_rows, 3, 1}] = y_end;
-        grid[{col + num_rows, 3, 2}] = 0.0f;
-
-        // 3
-        grid[{col + num_rows, 4, 0}] = x - thickness_x;
-        grid[{col + num_rows, 4, 1}] = y_end;
-        grid[{col + num_rows, 4, 2}] = 0.0f;
-
-        // 0
-        grid[{col + num_rows, 5, 0}] = x - thickness_x;
-        grid[{col + num_rows, 5, 1}] = y_start;
-        grid[{col + num_rows, 5, 2}] = 0.0f;
+        gridPoints[{col + num_rows, 1, 0}] = x;
+        gridPoints[{col + num_rows, 1, 1}] = y_end;
     }
 
-    updateGridVerticesFlag = true;
+    updateGridPointsFlag = true;
 }
 
 template<Device D, typename T>
 Render::Texture& Lineplot<D, T>::getTexture() {
-    return *texture;
+    return *framebufferTexture;
 };
 
 }  // namespace Jetstream

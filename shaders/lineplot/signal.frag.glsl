@@ -3,6 +3,9 @@
 
 layout(set = 0, binding = 0) uniform ShaderUniforms {
     mat4 transform;
+    vec2 thickness;
+    float zoom;
+    uint numberOfPoints;
 } uniforms;
 
 layout(set = 0, binding = 1) uniform texture2D u_texture;
@@ -14,5 +17,6 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     vec3 color = texture(sampler2D(u_texture, u_sampler), texCoord).rgb;
+    // TODO: Add antialiasing with SDF.
     outColor = vec4(color, 1.0);
 }

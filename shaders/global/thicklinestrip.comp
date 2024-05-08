@@ -41,6 +41,8 @@ void main() {
     vec2 dir = normal(nextPoint - point);
     vec2 offset = perpendicular(dir) * uniforms.thickness;
 
+    // TODO: Add normals to the line for SDF.
+
     line[(i * 4) + 0] = point - offset;
     line[(i * 4) + 1] = point + offset;
     line[(i * 4) + 2] = nextPoint - offset;

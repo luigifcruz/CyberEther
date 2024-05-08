@@ -124,28 +124,34 @@ class Lineplot : public Module, public Compute, public Present {
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
 
-    Tensor<D, F32> signal;
-    Tensor<Device::CPU, F32> grid;
+    Tensor<D, F32> signalPoints;
+    Tensor<D, F32> signalVertices;
+    Tensor<Device::CPU, F32> gridPoints;
+    Tensor<D, F32> gridVertices;
 
-    std::shared_ptr<Render::Buffer> gridVerticesBuffer;
+    std::shared_ptr<Render::Buffer> signalPointsBuffer;
     std::shared_ptr<Render::Buffer> signalVerticesBuffer;
+    std::shared_ptr<Render::Buffer> gridPointsBuffer;
+    std::shared_ptr<Render::Buffer> gridVerticesBuffer;
+    std::shared_ptr<Render::Buffer> gridUniformBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
 
-    std::shared_ptr<Render::Texture> texture;
+    std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Texture> lutTexture;
+
+    std::shared_ptr<Render::Kernel> gridKernel;
+    std::shared_ptr<Render::Kernel> signalKernel;
 
     std::shared_ptr<Render::Program> signalProgram;
     std::shared_ptr<Render::Program> gridProgram;
 
     std::shared_ptr<Render::Surface> surface;
 
-    std::shared_ptr<Render::Buffer> gridUniformBuffer;
-    std::shared_ptr<Render::Buffer> signalUniformBuffer;
-
     std::shared_ptr<Render::Vertex> gridVertex;
-    std::shared_ptr<Render::Vertex> lineVertex;
+    std::shared_ptr<Render::Vertex> signalVertex;
 
     std::shared_ptr<Render::Draw> drawGridVertex;
-    std::shared_ptr<Render::Draw> drawLineVertex;
+    std::shared_ptr<Render::Draw> drawSignalVertex;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
@@ -153,14 +159,13 @@ class Lineplot : public Module, public Compute, public Present {
 
     std::pair<F32, F32> thickness = {0.0f, 0.0f};
 
-    bool updateGridVerticesFlag = false;
-    bool updateSignalVerticesFlag = false;
+    bool updateGridPointsFlag = false;
+    bool updateSignalPointsFlag = false;
     bool updateSignalUniformBufferFlag = false;
     bool updateGridUniformBufferFlag = false;
 
-    void updateScaling();
-    void updateTransform();
-    void updateGridVertices();
+    void updateState();
+    void generateGridPoints();
 
     JST_DEFINE_IO()
 };

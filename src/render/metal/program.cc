@@ -79,7 +79,11 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
     if (framebuffer->multisampled()) {
         renderPipelineDescriptor->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
     }
-    renderPipelineDescriptor->colorAttachments()->object(0)->init()->setPixelFormat(framebuffer->getPixelFormat());
+
+    // TODO: Add blending support for SDF.
+    const auto& colorAttachment = renderPipelineDescriptor->colorAttachments()->object(0)->init();
+    colorAttachment->setPixelFormat(framebuffer->getPixelFormat());
+
     renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
     if (!renderPipelineState) {
         JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());

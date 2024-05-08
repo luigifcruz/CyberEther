@@ -124,61 +124,6 @@ inline I32 GetSocketBufferSize() {
     return bufferSize;
 }
 
-inline std::pair<F32, F32> ComputePerpendicular(const std::pair<F32, F32>& d, const std::pair<F32, F32>& thickness) {
-    const auto& [tx, ty] = thickness;
-    auto [dx, dy] = d;
-
-    // Compute length
-    const F32& len = std::sqrt(dx * dx + dy * dy);
-
-    // Normalize
-    dx /= len;
-    dy /= len;
-
-    // Compute perpendicular (normalized)
-    return {-dy * tx, dx * ty};
-}
-
-inline Result GenerateThickenedLine(Tensor<Device::CPU, F32>& thick, 
-                                    const Tensor<Device::CPU, F32>& line, 
-                                    const std::pair<F32, F32>& thickness) {
-    const U64 numberOfElements = line.size() / 3;
-
-    for (U64 i = 0; i < numberOfElements - 1; ++i) {
-        const F32 x1 = line[i * 3];
-        const F32 y1 = line[i * 3 + 1];
-        const F32 x2 = line[(i + 1) * 3];
-        const F32 y2 = line[(i + 1) * 3 + 1];
-
-        const auto& [perpX, perpY] = ComputePerpendicular({x2 - x1, y2 - y1}, thickness);
-
-        // Index for the newPlot vector
-        const U64 idx = i * 4 * 3;
-
-        // Upper left
-        thick[idx] = x1 + perpX;
-        thick[idx + 1] = y1 + perpY;
-        thick[idx + 2] = 0.0f;
-
-        // Lower left
-        thick[idx + 3] = x1 - perpX;
-        thick[idx + 4] = y1 - perpY;
-        thick[idx + 5] = 0.0f;
-
-        // Upper right
-        thick[idx + 6] = x2 + perpX;
-        thick[idx + 7] = y2 + perpY;
-        thick[idx + 8] = 0.0f;
-
-        // Lower right
-        thick[idx + 9] = x2 - perpX;
-        thick[idx + 10] = y2 - perpY;
-        thick[idx + 11] = 0.0f;
-    }
-
-    return Result::SUCCESS;
-}
-
 }  // namespace Jetstream::Backend
 
 #endif
