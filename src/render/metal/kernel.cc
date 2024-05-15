@@ -17,7 +17,7 @@ Result Implementation::create() {
     JST_DEBUG("Creating Metal kernel.");
 
     if (config.shaders.contains(Device::Metal) == 0) {
-        JST_ERROR("[Metal] Module doesn't have necessary shader.");       
+        JST_ERROR("[Metal] Module doesn't have necessary kernel.");       
         return Result::ERROR;
     }
 

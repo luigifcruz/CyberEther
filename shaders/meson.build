@@ -162,10 +162,9 @@ foreach shader_pkg: shader_pkg_lst
 
     if build_spirv
         shader_obj = custom_target(
-            input: tracking,
             output: name + '_shaders.hh',
             command: [python_bin, files('parser.py'), meson.project_build_root(), name],
-            depends: shader_lst,
+            depends: shader_lst + kernel_lst,
         )
 
         dep_lst += declare_dependency(
