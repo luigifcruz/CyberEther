@@ -26,6 +26,8 @@ class SurfaceImp<Device::Vulkan> : public Surface {
     Size2D<U64> requestedSize;
       
     std::vector<std::shared_ptr<ProgramImp<Device::Vulkan>>> programs;
+    std::vector<std::shared_ptr<KernelImp<Device::Vulkan>>> kernels;
+    std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
 
     friend class WindowImp<Device::Vulkan>;
 };

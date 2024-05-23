@@ -1,6 +1,8 @@
 #include "jetstream/render/vulkan/program.hh"
 #include "jetstream/render/vulkan/texture.hh"
 #include "jetstream/render/vulkan/surface.hh"
+#include "jetstream/render/vulkan/kernel.hh"
+#include "jetstream/render/vulkan/buffer.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
@@ -20,6 +22,18 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     for (auto& program : config.programs) {
         programs.push_back(
             std::dynamic_pointer_cast<ProgramImp<Device::Vulkan>>(program)
+        );
+    }
+
+    for (auto& kernel : config.kernels) {
+        kernels.push_back(
+            std::dynamic_pointer_cast<KernelImp<Device::Vulkan>>(kernel)
+        );
+    }
+
+    for (auto& buffer : config.buffers) {
+        buffers.push_back(
+            std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(buffer)
         );
     }
 }
@@ -92,8 +106,16 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create render pass.");   
     });
 
+    for (auto& buffer : buffers) {
+        JST_CHECK(buffer->create());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->create(renderPass, (config.multisampled) ? framebuffer : framebufferResolve));
+    }
+
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->create());
     }
 
     JST_CHECK(framebufferResolve->create());
@@ -130,8 +152,16 @@ Result Implementation::destroy() {
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->destroy());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
+    }
+
+    for (auto& buffer : buffers) {
+        JST_CHECK(buffer->destroy());
     }
 
     vkDestroyFramebuffer(device, framebufferObject, nullptr);

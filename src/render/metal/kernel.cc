@@ -16,13 +16,13 @@ Implementation::KernelImp(const Config& config) : Kernel(config) {
 Result Implementation::create() {
     JST_DEBUG("Creating Metal kernel.");
 
-    if (config.shaders.contains(Device::Metal) == 0) {
+    if (config.kernels.contains(Device::Metal) == 0) {
         JST_ERROR("[Metal] Module doesn't have necessary kernel.");       
         return Result::ERROR;
     }
 
     NS::Error* err = nullptr;
-    const auto& shaders = config.shaders[Device::Metal];
+    const auto& kernels = config.kernels[Device::Metal];
     auto device = Backend::State<Device::Metal>()->getDevice();
 
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
@@ -30,7 +30,7 @@ Result Implementation::create() {
     opts->setLanguageVersion(MTL::LanguageVersion3_0);
     opts->setLibraryType(MTL::LibraryTypeExecutable);
 
-    auto source = NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::UTF8StringEncoding, false);
+    auto source = NS::String::alloc()->init((char*)kernels[0].data(), kernels[0].size(), NS::UTF8StringEncoding, false);
     auto library = device->newLibrary(source, opts, &err);
 
     if (!library) {

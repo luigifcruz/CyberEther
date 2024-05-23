@@ -26,7 +26,6 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     bindingDescription.resize(buffers.size());
     attributeDescription.resize(buffers.size());
     for (const auto& [buffer, stride] : buffers) {
-        JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
 
         bindingDescription[bindingCount].binding = bindingCount;
@@ -59,7 +58,6 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     }
 
     if (indices) {
-        JST_CHECK(indices->create());
         vertexCount = indices->size();
     }
 
@@ -83,14 +81,6 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
 
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying vertex.");
-
-    for (const auto& [buffer, stride] : buffers) {
-        JST_CHECK(buffer->destroy());
-    }
-
-    if (indices) {
-        JST_CHECK(indices->destroy());
-    }
 
     return Result::SUCCESS;
 }

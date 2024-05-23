@@ -37,6 +37,7 @@ class BufferImp<Device::Vulkan> : public Buffer {
     friend class SurfaceImp<Device::Vulkan>;
     friend class ProgramImp<Device::Vulkan>;
     friend class VertexImp<Device::Vulkan>;
+    friend class KernelImp<Device::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

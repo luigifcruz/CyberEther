@@ -60,10 +60,6 @@ Result Implementation::create(VkRenderPass& renderPass,
         JST_CHECK(texture->create());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->create());
-    }
-
     // Create uniforms and texture descriptor buffers.
 
     bindingOffset = 0;
@@ -312,10 +308,6 @@ Result Implementation::destroy() {
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->destroy());
-    }
-
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);

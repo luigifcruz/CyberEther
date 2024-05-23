@@ -20,7 +20,7 @@ class Kernel {
     struct Config {
         std::tuple<U64, U64, U64> gridSize;
         std::vector<std::shared_ptr<Buffer>> buffers;
-        std::unordered_map<Device, std::vector<std::vector<U8>>> shaders;
+        std::unordered_map<Device, std::vector<std::vector<U8>>> kernels;
     };
 
     explicit Kernel(const Config& config) : config(config) {}

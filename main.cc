@@ -188,7 +188,7 @@ int main(int argc, char* argv[]) {
     // Start instance.
 
     instance.start();
-    
+
     // Start compute thread.
 
     auto computeThread = std::thread([&]{

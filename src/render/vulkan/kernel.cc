@@ -1,5 +1,6 @@
 #include "jetstream/render/vulkan/buffer.hh"
 #include "jetstream/render/vulkan/kernel.hh"
+#include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {
 
@@ -14,77 +15,130 @@ Implementation::KernelImp(const Config& config) : Kernel(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Vulkan kernel.");
-/*
-    if (config.shaders.contains(Device::Metal) == 0) {
-        JST_ERROR("[Metal] Module doesn't have necessary shader.");       
+    JST_DEBUG("[VULKAN] Creating kernel.");
+
+    auto& backend = Backend::State<Device::Vulkan>();
+    auto device = backend->getDevice();
+
+    // Load kernel from buffers. 
+
+    if (config.kernels.contains(Device::Vulkan) == 0) {
+        JST_ERROR("[VULKAN] Module doesn't have necessary kernel.");       
         return Result::ERROR;
     }
 
-    NS::Error* err = nullptr;
-    const auto& shaders = config.shaders[Device::Metal];
-    auto device = Backend::State<Device::Metal>()->getDevice();
+    const auto& kernels = config.kernels[Device::Vulkan];
+    VkShaderModule kernelModule = Backend::LoadShader(kernels[0], device);
 
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
-    opts->setFastMathEnabled(true);
-    opts->setLanguageVersion(MTL::LanguageVersion3_0);
-    opts->setLibraryType(MTL::LibraryTypeExecutable);
+    VkPipelineShaderStageCreateInfo kernelStageInfo{};
+    kernelStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    kernelStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    kernelStageInfo.module = kernelModule;
+    kernelStageInfo.pName = "main";
 
-    auto source = NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::UTF8StringEncoding, false);
-    auto library = device->newLibrary(source, opts, &err);
+    // Create descriptor set layout.
 
-    if (!library) {
-        JST_ERROR("Library error:\n{}", err->description()->utf8String());
-        return Result::ERROR;
+    for (U64 i = 0; i < buffers.size(); i++) {
+        auto& buffer = buffers[i];
+
+        VkDescriptorSetLayoutBinding binding{};
+        binding.binding = i;
+        // TODO: Why buffer->getDescriptorType() doesn't work?
+        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        binding.descriptorCount = 1;
+        binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        bindings.push_back(binding);
     }
 
-    MTL::Function* func = library->newFunction(
-        NS::String::string("main0", NS::UTF8StringEncoding)
-    );
-    JST_ASSERT(func);
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = static_cast<U32>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
 
-    pipelineState = device->newComputePipelineState(func, &err);
-    if (!pipelineState) {
-        JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
-        return Result::ERROR;
+    JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout), [&]{
+        JST_ERROR("[VULKAN] Failed to create descriptor set layout.");
+    });
+
+    // Allocate descriptor set.
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = backend->getDescriptorPool();
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout;
+
+    JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+        JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
+    });
+
+    // Update descriptor set.
+
+    for (U64 i = 0; i < buffers.size(); i++) {
+        auto& buffer = buffers[i];
+
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = buffer->getHandle();
+        bufferInfo.offset = 0;
+        bufferInfo.range = buffer->byteSize();
+
+        VkWriteDescriptorSet descriptorWriteBuffer{};
+        descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWriteBuffer.dstSet = descriptorSet;
+        descriptorWriteBuffer.dstBinding = i;
+        descriptorWriteBuffer.dstArrayElement = 0;
+        // TODO: Why buffer->getDescriptorType() doesn't work?
+        descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWriteBuffer.descriptorCount = 1;
+        descriptorWriteBuffer.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
     }
-*/
+
+    // Create pipeline layout.
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+
+    JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
+        JST_ERROR("[VULKAN] Failed to create pipeline layout.");
+    });
+
+    // Create pipeline.
+
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.stage = kernelStageInfo;
+
+    JST_VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline), [&]{
+        JST_ERROR("[VULKAN] Failed to create compute pipeline.");
+    });
+
+    // Clean up.
+
+    vkDestroyShaderModule(device, kernelModule, nullptr);
+
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
-    /*
-    pipelineState->release();
-    */
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyPipeline(device, pipeline, nullptr);
 
     return Result::SUCCESS;
 }
 
 Result Implementation::encode(VkCommandBuffer* commandBuffer) {
-    /*
-    // Set pipeline state.
+    vkCmdBindPipeline(*commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(*commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
-    encoder->setComputePipelineState(pipelineState);
-
-    // Attach compute buffers.
-
-    for (U64 i = 0; i < buffers.size(); i++) {
-        encoder->setBuffer(buffers[i]->getHandle(), 0, i);
-    }
-
-    // Dispatch threads.
-
-    const auto& [x, y, z] = config.gridSize;
-
-    // TODO: Implement 2D and 3D grid sizes.
-    if (y != 1 || z != 1) {
-        JST_ERROR("Only 1D grids are supported.");
-        return Result::ERROR;
-    }
-
-    encoder->dispatchThreads(MTL::Size(x, y, z),
-                             MTL::Size(pipelineState->maxTotalThreadsPerThreadgroup(), 1, 1));
-    */
+    vkCmdDispatch(*commandBuffer, 1, 1, 1);
 
     return Result::SUCCESS;
 }

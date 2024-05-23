@@ -17,7 +17,12 @@ class KernelImp<Device::Vulkan> : public Kernel {
     Result encode(VkCommandBuffer* commandBuffer);
 
  private:
-    //MTL::ComputePipelineState* pipelineState = nullptr;
+    VkPipeline pipeline;
+    VkPipelineLayout pipelineLayout;
+    VkDescriptorSetLayout descriptorSetLayout;
+    VkDescriptorSet descriptorSet;
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
 
     std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
 
