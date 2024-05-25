@@ -14,7 +14,7 @@ class KernelImp<Device::Vulkan> : public Kernel {
  protected:
     Result create();
     Result destroy();
-    Result encode(VkCommandBuffer* commandBuffer);
+    Result encode(VkCommandBuffer& commandBuffer);
 
  private:
     VkPipeline pipeline;

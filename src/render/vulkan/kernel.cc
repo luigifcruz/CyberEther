@@ -51,26 +51,28 @@ Result Implementation::create() {
         bindings.push_back(binding);
     }
 
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<U32>(bindings.size());
-    layoutInfo.pBindings = bindings.data();
+    if (!bindings.empty()) {
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<U32>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
 
-    JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout), [&]{
-        JST_ERROR("[VULKAN] Failed to create descriptor set layout.");
-    });
+        JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout), [&]{
+            JST_ERROR("[VULKAN] Failed to create descriptor set layout.");
+        });
 
-    // Allocate descriptor set.
+        // Allocate descriptor set.
 
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = backend->getDescriptorPool();
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &descriptorSetLayout;
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = backend->getDescriptorPool();
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayout;
 
-    JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
-        JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
-    });
+        JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+            JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
+        });
+    }
 
     // Update descriptor set.
 
@@ -99,14 +101,16 @@ Result Implementation::create() {
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    if (!bindings.empty()) {
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    }
 
     JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
         JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
 
-    // Create pipeline.
+    // Create compute pipeline.
 
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -126,19 +130,41 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& descriptorPool = Backend::State<Device::Vulkan>()->getDescriptorPool();
 
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    if (!bindings.empty()) {
+        vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    }
+
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, pipeline, nullptr);
+    bindings.clear();
 
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer* commandBuffer) {
-    vkCmdBindPipeline(*commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-    vkCmdBindDescriptorSets(*commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    // Bind buffers.
 
-    vkCmdDispatch(*commandBuffer, 1, 1, 1);
+    if (!bindings.empty()) {
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+    }
+
+    // Bind compute pipeline.
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+
+    // Dispatch kernel.
+
+    const auto& [x, y, z] = config.gridSize;
+
+    if (y != 1 || z != 1) {
+        JST_ERROR("[VULKAN] 2D and 3D grid sizes are not implemented.");
+        return Result::ERROR;
+    }
+
+    vkCmdDispatch(commandBuffer, x, y, z);
 
     return Result::SUCCESS;
 }

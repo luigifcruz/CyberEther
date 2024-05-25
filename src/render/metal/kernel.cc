@@ -75,7 +75,7 @@ Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
 
     // TODO: Implement 2D and 3D grid sizes.
     if (y != 1 || z != 1) {
-        JST_ERROR("Only 1D grids are supported.");
+        JST_ERROR("[METAL] Only 1D grids are supported.");
         return Result::ERROR;
     }
 

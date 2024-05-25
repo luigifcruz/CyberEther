@@ -54,7 +54,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
 
-    // Initiate uniforms and texture.
+    // Initiate textures.
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->create());
@@ -256,6 +256,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
+    // Create pipeline layout.
+
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     if (!bindings.empty()) {
@@ -267,6 +269,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
         JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
+
+    // Create graphics pipeline.
 
     VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
@@ -288,6 +292,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     JST_VK_CHECK(vkCreateGraphicsPipelines(device, nullptr, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
         JST_ERROR("[VULKAN] Can't create graphics pipeline.");    
     });
+
+    // Clean up.
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
@@ -318,15 +324,18 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
+    // Bind uniform and texture buffers.
+
     if (!bindings.empty()) {
-        // Bind uniform and texture buffers.
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
     }
 
     // Bind graphics pipeline.
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
     // Attach frame encoder.
+
     JST_CHECK(draw->encode(commandBuffer));
 
     return Result::SUCCESS;

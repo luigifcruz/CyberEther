@@ -190,6 +190,14 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
         JST_CHECK(create());
     }
 
+    // Encode kernels.
+
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->encode(commandBuffer));
+    }
+
+    // Begin render pass.
+
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
@@ -205,6 +213,8 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     renderPassInfo.pClearValues = &clearColor;
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // Encode programs.
 
     for (auto& program : programs) {
         JST_CHECK(program->encode(commandBuffer, renderPass));
