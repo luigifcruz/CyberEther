@@ -23,9 +23,6 @@ class ProgramImp<Device::Metal> : public Program {
     std::vector<std::shared_ptr<TextureImp<Device::Metal>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, Program::Target>> buffers;
 
-    static Result checkShaderCompilation(U64);
-    static Result checkProgramCompilation(U64);
-
     friend class SurfaceImp<Device::Metal>; 
 };
 

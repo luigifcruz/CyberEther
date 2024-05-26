@@ -43,8 +43,7 @@ Result Implementation::create() {
 
         VkDescriptorSetLayoutBinding binding{};
         binding.binding = i;
-        // TODO: Why buffer->getDescriptorType() doesn't work?
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        binding.descriptorType = BufferDescriptorType(buffer);
         binding.descriptorCount = 1;
         binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
@@ -89,8 +88,7 @@ Result Implementation::create() {
         descriptorWriteBuffer.dstSet = descriptorSet;
         descriptorWriteBuffer.dstBinding = i;
         descriptorWriteBuffer.dstArrayElement = 0;
-        // TODO: Why buffer->getDescriptorType() doesn't work?
-        descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWriteBuffer.descriptorType = BufferDescriptorType(buffer);
         descriptorWriteBuffer.descriptorCount = 1;
         descriptorWriteBuffer.pBufferInfo = &bufferInfo;
 
@@ -167,6 +165,21 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     vkCmdDispatch(commandBuffer, x, y, z);
 
     return Result::SUCCESS;
+}
+
+VkDescriptorType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
+    const auto& bufferType = buffer->getConfig().target;
+
+    if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    }
+
+    if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
+        return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    }
+
+    JST_ERROR("[VULKAN] Invalid buffer usage.");
+    throw Result::ERROR;
 }
 
 }  // namespace Jetstream::Render

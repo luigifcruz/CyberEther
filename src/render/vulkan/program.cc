@@ -67,9 +67,9 @@ Result Implementation::create(VkRenderPass& renderPass,
         auto& [buffer, target] = buffers[i];
 
         VkDescriptorSetLayoutBinding binding{};
-        binding.descriptorType = buffer->getDescriptorType();
+        binding.descriptorType = BufferDescriptorType(buffer);
         binding.descriptorCount = 1;
-        binding.stageFlags = TargetToVulkan(target);
+        binding.stageFlags = TargetToShaderStage(target);
         binding.binding = bindingOffset++;
 
         bindings.push_back(binding);
@@ -130,7 +130,7 @@ Result Implementation::create(VkRenderPass& renderPass,
         descriptorWriteBuffer.dstSet = descriptorSet;
         descriptorWriteBuffer.dstBinding = bindingOffset++;
         descriptorWriteBuffer.dstArrayElement = 0;
-        descriptorWriteBuffer.descriptorType = buffer->getDescriptorType();
+        descriptorWriteBuffer.descriptorType = BufferDescriptorType(buffer);
         descriptorWriteBuffer.descriptorCount = 1;
         descriptorWriteBuffer.pBufferInfo = &bufferInfo;
 
@@ -341,7 +341,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
     return Result::SUCCESS;
 }
 
-VkShaderStageFlags Implementation::TargetToVulkan(const Program::Target& target) {
+VkShaderStageFlags Implementation::TargetToShaderStage(const Program::Target& target) {
     VkShaderStageFlags flags = 0;
 
     if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
@@ -353,6 +353,21 @@ VkShaderStageFlags Implementation::TargetToVulkan(const Program::Target& target)
     }
         
     return flags;
+}
+
+VkDescriptorType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
+    const auto& bufferType = buffer->getConfig().target;
+
+    if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    }
+
+    if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
+        return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    }
+
+    JST_ERROR("[VULKAN] Invalid buffer usage.");
+    throw Result::ERROR;
 }
 
 }  // namespace Jetstream::Render

@@ -14,25 +14,6 @@ Result Implementation::create() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
-    switch (config.target) {
-        case Target::VERTEX:
-            break;
-        case Target::VERTEX_INDICES:
-            break;
-        case Target::STORAGE:
-            descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            break;
-        case Target::UNIFORM:
-            descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            break;
-        case Target::STORAGE_DYNAMIC:
-            descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-            break;
-        case Target::UNIFORM_DYNAMIC:
-            descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-            break;
-    }
-
     if (config.enableZeroCopy) {
         buffer = reinterpret_cast<VkBuffer>(config.buffer);
     } else {
@@ -41,25 +22,23 @@ Result Implementation::create() {
         VkBufferUsageFlags bufferUsageFlag = 0;
         bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferUsageFlag |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        switch (config.target) {
-            case Target::VERTEX:
-                bufferUsageFlag |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-                break;
-            case Target::VERTEX_INDICES:
-                bufferUsageFlag |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-                break;
-            case Target::STORAGE:
-                bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-                break;
-            case Target::UNIFORM:
-                bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-                break;
-            case Target::STORAGE_DYNAMIC:
-                bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-                break;
-            case Target::UNIFORM_DYNAMIC:
-                bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-                break;
+
+        if ((config.target & Target::VERTEX) == Target::VERTEX) {
+            bufferUsageFlag |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        }
+
+        if ((config.target & Target::VERTEX_INDICES) == Target::VERTEX_INDICES) {
+            bufferUsageFlag |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
+
+        if ((config.target & Target::STORAGE) == Target::STORAGE ||
+            (config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC) {
+            bufferUsageFlag |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
+
+        if ((config.target & Target::UNIFORM) == Target::UNIFORM ||
+            (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
+            bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         }
 
         // Create buffer.

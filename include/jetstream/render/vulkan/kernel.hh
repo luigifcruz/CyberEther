@@ -26,8 +26,7 @@ class KernelImp<Device::Vulkan> : public Kernel {
 
     std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
 
-    static Result checkShaderCompilation(U64);
-    static Result checkProgramCompilation(U64);
+    static VkDescriptorType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);
 
     friend class SurfaceImp<Device::Vulkan>; 
 };

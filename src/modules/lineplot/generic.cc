@@ -96,7 +96,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.buffer = gridPoints.data();
         cfg.elementByteSize = sizeof(F32);
         cfg.size = gridPoints.size();
-        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(gridPointsBuffer, cfg));
     }
@@ -108,7 +108,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.buffer = buffer;
         cfg.elementByteSize = sizeof(F32);
         cfg.size = gridVertices.size();
-        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
         JST_CHECK(window->build(gridVerticesBuffer, cfg));
     }
@@ -165,7 +165,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.buffer = buffer;
         cfg.elementByteSize = sizeof(F32);
         cfg.size = signalPoints.size();
-        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
         JST_CHECK(window->build(signalPointsBuffer, cfg));
     }
@@ -177,7 +177,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.buffer = buffer;
         cfg.elementByteSize = sizeof(F32);
         cfg.size = signalVertices.size();
-        cfg.target = Render::Buffer::Target::VERTEX;
+        cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
         JST_CHECK(window->build(signalVerticesBuffer, cfg));
     }

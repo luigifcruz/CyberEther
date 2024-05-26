@@ -241,7 +241,8 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     // TODO: Add a global way to specify usage.
     bufferInfo.usage =  VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferInfo.pNext = &extImageCreateInfo;
 

@@ -25,14 +25,9 @@ class BufferImp<Device::Vulkan> : public Buffer {
         return buffer;
     }
 
-    constexpr const VkDescriptorType& getDescriptorType() const {
-        return descriptorType;
-    }
-
  private:
     VkBuffer buffer;
     VkDeviceMemory memory;
-    VkDescriptorType descriptorType;
 
     friend class SurfaceImp<Device::Vulkan>;
     friend class ProgramImp<Device::Vulkan>;

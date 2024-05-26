@@ -21,9 +21,6 @@ class KernelImp<Device::Metal> : public Kernel {
 
     std::vector<std::shared_ptr<BufferImp<Device::Metal>>> buffers;
 
-    static Result checkShaderCompilation(U64);
-    static Result checkProgramCompilation(U64);
-
     friend class SurfaceImp<Device::Metal>; 
 };
 

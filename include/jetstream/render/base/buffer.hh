@@ -61,6 +61,14 @@ class Buffer {
     Config config;
 };
 
+static constexpr Buffer::Target operator&(Buffer::Target a, Buffer::Target b) {
+    return static_cast<Buffer::Target>(static_cast<U64>(a) & static_cast<U64>(b));
+}
+
+static constexpr Buffer::Target operator|(Buffer::Target a, Buffer::Target b) {
+    return static_cast<Buffer::Target>(static_cast<U64>(a) | static_cast<U64>(b));
+}
+
 }  // namespace Jetstream::Render
 
 #endif
