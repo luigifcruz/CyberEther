@@ -14,6 +14,11 @@ layout(location = 1) in vec2 fragNormal;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    outColor = vec4(fragColor, 1.0);
-    // TODO: Implement antialiasing SDF.
+    // Calculate the distance to the line's edges
+    float distance = length(fragNormal);
+
+    // Apply smoothing with a step function
+    float alpha = smoothstep(0.0, 1.0, distance);
+
+    outColor = vec4(fragColor, 1.0 - alpha);
 }

@@ -58,7 +58,7 @@ Result Lineplot<D, T>::create() {
     // Allocate internal buffers.
 
     signalPoints = Tensor<D, F32>({numberOfElements, 2});
-    signalVertices = Tensor<D, F32>({numberOfElements - 1, 4, 2});
+    signalVertices = Tensor<D, F32>({numberOfElements - 1, 4, 4});
 
     gridPoints = Tensor<Device::CPU, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 2, 2});
     gridVertices = Tensor<D, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4});    
@@ -193,7 +193,7 @@ Result Lineplot<D, T>::createPresent() {
     {
         Render::Vertex::Config cfg;
         cfg.buffers = {
-            {signalVerticesBuffer, 2},
+            {signalVerticesBuffer, 4},
         };
         JST_CHECK(window->build(signalVertex, cfg));
     }

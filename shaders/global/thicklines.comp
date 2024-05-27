@@ -50,11 +50,10 @@ void main() {
     vec2 pointBY = pointB - offset;
 
     // Triangle Vertices
-
-    line[(i * 6) + 0] = vec4(pointAX, 0.0f, 1.0f); // 0
-    line[(i * 6) + 1] = vec4(pointAY, 0.0f, 0.0f); // 1
-    line[(i * 6) + 2] = vec4(pointBX, 0.0f, 1.0f); // 2
-    line[(i * 6) + 3] = vec4(pointBX, 0.0f, 1.0f); // 2
-    line[(i * 6) + 4] = vec4(pointAY, 0.0f, 0.0f); // 3
-    line[(i * 6) + 5] = vec4(pointBY, 0.0f, 0.0f); // 0
+    line[(i * 6) + 0] = vec4(pointAX, 0.0f, -1.0); // 0
+    line[(i * 6) + 1] = vec4(pointAY, 0.0f, +1.0); // 1
+    line[(i * 6) + 2] = vec4(pointBX, 0.0f, -1.0); // 2
+    line[(i * 6) + 3] = vec4(pointBX, 0.0f, -1.0); // 2
+    line[(i * 6) + 4] = vec4(pointAY, 0.0f, +1.0); // 3
+    line[(i * 6) + 5] = vec4(pointBY, 0.0f, +1.0); // 0
 }

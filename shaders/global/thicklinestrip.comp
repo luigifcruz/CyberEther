@@ -14,7 +14,7 @@ layout(std430, set = 0, binding = 1) readonly buffer A {
 };
 
 layout(std430, set = 0, binding = 2) writeonly buffer B {
-    vec2 line[];
+    vec4 line[];
 };
 
 vec2 normal(vec2 p) {
@@ -41,10 +41,8 @@ void main() {
     vec2 dir = normal(nextPoint - point);
     vec2 offset = perpendicular(dir) * uniforms.thickness;
 
-    // TODO: Add normals to the line for SDF.
-
-    line[(i * 4) + 0] = point - offset;
-    line[(i * 4) + 1] = point + offset;
-    line[(i * 4) + 2] = nextPoint - offset;
-    line[(i * 4) + 3] = nextPoint + offset;
+    line[(i * 4) + 0] = vec4(point - offset, -dir);
+    line[(i * 4) + 1] = vec4(point + offset, dir);
+    line[(i * 4) + 2] = vec4(nextPoint - offset, -dir);
+    line[(i * 4) + 3] = vec4(nextPoint + offset, dir);
 }
