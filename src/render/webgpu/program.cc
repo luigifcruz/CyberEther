@@ -33,10 +33,6 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         JST_CHECK(texture->create());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->create());
-    }
-
     // Load shaders from memory.
 
     if (config.shaders.contains(Device::WebGPU) == 0) {
@@ -154,6 +150,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     fragment.targetCount = 1;
     fragment.targets = &colorTarget;
 
+    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
     renderPipelineDescriptor.fragment = &fragment;
     renderPipelineDescriptor.layout = pipelineLayout;
     renderPipelineDescriptor.depthStencil = nullptr;
@@ -177,10 +174,6 @@ Result Implementation::destroy() {
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->destroy());
-    }
-
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     bindings.clear();
@@ -223,7 +216,7 @@ wgpu::BufferBindingType Implementation::BufferDescriptorType(const std::shared_p
     }
 
     if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
-        return wgpu::BufferBindingType::Storage;
+        return wgpu::BufferBindingType::ReadOnlyStorage;
     }
 
     JST_ERROR("[WebGPU] Invalid buffer usage.");

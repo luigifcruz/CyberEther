@@ -30,6 +30,7 @@ class BufferImp<Device::WebGPU> : public Buffer {
 
     friend class SurfaceImp<Device::WebGPU>;
     friend class ProgramImp<Device::WebGPU>;
+    friend class KernelImp<Device::WebGPU>;
     friend class VertexImp<Device::WebGPU>;
 };
 

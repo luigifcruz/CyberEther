@@ -1,6 +1,8 @@
 #include "jetstream/render/webgpu/program.hh"
 #include "jetstream/render/webgpu/texture.hh"
 #include "jetstream/render/webgpu/surface.hh"
+#include "jetstream/render/webgpu/kernel.hh"
+#include "jetstream/render/webgpu/buffer.hh"
 
 namespace Jetstream::Render {
 
@@ -15,6 +17,18 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
             std::dynamic_pointer_cast<ProgramImp<Device::WebGPU>>(program)
         );
     }
+
+    for (auto& kernel : config.kernels) {
+        kernels.push_back(
+            std::dynamic_pointer_cast<KernelImp<Device::WebGPU>>(kernel)
+        );
+    }
+
+    for (auto& buffer : config.buffers) {
+        buffers.push_back(
+            std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(buffer)
+        );
+    }
 }
 
 Result Implementation::create() {
@@ -22,8 +36,16 @@ Result Implementation::create() {
 
     JST_CHECK(createFramebuffer());
 
+    for (auto& buffer : buffers) {
+        JST_CHECK(buffer->create());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->create(framebuffer->getTextureFormat()));
+    }
+
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->create());
     }
 
     requestedSize = framebuffer->size();
@@ -34,8 +56,16 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying surface.");
 
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->destroy());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
+    }
+
+    for (auto& buffer : buffers) {
+        JST_CHECK(buffer->destroy());
     }
 
     JST_CHECK(destroyFramebuffer());
@@ -61,6 +91,18 @@ Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
         JST_CHECK(createFramebuffer());
     }
 
+    // Encode kernels.
+
+    auto computePassEncoder = commandEncoder.BeginComputePass();
+
+    for (auto& kernel : kernels) {
+        JST_CHECK(kernel->encode(computePassEncoder));
+    }
+
+    computePassEncoder.End();
+
+    // Begin render pass.
+
     wgpu::RenderPassColorAttachment colorAttachment{};
     colorAttachment.view = framebuffer->getViewHandle();
     colorAttachment.loadOp = wgpu::LoadOp::Clear;
@@ -74,6 +116,8 @@ Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
     renderPass.colorAttachmentCount = 1;
     renderPass.colorAttachments = &colorAttachment;
     renderPass.depthStencilAttachment = nullptr;
+
+    // Encode programs.
 
     auto renderPassEncoder = commandEncoder.BeginRenderPass(&renderPass);
 

@@ -42,6 +42,7 @@
 #include "jetstream/render/webgpu/window.hh"
 #include "jetstream/render/webgpu/surface.hh"
 #include "jetstream/render/webgpu/program.hh"
+#include "jetstream/render/webgpu/kernel.hh"
 #include "jetstream/render/webgpu/buffer.hh"
 #include "jetstream/render/webgpu/draw.hh"
 #include "jetstream/render/webgpu/texture.hh"

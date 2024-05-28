@@ -6,7 +6,7 @@ namespace Jetstream::Render {
 using Implementation = KernelImp<Device::Metal>;
 
 Implementation::KernelImp(const Config& config) : Kernel(config) {
-    for (auto& buffer : config.buffers) {
+    for (auto& [buffer, _] : config.buffers) {
         buffers.push_back(
             std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer)
         );

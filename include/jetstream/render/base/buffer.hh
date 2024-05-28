@@ -12,7 +12,7 @@ namespace Jetstream::Render {
 
 class Buffer {
  public:
-    enum class Target : U64 {
+    enum class Target : U8 {
         VERTEX          = 1 << 0,
         VERTEX_INDICES  = 1 << 1,
         STORAGE         = 1 << 2,
@@ -61,12 +61,12 @@ class Buffer {
     Config config;
 };
 
-static constexpr Buffer::Target operator&(Buffer::Target a, Buffer::Target b) {
-    return static_cast<Buffer::Target>(static_cast<U64>(a) & static_cast<U64>(b));
+static constexpr Buffer::Target operator&(Buffer::Target lhs, Buffer::Target rhs) {
+    return static_cast<Buffer::Target>(static_cast<U8>(lhs) & static_cast<U8>(rhs));
 }
 
-static constexpr Buffer::Target operator|(Buffer::Target a, Buffer::Target b) {
-    return static_cast<Buffer::Target>(static_cast<U64>(a) | static_cast<U64>(b));
+static constexpr Buffer::Target operator|(Buffer::Target lhs, Buffer::Target rhs) {
+    return static_cast<Buffer::Target>(static_cast<U8>(lhs) | static_cast<U8>(rhs));
 }
 
 }  // namespace Jetstream::Render

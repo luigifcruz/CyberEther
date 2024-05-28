@@ -117,7 +117,11 @@ Result Lineplot<D, T>::createPresent() {
         Render::Kernel::Config cfg;
         cfg.gridSize = {config.numberOfVerticalLines + config.numberOfHorizontalLines, 1, 1};
         cfg.kernels = GlobalKernelsPackage["thicklines"];
-        cfg.buffers = {gridUniformBuffer, gridPointsBuffer, gridVerticesBuffer};
+        cfg.buffers = {
+            {gridUniformBuffer, Render::Kernel::AccessMode::READ},
+            {gridPointsBuffer, Render::Kernel::AccessMode::READ},
+            {gridVerticesBuffer, Render::Kernel::AccessMode::WRITE},
+        };
         JST_CHECK(window->build(gridKernel, cfg));
     }
 
@@ -186,7 +190,11 @@ Result Lineplot<D, T>::createPresent() {
         Render::Kernel::Config cfg;
         cfg.gridSize = {numberOfElements - 1, 1, 1};
         cfg.kernels = GlobalKernelsPackage["thicklinestrip"];
-        cfg.buffers = {signalUniformBuffer, signalPointsBuffer, signalVerticesBuffer};
+        cfg.buffers = {
+            {signalUniformBuffer, Render::Kernel::AccessMode::READ},
+            {signalPointsBuffer, Render::Kernel::AccessMode::READ},
+            {signalVerticesBuffer, Render::Kernel::AccessMode::WRITE},
+        };
         JST_CHECK(window->build(signalKernel, cfg));
     }
 

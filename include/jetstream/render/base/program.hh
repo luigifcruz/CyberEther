@@ -17,7 +17,7 @@ namespace Jetstream::Render {
 
 class Program {
  public:
-    enum class Target : uint8_t {
+    enum class Target : U8 {
         VERTEX   = 1 << 0,
         FRAGMENT = 1 << 1,
     };
@@ -48,11 +48,11 @@ class Program {
 };
 
 inline constexpr Program::Target operator|(Program::Target lhs, Program::Target rhs) {
-    return static_cast<Program::Target>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+    return static_cast<Program::Target>(static_cast<U8>(lhs) | static_cast<U8>(rhs));
 }
 
 inline constexpr Program::Target operator&(Program::Target lhs, Program::Target rhs) {
-    return static_cast<Program::Target>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+    return static_cast<Program::Target>(static_cast<U8>(lhs) & static_cast<U8>(rhs));
 }
 
 }  // namespace Jetstream::Render

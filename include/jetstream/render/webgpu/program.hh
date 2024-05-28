@@ -19,7 +19,6 @@ class ProgramImp<Device::WebGPU> : public Program {
  private:
     wgpu::RenderPipeline pipeline;
     wgpu::PipelineLayout pipelineLayout;
-    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
     wgpu::BindGroupLayout bindGroupLayout;
     wgpu::BindGroup bindGroup;
 
