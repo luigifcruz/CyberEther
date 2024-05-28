@@ -344,11 +344,11 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
 VkShaderStageFlags Implementation::TargetToShaderStage(const Program::Target& target) {
     VkShaderStageFlags flags = 0;
 
-    if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
+    if ((target & Program::Target::VERTEX) == Program::Target::VERTEX) {
         flags |= VK_SHADER_STAGE_VERTEX_BIT;
     }
 
-    if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
+    if ((target & Program::Target::FRAGMENT) == Program::Target::FRAGMENT) {
         flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
     }
         

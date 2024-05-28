@@ -216,11 +216,11 @@ Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
 wgpu::ShaderStage Implementation::TargetToShaderStage(const Program::Target& target) {
     auto flags = wgpu::ShaderStage::None;
 
-    if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
+    if ((target & Program::Target::VERTEX) == Program::Target::VERTEX) {
         flags |= wgpu::ShaderStage::Vertex;
     }
 
-    if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
+    if ((target & Program::Target::FRAGMENT) == Program::Target::FRAGMENT) {
         flags |= wgpu::ShaderStage::Fragment;
     }
         
