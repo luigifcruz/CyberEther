@@ -142,22 +142,10 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         bindGroup = device.CreateBindGroup(&bindGroupDescriptor);
     }
 
-    // Configure render pipeline.
-
-    renderPipelineDescriptor = {};
-
-    // TODO: Add blending support for SDF.
-    wgpu::BlendState blend{};
-    blend.color.operation = wgpu::BlendOperation::Add;
-    blend.color.srcFactor = wgpu::BlendFactor::One;
-    blend.color.dstFactor = wgpu::BlendFactor::One;
-    blend.alpha.operation = wgpu::BlendOperation::Add;
-    blend.alpha.srcFactor = wgpu::BlendFactor::One;
-    blend.alpha.dstFactor = wgpu::BlendFactor::One;
-
     wgpu::ColorTargetState colorTarget{};
     colorTarget.format = pixelFormat;
-    colorTarget.blend = &blend;
+    // TODO: Add blending support for SDF.
+    colorTarget.blend = nullptr;
     colorTarget.writeMask = wgpu::ColorWriteMask::All;
 
     wgpu::FragmentState fragment{};
