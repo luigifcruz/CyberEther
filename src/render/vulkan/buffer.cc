@@ -41,6 +41,12 @@ Result Implementation::create() {
             bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         }
 
+        if ((config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC ||
+            (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
+            JST_ERROR("[VULKAN] Buffer usage type not supported.")
+            return Result::ERROR;
+        }
+
         // Create buffer.
 
         VkBufferCreateInfo bufferInfo{};
