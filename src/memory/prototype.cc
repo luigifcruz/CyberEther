@@ -101,7 +101,7 @@ void TensorPrototype::squeeze_dims(const U64& axis) {
     update_cache();
 }
 
-Result TensorPrototype::permutation(const std::vector<U64>& permutation) {
+Result TensorPrototype::permutation(const std::vector<U64>&) {
     // TODO: Implement permutation.
     throw std::runtime_error("Not implemented");
     return Result::SUCCESS;
