@@ -63,8 +63,7 @@ Result Implementation::create() {
     wgpu::SurfaceDescriptor surface_desc{};
     surface_desc.nextInChain = &html_surface_desc;
 
-    wgpu::InstanceDescriptor instanceDesc{};
-    instance = wgpu::CreateInstance(&instanceDesc);
+    instance = wgpu::CreateInstance(nullptr);
 
     surface = instance.CreateSurface(&surface_desc);
 
@@ -101,7 +100,7 @@ Result Implementation::createSwapchain() {
 }
 
 Result Implementation::destroySwapchain() {
-    swapchain.Release();
+    swapchain = nullptr;
     
     return Result::SUCCESS;
 }
@@ -124,8 +123,8 @@ Result Implementation::destroyImgui() {
 }
 
 Result Implementation::nextDrawable() {
-    int width = getWindowWidth();
-    int height = getWindowHeight();
+    U64 width = getWindowWidth();
+    U64 height = getWindowHeight();
 
     if (width != swapchainSize.width or height != swapchainSize.height) {
        swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};

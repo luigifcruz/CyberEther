@@ -129,7 +129,7 @@ Result Implementation::beginImgui() {
 Result Implementation::endImgui() {
     ImGui::Render();
 
-    auto renderPassEncoder = encoder.BeginRenderPass(&renderPassDesc).Release();
+    auto renderPassEncoder = encoder.BeginRenderPass(&renderPassDesc).MoveToCHandle();
     ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPassEncoder);
     wgpuRenderPassEncoderEnd(renderPassEncoder);
 
