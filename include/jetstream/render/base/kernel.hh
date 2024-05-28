@@ -30,7 +30,9 @@ class Kernel {
         return config;
     }
 
-    // TODO: Add an update method.
+    void update() {
+        updated = true;
+    }
 
     template<Device D> 
     static std::shared_ptr<Kernel> Factory(const Config& config) {
@@ -39,6 +41,7 @@ class Kernel {
 
  protected:
     Config config;
+    bool updated;
 };
 
 }  // namespace Jetstream::Render

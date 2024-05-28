@@ -49,6 +49,10 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
+    // Set update flag.
+
+    this->updated = true;
+
     return Result::SUCCESS;
 }
 
@@ -59,6 +63,13 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
+    // Check if data needs to be updated.
+
+    if (!this->updated) {
+        return Result::SUCCESS;
+    }
+    this->updated = false;
+
     // Set pipeline state.
 
     encoder->setComputePipelineState(pipelineState);

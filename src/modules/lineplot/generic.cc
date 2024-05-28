@@ -272,21 +272,25 @@ template<Device D, typename T>
 Result Lineplot<D, T>::present() {
     if (updateGridPointsFlag) {
         gridPointsBuffer->update();
+        gridKernel->update();
         updateGridPointsFlag = false;
     }
 
     if (updateSignalPointsFlag) {
         signalPointsBuffer->update();
+        signalKernel->update();
         updateSignalPointsFlag = false;
     }
 
     if (updateGridUniformBufferFlag) {
         gridUniformBuffer->update();
+        gridKernel->update();
         updateGridUniformBufferFlag = false;
     }
 
     if (updateSignalUniformBufferFlag) {
         signalUniformBuffer->update();
+        signalKernel->update();
         updateSignalUniformBufferFlag = false;
     }
 
