@@ -13,12 +13,12 @@ namespace Jetstream::Render {
 class Buffer {
  public:
     enum class Target : U64 {
-        VERTEX,
-        VERTEX_INDICES,
-        STORAGE,
-        UNIFORM,
-        STORAGE_DYNAMIC,
-        UNIFORM_DYNAMIC,
+        VERTEX          = 1 << 0,
+        VERTEX_INDICES  = 1 << 1,
+        STORAGE         = 1 << 2,
+        UNIFORM         = 1 << 3,
+        STORAGE_DYNAMIC = 1 << 4,
+        UNIFORM_DYNAMIC = 1 << 5,
     };
 
     struct Config {
