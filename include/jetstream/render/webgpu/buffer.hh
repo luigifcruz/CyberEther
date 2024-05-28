@@ -25,14 +25,8 @@ class BufferImp<Device::WebGPU> : public Buffer {
         return buffer;
     }
 
-    constexpr const wgpu::BufferBindingLayout& getBufferBindingLayout() const {
-        return bufferBindingLayout;
-    }
-
  private:
     wgpu::Buffer buffer;
-
-    wgpu::BufferBindingLayout bufferBindingLayout;
 
     friend class SurfaceImp<Device::WebGPU>;
     friend class ProgramImp<Device::WebGPU>;

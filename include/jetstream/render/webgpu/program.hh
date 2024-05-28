@@ -30,7 +30,8 @@ class ProgramImp<Device::WebGPU> : public Program {
     std::vector<std::shared_ptr<TextureImp<Device::WebGPU>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, Program::Target>> buffers;
 
-    static wgpu::ShaderStage TargetToWebGPU(const Program::Target& target);
+    static wgpu::ShaderStage TargetToShaderStage(const Program::Target& target);
+    static wgpu::BufferBindingType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);
 
     friend class SurfaceImp<Device::WebGPU>; 
 };

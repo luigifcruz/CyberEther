@@ -56,10 +56,13 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, target] = buffers[i];
 
+        wgpu::BufferBindingLayout bindingLayout{};
+        bindingLayout.type = BufferDescriptorType(buffer);
+
         wgpu::BindGroupLayoutEntry binding{};
         binding.binding = bindingOffset++;
-        binding.visibility = TargetToWebGPU(target);
-        binding.buffer = buffer->getBufferBindingLayout();
+        binding.visibility = TargetToShaderStage(target);
+        binding.buffer = bindingLayout;
         bindings.push_back(binding);
     }
 
@@ -210,7 +213,7 @@ Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
     return Result::SUCCESS;
 }
 
-wgpu::ShaderStage Implementation::TargetToWebGPU(const Program::Target& target) {
+wgpu::ShaderStage Implementation::TargetToShaderStage(const Program::Target& target) {
     auto flags = wgpu::ShaderStage::None;
 
     if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
@@ -222,6 +225,21 @@ wgpu::ShaderStage Implementation::TargetToWebGPU(const Program::Target& target) 
     }
         
     return flags;
+}
+
+wgpu::BufferBindingType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
+    const auto& bufferType = buffer->getConfig().target;
+
+    if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
+        return wgpu::BufferBindingType::Uniform;
+    }
+
+    if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
+        return wgpu::BufferBindingType::Storage;
+    }
+
+    JST_ERROR("[WebGPU] Invalid buffer usage.");
+    throw Result::ERROR;
 }
 
 }  // namespace Jetstream::Render
