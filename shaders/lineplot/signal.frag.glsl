@@ -24,7 +24,8 @@ void main() {
     float distance = length(fragNormal);
 
     // Apply smoothing with a step function
-    float alpha = smoothstep(0.0, 1.0, distance);
+    float alpha = 1.0 - pow(smoothstep(0.0, 1.0, distance), 2);
 
-    outColor = vec4(color, 1.0 - alpha);
+    // Output the color with the calculated alpha.
+    outColor = vec4(color, alpha);
 }

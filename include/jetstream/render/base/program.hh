@@ -27,6 +27,7 @@ class Program {
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::pair<std::shared_ptr<Buffer>, Target>> buffers;
         std::unordered_map<Device, std::vector<std::vector<U8>>> shaders;
+        bool enableAlphaBlending = false;
     };
 
     explicit Program(const Config& config) : config(config) {}

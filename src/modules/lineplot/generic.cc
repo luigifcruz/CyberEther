@@ -148,6 +148,7 @@ Result Lineplot<D, T>::createPresent() {
             {gridUniformBuffer, Render::Program::Target::VERTEX | 
                                 Render::Program::Target::FRAGMENT},
         };
+        cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(gridProgram, cfg));
     }
 
@@ -229,6 +230,7 @@ Result Lineplot<D, T>::createPresent() {
             {signalUniformBuffer, Render::Program::Target::VERTEX | 
                                   Render::Program::Target::FRAGMENT},
         };
+        cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(signalProgram, cfg));
     }
 

@@ -80,9 +80,18 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
         renderPipelineDescriptor->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
     }
 
-    // TODO: Add blending support for SDF.
     const auto& colorAttachment = renderPipelineDescriptor->colorAttachments()->object(0)->init();
     colorAttachment->setPixelFormat(framebuffer->getPixelFormat());
+
+    if (config.enableAlphaBlending) {
+        colorAttachment->setBlendingEnabled(true);
+        colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
+        colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        colorAttachment->setRgbBlendOperation(MTL::BlendOperationAdd);
+        colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorSourceAlpha);
+        colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
+    }
 
     renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
     if (!renderPipelineState) {

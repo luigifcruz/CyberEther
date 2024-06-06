@@ -138,11 +138,21 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         bindGroup = device.CreateBindGroup(&bindGroupDescriptor);
     }
 
+    wgpu::BlendState blendState;
+    blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
+    blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+    blendState.color.operation = wgpu::BlendOperation::Add;
+    blendState.alpha.srcFactor = wgpu::BlendFactor::SrcAlpha;
+    blendState.alpha.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+    blendState.alpha.operation = wgpu::BlendOperation::Add;
+
     wgpu::ColorTargetState colorTarget{};
     colorTarget.format = pixelFormat;
-    // TODO: Add blending support for SDF.
-    colorTarget.blend = nullptr;
     colorTarget.writeMask = wgpu::ColorWriteMask::All;
+
+    if (config.enableAlphaBlending) {
+        colorTarget.blend = &blendState;
+    }
 
     wgpu::FragmentState fragment{};
     fragment.module = fragShaderModule;
