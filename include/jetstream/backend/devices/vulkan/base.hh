@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_beta.h>
 #if defined(JST_OS_LINUX)
 #include <xcb/xcb.h>
 #include <vulkan/vulkan_xcb.h>
@@ -22,6 +23,9 @@
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
 #include <vulkan/vulkan_metal.h>
 #endif
+#if defined(JST_OS_ANDROID)
+#include <vulkan/vulkan_android.h>
+#endif
 
 #include "jetstream/backend/config.hh"
 
@@ -36,6 +40,7 @@ class Vulkan {
     std::string getDeviceName() const;
     std::string getApiVersion() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
+    VkSampleCountFlagBits getMultisampling() const;
     U64 getPhysicalMemory() const;
     U64 getTotalProcessorCount() const;
     bool getLowPowerStatus() const;
@@ -126,7 +131,8 @@ class Vulkan {
     VkQueue graphicsQueue;
     VkQueue computeQueue;
     VkQueue presentQueue;
-    std::set<std::string> availableOptionalDeviceCapabilities;
+    std::set<std::string> supportedDeviceExtensions;
+    std::set<std::string> supportedInstanceExtensions;
     bool _isAvailable = false;
 
     struct {
@@ -144,14 +150,19 @@ class Vulkan {
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};
-        
-    bool checkValidationLayerSupport();
-    std::vector<const char*> getRequiredInstanceExtensions();
-    std::vector<const char*> getRequiredValidationLayers();
-    std::vector<std::string> getRequiredDeviceExtensions();
-    std::vector<std::string> getOptionalDeviceExtensions();
-    bool checkDeviceExtensionSupport(const VkPhysicalDevice& device);
-    std::set<std::string> checkDeviceOptionalExtensionSupport(const VkPhysicalDevice& device);
+    
+    std::set<std::string> getRequiredInstanceExtensions();
+    std::set<std::string> getOptionalInstanceExtensions();
+    std::set<std::string> checkInstanceExtensionSupport(const std::set<std::string>& extensions);
+
+    std::set<std::string> getRequiredValidationLayers();
+    std::set<std::string> checkValidationLayerSupport(const std::set<std::string>& layers);
+
+    std::set<std::string> getRequiredDeviceExtensions();
+    std::set<std::string> getOptionalDeviceExtensions();
+    std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device, 
+                                                      const std::set<std::string>& extensions);
+
     bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
 

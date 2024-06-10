@@ -34,29 +34,28 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::Metal
     };
 
-    // Check size.
-
-    if (prototype.size_bytes == 0) {
-        return;
-    }
-
     // Allocate memory buffer.
 
-    auto device = Backend::State<Device::Metal>()->getDevice();
-    const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
-    buffer = device->newBuffer(alignedSizeBytes, MTL::ResourceStorageModeShared);
-    if (!buffer) {
-        JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
-        JST_CHECK_THROW(Result::ERROR);
+    if (prototype.size_bytes > 0) {
+        auto device = Backend::State<Device::Metal>()->getDevice();
+        const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
+        buffer = device->newBuffer(alignedSizeBytes, MTL::ResourceStorageModeShared);
+        if (!buffer) {
+            JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
+            JST_CHECK_THROW(Result::ERROR);
+        }
+
+        // Set buffer flags.
+
+        set_allocated();
+        set_host_accessible();
+        set_device_native();
+        set_host_native();
+
+        // Null out array.
+
+        memset(buffer->contents(), 0, prototype.size_bytes);
     }
-    _host_native = true;
-    _device_native = true;
-    _host_accessible = true;
-    owns_data = true;
-
-    // Null out array.
-
-    memset(buffer->contents(), 0, prototype.size_bytes);
 
     // Add compatible devices.
 
@@ -80,7 +79,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 }
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
                              const std::shared_ptr<TensorBuffer<Device::CPU>>& root_buffer) {
     JST_TRACE("[METAL:BUFFER] Cloning from CPU buffer.");
@@ -122,17 +121,22 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         JST_ERROR("[METAL:BUFFER] Failed to allocate memory.");
         JST_CHECK_THROW(Result::ERROR);
     }
-    owns_data = false;
 
-    // Add metadata.
+    // Set buffer flags.
 
-    _device_native = true;
-    _host_native = true;
-    _host_accessible = true;
+    set_host_accessible();
+    set_device_native();
+    set_host_native();
 }
 
 bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noexcept {
     JST_TRACE("[METAL:BUFFER] Checking if CPU buffer can be imported.");
+
+    // Allow importing empty buffers.
+
+    if (!root_buffer.allocated()) {
+        return true;
+    }
 
     // Check if Metal is available.
 
@@ -148,31 +152,38 @@ bool Implementation::CanImport(const TensorBuffer<Device::CPU>& root_buffer) noe
         return false;
     }
 
+    // Check if Metal buffer size is aligned.
+
+    if (!JST_IS_ALIGNED(root_buffer.data())) {
+        JST_TRACE("[METAL:BUFFER] Buffer is not aligned. Cannot import CPU memory.");
+        return false;
+    }
+
     return true;
 }
 #endif
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::Vulkan>>& root_buffer) {
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::Vulkan>>&) {
     throw std::runtime_error("Exporting Vulkan memory to Metal not implemented.");
     // TODO: Add Vulkan -> Metal.
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::Vulkan>&) noexcept {
     return false;
 }
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
-                             const TensorPrototypeMetadata& prototype,
-                             const std::shared_ptr<TensorBuffer<Device::CUDA>>& root_buffer) {
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
+                             const TensorPrototypeMetadata&,
+                             const std::shared_ptr<TensorBuffer<Device::CUDA>>&) {
     throw std::runtime_error("CUDA buffers are not supported on Metal.");
 }
 
-bool Implementation::CanImport(const TensorBuffer<Device::CUDA>& root_buffer) noexcept {
+bool Implementation::CanImport(const TensorBuffer<Device::CUDA>&) noexcept {
     return false;
 }
 #endif

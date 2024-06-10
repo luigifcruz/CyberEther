@@ -8,6 +8,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/render/base/texture.hh"
 #include "jetstream/render/base/program.hh"
+#include "jetstream/render/base/kernel.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 
@@ -17,11 +18,22 @@ class Surface {
  public:
     struct Config {
         std::shared_ptr<Texture> framebuffer;
+        std::vector<std::shared_ptr<Kernel>> kernels;
         std::vector<std::shared_ptr<Program>> programs;
+        std::vector<std::shared_ptr<Buffer>> buffers;
+        bool multisampled = false;
     };
 
     explicit Surface(const Config& config) : config(config) {}
     virtual ~Surface() = default;
+
+    const Config& getConfig() const {
+        return config;
+    }
+
+    constexpr const bool& multisampled() const {
+        return config.multisampled;
+    }
 
     const Size2D<U64>& size() const {
         if (config.framebuffer) {

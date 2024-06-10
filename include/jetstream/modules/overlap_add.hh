@@ -76,7 +76,7 @@ class OverlapAdd : public Module, public Compute {
 
     Tensor<D, T> previousOverlap;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_OVERLAP_ADD_CPU_AVAILABLE

@@ -12,14 +12,14 @@ struct Token {
  public:
     enum class Type { Number, Colon, Ellipsis };
 
-    Token() : type(Type::Colon) {}
-    Token(U64 _a) : a(_a), type(Type::Number) {}
-    Token(U64 _a, U64 _b) : a(_a), b(_b), type(Type::Colon) {}
-    Token(U64 _a, U64 _b, U64 _c) : a(_a), b(_b), c(_c), type(Type::Colon) {}
-    Token(I32 _a) : a(_a), type(Type::Number) {}
-    Token(I32 _a, I32 _b) : a(_a), b(_b), type(Type::Colon) {}
-    Token(I32 _a, I32 _b, I32 _c) : a(_a), b(_b), c(_c), type(Type::Colon) {}
-    Token(const char*) : type(Type::Ellipsis) {}
+    Token();
+    Token(U64 _a);
+    Token(U64 _a, U64 _b);
+    Token(U64 _a, U64 _b, U64 _c);
+    Token(I32 _a);
+    Token(I32 _a, I32 _b);
+    Token(I32 _a, I32 _b, I32 _c);
+    Token(const char*);
 
     constexpr const Type& get_type() const {
         return type;
@@ -37,36 +37,8 @@ struct Token {
         return c;
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const Token& token) {
-        switch (token.get_type()) {
-            case Token::Type::Number:
-                os << token.get_a();
-                break;
-            case Token::Type::Colon:
-                if (token.get_c() == 1) {
-                    os << token.get_a() << ":" << token.get_b();
-                } else {
-                    os << token.get_a() << ":" << token.get_b() << ":" << token.get_c();
-                }
-                break;
-            case Token::Type::Ellipsis:
-                os << "...";
-                break;
-        }
-        return os;
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const std::vector<Token>& tokens) {
-        os << "{";
-        for (const auto& token : tokens) {
-            os << token;
-            if (&token != &tokens.back()) {
-                os << ", ";
-            }
-        }
-        os << "}";
-        return os;
-    }
+    friend std::ostream& operator<<(std::ostream& os, const Token& token);
+    friend std::ostream& operator<<(std::ostream& os, const std::vector<Token>& tokens);
 
  private:
     U64 a = 0;

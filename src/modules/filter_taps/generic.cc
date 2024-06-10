@@ -171,10 +171,10 @@ Result FilterTaps<D, T>::destroy() {
 
 template<Device D, typename T>
 void FilterTaps<D, T>::info() const {
-    JST_INFO("  Signal Sample Rate: {}", config.sampleRate);
-    JST_INFO("  Filter Sample Rate: {}", config.bandwidth);
-    JST_INFO("  Filter Center:      {}", config.center);
-    JST_INFO("  Number Of Taps:     {}", config.taps);
+    JST_DEBUG("  Signal Sample Rate: {}", config.sampleRate);
+    JST_DEBUG("  Filter Sample Rate: {}", config.bandwidth);
+    JST_DEBUG("  Filter Center:      {}", config.center);
+    JST_DEBUG("  Number Of Taps:     {}", config.taps);
 }
 
 JST_FILTER_TAPS_CPU(JST_INSTANTIATION)

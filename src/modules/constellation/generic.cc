@@ -6,6 +6,16 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Constellation<D, T>::GImpl {
+    struct {
+        U32 width;
+        U32 height;
+        F32 offset;
+        F32 zoom;
+    } signalUniforms;
+};
+
+template<Device D, typename T>
 Result Constellation<D, T>::create() {
     JST_DEBUG("Initializing Constellation module.");
     JST_INIT_IO();
@@ -19,98 +29,131 @@ Result Constellation<D, T>::create() {
 
 template<Device D, typename T>
 void Constellation<D, T>::info() const {
-    JST_INFO("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
 Result Constellation<D, T>::createPresent() {
-    Render::Buffer::Config fillScreenVerticesConf;
-    fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
-    fillScreenVerticesConf.elementByteSize = sizeof(float);
-    fillScreenVerticesConf.size = 12;
-    fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenVerticesBuffer, fillScreenVerticesConf));
+    // Signal element.
 
-    Render::Buffer::Config fillScreenTextureVerticesConf;
-    fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
-    fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
-    fillScreenTextureVerticesConf.size = 8;
-    fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 12;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+    }
 
-    Render::Buffer::Config fillScreenIndicesConf;
-    fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
-    fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
-    fillScreenIndicesConf.size = 6;
-    fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
-    JST_CHECK(window->build(fillScreenIndicesBuffer, fillScreenIndicesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenTextureVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 8;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+    }
+    
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.elementByteSize = sizeof(uint32_t);
+        cfg.size = 6;
+        cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+        JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+    }
+    
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {fillScreenVerticesBuffer, 3},
+            {fillScreenTextureVerticesBuffer, 2},
+        };
+        cfg.indices = fillScreenIndicesBuffer;
+        JST_CHECK(window->build(vertex, cfg));
+    }
 
-    Render::Vertex::Config vertexCfg;
-    vertexCfg.buffers = {
-        {fillScreenVerticesBuffer, 3},
-        {fillScreenTextureVerticesBuffer, 2},
-    };
-    vertexCfg.indices = fillScreenIndicesBuffer;
-    JST_CHECK(window->build(vertex, vertexCfg));
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = vertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLES;
+        JST_CHECK(window->build(drawVertex, cfg));
+    }
 
-    Render::Draw::Config drawVertexCfg;
-    drawVertexCfg.buffer = vertex;
-    drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(window->build(drawVertex, drawVertexCfg));
+    {
+        Render::Texture::Config cfg;
+        cfg.buffer = (U8*)(timeSamples.data());
+        cfg.size = {timeSamples.shape()[0], timeSamples.shape()[1]};
+        cfg.dfmt = Render::Texture::DataFormat::F32;
+        cfg.pfmt = Render::Texture::PixelFormat::RED;
+        cfg.ptype = Render::Texture::PixelType::F32;
+        JST_CHECK(window->build(signalTexture, cfg));
+    }
 
-    Render::Texture::Config bufferCfg;
-    bufferCfg.buffer = (U8*)(timeSamples.data());
-    bufferCfg.size = {timeSamples.shape()[0], timeSamples.shape()[1]};
-    bufferCfg.dfmt = Render::Texture::DataFormat::F32;
-    bufferCfg.pfmt = Render::Texture::PixelFormat::RED;
-    bufferCfg.ptype = Render::Texture::PixelType::F32;
-    JST_CHECK(window->build(binTexture, bufferCfg));
+    {
+        Render::Texture::Config cfg;
+        cfg.size = {256, 1};
+        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        JST_CHECK(window->build(lutTexture, cfg));
+    }
+    
+    {
+        // TODO: This could use unified memory.
+        Render::Buffer::Config cfg;
+        cfg.buffer = &gimpl->signalUniforms;
+        cfg.elementByteSize = sizeof(gimpl->signalUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::STORAGE;
+        JST_CHECK(window->build(signalUniformBuffer, cfg));
+    }
 
-    Render::Texture::Config lutTextureCfg;
-    lutTextureCfg.size = {256, 1};
-    lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    JST_CHECK(window->build(lutTexture, lutTextureCfg));
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["signal"];
+        cfg.draw = drawVertex;
+        cfg.textures = {signalTexture, lutTexture};
+        cfg.buffers = {
+            {signalUniformBuffer, Render::Program::Target::VERTEX |
+                                  Render::Program::Target::FRAGMENT},
+        };
+        JST_CHECK(window->build(program, cfg));
+    }
 
-    // TODO: This could use unified memory.
-    Render::Buffer::Config uniformCfg;
-    uniformCfg.buffer = &shaderUniforms;
-    uniformCfg.elementByteSize = sizeof(shaderUniforms);
-    uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::STORAGE;
-    JST_CHECK(window->build(uniformBuffer, uniformCfg));
+    // Surface.
 
-    Render::Program::Config programCfg;
-    programCfg.shaders = ShadersPackage["signal"];
-    programCfg.draw = drawVertex;
-    programCfg.textures = {binTexture, lutTexture};
-    programCfg.buffers = {
-        {uniformBuffer, Render::Program::Target::VERTEX |
-                        Render::Program::Target::FRAGMENT},
-    };
-    JST_CHECK(window->build(program, programCfg));
+    {
+        Render::Texture::Config cfg;
+        cfg.size = config.viewSize;
+        JST_CHECK(window->build(framebufferTexture, cfg));
+    }
 
-    Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize;
-    JST_CHECK(window->build(texture, textureCfg));
-
-    Render::Surface::Config surfaceCfg;
-    surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {program};
-    JST_CHECK(window->build(surface, surfaceCfg));
-    JST_CHECK(window->bind(surface));
+    {
+        Render::Surface::Config cfg;
+        cfg.framebuffer = framebufferTexture;
+        cfg.programs = {program};
+        cfg.buffers = {
+            fillScreenVerticesBuffer,
+            fillScreenTextureVerticesBuffer,
+            fillScreenIndicesBuffer,
+            signalUniformBuffer,
+        };
+        JST_CHECK(window->build(surface, cfg));
+        JST_CHECK(window->bind(surface));
+    }
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Constellation<D, T>::present() {
-    binTexture->fill();
+    signalTexture->fill();
 
-    shaderUniforms.width = timeSamples.shape()[0];
-    shaderUniforms.height = timeSamples.shape()[1];
-    shaderUniforms.zoom = 1.0;
-    shaderUniforms.offset = 0.0;
-    uniformBuffer->update();
+    gimpl->signalUniforms.width = timeSamples.shape()[0];
+    gimpl->signalUniforms.height = timeSamples.shape()[1];
+    gimpl->signalUniforms.zoom = 1.0;
+    gimpl->signalUniforms.offset = 0.0;
+
+    signalUniformBuffer->update();
 
     return Result::SUCCESS;
 }
@@ -138,7 +181,7 @@ const Size2D<U64>& Constellation<D, T>::viewSize(const Size2D<U64>& viewSize) {
 
 template<Device D, typename T>
 Render::Texture& Constellation<D, T>::getTexture() {
-    return *texture;
+    return *framebufferTexture;
 };
 
 }  // namespace Jetstream

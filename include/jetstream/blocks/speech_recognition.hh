@@ -106,7 +106,7 @@ class SpeechRecognition : public Block {
  private:
     std::shared_ptr<Jetstream::SpeechRecognition<D, IT>> tts;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

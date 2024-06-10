@@ -23,12 +23,10 @@ class Tensor<Device::Vulkan, T> : public TensorBase<Device::Vulkan, T> {
     }
 
     constexpr const VkBuffer& data() const noexcept {
-        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 
     constexpr VkBuffer& data() noexcept {
-        // TODO: This disregards the offset.
         return this->buffer->data();
     }
 };

@@ -73,7 +73,7 @@ class Take : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_TAKE_CPU_AVAILABLE

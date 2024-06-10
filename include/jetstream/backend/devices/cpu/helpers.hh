@@ -5,10 +5,11 @@
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
+#include "jetstream/memory/base.hh"
 
 namespace Jetstream::Backend {
 
-// When strict Atan2 is not necessary. YOLO.
+// When strict Atan2 is not necessary.
 // Adapted from https://www.dsprelated.com/showarticle/1052.php.
 inline F32 ApproxAtan(const F32& z) {
     const F32 n1 =  0.97239411f;

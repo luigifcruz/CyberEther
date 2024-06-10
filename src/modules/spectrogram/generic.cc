@@ -7,6 +7,16 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Spectrogram<D, T>::GImpl {
+    struct {
+        U32 width;
+        U32 height;
+        F32 offset;
+        F32 zoom;
+    } signalUniforms;
+};
+
+template<Device D, typename T>
 Result Spectrogram<D, T>::create() {
     JST_DEBUG("Initializing Spectrogram module.");
     JST_INIT_IO();
@@ -35,88 +45,122 @@ Result Spectrogram<D, T>::create() {
 
 template<Device D, typename T>
 void Spectrogram<D, T>::info() const {
-    JST_INFO("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Height: {}", config.height);
 }
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::createPresent() {
-    Render::Buffer::Config fillScreenVerticesConf;
-    fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
-    fillScreenVerticesConf.elementByteSize = sizeof(float);
-    fillScreenVerticesConf.size = 12;
-    fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenVerticesBuffer, fillScreenVerticesConf));
+    // Signal element.
 
-    Render::Buffer::Config fillScreenTextureVerticesConf;
-    fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
-    fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
-    fillScreenTextureVerticesConf.size = 8;
-    fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 12;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+    }
+    
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenTextureVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 8;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+    }
 
-    Render::Buffer::Config fillScreenIndicesConf;
-    fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
-    fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
-    fillScreenIndicesConf.size = 6;
-    fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
-    JST_CHECK(window->build(fillScreenIndicesBuffer, fillScreenIndicesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.elementByteSize = sizeof(uint32_t);
+        cfg.size = 6;
+        cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+        JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+    }
 
-    Render::Vertex::Config vertexCfg;
-    vertexCfg.buffers = {
-        {fillScreenVerticesBuffer, 3},
-        {fillScreenTextureVerticesBuffer, 2},
-    };
-    vertexCfg.indices = fillScreenIndicesBuffer;
-    JST_CHECK(window->build(vertex, vertexCfg));
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {fillScreenVerticesBuffer, 3},
+            {fillScreenTextureVerticesBuffer, 2},
+        };
+        cfg.indices = fillScreenIndicesBuffer;
+        JST_CHECK(window->build(vertex, cfg));
+    }
 
-    Render::Draw::Config drawVertexCfg;
-    drawVertexCfg.buffer = vertex;
-    drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(window->build(drawVertex, drawVertexCfg));
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = vertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLES;
+        JST_CHECK(window->build(drawVertex, cfg));
+    }
 
-    auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
+    {
+        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
 
-    Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = buffer;
-    bufferCfg.size = frequencyBins.size();
-    bufferCfg.elementByteSize = sizeof(F32);
-    bufferCfg.target = Render::Buffer::Target::STORAGE;
-    bufferCfg.enableZeroCopy = enableZeroCopy;
-    JST_CHECK(window->build(binTexture, bufferCfg));
+        Render::Buffer::Config cfg;
+        cfg.buffer = buffer;
+        cfg.size = frequencyBins.size();
+        cfg.elementByteSize = sizeof(F32);
+        cfg.target = Render::Buffer::Target::STORAGE;
+        cfg.enableZeroCopy = enableZeroCopy;
+        JST_CHECK(window->build(signalBuffer, cfg));
+    }
 
-    Render::Texture::Config lutTextureCfg;
-    lutTextureCfg.size = {256, 1};
-    lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    JST_CHECK(window->build(lutTexture, lutTextureCfg));
+    {
+        Render::Texture::Config cfg;
+        cfg.size = {256, 1};
+        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        JST_CHECK(window->build(lutTexture, cfg));
+    }
 
-    // TODO: This could use unified memory.
-    Render::Buffer::Config uniformCfg;
-    uniformCfg.buffer = &shaderUniforms;
-    uniformCfg.elementByteSize = sizeof(shaderUniforms);
-    uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::UNIFORM;
-    JST_CHECK(window->build(uniformBuffer, uniformCfg));
+    {
+        // TODO: This could use unified memory.
+        Render::Buffer::Config cfg;
+        cfg.buffer = &gimpl->signalUniforms;
+        cfg.elementByteSize = sizeof(gimpl->signalUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(signalUniformBuffer, cfg));
+    }
 
-    Render::Program::Config programCfg;
-    programCfg.shaders = ShadersPackage["signal"];
-    programCfg.draw = drawVertex;
-    programCfg.textures = {lutTexture};
-    programCfg.buffers = {
-        {uniformBuffer, Render::Program::Target::VERTEX |
-                        Render::Program::Target::FRAGMENT},
-        {binTexture, Render::Program::Target::FRAGMENT},
-    };
-    JST_CHECK(window->build(program, programCfg));
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["signal"];
+        cfg.draw = drawVertex;
+        cfg.textures = {lutTexture};
+        cfg.buffers = {
+            {signalUniformBuffer, Render::Program::Target::VERTEX |
+                                  Render::Program::Target::FRAGMENT},
+            {signalBuffer, Render::Program::Target::FRAGMENT},
+        };
+        JST_CHECK(window->build(signalProgram, cfg));
+    }
 
-    Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize;
-    JST_CHECK(window->build(texture, textureCfg));
+    // Surface.
 
-    Render::Surface::Config surfaceCfg;
-    surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {program};
-    JST_CHECK(window->build(surface, surfaceCfg));
-    JST_CHECK(window->bind(surface));
+    {
+        Render::Texture::Config cfg;
+        cfg.size = config.viewSize;
+        JST_CHECK(window->build(framebufferTexture, cfg));
+    }
+
+    {
+        Render::Surface::Config cfg;
+        cfg.framebuffer = framebufferTexture;
+        cfg.programs = {signalProgram};
+        cfg.buffers = {
+            fillScreenVerticesBuffer,
+            fillScreenTextureVerticesBuffer,
+            fillScreenIndicesBuffer,
+            signalBuffer,
+            signalUniformBuffer,
+        };
+        JST_CHECK(window->build(surface, cfg));
+        JST_CHECK(window->bind(surface));
+    }
 
     return Result::SUCCESS;
 }
@@ -130,13 +174,14 @@ Result Spectrogram<D, T>::destroyPresent() {
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::present() {
-    binTexture->update();
+    signalBuffer->update();
 
-    shaderUniforms.width = numberOfElements;
-    shaderUniforms.height = config.height;
-    shaderUniforms.zoom = 1.0;
-    shaderUniforms.offset = 0.0;
-    uniformBuffer->update();
+    gimpl->signalUniforms.width = numberOfElements;
+    gimpl->signalUniforms.height = config.height;
+    gimpl->signalUniforms.zoom = 1.0;
+    gimpl->signalUniforms.offset = 0.0;
+
+    signalUniformBuffer->update();
 
     return Result::SUCCESS;
 }
@@ -157,7 +202,7 @@ const Size2D<U64>& Spectrogram<D, T>::viewSize(const Size2D<U64>& viewSize) {
 
 template<Device D, typename T>
 Render::Texture& Spectrogram<D, T>::getTexture() {
-    return *texture;
+    return *framebufferTexture;
 };
 
 }  // namespace Jetstream

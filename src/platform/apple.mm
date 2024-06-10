@@ -7,6 +7,7 @@
 #import <UIKit/UIKit.h>
 #else
 #import <AppKit/AppKit.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #endif
 
 namespace Jetstream::Platform {
@@ -49,6 +50,10 @@ Result PickFile(std::string& path) {
         [panel setCanChooseDirectories:NO];
         [panel setAllowsMultipleSelection:NO];
 
+        UTType* yamlType = [UTType typeWithFilenameExtension:@"yaml"];
+        UTType* ymlType = [UTType typeWithFilenameExtension:@"yml"];
+        [panel setAllowedContentTypes:@[yamlType, ymlType]];
+
         if ([panel runModal] == NSModalResponseOK) {
             NSURL* url = [[panel URLs] objectAtIndex:0];
             NSString* filePath = [url path];
@@ -56,6 +61,36 @@ Result PickFile(std::string& path) {
             result = Result::SUCCESS;
         } else {
             JST_ERROR("Cannot pick file.");
+            result = Result::ERROR;
+        }
+#endif
+        dispatch_semaphore_signal(semaphore);
+    });
+
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+    return result;
+}
+
+Result PickFolder(std::string& path) {
+    __block Result result = Result::ERROR;
+
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+#ifdef JST_OS_MAC
+        NSOpenPanel* panel = [NSOpenPanel openPanel];
+        [panel setCanChooseFiles:NO];
+        [panel setCanChooseDirectories:YES];
+        [panel setAllowsMultipleSelection:NO];
+
+        if ([panel runModal] == NSModalResponseOK) {
+            NSURL* url = [[panel URLs] objectAtIndex:0];
+            NSString* folderPath = [url path];
+            path = std::string([folderPath UTF8String]);
+            result = Result::SUCCESS;
+        } else {
+            JST_ERROR("Cannot pick folder.");
             result = Result::ERROR;
         }
 #endif

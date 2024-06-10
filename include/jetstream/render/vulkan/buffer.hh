@@ -25,18 +25,14 @@ class BufferImp<Device::Vulkan> : public Buffer {
         return buffer;
     }
 
-    constexpr const VkDescriptorType& getDescriptorType() const {
-        return descriptorType;
-    }
-
  private:
     VkBuffer buffer;
     VkDeviceMemory memory;
-    VkDescriptorType descriptorType;
 
     friend class SurfaceImp<Device::Vulkan>;
     friend class ProgramImp<Device::Vulkan>;
     friend class VertexImp<Device::Vulkan>;
+    friend class KernelImp<Device::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

@@ -25,7 +25,6 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
 
     U32 bindingCount = 0;
     for (const auto& [buffer, stride] : buffers) {
-        JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
 
         MTL::VertexFormat bindingFormat = MTL::VertexFormat::VertexFormatInvalid;
@@ -59,7 +58,6 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
     }
 
     if (indices) {
-        JST_CHECK(indices->create());
         vertexCount = indices->size();
     }
 
@@ -68,14 +66,6 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
 
 Result Implementation::destroy() {
     JST_DEBUG("Destroying Metal vertex.");
-
-    for (const auto& [buffer, stride] : buffers) {
-        JST_CHECK(buffer->destroy());
-    }
-
-    if (indices) {
-        JST_CHECK(indices->destroy());
-    }
 
     return Result::SUCCESS;
 }

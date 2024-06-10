@@ -30,6 +30,7 @@ class BufferImp<Device::Metal> : public Buffer {
     friend class SurfaceImp<Device::Metal>;
     friend class ProgramImp<Device::Metal>;
     friend class VertexImp<Device::Metal>;
+    friend class KernelImp<Device::Metal>;
 };
 
 }  // namespace Jetstream::Render

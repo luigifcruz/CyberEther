@@ -23,7 +23,7 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
     }
 }
 
-Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
+Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer) {
     JST_DEBUG("Creating Metal program.");
 
     if (config.shaders.contains(Device::Metal) == 0) {
@@ -76,7 +76,23 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
     renderPipelineDescriptor->setVertexDescriptor(vertDesc);
     renderPipelineDescriptor->setVertexFunction(vertFunc);
     renderPipelineDescriptor->setFragmentFunction(fragFunc);
-    renderPipelineDescriptor->colorAttachments()->object(0)->init()->setPixelFormat(pixelFormat);
+    if (framebuffer->multisampled()) {
+        renderPipelineDescriptor->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
+    }
+
+    const auto& colorAttachment = renderPipelineDescriptor->colorAttachments()->object(0)->init();
+    colorAttachment->setPixelFormat(framebuffer->getPixelFormat());
+
+    if (config.enableAlphaBlending) {
+        colorAttachment->setBlendingEnabled(true);
+        colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
+        colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        colorAttachment->setRgbBlendOperation(MTL::BlendOperationAdd);
+        colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorSourceAlpha);
+        colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
+    }
+
     renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
     if (!renderPipelineState) {
         JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
@@ -89,10 +105,6 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat) {
         JST_CHECK(texture->create());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->create());
-    }
-
     return Result::SUCCESS;
 }
 
@@ -101,10 +113,6 @@ Result Implementation::destroy() {
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->destroy());
-    }
-
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     renderPipelineState->release();

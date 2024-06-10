@@ -40,7 +40,7 @@ const Range<T>& Scale<D, T>::range(const Range<T>& range) {
 
 template<Device D, typename T>
 void Scale<D, T>::info() const {
-    JST_INFO("  Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
+    JST_DEBUG("  Amplitude (min, max): ({}, {})", config.range.min, config.range.max);
 }
 
 }  // namespace Jetstream

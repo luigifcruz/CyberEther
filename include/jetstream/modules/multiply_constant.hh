@@ -91,7 +91,7 @@ class MultiplyConstant : public Module, public Compute {
     } metal;
 #endif
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_MULTIPLY_CONSTANT_CPU_AVAILABLE

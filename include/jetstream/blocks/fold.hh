@@ -162,7 +162,7 @@ class Fold : public Block {
  private:
     std::shared_ptr<Jetstream::Fold<D, IT>> fold;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

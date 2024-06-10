@@ -16,6 +16,7 @@ if all_deps_found
         'window.cc',
         'surface.cc',
         'program.cc',
+        'kernel.cc',
         'texture.cc',
         'buffer.cc',
         'draw.cc',

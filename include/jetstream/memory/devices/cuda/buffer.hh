@@ -8,7 +8,7 @@
 namespace Jetstream {
 
 template<>
-class TensorBuffer<Device::CUDA> {
+class TensorBuffer<Device::CUDA> : public TensorBufferBase {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
@@ -40,18 +40,6 @@ class TensorBuffer<Device::CUDA> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr bool host_accessible() const noexcept {
-        return _host_accessible;
-    }
-
-    constexpr bool device_native() const noexcept {
-        return _device_native;
-    }
-
-    constexpr bool host_native() const noexcept {
-        return _host_native;
-    }
-
     constexpr const void* data() const noexcept {
         return buffer;
     }
@@ -78,12 +66,6 @@ class TensorBuffer<Device::CUDA> {
 
     CUdeviceptr device_ptr;
     CUmemGenericAllocationHandle alloc_handle;
-    
-    bool owns_data = false;
-    bool _host_accessible = false;
-    bool _device_native = false;
-    bool _host_native = false;
-    Device external_memory_device = Device::None;
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     int vulkan_file_descriptor = 0;

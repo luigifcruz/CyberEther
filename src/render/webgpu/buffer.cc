@@ -13,29 +13,32 @@ Result Implementation::create() {
     auto device = Backend::State<Device::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
-    bufferBindingLayout = {};
     wgpu::BufferUsage bufferUsageFlag{};
     bufferUsageFlag |= wgpu::BufferUsage::CopySrc;
     bufferUsageFlag |= wgpu::BufferUsage::CopyDst;
-    switch (config.target) {
-        case Target::VERTEX:
-            bufferUsageFlag |= wgpu::BufferUsage::Vertex;
-            break;
-        case Target::VERTEX_INDICES:
-            bufferUsageFlag |= wgpu::BufferUsage::Index;
-            break;
-        case Target::STORAGE:
-            bufferUsageFlag |= wgpu::BufferUsage::Storage;
-            bufferBindingLayout.type = wgpu::BufferBindingType::ReadOnlyStorage;
-            break;
-        case Target::UNIFORM:
-            bufferUsageFlag |= wgpu::BufferUsage::Uniform;
-            bufferBindingLayout.type = wgpu::BufferBindingType::Uniform;
-            break;
-        case Target::STORAGE_DYNAMIC:
-        case Target::UNIFORM_DYNAMIC:
-            JST_ERROR("[WebGPU] Buffer usage type not supported.")
-            return Result::ERROR;
+
+    if ((config.target & Target::VERTEX) == Target::VERTEX) {
+        bufferUsageFlag |= wgpu::BufferUsage::Vertex;
+    }
+
+    if ((config.target & Target::VERTEX_INDICES) == Target::VERTEX_INDICES) {
+        bufferUsageFlag |= wgpu::BufferUsage::Index;
+    }
+
+    if ((config.target & Target::STORAGE) == Target::STORAGE ||
+        (config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC) {
+        bufferUsageFlag |= wgpu::BufferUsage::Storage;
+    }
+
+    if ((config.target & Target::UNIFORM) == Target::UNIFORM ||
+        (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
+        bufferUsageFlag |= wgpu::BufferUsage::Uniform;
+    }
+
+    if ((config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC ||
+        (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
+        JST_ERROR("[WebGPU] Buffer usage type not supported.")
+        return Result::ERROR;
     }
 
     wgpu::BufferDescriptor bufferDescriptor{};

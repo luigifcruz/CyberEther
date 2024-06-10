@@ -33,10 +33,6 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         JST_CHECK(texture->create());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->create());
-    }
-
     // Load shaders from memory.
 
     if (config.shaders.contains(Device::WebGPU) == 0) {
@@ -56,10 +52,13 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, target] = buffers[i];
 
+        wgpu::BufferBindingLayout bindingLayout{};
+        bindingLayout.type = BufferDescriptorType(buffer);
+
         wgpu::BindGroupLayoutEntry binding{};
         binding.binding = bindingOffset++;
-        binding.visibility = TargetToWebGPU(target);
-        binding.buffer = buffer->getBufferBindingLayout();
+        binding.visibility = TargetToShaderStage(target);
+        binding.buffer = bindingLayout;
         bindings.push_back(binding);
     }
 
@@ -139,22 +138,21 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         bindGroup = device.CreateBindGroup(&bindGroupDescriptor);
     }
 
-    // Configure render pipeline.
-
-    renderPipelineDescriptor = {};
-
-    wgpu::BlendState blend{};
-    blend.color.operation = wgpu::BlendOperation::Add;
-    blend.color.srcFactor = wgpu::BlendFactor::One;
-    blend.color.dstFactor = wgpu::BlendFactor::One;
-    blend.alpha.operation = wgpu::BlendOperation::Add;
-    blend.alpha.srcFactor = wgpu::BlendFactor::One;
-    blend.alpha.dstFactor = wgpu::BlendFactor::One;
+    wgpu::BlendState blendState;
+    blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
+    blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+    blendState.color.operation = wgpu::BlendOperation::Add;
+    blendState.alpha.srcFactor = wgpu::BlendFactor::SrcAlpha;
+    blendState.alpha.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+    blendState.alpha.operation = wgpu::BlendOperation::Add;
 
     wgpu::ColorTargetState colorTarget{};
     colorTarget.format = pixelFormat;
-    colorTarget.blend = &blend;
     colorTarget.writeMask = wgpu::ColorWriteMask::All;
+
+    if (config.enableAlphaBlending) {
+        colorTarget.blend = &blendState;
+    }
 
     wgpu::FragmentState fragment{};
     fragment.module = fragShaderModule;
@@ -162,6 +160,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     fragment.targetCount = 1;
     fragment.targets = &colorTarget;
 
+    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
     renderPipelineDescriptor.fragment = &fragment;
     renderPipelineDescriptor.layout = pipelineLayout;
     renderPipelineDescriptor.depthStencil = nullptr;
@@ -187,10 +186,6 @@ Result Implementation::destroy() {
         JST_CHECK(texture->destroy());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->destroy());
-    }
-
     bindings.clear();
     bindGroupEntries.clear();
 
@@ -209,18 +204,33 @@ Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
     return Result::SUCCESS;
 }
 
-wgpu::ShaderStage Implementation::TargetToWebGPU(const Program::Target& target) {
+wgpu::ShaderStage Implementation::TargetToShaderStage(const Program::Target& target) {
     auto flags = wgpu::ShaderStage::None;
 
-    if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
+    if ((target & Program::Target::VERTEX) == Program::Target::VERTEX) {
         flags |= wgpu::ShaderStage::Vertex;
     }
 
-    if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
+    if ((target & Program::Target::FRAGMENT) == Program::Target::FRAGMENT) {
         flags |= wgpu::ShaderStage::Fragment;
     }
         
     return flags;
+}
+
+wgpu::BufferBindingType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
+    const auto& bufferType = buffer->getConfig().target;
+
+    if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
+        return wgpu::BufferBindingType::Uniform;
+    }
+
+    if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
+        return wgpu::BufferBindingType::ReadOnlyStorage;
+    }
+
+    JST_ERROR("[WebGPU] Invalid buffer usage.");
+    throw Result::ERROR;
 }
 
 }  // namespace Jetstream::Render

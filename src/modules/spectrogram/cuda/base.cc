@@ -21,11 +21,13 @@ struct Spectrogram<D, T>::Impl {
 template<Device D, typename T>
 Spectrogram<D, T>::Spectrogram() {
     pimpl = std::make_unique<Impl>();
+    gimpl = std::make_unique<GImpl>();
 }
 
 template<Device D, typename T>
 Spectrogram<D, T>::~Spectrogram() {
     pimpl.reset();
+    gimpl.reset();
 }
 
 template<Device D, typename T>
@@ -34,7 +36,7 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
 
     // Initialize kernel input.
 
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         pimpl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
     } else {
         pimpl->input = input.buffer;
@@ -55,9 +57,12 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
         __global__ void rise(const float* input, float* bins, size_t numberOfElements, size_t numberOfBatches, size_t height) {
             const size_t id = blockIdx.x * blockDim.x + threadIdx.x;
 
-            for (size_t b = 0; b < numberOfBatches; b++) {
-                const size_t offset = b * numberOfElements;
-                const size_t index = input[id + offset] * height;
+            if (id >= numberOfElements) {
+                return;
+            }
+
+            for (size_t b = 0; b < numberOfBatches * numberOfElements; b += numberOfElements) {
+                const size_t index = input[id + b] * height;
 
                 if (index < height && index > 0) {
                     atomicAdd(&bins[id + (index * numberOfElements)], 0.02f);
@@ -104,8 +109,8 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::compute(const Context& ctx) {\
-    if (!input.buffer.device_native()) {
+Result Spectrogram<D, T>::compute(const Context& ctx) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 

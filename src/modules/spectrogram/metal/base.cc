@@ -54,15 +54,17 @@ struct Spectrogram<D, T>::Impl {
 template<Device D, typename T>
 Spectrogram<D, T>::Spectrogram() {
     pimpl = std::make_unique<Impl>();
+    gimpl = std::make_unique<GImpl>();
 }
 
 template<Device D, typename T>
 Spectrogram<D, T>::~Spectrogram() {
     pimpl.reset();
+    gimpl.reset();
 }
 
 template<Device D, typename T>
-Result Spectrogram<D, T>::createCompute(const Context& ctx) {
+Result Spectrogram<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Spectrogram compute core using Metal backend.");
 
     JST_CHECK(Metal::CompileKernel(shadersSrc, "decay", &pimpl->stateDecay));

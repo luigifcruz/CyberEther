@@ -46,6 +46,14 @@ class Parser {
         Deserialize,
     };
 
+    struct Adapter {
+     public:
+        virtual ~Adapter() = default;
+
+        virtual Result deserialize(const std::any& var) = 0;
+        virtual Result serialize(std::any& var) const = 0;
+    };
+
     template<typename T>
     static Result Ser(RecordMap& map, const std::string& name, T& variable) {
         if (map.contains(name) != 0) {
@@ -55,7 +63,11 @@ class Parser {
 
         auto& metadata = map[name];
 
-        metadata.object = std::any(variable);
+        if constexpr (std::is_base_of<Adapter, T>::value) {
+            variable.serialize(metadata.object);
+        } else {
+            metadata.object = std::any(variable);
+        }
 
         if constexpr (IsTensor<T>::value) {
             metadata.hash = variable.hash();
@@ -84,7 +96,7 @@ class Parser {
             return Result::SUCCESS;
         }
 
-        auto& anyVar = map[name].object;
+        auto& anyVar = map.at(name).object;
         if (!anyVar.has_value()) {
             JST_ERROR("[PARSER] Variable '{}' not initialized.", name);
             return Result::ERROR;
@@ -97,8 +109,19 @@ class Parser {
             return Result::SUCCESS;
         }
 
+        if constexpr (std::is_base_of<Adapter, T>::value) {
+            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'T' with custom deserialize method.", name);
+            JST_CHECK(variable.deserialize(anyVar));
+            return Result::SUCCESS;
+        }
+
         if constexpr (IsTensor<T>::value) {
             JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Tensor'.", name);
+
+            if (map.at(name).locale.empty()) {
+                JST_TRACE("Deserializing '{}': Tensor has no locale. Skipping.", name);
+                return Result::SUCCESS;
+            }
 
             if (variable.device() == Device::CPU) {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
@@ -124,6 +147,10 @@ class Parser {
                 }
 #endif
             }
+
+            JST_ERROR("[PARSER] Failed to cast Tensor. Check if the type and device are compatible.");
+            JST_TRACE("[PARSER] Variable type: {}", anyVar.type().name());
+            return Result::ERROR;
         }
 
         if constexpr (std::is_same<T, std::string>::value) {
@@ -390,12 +417,14 @@ class Parser {
 
     template<Device SrcD, Device DstD, typename T>
     static Result SafeTensorCast(const std::string& name, std::any& anyVar, Tensor<DstD, T>& variable) {
+        (void)name;
+
         JST_TRACE("Deserializing '{}': Trying to convert 'Tensor<Device::{}>' into 'Tensor<Device::{}>'.", name, SrcD, DstD);
         const auto& tensor = std::any_cast<Tensor<SrcD, T>>(anyVar);
 
-        if (!tensor.compatible_devices().contains(variable.device())) {
-            JST_ERROR("[PARSER] Failed to cast variable '{}'. Check if the input and output are compatible.", name);
-            JST_TRACE("[PARSER] Supported casts: {} -> {}", variable.device(), variable.compatible_devices());
+        if (!tensor.compatible_devices().contains(DstD)) {
+            JST_ERROR("[PARSER] Failed to cast Tensor device from {} to {}.", SrcD, DstD);
+            JST_TRACE("[PARSER] Supported casts: {}", tensor.compatible_devices());
             return Result::ERROR;
         }
 

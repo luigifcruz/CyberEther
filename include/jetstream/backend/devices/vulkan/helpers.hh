@@ -115,7 +115,7 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> computeFamily;
     std::optional<uint32_t> presentFamily;
 
-    bool isComplete() {
+    bool isComplete() const {
         return graphicFamily.has_value() &&
                computeFamily.has_value() &&
                presentFamily.has_value();

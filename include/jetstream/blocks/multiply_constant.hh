@@ -99,7 +99,7 @@ class MultiplyConstant : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Constant");
+        ImGui::TextUnformatted("Constant");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 constant = config.constant;
@@ -120,7 +120,7 @@ class MultiplyConstant : public Block {
  private:
     std::shared_ptr<Jetstream::MultiplyConstant<D, IT>> multiply;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

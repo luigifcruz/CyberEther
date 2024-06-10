@@ -12,7 +12,7 @@ class ProgramImp<Device::Metal> : public Program {
     explicit ProgramImp(const Config& config);
 
  protected:
-    Result create(const MTL::PixelFormat& pixelFormat);
+    Result create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer);
     Result destroy();
     Result draw(MTL::RenderCommandEncoder* renderCmdEncoder);
 
@@ -22,9 +22,6 @@ class ProgramImp<Device::Metal> : public Program {
     std::shared_ptr<DrawImp<Device::Metal>> _draw;
     std::vector<std::shared_ptr<TextureImp<Device::Metal>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, Program::Target>> buffers;
-
-    static Result checkShaderCompilation(U64);
-    static Result checkProgramCompilation(U64);
 
     friend class SurfaceImp<Device::Metal>; 
 };

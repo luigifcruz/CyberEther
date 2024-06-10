@@ -35,7 +35,8 @@ Result Take<D, T>::create() {
 
 template<Device D, typename T>
 void Take<D, T>::info() const {
-    JST_INFO("  None");
+    JST_DEBUG("  Index:   {}", config.index);
+    JST_DEBUG("  Axis:   {}", config.axis);
 }
 
 }  // namespace Jetstream

@@ -123,5 +123,7 @@ TEST_CASE("Token Class Tests", "[Token]") {
 }
 
 int main(int argc, char* argv[]) {
-  return Catch::Session().run(argc, argv);
+    JST_LOG_SET_DEBUG_LEVEL(4);
+
+    return Catch::Session().run(argc, argv);
 }

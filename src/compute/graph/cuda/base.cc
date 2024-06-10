@@ -112,7 +112,7 @@ Result CUDA::destroy() {
 
 Result CUDA::createKernel(const std::string& name, 
                           const std::string& source,
-                          const std::vector<KernelHeader>& headers) {
+                          const std::vector<KernelHeader>&) {
     if (pimpl->kernels[pimpl->block_in_context].contains(name)) {
         JST_ERROR("[CUDA] Kernel with name '{}' already exists.", name);
     }
@@ -124,6 +124,10 @@ Result CUDA::createKernel(const std::string& name,
     JST_NVRTC_CHECK(nvrtcCreateProgram(&program, source.c_str(), nullptr, 0, nullptr, nullptr), [&]{
         JST_ERROR("[CUDA] Can't create program: {}", err);
     });
+
+    // Load headers into program.
+
+    // TODO: Implement header loading.
 
     // Add name expression.
 

@@ -23,16 +23,16 @@ class JETSTREAM_API Store {
         return GetInstance()._loadBlocks(loader);
     }
 
-    static Block::ConstructorManifest& BlockConstructorList() {
+    static const Block::ConstructorManifest& BlockConstructorList() {
         return GetInstance().blockConstructorList;
     }
 
-    static Block::MetadataManifest& BlockMetadataList(const std::string& filter = "") {
+    static const Block::MetadataManifest& BlockMetadataList(const std::string& filter = "") {
         GetInstance()._blockList(filter);
         return GetInstance().blockFilteredMetadataList;
     }
 
-    static Flowgraph::MetadataManifest& FlowgraphMetadataList(const std::string& filter = "") {
+    static const Flowgraph::MetadataManifest& FlowgraphMetadataList(const std::string& filter = "") {
         GetInstance()._flowgraphList(filter);
         return GetInstance().filteredFlowgraphMetadataList;
     }

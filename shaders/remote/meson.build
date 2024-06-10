@@ -3,4 +3,5 @@ shader_pkg_lst += [{
     'shaders': [
         files(['framebuffer.vert.glsl', 'framebuffer.frag.glsl']),
     ],
+    'kernels': [],
 }]

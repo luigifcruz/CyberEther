@@ -25,7 +25,7 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 }
 
 Result Implementation::create(VkRenderPass& renderPass,
-                              std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
+                              const std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
     JST_DEBUG("[VULKAN] Creating program.");
 
     auto& backend = Backend::State<Device::Vulkan>();
@@ -54,14 +54,10 @@ Result Implementation::create(VkRenderPass& renderPass,
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
 
-    // Initiate uniforms and texture.
+    // Initiate textures.
 
     for (const auto& texture : textures) {
         JST_CHECK(texture->create());
-    }
-
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->create());
     }
 
     // Create uniforms and texture descriptor buffers.
@@ -71,9 +67,9 @@ Result Implementation::create(VkRenderPass& renderPass,
         auto& [buffer, target] = buffers[i];
 
         VkDescriptorSetLayoutBinding binding{};
-        binding.descriptorType = buffer->getDescriptorType();
+        binding.descriptorType = BufferDescriptorType(buffer);
         binding.descriptorCount = 1;
-        binding.stageFlags = TargetToVulkan(target);
+        binding.stageFlags = TargetToShaderStage(target);
         binding.binding = bindingOffset++;
 
         bindings.push_back(binding);
@@ -134,7 +130,7 @@ Result Implementation::create(VkRenderPass& renderPass,
         descriptorWriteBuffer.dstSet = descriptorSet;
         descriptorWriteBuffer.dstBinding = bindingOffset++;
         descriptorWriteBuffer.dstArrayElement = 0;
-        descriptorWriteBuffer.descriptorType = buffer->getDescriptorType();
+        descriptorWriteBuffer.descriptorType = BufferDescriptorType(buffer);
         descriptorWriteBuffer.descriptorCount = 1;
         descriptorWriteBuffer.pBufferInfo = &bufferInfo;
 
@@ -235,7 +231,11 @@ Result Implementation::create(VkRenderPass& renderPass,
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    if (framebuffer->multisampled()) {
+        multisampling.rasterizationSamples = Backend::State<Device::Vulkan>()->getMultisampling();
+    } else {
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask =  VK_COLOR_COMPONENT_R_BIT | 
@@ -243,6 +243,16 @@ Result Implementation::create(VkRenderPass& renderPass,
                                            VK_COLOR_COMPONENT_B_BIT | 
                                            VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
+
+    if (config.enableAlphaBlending) {
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    }
 
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -255,6 +265,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
+    // Create pipeline layout.
+
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     if (!bindings.empty()) {
@@ -266,6 +278,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
         JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
+
+    // Create graphics pipeline.
 
     VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
@@ -288,6 +302,8 @@ Result Implementation::create(VkRenderPass& renderPass,
         JST_ERROR("[VULKAN] Can't create graphics pipeline.");    
     });
 
+    // Clean up.
+
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
 
@@ -309,10 +325,6 @@ Result Implementation::destroy() {
         JST_CHECK(texture->destroy());
     }
 
-    for (const auto& [buffer, _] : buffers) {
-        JST_CHECK(buffer->destroy());
-    }
-
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
     bindings.clear();
@@ -321,32 +333,50 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
+    // Bind uniform and texture buffers.
+
     if (!bindings.empty()) {
-        // Bind uniform and texture buffers.
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
     }
 
     // Bind graphics pipeline.
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
     // Attach frame encoder.
+
     JST_CHECK(draw->encode(commandBuffer));
 
     return Result::SUCCESS;
 }
 
-VkShaderStageFlags Implementation::TargetToVulkan(const Program::Target& target) {
+VkShaderStageFlags Implementation::TargetToShaderStage(const Program::Target& target) {
     VkShaderStageFlags flags = 0;
 
-    if (static_cast<U8>(target & Program::Target::VERTEX) > 0) {
+    if ((target & Program::Target::VERTEX) == Program::Target::VERTEX) {
         flags |= VK_SHADER_STAGE_VERTEX_BIT;
     }
 
-    if (static_cast<U8>(target & Program::Target::FRAGMENT) > 0) {
+    if ((target & Program::Target::FRAGMENT) == Program::Target::FRAGMENT) {
         flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
     }
         
     return flags;
+}
+
+VkDescriptorType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
+    const auto& bufferType = buffer->getConfig().target;
+
+    if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    }
+
+    if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
+        return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    }
+
+    JST_ERROR("[VULKAN] Invalid buffer usage.");
+    throw Result::ERROR;
 }
 
 }  // namespace Jetstream::Render

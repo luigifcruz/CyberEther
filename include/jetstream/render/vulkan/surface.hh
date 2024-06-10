@@ -19,12 +19,15 @@ class SurfaceImp<Device::Vulkan> : public Surface {
     Result destroy();
 
  private:
+    std::shared_ptr<TextureImp<Device::Vulkan>> framebufferResolve;
     std::shared_ptr<TextureImp<Device::Vulkan>> framebuffer;
     VkFramebuffer framebufferObject;
     VkRenderPass renderPass;
     Size2D<U64> requestedSize;
       
     std::vector<std::shared_ptr<ProgramImp<Device::Vulkan>>> programs;
+    std::vector<std::shared_ptr<KernelImp<Device::Vulkan>>> kernels;
+    std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
 
     friend class WindowImp<Device::Vulkan>;
 };

@@ -170,5 +170,7 @@ TEST_CASE("Range Struct Tests", "[Range]") {
 }
 
 int main(int argc, char* argv[]) {
-  return Catch::Session().run(argc, argv);
+    JST_LOG_SET_DEBUG_LEVEL(4);
+
+    return Catch::Session().run(argc, argv);
 }

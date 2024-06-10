@@ -129,7 +129,7 @@ Result Implementation::beginImgui() {
 Result Implementation::endImgui() {
     ImGui::Render();
 
-    auto renderPassEncoder = encoder.BeginRenderPass(&renderPassDesc).Release();
+    auto renderPassEncoder = encoder.BeginRenderPass(&renderPassDesc).MoveToCHandle();
     ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPassEncoder);
     wgpuRenderPassEncoderEnd(renderPassEncoder);
 
@@ -148,19 +148,9 @@ Result Implementation::underlyingBegin() {
     } else if (result != Result::SUCCESS) {
         return result;
     }
-        
-    if (config.imgui) {
-        JST_CHECK(beginImgui());
-    }
 
-    return Result::SUCCESS;
-}
-
-Result Implementation::underlyingEnd() {
     wgpu::TextureView framebufferTexture;
     JST_CHECK(viewport->commitDrawable(framebufferTexture));
-
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
     colorAttachments = {};
     colorAttachments.loadOp = wgpu::LoadOp::Clear;
@@ -176,17 +166,27 @@ Result Implementation::underlyingEnd() {
     renderPassDesc.colorAttachments = &colorAttachments;
     renderPassDesc.depthStencilAttachment = nullptr;
 
+    auto& device = Backend::State<Device::WebGPU>()->getDevice();
     wgpu::CommandEncoderDescriptor encDesc{};
     encoder = device.CreateCommandEncoder(&encDesc);
-
-    if (config.imgui) {
-        JST_CHECK(endImgui());
-    }
 
     for (auto &surface : surfaces) {
         JST_CHECK(surface->draw(encoder));
     }
+        
+    if (config.imgui) {
+        JST_CHECK(beginImgui());
+    }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::underlyingEnd() {
+    if (config.imgui) {
+        JST_CHECK(endImgui());
+    }
+
+    auto& device = Backend::State<Device::WebGPU>()->getDevice();
     wgpu::CommandBufferDescriptor cmdBufferDesc{};
     wgpu::CommandBuffer cmdBuffer = encoder.Finish(&cmdBufferDesc);
     device.GetQueue().Submit(1, &cmdBuffer);

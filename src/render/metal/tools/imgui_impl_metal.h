@@ -50,7 +50,12 @@ IMGUI_IMPL_API void ImGui_ImplMetal_DestroyDeviceObjects();
 
 #ifdef IMGUI_IMPL_METAL_CPP
 // UPDATE-ME: Metal header.
+#pragma GCC diagnostic push 
+#pragma GCC diagnostic ignored "-Wgnu-anonymous-struct"
+#pragma GCC diagnostic ignored "-Wnested-anon-types"
+#pragma GCC diagnostic ignored "-Wdtor-name"
 #include "jetstream/backend/devices/metal/bindings.hpp"
+#pragma GCC diagnostic pop
 #ifndef __OBJC__
 
 IMGUI_IMPL_API bool ImGui_ImplMetal_Init(MTL::Device* device);

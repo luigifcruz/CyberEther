@@ -9,7 +9,7 @@ struct Lineplot<D, T>::Impl {
     std::vector<U64> grid;
     std::vector<U64> block;
 
-    std::vector<void*> arguments;
+    std::vector<void*> argumentsLineplot;
 
     Tensor<Device::CUDA, T> input;
 };
@@ -17,11 +17,13 @@ struct Lineplot<D, T>::Impl {
 template<Device D, typename T>
 Lineplot<D, T>::Lineplot() {
     pimpl = std::make_unique<Impl>();
+    gimpl = std::make_unique<GImpl>();
 }
 
 template<Device D, typename T>
 Lineplot<D, T>::~Lineplot() {
     pimpl.reset();
+    gimpl.reset();
 }
 
 template<Device D, typename T>
@@ -31,15 +33,24 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Create CUDA kernel.
 
     ctx.cuda->createKernel("lineplot", R"""(
-        __global__ void lineplot(const float* input, float* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements) {
+        __global__ void lineplot(const float* input, float2* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements, size_t averaging) {
             size_t id = blockIdx.x * blockDim.x + threadIdx.x;
             if (id < numberOfElements) {
-                float sum = 0.0f;
+                // Compute average amplitude within a batch.
+                float amplitude = 0.0f;
                 for (size_t i = 0; i < numberOfBatches; ++i) {
-                    sum += input[id + (i * numberOfElements)];
+                    amplitude += input[id + (i * numberOfElements)];
                 }
-                const size_t plot_idx = id * 3 + 1;
-                output[plot_idx] = (sum * normalizationFactor) - 1.0f;
+                amplitude = (amplitude * normalizationFactor) - 1.0f;
+
+                // Calculate moving average.
+                float average = output[id].y;
+                average -= average / averaging;
+                average += amplitude / averaging;
+
+                // Store result.
+                output[id].x = id * 2.0f / (numberOfElements - 1) - 1.0f;
+                output[id].y = average;
             }
         }
     )""");
@@ -54,7 +65,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
 
     // Initialize kernel input.
 
-    if (!input.buffer.device_native()) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         pimpl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
     } else {
         pimpl->input = input.buffer;
@@ -62,27 +73,32 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
 
     // Initialize kernel arguments.
 
-    pimpl->arguments = {
+    pimpl->argumentsLineplot = {
         pimpl->input.data_ptr(),
-        plot.data_ptr(),
+        signalPoints.data_ptr(),
         &normalizationFactor,
         &numberOfBatches,
         &numberOfElements,
+        &config.averaging,
     };
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Lineplot<D, T>::compute(const Context& ctx) {\
-    if (!input.buffer.device_native()) {
+Result Lineplot<D, T>::compute(const Context& ctx) {
+    if (!input.buffer.device_native() && input.buffer.contiguous()) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
+
+    // TODO: Join kernels.
 
     JST_CHECK(ctx.cuda->launchKernel("lineplot", 
                                      pimpl->grid, 
                                      pimpl->block, 
-                                     pimpl->arguments.data()));
+                                     pimpl->argumentsLineplot.data()));
+
+    updateSignalPointsFlag = true;
 
     return Result::SUCCESS;
 }

@@ -24,7 +24,6 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
     vertexLayouts.resize(buffers.size());
     vertexAttributes.resize(buffers.size());
     for (const auto& [buffer, stride] : buffers) {
-        JST_CHECK(buffer->create());
         vertexCount = buffer->size() / stride;
 
         auto bindingFormat = wgpu::VertexFormat::Undefined;
@@ -56,7 +55,6 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
     }
 
     if (indices) {
-        JST_CHECK(indices->create());
         vertexCount = indices->size();
     }
 
@@ -68,14 +66,6 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
 
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying vertex.");
-
-    for (const auto& [buffer, stride] : buffers) {
-        JST_CHECK(buffer->destroy());
-    }
-
-    if (indices) {
-        JST_CHECK(indices->destroy());
-    }
 
     return Result::SUCCESS;
 }

@@ -30,11 +30,16 @@ class Lineplot : public Module, public Compute, public Present {
     // Configuration 
 
     struct Config {
+        U64 averaging = 1;
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
         Size2D<U64> viewSize = {512, 384};
+        F32 zoom = 1.0f;
+        F32 translation = 0.0f;
+        F32 thickness = 2.0f;
+        F32 scale = 1.0f;
 
-        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize);
+        JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness, scale);
     };
 
     constexpr const Config& getConfig() const {
@@ -82,6 +87,26 @@ class Lineplot : public Module, public Compute, public Present {
     }
     const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
 
+    constexpr const F32& zoom() const {
+        return config.zoom;
+    }
+    std::pair<F32, F32> zoom(const std::pair<F32, F32>& mouse_pos, const F32& zoom);
+
+    constexpr const F32& translation() const {
+        return config.translation;
+    }
+    const F32& translation(const F32& translation);
+
+    constexpr const U64& averaging() const {
+        return config.averaging;
+    }
+    const U64& averaging(const U64& averaging);
+
+    constexpr const F32& scale() const {
+        return config.scale;
+    }
+    const F32& scale(const F32& scale);
+
     Render::Texture& getTexture();
 
  protected:
@@ -96,14 +121,26 @@ class Lineplot : public Module, public Compute, public Present {
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
-    Tensor<D, F32> plot;
-    Tensor<D, F32> grid;
+    struct GImpl;
+    std::unique_ptr<GImpl> gimpl;
 
+    Tensor<D, F32> signalPoints;
+    Tensor<D, F32> signalVertices;
+    Tensor<Device::CPU, F32> gridPoints;
+    Tensor<D, F32> gridVertices;
+
+    std::shared_ptr<Render::Buffer> signalPointsBuffer;
+    std::shared_ptr<Render::Buffer> signalVerticesBuffer;
+    std::shared_ptr<Render::Buffer> gridPointsBuffer;
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
-    std::shared_ptr<Render::Buffer> lineVerticesBuffer;
+    std::shared_ptr<Render::Buffer> gridUniformBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
 
-    std::shared_ptr<Render::Texture> texture;
+    std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Texture> lutTexture;
+
+    std::shared_ptr<Render::Kernel> gridKernel;
+    std::shared_ptr<Render::Kernel> signalKernel;
 
     std::shared_ptr<Render::Program> signalProgram;
     std::shared_ptr<Render::Program> gridProgram;
@@ -111,16 +148,26 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Surface> surface;
 
     std::shared_ptr<Render::Vertex> gridVertex;
-    std::shared_ptr<Render::Vertex> lineVertex;
+    std::shared_ptr<Render::Vertex> signalVertex;
 
     std::shared_ptr<Render::Draw> drawGridVertex;
-    std::shared_ptr<Render::Draw> drawLineVertex;
+    std::shared_ptr<Render::Draw> drawSignalVertex;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
     F32 normalizationFactor = 0.0f;
 
-    JST_DEFINE_IO();
+    std::pair<F32, F32> thickness = {0.0f, 0.0f};
+
+    bool updateGridPointsFlag = false;
+    bool updateSignalPointsFlag = false;
+    bool updateSignalUniformBufferFlag = false;
+    bool updateGridUniformBufferFlag = false;
+
+    void updateState();
+    void generateGridPoints();
+
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE

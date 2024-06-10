@@ -18,7 +18,7 @@ Result Invert<D, T>::create() {
 
 template<Device D, typename T>
 void Invert<D, T>::info() const {
-    JST_INFO("  None");
+    JST_DEBUG("  None");
 }
 
 }  // namespace Jetstream

@@ -7,6 +7,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Waterfall<D, T>::GImpl {
+    struct {
+        int width;
+        int height;
+        int maxSize;
+        float index;
+        float offset;
+        float zoom;
+        bool interpolate;
+    } signalUniforms;
+};
+
+template<Device D, typename T>
 Result Waterfall<D, T>::create() {
     JST_DEBUG("Initializing Waterfall module.");
     JST_INIT_IO();
@@ -33,91 +46,125 @@ Result Waterfall<D, T>::create() {
 
 template<Device D, typename T>
 void Waterfall<D, T>::info() const {
-    JST_INFO("  Offset:       {}", config.offset);
-    JST_INFO("  Zoom:         {}", config.zoom);
-    JST_INFO("  Interpolate:  {}", config.interpolate ? "YES" : "NO");
-    JST_INFO("  Height:       {}", config.height);
-    JST_INFO("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Offset:       {}", config.offset);
+    JST_DEBUG("  Zoom:         {}", config.zoom);
+    JST_DEBUG("  Interpolate:  {}", config.interpolate ? "YES" : "NO");
+    JST_DEBUG("  Height:       {}", config.height);
+    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
 }
 
 template<Device D, typename T>
 Result Waterfall<D, T>::createPresent() {
-    Render::Buffer::Config fillScreenVerticesConf;
-    fillScreenVerticesConf.buffer = &Render::Extras::FillScreenVertices;
-    fillScreenVerticesConf.elementByteSize = sizeof(float);
-    fillScreenVerticesConf.size = 12;
-    fillScreenVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenVerticesBuffer, fillScreenVerticesConf));
+    // Signal element.
 
-    Render::Buffer::Config fillScreenTextureVerticesConf;
-    fillScreenTextureVerticesConf.buffer = &Render::Extras::FillScreenTextureVertices;
-    fillScreenTextureVerticesConf.elementByteSize = sizeof(float);
-    fillScreenTextureVerticesConf.size = 8;
-    fillScreenTextureVerticesConf.target = Render::Buffer::Target::VERTEX;
-    JST_CHECK(window->build(fillScreenTextureVerticesBuffer, fillScreenTextureVerticesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 12;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+    }
 
-    Render::Buffer::Config fillScreenIndicesConf;
-    fillScreenIndicesConf.buffer = &Render::Extras::FillScreenIndices;
-    fillScreenIndicesConf.elementByteSize = sizeof(uint32_t);
-    fillScreenIndicesConf.size = 6;
-    fillScreenIndicesConf.target = Render::Buffer::Target::VERTEX_INDICES;
-    JST_CHECK(window->build(fillScreenIndicesBuffer, fillScreenIndicesConf));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenTextureVertices;
+        cfg.elementByteSize = sizeof(float);
+        cfg.size = 8;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+    }
 
-    Render::Vertex::Config vertexCfg;
-    vertexCfg.buffers = {
-        {fillScreenVerticesBuffer, 3},
-        {fillScreenTextureVerticesBuffer, 2},
-    };
-    vertexCfg.indices = fillScreenIndicesBuffer;
-    JST_CHECK(window->build(vertex, vertexCfg));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.elementByteSize = sizeof(uint32_t);
+        cfg.size = 6;
+        cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+        JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+    }
 
-    Render::Draw::Config drawVertexCfg;
-    drawVertexCfg.buffer = vertex;
-    drawVertexCfg.mode = Render::Draw::Mode::TRIANGLES;
-    JST_CHECK(window->build(drawVertex, drawVertexCfg));
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {fillScreenVerticesBuffer, 3},
+            {fillScreenTextureVerticesBuffer, 2},
+        };
+        cfg.indices = fillScreenIndicesBuffer;
+        JST_CHECK(window->build(vertex, cfg));
+    }
 
-    auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = vertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLES;
+        JST_CHECK(window->build(drawVertex, cfg));
+    }
 
-    Render::Buffer::Config bufferCfg;
-    bufferCfg.buffer = buffer;
-    bufferCfg.size = frequencyBins.size();
-    bufferCfg.elementByteSize = sizeof(F32);
-    bufferCfg.target = Render::Buffer::Target::STORAGE;
-    bufferCfg.enableZeroCopy = enableZeroCopy;
-    JST_CHECK(window->build(binTexture, bufferCfg));
+    {
+        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
 
-    Render::Texture::Config lutTextureCfg;
-    lutTextureCfg.size = {256, 1};
-    lutTextureCfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
-    JST_CHECK(window->build(lutTexture, lutTextureCfg));
+        Render::Buffer::Config cfg;
+        cfg.buffer = buffer;
+        cfg.size = frequencyBins.size();
+        cfg.elementByteSize = sizeof(F32);
+        cfg.target = Render::Buffer::Target::STORAGE;
+        cfg.enableZeroCopy = enableZeroCopy;
+        JST_CHECK(window->build(signalBuffer, cfg));
+    }
 
-    Render::Buffer::Config uniformCfg;
-    uniformCfg.buffer = &shaderUniforms;
-    uniformCfg.elementByteSize = sizeof(shaderUniforms);
-    uniformCfg.size = 1;
-    uniformCfg.target = Render::Buffer::Target::UNIFORM;
-    JST_CHECK(window->build(uniformBuffer, uniformCfg));
+    {
+        Render::Texture::Config cfg;
+        cfg.size = {256, 1};
+        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        JST_CHECK(window->build(lutTexture, cfg));
+    }
 
-    Render::Program::Config programCfg;
-    programCfg.shaders = ShadersPackage["signal"];
-    programCfg.draw = drawVertex;
-    programCfg.textures = {lutTexture};
-    programCfg.buffers = {
-        {uniformBuffer, Render::Program::Target::VERTEX |
-                        Render::Program::Target::FRAGMENT},
-        {binTexture, Render::Program::Target::FRAGMENT},
-    };
-    JST_CHECK(window->build(program, programCfg));
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &gimpl->signalUniforms;
+        cfg.elementByteSize = sizeof(gimpl->signalUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(signalUniformBuffer, cfg));
+    }
 
-    Render::Texture::Config textureCfg;
-    textureCfg.size = config.viewSize;
-    JST_CHECK(window->build(texture, textureCfg));
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["signal"];
+        cfg.draw = drawVertex;
+        cfg.textures = {lutTexture};
+        cfg.buffers = {
+            {signalUniformBuffer, Render::Program::Target::VERTEX |
+                            Render::Program::Target::FRAGMENT},
+            {signalBuffer, Render::Program::Target::FRAGMENT},
+        };
+        JST_CHECK(window->build(signalProgram, cfg));
+    }
 
-    Render::Surface::Config surfaceCfg;
-    surfaceCfg.framebuffer = texture;
-    surfaceCfg.programs = {program};
-    JST_CHECK(window->build(surface, surfaceCfg));
-    JST_CHECK(window->bind(surface));
+    // Surface.
+
+    {
+        Render::Texture::Config cfg;
+        cfg.size = config.viewSize;
+        JST_CHECK(window->build(framebufferTexture, cfg));
+    }
+
+    {
+        Render::Surface::Config cfg;
+        cfg.framebuffer = framebufferTexture;
+        cfg.programs = {signalProgram};
+        cfg.buffers = {
+            fillScreenVerticesBuffer,
+            fillScreenTextureVerticesBuffer,
+            fillScreenIndicesBuffer,
+            signalBuffer,
+            signalUniformBuffer,
+        };
+        cfg.multisampled = false;
+        JST_CHECK(window->build(surface, cfg));
+        JST_CHECK(window->bind(surface));
+    }
 
     return Result::SUCCESS;
 }
@@ -138,24 +185,24 @@ Result Waterfall<D, T>::present() {
     if (blocks < 0) {
         blocks = config.height - last;
 
-        binTexture->update(start * numberOfElements, blocks * numberOfElements);
+        signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
 
         start = 0;
         blocks = inc;
     }
 
-    binTexture->update(start * numberOfElements, blocks * numberOfElements);
+    signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
     last = inc;
 
-    shaderUniforms.zoom = config.zoom;
-    shaderUniforms.width = numberOfElements;
-    shaderUniforms.height = config.height;
-    shaderUniforms.interpolate = config.interpolate;
-    shaderUniforms.index = inc / (float)shaderUniforms.height;
-    shaderUniforms.offset = config.offset / (float)config.viewSize.width;
-    shaderUniforms.maxSize = shaderUniforms.width * shaderUniforms.height;
+    gimpl->signalUniforms.zoom = config.zoom;
+    gimpl->signalUniforms.width = numberOfElements;
+    gimpl->signalUniforms.height = config.height;
+    gimpl->signalUniforms.interpolate = config.interpolate;
+    gimpl->signalUniforms.index = inc / (float)gimpl->signalUniforms.height;
+    gimpl->signalUniforms.offset = config.offset / (float)config.viewSize.width;
+    gimpl->signalUniforms.maxSize = gimpl->signalUniforms.width * gimpl->signalUniforms.height;
 
-    uniformBuffer->update();
+    signalUniformBuffer->update();
 
     return Result::SUCCESS;
 }
@@ -208,7 +255,7 @@ const Size2D<U64>& Waterfall<D, T>::viewSize(const Size2D<U64>& viewSize) {
 
 template<Device D, typename T>
 Render::Texture& Waterfall<D, T>::getTexture() {
-    return *texture;
+    return *framebufferTexture;
 };
 
 }  // namespace Jetstream

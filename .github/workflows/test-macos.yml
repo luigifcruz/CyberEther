@@ -12,8 +12,8 @@ jobs:
     strategy:
       matrix:
         include:
-          #- runner: macos-13
-          #  label: "x86_64"
+          - runner: macos-13
+            label: "x86_64"
           - runner: macos-14
             label: "arm64"
 
@@ -24,6 +24,10 @@ jobs:
         run: |
           which brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
+      - name: Cleanup GHA mess
+        run: |
+          rm -rf /usr/local/bin/2to3-3.12 /usr/local/bin/2to3-3.11
+          brew install --force --overwrite python@3.12 python@3.11
       #
       # [NEW DEPENDENCY HOOK]
       # This is copy-pasta from the README.md file.
@@ -36,14 +40,12 @@ jobs:
       - name: Install graphical dependencies
         run: brew install --force --overwrite spirv-cross glslang glfw
 
-      - name: Install optional dependencies for SoapySDR and Remote capabilities
+      - name: Install optional dependencies
         run: |
-          brew install --force --overwrite python@3.12
           brew install --force --overwrite soapysdr soapyrtlsdr
           brew install --force --overwrite gstreamer
-          brew install --force --overwrite catch2
           brew install --force --overwrite molten-vk vulkan-tools vulkan-headers
-          python3 -m pip install pyyaml
+          brew install --force --overwrite pyyaml
 
       ##
 
@@ -55,7 +57,6 @@ jobs:
           rm -fr build
           meson build -Dprefix=/usr
           cd build && ninja
-      # TODO: Add ninja test here.
 
       - name: Build Static
         run: |

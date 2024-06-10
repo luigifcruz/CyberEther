@@ -13,11 +13,15 @@ class Lineplot : public Block {
     // Configuration
 
     struct Config {
+        U64 averaging = 1;
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
         Size2D<U64> viewSize = {512, 384};
+        F32 zoom = 1.0f;
+        F32 translation = 0.0f;
+        F32 thickness = 2.0f;
 
-        JST_SERDES(numberOfVerticalLines, numberOfHorizontalLines, viewSize);
+        JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
 
     constexpr const Config& getConfig() const {
@@ -74,9 +78,14 @@ class Lineplot : public Block {
     Result create() {
         JST_CHECK(instance().addModule(
             lineplot, "lineplot", {
+                .averaging = config.averaging,
                 .numberOfVerticalLines = config.numberOfVerticalLines,
                 .numberOfHorizontalLines = config.numberOfHorizontalLines,
                 .viewSize = config.viewSize,
+                .zoom = config.zoom,
+                .translation = config.translation,
+                .thickness = config.thickness,
+                .scale = 1.0f,
             }, {
                 .buffer = input.buffer,
             },
@@ -107,23 +116,70 @@ class Lineplot : public Block {
     }
 
     void drawView() {
-        auto [x, y] = ImGui::GetContentRegionAvail();
-        auto scale = ImGui::GetIO().DisplayFramebufferScale;
-        auto [width, height] = lineplot->viewSize({
-            static_cast<U64>(x*scale.x),
-            static_cast<U64>(y*scale.y)
-        });
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        lineplot->scale(ImGui::GetIO().DisplayFramebufferScale.x);
+
+        const auto& [x, y] = GetContentRegion();
+        const auto& [width, height] = lineplot->viewSize({x, y});
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, height));
+
+        if (ImGui::IsItemHovered()) {
+            // Handle zoom interaction.
+
+            const auto& scroll = ImGui::GetIO().MouseWheel;    
+
+            if (scroll != 0.0f) {
+                const auto& [mouse_x, mouse_y] = GetRelativeMousePos({x, y}, config.zoom);
+                config.zoom += (scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
+                                                 std::min(config.zoom * -0.02f, -0.02f);
+
+                const auto& [zoom, translation] = lineplot->zoom({mouse_x, mouse_y}, config.zoom);
+                config.zoom = zoom;
+                config.translation = translation;
+            }
+
+            // Handle translation interaction.
+
+            if (ImGui::IsAnyMouseDown()) {
+                const auto& [translation, _] = GetRelativeMouseTranslation({x, y}, config.zoom);
+                lineplot->translation(translation + config.translation);
+            } else {
+                config.translation = lineplot->translation();
+            }
+
+            // Handle reset interaction on right click.
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                const auto& [zoom, translation] = lineplot->zoom({0.0f, 0.0f}, 1.0f);
+                config.zoom = zoom;
+                config.translation = translation;
+            }
+        }
     }
 
     constexpr bool shouldDrawView() const {
         return true;
     }
 
+    void drawControl() {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Averaging");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        F32 averaging = lineplot->averaging();
+        if (ImGui::DragFloat("##Averaging", &averaging, 1.0f, 1.0f, 16384.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp)) {
+            config.averaging = lineplot->averaging(static_cast<U64>(averaging));
+        }
+    }
+
+    constexpr bool shouldDrawControl() const {
+        return true;
+    }
+
  private:
     std::shared_ptr<Jetstream::Lineplot<D, IT>> lineplot;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

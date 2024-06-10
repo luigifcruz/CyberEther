@@ -23,6 +23,7 @@ Compositor::Compositor(Instance& instance)
        flowgraphEnabled(true),
        debugDemoEnabled(false),
        debugLatencyEnabled(false),
+       fullscreenEnabled(false),
        debugEnableTrace(false),
        globalModalContentId(0),
        nodeContextMenuNodeId(0),
@@ -659,6 +660,11 @@ Result Compositor::drawStatic() {
         interactionTrigger = 5;
     }
 
+    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_L, 0, flag)) {
+        JST_TRACE("[COMPOSITOR] Exit fullscreen shortcut pressed.");
+        interactionTrigger = 9;
+    }
+
     //
     // Menu Bar.
     //
@@ -875,7 +881,7 @@ Result Compositor::drawStatic() {
 
                 const auto& title = instance.flowgraph().title();
                 if (title.empty()) {
-                    ImGui::TextFormatted("Title: N/A", title);
+                    ImGui::TextUnformatted("Title: N/A");
                 } else {
                     ImGui::TextFormatted("Title: {}", title);
                 }
@@ -976,6 +982,11 @@ Result Compositor::drawStatic() {
     if (interactionTrigger == 8 && flowgraphLoaded) {
         globalModalToggle = true;
         globalModalContentId = 4;
+    }
+
+    // Exit fullscreen
+    if (interactionTrigger == 9) {
+        exitFullscreenMailbox = true;
     }
 
     //
@@ -1102,7 +1113,7 @@ Result Compositor::drawStatic() {
     //
 
     [&](){
-        if (!infoPanelEnabled) {
+        if (!infoPanelEnabled || fullscreenEnabled) {
             return;
         }
 
@@ -1127,7 +1138,7 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowViewport(viewport->ID);
 
         ImGui::SetNextWindowBgAlpha(0.35f);
-        ImGui::Begin("Info", nullptr, windowFlags);
+        ImGui::Begin("Info HUD", nullptr, windowFlags);
 
         if (ImGui::TreeNodeEx("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
@@ -1178,6 +1189,43 @@ Result Compositor::drawStatic() {
         }
 
         ImGui::Dummy(ImVec2(variableWidth * 2.3f, 0.0f));
+
+        ImGui::End();
+    }();
+
+    //
+    // Fullscreen HUD.
+    //
+
+    [&](){
+        if (!fullscreenEnabled) {
+            return;
+        }
+
+        const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration |
+                                             ImGuiWindowFlags_NoDocking |
+                                             ImGuiWindowFlags_AlwaysAutoResize |
+                                             ImGuiWindowFlags_NoSavedSettings |
+                                             ImGuiWindowFlags_NoMove |
+                                             ImGuiWindowFlags_Tooltip;
+
+        const F32 windowPad = 12.0f * scalingFactor;
+        ImVec2 workPos = viewport->WorkPos;
+        ImVec2 workSize = viewport->WorkSize;
+        ImVec2 windowPos, windowPosPivot;
+        windowPos.x = workPos.x + workSize.x - windowPad;
+        windowPos.y = windowPad;
+        windowPosPivot.x = 1.0f;
+        windowPosPivot.y = 0.0f;
+        ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, windowPosPivot);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGui::SetNextWindowBgAlpha(0.5f);
+        ImGui::Begin("Fullscreen HUD", nullptr, windowFlags);
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
+        ImGui::TextUnformatted(ICON_FA_EXPAND " Fullscreen Mode (Press CTRL+L to exit)");
+        ImGui::PopStyleColor();
 
         ImGui::End();
     }();
@@ -1525,6 +1573,8 @@ Result Compositor::drawStatic() {
             ImGui::Spacing();
             ImGui::Separator();
 
+            bool openFile = false;
+
             ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path or URL of a flowgraph file here:");
             static std::string globalModalPath;
             if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody | 
@@ -1536,18 +1586,25 @@ Result Compositor::drawStatic() {
 
                 ImGui::TableSetColumnIndex(0);
                 ImGui::SetNextItemWidth(-1);
-                ImGui::InputText("##FlowgraphPath", &globalModalPath);
+                if (ImGui::InputText("##FlowgraphPath", &globalModalPath, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    openFile |= true;
+                }
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    JST_CHECK_NOTIFY(Platform::PickFile(globalModalPath));
+                    const auto& res = Platform::PickFile(globalModalPath);
+                    if (res == Result::SUCCESS) {
+                        openFile |= true;
+                    }
+                    JST_CHECK_NOTIFY(res);
                 }
 
                 ImGui::EndTable();
             }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 6.0f, scalingFactor * 6.0f));
-            if (ImGui::Button(ICON_FA_PLAY " Load")) {
+            openFile |= ImGui::Button(ICON_FA_PLAY " Load");
+            if (openFile) {
                 if (globalModalPath.size() == 0) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
                 } else if (std::regex_match(globalModalPath, std::regex("^(https?)://.*$"))) {
@@ -1644,6 +1701,8 @@ Result Compositor::drawStatic() {
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scalingFactor * 5.0f, scalingFactor * 5.0f));
 
+            bool saveFile = false;
+
             if (ImGui::BeginTable("##flowgraph-info-path", 2, ImGuiTableFlags_NoBordersInBody | 
                                                               ImGuiTableFlags_NoBordersInBodyUntilResize)) {
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 80.0f);
@@ -1654,17 +1713,24 @@ Result Compositor::drawStatic() {
                 ImGui::TableSetColumnIndex(0);
                 ImGui::SetNextItemWidth(-1);
 
-                ImGui::InputText("##flowgraph-info-filename", &filenameField);
+                if (ImGui::InputText("##flowgraph-info-filename", &filenameField, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                    saveFile |= true;
+                }
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    JST_CHECK_NOTIFY(Platform::SaveFile(filenameField));
+                    const auto& res = Platform::SaveFile(filenameField);
+                    if (res == Result::SUCCESS) {
+                        saveFile |= true;
+                    }
+                    JST_CHECK_NOTIFY(res);
                 }
 
                 ImGui::EndTable();
             }
 
-            if (ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0))) {
+            saveFile |= ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0));
+            if (saveFile) {
                 const auto& result = instance.flowgraph().setFilename(filenameField);
                 if (result == Result::SUCCESS) {
                     saveFlowgraphMailbox = true;
@@ -1803,6 +1869,7 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("Catch2 - Boost Software License");
             ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
             ImGui::BulletText("imgui_markdown - Zlib License");
+            ImGui::BulletText("GLM - Happy Bunny License");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
@@ -1974,7 +2041,8 @@ Result Compositor::drawGraph() {
     for (const auto& [_, state] : nodeStates) {
         if (!state.block->getState().viewEnabled ||
             !state.block->shouldDrawView() ||
-            !state.block->complete()) {
+            !state.block->complete() ||
+            fullscreenEnabled) {
             continue;
         }
 
@@ -1991,12 +2059,60 @@ Result Compositor::drawGraph() {
     }
 
     //
+    // Fullscreen Render
+    //
+
+    for (const auto& [_, state] : nodeStates) {
+        if (!state.block->getState().fullscreenEnabled ||
+            !state.block->shouldDrawFullscreen() ||
+            !state.block->complete()) {
+            fullscreenEnabled = false;
+            continue;
+        }
+
+        if (exitFullscreenMailbox.has_value()) {
+            state.block->state.fullscreenEnabled = false;
+            exitFullscreenMailbox.reset();
+            fullscreenEnabled = false;
+            break;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::SetNextWindowSize(io.DisplaySize);
+
+        const auto flags = ImGuiWindowFlags_NoTitleBar |
+                           ImGuiWindowFlags_NoResize | 
+                           ImGuiWindowFlags_NoMove | 
+                           ImGuiWindowFlags_NoScrollbar | 
+                           ImGuiWindowFlags_NoScrollWithMouse | 
+                           ImGuiWindowFlags_NoCollapse | 
+                           ImGuiWindowFlags_NoSavedSettings;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        if (!ImGui::Begin(jst::fmt::format("Fullscreen - {}", state.title).c_str(), &state.block->state.viewEnabled, flags)) {
+            ImGui::End();
+            ImGui::PopStyleVar();
+            ImGui::PopStyleVar();
+            continue;
+        }
+        state.block->drawView();
+        ImGui::End();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleVar();
+
+        fullscreenEnabled = true;
+        break;
+    }
+
+    //
     // Control Render
     //
 
     for (const auto& [_, state] : nodeStates) {
         if (!state.block->getState().controlEnabled ||
-            !state.block->shouldDrawControl()) {
+            !state.block->shouldDrawControl() ||
+            fullscreenEnabled) {
             continue;
         }
 
@@ -2038,7 +2154,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!flowgraphEnabled || !instance.flowgraph().imported()) {
+        if (!flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
             return;
         }
 
@@ -2274,6 +2390,17 @@ Result Compositor::drawGraph() {
 
                 if (block->shouldDrawView()) {
                     ImGui::Checkbox("Window", &block->state.viewEnabled);
+
+                    if (block->shouldDrawControl() ||
+                        block->shouldDrawInfo()    ||
+                        block->shouldDrawPreview() ||
+                        block->shouldDrawFullscreen()) {
+                        ImGui::SameLine();
+                    }
+                }
+
+                if (block->shouldDrawFullscreen()) {
+                    ImGui::Checkbox("Fullscreen", &block->state.fullscreenEnabled);
 
                     if (block->shouldDrawControl() ||
                         block->shouldDrawInfo()    ||
@@ -2552,7 +2679,7 @@ Result Compositor::drawGraph() {
     }
 
     // Draw node context menu.
-    if (ImGui::BeginPopup("##node_context_menu")) {
+    if (!fullscreenEnabled && ImGui::BeginPopup("##node_context_menu")) {
         const auto& locale = nodeLocaleMap.at(nodeContextMenuNodeId);
         const auto& state = nodeStates.at(locale.block());
         const auto moduleEntry = Store::BlockMetadataList().at(state.fingerprint.id);
@@ -2619,7 +2746,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!moduleStoreEnabled || !flowgraphEnabled || !instance.flowgraph().imported()) {
+        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
             return;
         }
 

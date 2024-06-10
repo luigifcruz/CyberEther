@@ -12,7 +12,7 @@ namespace Jetstream {
 template<Device D, typename T>
 class TensorModifier : public Module, public Compute {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         std::function<Result(Tensor<D, T>&)> callback;
@@ -58,8 +58,12 @@ class TensorModifier : public Module, public Compute {
         return D;
     }
 
+    constexpr Taint taint() const {
+        return Taint::DISCONTIGUOUS;
+    }
+
     void info() const final {
-        JST_INFO("  None");
+        JST_DEBUG("  None");
     }
 
     // Constructor
@@ -76,12 +80,12 @@ class TensorModifier : public Module, public Compute {
     }
 
  protected:
-    Result compute(const Context& ctx) final {
+    Result compute(const Context&) final {
         return Result::SUCCESS;
     }
 
  private:
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream

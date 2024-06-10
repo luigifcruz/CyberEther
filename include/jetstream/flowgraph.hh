@@ -37,7 +37,7 @@ class JETSTREAM_API Flowgraph {
 
     Result print() const;
 
-    const U64 empty() const {
+    U64 empty() const {
         return _nodes.empty();
     }
 

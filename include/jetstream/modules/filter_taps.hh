@@ -105,7 +105,7 @@ class FilterTaps : public Module, public Compute {
     Result generateWindow();
     Result generateUpconvert();
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_FILTER_TAPS_CPU_AVAILABLE

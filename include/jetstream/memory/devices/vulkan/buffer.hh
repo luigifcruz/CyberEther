@@ -8,7 +8,7 @@
 namespace Jetstream {
 
 template<>
-class TensorBuffer<Device::Vulkan> {
+class TensorBuffer<Device::Vulkan> : public TensorBufferBase {
  public:
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,
@@ -42,18 +42,6 @@ class TensorBuffer<Device::Vulkan> {
     TensorBuffer(const TensorBuffer&) = delete;
     TensorBuffer& operator=(const TensorBuffer&) = delete;
 
-    constexpr bool host_accessible() const noexcept {
-        return _host_accessible;
-    }
-
-    constexpr bool device_native() const noexcept {
-        return _device_native;
-    }
-
-    constexpr bool host_native() const noexcept {
-        return _host_native;
-    }
-
     constexpr const VkDeviceMemory& memory() const noexcept {
         return _memory;
     }
@@ -73,11 +61,6 @@ class TensorBuffer<Device::Vulkan> {
  private:
     VkBuffer _buffer;
     VkDeviceMemory _memory;
-    bool owns_data = false;
-    bool _host_accessible = false;
-    bool _device_native = false;
-    bool _host_native = false;
-    Device external_memory_Device = Device::None;
 };
 
 }  // namespace Jetstream

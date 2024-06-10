@@ -65,6 +65,15 @@ class Multiply : public Module, public Compute {
         return D;
     }
 
+    constexpr Taint taint() const {
+        if constexpr (D == Device::CPU) {
+            return Taint::DISCONTIGUOUS;
+        } else {
+            // TODO: Implement discontiguous support for Metal.
+            return Taint::CLEAN;
+        }
+    }
+
     void info() const final;
 
     // Constructor
@@ -87,7 +96,7 @@ class Multiply : public Module, public Compute {
     } metal;
 #endif
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 #ifdef JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE

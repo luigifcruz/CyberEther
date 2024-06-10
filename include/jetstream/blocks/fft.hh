@@ -140,7 +140,7 @@ class FFT : public Block {
  private:
     std::shared_ptr<Jetstream::FFT<D, IT, OT>> fft;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

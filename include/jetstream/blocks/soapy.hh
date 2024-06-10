@@ -179,7 +179,7 @@ class Soapy : public Block {
     void drawControl() {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Batch / Samples");
+        ImGui::TextUnformatted("Batch / Samples");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         I32 taps[2] = {
@@ -198,7 +198,7 @@ class Soapy : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Sample Rate");
+        ImGui::TextUnformatted("Sample Rate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / 1e6f;
@@ -209,7 +209,7 @@ class Soapy : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Automatic Gain");
+        ImGui::TextUnformatted("Automatic Gain");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::Checkbox("##AutomaticGain", &config.automaticGain)) {
@@ -218,14 +218,14 @@ class Soapy : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Device Hint");
+        ImGui::TextUnformatted("Device Hint");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##DeviceHintInput", &config.hintString);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Device List");
+        ImGui::TextUnformatted("Device List");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         static const char* noDeviceMessage = "No device found";
@@ -262,7 +262,7 @@ class Soapy : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Frequency");
+        ImGui::TextUnformatted("Frequency");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 frequency = config.frequency / JST_MHZ;
@@ -273,7 +273,7 @@ class Soapy : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::Text("Step Size");
+        ImGui::TextUnformatted("Step Size");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         ImGui::InputFloat("##StepSize", &stepSize, 1.0f, 5.0f, "%.3f MHz");
@@ -290,7 +290,7 @@ class Soapy : public Block {
     
     std::shared_ptr<SoapyModule> soapy;
 
-    JST_DEFINE_IO();
+    JST_DEFINE_IO()
 };
 
 }  // namespace Jetstream::Blocks

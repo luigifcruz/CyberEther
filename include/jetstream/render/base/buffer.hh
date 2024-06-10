@@ -12,13 +12,13 @@ namespace Jetstream::Render {
 
 class Buffer {
  public:
-    enum class Target : U64 {
-        VERTEX,
-        VERTEX_INDICES,
-        STORAGE,
-        UNIFORM,
-        STORAGE_DYNAMIC,
-        UNIFORM_DYNAMIC,
+    enum class Target : U8 {
+        VERTEX          = 1 << 0,
+        VERTEX_INDICES  = 1 << 1,
+        STORAGE         = 1 << 2,
+        UNIFORM         = 1 << 3,
+        STORAGE_DYNAMIC = 1 << 4,
+        UNIFORM_DYNAMIC = 1 << 5,
     };
 
     struct Config {
@@ -33,6 +33,10 @@ class Buffer {
 
     explicit Buffer(const Config& config) : config(config) {}
     virtual ~Buffer() = default;
+
+    const Config& getConfig() const {
+        return config;
+    }
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
@@ -56,6 +60,14 @@ class Buffer {
  protected:
     Config config;
 };
+
+static constexpr Buffer::Target operator&(Buffer::Target lhs, Buffer::Target rhs) {
+    return static_cast<Buffer::Target>(static_cast<U8>(lhs) & static_cast<U8>(rhs));
+}
+
+static constexpr Buffer::Target operator|(Buffer::Target lhs, Buffer::Target rhs) {
+    return static_cast<Buffer::Target>(static_cast<U8>(lhs) | static_cast<U8>(rhs));
+}
 
 }  // namespace Jetstream::Render
 

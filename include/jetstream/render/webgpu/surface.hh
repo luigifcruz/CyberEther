@@ -21,6 +21,9 @@ class SurfaceImp<Device::WebGPU> : public Surface {
  private:
     std::shared_ptr<TextureImp<Device::WebGPU>> framebuffer;
     std::vector<std::shared_ptr<ProgramImp<Device::WebGPU>>> programs;
+    std::vector<std::shared_ptr<KernelImp<Device::WebGPU>>> kernels;
+    std::vector<std::shared_ptr<BufferImp<Device::WebGPU>>> buffers;
+    Size2D<U64> requestedSize;
 
     Result createFramebuffer();
     Result destroyFramebuffer();
