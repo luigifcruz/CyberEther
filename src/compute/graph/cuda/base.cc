@@ -39,35 +39,51 @@ Result CUDA::create() {
 
     // Create blocks.
 
-    for (U64 i = 0; i < blocks.size(); i++) {
+    for (U64 i = 0; i < computeUnits.size(); i++) {
         pimpl->block_in_context = i;
 
-        JST_CHECK(blocks[i]->createCompute(*context));
+        JST_CHECK(computeUnits[i].block->createCompute(*context));
     }
 
     return Result::SUCCESS;
 }
 
 Result CUDA::computeReady() {
-    for (const auto& block : blocks) {
-        JST_CHECK(block->computeReady());
+    for (const auto& computeUnit : computeUnits) {
+        JST_CHECK(computeUnit.block->computeReady());
     }
     return Result::SUCCESS;
 }
 
-Result CUDA::compute() {
+Result CUDA::compute(std::unordered_set<U64>& yielded) {
     // Execute blocks.
 
-    for (U64 i = 0; i < blocks.size(); i++) {
+    for (U64 i = 0; i < computeUnits.size(); i++) {
+        auto& computeUnit = computeUnits[i];
+
+        if (Graph::ShouldYield(yielded, computeUnit.inputSet)) {
+            Graph::Yield(yielded, computeUnit.outputSet);
+            continue;
+        }
+
         pimpl->block_in_context = i;
 
-        JST_CHECK(blocks[i]->compute(*context));
+        const auto& res = computeUnit.block->compute(*context);
 
-        // Check for CUDA errors.
+        if (res == Result::SUCCESS) {
+            JST_CUDA_CHECK(cudaGetLastError(), [&]{
+                JST_ERROR("[CUDA] Module kernel execution failed: {}", err);
+            });
 
-        JST_CUDA_CHECK(cudaGetLastError(), [&]{
-            JST_ERROR("[CUDA] Module kernel execution failed: {}", err);
-        });
+            continue;
+        }
+
+        if (res == Result::YIELD) {
+            Graph::Yield(yielded, computeUnit.outputSet);
+            continue;
+        }
+
+        JST_CHECK(res);
     }
 
     // Wait for all blocks to finish.
@@ -82,14 +98,14 @@ Result CUDA::compute() {
 Result CUDA::destroy() {
     // Destroy blocks.
 
-    for (const auto& block : blocks) {
-        JST_CHECK(block->destroyCompute(*context));
+    for (const auto& computeUnit : computeUnits) {
+        JST_CHECK(computeUnit.block->destroyCompute(*context));
     }
-    blocks.clear();
+    computeUnits.clear();
 
     // Destroy kernels.
 
-    for (U64 i = 0; i < blocks.size(); i++) {
+    for (U64 i = 0; i < computeUnits.size(); i++) {
         pimpl->block_in_context = i;
 
         std::vector<std::string> kernel_names;

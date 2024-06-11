@@ -259,7 +259,7 @@ Result Soapy<D, T>::compute(const Context&) {
     }
 
     if (buffer.getOccupancy() < output.buffer.size()) {
-        return Result::SKIP;
+        return Result::YIELD;
     }
 
     buffer.get(output.buffer.data(), output.buffer.size());

@@ -11,15 +11,16 @@
 
 namespace Jetstream {
 
-enum class Result : uint8_t {
+enum class Result : uint16_t {
     SUCCESS     = 0,
     ERROR       = 1,
     WARNING     = 2,
     FATAL       = 3,
     SKIP        = 4,
-    RELOAD      = 5,
-    RECREATE    = 6,
-    TIMEOUT     = 7,
+    YIELD       = 5,
+    RELOAD      = 6,
+    RECREATE    = 7,
+    TIMEOUT     = 8,
 };
 
 /**

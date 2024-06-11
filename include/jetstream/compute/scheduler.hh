@@ -16,6 +16,8 @@ namespace Jetstream {
 
 class JETSTREAM_API Scheduler {
  public:
+    Scheduler();
+
     Result addModule(const Locale& locale, 
                      const std::shared_ptr<Module>& module,
                      const Parser::RecordMap& inputMap,
@@ -69,6 +71,8 @@ class JETSTREAM_API Scheduler {
     std::vector<std::shared_ptr<Graph>> graphs;
     ExecutionOrder executionOrder;
     DeviceExecutionOrder deviceExecutionOrder;
+    
+    std::unordered_set<U64> yielded;
 
     Result removeInactive();
     Result arrangeDependencyOrder();
