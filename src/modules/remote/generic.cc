@@ -488,7 +488,7 @@ Result Remote<D, T>::createPresent() {
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &Render::Extras::FillScreenVertices;
-        cfg.elementByteSize = sizeof(float);
+        cfg.elementByteSize = sizeof(F32);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
@@ -497,7 +497,7 @@ Result Remote<D, T>::createPresent() {
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &Render::Extras::FillScreenTextureVerticesXYFlip;
-        cfg.elementByteSize = sizeof(float);
+        cfg.elementByteSize = sizeof(F32);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
@@ -506,7 +506,7 @@ Result Remote<D, T>::createPresent() {
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &Render::Extras::FillScreenIndices;
-        cfg.elementByteSize = sizeof(uint32_t);
+        cfg.elementByteSize = sizeof(U32);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
