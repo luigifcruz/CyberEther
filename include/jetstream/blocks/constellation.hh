@@ -14,7 +14,7 @@ class Constellation : public Block {
     // Configuration
 
     struct Config {
-        Size2D<U64> viewSize = {512, 512};
+        Extent2D<U64> viewSize = {512, 512};
 
         JST_SERDES(viewSize);
     };
@@ -108,7 +108,7 @@ class Constellation : public Block {
     void drawPreview(const F32& maxWidth) {
         const auto& size = constellation->viewSize();
         const auto& ratio = size.ratio();
-        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
         ImGui::Image(constellation->getTexture().raw(), ImVec2(width, width/ratio));
     }

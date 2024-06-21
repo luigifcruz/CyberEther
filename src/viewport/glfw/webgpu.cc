@@ -48,7 +48,7 @@ Result Implementation::create() {
         static_cast<U64>(getWindowHeight())
     };
 
-    window = glfwCreateWindow(swapchainSize.width, swapchainSize.height, config.title.c_str(), nullptr, nullptr);
+    window = glfwCreateWindow(swapchainsize.x, swapchainsize.y, config.title.c_str(), nullptr, nullptr);
 
     if (!window) {
         glfwTerminate();
@@ -84,13 +84,13 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::createSwapchain() {
-    glfwSetWindowSize(window, swapchainSize.width, swapchainSize.height);
+    glfwSetWindowSize(window, swapchainsize.x, swapchainsize.y);
 
     wgpu::SwapChainDescriptor swapchainDesc{};
     swapchainDesc.usage = wgpu::TextureUsage::RenderAttachment;
     swapchainDesc.format = wgpu::TextureFormat::BGRA8Unorm;
-    swapchainDesc.width = swapchainSize.width * getPixelRatio();
-    swapchainDesc.height = swapchainSize.height * getPixelRatio();
+    swapchainDesc.width = swapchainsize.x * getPixelRatio();
+    swapchainDesc.height = swapchainsize.y * getPixelRatio();
     swapchainDesc.presentMode = wgpu::PresentMode::Fifo;
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
@@ -126,7 +126,7 @@ Result Implementation::nextDrawable() {
     U64 width = getWindowWidth();
     U64 height = getWindowHeight();
 
-    if (width != swapchainSize.width or height != swapchainSize.height) {
+    if (width != swapchainsize.x or height != swapchainsize.y) {
        swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};
        return Result::RECREATE;
     }

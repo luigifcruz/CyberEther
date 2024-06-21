@@ -416,7 +416,7 @@ Result Endpoint::createSocketEndpoint() {
                         // Parse command `cmd:fbsize`.
 
                         if (line.compare(0, 10, "cmd:fbsize") == 0) {
-                            auto response = jst::fmt::format("ok:fbsize:{:05},{:05}\n", config.size.width, config.size.height);
+                            auto response = jst::fmt::format("ok:fbsize:{:05},{:05}\n", config.size.x, config.size.y);
                             send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
 
                             continue;
@@ -729,12 +729,12 @@ Result Endpoint::startGstreamerEndpoint() {
     g_object_set(elements["source"], "format", 3, nullptr);
     g_object_set(elements["source"], "leaky-type", 2, nullptr);
     g_object_set(elements["source"], "is-live", true, nullptr);
-    g_object_set(elements["source"], "max-bytes", 2*config.size.width*config.size.height*4, nullptr);
+    g_object_set(elements["source"], "max-bytes", 2*config.size.x*config.size.y*4, nullptr);
 
     GstCaps* caps = gst_caps_new_simple("video/x-raw",
                                         "format", G_TYPE_STRING, "BGRA",
-                                        "width", G_TYPE_INT, config.size.width,
-                                        "height", G_TYPE_INT, config.size.height,
+                                        "width", G_TYPE_INT, config.size.x,
+                                        "height", G_TYPE_INT, config.size.y,
                                         "framerate", GST_TYPE_FRACTION, config.framerate, 1,
                                         "interlace-mode", G_TYPE_STRING, "progressive",
                                         "colorimetry", G_TYPE_STRING, "bt709",
@@ -751,8 +751,8 @@ Result Endpoint::startGstreamerEndpoint() {
     if (_encodingStrategy == Strategy::Software || _encodingStrategy == Strategy::HardwareV4L2) {
         g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
         g_object_set(elements["rawparser"], "format", 12, nullptr);
-        g_object_set(elements["rawparser"], "width", config.size.width, nullptr);
-        g_object_set(elements["rawparser"], "height", config.size.height, nullptr);
+        g_object_set(elements["rawparser"], "width", config.size.x, nullptr);
+        g_object_set(elements["rawparser"], "height", config.size.y, nullptr);
         g_object_set(elements["rawparser"], "framerate", 1.0f/config.framerate, nullptr);
     }
 
@@ -920,7 +920,7 @@ void Endpoint::OnBufferReleaseCallback(gpointer user_data) {
 Result Endpoint::pushNewFrame(const void* data) {
 #ifndef JST_OS_WINDOWS
     if (type == Endpoint::Type::Pipe) {
-        if (write(pipeFileDescriptor, data, config.size.width * config.size.height * 4) < 0) {
+        if (write(pipeFileDescriptor, data, config.size.x * config.size.y * 4) < 0) {
             JST_ERROR("[ENDPOINT] Failed to write to pipe.");
             return Result::ERROR;
         }
@@ -933,9 +933,9 @@ Result Endpoint::pushNewFrame(const void* data) {
 
         GstBuffer* buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
                                                         const_cast<void*>(data),
-                                                        config.size.width * config.size.height * 4,
+                                                        config.size.x * config.size.y * 4,
                                                         0,
-                                                        config.size.width * config.size.height * 4,
+                                                        config.size.x * config.size.y * 4,
                                                         this,
                                                         &OnBufferReleaseCallback);
 

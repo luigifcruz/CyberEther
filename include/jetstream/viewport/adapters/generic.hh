@@ -18,7 +18,7 @@ struct Config {
     std::string title = "CyberEther";
 
     /// @brief The size of the application or window.
-    Size2D<U64> size = {1920, 1080};
+    Extent2D<U64> size = {1920, 1080};
 
     /// @brief The framerate of the headless viewport.
     U64 framerate = 60;

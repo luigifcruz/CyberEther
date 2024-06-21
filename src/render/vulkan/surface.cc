@@ -134,8 +134,8 @@ Result Implementation::create() {
     framebufferInfo.renderPass = renderPass;
     framebufferInfo.attachmentCount = attachments.size();
     framebufferInfo.pAttachments = attachments.data();
-    framebufferInfo.width = framebufferResolve->size().width;
-    framebufferInfo.height = framebufferResolve->size().height;
+    framebufferInfo.width = framebufferResolve->size().x;
+    framebufferInfo.height = framebufferResolve->size().y;
     framebufferInfo.layers = 1;
 
     JST_VK_CHECK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebufferObject), [&]{
@@ -204,8 +204,8 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     renderPassInfo.framebuffer = framebufferObject;
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = {
-        static_cast<U32>(framebufferResolve->size().width),
-        static_cast<U32>(framebufferResolve->size().height)
+        static_cast<U32>(framebufferResolve->size().x),
+        static_cast<U32>(framebufferResolve->size().y)
     };
 
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 0.0f}}};
@@ -225,7 +225,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     return Result::SUCCESS;
 }
 
-const Size2D<U64>& Implementation::size(const Size2D<U64>& size) { 
+const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) { 
     if (!framebufferResolve) {
         return NullSize;
     }

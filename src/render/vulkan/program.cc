@@ -198,17 +198,17 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     VkViewport viewport{};
     viewport.x = 0.0f;
-    viewport.y = framebuffer->size().height;
-    viewport.width = framebuffer->size().width;
-    viewport.height = -static_cast<F32>(framebuffer->size().height);
+    viewport.y = framebuffer->size().y;
+    viewport.width = framebuffer->size().x;
+    viewport.height = -static_cast<F32>(framebuffer->size().y);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 0.0f;
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = VkExtent2D{
-            static_cast<U32>(framebuffer->size().width),
-            static_cast<U32>(framebuffer->size().height)
+            static_cast<U32>(framebuffer->size().x),
+            static_cast<U32>(framebuffer->size().y)
         };
 
     VkPipelineViewportStateCreateInfo viewportState{};

@@ -35,7 +35,7 @@ class JETSTREAM_API Block {
         bool previewEnabled = false;
         bool controlEnabled = false;
         bool fullscreenEnabled = false;
-        Size2D<F32> nodePos = {0.0f, 0.0f};
+        Extent2D<F32> nodePos = {0.0f, 0.0f};
 
         JST_SERDES(nodeWidth, viewEnabled, previewEnabled, controlEnabled, fullscreenEnabled, nodePos);
     };

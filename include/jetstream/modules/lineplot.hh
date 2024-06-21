@@ -33,7 +33,7 @@ class Lineplot : public Module, public Compute, public Present {
         U64 averaging = 1;
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
         F32 thickness = 2.0f;

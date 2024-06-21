@@ -13,7 +13,7 @@ Result Implementation::create() {
     pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
 
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
-            pixelFormat, config.size.width, config.size.height, false);
+            pixelFormat, config.size.x, config.size.y, false);
     JST_ASSERT(textureDesc);
 
     if (config.multisampled) {
@@ -52,8 +52,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-bool Implementation::size(const Size2D<U64>& size) {
-    if (size <= Size2D<U64>{1, 1}) {
+bool Implementation::size(const Extent2D<U64>& size) {
+    if (size <= Extent2D<U64>{1, 1}) {
         return false;
     }
 
@@ -66,7 +66,7 @@ bool Implementation::size(const Size2D<U64>& size) {
 }
 
 Result Implementation::fill() {
-    return fillRow(0, config.size.height);
+    return fillRow(0, config.size.y);
 }
 
 Result Implementation::fillRow(const U64& y, const U64& height) {
@@ -74,8 +74,8 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    auto region = MTL::Region::Make2D(0, y, config.size.width, height);
-    auto rowByteSize = config.size.width * GetPixelByteSize(texture->pixelFormat());
+    auto region = MTL::Region::Make2D(0, y, config.size.x, height);
+    auto rowByteSize = config.size.x * GetPixelByteSize(texture->pixelFormat());
     auto bufferByteOffset = rowByteSize * y;
     texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
 

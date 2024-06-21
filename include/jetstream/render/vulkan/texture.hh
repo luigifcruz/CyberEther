@@ -15,7 +15,7 @@ class TextureImp<Device::Vulkan> : public Texture {
     Result destroy();
 
     using Render::Texture::size;
-    bool size(const Size2D<U64>& size);
+    bool size(const Extent2D<U64>& size);
 
     Result fill();
     Result fillRow(const U64& y, const U64& height);

@@ -34,7 +34,7 @@ class Waterfall : public Module, public Compute, public Present {
         I32 offset = 0;
         U64 height = 512;
         bool interpolate = true;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
 
         JST_SERDES(zoom, offset, height, interpolate, viewSize);
     };
@@ -79,10 +79,10 @@ class Waterfall : public Module, public Compute, public Present {
 
     // Miscellaneous
 
-    constexpr const Size2D<U64>& viewSize() const {
+    constexpr const Extent2D<U64>& viewSize() const {
         return config.viewSize;
     }
-    const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
+    const Extent2D<U64>& viewSize(const Extent2D<U64>& viewSize);
 
     constexpr const bool& interpolate() const {
         return config.interpolate;

@@ -24,7 +24,7 @@ class Constellation : public Module, public Compute, public Present {
     // Configuration 
 
     struct Config {
-        Size2D<U64> viewSize = {512, 512};
+        Extent2D<U64> viewSize = {512, 512};
 
         JST_SERDES(viewSize);
     };
@@ -69,10 +69,10 @@ class Constellation : public Module, public Compute, public Present {
 
     // Miscellaneous
 
-    constexpr const Size2D<U64>& viewSize() const {
+    constexpr const Extent2D<U64>& viewSize() const {
         return config.viewSize;
     }
-    const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
+    const Extent2D<U64>& viewSize(const Extent2D<U64>& viewSize);
 
     Render::Texture& getTexture();
 

@@ -26,7 +26,7 @@ class Spectroscope : public Block {
         bool lineplot = true;
         bool waterfall = true;
         Range<OT> range = {-1.0, +1.0};
-        Size2D<U64> viewSize = {512, 512};
+        Extent2D<U64> viewSize = {512, 512};
 
         JST_SERDES(spectrogram, lineplot, waterfall, range, viewSize);
     };
@@ -98,7 +98,7 @@ class Spectroscope : public Block {
 
         auto individualViewSize = config.viewSize;
         if (numberOfRows > 0) {
-            individualViewSize.height /= numberOfRows;
+            individualViewSize.y /= numberOfRows;
         }
 
         JST_CHECK(instance().addModule(
@@ -282,7 +282,7 @@ class Spectroscope : public Block {
         if (spectrogram) {
             const auto& size = spectrogram->viewSize();
             const auto& ratio = size.ratio();
-            const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+            const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
             ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width, width/ratio));
         }
@@ -290,7 +290,7 @@ class Spectroscope : public Block {
         if (lineplot) {
             const auto& size = lineplot->viewSize();
             const auto& ratio = size.ratio();
-            const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+            const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
             ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, width/ratio));
         }
@@ -298,7 +298,7 @@ class Spectroscope : public Block {
         if (waterfall) {
             const auto& size = waterfall->viewSize();
             const auto& ratio = size.ratio();
-            const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+            const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
             ImGui::Image(waterfall->getTexture().raw(), ImVec2(width, width/ratio));
         }
@@ -316,7 +316,7 @@ class Spectroscope : public Block {
         const U64 availableWidth = width * scale.x;
         const U64 availableHeight = std::max(0.0f, (height * scale.y) - paddingHeight);
 
-        const auto blockSize = Size2D<U64>{
+        const auto blockSize = Extent2D<U64>{
             availableWidth,
             availableHeight / numberOfRows,
         };

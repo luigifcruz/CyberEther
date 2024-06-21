@@ -18,8 +18,8 @@ Result Implementation::create() {
     // Create extent.
 
     extent = VkExtent2D {
-        static_cast<U32>(config.size.width),
-        static_cast<U32>(config.size.height),
+        static_cast<U32>(config.size.x),
+        static_cast<U32>(config.size.y),
     };
 
     // Create image.
@@ -200,8 +200,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-bool Implementation::size(const Size2D<U64>& size) {
-    if (size <= Size2D<U64>{1, 1}) {
+bool Implementation::size(const Extent2D<U64>& size) {
+    if (size <= Extent2D<U64>{1, 1}) {
         return false;
     }
 
@@ -214,7 +214,7 @@ bool Implementation::size(const Size2D<U64>& size) {
 }
 
 Result Implementation::fill() {
-    return fillRow(0, config.size.height);
+    return fillRow(0, config.size.y);
 }
 
 Result Implementation::fillRow(const U64& y, const U64& height) {
@@ -228,7 +228,7 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
 
     uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
     const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);
-    const auto rowByteSize = config.size.width * GetPixelByteSize(pixelFormat);
+    const auto rowByteSize = config.size.x * GetPixelByteSize(pixelFormat);
     const auto bufferByteOffset = rowByteSize * y;
     const auto bufferByteSize = rowByteSize * height;
 
@@ -261,7 +261,7 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
                     static_cast<I32>(y),
                     0
                 };
-            region.imageExtent.width = config.size.width;
+            region.imageExtent.width = config.size.x;
             region.imageExtent.height = height;
             region.imageExtent.depth = 1;
 

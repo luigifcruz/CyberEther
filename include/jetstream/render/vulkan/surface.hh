@@ -11,7 +11,7 @@ class SurfaceImp<Device::Vulkan> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 
-    const Size2D<U64>& size(const Size2D<U64>& size);
+    const Extent2D<U64>& size(const Extent2D<U64>& size);
 
  protected:
     Result create();
@@ -23,7 +23,7 @@ class SurfaceImp<Device::Vulkan> : public Surface {
     std::shared_ptr<TextureImp<Device::Vulkan>> framebuffer;
     VkFramebuffer framebufferObject;
     VkRenderPass renderPass;
-    Size2D<U64> requestedSize;
+    Extent2D<U64> requestedSize;
       
     std::vector<std::shared_ptr<ProgramImp<Device::Vulkan>>> programs;
     std::vector<std::shared_ptr<KernelImp<Device::Vulkan>>> kernels;

@@ -22,14 +22,14 @@ Result Constellation<D, T>::create() {
 
     // Allocate internal buffers.
 
-    timeSamples = Tensor<D, F32>({config.viewSize.width, config.viewSize.height});
+    timeSamples = Tensor<D, F32>({config.viewSize.x, config.viewSize.y});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 void Constellation<D, T>::info() const {
-    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.x, config.viewSize.y);
 }
 
 template<Device D, typename T>
@@ -166,13 +166,13 @@ Result Constellation<D, T>::destroyPresent() {
 }
 
 template<Device D, typename T>
-const Size2D<U64>& Constellation<D, T>::viewSize(const Size2D<U64>& viewSize) {
+const Extent2D<U64>& Constellation<D, T>::viewSize(const Extent2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         JST_TRACE("Constellation size changed from [{}, {}] to [{}, {}].",
-                config.viewSize.width,
-                config.viewSize.height,
-                viewSize.width,
-                viewSize.height);
+                config.viewSize.x,
+                config.viewSize.y,
+                viewSize.x,
+                viewSize.y);
 
         config.viewSize = surface->size();
     }

@@ -130,7 +130,7 @@ Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
     return Result::SUCCESS;
 }
 
-const Size2D<U64>& Implementation::size(const Size2D<U64>& size) { 
+const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) { 
     if (!framebuffer) {
         return NullSize;
     }

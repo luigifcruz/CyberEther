@@ -128,11 +128,11 @@ Result Remote<D, T>::create() {
                     // Parse command `ok:fbsize:width,height`.
 
                     if (line.compare(0, 9, "ok:fbsize") == 0) {
-                        remoteFramebufferSize.width = std::stoi(line.substr(10, 15));
-                        remoteFramebufferSize.height = std::stoi(line.substr(16, 21));
+                        remoteFramebufferSize.x = std::stoi(line.substr(10, 15));
+                        remoteFramebufferSize.y = std::stoi(line.substr(16, 21));
 
-                        JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.width, 
-                                                                                              remoteFramebufferSize.height);
+                        JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.x, 
+                                                                                              remoteFramebufferSize.y);
                         
                         auto response = jst::fmt::format("cmd:framerate\n");
                         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
@@ -212,8 +212,8 @@ Result Remote<D, T>::create() {
 
     // Allocating framebuffer memory.
 
-    remoteFramebufferMemory.resize(remoteFramebufferSize.width * 
-                                   remoteFramebufferSize.height * 4);
+    remoteFramebufferMemory.resize(remoteFramebufferSize.x * 
+                                   remoteFramebufferSize.y * 4);
 
     // Send streaming start command. 
 
@@ -253,7 +253,7 @@ Result Remote<D, T>::destroy() {
 template<Device D, typename T>
 void Remote<D, T>::info() const {
     JST_DEBUG("  Endpoint:     {}", config.endpoint);
-    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.x, config.viewSize.y);
 }
 
 template<Device D, typename T>
@@ -597,8 +597,8 @@ Result Remote<D, T>::present() {
 template<Device D, typename T>
 void Remote<D, T>::registerMousePos(const F32& x, const F32& y) {
     if (socketStreaming) {
-        const I32 X = static_cast<I32>((x / config.viewSize.width) * remoteFramebufferSize.width);
-        const I32 Y = static_cast<I32>((y / config.viewSize.height) * remoteFramebufferSize.height);
+        const I32 X = static_cast<I32>((x / config.viewSize.x) * remoteFramebufferSize.x);
+        const I32 Y = static_cast<I32>((y / config.viewSize.y) * remoteFramebufferSize.y);
 
         static char buffer[32];
         snprintf(buffer, 32, "hid:mouse:pos:%05d,%05d\n", X, Y);
@@ -646,21 +646,21 @@ void Remote<D, T>::registerChar(const char& key) {
 }
 
 template<Device D, typename T>
-const Size2D<U64>& Remote<D, T>::viewSize(const Size2D<U64>& viewSize) {
-    Size2D<U64> correctedViewSize = viewSize;
+const Extent2D<U64>& Remote<D, T>::viewSize(const Extent2D<U64>& viewSize) {
+    Extent2D<U64> correctedViewSize = viewSize;
 
     // Correct aspect ratio.
 
-    const F32 nativeAspectRatio = static_cast<F32>(remoteFramebufferSize.width) / 
-                                  static_cast<F32>(remoteFramebufferSize.height);
+    const F32 nativeAspectRatio = static_cast<F32>(remoteFramebufferSize.x) / 
+                                  static_cast<F32>(remoteFramebufferSize.y);
 
-    const F32 viewAspectRatio = static_cast<F32>(viewSize.width) / 
-                                static_cast<F32>(viewSize.height);
+    const F32 viewAspectRatio = static_cast<F32>(viewSize.x) / 
+                                static_cast<F32>(viewSize.y);
 
     if (viewAspectRatio > nativeAspectRatio) {
-        correctedViewSize.width = correctedViewSize.height * nativeAspectRatio;
+        correctedViewSize.x = correctedViewSize.y * nativeAspectRatio;
     } else {
-        correctedViewSize.height = correctedViewSize.width / nativeAspectRatio;
+        correctedViewSize.y = correctedViewSize.x / nativeAspectRatio;
     }
 
     // Submit new size.

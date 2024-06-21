@@ -203,7 +203,7 @@ Result Compositor::checkAutoLayoutState() {
 
     bool graphHasPos = false;
     for (const auto& [_, state] : nodeStates) {
-        if (state.block->getState().nodePos != Size2D<F32>{0.0f, 0.0f}) {
+        if (state.block->getState().nodePos != Extent2D<F32>{0.0f, 0.0f}) {
             graphHasPos = true;
         }
     }
@@ -449,7 +449,7 @@ Result Compositor::processInteractions() {
             Parser::RecordMap configMap, inputMap, stateMap;
             const auto [x, y] = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
             const auto& scalingFactor = instance.window().scalingFactor();
-            stateMap["nodePos"] = {Size2D<F32>{x / scalingFactor, y / scalingFactor}};
+            stateMap["nodePos"] = {Extent2D<F32>{x / scalingFactor, y / scalingFactor}};
 
             // Create module.
             JST_CHECK_NOTIFY(Store::BlockConstructorList().at(fingerprint)(instance, "", configMap, inputMap, stateMap));

@@ -90,8 +90,8 @@ int main(int argc, char* argv[]) {
 
         if (arg == "--size") {
             if (i + 2 < argc) {
-                viewportConfig.size.width = std::stoul(argv[++i]);
-                viewportConfig.size.height = std::stoul(argv[++i]);
+                viewportConfig.size.x = std::stoul(argv[++i]);
+                viewportConfig.size.y = std::stoul(argv[++i]);
             }
 
             continue;

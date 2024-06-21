@@ -11,7 +11,7 @@ class SurfaceImp<Device::WebGPU> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 
-    const Size2D<U64>& size(const Size2D<U64>& size);
+    const Extent2D<U64>& size(const Extent2D<U64>& size);
 
  protected:
     Result create();
@@ -23,7 +23,7 @@ class SurfaceImp<Device::WebGPU> : public Surface {
     std::vector<std::shared_ptr<ProgramImp<Device::WebGPU>>> programs;
     std::vector<std::shared_ptr<KernelImp<Device::WebGPU>>> kernels;
     std::vector<std::shared_ptr<BufferImp<Device::WebGPU>>> buffers;
-    Size2D<U64> requestedSize;
+    Extent2D<U64> requestedSize;
 
     Result createFramebuffer();
     Result destroyFramebuffer();

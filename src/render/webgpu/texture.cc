@@ -15,8 +15,8 @@ Result Implementation::create() {
     textureFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
         
     wgpu::TextureDescriptor textureDescriptor{};
-    textureDescriptor.size = wgpu::Extent3D{static_cast<U32>(config.size.width),
-                                            static_cast<U32>(config.size.height)};
+    textureDescriptor.size = wgpu::Extent3D{static_cast<U32>(config.size.x),
+                                            static_cast<U32>(config.size.y)};
     textureDescriptor.format = textureFormat;
     textureDescriptor.usage = wgpu::TextureUsage::RenderAttachment |
                               wgpu::TextureUsage::CopyDst | 
@@ -56,8 +56,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-bool Implementation::size(const Size2D<U64>& size) {
-    if (size <= Size2D<U64>{1, 1}) {
+bool Implementation::size(const Extent2D<U64>& size) {
+    if (size <= Extent2D<U64>{1, 1}) {
         return false;
     }
 
@@ -70,7 +70,7 @@ bool Implementation::size(const Size2D<U64>& size) {
 }
 
 Result Implementation::fill() {
-    return fillRow(0, config.size.height);
+    return fillRow(0, config.size.y);
 }
 
 Result Implementation::fillRow(const U64& y, const U64& height) {
@@ -81,11 +81,11 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
     wgpu::TextureDataLayout layout;
-    layout.bytesPerRow = config.size.width * GetPixelByteSize(textureFormat);
-    layout.rowsPerImage = config.size.height;
+    layout.bytesPerRow = config.size.x * GetPixelByteSize(textureFormat);
+    layout.rowsPerImage = config.size.y;
 
     wgpu::Extent3D extent;
-    extent.width = config.size.width;
+    extent.width = config.size.x;
     extent.height = height;
 
     wgpu::ImageCopyTexture copyTexture;

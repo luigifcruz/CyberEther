@@ -16,7 +16,7 @@ class Lineplot : public Block {
         U64 averaging = 1;
         U64 numberOfVerticalLines = 20;
         U64 numberOfHorizontalLines = 5;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
         F32 thickness = 2.0f;
@@ -106,7 +106,7 @@ class Lineplot : public Block {
     void drawPreview(const F32& maxWidth) {
         const auto& size = lineplot->viewSize();
         const auto& ratio = size.ratio();
-        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
         ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, width/ratio));
     }
