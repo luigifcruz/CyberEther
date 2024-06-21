@@ -27,6 +27,11 @@ struct Lineplot<D, T>::GImpl {
         F32 zoom;
         U32 numberOfPoints;
     } signalUniforms;
+
+    struct {
+        glm::mat4 transform;
+        bool visible = false;
+    } cursorUniforms;
 };
 
 template<Device D, typename T>
@@ -61,7 +66,9 @@ Result Lineplot<D, T>::create() {
     signalVertices = Tensor<D, F32>({numberOfElements - 1, 4, 4});
 
     gridPoints = Tensor<Device::CPU, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 2, 2});
-    gridVertices = Tensor<D, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4});    
+    gridVertices = Tensor<D, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4});
+    
+    cursorSignalPoint = Tensor<Device::CPU, F32>({2});
 
     return Result::SUCCESS;
 }
@@ -71,7 +78,7 @@ void Lineplot<D, T>::info() const {
     JST_DEBUG("  Averaging: {}", config.averaging);
     JST_DEBUG("  Number of Vertical Lines: {}", config.numberOfVerticalLines);
     JST_DEBUG("  Number of Horizontal Lines: {}", config.numberOfHorizontalLines);
-    JST_DEBUG("  Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Size: [{}, {}]", config.viewSize.x, config.viewSize.y);
     JST_DEBUG("  Zoom: {}", config.zoom);
     JST_DEBUG("  Translation: {}", config.translation);
     JST_DEBUG("  Scale: {}", config.scale);
@@ -150,6 +157,63 @@ Result Lineplot<D, T>::createPresent() {
         };
         cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(gridProgram, cfg));
+    }
+
+    // Cursor element.
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &gimpl->cursorUniforms;
+        cfg.elementByteSize = sizeof(gimpl->cursorUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(cursorUniformBuffer, cfg));
+    }
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.elementByteSize = sizeof(F32);
+        cfg.size = 12;
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(cursorVerticesBuffer, cfg));
+    }
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.elementByteSize = sizeof(U32);
+        cfg.size = 6;
+        cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+        JST_CHECK(window->build(cursorIndicesBuffer, cfg));
+    }
+
+    {
+        Render::Vertex::Config cfg;
+        cfg.buffers = {
+            {cursorVerticesBuffer, 3},
+        };
+        cfg.indices = cursorIndicesBuffer;
+        JST_CHECK(window->build(cursorVertex, cfg));
+    }
+
+    {
+        Render::Draw::Config cfg;
+        cfg.buffer = cursorVertex;
+        cfg.mode = Render::Draw::Mode::TRIANGLES;
+        JST_CHECK(window->build(drawCursorVertex, cfg));
+    }
+
+    {
+        Render::Program::Config cfg;
+        cfg.shaders = ShadersPackage["cursor"];
+        cfg.draw = drawCursorVertex;
+        cfg.buffers = {
+            {cursorUniformBuffer, Render::Program::Target::VERTEX | 
+                                  Render::Program::Target::FRAGMENT},
+        };
+        cfg.enableAlphaBlending = true;
+        JST_CHECK(window->build(cursorProgram, cfg));
     }
 
     // Signal element.
@@ -245,15 +309,25 @@ Result Lineplot<D, T>::createPresent() {
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
-        cfg.kernels = {gridKernel, signalKernel};
-        cfg.programs = {gridProgram, signalProgram};
+        cfg.kernels = {
+            gridKernel,
+            signalKernel
+        };
+        cfg.programs = {
+            gridProgram, 
+            signalProgram,
+            cursorProgram,
+        };
         cfg.buffers = {
             signalPointsBuffer,
             signalVerticesBuffer,
+            signalUniformBuffer,
             gridPointsBuffer,
             gridVerticesBuffer,
             gridUniformBuffer,
-            signalUniformBuffer
+            cursorUniformBuffer,
+            cursorVerticesBuffer,
+            cursorIndicesBuffer,
         };
         cfg.multisampled = true;
         JST_CHECK(window->build(surface, cfg));
@@ -283,12 +357,14 @@ Result Lineplot<D, T>::present() {
     if (updateGridPointsFlag) {
         gridPointsBuffer->update();
         gridKernel->update();
+        updateCursorState();
         updateGridPointsFlag = false;
     }
 
     if (updateSignalPointsFlag) {
         signalPointsBuffer->update();
         signalKernel->update();
+        updateCursorState();
         updateSignalPointsFlag = false;
     }
 
@@ -304,11 +380,16 @@ Result Lineplot<D, T>::present() {
         updateSignalUniformBufferFlag = false;
     }
 
+    if (updateCursorUniformBufferFlag) {
+        cursorUniformBuffer->update();
+        updateCursorUniformBufferFlag = false;
+    }
+
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
+const Extent2D<U64>& Lineplot<D, T>::viewSize(const Extent2D<U64>& viewSize) {
     if (surface->size(viewSize * config.scale) != this->viewSize()) {
         config.viewSize = surface->size() / config.scale;
     }
@@ -319,12 +400,12 @@ const Size2D<U64>& Lineplot<D, T>::viewSize(const Size2D<U64>& viewSize) {
 }
 
 template<Device D, typename T>
-std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, const F32& zoom) {
+std::pair<F32, F32> Lineplot<D, T>::zoom(const Extent2D<F32>& mouse_pos, const F32& zoom) {
     if (zoom < 1.0f) {
         config.zoom = 1.0f;
         config.translation = 0.0f;
     } else {
-        const auto& before_mouse_x = mouse_pos.first;
+        const auto& before_mouse_x = mouse_pos.x + config.translation;
         const auto& after_mouse_x = (before_mouse_x * config.zoom) / zoom;
         config.zoom = zoom;
         config.translation += after_mouse_x - before_mouse_x;
@@ -332,7 +413,10 @@ std::pair<F32, F32> Lineplot<D, T>::zoom(const std::pair<F32, F32>& mouse_pos, c
 
     updateState();
 
-    return {config.zoom, config.translation};
+    return {
+        config.zoom, 
+        config.translation
+    };
 }
 
 template<Device D, typename T>
@@ -366,6 +450,15 @@ const F32& Lineplot<D, T>::scale(const F32& scale) {
 }
 
 template<Device D, typename T>
+const Extent2D<F32>& Lineplot<D, T>::cursor(const Extent2D<F32>& cursorPos) {
+    this->cursorPos = cursorPos;
+
+    updateCursorState();
+
+    return this->cursorPos;
+}
+
+template<Device D, typename T>
 void Lineplot<D, T>::updateState() {
     const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
     config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);
@@ -373,8 +466,8 @@ void Lineplot<D, T>::updateState() {
     // Update thickness.
 
     auto& [x, y] = thickness;
-    x = ((2.0f / config.viewSize.width) * config.thickness) / 2.0f;
-    y = ((2.0f / config.viewSize.height) * config.thickness) / 2.0f;
+    x = ((2.0f / config.viewSize.x) * config.thickness) / 2.0f;
+    y = ((2.0f / config.viewSize.y) * config.thickness) / 2.0f;
 
     // Update the transform.
 
@@ -387,21 +480,65 @@ void Lineplot<D, T>::updateState() {
     // Update the signal and grid uniform buffers.
 
     gimpl->signalUniforms.transform = transform;
-    gimpl->signalUniforms.thickness[0] = thickness.first;
-    gimpl->signalUniforms.thickness[1] = thickness.second;
+    gimpl->signalUniforms.thickness[0] = thickness.x;
+    gimpl->signalUniforms.thickness[1] = thickness.y;
     gimpl->signalUniforms.zoom = config.zoom;
     gimpl->signalUniforms.numberOfPoints = numberOfElements;
 
     gimpl->gridUniforms.transform = transform;
-    gimpl->gridUniforms.thickness[0] = thickness.first;
-    gimpl->gridUniforms.thickness[1] = thickness.second;
+    gimpl->gridUniforms.thickness[0] = thickness.x;
+    gimpl->gridUniforms.thickness[1] = thickness.y;
     gimpl->gridUniforms.zoom = config.zoom;
     gimpl->gridUniforms.numberOfLines = config.numberOfVerticalLines + config.numberOfHorizontalLines;
+
+    // Update the cursor.
+
+    updateCursorState();
 
     // Schedule the uniform buffers for update.
 
     updateGridUniformBufferFlag = true;
     updateSignalUniformBufferFlag = true;
+}
+
+template<Device D, typename T>
+void Lineplot<D, T>::updateCursorState() {
+    // The transform matrix is initialized as an identity matrix.
+
+    auto transform = glm::mat4(1.0f);
+
+    // Translate the cursor to the cursor position.
+
+    const auto [x, y] = cursorPos;
+    const auto stepX = 2.0f / numberOfElements;
+
+    const auto cursorIndex = std::clamp(static_cast<U64>((x + 1.0f) / stepX), 
+                                        static_cast<U64>(0), 
+                                        static_cast<U64>(numberOfElements - 1));
+
+    Tensor<D, F32> signalPointSlice = signalPoints;
+    signalPointSlice.slice({cursorIndex, {}});
+    Memory::Copy(cursorSignalPoint, signalPointSlice);
+
+    const auto cursorValueX = cursorSignalPoint[0];
+    const auto cursorValueY = cursorSignalPoint[1];
+
+    // Translate the cursor to the cursor position.
+
+    transform = glm::translate(transform, glm::vec3((cursorValueX + config.translation) * config.zoom, cursorValueY, 0.0f));
+
+    // Scale cursor square aspect ratio.
+
+    transform = glm::scale(transform, glm::vec3(thickness.x * 5.0f, thickness.y * 5.0f, 1.0f));
+
+    // Update the cursor uniform buffer.
+
+    gimpl->cursorUniforms.transform = transform;
+    gimpl->cursorUniforms.visible = true;
+
+    // Schedule the uniform buffers for update.
+
+    updateCursorUniformBufferFlag = true;
 }
 
 template<Device D, typename T>

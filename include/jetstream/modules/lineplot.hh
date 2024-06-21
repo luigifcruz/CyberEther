@@ -82,15 +82,15 @@ class Lineplot : public Module, public Compute, public Present {
 
     // Miscellaneous
 
-    constexpr const Size2D<U64>& viewSize() const {
+    constexpr const Extent2D<U64>& viewSize() const {
         return config.viewSize;
     }
-    const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
+    const Extent2D<U64>& viewSize(const Extent2D<U64>& viewSize);
 
     constexpr const F32& zoom() const {
         return config.zoom;
     }
-    std::pair<F32, F32> zoom(const std::pair<F32, F32>& mouse_pos, const F32& zoom);
+    std::pair<F32, F32> zoom(const Extent2D<F32>& mouse_pos, const F32& zoom);
 
     constexpr const F32& translation() const {
         return config.translation;
@@ -106,6 +106,11 @@ class Lineplot : public Module, public Compute, public Present {
         return config.scale;
     }
     const F32& scale(const F32& scale);
+
+    constexpr const Extent2D<F32>& cursor() const {
+        return cursorPos;
+    }
+    const Extent2D<F32>& cursor(const Extent2D<F32>& cursorPos);
 
     Render::Texture& getTexture();
 
@@ -127,14 +132,18 @@ class Lineplot : public Module, public Compute, public Present {
     Tensor<D, F32> signalPoints;
     Tensor<D, F32> signalVertices;
     Tensor<Device::CPU, F32> gridPoints;
+    Tensor<Device::CPU, F32> cursorSignalPoint;
     Tensor<D, F32> gridVertices;
 
     std::shared_ptr<Render::Buffer> signalPointsBuffer;
     std::shared_ptr<Render::Buffer> signalVerticesBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
     std::shared_ptr<Render::Buffer> gridPointsBuffer;
     std::shared_ptr<Render::Buffer> gridVerticesBuffer;
     std::shared_ptr<Render::Buffer> gridUniformBuffer;
-    std::shared_ptr<Render::Buffer> signalUniformBuffer;
+    std::shared_ptr<Render::Buffer> cursorVerticesBuffer;
+    std::shared_ptr<Render::Buffer> cursorIndicesBuffer;
+    std::shared_ptr<Render::Buffer> cursorUniformBuffer;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Texture> lutTexture;
@@ -144,27 +153,33 @@ class Lineplot : public Module, public Compute, public Present {
 
     std::shared_ptr<Render::Program> signalProgram;
     std::shared_ptr<Render::Program> gridProgram;
+    std::shared_ptr<Render::Program> cursorProgram;
 
     std::shared_ptr<Render::Surface> surface;
 
     std::shared_ptr<Render::Vertex> gridVertex;
     std::shared_ptr<Render::Vertex> signalVertex;
+    std::shared_ptr<Render::Vertex> cursorVertex;
 
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawSignalVertex;
+    std::shared_ptr<Render::Draw> drawCursorVertex;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
     F32 normalizationFactor = 0.0f;
 
-    std::pair<F32, F32> thickness = {0.0f, 0.0f};
+    Extent2D<F32> thickness = {0.0f, 0.0f};
+    Extent2D<F32> cursorPos = {0.0f, 0.0f};
 
     bool updateGridPointsFlag = false;
     bool updateSignalPointsFlag = false;
+    bool updateCursorUniformBufferFlag = false;
     bool updateSignalUniformBufferFlag = false;
     bool updateGridUniformBufferFlag = false;
 
     void updateState();
+    void updateCursorState();
     void generateGridPoints();
 
     JST_DEFINE_IO()

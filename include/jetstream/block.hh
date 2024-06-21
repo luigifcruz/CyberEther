@@ -160,33 +160,48 @@ class JETSTREAM_API Block {
 
     // Helpers
 
-    static std::pair<U64, U64> GetContentRegion() {
-        ImVec2 contentRegion = ImGui::GetContentRegionAvail();
+    static Extent2D<U64> GetContentRegion() {
+        auto [x, y] = ImGui::GetContentRegionAvail();
         return {
-            static_cast<U64>(contentRegion.x),
-            static_cast<U64>(contentRegion.y)
+            static_cast<U64>(x),
+            static_cast<U64>(y)
         };
     }
 
-    static std::pair<F32, F32> GetRelativeMousePos(const std::pair<U64, U64> dim, const F32& zoom = 1.0f) {
+    static Extent2D<F32> GetRelativeMousePos(const Extent2D<U64>& dim, const F32& translation = 0.0f, const F32& zoom = 1.0f) {
         const auto& [x, y] = dim;
 
         ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
         ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
 
+        const auto relativeX = (((mousePositionAbsolute.x - screenPositionAbsolute.x) / x) * 2.0f) - 1.0f;
+        const auto relativeY = (((mousePositionAbsolute.y - screenPositionAbsolute.y) / y) * 2.0f) - 1.0f;
+
+        const auto zoomAdjustedX = relativeX / zoom;
+        const auto zoomAdjustedY = relativeY;
+
+        const auto translationAdjustedX = zoomAdjustedX - translation;
+        const auto translationAdjustedY = zoomAdjustedY;
+
         return {
-            (((mousePositionAbsolute.x - screenPositionAbsolute.x) / x) * 2.0f - 1.0f) / zoom,
-            (((mousePositionAbsolute.y - screenPositionAbsolute.y) / y) * 2.0f - 1.0f) / zoom,
+            translationAdjustedX,
+            translationAdjustedY
         };
     }
 
-    static std::pair<F32, F32> GetRelativeMouseTranslation(const std::pair<U64, U64> dim, const F32& zoom = 1.0f) {
+    static Extent2D<F32> GetRelativeMouseTranslation(const Extent2D<U64>& dim, const F32& zoom = 1.0f) {
         const auto& [dx, dy] = ImGui::GetMouseDragDelta(0);
         const auto& [x, y] = dim;
 
+        const auto relativeX = (dx / x) * 2.0f;
+        const auto relativeY = (dy / y) * 2.0f;
+
+        const auto zoomAdjustedX = relativeX / zoom;
+        const auto zoomAdjustedY = relativeY;
+
         return {
-            ((dx * (1.0f / x)) * 2.0f) / zoom,
-            ((dy * (1.0f / y)) * 2.0f) / zoom
+            zoomAdjustedX,
+            zoomAdjustedY
         };
     }
 

@@ -118,30 +118,25 @@ class Lineplot : public Block {
     void drawView() {
         lineplot->scale(ImGui::GetIO().DisplayFramebufferScale.x);
 
-        const auto& [x, y] = GetContentRegion();
-        const auto& [width, height] = lineplot->viewSize({x, y});
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, height));
+        const auto& viewSize = lineplot->viewSize(GetContentRegion());
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(viewSize.x, viewSize.y));
 
         if (ImGui::IsItemHovered()) {
+            const auto& mouseRelPos = GetRelativeMousePos(viewSize, lineplot->translation(), config.zoom);
+
             // Handle zoom interaction.
 
             const auto& scroll = ImGui::GetIO().MouseWheel;    
-
             if (scroll != 0.0f) {
-                const auto& [mouse_x, mouse_y] = GetRelativeMousePos({x, y}, config.zoom);
-                config.zoom += (scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
-                                                 std::min(config.zoom * -0.02f, -0.02f);
-
-                const auto& [zoom, translation] = lineplot->zoom({mouse_x, mouse_y}, config.zoom);
-                config.zoom = zoom;
-                config.translation = translation;
+                config.zoom += ((scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
+                                                  std::min(config.zoom * -0.02f, -0.02f));
+                std::tie(config.zoom, config.translation) = lineplot->zoom(mouseRelPos, config.zoom);
             }
 
             // Handle translation interaction.
 
             if (ImGui::IsAnyMouseDown()) {
-                const auto& [translation, _] = GetRelativeMouseTranslation({x, y}, config.zoom);
-                lineplot->translation(translation + config.translation);
+                lineplot->translation(GetRelativeMouseTranslation(viewSize, config.zoom).x + config.translation);
             } else {
                 config.translation = lineplot->translation();
             }
@@ -152,6 +147,13 @@ class Lineplot : public Block {
                 const auto& [zoom, translation] = lineplot->zoom({0.0f, 0.0f}, 1.0f);
                 config.zoom = zoom;
                 config.translation = translation;
+            }
+
+            // Handle cursor position display.
+
+            const auto& currentMouseRelPos = lineplot->cursor();
+            if (currentMouseRelPos != mouseRelPos) {
+                lineplot->cursor(mouseRelPos);
             }
         }
     }
