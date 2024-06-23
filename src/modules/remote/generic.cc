@@ -157,7 +157,7 @@ Result Remote<D, T>::create() {
 
                     if (line.compare(0, 8, "ok:codec") == 0) {
                         const auto codec = line.substr(9, line.length() - 1);
-                        remoteFramebufferCodec = Render::StringToVideoCodec(codec);
+                        remoteFramebufferCodec = Viewport::StringToVideoCodec(codec);
 
                         JST_DEBUG("Received `ok:codec` from server: `id={}`.", codec);
                         
@@ -280,15 +280,15 @@ Result Remote<D, T>::createGstreamerEndpoint() {
 
     // Add codec specific plugins.
 
-    if (remoteFramebufferCodec == Render::VideoCodec::H264) {
+    if (remoteFramebufferCodec == Viewport::VideoCodec::H264) {
         plugins.push_back("libav");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP8) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP8) {
         plugins.push_back("vpx");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP9) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP9) {
         plugins.push_back("vpx");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::AV1) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::AV1) {
         plugins.push_back("dav1d");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::FFV1) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::FFV1) {
         plugins.push_back("libav");
     } else {
         JST_ERROR("Unsupported remote framebuffer codec.");
@@ -332,15 +332,15 @@ Result Remote<D, T>::createGstreamerEndpoint() {
     elements["jitter"] = gst_element_factory_make("rtpjitterbuffer", "jitter");
     elements["demuxer"] = gst_element_factory_make("rtpgstdepay", "demuxer");
 
-    if (remoteFramebufferCodec == Render::VideoCodec::FFV1) {
+    if (remoteFramebufferCodec == Viewport::VideoCodec::FFV1) {
         elements["decoder"] = gst_element_factory_make("avdec_ffv1", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP8) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP8) {
         elements["decoder"] = gst_element_factory_make("vp8dec", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP9) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP9) {
         elements["decoder"] = gst_element_factory_make("vp9dec", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::AV1) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::AV1) {
         elements["decoder"] = gst_element_factory_make("dav1ddec", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::H264) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::H264) {
         elements["decoder"] = gst_element_factory_make("avdec_h264", "decoder");
     }
 

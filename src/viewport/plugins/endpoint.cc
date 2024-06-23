@@ -434,7 +434,7 @@ Result Endpoint::createSocketEndpoint() {
                         // Parse command `cmd:codec`.
 
                         if (line.compare(0, 9, "cmd:codec") == 0) {
-                            auto response = jst::fmt::format("ok:codec:{}\n", Render::VideoCodecToString(config.codec));
+                            auto response = jst::fmt::format("ok:codec:{}\n", Viewport::VideoCodecToString(config.codec));
                             send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
 
                             continue;
@@ -540,7 +540,7 @@ Result Endpoint::createGstreamerEndpoint() {
 
     std::vector<std::tuple<Device, Strategy, std::vector<std::string>>> combinations;
 
-    if (config.codec == Render::VideoCodec::H264) {
+    if (config.codec == Viewport::VideoCodec::H264) {
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
         if (viewportDevice == Device::Vulkan && Backend::State<Device::CUDA>()->isAvailable()) {
             combinations.push_back({Device::CUDA, Strategy::HardwareNVENC, {"nvcodec"}});
@@ -560,19 +560,19 @@ Result Endpoint::createGstreamerEndpoint() {
         combinations.push_back({Device::CPU, Strategy::Software, {"x264"}});
     }
 
-    if (config.codec == Render::VideoCodec::FFV1) {
+    if (config.codec == Viewport::VideoCodec::FFV1) {
         combinations.push_back({Device::CPU, Strategy::Software, {"libav"}});
     }
 
-    if (config.codec == Render::VideoCodec::VP8) {
+    if (config.codec == Viewport::VideoCodec::VP8) {
         combinations.push_back({Device::CPU, Strategy::Software, {"vpx"}});
     }
 
-    if (config.codec == Render::VideoCodec::VP9) {
+    if (config.codec == Viewport::VideoCodec::VP9) {
         combinations.push_back({Device::CPU, Strategy::Software, {"vpx"}});
     }
 
-    if (config.codec == Render::VideoCodec::AV1) {
+    if (config.codec == Viewport::VideoCodec::AV1) {
         combinations.push_back({Device::CPU, Strategy::Software, {"rav1e"}});
     }
 
@@ -651,7 +651,7 @@ Result Endpoint::startGstreamerEndpoint() {
         elementOrder.push_back("convert");
     }
 
-    if (config.codec == Render::VideoCodec::H264) {
+    if (config.codec == Viewport::VideoCodec::H264) {
         if (_encodingStrategy == Strategy::HardwareNVENC) {
             elements["encoder"] = encoder = gst_element_factory_make("nvh264enc", "encoder");
             elementOrder.push_back("encoder");
@@ -677,22 +677,22 @@ Result Endpoint::startGstreamerEndpoint() {
         }
     }
 
-    if (config.codec == Render::VideoCodec::FFV1) {
+    if (config.codec == Viewport::VideoCodec::FFV1) {
         elements["encoder"] = encoder = gst_element_factory_make("avenc_ffv1", "encoder");
         elementOrder.push_back("encoder");
     }
 
-    if (config.codec == Render::VideoCodec::VP8) {
+    if (config.codec == Viewport::VideoCodec::VP8) {
         elements["encoder"] = encoder = gst_element_factory_make("vp8enc", "encoder");
         elementOrder.push_back("encoder");
     }
 
-    if (config.codec == Render::VideoCodec::VP9) {
+    if (config.codec == Viewport::VideoCodec::VP9) {
         elements["encoder"] = encoder = gst_element_factory_make("vp9enc", "encoder");
         elementOrder.push_back("encoder");
     }
 
-    if (config.codec == Render::VideoCodec::AV1) {
+    if (config.codec == Viewport::VideoCodec::AV1) {
         elements["encoder"] = encoder = gst_element_factory_make("rav1enc", "encoder");
         elementOrder.push_back("encoder");
     }
@@ -756,7 +756,7 @@ Result Endpoint::startGstreamerEndpoint() {
         g_object_set(elements["rawparser"], "framerate", 1.0f/config.framerate, nullptr);
     }
 
-    if (config.codec == Render::VideoCodec::H264) {
+    if (config.codec == Viewport::VideoCodec::H264) {
         if (_encodingStrategy == Strategy::HardwareNVENC) {
             g_object_set(elements["encoder"], "zerolatency", true, nullptr);
             g_object_set(elements["encoder"], "preset", 5, nullptr);
@@ -778,14 +778,14 @@ Result Endpoint::startGstreamerEndpoint() {
         }
     }
 
-    if (config.codec == Render::VideoCodec::AV1) {
+    if (config.codec == Viewport::VideoCodec::AV1) {
         g_object_set(elements["encoder"], "low-latency", true, nullptr);
         g_object_set(elements["encoder"], "speed-preset", 10, nullptr);
         g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
     }
 
-    if (config.codec == Render::VideoCodec::VP8 ||
-        config.codec == Render::VideoCodec::VP9) {
+    if (config.codec == Viewport::VideoCodec::VP8 ||
+        config.codec == Viewport::VideoCodec::VP9) {
         g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
     }
 

@@ -112,7 +112,7 @@ class Remote : public Block {
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Encoding");
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextFormatted("{} (RGBA)", Render::VideoCodecToString(remote->getRemoteFramebufferCodec()));
+        ImGui::TextFormatted("{} (RGBA)", Viewport::VideoCodecToString(remote->getRemoteFramebufferCodec()));
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);

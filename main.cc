@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
             // TODO: Add check for valid codec.
 
             if (i + 1 < argc) {
-                viewportConfig.codec = Render::StringToVideoCodec(argv[++i]);
+                viewportConfig.codec = Viewport::StringToVideoCodec(argv[++i]);
             }
 
             continue;

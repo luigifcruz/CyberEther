@@ -90,7 +90,7 @@ class Remote : public Module, public Present {
         return remoteFramebufferSize;
     }
 
-    constexpr const Render::VideoCodec& getRemoteFramebufferCodec() const {
+    constexpr const Viewport::VideoCodec& getRemoteFramebufferCodec() const {
         return remoteFramebufferCodec;
     }
 
@@ -140,7 +140,7 @@ class Remote : public Module, public Present {
 
     // Remote framebuffer.
     Extent2D<U64> remoteFramebufferSize;
-    Render::VideoCodec remoteFramebufferCodec;
+    Viewport::VideoCodec remoteFramebufferCodec;
     std::vector<U8> remoteFramebufferMemory;
     F32 remoteFramerate;
 

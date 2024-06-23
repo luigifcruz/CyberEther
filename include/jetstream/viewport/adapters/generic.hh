@@ -5,7 +5,7 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/types.hh"
+#include "jetstream/viewport/types.hh"
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Viewport {
@@ -27,7 +27,7 @@ struct Config {
     std::string endpoint = "/tmp/cyberether";
 
     /// @brief The video codec of the headless viewport.
-    Render::VideoCodec codec = Render::VideoCodec::FFV1;
+    Viewport::VideoCodec codec = Viewport::VideoCodec::FFV1;
 
     /// @brief Whether hardware acceleration is enabled.
     bool hardwareAcceleration = true;
