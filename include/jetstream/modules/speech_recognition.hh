@@ -7,7 +7,7 @@
 
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
-#include "jetstream/render/extras.hh"
+#include "jetstream/render/assets.hh"
 #include "jetstream/compute/graph/base.hh"
 
 #include <whisper.h>

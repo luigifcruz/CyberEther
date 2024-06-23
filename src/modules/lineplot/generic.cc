@@ -172,7 +172,7 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.buffer = &Render::Assets::FillScreenVertices;
         cfg.elementByteSize = sizeof(F32);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -181,7 +181,7 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.buffer = &Render::Assets::FillScreenIndices;
         cfg.elementByteSize = sizeof(U32);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
@@ -281,7 +281,7 @@ Result Lineplot<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
-        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        cfg.buffer = (uint8_t*)Render::Assets::TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
     }
 

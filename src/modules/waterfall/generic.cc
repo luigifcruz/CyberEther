@@ -59,7 +59,7 @@ Result Waterfall<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.buffer = &Render::Assets::FillScreenVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -68,7 +68,7 @@ Result Waterfall<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenTextureVertices;
+        cfg.buffer = &Render::Assets::FillScreenTextureVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -77,7 +77,7 @@ Result Waterfall<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.buffer = &Render::Assets::FillScreenIndices;
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
@@ -116,7 +116,7 @@ Result Waterfall<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
-        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        cfg.buffer = (uint8_t*)Render::Assets::TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
     }
 
