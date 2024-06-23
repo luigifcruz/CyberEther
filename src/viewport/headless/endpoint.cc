@@ -1,4 +1,4 @@
-#include "jetstream/viewport/plugins/endpoint.hh"
+#include "jetstream/viewport/platforms/headless/endpoint.hh"
 #include "jetstream/backend/devices/cpu/helpers.hh"
 
 #include <sys/stat.h>
