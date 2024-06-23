@@ -1,7 +1,7 @@
-#include "jetstream/render/webgpu/buffer.hh"
-#include "jetstream/render/webgpu/draw.hh"
-#include "jetstream/render/webgpu/texture.hh"
-#include "jetstream/render/webgpu/program.hh"
+#include "jetstream/render/devices/webgpu/buffer.hh"
+#include "jetstream/render/devices/webgpu/draw.hh"
+#include "jetstream/render/devices/webgpu/texture.hh"
+#include "jetstream/render/devices/webgpu/program.hh"
 #include "jetstream/backend/devices/webgpu/helpers.hh"
 
 namespace Jetstream::Render {

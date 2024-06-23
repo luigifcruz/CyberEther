@@ -1,5 +1,5 @@
-#include "jetstream/render/vulkan/window.hh"
-#include "jetstream/render/vulkan/surface.hh"
+#include "jetstream/render/devices/vulkan/window.hh"
+#include "jetstream/render/devices/vulkan/surface.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 #include "tools/imgui_impl_vulkan.h"

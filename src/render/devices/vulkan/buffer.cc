@@ -1,4 +1,4 @@
-#include "jetstream/render/vulkan/buffer.hh"
+#include "jetstream/render/devices/vulkan/buffer.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 namespace Jetstream::Render {

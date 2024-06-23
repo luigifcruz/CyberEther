@@ -1,5 +1,5 @@
-#include "jetstream/render/webgpu/buffer.hh"
-#include "jetstream/render/webgpu/kernel.hh"
+#include "jetstream/render/devices/webgpu/buffer.hh"
+#include "jetstream/render/devices/webgpu/kernel.hh"
 #include "jetstream/backend/devices/webgpu/helpers.hh"
 
 namespace Jetstream::Render {

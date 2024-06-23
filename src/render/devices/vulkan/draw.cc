@@ -1,5 +1,5 @@
-#include "jetstream/render/vulkan/vertex.hh"
-#include "jetstream/render/vulkan/draw.hh"
+#include "jetstream/render/devices/vulkan/vertex.hh"
+#include "jetstream/render/devices/vulkan/draw.hh"
 
 namespace Jetstream::Render {
 

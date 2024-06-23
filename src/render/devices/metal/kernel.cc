@@ -1,5 +1,5 @@
-#include "jetstream/render/metal/buffer.hh"
-#include "jetstream/render/metal/kernel.hh"
+#include "jetstream/render/devices/metal/buffer.hh"
+#include "jetstream/render/devices/metal/kernel.hh"
 
 namespace Jetstream::Render {
 

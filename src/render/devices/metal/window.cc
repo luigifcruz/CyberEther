@@ -1,5 +1,5 @@
-#include "jetstream/render/metal/window.hh"
-#include "jetstream/render/metal/surface.hh"
+#include "jetstream/render/devices/metal/window.hh"
+#include "jetstream/render/devices/metal/surface.hh"
 
 #include "tools/imgui_impl_metal.h"
 

@@ -1,4 +1,4 @@
-#include "jetstream/render/metal/texture.hh"
+#include "jetstream/render/devices/metal/texture.hh"
 
 namespace Jetstream::Render {
 

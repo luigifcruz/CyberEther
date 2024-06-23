@@ -1,5 +1,5 @@
-#include "jetstream/render/metal/buffer.hh"
-#include "jetstream/render/metal/vertex.hh"
+#include "jetstream/render/devices/metal/buffer.hh"
+#include "jetstream/render/devices/metal/vertex.hh"
 
 namespace Jetstream::Render {
 

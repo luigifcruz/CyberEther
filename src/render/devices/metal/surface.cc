@@ -1,8 +1,8 @@
-#include "jetstream/render/metal/program.hh"
-#include "jetstream/render/metal/texture.hh"
-#include "jetstream/render/metal/surface.hh"
-#include "jetstream/render/metal/kernel.hh"
-#include "jetstream/render/metal/buffer.hh"
+#include "jetstream/render/devices/metal/program.hh"
+#include "jetstream/render/devices/metal/texture.hh"
+#include "jetstream/render/devices/metal/surface.hh"
+#include "jetstream/render/devices/metal/kernel.hh"
+#include "jetstream/render/devices/metal/buffer.hh"
 
 namespace Jetstream::Render {
 

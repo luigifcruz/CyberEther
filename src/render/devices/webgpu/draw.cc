@@ -1,5 +1,5 @@
-#include "jetstream/render/webgpu/vertex.hh"
-#include "jetstream/render/webgpu/draw.hh"
+#include "jetstream/render/devices/webgpu/vertex.hh"
+#include "jetstream/render/devices/webgpu/draw.hh"
 
 namespace Jetstream::Render {
 

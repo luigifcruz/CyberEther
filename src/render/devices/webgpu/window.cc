@@ -1,5 +1,5 @@
-#include "jetstream/render/webgpu/window.hh"
-#include "jetstream/render/webgpu/surface.hh"
+#include "jetstream/render/devices/webgpu/window.hh"
+#include "jetstream/render/devices/webgpu/surface.hh"
 
 #include "tools/imgui_impl_wgpu.h"
 

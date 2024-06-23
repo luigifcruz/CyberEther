@@ -1,4 +1,4 @@
-#include "jetstream/render/metal/buffer.hh"
+#include "jetstream/render/devices/metal/buffer.hh"
 
 namespace Jetstream::Render {
 

@@ -1,4 +1,4 @@
-#include "jetstream/render/webgpu/texture.hh"
+#include "jetstream/render/devices/webgpu/texture.hh"
 
 namespace Jetstream::Render {
 
