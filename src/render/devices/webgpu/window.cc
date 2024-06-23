@@ -49,9 +49,7 @@ Result Implementation::underlyingCreate() {
 
     queue = device.GetQueue();    
 
-    if (config.imgui) {
-        JST_CHECK(createImgui());
-    }
+    JST_CHECK(createImgui());
 
     statsData.droppedFrames = 0;
     
@@ -65,9 +63,7 @@ Result Implementation::underlyingDestroy() {
         JST_CHECK(surface->destroy());
     }
 
-    if (config.imgui) {
-        JST_CHECK(destroyImgui());
-    }
+    JST_CHECK(destroyImgui());
 
     return Result::SUCCESS;
 }
@@ -173,18 +169,14 @@ Result Implementation::underlyingBegin() {
     for (auto &surface : surfaces) {
         JST_CHECK(surface->draw(encoder));
     }
-        
-    if (config.imgui) {
-        JST_CHECK(beginImgui());
-    }
+
+    JST_CHECK(beginImgui());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::underlyingEnd() {
-    if (config.imgui) {
-        JST_CHECK(endImgui());
-    }
+    JST_CHECK(endImgui());
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
     wgpu::CommandBufferDescriptor cmdBufferDesc{};

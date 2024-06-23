@@ -133,9 +133,7 @@ Result Implementation::underlyingCreate() {
 
     // Create submodules.
 
-    if (config.imgui) {
-        JST_CHECK(createImgui());
-    }
+    JST_CHECK(createImgui());
     JST_CHECK(createFramebuffer());
     JST_CHECK(createSynchronizationObjects());
 
@@ -151,9 +149,7 @@ Result Implementation::underlyingDestroy() {
         JST_ERROR("[VULKAN] Can't wait for graphics queue to destroy window.");
     });
 
-    if (config.imgui) {
-        JST_CHECK(destroyImgui());
-    }
+    JST_CHECK(destroyImgui());
 
     for (auto& surface : surfaces) {
         JST_CHECK(surface->destroy());
@@ -347,9 +343,7 @@ Result Implementation::underlyingBegin() {
 
     // Begin secondary renders.
 
-    if (config.imgui) {
-        JST_CHECK(beginImgui());
-    }
+    JST_CHECK(beginImgui());
 
     return Result::SUCCESS;
 }
@@ -357,9 +351,7 @@ Result Implementation::underlyingBegin() {
 Result Implementation::underlyingEnd() {
     // End secondary renders.
 
-    if (config.imgui) {
-        JST_CHECK(endImgui());
-    }
+    JST_CHECK(endImgui());
 
     // End render pass and command buffer.
 

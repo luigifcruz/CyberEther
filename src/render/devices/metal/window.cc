@@ -55,9 +55,7 @@ Result Implementation::underlyingCreate() {
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     JST_ASSERT(renderPassDescriptor);
 
-    if (config.imgui) {
-        JST_CHECK(createImgui());
-    }
+    JST_CHECK(createImgui());
 
     statsData.droppedFrames = 0;
     
@@ -71,9 +69,7 @@ Result Implementation::underlyingDestroy() {
         JST_CHECK(surface->destroy());
     }
 
-    if (config.imgui) {
-        JST_CHECK(destroyImgui());
-    } 
+    JST_CHECK(destroyImgui());
 
     renderPassDescriptor->release();
     commandQueue->release();
@@ -162,17 +158,13 @@ Result Implementation::underlyingBegin() {
         JST_CHECK(surface->draw(commandBuffer));
     }
 
-    if (config.imgui) {
-        JST_CHECK(beginImgui());
-    }
+    JST_CHECK(beginImgui());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::underlyingEnd() {
-    if (config.imgui) {
-        JST_CHECK(endImgui());
-    }
+    JST_CHECK(endImgui());
 
     commandBuffer->presentDrawable(drawable);
     commandBuffer->commit();

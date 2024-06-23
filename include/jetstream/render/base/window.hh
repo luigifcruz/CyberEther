@@ -28,9 +28,8 @@ class Window {
  public:
     struct Config {
         F32 scale = 1.0f;
-        bool imgui = true;
 
-        JST_SERDES(scale, imgui);
+        JST_SERDES(scale);
     };
 
     struct Stats {
