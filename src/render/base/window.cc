@@ -1,9 +1,9 @@
 #include "jetstream/render/base/window.hh"
 #include "jetstream/platform.hh"
 
-#include "compressed_jbmm.hh"
-#include "compressed_jbmb.hh"
-#include "compressed_fa.hh"
+#include "assets/compressed_jbmm.hh"
+#include "assets/compressed_jbmb.hh"
+#include "assets/compressed_fa.hh"
 
 namespace Jetstream::Render {
 

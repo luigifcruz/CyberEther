@@ -1,6 +1,8 @@
 #include "jetstream/modules/spectrogram.hh"
-#include "shaders/spectrogram_shaders.hh"
 #include "jetstream/render/utils.hh"
+
+#include "shaders/spectrogram_shaders.hh"
+#include "assets/constants.hh"
 
 #include "benchmark.cc"
 
@@ -55,7 +57,7 @@ Result Spectrogram<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Assets::FillScreenVertices;
+        cfg.buffer = &FillScreenVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -64,7 +66,7 @@ Result Spectrogram<D, T>::createPresent() {
     
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Assets::FillScreenTextureVertices;
+        cfg.buffer = &FillScreenTextureVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -73,7 +75,7 @@ Result Spectrogram<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Assets::FillScreenIndices;
+        cfg.buffer = &FillScreenIndices;
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
@@ -112,7 +114,7 @@ Result Spectrogram<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
-        cfg.buffer = (uint8_t*)Render::Assets::TurboLutBytes;
+        cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
     }
 

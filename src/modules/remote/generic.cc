@@ -11,7 +11,9 @@
 #include "jetstream/modules/remote.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/backend/devices/cpu/helpers.hh"
+
 #include "shaders/remote_shaders.hh"
+#include "assets/constants.hh"
 
 namespace Jetstream {
 
@@ -487,7 +489,7 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Assets::FillScreenVertices;
+        cfg.buffer = &FillScreenVertices;
         cfg.elementByteSize = sizeof(F32);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -496,7 +498,7 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Assets::FillScreenTextureVerticesXYFlip;
+        cfg.buffer = &FillScreenTextureVerticesXYFlip;
         cfg.elementByteSize = sizeof(F32);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -505,7 +507,7 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Assets::FillScreenIndices;
+        cfg.buffer = &FillScreenIndices;
         cfg.elementByteSize = sizeof(U32);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;

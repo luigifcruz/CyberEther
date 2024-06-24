@@ -14,7 +14,6 @@
 
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
-#include "jetstream/render/assets.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
