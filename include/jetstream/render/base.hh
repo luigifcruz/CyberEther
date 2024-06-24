@@ -17,36 +17,36 @@
 #include "jetstream/render/base/vertex.hh"
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
-#include "jetstream/render/metal/window.hh"
-#include "jetstream/render/metal/surface.hh"
-#include "jetstream/render/metal/program.hh"
-#include "jetstream/render/metal/kernel.hh"
-#include "jetstream/render/metal/buffer.hh"
-#include "jetstream/render/metal/draw.hh"
-#include "jetstream/render/metal/texture.hh"
-#include "jetstream/render/metal/vertex.hh"
+#include "jetstream/render/devices/metal/window.hh"
+#include "jetstream/render/devices/metal/surface.hh"
+#include "jetstream/render/devices/metal/program.hh"
+#include "jetstream/render/devices/metal/kernel.hh"
+#include "jetstream/render/devices/metal/buffer.hh"
+#include "jetstream/render/devices/metal/draw.hh"
+#include "jetstream/render/devices/metal/texture.hh"
+#include "jetstream/render/devices/metal/vertex.hh"
 #endif
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-#include "jetstream/render/vulkan/window.hh"
-#include "jetstream/render/vulkan/surface.hh"
-#include "jetstream/render/vulkan/program.hh"
-#include "jetstream/render/vulkan/kernel.hh"
-#include "jetstream/render/vulkan/buffer.hh"
-#include "jetstream/render/vulkan/draw.hh"
-#include "jetstream/render/vulkan/texture.hh"
-#include "jetstream/render/vulkan/vertex.hh"
+#include "jetstream/render/devices/vulkan/window.hh"
+#include "jetstream/render/devices/vulkan/surface.hh"
+#include "jetstream/render/devices/vulkan/program.hh"
+#include "jetstream/render/devices/vulkan/kernel.hh"
+#include "jetstream/render/devices/vulkan/buffer.hh"
+#include "jetstream/render/devices/vulkan/draw.hh"
+#include "jetstream/render/devices/vulkan/texture.hh"
+#include "jetstream/render/devices/vulkan/vertex.hh"
 #endif
 
 #ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
-#include "jetstream/render/webgpu/window.hh"
-#include "jetstream/render/webgpu/surface.hh"
-#include "jetstream/render/webgpu/program.hh"
-#include "jetstream/render/webgpu/kernel.hh"
-#include "jetstream/render/webgpu/buffer.hh"
-#include "jetstream/render/webgpu/draw.hh"
-#include "jetstream/render/webgpu/texture.hh"
-#include "jetstream/render/webgpu/vertex.hh"
+#include "jetstream/render/devices/webgpu/window.hh"
+#include "jetstream/render/devices/webgpu/surface.hh"
+#include "jetstream/render/devices/webgpu/program.hh"
+#include "jetstream/render/devices/webgpu/kernel.hh"
+#include "jetstream/render/devices/webgpu/buffer.hh"
+#include "jetstream/render/devices/webgpu/draw.hh"
+#include "jetstream/render/devices/webgpu/texture.hh"
+#include "jetstream/render/devices/webgpu/vertex.hh"
 #endif
 
 #endif

@@ -14,7 +14,7 @@ class Remote : public Block {
 
     struct Config {
         std::string endpoint = "127.0.0.1:5000";
-        Size2D<U64> viewSize = {1280, 720};
+        Extent2D<U64> viewSize = {1280, 720};
 
         JST_SERDES(endpoint, viewSize);
     };
@@ -104,15 +104,15 @@ class Remote : public Block {
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Framebuffer");
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextFormatted("{}x{} @ {:.0f} Hz", remote->getRemoteFramebufferSize().width, 
-                                                  remote->getRemoteFramebufferSize().height,
+        ImGui::TextFormatted("{}x{} @ {:.0f} Hz", remote->getRemoteFramebufferSize().x, 
+                                                  remote->getRemoteFramebufferSize().y,
                                                   remote->getRemoteFramerate());
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Encoding");
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextFormatted("{} (RGBA)", Render::VideoCodecToString(remote->getRemoteFramebufferCodec()));
+        ImGui::TextFormatted("{} (RGBA)", Viewport::VideoCodecToString(remote->getRemoteFramebufferCodec()));
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -132,7 +132,7 @@ class Remote : public Block {
     void drawPreview(const F32& maxWidth) {
         const auto& size = remote->viewSize();
         const auto& ratio = size.ratio();
-        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
         ImGui::Image(remote->getTexture().raw(), ImVec2(width, width/ratio));
     }

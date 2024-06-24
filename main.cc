@@ -90,8 +90,8 @@ int main(int argc, char* argv[]) {
 
         if (arg == "--size") {
             if (i + 2 < argc) {
-                viewportConfig.size.width = std::stoul(argv[++i]);
-                viewportConfig.size.height = std::stoul(argv[++i]);
+                viewportConfig.size.x = std::stoul(argv[++i]);
+                viewportConfig.size.y = std::stoul(argv[++i]);
             }
 
             continue;
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
             // TODO: Add check for valid codec.
 
             if (i + 1 < argc) {
-                viewportConfig.codec = Render::StringToVideoCodec(argv[++i]);
+                viewportConfig.codec = Viewport::StringToVideoCodec(argv[++i]);
             }
 
             continue;

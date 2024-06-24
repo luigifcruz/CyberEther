@@ -30,7 +30,7 @@ class Texture {
     };
 
     struct Config {
-        Size2D<U64> size;
+        Extent2D<U64> size;
         const uint8_t* buffer = nullptr;
         DataFormat dfmt = DataFormat::RGBA;
         PixelFormat pfmt = PixelFormat::RGBA;
@@ -52,10 +52,10 @@ class Texture {
         return config.multisampled;
     }
 
-    constexpr const Size2D<U64>& size() const {
+    constexpr const Extent2D<U64>& size() const {
         return config.size;
     }
-    virtual bool size(const Size2D<U64>& size) = 0;
+    virtual bool size(const Extent2D<U64>& size) = 0;
 
     virtual void* raw() = 0;
     virtual Result fill() = 0;

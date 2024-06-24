@@ -1,5 +1,7 @@
 #include "jetstream/modules/constellation.hh"
+
 #include "shaders/constellation_shaders.hh"
+#include "assets/constants.hh"
 
 #include "benchmark.cc"
 
@@ -22,14 +24,14 @@ Result Constellation<D, T>::create() {
 
     // Allocate internal buffers.
 
-    timeSamples = Tensor<D, F32>({config.viewSize.width, config.viewSize.height});
+    timeSamples = Tensor<D, F32>({config.viewSize.x, config.viewSize.y});
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 void Constellation<D, T>::info() const {
-    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.x, config.viewSize.y);
 }
 
 template<Device D, typename T>
@@ -38,7 +40,7 @@ Result Constellation<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.buffer = &FillScreenVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -47,7 +49,7 @@ Result Constellation<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenTextureVertices;
+        cfg.buffer = &FillScreenTextureVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -56,7 +58,7 @@ Result Constellation<D, T>::createPresent() {
     
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.buffer = &FillScreenIndices;
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
@@ -93,7 +95,7 @@ Result Constellation<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
-        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
     }
     
@@ -166,13 +168,13 @@ Result Constellation<D, T>::destroyPresent() {
 }
 
 template<Device D, typename T>
-const Size2D<U64>& Constellation<D, T>::viewSize(const Size2D<U64>& viewSize) {
+const Extent2D<U64>& Constellation<D, T>::viewSize(const Extent2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         JST_TRACE("Constellation size changed from [{}, {}] to [{}, {}].",
-                config.viewSize.width,
-                config.viewSize.height,
-                viewSize.width,
-                viewSize.height);
+                config.viewSize.x,
+                config.viewSize.y,
+                viewSize.x,
+                viewSize.y);
 
         config.viewSize = surface->size();
     }

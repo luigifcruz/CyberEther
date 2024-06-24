@@ -20,6 +20,12 @@ namespace Jetstream {
 // TODO: Automatically add copy module if in-place check fails.
 // TODO: Redo PHash logic with locale.
 
+Scheduler::Scheduler() {
+    JST_DEBUG("[SCHEDULER] Initializing compute graph.");
+
+    yielded.reserve(64);
+}
+
 Result Scheduler::addModule(const Locale& locale, 
                             const std::shared_ptr<Module>& module,
                             const Parser::RecordMap& inputMap,
@@ -188,10 +194,16 @@ Result Scheduler::compute() {
         return Result::SUCCESS;
     }
 
+    // Return early if the scheduler is not running.
+
     if (computeHalt.test()) {
         computeHalt.wait(true);
         return Result::SUCCESS;
     }
+
+    // Flush yielded connections.
+
+    yielded.clear();
 
     // The state cannot change while we are waiting for
     // a module to finish computing. This is a workaround
@@ -221,7 +233,7 @@ Result Scheduler::compute() {
         computeSync = true;
 
         for (const auto& graph : graphs) {
-            if ((res = graph->compute()) != Result::SUCCESS) {
+            if ((res = graph->compute(yielded)) != Result::SUCCESS) {
                 break;
             }
         }
@@ -234,8 +246,7 @@ Result Scheduler::compute() {
         return res;
     }
 
-    if (res == Result::TIMEOUT ||
-        res == Result::SKIP) {
+    if (res == Result::TIMEOUT) {
         JST_WARN("[SCHEDULER] Graph underrun. Skipping frame.");
         return Result::SUCCESS;
     }
@@ -582,15 +593,18 @@ Result Scheduler::createExecutionGraphs() {
         for (const auto& blockName : blocksNames) {
             auto& state = validComputeModuleStates[blockName];
 
+            std::unordered_set<U64> inputSet;
+            std::unordered_set<U64> outputSet;
+
             for (const auto& [_, inputMeta] : state.activeInputs) {
-                graph->setWiredInput(inputMeta->locale.hash());
+                inputSet.emplace(inputMeta->locale.hash());
             }
 
             for (const auto& [_, outputMeta] : state.activeOutputs) {
-                graph->setWiredOutput(outputMeta->locale.hash());
+                outputSet.emplace(outputMeta->locale.hash());
             }
 
-            graph->setModule(state.module);
+            graph->setModule(state.module, inputSet, outputSet);
         }
 
         graphs.push_back(std::move(graph));

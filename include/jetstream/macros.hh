@@ -142,10 +142,11 @@
         auto module = std::make_shared<Module<D, __VA_ARGS__>>(); \
         module->init_benchmark_mode(Config, Input); \
         module->create(); \
-        graph->setModule(module); \
+        graph->setModule(module, {}, {}); \
         graph->create(); \
         bench.run(name + TestName, [&] { \
-            graph->compute(); \
+            std::unordered_set<U64> yielded; \
+            graph->compute(yielded); \
         }); \
         graph->destroy(); \
         module->destroy(); \

@@ -14,7 +14,6 @@
 
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
-#include "jetstream/render/extras.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -29,7 +28,7 @@ class Remote : public Module, public Present {
 
     struct Config {
         std::string endpoint = "tcp://0.0.0.0:5000";
-        Size2D<U64> viewSize = {1280, 720};
+        Extent2D<U64> viewSize = {1280, 720};
 
         JST_SERDES(endpoint, viewSize);
     };
@@ -86,11 +85,11 @@ class Remote : public Module, public Present {
         return remoteFramerate;
     }
 
-    constexpr const Size2D<U64>& getRemoteFramebufferSize() const {
+    constexpr const Extent2D<U64>& getRemoteFramebufferSize() const {
         return remoteFramebufferSize;
     }
 
-    constexpr const Render::VideoCodec& getRemoteFramebufferCodec() const {
+    constexpr const Viewport::VideoCodec& getRemoteFramebufferCodec() const {
         return remoteFramebufferCodec;
     }
 
@@ -102,10 +101,10 @@ class Remote : public Module, public Present {
         return socketStreaming;
     }
 
-    constexpr const Size2D<U64>& viewSize() const {
+    constexpr const Extent2D<U64>& viewSize() const {
         return config.viewSize;
     }
-    const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
+    const Extent2D<U64>& viewSize(const Extent2D<U64>& viewSize);
 
     void registerMousePos(const F32& x, const F32& y);
     void registerMouseButton(const I32& button, const bool& pressed);
@@ -139,8 +138,8 @@ class Remote : public Module, public Present {
     std::string socketAddress;
 
     // Remote framebuffer.
-    Size2D<U64> remoteFramebufferSize;
-    Render::VideoCodec remoteFramebufferCodec;
+    Extent2D<U64> remoteFramebufferSize;
+    Viewport::VideoCodec remoteFramebufferCodec;
     std::vector<U8> remoteFramebufferMemory;
     F32 remoteFramerate;
 

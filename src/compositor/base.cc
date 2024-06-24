@@ -31,6 +31,25 @@ Compositor::Compositor(Instance& instance)
        globalModalToggle(false) {
     JST_DEBUG("[COMPOSITOR] Creating compositor.");
 
+    // Load ImGui fonts.
+
+    ImGuiLoadFonts();
+
+    // Configure ImGui.
+
+    ImGuiStyleSetup();
+    ImGuiStyleScale();
+
+    // Create ImNodes.
+
+    ImNodes::CreateContext();
+    ImNodesStyleSetup();
+    ImNodesStyleScale();
+
+    // Configure ImGuiMarkdown.
+
+    ImGuiMarkdownStyleSetup();
+
     // Set default stacks.
     stacks["Graph"] = {true, 0};
 
@@ -48,8 +67,14 @@ Compositor::Compositor(Instance& instance)
 }
 
 Compositor::~Compositor() {
+    // Destroy assets.
+
     primaryBannerTexture->destroy();
     secondaryBannerTexture->destroy();
+
+    // Destroy ImNodes.
+
+    ImNodes::DestroyContext();
 }
 
 Result Compositor::addBlock(const Locale& locale,
@@ -203,7 +228,7 @@ Result Compositor::checkAutoLayoutState() {
 
     bool graphHasPos = false;
     for (const auto& [_, state] : nodeStates) {
-        if (state.block->getState().nodePos != Size2D<F32>{0.0f, 0.0f}) {
+        if (state.block->getState().nodePos != Extent2D<F32>{0.0f, 0.0f}) {
             graphHasPos = true;
         }
     }
@@ -417,6 +442,12 @@ Result Compositor::draw() {
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
 
+    if (instance.window().scalingFactor() != previousScalingFactor) {
+        ImGuiStyleScale();
+        ImNodesStyleScale();
+        previousScalingFactor = instance.window().scalingFactor();
+    }
+
     JST_CHECK(drawStatic());
     JST_CHECK(drawGraph());
 
@@ -449,7 +480,7 @@ Result Compositor::processInteractions() {
             Parser::RecordMap configMap, inputMap, stateMap;
             const auto [x, y] = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
             const auto& scalingFactor = instance.window().scalingFactor();
-            stateMap["nodePos"] = {Size2D<F32>{x / scalingFactor, y / scalingFactor}};
+            stateMap["nodePos"] = {Extent2D<F32>{x / scalingFactor, y / scalingFactor}};
 
             // Create module.
             JST_CHECK_NOTIFY(Store::BlockConstructorList().at(fingerprint)(instance, "", configMap, inputMap, stateMap));
@@ -1257,7 +1288,7 @@ Result Compositor::drawStatic() {
 
         ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT);
         ImGui::SameLine();
-        ImGui::PushFont(instance.window().boldFont());
+        ImGui::PushFont(_boldFont);
         ImGui::TextUnformatted("Welcome to CyberEther!");
         ImGui::PopFont();
         ImGui::SameLine();
@@ -1546,7 +1577,7 @@ Result Compositor::drawStatic() {
                     }
 
                     ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
-                    ImGui::PushFont(instance.window().h2Font());
+                    ImGui::PushFont(_h2Font);
                     ImGui::Text("%s", flowgraph.title.c_str());
                     ImGui::PopFont();
                     ImGui::SameLine();
@@ -2254,7 +2285,7 @@ Result Compositor::drawGraph() {
             if (ImGui::BeginPopupContextItem("fixed-block-description")) {
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), _markdownConfig);
                 ImGui::EndPopup();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -2267,7 +2298,7 @@ Result Compositor::drawGraph() {
                 ImGui::Text("(click to pin)");
                 ImGui::PopStyleColor();
                 ImGui::Separator();
-                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), _markdownConfig);
                 ImGui::EndTooltip();
             }
             ImGui::PopStyleVar();
@@ -2777,7 +2808,7 @@ Result Compositor::drawGraph() {
         ImGui::BeginChild("Block List", ImVec2(0, 0), true);
 
         for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
-            ImGui::PushFont(instance.window().boldFont());
+            ImGui::PushFont(_boldFont);
             ImGui::TextUnformatted(module.title.c_str());
             ImGui::PopFont();
             ImGui::SameLine();
@@ -2787,7 +2818,7 @@ Result Compositor::drawGraph() {
                 ImGui::BeginTooltip();
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Markdown(module.description.c_str(), module.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(module.description.c_str(), module.description.length(), _markdownConfig);
                 ImGui::EndTooltip();
             }
             ImGui::TextWrapped("%s", module.summary.c_str());

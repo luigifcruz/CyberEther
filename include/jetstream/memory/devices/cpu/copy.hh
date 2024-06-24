@@ -12,7 +12,7 @@ inline Result Copy(Tensor<Device::CPU, T>& dst, const Tensor<Device::CPU, T>& sr
     if ((dst.size() == src.size()) &&
         (dst.shape() == src.shape()) &&
         (dst.contiguous() && src.contiguous())) {
-        std::memcpy(dst.data(), src.data(), dst.size_bytes());
+        std::memcpy(dst.data() + dst.offset(), src.data() + src.offset(), dst.size_bytes());
         return Result::SUCCESS;
     }
 

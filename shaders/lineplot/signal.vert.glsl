@@ -9,6 +9,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
 } uniforms;
 
 layout(location = 0) in vec4 PosNor; // xy = position, zw = normal  
+
 layout(location = 0) out vec2 texCoord;
 layout(location = 1) out vec2 fragNormal;
 

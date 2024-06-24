@@ -14,7 +14,7 @@ class Spectrogram : public Block {
 
     struct Config {
         U64 height = 256;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
 
         JST_SERDES(height, viewSize);
     };
@@ -95,7 +95,7 @@ class Spectrogram : public Block {
     void drawPreview(const F32& maxWidth) {
         const auto& size = spectrogram->viewSize();
         const auto& ratio = size.ratio();
-        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
         ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width, width/ratio));
     }

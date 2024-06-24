@@ -298,7 +298,6 @@ int main() {
 
     // Initialize Window.
     Render::Window::Config renderCfg;
-    renderCfg.imgui = true;
     renderCfg.scale = 1.0;
     JST_CHECK_THROW(instance.buildRender<RenderDevice>(renderCfg));
 

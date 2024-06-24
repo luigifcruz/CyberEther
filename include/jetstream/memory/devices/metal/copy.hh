@@ -12,19 +12,24 @@ inline Result Copy(Tensor<Device::Metal, T>& dst, Tensor<Device::Metal, T>& src)
     if ((dst.size() == src.size()) &&
         (dst.shape() == src.shape()) &&
         (dst.contiguous() && src.contiguous())) {
-        void* dst_ptr = static_cast<void*>(dst.data()->contents());
-        const void* src_ptr = static_cast<void*>(src.data()->contents());
+        T* dst_ptr = static_cast<T*>(dst.data()->contents());
+        const T* src_ptr = static_cast<T*>(src.data()->contents());
 
-        std::memcpy(dst_ptr, src_ptr, dst.size_bytes());
+        std::memcpy(dst_ptr + dst.offset(), src_ptr + src.offset(), dst.size_bytes());
 
         if (!dst.device_native() && !src.device_native()) {
-            dst.data()->didModifyRange(NS::Range(0, dst.size_bytes()));
+            dst.data()->didModifyRange(NS::Range(dst.offset_bytes(), dst.offset_bytes() + dst.size_bytes()));
         }
         return Result::SUCCESS;
     }
 
     JST_ERROR("[METAL:COPY] Copy not implemented for non-contiguous tensors.");
     return Result::ERROR;
+}
+
+template<typename T>
+inline Result Copy(Tensor<Device::CPU, T>& dst, Tensor<Device::Metal, T>& src) {
+    return Copy(dst.metal(), src);
 }
 
 }  // namespace Jetstream::Memory

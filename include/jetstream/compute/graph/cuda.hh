@@ -19,7 +19,7 @@ class CUDA : public Graph {
     }
 
     Result create();
-    Result compute();
+    Result compute(std::unordered_set<U64>& yielded);
     Result computeReady();
     Result destroy();
 

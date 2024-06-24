@@ -1,6 +1,8 @@
 #include "jetstream/modules/spectrogram.hh"
-#include "shaders/spectrogram_shaders.hh"
 #include "jetstream/render/utils.hh"
+
+#include "shaders/spectrogram_shaders.hh"
+#include "assets/constants.hh"
 
 #include "benchmark.cc"
 
@@ -45,7 +47,7 @@ Result Spectrogram<D, T>::create() {
 
 template<Device D, typename T>
 void Spectrogram<D, T>::info() const {
-    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size: [{}, {}]", config.viewSize.x, config.viewSize.y);
     JST_DEBUG("  Height: {}", config.height);
 }
 
@@ -55,7 +57,7 @@ Result Spectrogram<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenVertices;
+        cfg.buffer = &FillScreenVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -64,7 +66,7 @@ Result Spectrogram<D, T>::createPresent() {
     
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenTextureVertices;
+        cfg.buffer = &FillScreenTextureVertices;
         cfg.elementByteSize = sizeof(float);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
@@ -73,7 +75,7 @@ Result Spectrogram<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenIndices;
+        cfg.buffer = &FillScreenIndices;
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
@@ -112,7 +114,7 @@ Result Spectrogram<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
-        cfg.buffer = (uint8_t*)Render::Extras::TurboLutBytes;
+        cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
     }
 
@@ -187,13 +189,13 @@ Result Spectrogram<D, T>::present() {
 }
 
 template<Device D, typename T>
-const Size2D<U64>& Spectrogram<D, T>::viewSize(const Size2D<U64>& viewSize) {
+const Extent2D<U64>& Spectrogram<D, T>::viewSize(const Extent2D<U64>& viewSize) {
     if (surface->size(viewSize) != this->viewSize()) {
         JST_TRACE("Spectrogram size changed from [{}, {}] to [{}, {}].",
-                config.viewSize.width,
-                config.viewSize.height,
-                viewSize.width,
-                viewSize.height);
+                config.viewSize.x,
+                config.viewSize.y,
+                viewSize.x,
+                viewSize.y);
 
         config.viewSize = surface->size();
     }

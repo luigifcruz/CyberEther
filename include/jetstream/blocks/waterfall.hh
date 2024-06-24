@@ -17,7 +17,7 @@ class Waterfall : public Block {
         I32 offset = 0;
         U64 height = 512;
         bool interpolate = true;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
 
         JST_SERDES(zoom, offset, height, interpolate, viewSize);
     };
@@ -101,7 +101,7 @@ class Waterfall : public Block {
     void drawPreview(const F32& maxWidth) {
         const auto& size = waterfall->viewSize();
         const auto& ratio = size.ratio();
-        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
         ImGui::Image(waterfall->getTexture().raw(), ImVec2(width, width/ratio));
     }

@@ -45,11 +45,11 @@ void main() {
 
     vec2 pointAX = pointA + offset;
     vec2 pointAY = pointA - offset;
-
     vec2 pointBX = pointB + offset;
     vec2 pointBY = pointB - offset;
 
     // Triangle Vertices
+
     line[(i * 6) + 0] = vec4(pointAX, 0.0f, -1.0); // 0
     line[(i * 6) + 1] = vec4(pointAY, 0.0f, +1.0); // 1
     line[(i * 6) + 2] = vec4(pointBX, 0.0f, -1.0); // 2

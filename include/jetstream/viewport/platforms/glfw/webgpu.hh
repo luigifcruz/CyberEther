@@ -47,7 +47,7 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     wgpu::Surface surface;
     wgpu::SwapChain swapchain;
     wgpu::Instance instance;
-    Size2D<U64> swapchainSize;
+    Extent2D<U64> swapchainSize;
 
     static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 };
