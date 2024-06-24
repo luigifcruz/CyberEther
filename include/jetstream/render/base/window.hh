@@ -17,7 +17,6 @@
 #include "jetstream/render/tools/imgui_stdlib.h"
 #include "jetstream/render/tools/imgui_fmtlib.h"
 #include "jetstream/render/tools/imgui_internal.h"
-#include "jetstream/render/components/font.hh"
 
 namespace Jetstream::Render {
 
@@ -93,11 +92,6 @@ class Window {
  protected:
     Config config;
 
-    F32 _scalingFactor;
-    F32 _previousScalingFactor;
-
-    void scaleStyle(const Viewport::Generic& viewport);
-
     virtual Result bindSurface(const std::shared_ptr<Surface>& surface) = 0;
     virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
 
@@ -108,6 +102,13 @@ class Window {
     virtual Result underlyingEnd() = 0;
 
     virtual Result underlyingSynchronize() = 0;
+
+    // Style scaling.
+
+    F32 _scalingFactor;
+    F32 _previousScalingFactor;
+
+    void scaleStyle(const Viewport::Generic& viewport);
 
  private:
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
