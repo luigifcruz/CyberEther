@@ -39,7 +39,7 @@ Result Metal::compute(std::unordered_set<U64>& yielded) {
 
     for (const auto& computeUnit : computeUnits) {
         if (Graph::ShouldYield(yielded, computeUnit.inputSet)) {
-            Graph::Yield(yielded, computeUnit.outputSet);
+            Graph::YieldCompute(yielded, computeUnit.outputSet);
             continue;
         }
 
@@ -50,7 +50,7 @@ Result Metal::compute(std::unordered_set<U64>& yielded) {
         }
 
         if (res == Result::YIELD) {
-            Graph::Yield(yielded, computeUnit.outputSet);
+            Graph::YieldCompute(yielded, computeUnit.outputSet);
             continue;
         }
 

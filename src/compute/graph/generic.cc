@@ -32,7 +32,7 @@ Result Graph::setModule(const std::shared_ptr<Compute>& block,
     return Result::SUCCESS;
 }
 
-void Graph::Yield(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& outputSet) {
+void Graph::YieldCompute(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& outputSet) {
     for (const auto& output : outputSet) {
         yielded.emplace(output);
     }

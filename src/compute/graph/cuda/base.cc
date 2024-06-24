@@ -62,7 +62,7 @@ Result CUDA::compute(std::unordered_set<U64>& yielded) {
         auto& computeUnit = computeUnits[i];
 
         if (Graph::ShouldYield(yielded, computeUnit.inputSet)) {
-            Graph::Yield(yielded, computeUnit.outputSet);
+            Graph::YieldCompute(yielded, computeUnit.outputSet);
             continue;
         }
 
@@ -79,7 +79,7 @@ Result CUDA::compute(std::unordered_set<U64>& yielded) {
         }
 
         if (res == Result::YIELD) {
-            Graph::Yield(yielded, computeUnit.outputSet);
+            Graph::YieldCompute(yielded, computeUnit.outputSet);
             continue;
         }
 

@@ -43,7 +43,7 @@ class Graph {
     virtual Result computeReady() = 0;
     virtual Result destroy() = 0;
 
-    static void Yield(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& outputSet);
+    static void YieldCompute(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& outputSet);
     static bool ShouldYield(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& inputSet);
 
  protected:
