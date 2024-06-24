@@ -84,7 +84,6 @@ Result Implementation::createImgui() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImNodes::CreateContext();
 
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
@@ -96,7 +95,7 @@ Result Implementation::createImgui() {
     
     JST_CHECK(viewport->createImgui());
 
-    ScaleStyle(*viewport);
+    this->scaleStyle(*viewport);
 
     ImGui_ImplMetal_Init(dev);
 
@@ -108,7 +107,6 @@ Result Implementation::destroyImgui() {
 
     ImGui_ImplMetal_Shutdown();
     JST_CHECK(viewport->destroyImgui());
-    ImNodes::DestroyContext();
     ImGui::DestroyContext();
 
     return Result::SUCCESS;
@@ -117,7 +115,7 @@ Result Implementation::destroyImgui() {
 Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
 
-    ScaleStyle(*viewport);
+    this->scaleStyle(*viewport);
 
     ImGui::NewFrame();
 

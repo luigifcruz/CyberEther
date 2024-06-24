@@ -91,7 +91,7 @@ class Note : public Block {
             ImGui::BeginChild("##note-markdown", ImVec2(maxWidth, 0.0f), ImGuiChildFlags_AutoResizeY | 
                                                                          ImGuiChildFrags_AlwaysUseParentDrawList, 
                                                                          ImGuiWindowFlags_NoBackground);
-            ImGui::Markdown(config.note.c_str(), config.note.length(), instance().window().markdownConfig());
+            ImGui::Markdown(config.note.c_str(), config.note.length(), instance().compositor().markdownConfig());
             ImGui::EndChild();
         }
         if (ImGui::Button((editing) ? "Done" : "Edit", ImVec2(maxWidth, 0))) {

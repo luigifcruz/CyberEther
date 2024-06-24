@@ -31,6 +31,29 @@ Compositor::Compositor(Instance& instance)
        globalModalToggle(false) {
     JST_DEBUG("[COMPOSITOR] Creating compositor.");
 
+    // Create ImNodes.
+
+    ImNodes::CreateContext();
+
+    // Install callbacks.
+
+    instance.window().addStyleSetupCallback([&](const F32& scalingFactor){
+        JST_DEBUG("[COMPOSITOR] Setting up style with scaling factor {}.", scalingFactor);
+
+        ImGuiLoadFonts(scalingFactor);
+
+        ImGuiStyleSetup(scalingFactor);
+        ImNodesStyleSetup(scalingFactor);
+        ImGuiMarkdownStyleSetup(scalingFactor);
+    });
+
+    instance.window().addStyleScaleCallback([&](const F32& scalingFactor){
+        JST_DEBUG("[COMPOSITOR] Scaling style with scaling factor {}.", scalingFactor);
+
+        ImGuiStyleScale(scalingFactor);
+        ImNodesStyleScale(scalingFactor);
+    });
+
     // Set default stacks.
     stacks["Graph"] = {true, 0};
 
@@ -48,8 +71,14 @@ Compositor::Compositor(Instance& instance)
 }
 
 Compositor::~Compositor() {
+    // Destroy assets.
+
     primaryBannerTexture->destroy();
     secondaryBannerTexture->destroy();
+
+    // Destroy ImNodes.
+
+    ImNodes::DestroyContext();
 }
 
 Result Compositor::addBlock(const Locale& locale,
@@ -1257,7 +1286,7 @@ Result Compositor::drawStatic() {
 
         ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT);
         ImGui::SameLine();
-        ImGui::PushFont(instance.window().boldFont());
+        ImGui::PushFont(_boldFont);
         ImGui::TextUnformatted("Welcome to CyberEther!");
         ImGui::PopFont();
         ImGui::SameLine();
@@ -1546,7 +1575,7 @@ Result Compositor::drawStatic() {
                     }
 
                     ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
-                    ImGui::PushFont(instance.window().h2Font());
+                    ImGui::PushFont(_h2Font);
                     ImGui::Text("%s", flowgraph.title.c_str());
                     ImGui::PopFont();
                     ImGui::SameLine();
@@ -2254,7 +2283,7 @@ Result Compositor::drawGraph() {
             if (ImGui::BeginPopupContextItem("fixed-block-description")) {
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), _markdownConfig);
                 ImGui::EndPopup();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -2267,7 +2296,7 @@ Result Compositor::drawGraph() {
                 ImGui::Text("(click to pin)");
                 ImGui::PopStyleColor();
                 ImGui::Separator();
-                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), _markdownConfig);
                 ImGui::EndTooltip();
             }
             ImGui::PopStyleVar();
@@ -2777,7 +2806,7 @@ Result Compositor::drawGraph() {
         ImGui::BeginChild("Block List", ImVec2(0, 0), true);
 
         for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
-            ImGui::PushFont(instance.window().boldFont());
+            ImGui::PushFont(_boldFont);
             ImGui::TextUnformatted(module.title.c_str());
             ImGui::PopFont();
             ImGui::SameLine();
@@ -2787,7 +2816,7 @@ Result Compositor::drawGraph() {
                 ImGui::BeginTooltip();
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Markdown(module.description.c_str(), module.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(module.description.c_str(), module.description.length(), _markdownConfig);
                 ImGui::EndTooltip();
             }
             ImGui::TextWrapped("%s", module.summary.c_str());

@@ -16,8 +16,14 @@
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/block.hh"
-#include "jetstream/render/base.hh"
 #include "jetstream/compute/base.hh"
+#include "jetstream/render/base.hh"
+#include "jetstream/render/tools/imnodes.h"
+#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/imgui_notify_ext.h"
+#include "jetstream/render/tools/imgui_markdown.hh"
+
+// TODO: Break this file up into smaller pieces.
 
 namespace Jetstream {
 
@@ -49,6 +55,10 @@ class JETSTREAM_API Compositor {
 
     Result draw();
     Result processInteractions();
+
+    constexpr ImGui::MarkdownConfig& markdownConfig() {
+        return _markdownConfig;
+    }
 
  private:
     typedef std::pair<std::string, Device> CreateBlockMail;
@@ -169,6 +179,28 @@ class JETSTREAM_API Compositor {
     static const U32 DisabledColor         = IM_COL32( 75,  75,  75, 255);
     static const U32 DisabledColorSelected = IM_COL32( 75,  75,  75, 255);
     static const U32 DefaultColor          = IM_COL32(255, 255, 255, 255);
+
+    // ImGui, ImNodes, and ImGuiMarkdown
+
+    ImFont* _bodyFont;
+    ImFont* _h1Font;
+    ImFont* _h2Font;
+    ImFont* _boldFont;
+
+    ImGui::MarkdownConfig _markdownConfig;
+
+    void ImGuiLoadFonts(const F32& scalingFactor);
+
+    void ImGuiStyleSetup(const F32& scalingFactor);
+    void ImGuiStyleScale(const F32& scalingFactor);
+
+    void ImNodesStyleSetup(const F32& scalingFactor);
+    void ImNodesStyleScale(const F32& scalingFactor);
+
+    void ImGuiMarkdownStyleSetup(const F32& scalingFactor);
+
+    static void ImGuiMarkdownLinkCallback(ImGui::MarkdownLinkCallbackData data);
+    static void ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_info, bool start);
 };
 
 }  // namespace Jetstream

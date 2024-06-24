@@ -73,22 +73,19 @@ Result Implementation::createImgui() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImNodes::CreateContext();
 
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
 
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
-    ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
     
     JST_CHECK(viewport->createImgui());
 
-    ScaleStyle(*viewport);
+    this->scaleStyle(*viewport);
 
-    ImGui_ImplWGPU_CreateDeviceObjects();
+    auto& device = Backend::State<Device::WebGPU>()->getDevice();
+    ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
     
     return Result::SUCCESS;
 }
@@ -99,7 +96,6 @@ Result Implementation::destroyImgui() {
     ImGui_ImplWGPU_InvalidateDeviceObjects();
     ImGui_ImplWGPU_Shutdown();
     JST_CHECK(viewport->destroyImgui());
-    ImNodes::DestroyContext();
     ImGui::DestroyContext();
 
     return Result::SUCCESS;
@@ -115,7 +111,7 @@ Result Implementation::recreate() {
 Result Implementation::beginImgui() {
     ImGui_ImplWGPU_NewFrame();
 
-    ScaleStyle(*viewport);
+    this->scaleStyle(*viewport);
 
     ImGui::NewFrame();
 

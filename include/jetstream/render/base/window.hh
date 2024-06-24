@@ -17,10 +17,7 @@
 #include "jetstream/render/tools/imgui_stdlib.h"
 #include "jetstream/render/tools/imgui_fmtlib.h"
 #include "jetstream/render/tools/imgui_internal.h"
-#include "jetstream/render/tools/imnodes.h"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
-#include "jetstream/render/tools/imgui_notify_ext.h"
-#include "jetstream/render/tools/imgui_markdown.hh"
+#include "jetstream/render/components/font.hh"
 
 namespace Jetstream::Render {
 
@@ -90,25 +87,8 @@ class Window {
         return _scalingFactor;
     }
 
-    constexpr ImGui::MarkdownConfig& markdownConfig() {
-        return _markdownConfig;
-    }
-
-    constexpr ImFont* bodyFont() {
-        return _bodyFont;
-    }
-
-    constexpr ImFont* boldFont() {
-        return _boldFont;
-    }
-
-    constexpr ImFont* h1Font() {
-        return _h1Font;
-    }
-
-    constexpr ImFont* h2Font() {
-        return _h2Font;
-    }
+    void addStyleSetupCallback(std::function<void(const F32& scalingFactor)> callback);
+    void addStyleScaleCallback(std::function<void(const F32& scalingFactor)> callback);
 
  protected:
     Config config;
@@ -116,7 +96,7 @@ class Window {
     F32 _scalingFactor;
     F32 _previousScalingFactor;
 
-    void ScaleStyle(const Viewport::Generic& viewport);
+    void scaleStyle(const Viewport::Generic& viewport);
 
     virtual Result bindSurface(const std::shared_ptr<Surface>& surface) = 0;
     virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
@@ -130,12 +110,8 @@ class Window {
     virtual Result underlyingSynchronize() = 0;
 
  private:
-    ImFont* _bodyFont;
-    ImFont* _h1Font;
-    ImFont* _h2Font;
-    ImFont* _boldFont;
-
-    ImGui::MarkdownConfig _markdownConfig;
+    std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
+    std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;
 
     bool graphicalLoopThreadStarted;
     std::thread::id graphicalLoopThreadId;
@@ -146,16 +122,6 @@ class Window {
 
     std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
     std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;
-
-    void ImGuiLoadFonts();
-    void ImGuiMarkdownSetup();
-    void ImGuiStyleSetup();
-    void ImGuiStyleScale();
-    void ImNodesStyleSetup();
-    void ImNodesStyleScale();
-
-    static void ImGuiMarkdownLinkCallback(ImGui::MarkdownLinkCallbackData data);
-    static void ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_info, bool start);
 };
 
 }  // namespace Jetstream::Render
