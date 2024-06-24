@@ -1,8 +1,9 @@
 #include "jetstream/compositor.hh"
+#include "jetstream/instance.hh"
 
 namespace Jetstream {
 
-void Compositor::ImNodesStyleSetup(const F32&) {
+void Compositor::ImNodesStyleSetup() {
     auto &colors = ImNodes::GetStyle().Colors;
     colors[ImNodesCol_NodeBackground]         = IM_COL32(30, 30, 30, 255);
     colors[ImNodesCol_NodeBackgroundHovered]  = IM_COL32(30, 30, 30, 255);
@@ -13,7 +14,8 @@ void Compositor::ImNodesStyleSetup(const F32&) {
     colors[ImNodesCol_LinkSelected]           = IM_COL32(75, 75, 75, 255);
 }
 
-void Compositor::ImNodesStyleScale(const F32& scalingFactor) {
+void Compositor::ImNodesStyleScale() {
+    const auto& scalingFactor = instance.window().scalingFactor();
     auto& style = ImNodes::GetStyle();
     style.NodePadding               = ImVec2(4.0f * scalingFactor, 4.0f * scalingFactor);
     style.PinCircleRadius           = 2.0f  * scalingFactor;

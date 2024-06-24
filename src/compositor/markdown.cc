@@ -1,9 +1,10 @@
 #include "jetstream/compositor.hh"
+#include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream {
 
-void Compositor::ImGuiMarkdownStyleSetup(const F32&) {
+void Compositor::ImGuiMarkdownStyleSetup() {
     _markdownConfig.linkCallback        = &Compositor::ImGuiMarkdownLinkCallback;
     _markdownConfig.tooltipCallback     = nullptr;
     _markdownConfig.imageCallback       = nullptr;

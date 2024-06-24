@@ -31,28 +31,24 @@ Compositor::Compositor(Instance& instance)
        globalModalToggle(false) {
     JST_DEBUG("[COMPOSITOR] Creating compositor.");
 
+    // Load ImGui fonts.
+
+    ImGuiLoadFonts();
+
+    // Configure ImGui.
+
+    ImGuiStyleSetup();
+    ImGuiStyleScale();
+
     // Create ImNodes.
 
     ImNodes::CreateContext();
+    ImNodesStyleSetup();
+    ImNodesStyleScale();
 
-    // Install callbacks.
+    // Configure ImGuiMarkdown.
 
-    instance.window().addStyleSetupCallback([&](const F32& scalingFactor){
-        JST_DEBUG("[COMPOSITOR] Setting up style with scaling factor {}.", scalingFactor);
-
-        ImGuiLoadFonts(scalingFactor);
-
-        ImGuiStyleSetup(scalingFactor);
-        ImNodesStyleSetup(scalingFactor);
-        ImGuiMarkdownStyleSetup(scalingFactor);
-    });
-
-    instance.window().addStyleScaleCallback([&](const F32& scalingFactor){
-        JST_DEBUG("[COMPOSITOR] Scaling style with scaling factor {}.", scalingFactor);
-
-        ImGuiStyleScale(scalingFactor);
-        ImNodesStyleScale(scalingFactor);
-    });
+    ImGuiMarkdownStyleSetup();
 
     // Set default stacks.
     stacks["Graph"] = {true, 0};
@@ -445,6 +441,12 @@ Result Compositor::draw() {
     // Prevent state from refreshing while drawing these methods.
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
+
+    if (instance.window().scalingFactor() != previousScalingFactor) {
+        ImGuiStyleScale();
+        ImNodesStyleScale();
+        previousScalingFactor = instance.window().scalingFactor();
+    }
 
     JST_CHECK(drawStatic());
     JST_CHECK(drawGraph());

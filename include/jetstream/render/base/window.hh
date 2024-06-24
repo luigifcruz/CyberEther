@@ -86,9 +86,6 @@ class Window {
         return _scalingFactor;
     }
 
-    void addStyleSetupCallback(std::function<void(const F32& scalingFactor)> callback);
-    void addStyleScaleCallback(std::function<void(const F32& scalingFactor)> callback);
-
  protected:
     Config config;
 

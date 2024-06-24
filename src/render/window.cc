@@ -6,8 +6,8 @@ namespace Jetstream::Render {
 Result Window::create() {
     // Set variables.
 
-    _scalingFactor = 0.0f;
-    _previousScalingFactor = 0.0f;
+    _scalingFactor = 1.0f;
+    _previousScalingFactor = 1.0f;
     graphicalLoopThreadStarted = false;
 
     // Lock the frame queue.
@@ -149,39 +149,12 @@ Result Window::processSurfaceUnbindQueue() {
     return Result::SUCCESS;
 }
 
-void Window::addStyleSetupCallback(std::function<void(const F32& scalingFactor)> callback) {
-    if (_previousScalingFactor != 0.0f) {
-        callback(_scalingFactor);
-    }
-    styleSetupCallbacks.push_back(callback);
-}
-
-void Window::addStyleScaleCallback(std::function<void(const F32& scalingFactor)> callback) {
-    if (_previousScalingFactor != 0.0f) {
-        callback(_scalingFactor);
-    }
-    styleScaleCallbacks.push_back(callback);
-}
-
 void Window::scaleStyle(const Viewport::Generic& viewport) {
-    if (_previousScalingFactor == 0.0f) {
-        _scalingFactor = viewport.scale(config.scale);
-
-        for (const auto& callback : styleSetupCallbacks) {
-            callback(_scalingFactor);
-        }
-
-        for (const auto& callback : styleScaleCallbacks) {
-            callback(_scalingFactor);
-        }
-    }
-
     _scalingFactor = viewport.scale(config.scale);
 
     if (_scalingFactor != _previousScalingFactor) {
-        for (const auto& callback : styleScaleCallbacks) {
-            callback(_scalingFactor);
-        }
+        auto& style = ImGui::GetStyle();
+        style.ScaleAllSizes(_scalingFactor);
     }
 
     _previousScalingFactor = _scalingFactor;

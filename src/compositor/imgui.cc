@@ -1,4 +1,5 @@
 #include "jetstream/compositor.hh"
+#include "jetstream/instance.hh"
 
 #include "assets/compressed_jbmm.hh"
 #include "assets/compressed_jbmb.hh"
@@ -6,7 +7,8 @@
 
 namespace Jetstream {
 
-void Compositor::ImGuiLoadFonts(const F32& scalingFactor) {
+void Compositor::ImGuiLoadFonts() {
+    const auto& scalingFactor = instance.window().scalingFactor();
     auto& io = ImGui::GetIO();
 
     ImFontConfig font_config;
@@ -62,7 +64,7 @@ void Compositor::ImGuiLoadFonts(const F32& scalingFactor) {
                                                          nullptr);
 }
 
-void Compositor::ImGuiStyleSetup(const F32&) {
+void Compositor::ImGuiStyleSetup() {
     // Setup Options
 
     auto& io = ImGui::GetIO();
@@ -132,10 +134,8 @@ void Compositor::ImGuiStyleSetup(const F32&) {
     colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.10f, 0.10f, 0.10f, 0.65f);
 }
 
-void Compositor::ImGuiStyleScale(const F32& scalingFactor) {
+void Compositor::ImGuiStyleScale() {
     auto& style = ImGui::GetStyle();
-
-    // Rewrite Style Values.
     style.WindowPadding                     = ImVec2(8.00f, 8.00f);
     style.FramePadding                      = ImVec2(5.00f, 2.00f);
     style.ItemSpacing                       = ImVec2(6.00f, 6.00f);
@@ -158,8 +158,6 @@ void Compositor::ImGuiStyleScale(const F32& scalingFactor) {
     style.GrabRounding                      = 3;
     style.LogSliderDeadzone                 = 4;
     style.TabRounding                       = 4;
-
-    style.ScaleAllSizes(scalingFactor);
 }
 
 }  // namespace Jetstream

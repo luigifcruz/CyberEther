@@ -187,17 +187,19 @@ class JETSTREAM_API Compositor {
     ImFont* _h2Font;
     ImFont* _boldFont;
 
+    F32 previousScalingFactor;
+
     ImGui::MarkdownConfig _markdownConfig;
 
-    void ImGuiLoadFonts(const F32& scalingFactor);
+    void ImGuiLoadFonts();
 
-    void ImGuiStyleSetup(const F32& scalingFactor);
-    void ImGuiStyleScale(const F32& scalingFactor);
+    void ImGuiStyleSetup();
+    void ImGuiStyleScale();
 
-    void ImNodesStyleSetup(const F32& scalingFactor);
-    void ImNodesStyleScale(const F32& scalingFactor);
+    void ImNodesStyleSetup();
+    void ImNodesStyleScale();
 
-    void ImGuiMarkdownStyleSetup(const F32& scalingFactor);
+    void ImGuiMarkdownStyleSetup();
 
     static void ImGuiMarkdownLinkCallback(ImGui::MarkdownLinkCallbackData data);
     static void ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_info, bool start);
