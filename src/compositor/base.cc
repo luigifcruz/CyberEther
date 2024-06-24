@@ -439,8 +439,11 @@ Result Compositor::loadImageAsset(const uint8_t* binary_data,
 
 Result Compositor::draw() {
     // Prevent state from refreshing while drawing these methods.
+
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
+
+    // Scale ImGui and ImNodes styles.
 
     if (instance.window().scalingFactor() != previousScalingFactor) {
         ImGuiStyleScale();
@@ -448,8 +451,12 @@ Result Compositor::draw() {
         previousScalingFactor = instance.window().scalingFactor();
     }
 
+    // Draw main interface.
+
     JST_CHECK(drawStatic());
     JST_CHECK(drawGraph());
+
+    // Release lock.
 
     interfaceHalt.clear();
     interfaceHalt.notify_one();
