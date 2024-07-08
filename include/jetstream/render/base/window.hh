@@ -19,6 +19,8 @@
 #include "jetstream/render/tools/imgui_fmtlib.h"
 #include "jetstream/render/tools/imgui_internal.h"
 
+namespace Jetstream::Render::Components { class Font; }
+
 namespace Jetstream::Render {
 
 class Window {
@@ -53,6 +55,9 @@ class Window {
 
     virtual constexpr Device device() const = 0;
 
+    Result bind(const std::shared_ptr<Components::Generic>& component);
+    Result unbind(const std::shared_ptr<Components::Generic>& component);
+
     Result bind(const std::shared_ptr<Buffer>& buffer);
     Result unbind(const std::shared_ptr<Buffer>& buffer);
 
@@ -65,25 +70,35 @@ class Window {
     template<class T>
     inline Result JETSTREAM_API build(std::shared_ptr<T>& member,
                                       const auto& config) {
-        switch (this->device()) {
-#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
-            case Device::Metal:
-                member = T::template Factory<Device::Metal>(config);
-                break;
-#endif
-#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-            case Device::Vulkan:
-                member = T::template Factory<Device::Vulkan>(config);
-                break;
-#endif
-#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
-            case Device::WebGPU:
-                member = T::template Factory<Device::WebGPU>(config);
-                break;
-#endif
-            default:
-                JST_ERROR("Backend not supported yet.");
-                return Result::ERROR;
+        // If the type is a component, create it.
+
+        if constexpr (std::is_base_of_v<Components::Generic, T>) {
+            member = std::make_shared<T>(config);
+        }
+
+        // If the type is not a component, create it based on the device.
+        
+        if constexpr (!std::is_base_of_v<Components::Generic, T>)  {
+            switch (this->device()) {
+    #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+                case Device::Metal:
+                    member = T::template Factory<Device::Metal>(config);
+                    break;
+    #endif
+    #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+                case Device::Vulkan:
+                    member = T::template Factory<Device::Vulkan>(config);
+                    break;
+    #endif
+    #ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+                case Device::WebGPU:
+                    member = T::template Factory<Device::WebGPU>(config);
+                    break;
+    #endif
+                default:
+                    JST_ERROR("Backend not supported yet.");
+                    return Result::ERROR;
+            }
         }
 
         return Result::SUCCESS;
@@ -123,6 +138,8 @@ class Window {
  private:
     std::vector<std::shared_ptr<Buffer>> buffers;
     std::vector<std::shared_ptr<Texture>> textures;
+
+    std::vector<std::shared_ptr<Components::Generic>> components;
 
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
     std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;

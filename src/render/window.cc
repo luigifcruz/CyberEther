@@ -28,6 +28,13 @@ Result Window::destroy() {
     // Lock the frame queue.
     newFrameQueueMutex.lock();
 
+    // Destroy unclaimed components.
+
+    for (const auto& component : components) {
+        JST_WARN("[WINDOW] Destroying unclaimed component.");
+        component->destroy(this);
+    }
+
     // Call underlying destroy.
     const auto& res = underlyingDestroy();
 
