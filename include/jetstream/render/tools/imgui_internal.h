@@ -3795,6 +3795,10 @@ IMGUI_API void      ImFontAtlasBuildRender32bppRectFromString(ImFontAtlas* atlas
 IMGUI_API void      ImFontAtlasBuildMultiplyCalcLookupTable(unsigned char out_table[256], float in_multiply_factor);
 IMGUI_API void      ImFontAtlasBuildMultiplyRectAlpha8(const unsigned char table[256], unsigned char* pixels, int x, int y, int w, int h, int stride);
 
+// UPDATE-ME: Expose decompressor API to allow user to decompress the data themselves.
+IMGUI_API unsigned int stb_decompress_length(const unsigned char* input);
+IMGUI_API unsigned int stb_decompress(unsigned char* output, const unsigned char* input, unsigned int length);
+
 //-----------------------------------------------------------------------------
 // [SECTION] Test Engine specific hooks (imgui_test_engine)
 //-----------------------------------------------------------------------------
