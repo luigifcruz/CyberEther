@@ -20,6 +20,9 @@ Text::~Text() {
 struct Text::Impl {
     std::shared_ptr<Components::Font> font;
 
+    bool fillDidChange = false;
+    bool transformDidChange = false;
+
     struct {
         glm::mat4 transform;
         glm::vec3 color;
@@ -134,6 +137,11 @@ Result Text::create(Window* window) {
         JST_CHECK(window->build(pimpl->fontProgram, cfg));
     }
 
+    // Update.
+
+    JST_CHECK(updateVertices());
+    JST_CHECK(updateTransform());
+
     return Result::SUCCESS;
 }
 
@@ -156,34 +164,119 @@ Result Text::surface(Render::Surface::Config& config) {
     return Result::SUCCESS;
 }
 
-void Text::put(const F32& scale, 
-               const Extent2D<F32>& position, 
-               const Extent2D<F32>& pixelSize, 
-               const bool& center,
-               const F32& rotationDeg) {
+const F32& Text::scale(const F32& scale) {
+    if (config.scale != scale) {
+        config.scale = scale;
+        pimpl->transformDidChange = true;
+    }
+
+    return config.scale;
+}
+
+const Extent2D<F32>& Text::position(const Extent2D<F32>& position) {
+    if (config.position != position) {
+        config.position = position;
+        pimpl->transformDidChange = true;
+    }
+
+    return config.position;
+}
+
+const Extent2D<F32>& Text::pixelSize(const Extent2D<F32>& pixelSize) {
+    if (config.pixelSize != pixelSize) {
+        config.pixelSize = pixelSize;
+        pimpl->transformDidChange = true;
+    }
+
+    return config.pixelSize;
+}
+
+const Extent2D<bool>& Text::center(const Extent2D<bool>& center) {
+    if (config.center != center) {
+        config.center = center;
+        pimpl->transformDidChange = true;
+    }
+
+    return config.center;
+}
+
+const ColorRGBA<F32>& Text::color(const ColorRGBA<F32>& color) {
+    if (config.color != color) {
+        config.color = color;
+        pimpl->fillDidChange = true;
+    }
+
+    return config.color;
+}
+
+const F32& Text::rotationDeg(const F32& rotationDeg) {
+    if (config.rotationDeg != rotationDeg) {
+        config.rotationDeg = rotationDeg;
+        pimpl->transformDidChange = true;
+    }
+
+    return config.rotationDeg;
+}
+
+const std::string& Text::fill(const std::string& text) {
+    if (config.fill != text) {
+        config.fill = text;
+        pimpl->fillDidChange = true;
+    }
+
+    return config.fill;
+}
+
+Result Text::apply() {
+    if (pimpl->fillDidChange) {
+        JST_CHECK(updateVertices());
+
+        if (config.center.x || config.center.y) {
+            JST_CHECK(updateTransform());
+            pimpl->transformDidChange = false;
+        }
+
+        pimpl->fillDidChange = false;
+    }
+
+    if (pimpl->transformDidChange) {
+        JST_CHECK(updateTransform());
+
+        pimpl->transformDidChange = false;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Text::updateTransform() {
     auto transform = glm::mat4(1.0f);
 
     // Translate to screen position.
-    transform = glm::translate(transform, glm::vec3(position.x, position.y, 0.0f));
+    transform = glm::translate(transform, glm::vec3(config.position.x, config.position.y, 0.0f));
 
     // Scale to pixel size.
-    transform = glm::scale(transform, glm::vec3(pixelSize.x, pixelSize.y, 1.0f));
+    transform = glm::scale(transform, glm::vec3(config.pixelSize.x, config.pixelSize.y, 1.0f));
 
     // Scale font. 
-    transform = glm::scale(transform, glm::vec3(scale, scale, 1.0f));
+    transform = glm::scale(transform, glm::vec3(config.scale, config.scale, 1.0f));
 
     // Rotate.
-    transform = glm::rotate(transform, glm::radians(rotationDeg), glm::vec3(0.0f, 0.0f, 1.0f));
+    transform = glm::rotate(transform, glm::radians(config.rotationDeg), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // Center.
+    // TODO: Implement centering.
     
     // Save transform.
     pimpl->uniforms.transform = transform;
-    pimpl->uniforms.color = glm::vec3(1.0f, 0.0f, 1.0f);
+    pimpl->uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
 
     // Update uniform buffer.
     pimpl->fontUniformBuffer->update();
+
+    return Result::SUCCESS;
 }
 
-void Text::fill(const std::string& text) {
+Result Text::updateVertices() {
     // Clear buffers.
 
     std::fill(pimpl->posVertices.begin(), pimpl->posVertices.end(), glm::vec2(0.0f));
@@ -198,7 +291,7 @@ void Text::fill(const std::string& text) {
     I32 minx = 0;
     I32 miny = 0;
 
-    for (const auto& c : text) {
+    for (const auto& c : config.fill) {
         if (c >= 32 && c < 127) {
             if (c == ' ') {
                 continue;
@@ -210,12 +303,12 @@ void Text::fill(const std::string& text) {
         }
     }
 
-    JST_INFO("-> {}: {} {}", text, minx, miny);
+    JST_INFO("-> {}: {} {}", config.fill, minx, miny);
 
-    for (U64 i = 0; i < text.size(); i++) {
+    for (U64 i = 0; i < config.fill.size(); i++) {
         const auto& fontSize = pimpl->font->getConfig().size;
         const auto& atlasSize = pimpl->font->atlasSize();
-        const auto& c = text[i];
+        const auto& c = config.fill[i];
 
         if (c >= 32 && c < 127) {
             if (c == ' ') {
@@ -273,6 +366,8 @@ void Text::fill(const std::string& text) {
     pimpl->fontIndicesBuffer->update();
 
     // TODO: Implement partial drawings.
+
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream::Render::Components

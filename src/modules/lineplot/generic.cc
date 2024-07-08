@@ -318,6 +318,8 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Components::Text::Config cfg;
+        cfg.scale = 0.45f;
+        cfg.color = {1.0f, 0.0f, 1.0f, 1.0f};
         cfg.maxCharacters = 32;
         cfg.font = window->font("default_mono");
         JST_CHECK(window->build(text, cfg));
@@ -554,12 +556,10 @@ void Lineplot<D, T>::updateCursorState() {
 
     transform = glm::translate(transform, glm::vec3((cursorValueX + config.translation) * config.zoom, cursorValueY, 0.0f));
 
-    Extent2D<F32> pixelSize = {
-        2.0f / config.viewSize.x,
-        2.0f / config.viewSize.y
-    };
-    text->put(0.4f, {cursorValueX + 0.05f, cursorValueY - 0.05f}, pixelSize);
+    text->pixelSize({2.0f / config.viewSize.x, 2.0f / config.viewSize.y});
+    text->position({cursorValueX + 0.05f, cursorValueY - 0.05f});
     text->fill(jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY));
+    text->apply();
 
     // Scale cursor square aspect ratio.
 

@@ -39,6 +39,22 @@ inline Taint operator&(const Taint& lhs, const Taint& rhs) {
     return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
 }
 
+template<typename T = F32>
+struct ColorRGBA {
+    T r;
+    T g;
+    T b;
+    T a;
+
+    bool operator==(const ColorRGBA<T>& c) const {
+        return (r == c.r && g == c.g && b == c.b && a == c.a);
+    }
+
+    bool operator!=(const ColorRGBA<T>& c) const {
+        return (r != c.r || g != c.g || b != c.b || a != c.a);
+    }
+};
+
 template<typename T = U64>
 struct Extent2D {
     T x;
