@@ -1,7 +1,10 @@
 #include <ranges>
 
+#include "jetstream/render/components/font.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
+
+#include "assets/compressed_jbmm.hh"
 
 namespace Jetstream {
 
@@ -582,6 +585,32 @@ Result Instance::fetchDependencyTree(Locale locale, std::vector<Locale>& storage
     return Result::SUCCESS;
 }
 
+Result Instance::loadDefaultFonts() {
+    std::shared_ptr<Render::Components::Font> font;
+
+    // Default Mono
+
+    {
+        Render::Components::Font::Config cfg;
+        cfg.data = jbmm_compressed_data;
+        cfg.size = 32.0f;
+        JST_CHECK(_window->build(font, cfg));
+        JST_CHECK(_window->addFont("default_mono", font));
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Instance::unloadDefaultFonts() {
+    // Default Mono
+
+    {
+        JST_CHECK(_window->removeFont("default_mono"));
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Instance::start() {
     JST_DEBUG("[INSTANCE] Starting instance.");
 
@@ -617,6 +646,7 @@ Result Instance::destroy() {
     // Destroy window.
 
     if (_window) {
+        JST_CHECK(unloadDefaultFonts());
         JST_CHECK(_window->destroy());
         _window = nullptr;
     }

@@ -75,6 +75,7 @@ class JETSTREAM_API Instance {
         auto viewport = std::dynamic_pointer_cast<Viewport::Adapter<D>>(_viewport);
         _window = std::make_shared<Render::WindowImp<D>>(config, viewport);
         JST_CHECK(_window->create());
+        JST_CHECK(loadDefaultFonts());
 
         return Result::SUCCESS;
     }
@@ -418,6 +419,9 @@ class JETSTREAM_API Instance {
 
     bool computing();
     bool presenting();
+
+    Result loadDefaultFonts();
+    Result unloadDefaultFonts();
 
     Result start();
     Result stop();
