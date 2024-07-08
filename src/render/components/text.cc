@@ -22,6 +22,8 @@ struct Text::Impl {
 
     bool fillDidChange = false;
     bool transformDidChange = false;
+    I32 textWidth = 0;
+    I32 textHeight = 0;
 
     struct {
         glm::mat4 transform;
@@ -252,10 +254,7 @@ Result Text::updateTransform() {
     auto transform = glm::mat4(1.0f);
 
     // Translate to screen position.
-    transform = glm::translate(transform, glm::vec3(config.position.x, config.position.y, 0.0f));
-
-    // Scale to pixel size.
-    transform = glm::scale(transform, glm::vec3(config.pixelSize.x, config.pixelSize.y, 1.0f));
+    transform = glm::translate(transform, glm::vec3(config.position.x, config.position.y, 0.0f));    
 
     // Scale font. 
     transform = glm::scale(transform, glm::vec3(config.scale, config.scale, 1.0f));
@@ -263,8 +262,18 @@ Result Text::updateTransform() {
     // Rotate.
     transform = glm::rotate(transform, glm::radians(config.rotationDeg), glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // Center.
-    // TODO: Implement centering.
+    // Scale to pixel size.
+    transform = glm::scale(transform, glm::vec3(config.pixelSize.x, config.pixelSize.y, 1.0f));
+
+    // Horizontal center.
+    if (config.center.x) {
+        transform = glm::translate(transform, glm::vec3(-pimpl->textWidth / 2.0f, 0.0f, 0.0f));
+    }
+
+    // Vertical center.
+    if (config.center.y) {
+        transform = glm::translate(transform, glm::vec3(0.0f, pimpl->textHeight / 2.0f, 0.0f));
+    }
     
     // Save transform.
     pimpl->uniforms.transform = transform;
@@ -277,6 +286,17 @@ Result Text::updateTransform() {
 }
 
 Result Text::updateVertices() {
+    // Check config.
+
+    if (config.fill.empty()) {
+        return Result::SUCCESS;
+    }
+
+    if (config.fill.size() >= config.maxCharacters) {
+        JST_ERROR("[TEXT] Text too long ({} characters). Increase the max size.", config.fill.size());
+        return Result::ERROR;
+    }
+
     // Clear buffers.
 
     std::fill(pimpl->posVertices.begin(), pimpl->posVertices.end(), glm::vec2(0.0f));
@@ -355,9 +375,17 @@ Result Text::updateVertices() {
             pimpl->indices[(i * 6) + 4] = (i * 4) + 3;
             pimpl->indices[(i * 6) + 5] = (i * 4);
 
+            // Update horizontal position.
+
             x += b.xAdvance;
+
+            // Save text height.
+
+            pimpl->textHeight = std::max(pimpl->textHeight, static_cast<I32>(b.y1 - b.y0));
         }
     }
+
+    pimpl->textWidth = x;
 
     // Update buffers.
 
