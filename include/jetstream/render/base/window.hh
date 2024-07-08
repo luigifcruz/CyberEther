@@ -108,6 +108,11 @@ class Window {
         return _scalingFactor;
     }
 
+    bool hasFont(const std::string& name) const;
+    Result addFont(const std::string& name, const std::shared_ptr<Components::Font>& font);
+    Result removeFont(const std::string& name);
+    const std::shared_ptr<Components::Font>& font(const std::string& name) const;
+
  protected:
     Config config;
 
@@ -127,6 +132,10 @@ class Window {
     virtual Result underlyingEnd() = 0;
 
     virtual Result underlyingSynchronize() = 0;
+
+    // Font.
+
+    std::unordered_map<std::string, std::shared_ptr<Components::Font>> fonts;
 
     // Style scaling.
 

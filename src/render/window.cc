@@ -1,3 +1,4 @@
+#include "jetstream/render/components/font.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/platform.hh"
 
@@ -260,6 +261,53 @@ void Window::scaleStyle(const Viewport::Generic& viewport) {
     }
 
     _previousScalingFactor = _scalingFactor;
+}
+
+bool Window::hasFont(const std::string& name) const {
+    return fonts.contains(name);
+}
+
+Result Window::addFont(const std::string& name, const std::shared_ptr<Components::Font>& font) {
+    // Check if font exists.
+
+    if (hasFont(name)) {
+        JST_ERROR("[WINDOW] Font '{}' already exists.", name);
+        return Result::ERROR;
+    }
+
+    // Bind to window.
+
+    JST_CHECK(this->bind(font));
+
+    // Add to list.
+
+    fonts[name] = font;
+
+    return Result::SUCCESS;
+}
+
+Result Window::removeFont(const std::string& name) {
+    // Check if font exists.
+
+    if (!hasFont(name)) {
+        JST_ERROR("[WINDOW] Font '{}' does not exist.", name);
+        return Result::ERROR;
+    }
+
+    // Unbind from window.
+
+    const auto& font = fonts.at(name);
+    JST_CHECK(this->unbind(font));
+
+    // Remove from list.
+
+    fonts.erase(name);
+
+    return Result::SUCCESS;
+}
+
+const std::shared_ptr<Components::Font>& Window::font(const std::string& name) const {
+    return fonts.at(name);
 }
 
 }  // namespace Jetstream::Render
