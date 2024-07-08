@@ -70,12 +70,14 @@ Result Font::create(Window* window) {
     JST_DEBUG("[FONT] Loaded new font.");
     decompressedData.clear();
 
-    // Create font atlas.
+    // Calculate ascent and descent.
 
     stbtt_GetFontVMetrics(&pimpl->font, &pimpl->ascent, &pimpl->descent, nullptr);
     const auto scale = stbtt_ScaleForPixelHeight(&pimpl->font, config.size);
     pimpl->ascent = roundf(pimpl->ascent * scale);
     pimpl->descent = roundf(pimpl->descent * scale);
+
+    // Create font atlas.
 
     std::vector<uint8_t> atlas(pimpl->atlasSize.x * pimpl->atlasSize.y);
     
@@ -167,14 +169,6 @@ Result Font::destroy(Window* window) {
 
 const std::shared_ptr<Render::Texture>& Font::atlas() const {
     return pimpl->fontAtlasTexture;
-}
-
-const I32& Font::ascent() const {
-    return pimpl->ascent;
-}
-
-const I32& Font::descent() const {
-    return pimpl->descent;
 }
 
 const Extent2D<I32>& Font::atlasSize() const {

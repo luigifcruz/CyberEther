@@ -41,9 +41,6 @@ class Font : public Generic {
         return glyphs.at(code);
     }
 
-    const I32& ascent() const;
-    const I32& descent() const;
-
     const Extent2D<I32>& atlasSize() const;
 
     const std::shared_ptr<Render::Texture>& atlas() const;
