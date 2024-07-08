@@ -309,6 +309,21 @@ Result Lineplot<D, T>::createPresent() {
         JST_CHECK(window->build(signalProgram, cfg));
     }
 
+    // Font element.
+
+    if (!window->hasFont("default_mono")) {
+        JST_ERROR("Font 'default_mono' not found.");
+        return Result::ERROR;
+    }
+
+    {
+        Render::Components::Text::Config cfg;
+        cfg.maxCharacters = 32;
+        cfg.font = window->font("default_mono");
+        JST_CHECK(window->build(text, cfg));
+        JST_CHECK(window->bind(text));
+    }
+
     // Surface.
 
     {
@@ -330,6 +345,7 @@ Result Lineplot<D, T>::createPresent() {
             cursorProgram,
         };
         cfg.multisampled = true;
+        JST_CHECK(text->surface(cfg));
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
     }
@@ -348,6 +364,7 @@ Result Lineplot<D, T>::createPresent() {
 template<Device D, typename T>
 Result Lineplot<D, T>::destroyPresent() {
     JST_CHECK(window->unbind(surface));
+    JST_CHECK(window->unbind(text));
     JST_CHECK(window->unbind(lutTexture));
     JST_CHECK(window->unbind(signalPointsBuffer));
     JST_CHECK(window->unbind(signalVerticesBuffer));
@@ -536,6 +553,13 @@ void Lineplot<D, T>::updateCursorState() {
     // Translate the cursor to the cursor position.
 
     transform = glm::translate(transform, glm::vec3((cursorValueX + config.translation) * config.zoom, cursorValueY, 0.0f));
+
+    Extent2D<F32> pixelSize = {
+        2.0f / config.viewSize.x,
+        2.0f / config.viewSize.y
+    };
+    text->put(0.4f, {cursorValueX + 0.05f, cursorValueY - 0.05f}, pixelSize);
+    text->fill(jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY));
 
     // Scale cursor square aspect ratio.
 

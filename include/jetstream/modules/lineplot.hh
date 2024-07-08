@@ -9,6 +9,8 @@
 #include "jetstream/render/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
+#include "jetstream/render/components/text.hh"
+
 namespace Jetstream {
 
 #define JST_LINEPLOT_CPU(MACRO) \
@@ -163,6 +165,8 @@ class Lineplot : public Module, public Compute, public Present {
     std::shared_ptr<Render::Draw> drawGridVertex;
     std::shared_ptr<Render::Draw> drawSignalVertex;
     std::shared_ptr<Render::Draw> drawCursorVertex;
+
+    std::shared_ptr<Render::Components::Text> text;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
