@@ -7,7 +7,7 @@ Result Window::create() {
     // Set variables.
 
     _scalingFactor = 1.0f;
-    _previousScalingFactor = 1.0f;
+    _previousScalingFactor = 0.0f;
     graphicalLoopThreadStarted = false;
 
     // Lock the frame queue.
@@ -38,9 +38,9 @@ Result Window::destroy() {
 }
 
 Result Window::begin() {
-    // Process surface bind and unbind queue.
-    JST_CHECK(processSurfaceUnbindQueue());
-    JST_CHECK(processSurfaceBindQueue());
+    // Process bind and unbind queue.
+    JST_CHECK(processUnbindQueues());
+    JST_CHECK(processBindQueues());
 
     // Record graphical thread ID.
     graphicalLoopThreadStarted = true;
@@ -83,28 +83,72 @@ Result Window::synchronize() {
     return res;
 }
 
+Result Window::bind(const std::shared_ptr<Components::Generic>& component) {
+    // Call create on the component.
+    JST_CHECK(component->create(this));
+
+    // Push new component to the bind queue.
+    components.push_back(component);
+
+    return Result::SUCCESS;
+}
+
+Result Window::unbind(const std::shared_ptr<Components::Generic>& component) {
+    // Call destroy on the component.
+    JST_CHECK(component->destroy(this));
+
+    // Remove component from the list.
+    components.erase(std::remove(components.begin(), components.end(), component), components.end());
+
+    return Result::SUCCESS;
+}
+
+Result Window::bind(const std::shared_ptr<Buffer>& buffer) {
+    // Push new buffer to the bind queue.
+    bufferBindQueue.push(buffer);
+
+    // Submit bind queues.
+    JST_CHECK(submitBindQueues());
+
+    return Result::SUCCESS;
+}
+
+Result Window::unbind(const std::shared_ptr<Buffer>& buffer) {
+    // Push new buffer to the unbind queue.
+    bufferUnbindQueue.push(buffer);
+
+    // Submit unbind queues.
+    JST_CHECK(processUnbindQueues());
+
+    return Result::SUCCESS;
+}
+
+Result Window::bind(const std::shared_ptr<Texture>& texture) {
+    // Push new texture to the bind queue.
+    textureBindQueue.push(texture);
+
+    // Submit bind queues.
+    JST_CHECK(submitBindQueues());
+
+    return Result::SUCCESS;
+}
+
+Result Window::unbind(const std::shared_ptr<Texture>& texture) {
+    // Push new texture to the unbind queue.
+    textureUnbindQueue.push(texture);
+
+    // Submit unbind queues.
+    JST_CHECK(processUnbindQueues());
+
+    return Result::SUCCESS;
+}
+
 Result Window::bind(const std::shared_ptr<Surface>& surface) {
     // Push new surface to the bind queue.
     surfaceBindQueue.push(surface);
 
-    // This is overcomplicated because of Emscripten.
-    // The browser won't allow calling WebGPU function from other thread. 
-    // So we need to find a way to make it work for everyone.
-
-    // If graphical loop didn't start yet. Call the function directly.
-    if (!graphicalLoopThreadStarted) {
-        JST_CHECK(processSurfaceBindQueue());
-    } 
-    // Wait for graphical loop to process queue if current thread is different.
-    else if (graphicalLoopThreadId != std::this_thread::get_id()) {
-        while (!surfaceBindQueue.empty()) {
-            std::this_thread::yield();
-        }
-    }
-    // Call the function directly as fallback.
-    else {
-        JST_CHECK(processSurfaceBindQueue());
-    }
+    // Submit bind queues.
+    JST_CHECK(submitBindQueues());
 
     return Result::SUCCESS;
 }
@@ -113,22 +157,63 @@ Result Window::unbind(const std::shared_ptr<Surface>& surface) {
     // Push new surface to the unbind queue.
     surfaceUnbindQueue.push(surface);
 
-    // Wait completion.
-    if (graphicalLoopThreadId != std::this_thread::get_id()) {
-        while (!surfaceUnbindQueue.empty()) {
+    // Submit unbind queues.
+    JST_CHECK(processUnbindQueues());
+
+    return Result::SUCCESS;
+}
+
+Result Window::submitBindQueues() {
+    // This is overcomplicated because of Emscripten.
+    // The browser won't allow calling WebGPU function from other thread. 
+    // So we need to find a way to make it work for everyone.
+
+    // If graphical loop didn't start yet. Call the function directly.
+    if (!graphicalLoopThreadStarted) {
+        JST_CHECK(processBindQueues());
+    } 
+    // Wait for graphical loop to process queue if current thread is different.
+    else if (graphicalLoopThreadId != std::this_thread::get_id()) {
+        while (!surfaceBindQueue.empty() && !bufferBindQueue.empty() && !textureBindQueue.empty()) {
             std::this_thread::yield();
         }
     }
     // Call the function directly as fallback.
     else {
-        JST_CHECK(processSurfaceUnbindQueue());
+        JST_CHECK(processBindQueues());
     }
 
     return Result::SUCCESS;
 }
 
-Result Window::processSurfaceBindQueue() {
+Result Window::submitUnbindQueues() {
+    // Wait completion.
+    if (graphicalLoopThreadId != std::this_thread::get_id()) {
+        while (!surfaceUnbindQueue.empty() && !bufferUnbindQueue.empty() && !textureUnbindQueue.empty()) {
+            std::this_thread::yield();
+        }
+    }
+    // Call the function directly as fallback.
+    else {
+        JST_CHECK(processUnbindQueues());
+    }
+
+    return Result::SUCCESS;
+}
+
+
+Result Window::processBindQueues() {
     std::lock_guard<std::mutex> lock(newFrameQueueMutex);
+
+    while (!bufferBindQueue.empty()) {
+        JST_CHECK(bindBuffer(bufferBindQueue.front()));
+        bufferBindQueue.pop();
+    }
+
+    while (!textureBindQueue.empty()) {
+        JST_CHECK(bindTexture(textureBindQueue.front()));
+        textureBindQueue.pop();
+    }
 
     while (!surfaceBindQueue.empty()) {
         JST_CHECK(bindSurface(surfaceBindQueue.front()));
@@ -138,8 +223,18 @@ Result Window::processSurfaceBindQueue() {
     return Result::SUCCESS;
 }
 
-Result Window::processSurfaceUnbindQueue() {
+Result Window::processUnbindQueues() {
     std::lock_guard<std::mutex> lock(newFrameQueueMutex);
+
+    while (!bufferUnbindQueue.empty()) {
+        JST_CHECK(unbindBuffer(bufferUnbindQueue.front()));
+        bufferUnbindQueue.pop();
+    }
+
+    while (!textureUnbindQueue.empty()) {
+        JST_CHECK(unbindTexture(textureUnbindQueue.front()));
+        textureUnbindQueue.pop();
+    }
 
     while (!surfaceUnbindQueue.empty()) {
         JST_CHECK(unbindSurface(surfaceUnbindQueue.front()));

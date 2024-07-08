@@ -45,6 +45,7 @@ Result Constellation<D, T>::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -54,6 +55,7 @@ Result Constellation<D, T>::createPresent() {
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
     
     {
@@ -63,6 +65,7 @@ Result Constellation<D, T>::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
     
     {
@@ -90,6 +93,7 @@ Result Constellation<D, T>::createPresent() {
         cfg.pfmt = Render::Texture::PixelFormat::RED;
         cfg.ptype = Render::Texture::PixelType::F32;
         JST_CHECK(window->build(signalTexture, cfg));
+        JST_CHECK(window->bind(signalTexture));
     }
 
     {
@@ -97,6 +101,7 @@ Result Constellation<D, T>::createPresent() {
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
+        JST_CHECK(window->bind(lutTexture));
     }
     
     {
@@ -107,6 +112,7 @@ Result Constellation<D, T>::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(signalUniformBuffer, cfg));
+        JST_CHECK(window->bind(signalUniformBuffer));
     }
 
     {
@@ -133,12 +139,6 @@ Result Constellation<D, T>::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.programs = {program};
-        cfg.buffers = {
-            fillScreenVerticesBuffer,
-            fillScreenTextureVerticesBuffer,
-            fillScreenIndicesBuffer,
-            signalUniformBuffer,
-        };
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
     }
@@ -163,6 +163,12 @@ Result Constellation<D, T>::present() {
 template<Device D, typename T>
 Result Constellation<D, T>::destroyPresent() {
     JST_CHECK(window->unbind(surface));
+    JST_CHECK(window->unbind(signalTexture));
+    JST_CHECK(window->unbind(lutTexture));
+    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
+    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
+    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
+    JST_CHECK(window->unbind(signalUniformBuffer));
 
     return Result::SUCCESS;
 }

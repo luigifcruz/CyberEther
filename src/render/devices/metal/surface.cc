@@ -29,12 +29,6 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
             std::dynamic_pointer_cast<KernelImp<Device::Metal>>(kernel)
         );
     }
-
-    for (auto& buffer : config.buffers) {
-        buffers.push_back(
-            std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer)
-        );
-    }
 }
 
 Result Implementation::create() {
@@ -44,10 +38,6 @@ Result Implementation::create() {
     JST_ASSERT(renderPassDescriptor);
 
     JST_CHECK(createFramebuffer());
-
-    for (auto& buffer : buffers) {
-        JST_CHECK(buffer->create());
-    }
 
     for (auto& program : programs) {
         JST_CHECK(program->create((config.multisampled) ? framebuffer : framebufferResolve));
@@ -71,10 +61,6 @@ Result Implementation::destroy() {
 
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
-    }
-
-    for (auto& buffer : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     JST_CHECK(destroyFramebuffer());

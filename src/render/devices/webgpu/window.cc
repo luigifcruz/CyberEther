@@ -1,5 +1,7 @@
 #include "jetstream/render/devices/webgpu/window.hh"
 #include "jetstream/render/devices/webgpu/surface.hh"
+#include "jetstream/render/devices/webgpu/buffer.hh"
+#include "jetstream/render/devices/webgpu/texture.hh"
 
 #include "tools/imgui_impl_wgpu.h"
 
@@ -12,34 +14,56 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[WebGPU] Binding surface to window.");
+template<typename T>
+Result Implementation::bindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
+    // Cast generic resource.
+    auto _resource = std::dynamic_pointer_cast<T>(resource);
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    // Create the resource.
+    JST_CHECK(_resource->create());
 
-    // Create the Surface.
-    JST_CHECK(_surface->create());
-
-    // Add Surface to window.
-    surfaces.push_back(_surface);
+    // Add resource to container.
+    container.push_back(_resource);
 
     return Result::SUCCESS;
 }
 
-Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[WebGPU] Unbinding surface from window.");
+template<typename T>
+Result Implementation::unbindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
+    // Cast generic resource.
+    auto _resource = std::dynamic_pointer_cast<T>(resource);
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    // Destroy the resource.
+    JST_CHECK(_resource->destroy());
 
-    // Destroy the Surface.
-    JST_CHECK(_surface->destroy());
-
-    // Remove Surface from window.
-    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+    // Remove resource from container.
+    container.erase(std::remove(container.begin(), container.end(), _resource), container.end());
 
     return Result::SUCCESS;
+}
+
+Result Implementation::bindBuffer(const std::shared_ptr<Buffer>& buffer) {
+    return bindResource<BufferImp<Device::WebGPU>>(buffer, buffers);
+}
+
+Result Implementation::unbindBuffer(const std::shared_ptr<Buffer>& buffer) {
+    return unbindResource<BufferImp<Device::WebGPU>>(buffer, buffers);
+}
+
+Result Implementation::bindTexture(const std::shared_ptr<Texture>& texture) {
+    return bindResource<TextureImp<Device::WebGPU>>(texture, textures);
+}
+
+Result Implementation::unbindTexture(const std::shared_ptr<Texture>& texture) {
+    return unbindResource<TextureImp<Device::WebGPU>>(texture, textures);
+}
+
+Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
+    return bindResource<SurfaceImp<Device::WebGPU>>(surface, surfaces);
+}
+
+Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
+    return unbindResource<SurfaceImp<Device::WebGPU>>(surface, surfaces);
 }
 
 Result Implementation::underlyingCreate() {

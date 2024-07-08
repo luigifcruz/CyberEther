@@ -1,5 +1,7 @@
 #include "jetstream/render/devices/vulkan/window.hh"
 #include "jetstream/render/devices/vulkan/surface.hh"
+#include "jetstream/render/devices/vulkan/buffer.hh"
+#include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 #include "tools/imgui_impl_vulkan.h"
@@ -15,39 +17,61 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[VULKAN] Binding surface to window.");
+template<typename T>
+Result Implementation::bindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
+    // Cast generic resource.
+    auto _resource = std::dynamic_pointer_cast<T>(resource);
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    // Create the resource.
+    JST_CHECK(_resource->create());
 
-    // Create the Surface.
-    JST_CHECK(_surface->create());
-
-    // Add Surface to window.
-    surfaces.push_back(_surface);
+    // Add resource to container.
+    container.push_back(_resource);
 
     return Result::SUCCESS;
 }
 
-Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    JST_DEBUG("[VULKAN] Unbinding surface from window.");
-
-    // Synchronize all outstanding command buffers.
+template<typename T>
+Result Implementation::unbindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
+    // Sychronize all outstanding command buffers.
     JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
         JST_ERROR("[VULKAN] Can't wait for queue to complete.");
     });
 
-    // Cast generic Surface.
-    auto _surface = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    // Cast generic resource.
+    auto _resource = std::dynamic_pointer_cast<T>(resource);
 
-    // Destroy the Surface.
-    JST_CHECK(_surface->destroy());
+    // Destroy the resource.
+    JST_CHECK(_resource->destroy());
 
-    // Remove Surface from window.
-    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _surface), surfaces.end());
+    // Remove resource from container.
+    container.erase(std::remove(container.begin(), container.end(), _resource), container.end());
 
     return Result::SUCCESS;
+}
+
+Result Implementation::bindBuffer(const std::shared_ptr<Buffer>& buffer) {
+    return bindResource<BufferImp<Device::Vulkan>>(buffer, buffers);
+}
+
+Result Implementation::unbindBuffer(const std::shared_ptr<Buffer>& buffer) {
+    return unbindResource<BufferImp<Device::Vulkan>>(buffer, buffers);
+}
+
+Result Implementation::bindTexture(const std::shared_ptr<Texture>& texture) {
+    return bindResource<TextureImp<Device::Vulkan>>(texture, textures);
+}
+
+Result Implementation::unbindTexture(const std::shared_ptr<Texture>& texture) {
+    return unbindResource<TextureImp<Device::Vulkan>>(texture, textures);
+}
+
+Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
+    return bindResource<SurfaceImp<Device::Vulkan>>(surface, surfaces);
+}
+
+Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
+    return unbindResource<SurfaceImp<Device::Vulkan>>(surface, surfaces);
 }
 
 Result Implementation::underlyingCreate() {

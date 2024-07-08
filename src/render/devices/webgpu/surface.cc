@@ -23,22 +23,12 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
             std::dynamic_pointer_cast<KernelImp<Device::WebGPU>>(kernel)
         );
     }
-
-    for (auto& buffer : config.buffers) {
-        buffers.push_back(
-            std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(buffer)
-        );
-    }
 }
 
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating surface.");
 
     JST_CHECK(createFramebuffer());
-
-    for (auto& buffer : buffers) {
-        JST_CHECK(buffer->create());
-    }
 
     for (auto& program : programs) {
         JST_CHECK(program->create(framebuffer->getTextureFormat()));
@@ -62,10 +52,6 @@ Result Implementation::destroy() {
 
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
-    }
-
-    for (auto& buffer : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     JST_CHECK(destroyFramebuffer());

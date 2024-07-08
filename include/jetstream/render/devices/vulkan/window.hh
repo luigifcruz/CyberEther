@@ -22,6 +22,12 @@ class WindowImp<Device::Vulkan> : public Window {
     };
 
  protected:
+    Result bindBuffer(const std::shared_ptr<Buffer>& buffer) override;
+    Result unbindBuffer(const std::shared_ptr<Buffer>& buffer) override;
+
+    Result bindTexture(const std::shared_ptr<Texture>& texture) override;
+    Result unbindTexture(const std::shared_ptr<Texture>& texture) override;
+
     Result bindSurface(const std::shared_ptr<Surface>& surface) override;
     Result unbindSurface(const std::shared_ptr<Surface>& surface) override;
 
@@ -48,7 +54,16 @@ class WindowImp<Device::Vulkan> : public Window {
     std::vector<VkFence> imagesInFlight;
     size_t currentFrame = 0;
 
+    template<typename T>
+    Result bindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container);
+
+    template<typename T>
+    Result unbindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container);
+
+    std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
+    std::vector<std::shared_ptr<TextureImp<Device::Vulkan>>> textures;
     std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
+
     std::shared_ptr<Viewport::Adapter<Device::Vulkan>> viewport;
 
     Result createImgui();

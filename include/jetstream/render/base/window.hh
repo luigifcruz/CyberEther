@@ -11,6 +11,7 @@
 #include "jetstream/parser.hh"
 #include "jetstream/viewport/base.hh"
 #include "jetstream/render/base/surface.hh"
+#include "jetstream/render/components/generic.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/render/tools/imgui.h"
@@ -52,6 +53,12 @@ class Window {
 
     virtual constexpr Device device() const = 0;
 
+    Result bind(const std::shared_ptr<Buffer>& buffer);
+    Result unbind(const std::shared_ptr<Buffer>& buffer);
+
+    Result bind(const std::shared_ptr<Texture>& texture);
+    Result unbind(const std::shared_ptr<Texture>& texture);
+
     Result bind(const std::shared_ptr<Surface>& surface);
     Result unbind(const std::shared_ptr<Surface>& surface);
 
@@ -89,6 +96,12 @@ class Window {
  protected:
     Config config;
 
+    virtual Result bindBuffer(const std::shared_ptr<Buffer>& buffer) = 0;
+    virtual Result unbindBuffer(const std::shared_ptr<Buffer>& buffer) = 0;
+
+    virtual Result bindTexture(const std::shared_ptr<Texture>& texture) = 0;
+    virtual Result unbindTexture(const std::shared_ptr<Texture>& texture) = 0;
+
     virtual Result bindSurface(const std::shared_ptr<Surface>& surface) = 0;
     virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
 
@@ -108,6 +121,9 @@ class Window {
     void scaleStyle(const Viewport::Generic& viewport);
 
  private:
+    std::vector<std::shared_ptr<Buffer>> buffers;
+    std::vector<std::shared_ptr<Texture>> textures;
+
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
     std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;
 
@@ -115,8 +131,17 @@ class Window {
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;
 
-    Result processSurfaceBindQueue();
-    Result processSurfaceUnbindQueue();
+    Result processBindQueues();
+    Result processUnbindQueues();
+
+    Result submitBindQueues();
+    Result submitUnbindQueues();
+
+    std::queue<std::shared_ptr<Buffer>> bufferBindQueue;
+    std::queue<std::shared_ptr<Buffer>> bufferUnbindQueue;
+
+    std::queue<std::shared_ptr<Texture>> textureBindQueue;
+    std::queue<std::shared_ptr<Texture>> textureUnbindQueue;
 
     std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
     std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;

@@ -20,7 +20,6 @@ class Surface {
         std::shared_ptr<Texture> framebuffer;
         std::vector<std::shared_ptr<Kernel>> kernels;
         std::vector<std::shared_ptr<Program>> programs;
-        std::vector<std::shared_ptr<Buffer>> buffers;
         bool multisampled = false;
     };
 

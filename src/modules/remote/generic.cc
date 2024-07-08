@@ -494,6 +494,7 @@ Result Remote<D, T>::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -503,6 +504,7 @@ Result Remote<D, T>::createPresent() {
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
 
     {
@@ -512,6 +514,7 @@ Result Remote<D, T>::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     {
@@ -536,6 +539,7 @@ Result Remote<D, T>::createPresent() {
         cfg.size = remoteFramebufferSize;
         cfg.buffer = remoteFramebufferMemory.data();
         JST_CHECK(window->build(remoteFramebufferTexture, cfg));
+        JST_CHECK(window->bind(remoteFramebufferTexture));
     }
 
     {
@@ -558,11 +562,6 @@ Result Remote<D, T>::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.programs = {program};
-        cfg.buffers = {
-            fillScreenVerticesBuffer,
-            fillScreenTextureVerticesBuffer,
-            fillScreenIndicesBuffer,
-        };
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
     }
@@ -573,6 +572,10 @@ Result Remote<D, T>::createPresent() {
 template<Device D, typename T>
 Result Remote<D, T>::destroyPresent() {
     JST_CHECK(window->unbind(surface));
+    JST_CHECK(window->unbind(remoteFramebufferTexture));
+    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
+    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
+    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
 
     return Result::SUCCESS;
 }

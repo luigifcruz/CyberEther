@@ -27,12 +27,6 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     JST_DEBUG("[WebGPU] Creating program.");
 
-    // Create program targets.
-
-    for (const auto& texture : textures) {
-        JST_CHECK(texture->create());
-    }
-
     // Load shaders from memory.
 
     if (config.shaders.contains(Device::WebGPU) == 0) {
@@ -181,10 +175,6 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
 
 Result Implementation::destroy() {
     JST_CHECK(_draw->destroy());
-
-    for (const auto& texture : textures) {
-        JST_CHECK(texture->destroy());
-    }
 
     bindings.clear();
     bindGroupEntries.clear();

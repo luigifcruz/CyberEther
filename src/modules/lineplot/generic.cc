@@ -97,6 +97,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(gridUniformBuffer, cfg));
+        JST_CHECK(window->bind(gridUniformBuffer));
     }
 
     {
@@ -107,6 +108,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(gridPointsBuffer, cfg));
+        JST_CHECK(window->bind(gridPointsBuffer));
     }
 
     {
@@ -119,6 +121,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
         JST_CHECK(window->build(gridVerticesBuffer, cfg));
+        JST_CHECK(window->bind(gridVerticesBuffer));
     }
 
     {
@@ -169,6 +172,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(cursorUniformBuffer, cfg));
+        JST_CHECK(window->bind(cursorUniformBuffer));
     }
 
     {
@@ -178,6 +182,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(cursorVerticesBuffer, cfg));
+        JST_CHECK(window->bind(cursorVerticesBuffer));
     }
 
     {
@@ -187,6 +192,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(cursorIndicesBuffer, cfg));
+        JST_CHECK(window->bind(cursorIndicesBuffer));
     }
 
     {
@@ -226,6 +232,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(signalUniformBuffer, cfg));
+        JST_CHECK(window->bind(signalUniformBuffer));
     }
 
     {
@@ -238,6 +245,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
         JST_CHECK(window->build(signalPointsBuffer, cfg));
+        JST_CHECK(window->bind(signalPointsBuffer));
     }
 
     {
@@ -250,6 +258,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
         JST_CHECK(window->build(signalVerticesBuffer, cfg));
+        JST_CHECK(window->bind(signalVerticesBuffer));
     }
 
     {
@@ -284,6 +293,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
+        JST_CHECK(window->bind(lutTexture));
     }
 
     {
@@ -319,17 +329,6 @@ Result Lineplot<D, T>::createPresent() {
             signalProgram,
             cursorProgram,
         };
-        cfg.buffers = {
-            signalPointsBuffer,
-            signalVerticesBuffer,
-            signalUniformBuffer,
-            gridPointsBuffer,
-            gridVerticesBuffer,
-            gridUniformBuffer,
-            cursorUniformBuffer,
-            cursorVerticesBuffer,
-            cursorIndicesBuffer,
-        };
         cfg.multisampled = true;
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
@@ -349,6 +348,16 @@ Result Lineplot<D, T>::createPresent() {
 template<Device D, typename T>
 Result Lineplot<D, T>::destroyPresent() {
     JST_CHECK(window->unbind(surface));
+    JST_CHECK(window->unbind(lutTexture));
+    JST_CHECK(window->unbind(signalPointsBuffer));
+    JST_CHECK(window->unbind(signalVerticesBuffer));
+    JST_CHECK(window->unbind(signalUniformBuffer));
+    JST_CHECK(window->unbind(gridPointsBuffer));
+    JST_CHECK(window->unbind(gridVerticesBuffer));
+    JST_CHECK(window->unbind(gridUniformBuffer));
+    JST_CHECK(window->unbind(cursorUniformBuffer));
+    JST_CHECK(window->unbind(cursorVerticesBuffer));
+    JST_CHECK(window->unbind(cursorIndicesBuffer));
 
     return Result::SUCCESS;
 }

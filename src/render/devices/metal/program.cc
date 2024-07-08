@@ -101,19 +101,11 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
 
     renderPipelineDescriptor->release();
 
-    for (const auto& texture : textures) {
-        JST_CHECK(texture->create());
-    }
-
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
     JST_CHECK(_draw->destroy());
-
-    for (const auto& texture : textures) {
-        JST_CHECK(texture->destroy());
-    }
 
     renderPipelineState->release();
 

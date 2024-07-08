@@ -30,12 +30,6 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
             std::dynamic_pointer_cast<KernelImp<Device::Vulkan>>(kernel)
         );
     }
-
-    for (auto& buffer : config.buffers) {
-        buffers.push_back(
-            std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(buffer)
-        );
-    }
 }
 
 Result Implementation::create() {
@@ -106,10 +100,6 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create render pass.");   
     });
 
-    for (auto& buffer : buffers) {
-        JST_CHECK(buffer->create());
-    }
-
     for (auto& program : programs) {
         JST_CHECK(program->create(renderPass, (config.multisampled) ? framebuffer : framebufferResolve));
     }
@@ -158,10 +148,6 @@ Result Implementation::destroy() {
 
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
-    }
-
-    for (auto& buffer : buffers) {
-        JST_CHECK(buffer->destroy());
     }
 
     vkDestroyFramebuffer(device, framebufferObject, nullptr);

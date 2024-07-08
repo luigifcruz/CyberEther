@@ -54,12 +54,6 @@ Result Implementation::create(VkRenderPass& renderPass,
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
 
-    // Initiate textures.
-
-    for (const auto& texture : textures) {
-        JST_CHECK(texture->create());
-    }
-
     // Create uniforms and texture descriptor buffers.
 
     bindingOffset = 0;
@@ -319,10 +313,6 @@ Result Implementation::destroy() {
     if (!bindings.empty()) {
         vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
         vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-    }
-
-    for (const auto& texture : textures) {
-        JST_CHECK(texture->destroy());
     }
 
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
