@@ -83,11 +83,13 @@ Result Implementation::underlyingCreate() {
 Result Implementation::underlyingDestroy() {
     JST_DEBUG("[WebGPU] Destroying window.");
 
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->destroy());
-    }
-
     JST_CHECK(destroyImgui());
+
+    if (!buffers.empty() || !textures.empty() || !surfaces.empty()) {
+        JST_WARN("[WebGPU] Resources are still bounded to this window "
+                 "(buffers={}, textures={}, surfaces={}).", 
+                 buffers.size(), textures.size(), surfaces.size());
+    }
 
     return Result::SUCCESS;
 }

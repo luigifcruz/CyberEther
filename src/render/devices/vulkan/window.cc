@@ -175,12 +175,13 @@ Result Implementation::underlyingDestroy() {
 
     JST_CHECK(destroyImgui());
 
-    for (auto& surface : surfaces) {
-        JST_CHECK(surface->destroy());
-    }
-    surfaces.clear();
-
     JST_CHECK(destroySynchronizationObjects());
+
+    if (!buffers.empty() || !textures.empty() || !surfaces.empty()) {
+        JST_WARN("[VULKAN] Resources are still bounded to this window "
+                 "(buffers={}, textures={}, surfaces={}).", 
+                 buffers.size(), textures.size(), surfaces.size());
+    }
 
     vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
 
