@@ -82,8 +82,6 @@ class Text : public Generic {
 
     Result updateVertices();
     Result updateTransform();
-
-    friend class Text;
 };
 
 }  // namespace Jetstream::Render::Components
