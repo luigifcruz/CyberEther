@@ -19,6 +19,10 @@ class Generic {
     virtual Result destroy(Window*) {
         return Result::SUCCESS;
     }
+
+    virtual Result present() {
+        return Result::SUCCESS;
+    }
 };
 
 }  // namespace Jetstream::Render::Components

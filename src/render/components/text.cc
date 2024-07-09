@@ -22,6 +22,12 @@ struct Text::Impl {
 
     bool fillDidChange = false;
     bool transformDidChange = false;
+
+    bool updateFontUniformBufferFlag = false;
+    bool updateFontPosVerticiesBufferFlag = false;
+    bool updateFontFillVerticesBufferFlag = false;
+    bool updateFontIndicesBufferFlag = false;
+
     I32 textWidth = 0;
     I32 textHeight = 0;
 
@@ -133,7 +139,7 @@ Result Text::create(Window* window) {
             pimpl->font->atlas(),
         };
         cfg.buffers = {
-            {pimpl->fontUniformBuffer, Render::Program::Target::VERTEX | 
+            {pimpl->fontUniformBuffer, Render::Program::Target::VERTEX |
                                        Render::Program::Target::FRAGMENT},
         };
         JST_CHECK(window->build(pimpl->fontProgram, cfg));
@@ -254,9 +260,9 @@ Result Text::updateTransform() {
     auto transform = glm::mat4(1.0f);
 
     // Translate to screen position.
-    transform = glm::translate(transform, glm::vec3(config.position.x, config.position.y, 0.0f));    
+    transform = glm::translate(transform, glm::vec3(config.position.x, config.position.y, 0.0f));
 
-    // Scale font. 
+    // Scale font.
     transform = glm::scale(transform, glm::vec3(config.scale, config.scale, 1.0f));
 
     // Rotate.
@@ -274,13 +280,13 @@ Result Text::updateTransform() {
     if (config.center.y) {
         transform = glm::translate(transform, glm::vec3(0.0f, pimpl->textHeight / 2.0f, 0.0f));
     }
-    
+
     // Save transform.
     pimpl->uniforms.transform = transform;
     pimpl->uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
 
     // Update uniform buffer.
-    pimpl->fontUniformBuffer->update();
+    pimpl->updateFontUniformBufferFlag = true;
 
     return Result::SUCCESS;
 }
@@ -354,14 +360,14 @@ Result Text::updateVertices() {
 
             // Normalize texture coordinates.
 
-            F32 s0 = b.x0 / static_cast<F32>(atlasSize.x);    
+            F32 s0 = b.x0 / static_cast<F32>(atlasSize.x);
             F32 t0 = b.y0 / static_cast<F32>(atlasSize.y);
             F32 s1 = b.x1 / static_cast<F32>(atlasSize.x);
             F32 t1 = b.y1 / static_cast<F32>(atlasSize.y);
 
             // Add texture coordinates.
 
-            pimpl->fillVertices[(i * 4) + 0] = glm::vec2(s0, t0);            
+            pimpl->fillVertices[(i * 4) + 0] = glm::vec2(s0, t0);
             pimpl->fillVertices[(i * 4) + 1] = glm::vec2(s1, t0);
             pimpl->fillVertices[(i * 4) + 2] = glm::vec2(s1, t1);
             pimpl->fillVertices[(i * 4) + 3] = glm::vec2(s0, t1);
@@ -389,11 +395,35 @@ Result Text::updateVertices() {
 
     // Update buffers.
 
-    pimpl->fontPosVerticesBuffer->update();
-    pimpl->fontFillVerticesBuffer->update();
-    pimpl->fontIndicesBuffer->update();
+    pimpl->updateFontPosVerticiesBufferFlag = true;
+    pimpl->updateFontFillVerticesBufferFlag = true;
+    pimpl->updateFontIndicesBufferFlag = true;
 
     // TODO: Implement partial drawings.
+
+    return Result::SUCCESS;
+}
+
+Result Text::present() {
+    if (pimpl->updateFontFillVerticesBufferFlag) {
+        pimpl->fontFillVerticesBuffer->update();
+        pimpl->updateFontFillVerticesBufferFlag = false;
+    }
+
+    if (pimpl->updateFontPosVerticiesBufferFlag) {
+        pimpl->fontPosVerticesBuffer->update();
+        pimpl->updateFontPosVerticiesBufferFlag = false;
+    }
+
+    if (pimpl->updateFontIndicesBufferFlag) {
+        pimpl->fontIndicesBuffer->update();
+        pimpl->updateFontIndicesBufferFlag = false;
+    }
+
+    if (pimpl->updateFontUniformBufferFlag) {
+        pimpl->fontUniformBuffer->update();
+        pimpl->updateFontUniformBufferFlag = false;
+    }
 
     return Result::SUCCESS;
 }

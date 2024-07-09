@@ -11,7 +11,7 @@ namespace Jetstream::Render::Components {
 
 class Text : public Generic {
  public:
-    struct Config {    
+    struct Config {
         F32 scale = 1.0f;
         Extent2D<F32> position = {0.0f, 0.0f};
         Extent2D<F32> pixelSize = {0.0f, 0.0f};
@@ -30,6 +30,8 @@ class Text : public Generic {
     Result destroy(Window* window);
 
     Result surface(Render::Surface::Config& config);
+
+    Result present();
 
     constexpr const F32& scale() const {
         return config.scale;

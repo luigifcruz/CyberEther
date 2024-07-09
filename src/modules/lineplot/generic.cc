@@ -68,7 +68,7 @@ Result Lineplot<D, T>::create() {
 
     gridPoints = Tensor<Device::CPU, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 2, 2});
     gridVertices = Tensor<D, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4});
-    
+
     cursorSignalPoint = Tensor<Device::CPU, F32>({2});
 
     return Result::SUCCESS;
@@ -156,7 +156,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.shaders = ShadersPackage["grid"];
         cfg.draw = drawGridVertex;
         cfg.buffers = {
-            {gridUniformBuffer, Render::Program::Target::VERTEX | 
+            {gridUniformBuffer, Render::Program::Target::VERTEX |
                                 Render::Program::Target::FRAGMENT},
         };
         cfg.enableAlphaBlending = true;
@@ -216,7 +216,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.shaders = ShadersPackage["cursor"];
         cfg.draw = drawCursorVertex;
         cfg.buffers = {
-            {cursorUniformBuffer, Render::Program::Target::VERTEX | 
+            {cursorUniformBuffer, Render::Program::Target::VERTEX |
                                   Render::Program::Target::FRAGMENT},
         };
         cfg.enableAlphaBlending = true;
@@ -287,7 +287,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
         JST_CHECK(window->build(drawSignalVertex, cfg));
     }
-    
+
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
@@ -302,7 +302,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.draw = drawSignalVertex;
         cfg.textures = {lutTexture};
         cfg.buffers = {
-            {signalUniformBuffer, Render::Program::Target::VERTEX | 
+            {signalUniformBuffer, Render::Program::Target::VERTEX |
                                   Render::Program::Target::FRAGMENT},
         };
         cfg.enableAlphaBlending = true;
@@ -344,7 +344,7 @@ Result Lineplot<D, T>::createPresent() {
             signalKernel
         };
         cfg.programs = {
-            gridProgram, 
+            gridProgram,
             signalProgram,
             cursorProgram,
         };
@@ -416,6 +416,8 @@ Result Lineplot<D, T>::present() {
         updateCursorUniformBufferFlag = false;
     }
 
+    JST_CHECK(text->present());
+
     return Result::SUCCESS;
 }
 
@@ -445,7 +447,7 @@ std::pair<F32, F32> Lineplot<D, T>::zoom(const Extent2D<F32>& mouse_pos, const F
     updateState();
 
     return {
-        config.zoom, 
+        config.zoom,
         config.translation
     };
 }
@@ -543,8 +545,8 @@ void Lineplot<D, T>::updateCursorState() {
     const auto [x, y] = cursorPos;
     const auto stepX = 2.0f / numberOfElements;
 
-    const auto cursorIndex = std::clamp(static_cast<U64>((x + 1.0f) / stepX), 
-                                        static_cast<U64>(0), 
+    const auto cursorIndex = std::clamp(static_cast<U64>((x + 1.0f) / stepX),
+                                        static_cast<U64>(0),
                                         static_cast<U64>(numberOfElements - 1));
 
     Tensor<D, F32> signalPointSlice = signalPoints;
