@@ -9,6 +9,12 @@
 #include "stb_image.hh"
 #include "resources/resources.hh"
 
+// Looks like GCC-13 has a false-positive bug that is quite annoying.
+// Silencing this for now. This should be fixed in GCC-14.
+#if defined(__GNUC__) && (__GNUC__ >= 13)
+#pragma GCC diagnostic ignored "-Wdangling-reference"
+#endif
+
 namespace Jetstream {
 
 Compositor::Compositor(Instance& instance)
