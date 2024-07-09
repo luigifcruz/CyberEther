@@ -80,7 +80,7 @@ Result Font::create(Window* window) {
     // Create font atlas.
 
     std::vector<uint8_t> atlas(pimpl->atlasSize.x * pimpl->atlasSize.y);
-    
+
     int x = 0;
     int y = 0;
     int maxHeight = 0;
@@ -88,16 +88,16 @@ Result Font::create(Window* window) {
     for (int ch = 32; ch < 128; ch++) {
         uint8_t* sdf;
         int width, height, xoffset, yoffset;
-    
-        if (!(sdf = stbtt_GetCodepointSDF(&pimpl->font, 
-                                          scale, 
-                                          ch, 
+
+        if (!(sdf = stbtt_GetCodepointSDF(&pimpl->font,
+                                          scale,
+                                          ch,
                                           pimpl->atlasPadding,
                                           pimpl->atlasOneEdgeValue,
                                           pimpl->atlasPixelDistScale,
-                                          &width, 
-                                          &height, 
-                                          &xoffset, 
+                                          &width,
+                                          &height,
+                                          &xoffset,
                                           &yoffset))) {
             continue;
         }
@@ -142,7 +142,7 @@ Result Font::create(Window* window) {
 
     {
         Render::Texture::Config cfg;
-        cfg.size = { 
+        cfg.size = {
             static_cast<U64>(pimpl->atlasSize.x),
             static_cast<U64>(pimpl->atlasSize.y),
         };
@@ -165,6 +165,10 @@ Result Font::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->fontAtlasTexture));
 
     return Result::SUCCESS;
+}
+
+const Font::Glyph& Font::glyph(const I32& code) const {
+    return glyphs.at(code);
 }
 
 const std::shared_ptr<Render::Texture>& Font::atlas() const {

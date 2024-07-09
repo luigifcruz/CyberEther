@@ -37,12 +37,8 @@ class Font : public Generic {
         F32 xAdvance;
     };
 
-    constexpr const Glyph& glyph(const I32& code) const {
-        return glyphs.at(code);
-    }
-
+    const Glyph& glyph(const I32& code) const;
     const Extent2D<I32>& atlasSize() const;
-
     const std::shared_ptr<Render::Texture>& atlas() const;
 
  private:
