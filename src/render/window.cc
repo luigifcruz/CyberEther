@@ -64,7 +64,7 @@ Result Window::begin() {
     if (res != Result::SUCCESS) {
         newFrameQueueMutex.unlock();
     }
-    
+
     return res;
 }
 
@@ -126,7 +126,7 @@ Result Window::unbind(const std::shared_ptr<Buffer>& buffer) {
     bufferUnbindQueue.push(buffer);
 
     // Submit unbind queues.
-    JST_CHECK(processUnbindQueues());
+    JST_CHECK(submitUnbindQueues());
 
     return Result::SUCCESS;
 }
@@ -146,7 +146,7 @@ Result Window::unbind(const std::shared_ptr<Texture>& texture) {
     textureUnbindQueue.push(texture);
 
     // Submit unbind queues.
-    JST_CHECK(processUnbindQueues());
+    JST_CHECK(submitUnbindQueues());
 
     return Result::SUCCESS;
 }
@@ -166,20 +166,20 @@ Result Window::unbind(const std::shared_ptr<Surface>& surface) {
     surfaceUnbindQueue.push(surface);
 
     // Submit unbind queues.
-    JST_CHECK(processUnbindQueues());
+    JST_CHECK(submitUnbindQueues());
 
     return Result::SUCCESS;
 }
 
 Result Window::submitBindQueues() {
     // This is overcomplicated because of Emscripten.
-    // The browser won't allow calling WebGPU function from other thread. 
+    // The browser won't allow calling WebGPU function from other thread.
     // So we need to find a way to make it work for everyone.
 
     // If graphical loop didn't start yet. Call the function directly.
     if (!graphicalLoopThreadStarted) {
         JST_CHECK(processBindQueues());
-    } 
+    }
     // Wait for graphical loop to process queue if current thread is different.
     else if (graphicalLoopThreadId != std::this_thread::get_id()) {
         while (!surfaceBindQueue.empty() && !bufferBindQueue.empty() && !textureBindQueue.empty()) {
