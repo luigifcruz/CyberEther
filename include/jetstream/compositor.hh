@@ -99,7 +99,7 @@ class JETSTREAM_API Compositor {
     Result checkAutoLayoutState();
 
     Result drawStatic();
-    Result drawGraph();
+    Result drawFlowgraph();
 
     Instance& instance;
 

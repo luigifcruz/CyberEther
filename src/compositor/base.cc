@@ -369,6 +369,9 @@ Result Compositor::destroy() {
     // Stop execution.
     running = false;
 
+    // Acquire lock.
+    lock();
+
     // Reseting variables.
 
     rightClickMenuEnabled = false;
@@ -381,11 +384,6 @@ Result Compositor::destroy() {
     infoPanelEnabled = true;
     globalModalContentId = 0;
     nodeContextMenuNodeId = 0;
-
-    // Reseting locks.
-
-    interfaceHalt.clear();
-    interfaceHalt.notify_all();
 
     // Clearing buffers.
 
@@ -400,8 +398,15 @@ Result Compositor::destroy() {
     nodeStates.clear();
 
     // Add static.
-
     stacks["Graph"] = {true, 0};
+
+    // Release lock.
+    unlock();
+
+    // Reseting locks.
+
+    interfaceHalt.clear();
+    interfaceHalt.notify_all();
 
     return Result::SUCCESS;
 }
@@ -454,7 +459,7 @@ Result Compositor::draw() {
     // Draw main interface.
 
     JST_CHECK(drawStatic());
-    JST_CHECK(drawGraph());
+    JST_CHECK(drawFlowgraph());
 
     // Release lock.
 
@@ -2059,10 +2064,77 @@ Result Compositor::drawStatic() {
         ImGui::EndPopup();
     }
 
+    //
+    // Debug Latency Render
+    //
+
+    [&](){
+        if (!debugLatencyEnabled) {
+            return;
+        }
+
+        const auto& mainWindowWidth = io.DisplaySize.x;
+        const auto& mainWindowHeight = io.DisplaySize.y;
+
+        const auto timerWindowWidth  = 200.0f * scalingFactor;
+        const auto timerWindowHeight = 85.0f * scalingFactor;
+
+        static F32 x = 0.0f;
+        static F32 xd = 1.0f;
+
+        x += xd;
+
+        if (x > (mainWindowWidth - timerWindowWidth)) {
+            xd = -xd;
+        }
+        if (x < 0.0f) {
+            xd = -xd;
+        }
+    
+        ImGui::SetNextWindowSize(ImVec2(timerWindowWidth, timerWindowHeight));
+        ImGui::SetNextWindowPos(ImVec2(x, (mainWindowHeight / 2.0f) - (timerWindowHeight / 2.0f)));
+
+        if (!ImGui::Begin("Timer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+            ImGui::End();
+            return;
+        }
+
+        U64 ms = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        ImGui::TextFormatted("Time: {} ms", ms);
+
+        const F32 blockWidth = timerWindowWidth / 6.0f;
+        const F32 blockHeight = 35.0f;
+        ImVec2 windowPos = ImGui::GetWindowPos();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+        ImVec2 blockPos = ImVec2(windowPos.x, windowPos.y + timerWindowHeight - blockHeight);
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 0, 0, 255));      // Red
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 255, 0, 255));      // Green
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 255, 255));      // Blue
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 0, 255));    // Yellow
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 255, 255));  // White
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 0, 255));        // Black
+
+        ImGui::End();
+    }();
+
+    //
+    // Debug Demo Render
+    //
+
+    if (debugDemoEnabled) {
+        ImGui::ShowDemoWindow();
+    }
+
     return Result::SUCCESS;
 }
 
-Result Compositor::drawGraph() {
+Result Compositor::drawFlowgraph() {
     // Load local variables.
     const auto& scalingFactor = instance.window().scalingFactor();
     const auto& nodeStyle = ImNodes::GetStyle();
@@ -2891,73 +2963,6 @@ Result Compositor::drawGraph() {
 
         ImGui::End();
     }();
-
-    //
-    // Debug Latency Render
-    //
-
-    [&](){
-        if (!debugLatencyEnabled) {
-            return;
-        }
-
-        const auto& mainWindowWidth = io.DisplaySize.x;
-        const auto& mainWindowHeight = io.DisplaySize.y;
-
-        const auto timerWindowWidth  = 200.0f * scalingFactor;
-        const auto timerWindowHeight = 85.0f * scalingFactor;
-
-        static F32 x = 0.0f;
-        static F32 xd = 1.0f;
-
-        x += xd;
-
-        if (x > (mainWindowWidth - timerWindowWidth)) {
-            xd = -xd;
-        }
-        if (x < 0.0f) {
-            xd = -xd;
-        }
-    
-        ImGui::SetNextWindowSize(ImVec2(timerWindowWidth, timerWindowHeight));
-        ImGui::SetNextWindowPos(ImVec2(x, (mainWindowHeight / 2.0f) - (timerWindowHeight / 2.0f)));
-
-        if (!ImGui::Begin("Timer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
-            ImGui::End();
-            return;
-        }
-
-        U64 ms = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        ImGui::TextFormatted("Time: {} ms", ms);
-
-        const F32 blockWidth = timerWindowWidth / 6.0f;
-        const F32 blockHeight = 35.0f;
-        ImVec2 windowPos = ImGui::GetWindowPos();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-        ImVec2 blockPos = ImVec2(windowPos.x, windowPos.y + timerWindowHeight - blockHeight);
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 0, 0, 255));      // Red
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 255, 0, 255));      // Green
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 255, 255));      // Blue
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 0, 255));    // Yellow
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 255, 255));  // White
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 0, 255));        // Black
-
-        ImGui::End();
-    }();
-
-    //
-    // Debug Demo Render
-    //
-
-    if (debugDemoEnabled) {
-        ImGui::ShowDemoWindow();
-    }
 
     return Result::SUCCESS;
 }
