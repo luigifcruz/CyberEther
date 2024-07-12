@@ -318,11 +318,11 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Components::Text::Config cfg;
-        cfg.scale = 0.5f;
+        cfg.scale = 0.60f;
         cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
         cfg.maxCharacters = 128;
         cfg.fill = "There is no reason an individual would ever want a computer in their home.";
-        cfg.center = {true, true};
+        cfg.center = {false, false};
         cfg.font = window->font("default_mono");
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
@@ -561,7 +561,7 @@ void Lineplot<D, T>::updateCursorState() {
     transform = glm::translate(transform, glm::vec3((cursorValueX + config.translation) * config.zoom, cursorValueY, 0.0f));
 
     text->pixelSize({2.0f / config.viewSize.x, 2.0f / config.viewSize.y});
-    //text->position({cursorValueX + 0.05f, cursorValueY - 0.05f});
+    text->position({cursorValueX + 0.05f, cursorValueY - 0.05f});
     text->fill(jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY));
     text->apply();
 
