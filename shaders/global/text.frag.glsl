@@ -14,7 +14,18 @@ layout(set = 0, binding = 1) uniform texture2D remoteFramebufferTex;
 layout(set = 0, binding = 2) uniform sampler remoteFramebufferSam;
 
 void main() {
-    float distance = texture(sampler2D(remoteFramebufferTex, remoteFramebufferSam), inTexcoord).r;
-    float alpha = smoothstep(0.5 - 0.1, 0.5 + 0.1, distance);
+    // Get the color from the texture.
+    float distance = 0.5 - texture(sampler2D(remoteFramebufferTex, remoteFramebufferSam), inTexcoord).r;
+    
+    // Calculate the gradient of the distance field.
+    vec2 ddist = vec2(dFdx(distance), dFdy(distance));
+    
+    // Convert distance to pixel space.
+    float pixelDist = distance / length(ddist);
+    
+    // Apply anti-aliasing.
+    float alpha = clamp(0.5 - pixelDist, 0.0, 1.0);
+
+    // Output the color with the calculated alpha.
     outColor = vec4(uniforms.color, alpha);
 }

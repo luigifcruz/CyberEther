@@ -20,11 +20,17 @@ void main() {
     // Get the color from the texture.
     vec3 color = texture(sampler2D(u_texture, u_sampler), texCoord).rgb;
 
-    // Calculate the distance to the line's edges
-    float distance = length(fragNormal);
+    // Calculate the distance to the line's center.
+    float distance = 0.5 - (1.0 - length(fragNormal));
 
-    // Apply smoothing with a step function
-    float alpha = 1.0 - pow(smoothstep(0.0, 1.0, distance), 2);
+    // Calculate the gradient of the distance field.
+    vec2 ddist = vec2(dFdx(distance), dFdy(distance));
+
+    // Convert distance to pixel space.
+    float pixelDist = distance / length(ddist);
+
+    // Apply anti-aliasing.
+    float alpha = clamp(0.5 - pixelDist, 0.0, 1.0);
 
     // Output the color with the calculated alpha.
     outColor = vec4(color, alpha);
