@@ -324,13 +324,12 @@ Result Text::updateVertices() {
                 continue;
             }
 
+            // TODO: Check if there is no better way to do this.
             const auto& b = pimpl->font->glyph(c - 32);
             minx = std::min(minx, static_cast<I32>(x + b.xOffset));
             miny = std::max(miny, static_cast<I32>(y - b.yOffset));
         }
     }
-
-    JST_INFO("-> {}: {} {}", config.fill, minx, miny);
 
     for (U64 i = 0; i < config.fill.size(); i++) {
         const auto& fontSize = pimpl->font->getConfig().size;
@@ -349,8 +348,6 @@ Result Text::updateVertices() {
             F32 y0 = y - b.yOffset - miny;
             F32 x1 = x0 + (b.x1 - b.x0);
             F32 y1 = y0 - (b.y1 - b.y0);
-
-            JST_INFO("-> {}: {} {} {}", c, x0, y0, b.xOffset);
 
             // Add positions.
 
