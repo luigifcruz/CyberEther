@@ -88,7 +88,7 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
         colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
         colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
         colorAttachment->setRgbBlendOperation(MTL::BlendOperationAdd);
-        colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorSourceAlpha);
+        colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
         colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
         colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
     }

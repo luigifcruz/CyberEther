@@ -136,7 +136,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
     blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
     blendState.color.operation = wgpu::BlendOperation::Add;
-    blendState.alpha.srcFactor = wgpu::BlendFactor::SrcAlpha;
+    blendState.alpha.srcFactor = wgpu::BlendFactor::One;
     blendState.alpha.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
     blendState.alpha.operation = wgpu::BlendOperation::Add;
 
