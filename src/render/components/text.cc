@@ -142,6 +142,7 @@ Result Text::create(Window* window) {
             {pimpl->fontUniformBuffer, Render::Program::Target::VERTEX |
                                        Render::Program::Target::FRAGMENT},
         };
+        cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(pimpl->fontProgram, cfg));
     }
 
