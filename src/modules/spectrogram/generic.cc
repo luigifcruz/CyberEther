@@ -159,6 +159,7 @@ Result Spectrogram<D, T>::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.programs = {signalProgram};
+        cfg.clearColor = {0.1f, 0.1f, 0.1f, 1.0f};
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
     }

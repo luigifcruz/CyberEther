@@ -349,6 +349,7 @@ Result Lineplot<D, T>::createPresent() {
             cursorProgram,
         };
         cfg.multisampled = true;
+        cfg.clearColor = {0.1f, 0.1f, 0.1f, 1.0f};
         JST_CHECK(text->surface(cfg));
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
