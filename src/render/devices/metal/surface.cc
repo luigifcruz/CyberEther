@@ -78,6 +78,11 @@ Result Implementation::createFramebuffer() {
         JST_CHECK(framebuffer->create());
     }
 
+    const auto clearColor = MTL::ClearColor(config.clearColor.r, 
+                                            config.clearColor.g, 
+                                            config.clearColor.b, 
+                                            config.clearColor.a);
+
     auto colorAttachDescOff = renderPassDescriptor->colorAttachments()->object(0)->init();
 
     if (config.multisampled) {
@@ -87,13 +92,13 @@ Result Implementation::createFramebuffer() {
         colorAttachDescOff->setResolveTexture(textureResolve);
         colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
         colorAttachDescOff->setStoreAction(MTL::StoreActionMultisampleResolve);
-        colorAttachDescOff->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 0.0));
+        colorAttachDescOff->setClearColor(clearColor);
     } else {
         auto texture = reinterpret_cast<const MTL::Texture*>(framebufferResolve->raw());
         colorAttachDescOff->setTexture(texture);
         colorAttachDescOff->setLoadAction(MTL::LoadActionClear);
         colorAttachDescOff->setStoreAction(MTL::StoreActionStore);
-        colorAttachDescOff->setClearColor(MTL::ClearColor(0.0, 0.0, 0.0, 0.0));
+        colorAttachDescOff->setClearColor(clearColor);
     }
 
     return Result::SUCCESS;

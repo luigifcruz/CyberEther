@@ -20,6 +20,7 @@ class Surface {
         std::shared_ptr<Texture> framebuffer;
         std::vector<std::shared_ptr<Kernel>> kernels;
         std::vector<std::shared_ptr<Program>> programs;
+        ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         bool multisampled = false;
     };
 

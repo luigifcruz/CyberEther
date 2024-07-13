@@ -93,10 +93,10 @@ Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
     colorAttachment.view = framebuffer->getViewHandle();
     colorAttachment.loadOp = wgpu::LoadOp::Clear;
     colorAttachment.storeOp = wgpu::StoreOp::Store;
-    colorAttachment.clearValue.r = 0.0f;
-    colorAttachment.clearValue.g = 0.0f;
-    colorAttachment.clearValue.b = 0.0f;
-    colorAttachment.clearValue.a = 0.0f;
+    colorAttachment.clearValue.r = config.clearColor.r;
+    colorAttachment.clearValue.g = config.clearColor.g;
+    colorAttachment.clearValue.b = config.clearColor.b;
+    colorAttachment.clearValue.a = config.clearColor.a;
 
     wgpu::RenderPassDescriptor renderPass{};
     renderPass.colorAttachmentCount = 1;
