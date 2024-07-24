@@ -15,16 +15,16 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     // Calculate the distance to the line's center.
-    float distance = 0.5 - (1.0 - abs(2.0 * fragNormal.y - 1.0));
+    float distance = (1.0 - abs(2.0 * fragNormal.y - 1.0));
 
     // Calculate the gradient of the distance field.
-    vec2 ddist = vec2(dFdx(distance), dFdy(distance));
+    float width = fwidth(distance);
+
+    // Adjust this value to control the overall sharpness.
+    float edgeValue = 0.5;
 
     // Convert distance to pixel space.
-    float pixelDist = distance / length(ddist);
-
-    // Apply anti-aliasing.
-    float alpha = clamp(0.5 - pixelDist, 0.0, 1.0);
+    float alpha = smoothstep(edgeValue - width, edgeValue + width, distance);
 
     // Output the color with the calculated alpha.
     outColor = vec4(fragColor, alpha);
