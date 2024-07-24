@@ -20,10 +20,10 @@ void main() {
     float width = fwidth(distance);
     
     // Adjust this value to control the overall sharpness.
-    float edgeValue = 0.5;
+    float edgeSharpness = 0.5;
     
     // Convert distance to pixel space.
-    float alpha = smoothstep(edgeValue - width, edgeValue + width, distance);
+    float alpha = smoothstep(0.5 - edgeSharpness * width, 0.5 + edgeSharpness * width, distance);
     
     // Output the color with the calculated alpha.
     outColor = vec4(uniforms.color, alpha);
