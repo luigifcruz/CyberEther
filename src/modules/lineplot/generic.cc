@@ -424,11 +424,10 @@ Result Lineplot<D, T>::present() {
 
 template<Device D, typename T>
 const Extent2D<U64>& Lineplot<D, T>::viewSize(const Extent2D<U64>& viewSize) {
-    if (surface->size(viewSize * config.scale) != this->viewSize()) {
+    if (surface->size(viewSize * config.scale) != this->viewSize() * config.scale) {
         config.viewSize = surface->size() / config.scale;
+        updateState();
     }
-
-    updateState();
 
     return this->viewSize();
 }
