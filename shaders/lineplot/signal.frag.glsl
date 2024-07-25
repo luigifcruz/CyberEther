@@ -30,7 +30,7 @@ void main() {
     float edgeSharpness = 0.75;
 
     // Convert distance to pixel space.
-    float alpha = smoothstep(0.5 - edgeSharpness * width, 0.5 + edgeSharpness * width, distance);
+    float alpha = smoothstep(0.25 - edgeSharpness * width, 0.25 + edgeSharpness * width, distance);
 
     // Output the color with the calculated alpha.
     outColor = vec4(color, alpha);

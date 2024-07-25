@@ -19,7 +19,7 @@ class Lineplot : public Block {
         Extent2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
-        F32 thickness = 2.0f;
+        F32 thickness = 1.0f;
 
         JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };

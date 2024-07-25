@@ -500,8 +500,8 @@ void Lineplot<D, T>::updateState() {
     // Update thickness.
 
     auto& [x, y] = thickness;
-    x = ((2.0f / config.viewSize.x) * config.thickness) / 2.0f;
-    y = ((2.0f / config.viewSize.y) * config.thickness) / 2.0f;
+    x = (2.0f / config.viewSize.x) * config.thickness;
+    y = (2.0f / config.viewSize.y) * config.thickness;
 
     // Update the transform.
 
