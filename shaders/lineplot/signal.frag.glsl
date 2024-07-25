@@ -26,11 +26,8 @@ void main() {
     // Calculate the gradient of the distance field.
     float width = fwidth(distance);
 
-    // Adjust this value to control the overall sharpness.
-    float edgeSharpness = 0.75;
-
     // Convert distance to pixel space.
-    float alpha = smoothstep(0.25 - edgeSharpness * width, 0.25 + edgeSharpness * width, distance);
+    float alpha = smoothstep(0.25 - width, 0.25 + width, distance);
 
     // Output the color with the calculated alpha.
     outColor = vec4(color, alpha);
