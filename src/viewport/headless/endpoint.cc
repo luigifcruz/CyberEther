@@ -742,7 +742,8 @@ Result Endpoint::startGstreamerEndpoint() {
         g_object_set(elements["rawparser"], "format", 12, nullptr);
         g_object_set(elements["rawparser"], "width", config.size.x, nullptr);
         g_object_set(elements["rawparser"], "height", config.size.y, nullptr);
-        g_object_set(elements["rawparser"], "framerate", 1.0f/config.framerate, nullptr);
+        // TODO: Unclear if this is needed. Crash on some systems.
+        //g_object_set(elements["rawparser"], "framerate", 1.0f/config.framerate, nullptr);
     }
 
     if (config.codec == Viewport::VideoCodec::H264) {
