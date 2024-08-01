@@ -449,8 +449,6 @@ GstFlowReturn Remote<D, T>::OnSampleCallback(GstElement* sink, gpointer data) {
         GstMapInfo map;
         gst_buffer_map(buffer, &map, GST_MAP_READ);
 
-        JST_TRACE("new frame");
-
         {
             std::lock_guard<std::mutex> lock(that->localFramebufferMutex);
             memcpy(that->remoteFramebufferMemory.data(), map.data, map.size);
@@ -536,7 +534,7 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.vertices = {
+        cfg.buffers = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -562,9 +560,7 @@ Result Remote<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["framebuffer"];
-        cfg.draws = {
-            drawVertex,
-        };
+        cfg.draw = drawVertex;
         cfg.textures = {remoteFramebufferTexture};
         JST_CHECK(window->build(program, cfg));
     }
