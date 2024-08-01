@@ -255,7 +255,7 @@ Result Endpoint::createSocketEndpoint() {
                 // Read data.
 
                 char buffer[1024] = {0};
-                
+
                 if (read(brokerClientFileDescriptor, buffer, sizeof(buffer)) < 0) {
                     break;
                 }
@@ -353,24 +353,13 @@ Result Endpoint::createSocketEndpoint() {
                                 continue;
                             }
 
-                            // Get client address.
+                            // Parse client address.
 
-                            struct sockaddr_in brokerEndpointClientAddress = {};
-                            socklen_t brokerEndpointClientAddressLength = sizeof(brokerEndpointClientAddress);
-                            if (getpeername(brokerClientFileDescriptor, (struct sockaddr*)&brokerEndpointClientAddress, &brokerEndpointClientAddressLength) < 0) {
-                                JST_ERROR("[ENDPOINT] Failed to get client address from broker endpoint.");
-                                auto response = jst::fmt::format("err:Failed to get client address.\n");
-                                send(brokerClientFileDescriptor, response.c_str(), response.size(), 0);
-                                continue;
-                            }
-
-                            // Get client address string.
-
-                            char brokerEndpointClientAddressString[INET_ADDRSTRLEN];
-                            inet_ntop(AF_INET, &brokerEndpointClientAddress.sin_addr, brokerEndpointClientAddressString, INET_ADDRSTRLEN);
-                            socketAddress = brokerEndpointClientAddressString;
+                            socketAddress = line.substr(12, line.length() - 1);
                             socketPort = brokerPort + 1;
                             socketConnected = true;
+
+                            JST_DEBUG("[ENDPOINT] Starting streaming to client: '{}:{}'.", socketAddress, socketPort);
 
                             // Create Gstreamer endpoint.
 
@@ -467,7 +456,7 @@ Result Endpoint::createSocketEndpoint() {
             }
 
             // Close client socket.
-            
+
             JST_INFO("[ENDPOINT] Client disconnected. Closing socket.");
             close(brokerClientFileDescriptor);
             stopGstreamerEndpoint();
@@ -498,7 +487,7 @@ Result Endpoint::destroySocketEndpoint() {
     }
 
     JST_CHECK(stopGstreamerEndpoint());
-    
+
     return Result::SUCCESS;
 }
 
@@ -606,7 +595,7 @@ Result Endpoint::destroyGstreamerEndpoint() {
     return Result::SUCCESS;
 }
 
-Result Endpoint::checkGstreamerPlugins(const std::vector<std::string>& plugins, 
+Result Endpoint::checkGstreamerPlugins(const std::vector<std::string>& plugins,
                                        const bool& silent) {
     for (const auto& plugin : plugins) {
         if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
@@ -714,7 +703,7 @@ Result Endpoint::startGstreamerEndpoint() {
         elements["sink"] = gst_element_factory_make("filesink", "sink");
         elementOrder.push_back("sink");
     }
-    
+
     for (const auto& [name, element] : elements) {
         if (!element) {
             JST_ERROR("[ENDPOINT] Failed to create gstreamer element '{}'.", name);
@@ -739,7 +728,7 @@ Result Endpoint::startGstreamerEndpoint() {
                                         "interlace-mode", G_TYPE_STRING, "progressive",
                                         "colorimetry", G_TYPE_STRING, "bt709",
                                         nullptr);
-    
+
     if (_encodingStrategy == Strategy::HardwareNVENC && _inputMemoryDevice == Device::CUDA) {
         GstCapsFeatures *features = gst_caps_features_new("memory:CUDAMemory", nullptr);
         gst_caps_set_features(caps, 0, features);
@@ -795,7 +784,7 @@ Result Endpoint::startGstreamerEndpoint() {
         g_object_set(elements["sink"], "sync", false, nullptr);
         g_object_set(elements["sink"], "buffer-size", Backend::GetSocketBufferSize(), nullptr);
         g_object_set(elements["sink"], "host", socketAddress.c_str(), "port", socketPort, nullptr);
-    } 
+    }
 
     if (type == Endpoint::Type::File) {
         g_object_set(elements["sink"], "location", config.endpoint.c_str(), nullptr);
@@ -942,9 +931,9 @@ Result Endpoint::pushNewFrame(const void* data) {
         // Calculate timings.
 
         const auto currentFrameTime = std::chrono::steady_clock::now();
-        const auto elapsedSinceLastFrame = std::chrono::duration_cast<std::chrono::nanoseconds>(currentFrameTime - 
+        const auto elapsedSinceLastFrame = std::chrono::duration_cast<std::chrono::nanoseconds>(currentFrameTime -
                                                                                                 initialFrameTime);
-        const auto elapsedSinceLastKeyframe = std::chrono::duration_cast<std::chrono::seconds>(currentFrameTime - 
+        const auto elapsedSinceLastKeyframe = std::chrono::duration_cast<std::chrono::seconds>(currentFrameTime -
                                                                                                lastKeyframeTime);
 
         // Set buffer timings (PTS and DTS).

@@ -12,6 +12,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/backend/devices/cpu/helpers.hh"
 
+#include "jetstream/types.hh"
 #include "shaders/remote_shaders.hh"
 #include "assets/constants.hh"
 
@@ -81,7 +82,7 @@ Result Remote<D, T>::create() {
     }
     brokerConnected = true;
 
-    // Send framebuffer size request command. 
+    // Send framebuffer size request command.
 
     {
         auto response = jst::fmt::format("cmd:fbsize\n");
@@ -133,9 +134,9 @@ Result Remote<D, T>::create() {
                         remoteFramebufferSize.x = std::stoi(line.substr(10, 15));
                         remoteFramebufferSize.y = std::stoi(line.substr(16, 21));
 
-                        JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.x, 
+                        JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.x,
                                                                                               remoteFramebufferSize.y);
-                        
+
                         auto response = jst::fmt::format("cmd:framerate\n");
                         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
 
@@ -162,7 +163,7 @@ Result Remote<D, T>::create() {
                         remoteFramebufferCodec = Viewport::StringToVideoCodec(codec);
 
                         JST_DEBUG("Received `ok:codec` from server: `id={}`.", codec);
-                        
+
                         b.set_value(Result::SUCCESS);
 
                         continue;
@@ -214,13 +215,27 @@ Result Remote<D, T>::create() {
 
     // Allocating framebuffer memory.
 
-    remoteFramebufferMemory.resize(remoteFramebufferSize.x * 
+    remoteFramebufferMemory.resize(remoteFramebufferSize.x *
                                    remoteFramebufferSize.y * 4);
 
-    // Send streaming start command. 
+    // Get client local address.
+
+    struct sockaddr_in localAddr;
+    socklen_t addrLen = sizeof(localAddr);
+
+    if (getsockname(brokerFileDescriptor, (struct sockaddr*)&localAddr, &addrLen) < 0) {
+        JST_ERROR("Failed to get local address.");
+        return Result::ERROR;
+    }
+
+    char localAddressString[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &localAddr.sin_addr, localAddressString, sizeof(localAddressString));
+    JST_DEBUG("Local client address: '{}'", localAddressString)
+
+    // Send streaming start command.
 
     {
-        auto response = jst::fmt::format("cmd:connect\n");
+        auto response = jst::fmt::format("cmd:connect:{}\n", localAddressString);
         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
     }
 
@@ -381,7 +396,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
     // Link callbacks.
 
     g_signal_connect(elements["sink"], "new-sample", G_CALLBACK(OnSampleCallback), this);
-        
+
     // Add elements to pipeline.
 
     for (const auto& [name, element] : elements) {
@@ -434,6 +449,8 @@ GstFlowReturn Remote<D, T>::OnSampleCallback(GstElement* sink, gpointer data) {
         GstMapInfo map;
         gst_buffer_map(buffer, &map, GST_MAP_READ);
 
+        JST_TRACE("new frame");
+
         {
             std::lock_guard<std::mutex> lock(that->localFramebufferMutex);
             memcpy(that->remoteFramebufferMemory.data(), map.data, map.size);
@@ -441,7 +458,7 @@ GstFlowReturn Remote<D, T>::OnSampleCallback(GstElement* sink, gpointer data) {
         }
 
         that->_statistics.frames += 1;
-        
+
         gst_buffer_unmap(buffer, &map);
 
         gst_sample_unref(sample);
@@ -477,7 +494,7 @@ Result Remote<D, T>::destroyGstreamerEndpoint() {
         gst_element_set_state(pipeline, GST_STATE_NULL);
 
         // Destroy pipeline.
-        gst_object_unref(pipeline);        
+        gst_object_unref(pipeline);
     }
 
     return Result::SUCCESS;
@@ -519,7 +536,7 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -545,7 +562,9 @@ Result Remote<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["framebuffer"];
-        cfg.draw = drawVertex;
+        cfg.draws = {
+            drawVertex,
+        };
         cfg.textures = {remoteFramebufferTexture};
         JST_CHECK(window->build(program, cfg));
     }
@@ -656,10 +675,10 @@ const Extent2D<U64>& Remote<D, T>::viewSize(const Extent2D<U64>& viewSize) {
 
     // Correct aspect ratio.
 
-    const F32 nativeAspectRatio = static_cast<F32>(remoteFramebufferSize.x) / 
+    const F32 nativeAspectRatio = static_cast<F32>(remoteFramebufferSize.x) /
                                   static_cast<F32>(remoteFramebufferSize.y);
 
-    const F32 viewAspectRatio = static_cast<F32>(viewSize.x) / 
+    const F32 viewAspectRatio = static_cast<F32>(viewSize.x) /
                                 static_cast<F32>(viewSize.y);
 
     if (viewAspectRatio > nativeAspectRatio) {
