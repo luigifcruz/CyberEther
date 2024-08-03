@@ -126,9 +126,9 @@ class Lineplot : public Block {
 
             // Handle zoom interaction.
 
-            const auto& scroll = ImGui::GetIO().MouseWheel;    
+            const auto& scroll = ImGui::GetIO().MouseWheel;
             if (scroll != 0.0f) {
-                config.zoom += ((scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
+                config.zoom += ((scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) :
                                                   std::min(config.zoom * -0.02f, -0.02f));
                 std::tie(config.zoom, config.translation) = lineplot->zoom(mouseRelPos, config.zoom);
             }

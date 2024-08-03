@@ -44,10 +44,10 @@ class JETSTREAM_API Compositor {
         return *this;
     }
 
-    Result addBlock(const Locale& locale, 
-                    const std::shared_ptr<Block>& block, 
-                    const Parser::RecordMap& inputMap, 
-                    const Parser::RecordMap& outputMap, 
+    Result addBlock(const Locale& locale,
+                    const std::shared_ptr<Block>& block,
+                    const Parser::RecordMap& inputMap,
+                    const Parser::RecordMap& outputMap,
                     const Parser::RecordMap& stateMap,
                     const Block::Fingerprint& fingerprint);
     Result removeBlock(const Locale& locale);
@@ -124,8 +124,8 @@ class JETSTREAM_API Compositor {
 
     std::shared_ptr<Render::Texture> primaryBannerTexture;
     std::shared_ptr<Render::Texture> secondaryBannerTexture;
-    Result loadImageAsset(const uint8_t* binary_data, 
-                          const U64& binary_len, 
+    Result loadImageAsset(const uint8_t* binary_data,
+                          const U64& binary_len,
                           std::shared_ptr<Render::Texture>& texture);
 
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
@@ -140,7 +140,7 @@ class JETSTREAM_API Compositor {
     std::unordered_map<NodeId, Locale> nodeLocaleMap;
 
     CreateBlockMail createBlockStagingMailbox;
-    
+
     std::optional<LinkMail> linkMailbox;
     std::optional<UnlinkMail> unlinkMailbox;
     std::optional<CreateBlockMail> createBlockMailbox;

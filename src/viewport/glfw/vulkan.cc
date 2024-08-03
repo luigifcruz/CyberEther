@@ -57,7 +57,7 @@ Result Implementation::create() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
     auto [width, height] = config.size;
-    window = glfwCreateWindow(width, height, 
+    window = glfwCreateWindow(width, height,
         config.title.c_str(), nullptr, nullptr);
 
     if (!window) {
@@ -71,7 +71,7 @@ Result Implementation::create() {
 
     auto& instance = Backend::State<Device::Vulkan>()->getInstance();
     JST_VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface), [&]{
-        JST_ERROR("[VULKAN] GLFW failed to create window surface.");     
+        JST_ERROR("[VULKAN] GLFW failed to create window surface.");
     });
 
     JST_CHECK(createSwapchain());
@@ -170,7 +170,7 @@ Result Implementation::createSwapchain() {
         createInfo.subresourceRange.layerCount = 1;
 
         JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &swapchainImageViews[i]), [&]{
-            JST_ERROR("[VULKAN] Failed to create image view."); 
+            JST_ERROR("[VULKAN] Failed to create image view.");
         });
     }
 
@@ -183,7 +183,7 @@ Result Implementation::destroySwapchain() {
     for (auto& swapchainImageView : swapchainImageViews) {
         vkDestroyImageView(device, swapchainImageView, nullptr);
     }
-    vkDestroySwapchainKHR(device, swapchain, nullptr);   
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
 
     return Result::SUCCESS;
 }
@@ -204,7 +204,7 @@ F32 Implementation::scale(const F32& scale) const {
     F32 x, y;
     glfwGetWindowContentScale(window, &x, &y);
 
-    // This is a Linux/Windows fix. If the Framebuffer and Window sizes are the same
+    // This is a X11/Windows fix. If the Framebuffer and Window sizes are the same
     // but the Scale is different than 1, it means HIDPI is necessary.
     if ((w_width == f_width) and (x > 1.0)) {
         return scale * x;
@@ -255,7 +255,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     const VkResult result = vkQueuePresentKHR(presentQueue, &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR ||
-        result == VK_SUBOPTIMAL_KHR || 
+        result == VK_SUBOPTIMAL_KHR ||
         framebufferDidResize) {
         framebufferDidResize = false;
         return Result::RECREATE;
@@ -350,7 +350,7 @@ U32 Implementation::getSwapchainImageViewsCount() const {
 }
 
 const VkExtent2D& Implementation::getSwapchainExtent() const {
-    return swapchainExtent;       
+    return swapchainExtent;
 }
 
 Result Implementation::pollEvents() {
@@ -363,4 +363,4 @@ bool Implementation::keepRunning() {
     return (!glfwWindowShouldClose(window)) && keepRunningFlag;
 }
 
-}  // namespace Jetstream::Viewport 
+}  // namespace Jetstream::Viewport
