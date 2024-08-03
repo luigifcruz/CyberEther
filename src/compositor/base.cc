@@ -29,6 +29,7 @@ Compositor::Compositor(Instance& instance)
        flowgraphEnabled(true),
        debugDemoEnabled(false),
        debugLatencyEnabled(false),
+       debugViewportEnabled(false),
        fullscreenEnabled(false),
        debugEnableTrace(false),
        globalModalContentId(0),
@@ -386,6 +387,7 @@ Result Compositor::destroy() {
     moduleStoreEnabled = true;
     debugDemoEnabled = false;
     debugLatencyEnabled = false;
+    debugViewportEnabled = false;
     flowgraphEnabled = true;
     infoPanelEnabled = true;
     globalModalContentId = 0;
@@ -792,6 +794,7 @@ Result Compositor::drawStatic() {
         if (ImGui::BeginMenu("Developer")) {
             if (ImGui::MenuItem("Show Demo Window", nullptr, &debugDemoEnabled)) { }
             if (ImGui::MenuItem("Show Latency Window", nullptr, &debugLatencyEnabled)) { }
+            if (ImGui::MenuItem("Show Viewport Window", nullptr, &debugViewportEnabled)) { }
             if (ImGui::MenuItem("Enable Trace", nullptr, &debugEnableTrace)) {
                 if (debugEnableTrace) {
                     JST_LOG_SET_DEBUG_LEVEL(4);
@@ -2125,6 +2128,40 @@ Result Compositor::drawStatic() {
         drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 255, 255));  // White
         blockPos.x += blockWidth;
         drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 0, 255));        // Black
+
+        ImGui::End();
+    }();
+
+    //
+    // Debug Viewport Render
+    //
+
+    [&](){
+        if (!debugViewportEnabled) {
+            return;
+        }
+
+        if (!ImGui::Begin("Timer")) {
+            ImGui::End();
+            return;
+        }
+
+        // Report the window size.
+
+        const auto& mainWindowWidth = io.DisplaySize.x;
+        const auto& mainWindowHeight = io.DisplaySize.y;
+        ImGui::Text("Window Size: %.2f x %.2f", mainWindowWidth, mainWindowHeight);
+
+        // Report the framebuffer scale.
+
+        const auto& framebufferWidth = io.DisplayFramebufferScale.x;
+        const auto& framebufferHeight = io.DisplayFramebufferScale.y;
+        ImGui::Text("Framebuffer Scale: %.2f x %.2f", framebufferWidth, framebufferHeight);
+
+        // Render window scale.
+
+        const auto& windowWidth = instance.window().scalingFactor();
+        ImGui::Text("Render Window Scale: %.2f", windowWidth);
 
         ImGui::End();
     }();

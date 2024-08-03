@@ -113,6 +113,7 @@ class JETSTREAM_API Compositor {
     bool flowgraphEnabled;
     bool debugDemoEnabled;
     bool debugLatencyEnabled;
+    bool debugViewportEnabled;
     bool fullscreenEnabled;
     bool debugEnableTrace;
     U64 globalModalContentId;
