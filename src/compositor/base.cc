@@ -2103,7 +2103,7 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowSize(ImVec2(timerWindowWidth, timerWindowHeight));
         ImGui::SetNextWindowPos(ImVec2(x, (mainWindowHeight / 2.0f) - (timerWindowHeight / 2.0f)));
 
-        if (!ImGui::Begin("Timer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+        if (!ImGui::Begin("Lantency Debug", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
             ImGui::End();
             return;
         }
@@ -2141,7 +2141,7 @@ Result Compositor::drawStatic() {
             return;
         }
 
-        if (!ImGui::Begin("Timer")) {
+        if (!ImGui::Begin("Viewport Debug")) {
             ImGui::End();
             return;
         }
