@@ -12,13 +12,14 @@ namespace Jetstream::Render {
 
 class Buffer {
  public:
-    enum class Target : U8 {
+    enum class Target : U16 {
         VERTEX          = 1 << 0,
         VERTEX_INDICES  = 1 << 1,
         STORAGE         = 1 << 2,
         UNIFORM         = 1 << 3,
         STORAGE_DYNAMIC = 1 << 4,
         UNIFORM_DYNAMIC = 1 << 5,
+        INDIRECT        = 1 << 6,
     };
 
     struct Config {
@@ -26,7 +27,7 @@ class Buffer {
         Target target;
         U64 elementByteSize;
         void* buffer = nullptr;
-        // The underlying buffer memory has to be 
+        // The underlying buffer memory has to be
         // page-aligned for the zero-copy to work.
         bool enableZeroCopy = false;
     };
@@ -52,7 +53,7 @@ class Buffer {
     virtual Result update() = 0;
     virtual Result update(const U64& offset, const U64& size) = 0;
 
-    template<Device D> 
+    template<Device D>
     static std::shared_ptr<Buffer> Factory(const Config& config) {
         return std::make_shared<BufferImp<D>>(config);
     }
@@ -62,11 +63,11 @@ class Buffer {
 };
 
 static constexpr Buffer::Target operator&(Buffer::Target lhs, Buffer::Target rhs) {
-    return static_cast<Buffer::Target>(static_cast<U8>(lhs) & static_cast<U8>(rhs));
+    return static_cast<Buffer::Target>(static_cast<U16>(lhs) & static_cast<U16>(rhs));
 }
 
 static constexpr Buffer::Target operator|(Buffer::Target lhs, Buffer::Target rhs) {
-    return static_cast<Buffer::Target>(static_cast<U8>(lhs) | static_cast<U8>(rhs));
+    return static_cast<Buffer::Target>(static_cast<U16>(lhs) | static_cast<U16>(rhs));
 }
 
 }  // namespace Jetstream::Render

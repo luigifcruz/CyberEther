@@ -24,7 +24,7 @@ class ProgramImp<Device::Vulkan> : public Program {
     VkDescriptorSet descriptorSet;
     VkDescriptorSetLayout descriptorSetLayout;
 
-    std::shared_ptr<DrawImp<Device::Vulkan>> draw;
+    std::vector<std::shared_ptr<DrawImp<Device::Vulkan>>> draws;
     std::vector<VkDescriptorSetLayoutBinding> bindings;
     std::vector<std::shared_ptr<TextureImp<Device::Vulkan>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::Vulkan>>, Program::Target>> buffers;
@@ -32,7 +32,7 @@ class ProgramImp<Device::Vulkan> : public Program {
     static VkShaderStageFlags TargetToShaderStage(const Program::Target& target);
     static VkDescriptorType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);
 
-    friend class SurfaceImp<Device::Vulkan>; 
+    friend class SurfaceImp<Device::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

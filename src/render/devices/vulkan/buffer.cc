@@ -41,6 +41,10 @@ Result Implementation::create() {
             bufferUsageFlag |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         }
 
+        if ((config.target & Target::INDIRECT) == Target::INDIRECT) {
+            bufferUsageFlag |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
+
         if ((config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC ||
             (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
             JST_ERROR("[VULKAN] Buffer usage type not supported.")
@@ -78,9 +82,9 @@ Result Implementation::create() {
         JST_VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0), [&]{
             JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
         });
-    
+
         // Populate memory with initial data.
-    
+
         if (config.buffer) {
             JST_CHECK(update());
         }

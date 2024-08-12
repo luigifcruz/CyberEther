@@ -7,9 +7,15 @@ namespace Jetstream::Render {
 using Implementation = VertexImp<Device::Vulkan>;
 
 Implementation::VertexImp(const Config& config) : Vertex(config) {
-    for (const auto& [buffer, stride] : config.buffers) {
-        buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(buffer), stride}
+    for (const auto& [vertex, stride] : config.vertices) {
+        vertices.push_back(
+            {std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(vertex), stride}
+        );
+    }
+
+    for (const auto& [instance, stride] : config.instances) {
+        instances.push_back(
+            {std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(instance), stride}
         );
     }
 
@@ -19,55 +25,103 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
 }
 
 Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                              std::vector<VkVertexInputAttributeDescription>& attributeDescription) {
+                              std::vector<VkVertexInputAttributeDescription>& attributeDescription,
+                              const U64& numberOfDraws,
+                              const U64&) {
     JST_DEBUG("[VULKAN] Creating vertex.");
 
-    U32 bindingCount = 0;
-    bindingDescription.resize(buffers.size());
-    attributeDescription.resize(buffers.size());
-    for (const auto& [buffer, stride] : buffers) {
-        vertexCount = buffer->size() / stride;
+    for (const auto& [vertex, stride] : vertices) {
+        VkVertexInputBindingDescription binding = {};
+        binding.binding = bindingDescription.size();
+        binding.stride = stride * sizeof(F32);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        bindingDescription.push_back(binding);
 
-        bindingDescription[bindingCount].binding = bindingCount;
-        bindingDescription[bindingCount].stride = stride * sizeof(F32);
-        bindingDescription[bindingCount].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        for (U32 i = 0; i < stride; i += 4) {
+            VkFormat format = VK_FORMAT_UNDEFINED;
 
-        VkFormat bindingFormat = VK_FORMAT_UNDEFINED;
-        
-        switch (stride) {
-            case 1:
-                bindingFormat = VK_FORMAT_R32_SFLOAT;
-                break;       
-            case 2:
-                bindingFormat = VK_FORMAT_R32G32_SFLOAT;
-                break;       
-            case 3:
-                bindingFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                break;       
-            case 4:
-                bindingFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
-                break;       
+            switch (i % 4) {
+                case 1:
+                    format = VK_FORMAT_R32_SFLOAT;
+                    break;
+                case 2:
+                    format = VK_FORMAT_R32G32_SFLOAT;
+                    break;
+                case 3:
+                    format = VK_FORMAT_R32G32B32_SFLOAT;
+                    break;
+                case 0:
+                    format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    break;
+            }
+
+            VkVertexInputAttributeDescription attribute = {};
+            attribute.binding = binding.binding;
+            attribute.location = attributeDescription.size();
+            attribute.format = format;
+            attribute.offset = i * sizeof(F32);
+            attributeDescription.push_back(attribute);
         }
-
-        attributeDescription[bindingCount].binding = bindingCount;
-        attributeDescription[bindingCount].location = bindingCount;
-        attributeDescription[bindingCount].format = bindingFormat;
-        attributeDescription[bindingCount].offset = 0;
-
-        bindingCount += 1;
     }
 
+    for (const auto& [instance, stride] : instances) {
+        VkVertexInputBindingDescription binding = {};
+        binding.binding = bindingDescription.size();
+        binding.stride = stride * sizeof(F32);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+        bindingDescription.push_back(binding);
+
+        for (U32 i = 0; i < stride; i += 4) {
+            VkFormat format = VK_FORMAT_UNDEFINED;
+
+            switch (i % 4) {
+                case 1:
+                    format = VK_FORMAT_R32_SFLOAT;
+                    break;
+                case 2:
+                    format = VK_FORMAT_R32G32_SFLOAT;
+                    break;
+                case 3:
+                    format = VK_FORMAT_R32G32B32_SFLOAT;
+                    break;
+                case 0:
+                    format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    break;
+            }
+
+            VkVertexInputAttributeDescription attribute = {};
+            attribute.binding = binding.binding;
+            attribute.location = attributeDescription.size();
+            attribute.format = format;
+            attribute.offset = i * sizeof(F32);
+            attributeDescription.push_back(attribute);
+        }
+    }
+
+    const auto& [vertex, stride] = vertices[0];
+    vertexCount = vertex->byteSize() / sizeof(F32) / numberOfDraws / stride;
+
     if (indices) {
-        vertexCount = indices->size();
+        indexCount = indices->size();
     }
 
     return Result::SUCCESS;
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    // TODO: Is binding multiple buffers at once a good idea?
+    //       Not sure if other APIs support this.
+
     U32 bindingCount = 0;
-    for (const auto& [buffer, stride] : buffers) {
-        const VkBuffer buffers[] = { buffer->getHandle() };
+
+    for (const auto& [vertex, stride] : vertices) {
+        const VkBuffer buffers[] = { vertex->getHandle() };
+        const VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, bindingCount++, 1, buffers, offsets);
+    }
+
+    for (const auto& [instance, stride] : instances) {
+        const VkBuffer buffers[] = { instance->getHandle() };
         const VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, bindingCount++, 1, buffers, offsets);
     }

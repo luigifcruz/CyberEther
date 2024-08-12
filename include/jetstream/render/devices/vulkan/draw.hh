@@ -21,6 +21,12 @@ class DrawImp<Device::Vulkan> : public Draw {
  private:
     std::shared_ptr<VertexImp<Device::Vulkan>> buffer;
 
+    std::shared_ptr<BufferImp<Device::Vulkan>> indirectBuffer;
+    std::shared_ptr<BufferImp<Device::Vulkan>> indexedIndirectBuffer;
+
+    std::vector<VkDrawIndirectCommand> drawCommands;
+    std::vector<VkDrawIndexedIndirectCommand> indexedDrawCommands;
+
     friend class ProgramImp<Device::Vulkan>;
 };
 

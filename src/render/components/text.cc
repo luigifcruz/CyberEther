@@ -1,3 +1,5 @@
+#include <span>
+
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -10,7 +12,7 @@ namespace Jetstream::Render::Components {
 
 Text::Text(const Config& config) {
     this->config = config;
-    this->pimpl = std::make_unique<Impl>();
+    this->pimpl = std::make_unique<Impl>(this->config);
 }
 
 Text::~Text() {
@@ -18,59 +20,95 @@ Text::~Text() {
 }
 
 struct Text::Impl {
-    std::shared_ptr<Components::Font> font;
+    struct UniformBuffer {
+        glm::vec3 color;
+    };
 
-    bool fillDidChange = false;
-    bool transformDidChange = false;
+    struct Element {
+        const ElementConfig& config;
+
+        Extent2D<I32> bounds;
+        std::span<glm::vec2> posVertices;
+        std::span<glm::vec2> fillVertices;
+        std::span<glm::mat4> instances;
+    };
+
+    // Variables.
+
+    const Config& config;
+    UniformBuffer uniforms;
+    std::unordered_map<std::string, Element> elements;
+
+    // Render.
 
     bool updateFontUniformBufferFlag = false;
-    bool updateFontPosVerticiesBufferFlag = false;
+    bool updateFontPosVerticesBufferFlag = false;
     bool updateFontFillVerticesBufferFlag = false;
+    bool updateFontInstanceBufferFlag = false;
     bool updateFontIndicesBufferFlag = false;
-
-    I32 textWidth = 0;
-    I32 textHeight = 0;
-
-    struct {
-        glm::mat4 transform;
-        glm::vec3 color;
-    } uniforms;
 
     std::vector<glm::vec2> posVertices;
     std::vector<glm::vec2> fillVertices;
+    std::vector<glm::mat4> instances;
     std::vector<U32> indices;
 
     std::shared_ptr<Render::Buffer> fontUniformBuffer;
     std::shared_ptr<Render::Buffer> fontPosVerticesBuffer;
     std::shared_ptr<Render::Buffer> fontFillVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fontInstanceBuffer;
     std::shared_ptr<Render::Buffer> fontIndicesBuffer;
 
     std::shared_ptr<Render::Vertex> fontVertex;
 
-    std::shared_ptr<Render::Draw> drawFontVertex;
+    std::shared_ptr<Render::Draw> drawFont;
 
     std::shared_ptr<Render::Program> fontProgram;
+
+    // Methods.
+
+    Result updateUniforms();
+    Result updateVertices();
+    Result updateInstances();
+    Result updateIndices();
+
+    Result updateElementVertex(Element& element);
+    Result updateElementInstance(Element& element);
+
+    // Constructor.
+
+    Impl(const Config& config) : config(config) {}
 };
 
 Result Text::create(Window* window) {
     JST_DEBUG("[TEXT] Loading new text.");
 
-    // Load variables.
-
-    pimpl->font = config.font;
+    // Check if there is any element.
+    if (config.elements.empty()) {
+        JST_ERROR("[TEXT] No elements to render.");
+        return Result::ERROR;
+    }
 
     // Check if font is loaded.
-
-    if (!pimpl->font) {
+    if (!config.font) {
         JST_ERROR("[TEXT] Font not loaded.");
         return Result::ERROR;
     }
 
-    // Reserve memory.
+    // Calculate constants.
+    const U64 numberOfVertices = config.maxCharacters * 4;
+    const U64 numberOfInstances = config.elements.size();
+    const U64 numberOfIndices = config.maxCharacters * 6;
 
-    pimpl->posVertices.resize(config.maxCharacters * 4);
-    pimpl->fillVertices.resize(config.maxCharacters * 4);
-    pimpl->indices.resize(config.maxCharacters * 6);
+    // Reserve memory.
+    pimpl->posVertices.resize(numberOfVertices * numberOfInstances);
+    pimpl->fillVertices.resize(numberOfVertices * numberOfInstances);
+    pimpl->instances.resize(numberOfInstances);
+    pimpl->indices.resize(numberOfIndices);
+
+    // Debug information.
+    JST_DEBUG("[TEXT] Number of vertices: {}", numberOfVertices);
+    JST_DEBUG("[TEXT] Number of instances: {}", numberOfInstances);
+    JST_DEBUG("[TEXT] Number of indices: {}", numberOfIndices);
 
     // Create render surface.
 
@@ -106,6 +144,16 @@ Result Text::create(Window* window) {
 
     {
         Render::Buffer::Config cfg;
+        cfg.buffer = pimpl->instances.data();
+        cfg.elementByteSize = sizeof(glm::mat4);
+        cfg.size = pimpl->instances.size();
+        cfg.target = Render::Buffer::Target::VERTEX;
+        JST_CHECK(window->build(pimpl->fontInstanceBuffer, cfg));
+        JST_CHECK(window->bind(pimpl->fontInstanceBuffer));
+    }
+
+    {
+        Render::Buffer::Config cfg;
         cfg.buffer = pimpl->indices.data();
         cfg.elementByteSize = sizeof(U32);
         cfg.size = pimpl->indices.size();
@@ -116,9 +164,12 @@ Result Text::create(Window* window) {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {pimpl->fontPosVerticesBuffer, 2},
             {pimpl->fontFillVerticesBuffer, 2},
+        };
+        cfg.instances = {
+            {pimpl->fontInstanceBuffer, 16},
         };
         cfg.indices = pimpl->fontIndicesBuffer;
         JST_CHECK(window->build(pimpl->fontVertex, cfg));
@@ -126,17 +177,21 @@ Result Text::create(Window* window) {
 
     {
         Render::Draw::Config cfg;
+        cfg.numberOfDraws = numberOfInstances;
+        cfg.numberOfInstances = 1;
         cfg.buffer = pimpl->fontVertex;
         cfg.mode = Render::Draw::Mode::TRIANGLES;
-        JST_CHECK(window->build(pimpl->drawFontVertex, cfg));
+        JST_CHECK(window->build(pimpl->drawFont, cfg));
     }
 
     {
         Render::Program::Config cfg;
         cfg.shaders = GlobalShadersPackage["text"];
-        cfg.draw = pimpl->drawFontVertex;
+        cfg.draws = {
+            pimpl->drawFont,
+        };
         cfg.textures = {
-            pimpl->font->atlas(),
+            config.font->atlas(),
         };
         cfg.buffers = {
             {pimpl->fontUniformBuffer, Render::Program::Target::VERTEX |
@@ -146,10 +201,24 @@ Result Text::create(Window* window) {
         JST_CHECK(window->build(pimpl->fontProgram, cfg));
     }
 
-    // Update.
+    // Create element data.
 
-    JST_CHECK(updateVertices());
-    JST_CHECK(updateTransform());
+    U32 i = 0;
+    for (const auto& [id, _] : config.elements) {
+        pimpl->elements.emplace(id, Text::Impl::Element{
+            .config = config.elements[id],
+            .bounds = {0, 0},
+            .posVertices = std::span{pimpl->posVertices}.subspan(numberOfVertices * i, numberOfVertices),
+            .fillVertices = std::span{pimpl->fillVertices}.subspan(numberOfVertices * i, numberOfVertices),
+            .instances = std::span{pimpl->instances}.subspan(i++, 1),
+        });
+    }
+
+    // Load static state.
+    JST_CHECK(pimpl->updateUniforms());
+    JST_CHECK(pimpl->updateVertices());
+    JST_CHECK(pimpl->updateInstances());
+    JST_CHECK(pimpl->updateIndices());
 
     return Result::SUCCESS;
 }
@@ -160,6 +229,7 @@ Result Text::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->fontUniformBuffer));
     JST_CHECK(window->unbind(pimpl->fontPosVerticesBuffer));
     JST_CHECK(window->unbind(pimpl->fontFillVerticesBuffer));
+    JST_CHECK(window->unbind(pimpl->fontInstanceBuffer));
     JST_CHECK(window->unbind(pimpl->fontIndicesBuffer));
 
     return Result::SUCCESS;
@@ -173,142 +243,180 @@ Result Text::surface(Render::Surface::Config& config) {
     return Result::SUCCESS;
 }
 
-const F32& Text::scale(const F32& scale) {
-    if (config.scale != scale) {
-        config.scale = scale;
-        pimpl->transformDidChange = true;
+const Text::ElementConfig& Text::get(const std::string& elementId) const {
+    // Check if element exists.
+    if (!config.elements.contains(elementId)) {
+        JST_ERROR("[TEXT] Element '{}' not found.", elementId);
+        JST_CHECK_THROW(Result::ERROR);
     }
 
-    return config.scale;
+    // Copy element data to output.
+    return config.elements.at(elementId);
 }
 
-const Extent2D<F32>& Text::position(const Extent2D<F32>& position) {
-    if (config.position != position) {
-        config.position = position;
-        pimpl->transformDidChange = true;
+Result Text::update(const std::string& elementId, const ElementConfig& elementConfig) {
+    // Check if element exists.
+    if (!config.elements.contains(elementId)) {
+        JST_ERROR("[TEXT] Element '{}' not found.", elementId);
+        return Result::ERROR;
     }
 
-    return config.position;
+    // Get element reference.
+    auto& currentElement = config.elements[elementId];
+    auto& updatedElement = elementConfig;
+
+    // Check if element data has changed.
+    bool shouldUpdateVertices = updatedElement.fill != currentElement.fill;
+
+    // Update element data.
+    currentElement = updatedElement;
+
+    // Load element data.
+    auto& element = pimpl->elements.at(elementId);
+
+    // Update element vertex.
+    if (shouldUpdateVertices) {
+        JST_CHECK(pimpl->updateElementVertex(element));
+
+        // Set flag to update buffers.
+        pimpl->updateFontPosVerticesBufferFlag = true;
+        pimpl->updateFontFillVerticesBufferFlag = true;
+    }
+
+    // Update element instance.
+    JST_CHECK(pimpl->updateElementInstance(element));
+
+    // Set flag to update buffer.
+    pimpl->updateFontInstanceBufferFlag = true;
+
+    return Result::SUCCESS;
 }
 
-const Extent2D<F32>& Text::pixelSize(const Extent2D<F32>& pixelSize) {
-    if (config.pixelSize != pixelSize) {
-        config.pixelSize = pixelSize;
-        pimpl->transformDidChange = true;
-    }
+Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
+    // Check if pixel size has changed.
+    bool shouldUpdateVertices = config.pixelSize != pixelSize;
 
-    return config.pixelSize;
-}
+    // Update pixel size.
+    config.pixelSize = pixelSize;
 
-const Extent2D<bool>& Text::center(const Extent2D<bool>& center) {
-    if (config.center != center) {
-        config.center = center;
-        pimpl->transformDidChange = true;
-    }
-
-    return config.center;
-}
-
-const ColorRGBA<F32>& Text::color(const ColorRGBA<F32>& color) {
-    if (config.color != color) {
-        config.color = color;
-        pimpl->fillDidChange = true;
-    }
-
-    return config.color;
-}
-
-const F32& Text::rotationDeg(const F32& rotationDeg) {
-    if (config.rotationDeg != rotationDeg) {
-        config.rotationDeg = rotationDeg;
-        pimpl->transformDidChange = true;
-    }
-
-    return config.rotationDeg;
-}
-
-const std::string& Text::fill(const std::string& text) {
-    if (config.fill != text) {
-        config.fill = text;
-        pimpl->fillDidChange = true;
-    }
-
-    return config.fill;
-}
-
-Result Text::apply() {
-    if (pimpl->fillDidChange) {
-        JST_CHECK(updateVertices());
-
-        if (config.center.x || config.center.y) {
-            JST_CHECK(updateTransform());
-            pimpl->transformDidChange = false;
-        }
-
-        pimpl->fillDidChange = false;
-    }
-
-    if (pimpl->transformDidChange) {
-        JST_CHECK(updateTransform());
-
-        pimpl->transformDidChange = false;
+    // Update elements vertices and instances.
+    if (shouldUpdateVertices) {
+        JST_CHECK(pimpl->updateVertices());
+        JST_CHECK(pimpl->updateInstances());
     }
 
     return Result::SUCCESS;
 }
 
-Result Text::updateTransform() {
-    auto transform = glm::mat4(1.0f);
+Result Text::Impl::updateUniforms() {
+    // Set data.
+    uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
+
+    // Set flag to update buffer.
+    updateFontUniformBufferFlag = true;
+
+    return Result::SUCCESS;
+}
+
+Result Text::Impl::updateVertices() {
+    // Update elements vertex.
+    for (auto& [_, element] : elements) {
+        JST_CHECK(updateElementVertex(element));
+    }
+
+    // Set flag to update buffers.
+    updateFontPosVerticesBufferFlag = true;
+    updateFontFillVerticesBufferFlag = true;
+
+    return Result::SUCCESS;
+}
+
+Result Text::Impl::updateInstances() {
+    // Update elements instane.
+    for (auto& [_, element] : elements) {
+        JST_CHECK(updateElementInstance(element));
+    }
+
+    // Set flag to update buffer.
+    updateFontInstanceBufferFlag = true;
+
+    return Result::SUCCESS;
+}
+
+Result Text::Impl::updateIndices() {
+    // Populate indices.
+    for (U64 i = 0; i < config.maxCharacters; i++) {
+        indices[(i * 6) + 0] = (i * 4);
+        indices[(i * 6) + 1] = (i * 4) + 1;
+        indices[(i * 6) + 2] = (i * 4) + 2;
+        indices[(i * 6) + 3] = (i * 4) + 2;
+        indices[(i * 6) + 4] = (i * 4) + 3;
+        indices[(i * 6) + 5] = (i * 4);
+    }
+
+    // Set flag to update buffer.
+    updateFontIndicesBufferFlag = true;
+
+    return Result::SUCCESS;
+}
+
+Result Text::Impl::updateElementInstance(Element& element) {
+    // Reference transform.
+    auto& transform = element.instances[0];
+
+    // Reset transform.
+    transform = glm::mat4(1.0f);
 
     // Translate to screen position.
-    transform = glm::translate(transform, glm::vec3(config.position.x, config.position.y, 0.0f));
-
-    // Scale font.
-    transform = glm::scale(transform, glm::vec3(config.scale, config.scale, 1.0f));
-
-    // Rotate.
-    transform = glm::rotate(transform, glm::radians(config.rotationDeg), glm::vec3(0.0f, 0.0f, 1.0f));
+    transform = glm::translate(transform, glm::vec3(element.config.position.x, element.config.position.y, 0.0f));
 
     // Scale to pixel size.
     transform = glm::scale(transform, glm::vec3(config.pixelSize.x, config.pixelSize.y, 1.0f));
 
+    // Scale font.
+    transform = glm::scale(transform, glm::vec3(element.config.scale, element.config.scale, 1.0f));
+
+    // Rotate.
+    transform = glm::rotate(transform, glm::radians(element.config.rotationDeg), glm::vec3(0.0f, 0.0f, 1.0f));
+
     // Horizontal center.
-    if (config.center.x) {
-        transform = glm::translate(transform, glm::vec3(-pimpl->textWidth / 2.0f, 0.0f, 0.0f));
+    if (element.config.alignment.x) {
+        if (element.config.alignment.x == 1) {
+            transform = glm::translate(transform, glm::vec3(-element.bounds.x / 2.0f, 0.0f, 0.0f));
+        }
+        if (element.config.alignment.x == 2) {
+            transform = glm::translate(transform, glm::vec3(-element.bounds.x, 0.0f, 0.0f));
+        }
     }
 
     // Vertical center.
-    if (config.center.y) {
-        transform = glm::translate(transform, glm::vec3(0.0f, pimpl->textHeight / 2.0f, 0.0f));
+    if (element.config.alignment.y) {
+        if (element.config.alignment.y == 1) {
+            transform = glm::translate(transform, glm::vec3(0.0f, element.bounds.y / 2.0f, 0.0f));
+        }
+        if (element.config.alignment.y == 2) {
+            transform = glm::translate(transform, glm::vec3(0.0f, element.bounds.y, 0.0f));
+        }
     }
-
-    // Save transform.
-    pimpl->uniforms.transform = transform;
-    pimpl->uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
-
-    // Update uniform buffer.
-    pimpl->updateFontUniformBufferFlag = true;
 
     return Result::SUCCESS;
 }
 
-Result Text::updateVertices() {
+Result Text::Impl::updateElementVertex(Element& element) {
     // Check config.
 
-    if (config.fill.empty()) {
+    if (element.config.fill.empty()) {
         return Result::SUCCESS;
     }
 
-    if (config.fill.size() >= config.maxCharacters) {
-        JST_ERROR("[TEXT] Text too long ({} characters). Increase the max size.", config.fill.size());
+    if (element.config.fill.size() > config.maxCharacters) {
+        JST_ERROR("[TEXT] Text too long ({} characters). Increase the max size.", element.config.fill.size());
         return Result::ERROR;
     }
 
     // Clear buffers.
-
-    std::fill(pimpl->posVertices.begin(), pimpl->posVertices.end(), glm::vec2(0.0f));
-    std::fill(pimpl->fillVertices.begin(), pimpl->fillVertices.end(), glm::vec2(0.0f));
-    std::fill(pimpl->indices.begin(), pimpl->indices.end(), 0);
+    std::fill(element.posVertices.begin(), element.posVertices.end(), glm::vec2(0.0f));
+    std::fill(element.fillVertices.begin(), element.fillVertices.end(), glm::vec2(0.0f));
 
     // Recalculate vertex buffer.
 
@@ -318,23 +426,23 @@ Result Text::updateVertices() {
     I32 minx = 0;
     I32 miny = 0;
 
-    for (const auto& c : config.fill) {
+    for (const auto& c : element.config.fill) {
         if (c >= 32 && c < 127) {
             if (c == ' ') {
                 continue;
             }
 
             // TODO: Check if there is no better way to do this.
-            const auto& b = pimpl->font->glyph(c - 32);
+            const auto& b = config.font->glyph(c - 32);
             minx = std::min(minx, static_cast<I32>(x + b.xOffset));
             miny = std::max(miny, static_cast<I32>(y - b.yOffset));
         }
     }
 
-    for (U64 i = 0; i < config.fill.size(); i++) {
-        const auto& fontSize = pimpl->font->getConfig().size;
-        const auto& atlasSize = pimpl->font->atlasSize();
-        const auto& c = config.fill[i];
+    for (U64 i = 0; i < element.config.fill.size(); i++) {
+        const auto& fontSize = config.font->getConfig().size;
+        const auto& atlasSize = config.font->atlasSize();
+        const auto& c = element.config.fill[i];
 
         if (c >= 32 && c < 127) {
             if (c == ' ') {
@@ -342,7 +450,7 @@ Result Text::updateVertices() {
                 continue;
             }
 
-            const auto& b = pimpl->font->glyph(c - 32);
+            const auto& b = config.font->glyph(c - 32);
 
             F32 x0 = x + b.xOffset - minx;
             F32 y0 = y - b.yOffset - miny;
@@ -351,10 +459,10 @@ Result Text::updateVertices() {
 
             // Add positions.
 
-            pimpl->posVertices[(i * 4) + 0] = glm::vec2(x0, y0);
-            pimpl->posVertices[(i * 4) + 1] = glm::vec2(x1, y0);
-            pimpl->posVertices[(i * 4) + 2] = glm::vec2(x1, y1);
-            pimpl->posVertices[(i * 4) + 3] = glm::vec2(x0, y1);
+            element.posVertices[(i * 4) + 0] = glm::vec2(x0, y0);
+            element.posVertices[(i * 4) + 1] = glm::vec2(x1, y0);
+            element.posVertices[(i * 4) + 2] = glm::vec2(x1, y1);
+            element.posVertices[(i * 4) + 3] = glm::vec2(x0, y1);
 
             // Normalize texture coordinates.
 
@@ -365,19 +473,10 @@ Result Text::updateVertices() {
 
             // Add texture coordinates.
 
-            pimpl->fillVertices[(i * 4) + 0] = glm::vec2(s0, t0);
-            pimpl->fillVertices[(i * 4) + 1] = glm::vec2(s1, t0);
-            pimpl->fillVertices[(i * 4) + 2] = glm::vec2(s1, t1);
-            pimpl->fillVertices[(i * 4) + 3] = glm::vec2(s0, t1);
-
-            // Add indices for two triangles.
-
-            pimpl->indices[(i * 6) + 0] = (i * 4);
-            pimpl->indices[(i * 6) + 1] = (i * 4) + 1;
-            pimpl->indices[(i * 6) + 2] = (i * 4) + 2;
-            pimpl->indices[(i * 6) + 3] = (i * 4) + 2;
-            pimpl->indices[(i * 6) + 4] = (i * 4) + 3;
-            pimpl->indices[(i * 6) + 5] = (i * 4);
+            element.fillVertices[(i * 4) + 0] = glm::vec2(s0, t0);
+            element.fillVertices[(i * 4) + 1] = glm::vec2(s1, t0);
+            element.fillVertices[(i * 4) + 2] = glm::vec2(s1, t1);
+            element.fillVertices[(i * 4) + 3] = glm::vec2(s0, t1);
 
             // Update horizontal position.
 
@@ -385,19 +484,11 @@ Result Text::updateVertices() {
 
             // Save text height.
 
-            pimpl->textHeight = std::max(pimpl->textHeight, static_cast<I32>(b.y1 - b.y0));
+            element.bounds.y = std::max(element.bounds.y, static_cast<I32>(b.y1 - b.y0));
         }
     }
 
-    pimpl->textWidth = x;
-
-    // Update buffers.
-
-    pimpl->updateFontPosVerticiesBufferFlag = true;
-    pimpl->updateFontFillVerticesBufferFlag = true;
-    pimpl->updateFontIndicesBufferFlag = true;
-
-    // TODO: Implement partial drawings.
+    element.bounds.x = x;
 
     return Result::SUCCESS;
 }
@@ -408,9 +499,9 @@ Result Text::present() {
         pimpl->updateFontFillVerticesBufferFlag = false;
     }
 
-    if (pimpl->updateFontPosVerticiesBufferFlag) {
+    if (pimpl->updateFontPosVerticesBufferFlag) {
         pimpl->fontPosVerticesBuffer->update();
-        pimpl->updateFontPosVerticiesBufferFlag = false;
+        pimpl->updateFontPosVerticesBufferFlag = false;
     }
 
     if (pimpl->updateFontIndicesBufferFlag) {
@@ -421,6 +512,11 @@ Result Text::present() {
     if (pimpl->updateFontUniformBufferFlag) {
         pimpl->fontUniformBuffer->update();
         pimpl->updateFontUniformBufferFlag = false;
+    }
+
+    if (pimpl->updateFontInstanceBufferFlag) {
+        pimpl->fontInstanceBuffer->update();
+        pimpl->updateFontInstanceBufferFlag = false;
     }
 
     return Result::SUCCESS;

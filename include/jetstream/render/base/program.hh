@@ -23,7 +23,7 @@ class Program {
     };
 
     struct Config {
-        std::shared_ptr<Draw> draw;
+        std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::pair<std::shared_ptr<Buffer>, Target>> buffers;
         std::unordered_map<Device, std::vector<std::vector<U8>>> shaders;
@@ -37,7 +37,7 @@ class Program {
         return config;
     }
 
-    template<Device D> 
+    template<Device D>
     static std::shared_ptr<Program> Factory(const Config& config) {
         return std::make_shared<ProgramImp<D>>(config);
     }

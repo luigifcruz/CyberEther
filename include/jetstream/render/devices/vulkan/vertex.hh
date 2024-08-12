@@ -13,12 +13,18 @@ class VertexImp<Device::Vulkan> : public Vertex {
 
  protected:
    Result create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
-                 std::vector<VkVertexInputAttributeDescription>& attributeDescription);
+                 std::vector<VkVertexInputAttributeDescription>& attributeDescription,
+                 const U64& numberOfDraws,
+                 const U64& numberOfInstances);
     Result encode(VkCommandBuffer& commandBuffer);
     Result destroy();
 
-    constexpr U32 getIndicesCount() const {
+    constexpr const U32& getVertexCount() const {
         return vertexCount;
+    }
+
+    constexpr const U32& getIndexCount() const {
+        return indexCount;
     }
 
     bool isBuffered() const {
@@ -26,8 +32,11 @@ class VertexImp<Device::Vulkan> : public Vertex {
     }
 
  private:
-    U64 vertexCount;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Vulkan>>, U32>> buffers;
+    U32 vertexCount;
+    U32 indexCount;
+
+    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Vulkan>>, U32>> vertices;
+    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Vulkan>>, U32>> instances;
     std::shared_ptr<BufferImp<Device::Vulkan>> indices;
 
     friend class DrawImp<Device::Vulkan>;

@@ -9,7 +9,11 @@ namespace Jetstream::Render {
 using Implementation = ProgramImp<Device::Vulkan>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    draw = std::dynamic_pointer_cast<DrawImp<Device::Vulkan>>(config.draw);
+    for (auto& draw : config.draws) {
+        draws.push_back(
+            std::dynamic_pointer_cast<DrawImp<Device::Vulkan>>(draw)
+        );
+    }
 
     for (auto& texture : config.textures) {
         textures.push_back(
@@ -34,7 +38,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     // Load shaders from buffers.
 
     if (config.shaders.contains(Device::Vulkan) == 0) {
-        JST_ERROR("[VULKAN] Module doesn't have necessary shader.");       
+        JST_ERROR("[VULKAN] Module doesn't have necessary shader.");
         return Result::ERROR;
     }
 
@@ -174,10 +178,11 @@ Result Implementation::create(VkRenderPass& renderPass,
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 
-    JST_CHECK(draw->create(bindingDescription,
-                           attributeDescriptions,
-                           inputAssembly));
-    JST_ASSERT(bindingDescription.size() == attributeDescriptions.size());
+    for (auto& draw : draws) {
+        JST_CHECK(draw->create(bindingDescription,
+                               attributeDescriptions,
+                               inputAssembly));
+    }
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -232,9 +237,9 @@ Result Implementation::create(VkRenderPass& renderPass,
     }
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask =  VK_COLOR_COMPONENT_R_BIT | 
+    colorBlendAttachment.colorWriteMask =  VK_COLOR_COMPONENT_R_BIT |
                                            VK_COLOR_COMPONENT_G_BIT |
-                                           VK_COLOR_COMPONENT_B_BIT | 
+                                           VK_COLOR_COMPONENT_B_BIT |
                                            VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
 
@@ -293,7 +298,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
     JST_VK_CHECK(vkCreateGraphicsPipelines(device, nullptr, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
-        JST_ERROR("[VULKAN] Can't create graphics pipeline.");    
+        JST_ERROR("[VULKAN] Can't create graphics pipeline.");
     });
 
     // Clean up.
@@ -305,7 +310,9 @@ Result Implementation::create(VkRenderPass& renderPass,
 }
 
 Result Implementation::destroy() {
-    JST_CHECK(draw->destroy());
+    for (auto& draw : draws) {
+        JST_CHECK(draw->destroy());
+    }
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<Device::Vulkan>()->getDescriptorPool();
@@ -335,7 +342,9 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
 
     // Attach frame encoder.
 
-    JST_CHECK(draw->encode(commandBuffer));
+    for (auto& draw : draws) {
+        JST_CHECK(draw->encode(commandBuffer));
+    }
 
     return Result::SUCCESS;
 }
@@ -350,7 +359,7 @@ VkShaderStageFlags Implementation::TargetToShaderStage(const Program::Target& ta
     if ((target & Program::Target::FRAGMENT) == Program::Target::FRAGMENT) {
         flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
     }
-        
+
     return flags;
 }
 

@@ -57,7 +57,7 @@ Result Constellation<D, T>::createPresent() {
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
         JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
-    
+
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &FillScreenIndices;
@@ -67,10 +67,10 @@ Result Constellation<D, T>::createPresent() {
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
         JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
-    
+
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -103,7 +103,7 @@ Result Constellation<D, T>::createPresent() {
         JST_CHECK(window->build(lutTexture, cfg));
         JST_CHECK(window->bind(lutTexture));
     }
-    
+
     {
         // TODO: This could use unified memory.
         Render::Buffer::Config cfg;
@@ -118,7 +118,9 @@ Result Constellation<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
-        cfg.draw = drawVertex;
+        cfg.draws = {
+            drawVertex,
+        };
         cfg.textures = {signalTexture, lutTexture};
         cfg.buffers = {
             {signalUniformBuffer, Render::Program::Target::VERTEX |

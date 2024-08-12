@@ -91,7 +91,7 @@ Result Waterfall<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -140,7 +140,9 @@ Result Waterfall<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
-        cfg.draw = drawVertex;
+        cfg.draws = {
+            drawVertex,
+        };
         cfg.textures = {lutTexture};
         cfg.buffers = {
             {signalUniformBuffer, Render::Program::Target::VERTEX |

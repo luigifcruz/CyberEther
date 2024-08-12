@@ -534,7 +534,7 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -560,7 +560,9 @@ Result Remote<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["framebuffer"];
-        cfg.draw = drawVertex;
+        cfg.draws = {
+            drawVertex,
+        };
         cfg.textures = {remoteFramebufferTexture};
         JST_CHECK(window->build(program, cfg));
     }

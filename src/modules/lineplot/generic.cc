@@ -138,7 +138,7 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {gridVerticesBuffer, 4},
         };
         JST_CHECK(window->build(gridVertex, cfg));
@@ -154,7 +154,9 @@ Result Lineplot<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["grid"];
-        cfg.draw = drawGridVertex;
+        cfg.draws = {
+            drawGridVertex,
+        };
         cfg.buffers = {
             {gridUniformBuffer, Render::Program::Target::VERTEX |
                                 Render::Program::Target::FRAGMENT},
@@ -197,7 +199,7 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {cursorVerticesBuffer, 3},
         };
         cfg.indices = cursorIndicesBuffer;
@@ -214,7 +216,9 @@ Result Lineplot<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["cursor"];
-        cfg.draw = drawCursorVertex;
+        cfg.draws = {
+            drawCursorVertex,
+        };
         cfg.buffers = {
             {cursorUniformBuffer, Render::Program::Target::VERTEX |
                                   Render::Program::Target::FRAGMENT},
@@ -275,7 +279,7 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {signalVerticesBuffer, 4},
         };
         JST_CHECK(window->build(signalVertex, cfg));
@@ -299,7 +303,9 @@ Result Lineplot<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
-        cfg.draw = drawSignalVertex;
+        cfg.draws = {
+            drawSignalVertex,
+        };
         cfg.textures = {lutTexture};
         cfg.buffers = {
             {signalUniformBuffer, Render::Program::Target::VERTEX |
@@ -318,12 +324,14 @@ Result Lineplot<D, T>::createPresent() {
 
     {
         Render::Components::Text::Config cfg;
-        cfg.scale = 0.60f;
-        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
         cfg.maxCharacters = 128;
-        cfg.fill = "There is no reason an individual would ever want a computer in their home.";
-        cfg.center = {false, false};
+        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
         cfg.font = window->font("default_mono");
+        cfg.elements = {
+            {"amplitude", {1.0f, {1.0f, 1.0f}, {0, 0}, 0.0f, ""}},
+            {"axis-x", {0.75f, {0.0f, -0.99f}, {1, 2}, 0.0f, "Frequency (Hz)"}},
+            {"axis-y", {0.75f, {-0.99f, 0.0f}, {1, 0}, 90.0f, "Amplitude (dBFS)"}},
+        };
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
     }
@@ -477,6 +485,7 @@ const F32& Lineplot<D, T>::scale(const F32& scale) {
 
     if (scale != config.scale) {
         config.scale = scale;
+        updateState();
     }
 
     return config.scale;
@@ -509,6 +518,10 @@ void Lineplot<D, T>::updateState() {
 
     // Apply the translation according to the mouse position.
     transform = glm::translate(transform, glm::vec3(config.translation * config.zoom, 0.0f, 0.0f));
+
+    // Scale everything to 95%.
+
+    transform = glm::scale(transform, glm::vec3(0.90f, 0.90f, 1.0f));
 
     // Update the signal and grid uniform buffers.
 
@@ -560,10 +573,19 @@ void Lineplot<D, T>::updateCursorState() {
 
     transform = glm::translate(transform, glm::vec3((cursorValueX + config.translation) * config.zoom, cursorValueY, 0.0f));
 
-    text->pixelSize({2.0f / config.viewSize.x, 2.0f / config.viewSize.y});
-    text->position({cursorValueX + 0.05f, cursorValueY - 0.05f});
-    text->fill(jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY));
-    text->apply();
+    // Update the text element.
+
+    text->updatePixelSize({
+        2.0f / config.viewSize.x / config.scale,
+        2.0f / config.viewSize.y / config.scale
+    });
+
+    {
+        auto element = text->get("amplitude");
+        element.fill = jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY);
+        element.position = {cursorValueX + 0.05f, cursorValueY - 0.05f};
+        text->update("amplitude", element);
+    }
 
     // Scale cursor square aspect ratio.
 

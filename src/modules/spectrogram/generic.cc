@@ -64,7 +64,7 @@ Result Spectrogram<D, T>::createPresent() {
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
         JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
-    
+
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &FillScreenTextureVertices;
@@ -87,7 +87,7 @@ Result Spectrogram<D, T>::createPresent() {
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -137,7 +137,9 @@ Result Spectrogram<D, T>::createPresent() {
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
-        cfg.draw = drawVertex;
+        cfg.draws = {
+            drawVertex,
+        };
         cfg.textures = {lutTexture};
         cfg.buffers = {
             {signalUniformBuffer, Render::Program::Target::VERTEX |
