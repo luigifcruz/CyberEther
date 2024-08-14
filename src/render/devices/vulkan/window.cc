@@ -41,11 +41,11 @@ Result Implementation::unbindResource(const auto& resource, std::vector<std::sha
     // Cast generic resource.
     auto _resource = std::dynamic_pointer_cast<T>(resource);
 
-    // Destroy the resource.
-    JST_CHECK(_resource->destroy());
-
     // Remove resource from container.
     container.erase(std::remove(container.begin(), container.end(), _resource), container.end());
+
+    // Destroy the resource.
+    JST_CHECK(_resource->destroy());
 
     return Result::SUCCESS;
 }

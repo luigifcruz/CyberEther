@@ -100,17 +100,17 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create render pass.");   
     });
 
+    JST_CHECK(framebufferResolve->create());
+    if (config.multisampled) {
+        JST_CHECK(framebuffer->create());
+    }
+
     for (auto& program : programs) {
         JST_CHECK(program->create(renderPass, (config.multisampled) ? framebuffer : framebufferResolve));
     }
 
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->create());
-    }
-
-    JST_CHECK(framebufferResolve->create());
-    if (config.multisampled) {
-        JST_CHECK(framebuffer->create());
     }
 
     std::vector<VkImageView> attachments;
@@ -142,6 +142,8 @@ Result Implementation::destroy() {
 
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
+    vkDestroyFramebuffer(device, framebufferObject, nullptr);
+
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->destroy());
     }
@@ -149,8 +151,6 @@ Result Implementation::destroy() {
     for (auto& program : programs) {
         JST_CHECK(program->destroy());
     }
-
-    vkDestroyFramebuffer(device, framebufferObject, nullptr);
 
     JST_CHECK(framebufferResolve->destroy());
     if (config.multisampled) {

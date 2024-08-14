@@ -235,6 +235,11 @@ Result Window::processBindQueues() {
 Result Window::processUnbindQueues() {
     std::lock_guard<std::mutex> lock(newFrameQueueMutex);
 
+    while (!surfaceUnbindQueue.empty()) {
+        JST_CHECK(unbindSurface(surfaceUnbindQueue.front()));
+        surfaceUnbindQueue.pop();
+    }
+
     while (!bufferUnbindQueue.empty()) {
         JST_CHECK(unbindBuffer(bufferUnbindQueue.front()));
         bufferUnbindQueue.pop();
@@ -243,11 +248,6 @@ Result Window::processUnbindQueues() {
     while (!textureUnbindQueue.empty()) {
         JST_CHECK(unbindTexture(textureUnbindQueue.front()));
         textureUnbindQueue.pop();
-    }
-
-    while (!surfaceUnbindQueue.empty()) {
-        JST_CHECK(unbindSurface(surfaceUnbindQueue.front()));
-        surfaceUnbindQueue.pop();
     }
 
     return Result::SUCCESS;
