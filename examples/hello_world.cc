@@ -189,7 +189,9 @@ class UI {
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        JST_CHECK_THROW(instance.compute());
+        if (!ImGui::IsKeyDown(ImGuiKey_Space)) {
+            JST_CHECK_THROW(instance.compute());
+        }
     }
 
     void graphicalThreadLoop() {
