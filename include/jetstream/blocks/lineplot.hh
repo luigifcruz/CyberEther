@@ -14,7 +14,7 @@ class Lineplot : public Block {
 
     struct Config {
         U64 averaging = 1;
-        U64 numberOfVerticalLines = 20;
+        U64 numberOfVerticalLines = 11;
         U64 numberOfHorizontalLines = 5;
         Extent2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;

@@ -28,11 +28,11 @@ class Lineplot : public Module, public Compute, public Present {
     Lineplot();
     ~Lineplot();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         U64 averaging = 1;
-        U64 numberOfVerticalLines = 20;
+        U64 numberOfVerticalLines = 11;
         U64 numberOfHorizontalLines = 5;
         Extent2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
@@ -75,7 +75,7 @@ class Lineplot : public Module, public Compute, public Present {
         return D;
     }
 
-    void info() const final; 
+    void info() const final;
 
     // Constructor
 
