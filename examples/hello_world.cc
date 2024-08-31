@@ -119,6 +119,10 @@ class UI {
             }
         ));
 
+        // Set ImGui style.
+
+        ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
+
         // Start the instance.
 
         instance.start();
