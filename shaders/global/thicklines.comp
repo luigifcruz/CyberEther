@@ -35,6 +35,9 @@ void main() {
     vec2 pointA = points[(i * 2) + 0];
     vec2 pointB = points[(i * 2) + 1];
 
+    pointA = clamp(pointA, -1.0, 1.0);
+    pointB = clamp(pointB, -1.0, 1.0);
+
     pointA.x *= uniforms.zoom;
     pointB.x *= uniforms.zoom;
 
