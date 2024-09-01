@@ -33,6 +33,9 @@ struct Lineplot<D, T>::GImpl {
         glm::mat4 transform;
         bool visible = false;
     } cursorUniforms;
+
+    Extent2D<F32> pixelSize;
+    Extent2D<F32> paddingScale;
 };
 
 template<Device D, typename T>
@@ -329,9 +332,12 @@ Result Lineplot<D, T>::createPresent() {
         cfg.font = window->font("default_mono");
         cfg.elements = {
             {"amplitude", {1.0f, {1.0f, 1.0f}, {0, 0}, 0.0f, ""}},
-            {"axis-x", {0.75f, {0.0f, -0.99f}, {1, 2}, 0.0f, "Frequency (Hz)"}},
-            {"axis-y", {0.75f, {-0.99f, 0.0f}, {1, 0}, 90.0f, "Amplitude (dBFS)"}},
+            {"axis-x", {0.85f, {0.0f, -0.99f}, {1, 2}, 0.0f, "Frequency (MHz)"}},
+            {"axis-y", {0.85f, {-0.99f, 0.0f}, {1, 0}, 90.0f, "Amplitude (dBFS)"}},
         };
+        for (U64 i = 1; i < config.numberOfVerticalLines - 1; i++) {
+            cfg.elements[jst::fmt::format("x{:02d}", i)] = {0.85f, {0.0f, 0.99f}, {1, 0}, 0.0f, "2.4G"};
+        }
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
     }
@@ -505,36 +511,47 @@ void Lineplot<D, T>::updateState() {
     const F32 maxTranslation = std::abs((1.0f / config.zoom) - 1.0f);
     config.translation = std::clamp(config.translation, -maxTranslation, maxTranslation);
 
-    // Update thickness.
+    // Update global pixel size and scale.
 
-    auto& [x, y] = thickness;
-    x = (2.0f / config.viewSize.x) * config.thickness * 3.0f / config.scale;
-    y = (2.0f / config.viewSize.y) * config.thickness * 3.0f / config.scale;
+    gimpl->pixelSize = {
+        2.0f / config.viewSize.x / config.scale,
+        2.0f / config.viewSize.y / config.scale
+    };
+
+    const auto PadSize = (11.0f + 5.0f + 10.0f) * 2.0f;
+    gimpl->paddingScale = {
+        1.0f - gimpl->pixelSize.x * PadSize,
+        1.0f - gimpl->pixelSize.y * PadSize,
+    };
 
     // Update the transform.
 
     // The transform matrix is initialized as an identity matrix.
-    auto transform = glm::mat4(1.0f);
+
+    auto signalTransform = glm::mat4(1.0f);
+    auto gridTransform = glm::mat4(1.0f);
 
     // Apply the translation according to the mouse position.
-    transform = glm::translate(transform, glm::vec3(config.translation * config.zoom, 0.0f, 0.0f));
 
-    // Scale everything to 95%.
+    signalTransform = glm::translate(signalTransform, glm::vec3(config.translation * config.zoom, 0.0f, 0.0f));
 
-    transform = glm::scale(transform, glm::vec3(0.90f, 0.90f, 1.0f));
+    // Scale everything to accomodate axis.
+
+    signalTransform = glm::scale(signalTransform, glm::vec3(gimpl->paddingScale.x, gimpl->paddingScale.y, 1.0f));
+    gridTransform = glm::scale(gridTransform, glm::vec3(gimpl->paddingScale.x, gimpl->paddingScale.y, 1.0f));
 
     // Update the signal and grid uniform buffers.
 
-    gimpl->signalUniforms.transform = transform;
-    gimpl->signalUniforms.thickness[0] = thickness.x;
-    gimpl->signalUniforms.thickness[1] = thickness.y;
+    gimpl->signalUniforms.transform = signalTransform;
+    gimpl->signalUniforms.thickness[0] = gimpl->pixelSize.x * config.thickness * 3.0f;
+    gimpl->signalUniforms.thickness[1] = gimpl->pixelSize.y * config.thickness * 3.0f;
     gimpl->signalUniforms.zoom = config.zoom;
     gimpl->signalUniforms.numberOfPoints = numberOfElements;
 
-    gimpl->gridUniforms.transform = transform;
-    gimpl->gridUniforms.thickness[0] = thickness.x;
-    gimpl->gridUniforms.thickness[1] = thickness.y;
-    gimpl->gridUniforms.zoom = config.zoom;
+    gimpl->gridUniforms.transform = gridTransform;
+    gimpl->gridUniforms.thickness[0] = gimpl->pixelSize.x * config.thickness * 3.0f;
+    gimpl->gridUniforms.thickness[1] = gimpl->pixelSize.y * config.thickness * 3.0f;
+    gimpl->gridUniforms.zoom = 1.0f;
     gimpl->gridUniforms.numberOfLines = config.numberOfVerticalLines + config.numberOfHorizontalLines;
 
     // Update the cursor.
@@ -549,47 +566,34 @@ void Lineplot<D, T>::updateState() {
 
 template<Device D, typename T>
 void Lineplot<D, T>::updateCursorState() {
+    // Fetch closest cursor plot value.
+    // TODO: Implement interpolation.
+
+    const auto stepX = (2.0f * gimpl->paddingScale.x) / numberOfElements;
+    const U64 cursorIndex = std::clamp((cursorPos.x + gimpl->paddingScale.x) / stepX, 0.0f, numberOfElements - 1.0f);
+
+    Tensor<D, F32> signalPointSlice = signalPoints;
+    signalPointSlice.slice({cursorIndex, {}});
+    Memory::Copy(cursorSignalPoint, signalPointSlice);
+
+    const auto cursorValueX = cursorSignalPoint[0] * gimpl->paddingScale.x;
+    const auto cursorValueY = cursorSignalPoint[1] * gimpl->paddingScale.y;
+
     // The transform matrix is initialized as an identity matrix.
 
     auto transform = glm::mat4(1.0f);
 
     // Translate the cursor to the cursor position.
 
-    const auto [x, y] = cursorPos;
-    const auto stepX = 2.0f / numberOfElements;
-
-    const auto cursorIndex = std::clamp(static_cast<U64>((x + 1.0f) / stepX),
-                                        static_cast<U64>(0),
-                                        static_cast<U64>(numberOfElements - 1));
-
-    Tensor<D, F32> signalPointSlice = signalPoints;
-    signalPointSlice.slice({cursorIndex, {}});
-    Memory::Copy(cursorSignalPoint, signalPointSlice);
-
-    const auto cursorValueX = cursorSignalPoint[0];
-    const auto cursorValueY = cursorSignalPoint[1];
-
-    // Translate the cursor to the cursor position.
-
     transform = glm::translate(transform, glm::vec3((cursorValueX + config.translation) * config.zoom, cursorValueY, 0.0f));
 
-    // Update the text element.
-
-    text->updatePixelSize({
-        2.0f / config.viewSize.x / config.scale,
-        2.0f / config.viewSize.y / config.scale
-    });
+    // Scale cursor respecting aspect ratio.
 
     {
-        auto element = text->get("amplitude");
-        element.fill = jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY);
-        element.position = {cursorValueX + 0.05f, cursorValueY - 0.05f};
-        text->update("amplitude", element);
+        const auto x = gimpl->pixelSize.x * config.thickness * 15.0f;
+        const auto y = gimpl->pixelSize.y * config.thickness * 15.0f;
+        transform = glm::scale(transform, glm::vec3(x, y, 1.0f));
     }
-
-    // Scale cursor square aspect ratio.
-
-    transform = glm::scale(transform, glm::vec3(thickness.x * 5.0f, thickness.y * 5.0f, 1.0f));
 
     // Update the cursor uniform buffer.
 
@@ -599,6 +603,36 @@ void Lineplot<D, T>::updateCursorState() {
     // Schedule the uniform buffers for update.
 
     updateCursorUniformBufferFlag = true;
+
+    // Update the text element.
+
+    text->updatePixelSize(gimpl->pixelSize);
+
+    for (U64 i = 1; i < config.numberOfVerticalLines - 1; i++) {
+        auto element = text->get(jst::fmt::format("x{:02d}", i));
+        element.position = {(((2.0f * gimpl->paddingScale.x) / (config.numberOfVerticalLines - 1)) * i) - gimpl->paddingScale.x, 1.0f - gimpl->pixelSize.y * 5.0f};
+        element.fill = jst::fmt::format("{:.02f}", (element.position.x / config.zoom) - config.translation);
+        text->update(jst::fmt::format("x{:02d}", i), element);
+    }
+
+    {
+        auto element = text->get("axis-x");
+        element.position = {0.0f, -1.0f + gimpl->pixelSize.y * 5.0f};
+        text->update("axis-x", element);
+    }
+
+    {
+        auto element = text->get("axis-y");
+        element.position = {-1.0f + gimpl->pixelSize.x * 5.0f, 0.0f};
+        text->update("axis-y", element);
+    }
+
+    {
+        auto element = text->get("amplitude");
+        element.fill = jst::fmt::format("({:.05}, {:.05})", cursorValueX, cursorValueY);
+        element.position = {(cursorValueX + config.translation) * config.zoom + 0.05f, cursorValueY - 0.05f};
+        text->update("amplitude", element);
+    }
 }
 
 template<Device D, typename T>

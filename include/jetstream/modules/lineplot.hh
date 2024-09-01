@@ -130,6 +130,9 @@ class Lineplot : public Module, public Compute, public Present {
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
 
+    // TODO: Move all of this to internal implementation.
+    // TODO: Abstract signal and grid with Line Component.
+
     Tensor<D, F32> signalPoints;
     Tensor<D, F32> signalVertices;
     Tensor<Device::CPU, F32> gridPoints;
@@ -172,7 +175,6 @@ class Lineplot : public Module, public Compute, public Present {
     U64 numberOfBatches = 0;
     F32 normalizationFactor = 0.0f;
 
-    Extent2D<F32> thickness = {0.0f, 0.0f};
     Extent2D<F32> cursorPos = {0.0f, 0.0f};
 
     bool updateGridPointsFlag = false;
