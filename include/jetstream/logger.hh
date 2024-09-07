@@ -8,69 +8,12 @@
 #ifndef JST_FMT_INCLUDED
 #define JST_FMT_INCLUDED
 
-//
-// Create a namespace alias for fmt.
-// This is done to avoid conflicts with other libraries that use fmt.
-// I really don't like this, but it's the least janky way I could think.
-// TODO: Replace this with <format> when it is generally available.
-//
-
-#ifdef FMT_BEGIN_NAMESPACE
-#undef FMT_BEGIN_NAMESPACE
-#undef FMT_END_NAMESPACE
-#endif
-
-#ifdef FMT_USE_INT128
-#undef FMT_USE_INT128
-#endif
-#define FMT_USE_INT128 0
-
-#define FMT_BEGIN_NAMESPACE \
-    namespace jst {         \
-    namespace fmt {         \
-    inline namespace v10 {
-#define FMT_END_NAMESPACE   \
-    }                       \
-    }                       \
-    }
-
-#undef FMT_ARGS_H_
-#undef FMT_CHRONO_H_
-#undef FMT_COLOR_H_
-#undef FMT_COMPILE_H_
-#undef FMT_CORE_H_
-#undef FMT_FORMAT_INL_H_
-#undef FMT_FORMAT_H_
-#undef FMT_OS_H_
-#undef FMT_OSTREAM_H_
-#undef FMT_PRINTF_H_
-#undef FMT_RANGES_H_
-#undef FMT_STD_H_
-#undef FMT_XCHAR_H_
-
-#define FMT_HEADER_ONLY
+#define JST_FMT_HEADER_ONLY
 #include "jetstream/tools/fmt/format.h"
 #include "jetstream/tools/fmt/color.h"
 #include "jetstream/tools/fmt/ostream.h"
 #include "jetstream/tools/fmt/ranges.h"
 #include "jetstream/tools/fmt/chrono.h"
-
-#undef FMT_BEGIN_NAMESPACE
-#undef FMT_END_NAMESPACE
-
-#undef FMT_ARGS_H_
-#undef FMT_CHRONO_H_
-#undef FMT_COLOR_H_
-#undef FMT_COMPILE_H_
-#undef FMT_CORE_H_
-#undef FMT_FORMAT_INL_H_
-#undef FMT_FORMAT_H_
-#undef FMT_OS_H_
-#undef FMT_OSTREAM_H_
-#undef FMT_PRINTF_H_
-#undef FMT_RANGES_H_
-#undef FMT_STD_H_
-#undef FMT_XCHAR_H_
 
 #endif  // JST_FMT_INCLUDED
 
