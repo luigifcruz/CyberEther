@@ -26,7 +26,7 @@ Scheduler::Scheduler() {
     yielded.reserve(64);
 }
 
-Result Scheduler::addModule(const Locale& locale, 
+Result Scheduler::addModule(const Locale& locale,
                             const std::shared_ptr<Module>& module,
                             const Parser::RecordMap& inputMap,
                             const Parser::RecordMap& outputMap,
@@ -408,10 +408,10 @@ Result Scheduler::arrangeDependencyOrder() {
         auto& edges = moduleEdgesCache[name];
 
         for (const auto& [_, inputMeta] : state.activeInputs) {
-            edges.insert(moduleOutputCache[inputMeta->locale.hash()]);
+            edges.insert(moduleOutputCache.at(inputMeta->locale.hash()));
         }
         for (const auto& [_, outputMeta] : state.activeOutputs) {
-            const auto& matches = moduleInputCache[outputMeta->locale.hash()];
+            const auto& matches = moduleInputCache.at(outputMeta->locale.hash());
             edges.insert(matches.begin(), matches.end());
         }
     }
