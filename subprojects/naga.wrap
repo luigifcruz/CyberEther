@@ -1,8 +1,8 @@
 [wrap-file]
-directory = naga-0.13.0
-source_url = https://github.com/gfx-rs/naga/archive/refs/tags/v0.13.0.tar.gz
-source_filename = naga-0.13.0.tar.gz
-source_hash = 126393320084c6bb5aa3916f9edc8de80824e9eb169db805432226eef4a56b15
+directory = wgpu-22.1.0
+source_url = https://github.com/gfx-rs/wgpu/archive/refs/tags/v22.1.0.tar.gz
+source_filename = wgpu-22.1.0.tar.gz
+source_hash = 7caa75f945d3d8cecac35d6de1e1a5cb112c2b38f80c6034d47971dae940eceb
 patch_directory = naga
 wrapdb_version = 1.0.0
 
