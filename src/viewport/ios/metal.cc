@@ -62,6 +62,10 @@ void* Implementation::nextDrawable() {
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
+Result Implementation::waitEvents() {
+    return Result::SUCCESS;
+}
+
 Result Implementation::pollEvents() {
     return Result::SUCCESS;
 }

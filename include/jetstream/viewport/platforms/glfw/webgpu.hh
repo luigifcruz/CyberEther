@@ -39,6 +39,7 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     Result nextDrawable();
     Result commitDrawable(wgpu::TextureView& framebufferTexture);
     
+    Result waitEvents();
     Result pollEvents();
     bool keepRunning();
 

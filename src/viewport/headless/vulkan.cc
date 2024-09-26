@@ -422,6 +422,10 @@ const VkExtent2D& Implementation::getSwapchainExtent() const {
     return swapchainExtent;       
 }
 
+Result Implementation::waitEvents() {
+    return Result::SUCCESS;
+}
+
 Result Implementation::pollEvents() {
     return Result::SUCCESS;
 }

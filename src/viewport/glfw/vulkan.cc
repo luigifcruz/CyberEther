@@ -353,9 +353,13 @@ const VkExtent2D& Implementation::getSwapchainExtent() const {
     return swapchainExtent;
 }
 
-Result Implementation::pollEvents() {
+Result Implementation::waitEvents() {
     glfwWaitEventsTimeout(0.150);
+    return Result::SUCCESS;
+}
 
+Result Implementation::pollEvents() {
+    glfwPollEvents();
     return Result::SUCCESS;
 }
 

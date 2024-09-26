@@ -142,9 +142,13 @@ Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
     return Result::SUCCESS;
 }
 
+Result Implementation::waitEvents() {
+    glfwWaitEventsTimeout(0.150);
+    return Result::SUCCESS;
+}
+
 Result Implementation::pollEvents() {
     glfwPollEvents();
-
     return Result::SUCCESS;
 }
 

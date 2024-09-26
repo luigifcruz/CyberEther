@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
     emscripten_runtime_keepalive_push();
 #else
     while (instance.viewport().keepRunning()) {
-        instance.viewport().pollEvents();
+        instance.viewport().waitEvents();
     }
 #endif
 

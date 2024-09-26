@@ -52,6 +52,7 @@ class Generic {
 
     virtual F32 scale(const F32& scale) const = 0;
 
+    virtual Result waitEvents() = 0;
     virtual Result pollEvents() = 0;
     virtual bool keepRunning() = 0;
 

@@ -45,6 +45,7 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     Result createSwapchain();
     Result destroySwapchain();
 
+    Result waitEvents();
     Result pollEvents();
     bool keepRunning();
     Result nextDrawable(VkSemaphore& semaphore);

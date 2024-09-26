@@ -112,9 +112,13 @@ void* Implementation::nextDrawable() {
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
-Result Implementation::pollEvents() {
+Result Implementation::waitEvents() {
     glfwWaitEventsTimeout(0.150);
+    return Result::SUCCESS;
+}
 
+Result Implementation::pollEvents() {
+    glfwPollEvents();
     return Result::SUCCESS;
 }
 

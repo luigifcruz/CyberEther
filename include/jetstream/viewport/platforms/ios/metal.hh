@@ -35,6 +35,7 @@ class iOS<Device::Metal> : public Adapter<Device::Metal> {
 
     void* nextDrawable();
     
+    Result waitEvents();
     Result pollEvents();
     bool keepRunning();
 
