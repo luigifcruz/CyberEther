@@ -120,6 +120,8 @@ class JETSTREAM_API Compositor {
     I32 nodeContextMenuNodeId;
     bool benchmarkRunning;
     std::string filenameField;
+    std::string flowgraphFilename;
+    std::vector<char> flowgraphBlob;
 
     std::atomic_flag interfaceHalt{false};
 
@@ -153,8 +155,7 @@ class JETSTREAM_API Compositor {
     std::optional<ToggleBlockMail> toggleBlockMailbox;
     std::optional<bool> resetFlowgraphMailbox;
     std::optional<bool> closeFlowgraphMailbox;
-    std::optional<std::string> openFlowgraphUrlMailbox;
-    std::optional<std::string> openFlowgraphPathMailbox;
+    std::optional<bool> openFlowgraphPathMailbox;
     std::optional<const char*> openFlowgraphBlobMailbox;
     std::optional<bool> updateFlowgraphBlobMailbox;
     std::optional<bool> saveFlowgraphMailbox;

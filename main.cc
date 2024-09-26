@@ -182,7 +182,8 @@ int main(int argc, char* argv[]) {
     // Load flowgraph if provided.
 
     if (!flowgraphPath.empty()) {
-        JST_CHECK_THROW(instance.flowgraph().create(flowgraphPath));
+        JST_CHECK_THROW(instance.flowgraph().create());
+        JST_CHECK_THROW(instance.flowgraph().importFromFile(flowgraphPath));
     }
 
     // Start instance.

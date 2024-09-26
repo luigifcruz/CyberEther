@@ -19,74 +19,14 @@ Flowgraph::~Flowgraph() {
 Result Flowgraph::create() {
     JST_INFO("[FLOWGRAPH] Creating flowgraph in-memory.");
 
-    if (_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is already imported.");
+    if (_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is already created.");
         return Result::ERROR;
     }
 
     _protocolVersion = "1.0.0";
     _cyberetherVersion = JETSTREAM_VERSION_STR;
-
-    JST_CHECK(importFromBlob());
-
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::create(const std::string& path) {
-    JST_CHECK(setFilename(path));
-
-    std::fstream file;
-
-    if (!std::filesystem::exists(_filename)) {
-        JST_INFO("[FLOWGRAPH] Creating flowgraph file '{}'.", _filename);
-        file = std::fstream(_filename, std::ios::in | std::ios::binary);
-    } else {
-        JST_INFO("[FLOWGRAPH] Opening flowgraph file '{}'.", _filename);
-        file = std::fstream(_filename, std::ios::in | std::ios::binary);
-    }
-
-    if (!file) {
-        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", _filename);
-        return Result::ERROR;
-    }
-
-    const auto filesize = std::filesystem::file_size(_filename);
-    _blob.resize(filesize);
-    file.read(_blob.data(), filesize);
-    file.close();
-
-    _protocolVersion = "1.0.0";
-    _cyberetherVersion = JETSTREAM_VERSION_STR;
-
-    JST_CHECK(importFromBlob());
-
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::create(const char* blob) {
-    JST_INFO("[FLOWGRAPH] Creating flowgraph in-memory from blob.");
-
-    if (_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is already imported.");
-        return Result::ERROR;
-    }
-
-    if (blob == nullptr) {
-        JST_ERROR("[FLOWGRAPH] Blob is empty.");
-        return Result::ERROR;
-    }
-
-    _blob.insert(_blob.begin(), blob, blob + strlen(blob));
-    
-    // Add a newline at the end of the file in case of an empty file.
-    if (_blob.empty() || _blob.back() != '\n') {
-        _blob.push_back('\n');
-    }
-
-    _protocolVersion = "1.0.0";
-    _cyberetherVersion = JETSTREAM_VERSION_STR;
-
-    JST_CHECK(importFromBlob());
+    _created = true;
 
     return Result::SUCCESS;
 }
@@ -94,7 +34,7 @@ Result Flowgraph::create(const char* blob) {
 Result Flowgraph::destroy() {
     JST_DEBUG("[FLOWGRAPH] Destroying flowgraph.");
 
-    if (!_imported) {
+    if (!_created) {
         return Result::SUCCESS;
     }
 
@@ -107,49 +47,38 @@ Result Flowgraph::destroy() {
     _description.clear();
     _yaml->data.clear();
 
-    _filename.clear();
-    _blob.clear();
     _nodes.clear();
     _nodesOrder.clear();
 
-    _imported = false;
+    _created = false;
 
     return Result::SUCCESS;
 }
 
-Result Flowgraph::exportToFile() {
-    if (_filename.empty()) {
+Result Flowgraph::exportToFile(const std::string& path) {
+    if (path.empty()) {
         JST_ERROR("[FLOWGRAPH] Filepath is empty.");
         return Result::ERROR;
     }
 
-    JST_INFO("[FLOWGRAPH] Exporting flowgraph to file '{}'.", _filename);
+    JST_INFO("[FLOWGRAPH] Exporting flowgraph to file '{}'.", path);
 
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
-        return Result::ERROR;
-    }
+    std::vector<char> blob;
+    JST_CHECK(exportToBlob(blob));
 
-    JST_CHECK(exportToBlob());
-
-    std::fstream file(_filename, std::ios::out | std::ios::binary | std::ios::trunc);
+    std::fstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
-        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", _filename);
+        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", path);
         return Result::ERROR;
     }
     file.write("---\n", 4);
-    file.write(_blob.data(), _blob.size());
+    file.write(blob.data(), blob.size());
     file.close();
 
     return Result::SUCCESS;
 }
 
-Result Flowgraph::exportToBlob() {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
-        return Result::ERROR;
-    }
-
+Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     JST_DEBUG("[FLOWGRAPH] Exporting flowgraph to blob.");
 
     _yaml->data = ryml::Tree();
@@ -293,19 +222,39 @@ Result Flowgraph::exportToBlob() {
     }
 
     // Emit YAML to blob.
-    _blob = ryml::emitrs_yaml<std::vector<char>>(_yaml->data);
+    blob = ryml::emitrs_yaml<std::vector<char>>(_yaml->data);
 
     return Result::SUCCESS;
 }
 
-Result Flowgraph::importFromBlob() {
-    if (_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is already imported.");
+Result Flowgraph::importFromFile(const std::string& path) {
+    std::fstream file;
+
+    if (!std::filesystem::exists(path)) {
+        JST_INFO("[FLOWGRAPH] Creating flowgraph file '{}'.", path);
+        file = std::fstream(path, std::ios::in | std::ios::binary);
+    } else {
+        JST_INFO("[FLOWGRAPH] Opening flowgraph file '{}'.", path);
+        file = std::fstream(path, std::ios::in | std::ios::binary);
+    }
+
+    if (!file) {
+        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", path);
         return Result::ERROR;
     }
 
-    _yaml->data = ryml::parse_in_place({_blob.data(), _blob.size()});
-    _imported = true;
+    const auto filesize = std::filesystem::file_size(path);
+    std::vector<char> blob(filesize, 0);
+    file.read(blob.data(), filesize);
+    file.close();
+
+    JST_CHECK(importFromBlob(blob));
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
+    _yaml->data = ryml::parse({blob.data(), blob.size()});
 
     if (_yaml->data.rootref().empty()) {
         return Result::SUCCESS;
@@ -408,26 +357,9 @@ Result Flowgraph::importFromBlob() {
     return Result::SUCCESS;
 }
 
-Result Flowgraph::setFilename(const std::string& filename) {
-    if (filename.empty()) {
-        JST_ERROR("[FLOWGRAPH] Filename is empty.");
-        return Result::ERROR;
-    }
-
-    std::regex filenamePattern("^.+\\.ya?ml$");
-    if (!std::regex_match(filename, filenamePattern)) {
-        JST_ERROR("[FLOWGRAPH] Invalid filename '{}'.", filename);
-        return Result::ERROR;
-    }
-
-    _filename = filename;
-
-    return Result::SUCCESS;
-}
-
 Result Flowgraph::setTitle(const std::string& title) {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
+    if (!_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is not create.");
         return Result::ERROR;
     }
 
@@ -437,8 +369,8 @@ Result Flowgraph::setTitle(const std::string& title) {
 }
 
 Result Flowgraph::setSummary(const std::string& summary) {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
+    if (!_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is not create.");
         return Result::ERROR;
     }
 
@@ -448,8 +380,8 @@ Result Flowgraph::setSummary(const std::string& summary) {
 }
 
 Result Flowgraph::setAuthor(const std::string& author) {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
+    if (!_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is not create.");
         return Result::ERROR;
     }
 
@@ -459,8 +391,8 @@ Result Flowgraph::setAuthor(const std::string& author) {
 }
 
 Result Flowgraph::setLicense(const std::string& license) {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
+    if (!_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is not create.");
         return Result::ERROR;
     }
 
@@ -470,8 +402,8 @@ Result Flowgraph::setLicense(const std::string& license) {
 }
 
 Result Flowgraph::setDescription(const std::string& description) {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
+    if (!_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is not create.");
         return Result::ERROR;
     }
 
@@ -481,8 +413,8 @@ Result Flowgraph::setDescription(const std::string& description) {
 }
 
 Result Flowgraph::print() const {
-    if (!_imported) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph is not imported.");
+    if (!_created) {
+        JST_ERROR("[FLOWGRAPH] Flowgraph is not create.");
         return Result::ERROR;
     }
 

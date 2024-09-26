@@ -392,6 +392,8 @@ Result Compositor::destroy() {
     infoPanelEnabled = true;
     globalModalContentId = 0;
     nodeContextMenuNodeId = 0;
+    flowgraphFilename = {};
+    flowgraphBlob = {};
 
     // Clearing buffers.
 
@@ -602,20 +604,12 @@ Result Compositor::processInteractions() {
         closeFlowgraphMailbox.reset();
     }
 
-    if (openFlowgraphUrlMailbox.has_value()) {
-        JST_DISPATCH_ASYNC([&](){
-            // TODO: Implement.
-            ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Remote flowgraph is not implemented yet." });
-            updateFlowgraphBlobMailbox = true;
-        });
-        openFlowgraphUrlMailbox.reset();
-    }
-
     if (openFlowgraphPathMailbox.has_value()) {
-        JST_DISPATCH_ASYNC([&, filepath = *openFlowgraphPathMailbox](){
+        JST_DISPATCH_ASYNC([&](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
             JST_CHECK_NOTIFY([&]{
-                JST_CHECK(instance.flowgraph().create(filepath));
+                JST_CHECK(instance.flowgraph().create());
+                JST_CHECK(instance.flowgraph().importFromFile(flowgraphFilename));
                 JST_CHECK(checkAutoLayoutState());
                 return Result::SUCCESS;
             }());
@@ -625,10 +619,12 @@ Result Compositor::processInteractions() {
     }
 
     if (openFlowgraphBlobMailbox.has_value()) {
-        JST_DISPATCH_ASYNC([&, blob = *openFlowgraphBlobMailbox](){
+        JST_DISPATCH_ASYNC([&, string = *openFlowgraphBlobMailbox](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
             JST_CHECK_NOTIFY([&]{
-                JST_CHECK(instance.flowgraph().create(blob));
+                JST_CHECK(instance.flowgraph().create());
+                std::vector<char> blob(string, string + strlen(string));
+                JST_CHECK(instance.flowgraph().importFromBlob(blob));
                 JST_CHECK(checkAutoLayoutState());
                 return Result::SUCCESS;
             }());
@@ -640,7 +636,7 @@ Result Compositor::processInteractions() {
     if (saveFlowgraphMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Saving flowgraph..." });
-            JST_CHECK_NOTIFY(instance.flowgraph().exportToFile());
+            JST_CHECK_NOTIFY(instance.flowgraph().exportToFile(flowgraphFilename));
         });
         saveFlowgraphMailbox.reset();
     }
@@ -656,7 +652,7 @@ Result Compositor::processInteractions() {
     if (updateFlowgraphBlobMailbox.has_value()) {
         if (sourceEditorEnabled) {
             JST_DISPATCH_ASYNC([&](){
-                JST_CHECK(instance.flowgraph().exportToBlob());
+                JST_CHECK(instance.flowgraph().exportToBlob(flowgraphBlob));
                 return Result::SUCCESS;
             });
             updateFlowgraphBlobMailbox.reset();
@@ -671,7 +667,7 @@ Result Compositor::drawStatic() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const auto& io = ImGui::GetIO();
     const auto& scalingFactor = instance.window().scalingFactor();
-    const bool flowgraphLoaded = instance.flowgraph().imported();
+    const bool flowgraphLoaded = instance.flowgraph().created();
     const F32 variableWidth = 100.0f * scalingFactor;
     I32 interactionTrigger = 0;
 
@@ -984,7 +980,7 @@ Result Compositor::drawStatic() {
 
     // Save
     if (interactionTrigger == 1 && flowgraphLoaded) {
-        if (instance.flowgraph().filename().empty()) {
+        if (flowgraphFilename.empty()) {
             globalModalToggle = true;
             globalModalContentId = 4;
         } else {
@@ -1011,7 +1007,7 @@ Result Compositor::drawStatic() {
 
     // Close
     if (interactionTrigger == 5 && flowgraphLoaded) {
-        if (instance.flowgraph().filename().empty() &&
+        if (flowgraphFilename.empty() &&
             !instance.flowgraph().empty()) {
             globalModalToggle = true;
             globalModalContentId = 5;
@@ -1095,7 +1091,7 @@ Result Compositor::drawStatic() {
             return;
         }
 
-        auto& file = instance.flowgraph().blob();
+        auto& file = flowgraphBlob;
 
         if (file.empty()) {
             ImGui::Text("Empty source file.");
@@ -1287,7 +1283,7 @@ Result Compositor::drawStatic() {
     //
 
     [&](){
-        if (instance.flowgraph().imported() || ImGui::IsPopupOpen("##help_modal")) {
+        if (instance.flowgraph().created() || ImGui::IsPopupOpen("##help_modal")) {
             return;
         }
 
@@ -1404,7 +1400,7 @@ Result Compositor::drawStatic() {
     if (globalModalToggle) {
         ImGui::OpenPopup("##help_modal");
         if (globalModalContentId == 4) {
-            filenameField = instance.flowgraph().filename();
+            filenameField = flowgraphFilename;
         }
         globalModalToggle = false;
     }
@@ -1627,7 +1623,7 @@ Result Compositor::drawStatic() {
 
             bool openFile = false;
 
-            ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path or URL of a flowgraph file here:");
+            ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path of a flowgraph file here:");
             static std::string globalModalPath;
             if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody |
                                                              ImGuiTableFlags_NoBordersInBodyUntilResize)) {
@@ -1659,11 +1655,9 @@ Result Compositor::drawStatic() {
             if (openFile) {
                 if (globalModalPath.size() == 0) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
-                } else if (std::regex_match(globalModalPath, std::regex("^(https?)://.*$"))) {
-                    openFlowgraphUrlMailbox = globalModalPath;
-                    ImGui::CloseCurrentPopup();
                 } else if (std::filesystem::exists(globalModalPath)) {
-                    openFlowgraphPathMailbox = globalModalPath;
+                    flowgraphFilename = globalModalPath;
+                    openFlowgraphPathMailbox = true;
                     ImGui::CloseCurrentPopup();
                 } else {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "The specified path doesn't exist." });
@@ -1783,13 +1777,24 @@ Result Compositor::drawStatic() {
 
             saveFile |= ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0));
             if (saveFile) {
-                const auto& result = instance.flowgraph().setFilename(filenameField);
-                if (result == Result::SUCCESS) {
+                [&]{
+                    if (filenameField.empty()) {
+                        JST_ERROR("[FLOWGRAPH] Filename is empty.");
+                        JST_CHECK_NOTIFY(Result::ERROR);
+                        return;
+                    }
+
+                    std::regex filenamePattern("^.+\\.ya?ml$");
+                    if (!std::regex_match(filenameField, filenamePattern)) {
+                        JST_ERROR("[FLOWGRAPH] Invalid filename '{}'.", filenameField);
+                        JST_CHECK_NOTIFY(Result::ERROR);
+                        return;
+                    }
+
+                    flowgraphFilename = filenameField;
                     saveFlowgraphMailbox = true;
                     ImGui::CloseCurrentPopup();
-                } else {
-                    JST_CHECK_NOTIFY(result);
-                }
+                }();
             }
 
             ImGui::PopStyleVar();
@@ -2307,7 +2312,7 @@ Result Compositor::drawFlowgraph() {
     //
 
     [&](){
-        if (!flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
+        if (!flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().created()) {
             return;
         }
 
@@ -2899,7 +2904,7 @@ Result Compositor::drawFlowgraph() {
     //
 
     [&](){
-        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
+        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().created()) {
             return;
         }
 
