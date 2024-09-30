@@ -3,7 +3,6 @@
 
 layout(set = 0, binding = 0) uniform ShaderUniforms {
     mat4 transform;
-    bool visible;
 } uniforms;
 
 layout(location = 0) in vec3 inPosition;

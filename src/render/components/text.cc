@@ -22,6 +22,7 @@ Text::~Text() {
 struct Text::Impl {
     struct UniformBuffer {
         glm::vec3 color;
+        F32 sharpness;
     };
 
     struct Element {
@@ -311,6 +312,7 @@ Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
 Result Text::Impl::updateUniforms() {
     // Set data.
     uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
+    uniforms.sharpness = config.sharpness;
 
     // Set flag to update buffer.
     updateFontUniformBufferFlag = true;

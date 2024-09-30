@@ -25,6 +25,7 @@ class Text : public Generic {
         Extent2D<F32> pixelSize = {0.0f, 0.0f};
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
         std::unordered_map<std::string, ElementConfig> elements;
+        F32 sharpness = 0.5f;
     };
 
     Text(const Config& config);

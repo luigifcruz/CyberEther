@@ -31,7 +31,6 @@ struct Lineplot<D, T>::GImpl {
 
     struct {
         glm::mat4 transform;
-        bool visible = false;
     } cursorUniforms;
 
     Extent2D<F32> pixelSize;
@@ -598,7 +597,6 @@ void Lineplot<D, T>::updateCursorState() {
     // Update the cursor uniform buffer.
 
     gimpl->cursorUniforms.transform = transform;
-    gimpl->cursorUniforms.visible = true;
 
     // Schedule the uniform buffers for update.
 
