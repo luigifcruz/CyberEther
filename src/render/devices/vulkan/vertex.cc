@@ -38,27 +38,25 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
         bindingDescription.push_back(binding);
 
         for (U32 i = 0; i < stride; i += 4) {
-            VkFormat format = VK_FORMAT_UNDEFINED;
+            VkVertexInputAttributeDescription attribute = {};
 
-            switch (i % 4) {
+            switch ((stride - i) % 4) {
                 case 1:
-                    format = VK_FORMAT_R32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32_SFLOAT;
                     break;
                 case 2:
-                    format = VK_FORMAT_R32G32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32G32_SFLOAT;
                     break;
                 case 3:
-                    format = VK_FORMAT_R32G32B32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32G32B32_SFLOAT;
                     break;
                 case 0:
-                    format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
                     break;
             }
-
-            VkVertexInputAttributeDescription attribute = {};
+            
             attribute.binding = binding.binding;
             attribute.location = attributeDescription.size();
-            attribute.format = format;
             attribute.offset = i * sizeof(F32);
             attributeDescription.push_back(attribute);
         }
@@ -72,27 +70,25 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
         bindingDescription.push_back(binding);
 
         for (U32 i = 0; i < stride; i += 4) {
-            VkFormat format = VK_FORMAT_UNDEFINED;
+            VkVertexInputAttributeDescription attribute = {};
 
-            switch (i % 4) {
+            switch ((stride - i) % 4) {
                 case 1:
-                    format = VK_FORMAT_R32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32_SFLOAT;
                     break;
                 case 2:
-                    format = VK_FORMAT_R32G32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32G32_SFLOAT;
                     break;
                 case 3:
-                    format = VK_FORMAT_R32G32B32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32G32B32_SFLOAT;
                     break;
                 case 0:
-                    format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
                     break;
             }
 
-            VkVertexInputAttributeDescription attribute = {};
             attribute.binding = binding.binding;
             attribute.location = attributeDescription.size();
-            attribute.format = format;
             attribute.offset = i * sizeof(F32);
             attributeDescription.push_back(attribute);
         }

@@ -53,7 +53,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
             drawCommand.indexCount = buffer->getIndexCount();
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstIndex = 0;
-            drawCommand.vertexOffset = i * (buffer->getIndexCount() / 6) * 4;
+            drawCommand.vertexOffset = i * buffer->getVertexCount();
             drawCommand.firstInstance = i * config.numberOfInstances;
 
             indexedDrawCommands.push_back(drawCommand);
