@@ -9,7 +9,17 @@ namespace Jetstream::Render {
 using Implementation = ProgramImp<Device::WebGPU>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    _draw = std::dynamic_pointer_cast<DrawImp<Device::WebGPU>>(config.draw);
+    // TODO: Support multiple draws in WebGPU.
+    if (config.draws.size() > 1) {
+        JST_ERROR("[WebGPU] Program supports only one draw.");
+        JST_CHECK_THROW(Result::ERROR);
+    }
+
+    for (auto& draw : config.draws) {
+        draws.push_back(
+            std::dynamic_pointer_cast<DrawImp<Device::WebGPU>>(draw)
+        );
+    }
 
     for (auto& texture : config.textures) {
         textures.push_back(
@@ -163,7 +173,9 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     renderPipelineDescriptor.multisample.mask = 0xFFFFFFFF;
     renderPipelineDescriptor.multisample.alphaToCoverageEnabled = false;
 
-    JST_CHECK(_draw->create(renderPipelineDescriptor));
+    for (auto& draw : draws) {
+        JST_CHECK(draw->create(renderPipelineDescriptor));
+    }
 
     renderPipelineDescriptor.vertex.module = vertShaderModule;
     renderPipelineDescriptor.vertex.entryPoint = "main";
@@ -174,7 +186,9 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
 }
 
 Result Implementation::destroy() {
-    JST_CHECK(_draw->destroy());
+    for (auto& draw : draws) {
+        JST_CHECK(draw->destroy());
+    }
 
     bindings.clear();
     bindGroupEntries.clear();
@@ -189,7 +203,9 @@ Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
         renderPassEncoder.SetBindGroup(0, bindGroup, 0, 0);
     }
 
-    JST_CHECK(_draw->encode(renderPassEncoder));
+    for (auto& draw : draws) {
+        JST_CHECK(draw->encode(renderPassEncoder));
+    }
 
     return Result::SUCCESS;
 }

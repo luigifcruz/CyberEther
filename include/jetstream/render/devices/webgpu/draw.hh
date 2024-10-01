@@ -17,7 +17,28 @@ class DrawImp<Device::WebGPU> : public Draw {
     Result encode(wgpu::RenderPassEncoder& renderPassEncoder);
 
  private:
+    struct IndexedDrawCommand {
+        U32 indexCount;
+        U32 instanceCount;
+        U32 firstIndex;
+        U32 baseVertex;
+        U32 firstInstance;
+    };
+
+    struct DrawCommand {
+        U32 vertexCount;
+        U32 instanceCount;
+        U32 firstVertex;
+        U32 firstInstance;
+    };
+
     std::shared_ptr<VertexImp<Device::WebGPU>> buffer;
+
+    std::shared_ptr<BufferImp<Device::WebGPU>> indexedIndirectBuffer;
+    std::shared_ptr<BufferImp<Device::WebGPU>> indirectBuffer;
+
+    std::vector<IndexedDrawCommand> indexedDrawCommands;
+    std::vector<DrawCommand> drawCommands;
 
     friend class ProgramImp<Device::WebGPU>;
 };

@@ -25,7 +25,7 @@ class ProgramImp<Device::WebGPU> : public Program {
     std::vector<wgpu::BindGroupLayoutEntry> bindings;
     std::vector<wgpu::BindGroupEntry> bindGroupEntries;
 
-    std::shared_ptr<DrawImp<Device::WebGPU>> _draw;
+    std::vector<std::shared_ptr<DrawImp<Device::WebGPU>>> draws;
     std::vector<std::shared_ptr<TextureImp<Device::WebGPU>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, Program::Target>> buffers;
 

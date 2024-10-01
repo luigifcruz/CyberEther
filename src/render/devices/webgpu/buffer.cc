@@ -35,6 +35,10 @@ Result Implementation::create() {
         bufferUsageFlag |= wgpu::BufferUsage::Uniform;
     }
 
+    if ((config.target & Target::INDIRECT) == Target::INDIRECT) {
+        bufferUsageFlag |= wgpu::BufferUsage::Indirect;
+    }
+
     if ((config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC ||
         (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
         JST_ERROR("[WebGPU] Buffer usage type not supported.")

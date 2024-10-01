@@ -1,5 +1,6 @@
 #include "jetstream/render/devices/webgpu/vertex.hh"
 #include "jetstream/render/devices/webgpu/draw.hh"
+#include "jetstream/render/devices/webgpu/buffer.hh"
 
 namespace Jetstream::Render {
 
@@ -33,19 +34,64 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
     }
 
     renderDescriptor.primitive.frontFace = wgpu::FrontFace::CCW;
-	  renderDescriptor.primitive.cullMode = wgpu::CullMode::None;
-	  renderDescriptor.primitive.topology = topology;
-	  renderDescriptor.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined;
+    renderDescriptor.primitive.cullMode = wgpu::CullMode::None;
+    renderDescriptor.primitive.topology = topology;
+    renderDescriptor.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined;
 
-    JST_CHECK(buffer->create(renderDescriptor));
+    JST_CHECK(buffer->create(renderDescriptor,
+                             config.numberOfDraws,
+                             config.numberOfInstances));
 
-    return Result::SUCCESS;
-}
+    // Create multi-draw indirect buffer.
 
-Result Implementation::destroy() {
-    JST_DEBUG("[WebGPU] Destroying draw.");
+    if (buffer->isBuffered()) {
+        for (U64 i = 0; i < config.numberOfDraws; i++) {
+            IndexedDrawCommand drawCommand = {};
+            drawCommand.indexCount = buffer->getIndexCount();
+            drawCommand.instanceCount = config.numberOfInstances;
+            drawCommand.firstIndex = 0;
+            drawCommand.baseVertex = i * buffer->getVertexCount();
+            drawCommand.firstInstance = i * config.numberOfInstances;
 
-    JST_CHECK(buffer->destroy());
+            indexedDrawCommands.push_back(drawCommand);
+        }
+
+        {
+            Render::Buffer::Config cfg;
+            cfg.buffer = indexedDrawCommands.data();
+            cfg.elementByteSize = sizeof(IndexedDrawCommand);
+            cfg.size = indexedDrawCommands.size();
+            cfg.target = Render::Buffer::Target::INDIRECT;
+
+            indexedIndirectBuffer = std::make_shared<Render::BufferImp<Device::WebGPU>>(cfg);
+            indexedIndirectBuffer->create();
+        }
+
+        indexedIndirectBuffer->update();
+    } else {
+        for (U64 i = 0; i < config.numberOfDraws; i++) {
+            DrawCommand drawCommand = {};
+            drawCommand.vertexCount = buffer->getVertexCount();
+            drawCommand.instanceCount = config.numberOfInstances;
+            drawCommand.firstVertex = i * buffer->getVertexCount();
+            drawCommand.firstInstance = i * config.numberOfInstances;
+
+            drawCommands.push_back(drawCommand);
+        }
+
+        {
+            Render::Buffer::Config cfg;
+            cfg.buffer = drawCommands.data();
+            cfg.elementByteSize = sizeof(DrawCommand);
+            cfg.size = drawCommands.size();
+            cfg.target = Render::Buffer::Target::INDIRECT;
+
+            indirectBuffer = std::make_shared<Render::BufferImp<Device::WebGPU>>(cfg);
+            indirectBuffer->create();
+        }
+
+        indirectBuffer->update();
+    }
 
     return Result::SUCCESS;
 }
@@ -53,11 +99,30 @@ Result Implementation::destroy() {
 Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
     JST_CHECK(buffer->encode(renderPassEncoder));
 
-    if (buffer->isBuffered()) {
-        renderPassEncoder.DrawIndexed(buffer->getVertexCount());
-    } else {
-        renderPassEncoder.Draw(buffer->getVertexCount());
+    // WebGPU doesn't support multi-draw. So we need to call multiple times.
+    for (U64 i = 0; i < config.numberOfDraws; i++) {
+        if (buffer->isBuffered()) {
+            renderPassEncoder.DrawIndexedIndirect(indexedIndirectBuffer->getHandle(), i * sizeof(IndexedDrawCommand));
+        } else {
+            renderPassEncoder.DrawIndirect(indirectBuffer->getHandle(), i * sizeof(DrawCommand));
+        }
     }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::destroy() {
+    JST_DEBUG("[WebGPU] Destroying draw.");
+
+    if (buffer->isBuffered()) {
+        JST_CHECK(indexedIndirectBuffer->destroy());
+        indexedDrawCommands.clear();
+    } else {
+        JST_CHECK(indirectBuffer->destroy());
+        drawCommands.clear();
+    }
+
+    JST_CHECK(buffer->destroy());
 
     return Result::SUCCESS;
 }
