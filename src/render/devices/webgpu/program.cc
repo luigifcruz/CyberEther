@@ -9,12 +9,6 @@ namespace Jetstream::Render {
 using Implementation = ProgramImp<Device::WebGPU>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    // TODO: Support multiple draws in WebGPU.
-    if (config.draws.size() > 1) {
-        JST_ERROR("[WebGPU] Program supports only one draw.");
-        JST_CHECK_THROW(Result::ERROR);
-    }
-
     for (auto& draw : config.draws) {
         draws.push_back(
             std::dynamic_pointer_cast<DrawImp<Device::WebGPU>>(draw)

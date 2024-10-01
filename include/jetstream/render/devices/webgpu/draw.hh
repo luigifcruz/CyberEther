@@ -37,6 +37,9 @@ class DrawImp<Device::WebGPU> : public Draw {
     std::shared_ptr<BufferImp<Device::WebGPU>> indexedIndirectBuffer;
     std::shared_ptr<BufferImp<Device::WebGPU>> indirectBuffer;
 
+    std::vector<std::vector<wgpu::VertexAttribute>> attributeDescription;
+    std::vector<wgpu::VertexBufferLayout> vertexLayouts;
+
     std::vector<IndexedDrawCommand> indexedDrawCommands;
     std::vector<DrawCommand> drawCommands;
 

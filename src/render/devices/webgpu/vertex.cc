@@ -23,7 +23,8 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
     }
 }
 
-Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor, 
+Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& attributeDescription,
+                              std::vector<wgpu::VertexBufferLayout>& vertexLayouts,
                               const U64& numberOfDraws,
                               const U64&) {
     JST_DEBUG("[WebGPU] Creating vertex.");
@@ -106,9 +107,6 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor,
     if (indices) {
         indexCount = indices->size();
     }
-
-    renderDescriptor.vertex.bufferCount = vertexLayouts.size();
-    renderDescriptor.vertex.buffers = vertexLayouts.data();
 
     return Result::SUCCESS;
 }

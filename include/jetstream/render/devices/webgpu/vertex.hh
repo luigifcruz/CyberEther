@@ -12,7 +12,8 @@ class VertexImp<Device::WebGPU> : public Vertex {
     explicit VertexImp(const Config& config);
 
  protected:
-    Result create(wgpu::RenderPipelineDescriptor& renderDescriptor, 
+    Result create(std::vector<std::vector<wgpu::VertexAttribute>>& attributeDescription,
+                  std::vector<wgpu::VertexBufferLayout>& vertexLayouts,
                   const U64& numberOfDraws,
                   const U64& numberOfInstances);
     Result destroy();
@@ -30,16 +31,9 @@ class VertexImp<Device::WebGPU> : public Vertex {
         return indices != nullptr;
     }
 
-    constexpr std::vector<wgpu::VertexBufferLayout>& getHandle() {
-        return vertexLayouts;
-    }
-
  private:
     U64 vertexCount;
     U32 indexCount;
-
-    std::vector<std::vector<wgpu::VertexAttribute>> attributeDescription;
-    std::vector<wgpu::VertexBufferLayout> vertexLayouts;
 
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, U32>> vertices;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, U32>> instances;

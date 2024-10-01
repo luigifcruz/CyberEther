@@ -38,9 +38,13 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
     renderDescriptor.primitive.topology = topology;
     renderDescriptor.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined;
 
-    JST_CHECK(buffer->create(renderDescriptor,
+    JST_CHECK(buffer->create(attributeDescription,
+                             vertexLayouts,
                              config.numberOfDraws,
                              config.numberOfInstances));
+
+    renderDescriptor.vertex.bufferCount = vertexLayouts.size();
+    renderDescriptor.vertex.buffers = vertexLayouts.data();
 
     // Create multi-draw indirect buffer.
 
