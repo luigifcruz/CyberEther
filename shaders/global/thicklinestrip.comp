@@ -13,7 +13,7 @@ layout(std430, set = 0, binding = 1) readonly buffer A {
     vec2 points[];
 };
 
-layout(std430, set = 0, binding = 2) writeonly buffer B {
+layout(std430, set = 0, binding = 2) buffer B {
     vec4 line[];
 };
 
@@ -32,17 +32,22 @@ void main() {
         return;
     }
 
-    vec2 point = points[i];
-    vec2 nextPoint = points[i + 1];
+    vec2 pointA = points[i + 0];
+    vec2 pointB = points[i + 1];
 
-    point.x *= uniforms.zoom;
-    nextPoint.x *= uniforms.zoom;
+    pointA = clamp(pointA, -1.0, 1.0);
+    pointB = clamp(pointB, -1.0, 1.0);
 
-    vec2 dir = normal(nextPoint - point);
+    pointA.x *= uniforms.zoom;
+    pointB.x *= uniforms.zoom;
+
+    vec2 dir = normal(pointB - pointA);
     vec2 offset = perpendicular(dir) * uniforms.thickness;
 
-    line[(i * 4) + 0] = vec4(point - offset, -dir);
-    line[(i * 4) + 1] = vec4(point + offset, dir);
-    line[(i * 4) + 2] = vec4(nextPoint - offset, -dir);
-    line[(i * 4) + 3] = vec4(nextPoint + offset, dir);
+    // Vertices
+
+    line[(i * 4) + 0] = vec4(pointA - offset, -dir);
+    line[(i * 4) + 1] = vec4(pointA + offset,  dir);
+    line[(i * 4) + 2] = vec4(pointB - offset, -dir);
+    line[(i * 4) + 3] = vec4(pointB + offset,  dir);
 }

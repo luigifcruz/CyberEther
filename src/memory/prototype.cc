@@ -291,7 +291,8 @@ Result TensorPrototype::slice(const std::vector<Token>& slice) {
     prototype.shape = shape;
     prototype.stride = stride;
     prototype.offset = offset;
-    prototype.contiguous = false;
+    // TODO: Actually check if contiguous.
+    prototype.contiguous = true;
 
     update_cache();
 

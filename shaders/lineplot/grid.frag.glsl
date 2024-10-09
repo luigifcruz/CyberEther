@@ -14,11 +14,18 @@ layout(location = 1) in vec2 fragNormal;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    // Calculate the distance to the line's edges
-    float distance = length(fragNormal);
+    // Calculate the distance to the line's center.
+    float distance = (1.0 - abs(2.0 * fragNormal.y - 1.0));
 
-    // Apply smoothing with a step function
-    float alpha = smoothstep(0.0, 1.0, distance);
+    // Calculate the gradient of the distance field.
+    float width = fwidth(distance);
 
-    outColor = vec4(fragColor, 1.0 - alpha);
+    // Adjust this value to control the overall sharpness.
+    float edgeSharpness = 0.75;
+
+    // Convert distance to pixel space.
+    float alpha = smoothstep(0.5 - edgeSharpness * width, 0.5 + edgeSharpness * width, distance);
+
+    // Output the color with the calculated alpha.
+    outColor = vec4(fragColor, alpha);
 }

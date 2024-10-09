@@ -26,7 +26,7 @@ Metal::Metal(const Config& config) : config(config) {
 
     // Print device information.
     JST_INFO("-----------------------------------------------------");
-    JST_INFO("Jetstream Heterogeneous Backend [METAL]")
+    JST_INFO("Jetstream Heterogeneous Backend [Metal]")
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Device Name:     {}", getDeviceName());
     JST_INFO("Device Type:     {}", getPhysicalDeviceType());

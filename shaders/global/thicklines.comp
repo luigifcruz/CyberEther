@@ -13,7 +13,7 @@ layout(std430, set = 0, binding = 1) readonly buffer A {
     vec2 points[];
 };
 
-layout(std430, set = 0, binding = 2) writeonly buffer B {
+layout(std430, set = 0, binding = 2) buffer B {
     vec4 line[];
 };
 
@@ -35,6 +35,9 @@ void main() {
     vec2 pointA = points[(i * 2) + 0];
     vec2 pointB = points[(i * 2) + 1];
 
+    pointA = clamp(pointA, -1.0, 1.0);
+    pointB = clamp(pointB, -1.0, 1.0);
+
     pointA.x *= uniforms.zoom;
     pointB.x *= uniforms.zoom;
 
@@ -45,15 +48,15 @@ void main() {
 
     vec2 pointAX = pointA + offset;
     vec2 pointAY = pointA - offset;
-
     vec2 pointBX = pointB + offset;
     vec2 pointBY = pointB - offset;
 
     // Triangle Vertices
-    line[(i * 6) + 0] = vec4(pointAX, 0.0f, -1.0); // 0
-    line[(i * 6) + 1] = vec4(pointAY, 0.0f, +1.0); // 1
-    line[(i * 6) + 2] = vec4(pointBX, 0.0f, -1.0); // 2
-    line[(i * 6) + 3] = vec4(pointBX, 0.0f, -1.0); // 2
-    line[(i * 6) + 4] = vec4(pointAY, 0.0f, +1.0); // 3
-    line[(i * 6) + 5] = vec4(pointBY, 0.0f, +1.0); // 0
+
+    line[(i * 6) + 0] = vec4(pointAX, 0.0, 0.0); // 0
+    line[(i * 6) + 1] = vec4(pointAY, 0.0, 1.0); // 1
+    line[(i * 6) + 2] = vec4(pointBX, 0.0, 0.0); // 2
+    line[(i * 6) + 3] = vec4(pointBX, 0.0, 0.0); // 2
+    line[(i * 6) + 4] = vec4(pointAY, 0.0, 1.0); // 3
+    line[(i * 6) + 5] = vec4(pointBY, 0.0, 1.0); // 0
 }

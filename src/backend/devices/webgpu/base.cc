@@ -13,7 +13,7 @@ static void WebGPUErrorCallback(WGPUErrorType error_type, const char* message, v
         case WGPUErrorType_DeviceLost:  error_type_lbl = "Device lost";   break;
         default:                        error_type_lbl = "Unknown";
     }
-    JST_FATAL("[WEBGPU] {} error: {}", error_type_lbl, message);
+    JST_FATAL("[WebGPU] {} error: {}", error_type_lbl, message);
     JST_CHECK_THROW(Result::FATAL);
 }
 
@@ -33,7 +33,7 @@ WebGPU::WebGPU(const Config& _config) : config(_config), cache({}) {
 
     JST_WARN("Due to current Emscripten limitations the device values are inaccurate.");
     JST_INFO("-----------------------------------------------------");
-    JST_INFO("Jetstream Heterogeneous Backend [WEBGPU]")
+    JST_INFO("Jetstream Heterogeneous Backend [WebGPU]")
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Device Name:     {}", getDeviceName());
     JST_INFO("Device Type:     {}", getPhysicalDeviceType());

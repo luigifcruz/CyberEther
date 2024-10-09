@@ -14,12 +14,12 @@ class Tensor<Device::CUDA, T> : public TensorBase<Device::CUDA, T> {
 
     Tensor(const TensorBase<Device::CUDA, T>& base) : TensorBase<Device::CUDA, T>(base) {}
 
-    constexpr const void* data() const noexcept {
-        return this->buffer->data();
+    constexpr const T* data() const noexcept {
+        return reinterpret_cast<T*>(this->buffer->data());
     }
 
-    constexpr void* data() noexcept {
-        return this->buffer->data();
+    constexpr T* data() noexcept {
+        return reinterpret_cast<T*>(this->buffer->data());
     }
 
     constexpr const void* data_ptr() const noexcept {

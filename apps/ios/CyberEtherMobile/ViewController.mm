@@ -92,8 +92,6 @@
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
     
-    ImNodes::DestroyContext();
-    
     instance.destroy();
     
     NSLog(@"Goodbye from CyberEther!");

@@ -15,7 +15,7 @@ class Draw {
  public:
     enum class Mode : U64 {
         TRIANGLE_STRIP,
-        TRIANGLES, 
+        TRIANGLES,
         LINE_STRIP,
         LINES,
         POINTS,
@@ -23,6 +23,8 @@ class Draw {
 
     struct Config {
         Mode mode = Mode::TRIANGLES;
+        U64 numberOfDraws = 1;
+        U64 numberOfInstances = 1;
         std::shared_ptr<Vertex> buffer;
     };
 
@@ -33,7 +35,7 @@ class Draw {
         return config;
     }
 
-    template<Device D> 
+    template<Device D>
     static std::shared_ptr<Draw> Factory(const Config& config) {
         return std::make_shared<DrawImp<D>>(config);
     }

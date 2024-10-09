@@ -3,7 +3,7 @@
 
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/adapters/generic.hh"
-#include "jetstream/viewport/plugins/endpoint.hh"
+#include "jetstream/viewport/platforms/headless/endpoint.hh"
 
 namespace Jetstream::Viewport {
 

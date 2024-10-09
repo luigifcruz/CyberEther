@@ -11,7 +11,10 @@
 #include "jetstream/modules/remote.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/backend/devices/cpu/helpers.hh"
+
+#include "jetstream/types.hh"
 #include "shaders/remote_shaders.hh"
+#include "assets/constants.hh"
 
 namespace Jetstream {
 
@@ -79,7 +82,7 @@ Result Remote<D, T>::create() {
     }
     brokerConnected = true;
 
-    // Send framebuffer size request command. 
+    // Send framebuffer size request command.
 
     {
         auto response = jst::fmt::format("cmd:fbsize\n");
@@ -128,12 +131,12 @@ Result Remote<D, T>::create() {
                     // Parse command `ok:fbsize:width,height`.
 
                     if (line.compare(0, 9, "ok:fbsize") == 0) {
-                        remoteFramebufferSize.width = std::stoi(line.substr(10, 15));
-                        remoteFramebufferSize.height = std::stoi(line.substr(16, 21));
+                        remoteFramebufferSize.x = std::stoi(line.substr(10, 15));
+                        remoteFramebufferSize.y = std::stoi(line.substr(16, 21));
 
-                        JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.width, 
-                                                                                              remoteFramebufferSize.height);
-                        
+                        JST_DEBUG("Received `ok:fbsize` from server: `width={}, height={}`.", remoteFramebufferSize.x,
+                                                                                              remoteFramebufferSize.y);
+
                         auto response = jst::fmt::format("cmd:framerate\n");
                         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
 
@@ -157,10 +160,10 @@ Result Remote<D, T>::create() {
 
                     if (line.compare(0, 8, "ok:codec") == 0) {
                         const auto codec = line.substr(9, line.length() - 1);
-                        remoteFramebufferCodec = Render::StringToVideoCodec(codec);
+                        remoteFramebufferCodec = Viewport::StringToVideoCodec(codec);
 
                         JST_DEBUG("Received `ok:codec` from server: `id={}`.", codec);
-                        
+
                         b.set_value(Result::SUCCESS);
 
                         continue;
@@ -212,13 +215,27 @@ Result Remote<D, T>::create() {
 
     // Allocating framebuffer memory.
 
-    remoteFramebufferMemory.resize(remoteFramebufferSize.width * 
-                                   remoteFramebufferSize.height * 4);
+    remoteFramebufferMemory.resize(remoteFramebufferSize.x *
+                                   remoteFramebufferSize.y * 4);
 
-    // Send streaming start command. 
+    // Get client local address.
+
+    struct sockaddr_in localAddr;
+    socklen_t addrLen = sizeof(localAddr);
+
+    if (getsockname(brokerFileDescriptor, (struct sockaddr*)&localAddr, &addrLen) < 0) {
+        JST_ERROR("Failed to get local address.");
+        return Result::ERROR;
+    }
+
+    char localAddressString[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &localAddr.sin_addr, localAddressString, sizeof(localAddressString));
+    JST_DEBUG("Local client address: '{}'", localAddressString)
+
+    // Send streaming start command.
 
     {
-        auto response = jst::fmt::format("cmd:connect\n");
+        auto response = jst::fmt::format("cmd:connect:{}\n", localAddressString);
         send(brokerFileDescriptor, response.c_str(), response.size(), 0);
     }
 
@@ -253,7 +270,7 @@ Result Remote<D, T>::destroy() {
 template<Device D, typename T>
 void Remote<D, T>::info() const {
     JST_DEBUG("  Endpoint:     {}", config.endpoint);
-    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.width, config.viewSize.height);
+    JST_DEBUG("  Window Size:  [{}, {}]", config.viewSize.x, config.viewSize.y);
 }
 
 template<Device D, typename T>
@@ -280,15 +297,15 @@ Result Remote<D, T>::createGstreamerEndpoint() {
 
     // Add codec specific plugins.
 
-    if (remoteFramebufferCodec == Render::VideoCodec::H264) {
+    if (remoteFramebufferCodec == Viewport::VideoCodec::H264) {
         plugins.push_back("libav");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP8) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP8) {
         plugins.push_back("vpx");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP9) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP9) {
         plugins.push_back("vpx");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::AV1) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::AV1) {
         plugins.push_back("dav1d");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::FFV1) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::FFV1) {
         plugins.push_back("libav");
     } else {
         JST_ERROR("Unsupported remote framebuffer codec.");
@@ -332,15 +349,15 @@ Result Remote<D, T>::createGstreamerEndpoint() {
     elements["jitter"] = gst_element_factory_make("rtpjitterbuffer", "jitter");
     elements["demuxer"] = gst_element_factory_make("rtpgstdepay", "demuxer");
 
-    if (remoteFramebufferCodec == Render::VideoCodec::FFV1) {
+    if (remoteFramebufferCodec == Viewport::VideoCodec::FFV1) {
         elements["decoder"] = gst_element_factory_make("avdec_ffv1", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP8) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP8) {
         elements["decoder"] = gst_element_factory_make("vp8dec", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::VP9) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::VP9) {
         elements["decoder"] = gst_element_factory_make("vp9dec", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::AV1) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::AV1) {
         elements["decoder"] = gst_element_factory_make("dav1ddec", "decoder");
-    } else if (remoteFramebufferCodec == Render::VideoCodec::H264) {
+    } else if (remoteFramebufferCodec == Viewport::VideoCodec::H264) {
         elements["decoder"] = gst_element_factory_make("avdec_h264", "decoder");
     }
 
@@ -379,7 +396,7 @@ Result Remote<D, T>::createGstreamerEndpoint() {
     // Link callbacks.
 
     g_signal_connect(elements["sink"], "new-sample", G_CALLBACK(OnSampleCallback), this);
-        
+
     // Add elements to pipeline.
 
     for (const auto& [name, element] : elements) {
@@ -439,7 +456,7 @@ GstFlowReturn Remote<D, T>::OnSampleCallback(GstElement* sink, gpointer data) {
         }
 
         that->_statistics.frames += 1;
-        
+
         gst_buffer_unmap(buffer, &map);
 
         gst_sample_unref(sample);
@@ -475,7 +492,7 @@ Result Remote<D, T>::destroyGstreamerEndpoint() {
         gst_element_set_state(pipeline, GST_STATE_NULL);
 
         // Destroy pipeline.
-        gst_object_unref(pipeline);        
+        gst_object_unref(pipeline);
     }
 
     return Result::SUCCESS;
@@ -487,34 +504,37 @@ Result Remote<D, T>::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenVertices;
-        cfg.elementByteSize = sizeof(float);
+        cfg.buffer = &FillScreenVertices;
+        cfg.elementByteSize = sizeof(F32);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenTextureVerticesXYFlip;
-        cfg.elementByteSize = sizeof(float);
+        cfg.buffer = &FillScreenTextureVerticesXYFlip;
+        cfg.elementByteSize = sizeof(F32);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &Render::Extras::FillScreenIndices;
-        cfg.elementByteSize = sizeof(uint32_t);
+        cfg.buffer = &FillScreenIndices;
+        cfg.elementByteSize = sizeof(U32);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
+        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     {
         Render::Vertex::Config cfg;
-        cfg.buffers = {
+        cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
             {fillScreenTextureVerticesBuffer, 2},
         };
@@ -534,12 +554,15 @@ Result Remote<D, T>::createPresent() {
         cfg.size = remoteFramebufferSize;
         cfg.buffer = remoteFramebufferMemory.data();
         JST_CHECK(window->build(remoteFramebufferTexture, cfg));
+        JST_CHECK(window->bind(remoteFramebufferTexture));
     }
 
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["framebuffer"];
-        cfg.draw = drawVertex;
+        cfg.draws = {
+            drawVertex,
+        };
         cfg.textures = {remoteFramebufferTexture};
         JST_CHECK(window->build(program, cfg));
     }
@@ -556,11 +579,6 @@ Result Remote<D, T>::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.programs = {program};
-        cfg.buffers = {
-            fillScreenVerticesBuffer,
-            fillScreenTextureVerticesBuffer,
-            fillScreenIndicesBuffer,
-        };
         JST_CHECK(window->build(surface, cfg));
         JST_CHECK(window->bind(surface));
     }
@@ -571,6 +589,10 @@ Result Remote<D, T>::createPresent() {
 template<Device D, typename T>
 Result Remote<D, T>::destroyPresent() {
     JST_CHECK(window->unbind(surface));
+    JST_CHECK(window->unbind(remoteFramebufferTexture));
+    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
+    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
+    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
 
     return Result::SUCCESS;
 }
@@ -597,8 +619,8 @@ Result Remote<D, T>::present() {
 template<Device D, typename T>
 void Remote<D, T>::registerMousePos(const F32& x, const F32& y) {
     if (socketStreaming) {
-        const I32 X = static_cast<I32>((x / config.viewSize.width) * remoteFramebufferSize.width);
-        const I32 Y = static_cast<I32>((y / config.viewSize.height) * remoteFramebufferSize.height);
+        const I32 X = static_cast<I32>((x / config.viewSize.x) * remoteFramebufferSize.x);
+        const I32 Y = static_cast<I32>((y / config.viewSize.y) * remoteFramebufferSize.y);
 
         static char buffer[32];
         snprintf(buffer, 32, "hid:mouse:pos:%05d,%05d\n", X, Y);
@@ -646,21 +668,21 @@ void Remote<D, T>::registerChar(const char& key) {
 }
 
 template<Device D, typename T>
-const Size2D<U64>& Remote<D, T>::viewSize(const Size2D<U64>& viewSize) {
-    Size2D<U64> correctedViewSize = viewSize;
+const Extent2D<U64>& Remote<D, T>::viewSize(const Extent2D<U64>& viewSize) {
+    Extent2D<U64> correctedViewSize = viewSize;
 
     // Correct aspect ratio.
 
-    const F32 nativeAspectRatio = static_cast<F32>(remoteFramebufferSize.width) / 
-                                  static_cast<F32>(remoteFramebufferSize.height);
+    const F32 nativeAspectRatio = static_cast<F32>(remoteFramebufferSize.x) /
+                                  static_cast<F32>(remoteFramebufferSize.y);
 
-    const F32 viewAspectRatio = static_cast<F32>(viewSize.width) / 
-                                static_cast<F32>(viewSize.height);
+    const F32 viewAspectRatio = static_cast<F32>(viewSize.x) /
+                                static_cast<F32>(viewSize.y);
 
     if (viewAspectRatio > nativeAspectRatio) {
-        correctedViewSize.width = correctedViewSize.height * nativeAspectRatio;
+        correctedViewSize.x = correctedViewSize.y * nativeAspectRatio;
     } else {
-        correctedViewSize.height = correctedViewSize.width / nativeAspectRatio;
+        correctedViewSize.y = correctedViewSize.x / nativeAspectRatio;
     }
 
     // Submit new size.

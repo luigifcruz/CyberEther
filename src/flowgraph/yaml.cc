@@ -25,7 +25,11 @@ Parser::Record Flowgraph::YamlImpl::solveLocalPlaceholder(const Nodes& nodes, co
     }
 
     const auto& graphKey = patternNodes[0];
-    const auto& moduleKey = patternNodes[1];
+
+    auto locale = Parser::SplitString(patternNodes[1], "-");
+    const auto blockKey = locale[0];
+    const auto moduleKey = (locale.size() > 1) ? locale[1] : "";
+    
     const auto& arrayKey = patternNodes[2];
     const auto& elementKey = patternNodes[3];
 
@@ -34,13 +38,13 @@ Parser::Record Flowgraph::YamlImpl::solveLocalPlaceholder(const Nodes& nodes, co
         JST_CHECK_THROW(Result::ERROR);
     }
 
-    if (!nodes.contains({moduleKey})) {
+    if (!nodes.contains({blockKey, moduleKey})) {
         JST_ERROR("[PARSER] Module from the variable '{}' not found.", key);
         JST_CHECK_THROW(Result::ERROR);
     }
 
     if (!arrayKey.compare("input")) {
-        auto& map = nodes.at({moduleKey})->inputMap;
+        auto& map = nodes.at({blockKey, moduleKey})->inputMap;
         if (!map.contains(elementKey)) {
             JST_ERROR("[PARSER] Input element from the variable '{}' not found.", key);
             JST_CHECK_THROW(Result::ERROR);
@@ -49,7 +53,7 @@ Parser::Record Flowgraph::YamlImpl::solveLocalPlaceholder(const Nodes& nodes, co
     }
 
     if (!arrayKey.compare("output")) {
-        auto& map = nodes.at({moduleKey})->outputMap;
+        auto& map = nodes.at({blockKey, moduleKey})->outputMap;
         if (!map.contains(elementKey)) {
             JST_ERROR("[PARSER] Output element from the variable '{}' not found.", key);
             JST_CHECK_THROW(Result::ERROR);
@@ -58,7 +62,7 @@ Parser::Record Flowgraph::YamlImpl::solveLocalPlaceholder(const Nodes& nodes, co
     }
 
     if (!arrayKey.compare("interface")) {
-        auto& map = nodes.at({moduleKey})->stateMap;
+        auto& map = nodes.at({blockKey, moduleKey})->stateMap;
         if (!map.contains(elementKey)) {
             JST_ERROR("[PARSER] Interface state element from the variable '{}' not found.", key);
             JST_CHECK_THROW(Result::ERROR);

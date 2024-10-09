@@ -6,14 +6,12 @@ deps = [
     'JETSTREAM_BACKEND_VULKAN_AVAILABLE',
     'JETSTREAM_VIEWPORT_GLFW_AVAILABLE',
     'JETSTREAM_MODULE_FFT_CPU_AVAILABLE',
-    'JETSTREAM_MODULE_SOAPY_CPU_AVAILABLE',
+    'JETSTREAM_MODULE_INVERT_CPU_AVAILABLE',
     'JETSTREAM_MODULE_WINDOW_CPU_AVAILABLE',
     'JETSTREAM_MODULE_MULTIPLY_CPU_AVAILABLE',
     'JETSTREAM_MODULE_AMPLITUDE_CPU_AVAILABLE',
     'JETSTREAM_MODULE_SCALE_CPU_AVAILABLE',
     'JETSTREAM_MODULE_LINEPLOT_CPU_AVAILABLE',
-    'JETSTREAM_MODULE_WATERFALL_CPU_AVAILABLE',
-    'JETSTREAM_MODULE_SPECTROGRAM_CPU_AVAILABLE',
 ]
 
 all_deps_found = true
@@ -23,13 +21,11 @@ endforeach
 
 if all_deps_found
     executable(
-        'custom_interface', 
-        'custom_interface.cc',
+        'hello_world',
+        'hello_world.cc',
         dependencies: libjetstream_dep,
         install: false,
     )
 endif
 
-sum_lst += {'Custom Interfaces': all_deps_found}
-
-summary(sum_lst, section: 'Examples', bool_yn: true)
+sum_lst += {'Hello World': all_deps_found}

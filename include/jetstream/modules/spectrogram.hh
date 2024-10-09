@@ -7,7 +7,6 @@
 
 #include "jetstream/memory/base.hh"
 #include "jetstream/render/base.hh"
-#include "jetstream/render/extras.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -31,7 +30,7 @@ class Spectrogram : public Module, public Compute, public Present {
 
     struct Config {
         U64 height = 256;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
 
         JST_SERDES(height, viewSize);
     };
@@ -76,10 +75,10 @@ class Spectrogram : public Module, public Compute, public Present {
 
     // Miscellaneous
 
-    constexpr const Size2D<U64>& viewSize() const {
+    constexpr const Extent2D<U64>& viewSize() const {
         return config.viewSize;
     }
-    const Size2D<U64>& viewSize(const Size2D<U64>& viewSize);
+    const Extent2D<U64>& viewSize(const Extent2D<U64>& viewSize);
 
     Render::Texture& getTexture();
 

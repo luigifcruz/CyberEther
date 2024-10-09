@@ -8,6 +8,10 @@ endforeach
 
 if all_deps_found
     cfg_lst.set('JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE', true)
+
+    src_lst += files([
+        'endpoint.cc',
+    ])
     
     if cfg_lst.get('JETSTREAM_BACKEND_VULKAN_AVAILABLE', false)
         src_lst += files([

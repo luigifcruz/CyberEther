@@ -75,6 +75,7 @@ class JETSTREAM_API Instance {
         auto viewport = std::dynamic_pointer_cast<Viewport::Adapter<D>>(_viewport);
         _window = std::make_shared<Render::WindowImp<D>>(config, viewport);
         JST_CHECK(_window->create());
+        JST_CHECK(loadDefaultFonts());
 
         return Result::SUCCESS;
     }
@@ -166,7 +167,7 @@ class JETSTREAM_API Instance {
 
         if constexpr (!std::is_base_of<Compute, B>::value &&
                       !std::is_base_of<Present, B>::value) {
-            JST_FATAL("[INSTANCE] Invalid module invalid because it has "
+            JST_FATAL("[INSTANCE] Invalid module because it has "
                       "no compute or present taints.");
             return Result::FATAL;
         }
@@ -184,7 +185,7 @@ class JETSTREAM_API Instance {
 
         const Locale& locale = {blockLocale.blockId, autoId};
         JST_DEBUG("[INSTANCE] Adding new module '{}'.", locale);
-        
+
         if (_flowgraph.nodes().contains(locale)) {
             JST_ERROR("[INSTANCE] Module '{}' already exists.", locale);
             return Result::ERROR;
@@ -250,11 +251,11 @@ class JETSTREAM_API Instance {
 
         // Add block to the scheduler.
 
-        JST_CHECK(_scheduler.addModule(locale, 
-                                       module, 
-                                       node->inputMap, 
-                                       node->outputMap, 
-                                       node->compute, 
+        JST_CHECK(_scheduler.addModule(locale,
+                                       module,
+                                       node->inputMap,
+                                       node->outputMap,
+                                       node->compute,
                                        node->present));
 
         // Add module to the instance.
@@ -370,15 +371,15 @@ class JETSTREAM_API Instance {
                 return Result::FATAL;
             }
         }
-        
+
         // Add block to the compositor.
 
         if (_compositor) {
-            JST_CHECK(_compositor->addBlock(locale, 
-                                            block, 
-                                            node->inputMap, 
-                                            node->outputMap, 
-                                            node->stateMap, 
+            JST_CHECK(_compositor->addBlock(locale,
+                                            block,
+                                            node->inputMap,
+                                            node->outputMap,
+                                            node->stateMap,
                                             node->fingerprint));
         }
 
@@ -386,9 +387,9 @@ class JETSTREAM_API Instance {
     }
 
     template<template<Device, typename...> class T, Device D, typename... C>
-    Result addBlock(const std::string& id, 
+    Result addBlock(const std::string& id,
                     Parser::RecordMap& configMap,
-                    Parser::RecordMap& inputMap, 
+                    Parser::RecordMap& inputMap,
                     Parser::RecordMap& stateMap) {
         using B = T<D, C...>;
 
@@ -418,6 +419,9 @@ class JETSTREAM_API Instance {
 
     bool computing();
     bool presenting();
+
+    Result loadDefaultFonts();
+    Result unloadDefaultFonts();
 
     Result start();
     Result stop();

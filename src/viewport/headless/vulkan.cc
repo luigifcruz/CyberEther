@@ -60,8 +60,8 @@ Result Implementation::createSwapchain() {
     // Create extent.
 
     swapchainExtent = {
-        static_cast<U32>(config.size.width),
-        static_cast<U32>(config.size.height)
+        static_cast<U32>(config.size.x),
+        static_cast<U32>(config.size.y)
     };
 
     // Create image.
@@ -70,8 +70,8 @@ Result Implementation::createSwapchain() {
         VkImageCreateInfo imageCreateInfo = {};
         imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageCreateInfo.extent.width = config.size.width;
-        imageCreateInfo.extent.height = config.size.height;
+        imageCreateInfo.extent.width = config.size.x;
+        imageCreateInfo.extent.height = config.size.y;
         imageCreateInfo.extent.depth = 1;
         imageCreateInfo.mipLevels = 1;
         imageCreateInfo.arrayLayers = 1;
@@ -116,7 +116,7 @@ Result Implementation::createSwapchain() {
     const auto& inputMemoryDevice = endpoint.inputMemoryDevice();
 
     for (U32 i = 0; i < stagingBuffers.size(); i++) {
-        stagingBuffers[i] = Tensor<Device::Vulkan, U8>({config.size.width, config.size.height, 4}, inputMemoryDevice == Device::CPU);
+        stagingBuffers[i] = Tensor<Device::Vulkan, U8>({config.size.x, config.size.y, 4}, inputMemoryDevice == Device::CPU);
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
         if (inputMemoryDevice == Device::CUDA) {
@@ -274,7 +274,7 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     // Update ImGui state.
     
     auto& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(config.size.width, config.size.height);
+    io.DisplaySize = ImVec2(config.size.x, config.size.y);
     io.DeltaTime = deltaTime;
 
     // Dummy signal semaphore.
@@ -317,8 +317,8 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     region.imageSubresource.baseArrayLayer = 0;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {0, 0, 0};
-    region.imageExtent.width = config.size.width;
-    region.imageExtent.height = config.size.height;
+    region.imageExtent.width = config.size.x;
+    region.imageExtent.height = config.size.y;
     region.imageExtent.depth = 1;
 
     vkCmdCopyImageToBuffer(swapchainCommandBuffers[_currentDrawableIndex],
@@ -420,6 +420,10 @@ U32 Implementation::getSwapchainImageViewsCount() const {
 
 const VkExtent2D& Implementation::getSwapchainExtent() const {
     return swapchainExtent;       
+}
+
+Result Implementation::waitEvents() {
+    return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {

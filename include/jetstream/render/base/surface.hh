@@ -20,7 +20,7 @@ class Surface {
         std::shared_ptr<Texture> framebuffer;
         std::vector<std::shared_ptr<Kernel>> kernels;
         std::vector<std::shared_ptr<Program>> programs;
-        std::vector<std::shared_ptr<Buffer>> buffers;
+        ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         bool multisampled = false;
     };
 
@@ -35,13 +35,13 @@ class Surface {
         return config.multisampled;
     }
 
-    const Size2D<U64>& size() const {
+    const Extent2D<U64>& size() const {
         if (config.framebuffer) {
             return config.framebuffer->size();
         }
         return NullSize;
     }
-    virtual const Size2D<U64>& size(const Size2D<U64>& size) = 0;
+    virtual const Extent2D<U64>& size(const Extent2D<U64>& size) = 0;
 
     template<Device D> 
     static std::shared_ptr<Surface> Factory(const Config& config) {

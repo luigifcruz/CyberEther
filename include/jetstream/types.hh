@@ -11,15 +11,16 @@
 
 namespace Jetstream {
 
-enum class Result : uint8_t {
+enum class Result : uint16_t {
     SUCCESS     = 0,
     ERROR       = 1,
     WARNING     = 2,
     FATAL       = 3,
     SKIP        = 4,
-    RELOAD      = 5,
-    RECREATE    = 6,
-    TIMEOUT     = 7,
+    YIELD       = 5,
+    RELOAD      = 6,
+    RECREATE    = 7,
+    TIMEOUT     = 8,
 };
 
 /**
@@ -38,39 +39,55 @@ inline Taint operator&(const Taint& lhs, const Taint& rhs) {
     return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
 }
 
+template<typename T = F32>
+struct ColorRGBA {
+    T r;
+    T g;
+    T b;
+    T a;
+
+    bool operator==(const ColorRGBA<T>& c) const {
+        return (r == c.r && g == c.g && b == c.b && a == c.a);
+    }
+
+    bool operator!=(const ColorRGBA<T>& c) const {
+        return (r != c.r || g != c.g || b != c.b || a != c.a);
+    }
+};
+
 template<typename T = U64>
-struct Size2D {
-    T width;
-    T height;
+struct Extent2D {
+    T x;
+    T y;
 
     F32 ratio() const {
-        return static_cast<F32>(width) / height;
+        return static_cast<F32>(x) / y;
     }
 
-    bool operator==(const Size2D<T>& a) const {
-        return (width == a.width && height == a.height);
+    bool operator==(const Extent2D<T>& a) const {
+        return (x == a.x && y == a.y);
     }
 
-    bool operator!=(const Size2D<T>& a) const {
-        return (width != a.width || height != a.height);
+    bool operator!=(const Extent2D<T>& a) const {
+        return (x != a.x || y != a.y);
     }
 
-    bool operator<=(const Size2D<T>& a) const {
-        return (width <= a.width || height <= a.height);
+    bool operator<=(const Extent2D<T>& a) const {
+        return (x <= a.x || y <= a.y);
     }
 };
 
 template<typename T>
-Size2D<T> operator*(const Size2D<T>& a, const F32& b) {
-    return {static_cast<T>(a.width * b), static_cast<T>(a.height * b)};
+Extent2D<T> operator*(const Extent2D<T>& a, const F32& b) {
+    return {static_cast<T>(a.x * b), static_cast<T>(a.y * b)};
 }
 
 template<typename T>
-Size2D<T> operator/(const Size2D<T>& a, const F32& b) {
-    return {static_cast<T>(a.width / b), static_cast<T>(a.height / b)};
+Extent2D<T> operator/(const Extent2D<T>& a, const F32& b) {
+    return {static_cast<T>(a.x / b), static_cast<T>(a.y / b)};
 }
 
-inline Size2D<U64> NullSize = {0, 0};
+inline Extent2D<U64> NullSize = {0, 0};
 
 }  // namespace Jetstream
 

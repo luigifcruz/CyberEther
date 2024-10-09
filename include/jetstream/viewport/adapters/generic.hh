@@ -5,7 +5,7 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/types.hh"
+#include "jetstream/viewport/types.hh"
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Viewport {
@@ -18,7 +18,7 @@ struct Config {
     std::string title = "CyberEther";
 
     /// @brief The size of the application or window.
-    Size2D<U64> size = {1920, 1080};
+    Extent2D<U64> size = {1920, 1080};
 
     /// @brief The framerate of the headless viewport.
     U64 framerate = 60;
@@ -27,7 +27,7 @@ struct Config {
     std::string endpoint = "/tmp/cyberether";
 
     /// @brief The video codec of the headless viewport.
-    Render::VideoCodec codec = Render::VideoCodec::FFV1;
+    Viewport::VideoCodec codec = Viewport::VideoCodec::FFV1;
 
     /// @brief Whether hardware acceleration is enabled.
     bool hardwareAcceleration = true;
@@ -52,6 +52,7 @@ class Generic {
 
     virtual F32 scale(const F32& scale) const = 0;
 
+    virtual Result waitEvents() = 0;
     virtual Result pollEvents() = 0;
     virtual bool keepRunning() = 0;
 

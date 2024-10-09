@@ -14,10 +14,10 @@ class Graph {
  public:
     virtual ~Graph() = default;
 
-    Result setModule(const std::shared_ptr<Compute>& block);
+    Result setModule(const std::shared_ptr<Compute>& block, 
+                     const std::unordered_set<U64>& inputSet,
+                     const std::unordered_set<U64>& outputSet);
 
-    Result setWiredInput(const U64& input);
-    Result setWiredOutput(const U64& output);
     Result setExternallyWiredInput(const U64& input);
     Result setExternallyWiredOutput(const U64& output);
 
@@ -39,13 +39,22 @@ class Graph {
 
     virtual constexpr Device device() const = 0;
     virtual Result create() = 0;
-    virtual Result compute() = 0;
+    virtual Result compute(std::unordered_set<U64>& yielded) = 0;
     virtual Result computeReady() = 0;
     virtual Result destroy() = 0;
 
+    static void YieldCompute(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& outputSet);
+    static bool ShouldYield(std::unordered_set<U64>& yielded, const std::unordered_set<U64>& inputSet);
+
  protected:
+    struct ComputeUnit {
+        std::shared_ptr<Compute> block;
+        std::unordered_set<U64> inputSet;
+        std::unordered_set<U64> outputSet;
+    };
+
     std::shared_ptr<Compute::Context> context;
-    std::vector<std::shared_ptr<Compute>> blocks;
+    std::vector<ComputeUnit> computeUnits;
     std::set<U64> wiredInputSet;
     std::set<U64> wiredOutputSet;
     std::set<U64> externallyWiredInputSet;

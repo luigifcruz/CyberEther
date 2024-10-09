@@ -13,31 +13,47 @@ CPU::~CPU() {
 }
 
 Result CPU::create() {
-    for (const auto& block : blocks) {
-        JST_CHECK(block->createCompute(*context));
+    for (const auto& computeUnit : computeUnits) {
+        JST_CHECK(computeUnit.block->createCompute(*context));
     }
     return Result::SUCCESS;
 }
 
 Result CPU::computeReady() {
-    for (const auto& block : blocks) {
-        JST_CHECK(block->computeReady());
+    for (const auto& computeUnit : computeUnits) {
+        JST_CHECK(computeUnit.block->computeReady());
     }
     return Result::SUCCESS;
 }
 
-Result CPU::compute() {
-    for (const auto& block : blocks) { 
-        JST_CHECK(block->compute(*context));
+Result CPU::compute(std::unordered_set<U64>& yielded) {
+    for (const auto& computeUnit : computeUnits) {
+        if (Graph::ShouldYield(yielded, computeUnit.inputSet)) {
+            Graph::YieldCompute(yielded, computeUnit.outputSet);
+            continue;
+        }
+
+        const auto& res = computeUnit.block->compute(*context);
+
+        if (res == Result::SUCCESS) {
+            continue;
+        }
+
+        if (res == Result::YIELD) {
+            Graph::YieldCompute(yielded, computeUnit.outputSet);
+            continue;
+        }
+
+        JST_CHECK(res);
     }
     return Result::SUCCESS;
 }
 
 Result CPU::destroy() {
-    for (const auto& block : blocks) {
-        JST_CHECK(block->destroyCompute(*context));
+    for (const auto& computeUnit : computeUnits) {
+        JST_CHECK(computeUnit.block->destroyCompute(*context));
     }
-    blocks.clear();
+    computeUnits.clear();
     return Result::SUCCESS;
 }
 

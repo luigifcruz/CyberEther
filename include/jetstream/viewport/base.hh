@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_VIEWPORT_BASE_HH
 #define JETSTREAM_VIEWPORT_BASE_HH
 
+#include "jetstream/viewport/types.hh"
+
 #ifdef JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 #include "jetstream/viewport/platforms/headless/vulkan.hh"

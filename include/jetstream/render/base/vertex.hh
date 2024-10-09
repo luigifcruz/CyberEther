@@ -15,7 +15,8 @@ namespace Jetstream::Render {
 class Vertex {
  public:
     struct Config {
-        std::vector<std::pair<std::shared_ptr<Buffer>, U32>> buffers;
+        std::vector<std::pair<std::shared_ptr<Buffer>, U32>> vertices;
+        std::vector<std::pair<std::shared_ptr<Buffer>, U32>> instances;
         std::shared_ptr<Buffer> indices;
     };
 
@@ -26,7 +27,7 @@ class Vertex {
         return config;
     }
 
-    template<Device D> 
+    template<Device D>
     static std::shared_ptr<Vertex> Factory(const Config& config) {
         return std::make_shared<VertexImp<D>>(config);
     }

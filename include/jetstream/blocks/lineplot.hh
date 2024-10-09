@@ -14,12 +14,12 @@ class Lineplot : public Block {
 
     struct Config {
         U64 averaging = 1;
-        U64 numberOfVerticalLines = 20;
+        U64 numberOfVerticalLines = 11;
         U64 numberOfHorizontalLines = 5;
-        Size2D<U64> viewSize = {512, 384};
+        Extent2D<U64> viewSize = {512, 384};
         F32 zoom = 1.0f;
         F32 translation = 0.0f;
-        F32 thickness = 2.0f;
+        F32 thickness = 1.0f;
 
         JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
@@ -106,7 +106,7 @@ class Lineplot : public Block {
     void drawPreview(const F32& maxWidth) {
         const auto& size = lineplot->viewSize();
         const auto& ratio = size.ratio();
-        const F32 width = (size.width < maxWidth) ? size.width : maxWidth;
+        const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
         ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, width/ratio));
     }
@@ -118,30 +118,25 @@ class Lineplot : public Block {
     void drawView() {
         lineplot->scale(ImGui::GetIO().DisplayFramebufferScale.x);
 
-        const auto& [x, y] = GetContentRegion();
-        const auto& [width, height] = lineplot->viewSize({x, y});
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, height));
+        const auto& viewSize = lineplot->viewSize(GetContentRegion());
+        ImGui::Image(lineplot->getTexture().raw(), ImVec2(viewSize.x, viewSize.y));
 
         if (ImGui::IsItemHovered()) {
+            const auto& mouseRelPos = GetRelativeMousePos(viewSize, lineplot->translation(), config.zoom);
+
             // Handle zoom interaction.
 
-            const auto& scroll = ImGui::GetIO().MouseWheel;    
-
+            const auto& scroll = ImGui::GetIO().MouseWheel;
             if (scroll != 0.0f) {
-                const auto& [mouse_x, mouse_y] = GetRelativeMousePos({x, y}, config.zoom);
-                config.zoom += (scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) : 
-                                                 std::min(config.zoom * -0.02f, -0.02f);
-
-                const auto& [zoom, translation] = lineplot->zoom({mouse_x, mouse_y}, config.zoom);
-                config.zoom = zoom;
-                config.translation = translation;
+                config.zoom += ((scroll > 0.0f) ? std::max(config.zoom *  0.02f,  0.02f) :
+                                                  std::min(config.zoom * -0.02f, -0.02f));
+                std::tie(config.zoom, config.translation) = lineplot->zoom(mouseRelPos, config.zoom);
             }
 
             // Handle translation interaction.
 
             if (ImGui::IsAnyMouseDown()) {
-                const auto& [translation, _] = GetRelativeMouseTranslation({x, y}, config.zoom);
-                lineplot->translation(translation + config.translation);
+                lineplot->translation(GetRelativeMouseTranslation(viewSize, config.zoom).x + config.translation);
             } else {
                 config.translation = lineplot->translation();
             }
@@ -152,6 +147,13 @@ class Lineplot : public Block {
                 const auto& [zoom, translation] = lineplot->zoom({0.0f, 0.0f}, 1.0f);
                 config.zoom = zoom;
                 config.translation = translation;
+            }
+
+            // Handle cursor position display.
+
+            const auto& currentMouseRelPos = lineplot->cursor();
+            if (currentMouseRelPos != mouseRelPos) {
+                lineplot->cursor(mouseRelPos);
             }
         }
     }

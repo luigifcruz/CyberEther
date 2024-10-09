@@ -62,7 +62,7 @@ class JETSTREAM_API Module {
     }
 
     template<Device DeviceId, typename DataType>
-    static Result InitOutput(const std::string& name, 
+    static Result InitOutput(const std::string& name,
                              Tensor<DeviceId, DataType>& buffer,
                              const Locale& locale) {
         JST_TRACE("[MODULE] Init output locale: '{}'", locale);
@@ -71,10 +71,10 @@ class JETSTREAM_API Module {
             JST_ERROR("Output locale is empty during initialization.");
             return Result::ERROR;
         }
-            
+
         buffer.set_locale({
-            locale.blockId, 
-            locale.moduleId, 
+            locale.blockId,
+            locale.moduleId,
             name
         });
 
@@ -119,7 +119,9 @@ class JETSTREAM_API Compute {
     virtual constexpr Result createCompute(const Context&) {
         return Result::SUCCESS;
     }
-    virtual constexpr Result compute(const Context& ctx) = 0;
+    virtual constexpr Result compute(const Context&) {
+        return Result::SUCCESS;
+    }
     virtual constexpr Result computeReady() {
         return Result::SUCCESS;
     }
@@ -138,7 +140,9 @@ class JETSTREAM_API Present {
     virtual constexpr Result createPresent() {
         return Result::SUCCESS;
     }
-    virtual constexpr Result present() = 0;
+    virtual constexpr Result present() {
+        return Result::SUCCESS;
+    }
     virtual constexpr Result destroyPresent() {
         return Result::SUCCESS;
     }

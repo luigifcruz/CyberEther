@@ -251,24 +251,24 @@ class Parser {
             }
         }
 
-        if constexpr (std::is_same<T, Size2D<U64>>::value) {
-            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Size2D<U64>'.", name);
+        if constexpr (std::is_same<T, Extent2D<U64>>::value) {
+            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Extent2D<U64>'.", name);
 
             if (anyVar.type() == typeid(std::string)) {
                 const auto& values = SplitString(std::any_cast<std::string>(anyVar), ", ");
                 JST_ASSERT(values.size() == 2);
-                variable = std::move(Size2D<U64>{std::stoull(values[0]), std::stoull(values[1])});
+                variable = std::move(Extent2D<U64>{std::stoull(values[0]), std::stoull(values[1])});
                 return Result::SUCCESS;
             }
         }
 
-        if constexpr (std::is_same<T, Size2D<F32>>::value) {
-            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Size2D<F32>'.", name);
+        if constexpr (std::is_same<T, Extent2D<F32>>::value) {
+            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Extent2D<F32>'.", name);
 
             if (anyVar.type() == typeid(std::string)) {
                 const auto& values = SplitString(std::any_cast<std::string>(anyVar), ", ");
                 JST_ASSERT(values.size() == 2);
-                variable = std::move(Size2D<F32>{std::stof(values[0]), std::stof(values[1])});
+                variable = std::move(Extent2D<F32>{std::stof(values[0]), std::stof(values[1])});
                 return Result::SUCCESS;
             }
         }
@@ -369,15 +369,15 @@ class Parser {
             return Result::SUCCESS;
         }
 
-        if (var.type() == typeid(Size2D<U64>)) {
-            const auto& size = std::any_cast<Size2D<U64>>(var);
-            out = jst::fmt::format("[{}, {}]", size.width, size.height);
+        if (var.type() == typeid(Extent2D<U64>)) {
+            const auto& size = std::any_cast<Extent2D<U64>>(var);
+            out = jst::fmt::format("[{}, {}]", size.x, size.y);
             return Result::SUCCESS;
         }
 
-        if (var.type() == typeid(Size2D<F32>)) {
-            const auto& size = std::any_cast<Size2D<F32>>(var);
-            out = jst::fmt::format("[{}, {}]", size.width, size.height);
+        if (var.type() == typeid(Extent2D<F32>)) {
+            const auto& size = std::any_cast<Extent2D<F32>>(var);
+            out = jst::fmt::format("[{}, {}]", size.x, size.y);
             return Result::SUCCESS;
         }
 

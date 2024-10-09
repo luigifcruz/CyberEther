@@ -9,6 +9,12 @@
 #include "stb_image.hh"
 #include "resources/resources.hh"
 
+// Looks like GCC-13 has a false-positive bug that is quite annoying.
+// Silencing this for now. This should be fixed in GCC-14.
+#if defined(__GNUC__) && (__GNUC__ >= 13)
+#pragma GCC diagnostic ignored "-Wdangling-reference"
+#endif
+
 namespace Jetstream {
 
 Compositor::Compositor(Instance& instance)
@@ -23,6 +29,7 @@ Compositor::Compositor(Instance& instance)
        flowgraphEnabled(true),
        debugDemoEnabled(false),
        debugLatencyEnabled(false),
+       debugViewportEnabled(false),
        fullscreenEnabled(false),
        debugEnableTrace(false),
        globalModalContentId(0),
@@ -30,6 +37,25 @@ Compositor::Compositor(Instance& instance)
        benchmarkRunning(false),
        globalModalToggle(false) {
     JST_DEBUG("[COMPOSITOR] Creating compositor.");
+
+    // Load ImGui fonts.
+
+    ImGuiLoadFonts();
+
+    // Configure ImGui.
+
+    ImGuiStyleSetup();
+    ImGuiStyleScale();
+
+    // Create ImNodes.
+
+    ImNodes::CreateContext();
+    ImNodesStyleSetup();
+    ImNodesStyleScale();
+
+    // Configure ImGuiMarkdown.
+
+    ImGuiMarkdownStyleSetup();
 
     // Set default stacks.
     stacks["Graph"] = {true, 0};
@@ -39,23 +65,29 @@ Compositor::Compositor(Instance& instance)
 
     // Load assets.
 
-    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_primary_bin, 
+    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_primary_bin,
                                   Resources::compositor_banner_primary_len,
                                   primaryBannerTexture));
-    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_secondary_bin, 
+    JST_CHECK_THROW(loadImageAsset(Resources::compositor_banner_secondary_bin,
                                    Resources::compositor_banner_secondary_len,
                                    secondaryBannerTexture));
 }
 
 Compositor::~Compositor() {
+    // Destroy assets.
+
     primaryBannerTexture->destroy();
     secondaryBannerTexture->destroy();
+
+    // Destroy ImNodes.
+
+    ImNodes::DestroyContext();
 }
 
 Result Compositor::addBlock(const Locale& locale,
-                            const std::shared_ptr<Block>& block, 
-                            const Parser::RecordMap& inputMap, 
-                            const Parser::RecordMap& outputMap, 
+                            const std::shared_ptr<Block>& block,
+                            const Parser::RecordMap& inputMap,
+                            const Parser::RecordMap& outputMap,
                             const Parser::RecordMap& stateMap,
                             const Block::Fingerprint& fingerprint) {
     JST_DEBUG("[COMPOSITOR] Adding block '{}'.", locale);
@@ -203,7 +235,7 @@ Result Compositor::checkAutoLayoutState() {
 
     bool graphHasPos = false;
     for (const auto& [_, state] : nodeStates) {
-        if (state.block->getState().nodePos != Size2D<F32>{0.0f, 0.0f}) {
+        if (state.block->getState().nodePos != Extent2D<F32>{0.0f, 0.0f}) {
             graphHasPos = true;
         }
     }
@@ -344,6 +376,9 @@ Result Compositor::destroy() {
     // Stop execution.
     running = false;
 
+    // Acquire lock.
+    lock();
+
     // Reseting variables.
 
     rightClickMenuEnabled = false;
@@ -352,15 +387,13 @@ Result Compositor::destroy() {
     moduleStoreEnabled = true;
     debugDemoEnabled = false;
     debugLatencyEnabled = false;
+    debugViewportEnabled = false;
     flowgraphEnabled = true;
     infoPanelEnabled = true;
     globalModalContentId = 0;
     nodeContextMenuNodeId = 0;
-
-    // Reseting locks.
-
-    interfaceHalt.clear();
-    interfaceHalt.notify_all();
+    flowgraphFilename = {};
+    flowgraphBlob = {};
 
     // Clearing buffers.
 
@@ -375,23 +408,30 @@ Result Compositor::destroy() {
     nodeStates.clear();
 
     // Add static.
-
     stacks["Graph"] = {true, 0};
+
+    // Release lock.
+    unlock();
+
+    // Reseting locks.
+
+    interfaceHalt.clear();
+    interfaceHalt.notify_all();
 
     return Result::SUCCESS;
 }
 
-Result Compositor::loadImageAsset(const uint8_t* binary_data, 
-                                  const U64& binary_len, 
+Result Compositor::loadImageAsset(const uint8_t* binary_data,
+                                  const U64& binary_len,
                                   std::shared_ptr<Render::Texture>& texture) {
     int image_width, image_height, image_channels;
 
     uint8_t* raw_data = stbi_load_from_memory(
-        binary_data, 
-        binary_len, 
-        &image_width, 
-        &image_height, 
-        &image_channels, 
+        binary_data,
+        binary_len,
+        &image_width,
+        &image_height,
+        &image_channels,
         4
     );
     if (raw_data == nullptr) {
@@ -401,7 +441,7 @@ Result Compositor::loadImageAsset(const uint8_t* binary_data,
 
     Render::Texture::Config config;
     config.size = {
-        static_cast<U64>(image_width), 
+        static_cast<U64>(image_width),
         static_cast<U64>(image_height)
     };
     config.buffer = static_cast<uint8_t*>(raw_data);
@@ -414,11 +454,24 @@ Result Compositor::loadImageAsset(const uint8_t* binary_data,
 
 Result Compositor::draw() {
     // Prevent state from refreshing while drawing these methods.
+
     interfaceHalt.wait(true);
     interfaceHalt.test_and_set();
 
+    // Scale ImGui and ImNodes styles.
+
+    if (instance.window().scalingFactor() != previousScalingFactor) {
+        ImGuiStyleScale();
+        ImNodesStyleScale();
+        previousScalingFactor = instance.window().scalingFactor();
+    }
+
+    // Draw main interface.
+
     JST_CHECK(drawStatic());
-    JST_CHECK(drawGraph());
+    JST_CHECK(drawFlowgraph());
+
+    // Release lock.
 
     interfaceHalt.clear();
     interfaceHalt.notify_one();
@@ -449,7 +502,7 @@ Result Compositor::processInteractions() {
             Parser::RecordMap configMap, inputMap, stateMap;
             const auto [x, y] = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
             const auto& scalingFactor = instance.window().scalingFactor();
-            stateMap["nodePos"] = {Size2D<F32>{x / scalingFactor, y / scalingFactor}};
+            stateMap["nodePos"] = {Extent2D<F32>{x / scalingFactor, y / scalingFactor}};
 
             // Create module.
             JST_CHECK_NOTIFY(Store::BlockConstructorList().at(fingerprint)(instance, "", configMap, inputMap, stateMap));
@@ -457,10 +510,10 @@ Result Compositor::processInteractions() {
             // Update source.
             updateFlowgraphBlobMailbox = true;
         });
-        
+
         createBlockMailbox.reset();
     }
-    
+
     if (deleteBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&, block = *deleteBlockMailbox](){
             JST_CHECK_NOTIFY(instance.removeBlock(block));
@@ -521,7 +574,7 @@ Result Compositor::processInteractions() {
         });
         changeBlockDataTypeMailbox.reset();
     }
-    
+
     if (toggleBlockMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             // TODO: Implement.
@@ -551,33 +604,27 @@ Result Compositor::processInteractions() {
         closeFlowgraphMailbox.reset();
     }
 
-    if (openFlowgraphUrlMailbox.has_value()) {
-        JST_DISPATCH_ASYNC([&](){
-            // TODO: Implement.
-            ImGui::InsertNotification({ ImGuiToastType_Warning, 5000, "Remote flowgraph is not implemented yet." });
-            updateFlowgraphBlobMailbox = true;
-        });
-        openFlowgraphUrlMailbox.reset();
-    }
-
     if (openFlowgraphPathMailbox.has_value()) {
-        JST_DISPATCH_ASYNC([&, filepath = *openFlowgraphPathMailbox](){
+        JST_DISPATCH_ASYNC([&](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
             JST_CHECK_NOTIFY([&]{
-                JST_CHECK(instance.flowgraph().create(filepath));
+                JST_CHECK(instance.flowgraph().create());
+                JST_CHECK(instance.flowgraph().importFromFile(flowgraphFilename));
                 JST_CHECK(checkAutoLayoutState());
                 return Result::SUCCESS;
             }());
             updateFlowgraphBlobMailbox = true;
-        });        
+        });
         openFlowgraphPathMailbox.reset();
     }
 
     if (openFlowgraphBlobMailbox.has_value()) {
-        JST_DISPATCH_ASYNC([&, blob = *openFlowgraphBlobMailbox](){
+        JST_DISPATCH_ASYNC([&, string = *openFlowgraphBlobMailbox](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Loading flowgraph..." });
             JST_CHECK_NOTIFY([&]{
-                JST_CHECK(instance.flowgraph().create(blob));
+                JST_CHECK(instance.flowgraph().create());
+                std::vector<char> blob(string, string + strlen(string));
+                JST_CHECK(instance.flowgraph().importFromBlob(blob));
                 JST_CHECK(checkAutoLayoutState());
                 return Result::SUCCESS;
             }());
@@ -589,7 +636,7 @@ Result Compositor::processInteractions() {
     if (saveFlowgraphMailbox.has_value()) {
         JST_DISPATCH_ASYNC([&](){
             ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Saving flowgraph..." });
-            JST_CHECK_NOTIFY(instance.flowgraph().exportToFile());
+            JST_CHECK_NOTIFY(instance.flowgraph().exportToFile(flowgraphFilename));
         });
         saveFlowgraphMailbox.reset();
     }
@@ -605,7 +652,7 @@ Result Compositor::processInteractions() {
     if (updateFlowgraphBlobMailbox.has_value()) {
         if (sourceEditorEnabled) {
             JST_DISPATCH_ASYNC([&](){
-                JST_CHECK(instance.flowgraph().exportToBlob());
+                JST_CHECK(instance.flowgraph().exportToBlob(flowgraphBlob));
                 return Result::SUCCESS;
             });
             updateFlowgraphBlobMailbox.reset();
@@ -620,7 +667,7 @@ Result Compositor::drawStatic() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const auto& io = ImGui::GetIO();
     const auto& scalingFactor = instance.window().scalingFactor();
-    const bool flowgraphLoaded = instance.flowgraph().imported();
+    const bool flowgraphLoaded = instance.flowgraph().created();
     const F32 variableWidth = 100.0f * scalingFactor;
     I32 interactionTrigger = 0;
 
@@ -743,6 +790,7 @@ Result Compositor::drawStatic() {
         if (ImGui::BeginMenu("Developer")) {
             if (ImGui::MenuItem("Show Demo Window", nullptr, &debugDemoEnabled)) { }
             if (ImGui::MenuItem("Show Latency Window", nullptr, &debugLatencyEnabled)) { }
+            if (ImGui::MenuItem("Show Viewport Window", nullptr, &debugViewportEnabled)) { }
             if (ImGui::MenuItem("Enable Trace", nullptr, &debugEnableTrace)) {
                 if (debugEnableTrace) {
                     JST_LOG_SET_DEBUG_LEVEL(4);
@@ -870,7 +918,7 @@ Result Compositor::drawStatic() {
                                                                              "Try a Chromium based browser like Chrome, Brave, or Opera GX." });
                 } else {
                     EM_ASM({  openUsbDevice(); });
-                }                
+                }
             }
             ImGui::SameLine();
 #endif
@@ -932,7 +980,7 @@ Result Compositor::drawStatic() {
 
     // Save
     if (interactionTrigger == 1 && flowgraphLoaded) {
-        if (instance.flowgraph().filename().empty()) {
+        if (flowgraphFilename.empty()) {
             globalModalToggle = true;
             globalModalContentId = 4;
         } else {
@@ -959,7 +1007,7 @@ Result Compositor::drawStatic() {
 
     // Close
     if (interactionTrigger == 5 && flowgraphLoaded) {
-        if (instance.flowgraph().filename().empty() &&
+        if (flowgraphFilename.empty() &&
             !instance.flowgraph().empty()) {
             globalModalToggle = true;
             globalModalContentId = 5;
@@ -1008,7 +1056,7 @@ Result Compositor::drawStatic() {
     ImGui::PopStyleVar();
 
     mainNodeId = ImGui::GetID("##Arena");
-    ImGui::DockSpace(mainNodeId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode | 
+    ImGui::DockSpace(mainNodeId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode |
                                                      ImGuiDockNodeFlags_AutoHideTabBar);
 
     ImGui::End();
@@ -1043,15 +1091,15 @@ Result Compositor::drawStatic() {
             return;
         }
 
-        auto& file = instance.flowgraph().blob();
+        auto& file = flowgraphBlob;
 
         if (file.empty()) {
             ImGui::Text("Empty source file.");
         } else {
-            ImGui::InputTextMultiline("##SourceFileData", 
-                                      const_cast<char*>(file.data()), 
-                                      file.size(), 
-                                      ImGui::GetContentRegionAvail(), 
+            ImGui::InputTextMultiline("##SourceFileData",
+                                      const_cast<char*>(file.data()),
+                                      file.size(),
+                                      ImGui::GetContentRegionAvail(),
                                       ImGuiInputTextFlags_ReadOnly |
                                       ImGuiInputTextFlags_NoHorizontalScroll);
         }
@@ -1077,14 +1125,14 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         ImGui::Begin(stack.c_str(), &enabled);
         ImGui::PopStyleVar();
-    
+
         bool isDockNew = false;
 
         if (!id) {
             isDockNew = true;
             id = ImGui::GetID(jst::fmt::format("##Stack{}", stack).c_str());
         }
-        
+
         ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
         if (isDockNew && stack == "Graph") {
@@ -1235,7 +1283,7 @@ Result Compositor::drawStatic() {
     //
 
     [&](){
-        if (instance.flowgraph().imported() || ImGui::IsPopupOpen("##help_modal")) {
+        if (instance.flowgraph().created() || ImGui::IsPopupOpen("##help_modal")) {
             return;
         }
 
@@ -1257,14 +1305,14 @@ Result Compositor::drawStatic() {
 
         ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT);
         ImGui::SameLine();
-        ImGui::PushFont(instance.window().boldFont());
+        ImGui::PushFont(_boldFont);
         ImGui::TextUnformatted("Welcome to CyberEther!");
         ImGui::PopFont();
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.6f));
         ImGui::TextFormatted("Version: {}", JETSTREAM_VERSION_STR);
         ImGui::PopStyleColor();
-        
+
         ImGui::Separator();
         ImGui::Spacing();
 
@@ -1352,7 +1400,7 @@ Result Compositor::drawStatic() {
     if (globalModalToggle) {
         ImGui::OpenPopup("##help_modal");
         if (globalModalContentId == 4) {
-            filenameField = instance.flowgraph().filename();
+            filenameField = flowgraphFilename;
         }
         globalModalToggle = false;
     }
@@ -1430,7 +1478,7 @@ Result Compositor::drawStatic() {
 
                 ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
                 for (U64 col = 0; col < columns.size(); ++col) {
-                    const auto& [name, _1, color, cube, _2] = columns[col]; 
+                    const auto& [name, _1, color, cube, _2] = columns[col];
                     ImGui::TableSetColumnIndex(col);
                     if (cube) {
                         ImGui::PushStyleColor(ImGuiCol_Text, color);
@@ -1457,7 +1505,7 @@ Result Compositor::drawStatic() {
 
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, IM_COL32(0, 255, 0, 30));
                         for (const auto& [inputDataType, outputDataType] : store.options.at(device)) {
-                            const auto label = (outputDataType.empty()) ? jst::fmt::format("{}", inputDataType) : 
+                            const auto label = (outputDataType.empty()) ? jst::fmt::format("{}", inputDataType) :
                                                                           jst::fmt::format("{} -> {}", inputDataType, outputDataType);
                             ImGui::TextUnformatted(label.c_str());
                             ImGui::SameLine();
@@ -1516,9 +1564,9 @@ Result Compositor::drawStatic() {
 
             const F32 tableHeight = (totalTableHeight < maxTableHeight) ? totalTableHeight : maxTableHeight;
 
-            const ImGuiTableFlags tableFlags = ImGuiTableFlags_PadOuterX | 
-                                               ImGuiTableFlags_NoBordersInBody | 
-                                               ImGuiTableFlags_NoBordersInBodyUntilResize | 
+            const ImGuiTableFlags tableFlags = ImGuiTableFlags_PadOuterX |
+                                               ImGuiTableFlags_NoBordersInBody |
+                                               ImGuiTableFlags_NoBordersInBodyUntilResize |
                                                ImGuiTableFlags_ScrollY;
 
             if (ImGui::BeginTable("flowgraph_table", 2, tableFlags, ImVec2(0, tableHeight))) {
@@ -1546,7 +1594,7 @@ Result Compositor::drawStatic() {
                     }
 
                     ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
-                    ImGui::PushFont(instance.window().h2Font());
+                    ImGui::PushFont(_h2Font);
                     ImGui::Text("%s", flowgraph.title.c_str());
                     ImGui::PopFont();
                     ImGui::SameLine();
@@ -1575,9 +1623,9 @@ Result Compositor::drawStatic() {
 
             bool openFile = false;
 
-            ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path or URL of a flowgraph file here:");
+            ImGui::Text(ICON_FA_FOLDER_OPEN " Or paste the path of a flowgraph file here:");
             static std::string globalModalPath;
-            if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody | 
+            if (ImGui::BeginTable("flowgraph_table_path", 2, ImGuiTableFlags_NoBordersInBody |
                                                              ImGuiTableFlags_NoBordersInBodyUntilResize)) {
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 80.0f);
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 20.0f);
@@ -1607,11 +1655,9 @@ Result Compositor::drawStatic() {
             if (openFile) {
                 if (globalModalPath.size() == 0) {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Please enter a valid path or URL." });
-                } else if (std::regex_match(globalModalPath, std::regex("^(https?)://.*$"))) {
-                    openFlowgraphUrlMailbox = globalModalPath;
-                    ImGui::CloseCurrentPopup();
                 } else if (std::filesystem::exists(globalModalPath)) {
-                    openFlowgraphPathMailbox = globalModalPath;
+                    flowgraphFilename = globalModalPath;
+                    openFlowgraphPathMailbox = true;
                     ImGui::CloseCurrentPopup();
                 } else {
                     ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "The specified path doesn't exist." });
@@ -1703,7 +1749,7 @@ Result Compositor::drawStatic() {
 
             bool saveFile = false;
 
-            if (ImGui::BeginTable("##flowgraph-info-path", 2, ImGuiTableFlags_NoBordersInBody | 
+            if (ImGui::BeginTable("##flowgraph-info-path", 2, ImGuiTableFlags_NoBordersInBody |
                                                               ImGuiTableFlags_NoBordersInBodyUntilResize)) {
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 80.0f);
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 20.0f);
@@ -1731,13 +1777,24 @@ Result Compositor::drawStatic() {
 
             saveFile |= ImGui::Button(ICON_FA_FLOPPY_DISK " Save Flowgraph", ImVec2(-1, 0));
             if (saveFile) {
-                const auto& result = instance.flowgraph().setFilename(filenameField);
-                if (result == Result::SUCCESS) {
+                [&]{
+                    if (filenameField.empty()) {
+                        JST_ERROR("[FLOWGRAPH] Filename is empty.");
+                        JST_CHECK_NOTIFY(Result::ERROR);
+                        return;
+                    }
+
+                    std::regex filenamePattern("^.+\\.ya?ml$");
+                    if (!std::regex_match(filenameField, filenamePattern)) {
+                        JST_ERROR("[FLOWGRAPH] Invalid filename '{}'.", filenameField);
+                        JST_CHECK_NOTIFY(Result::ERROR);
+                        return;
+                    }
+
+                    flowgraphFilename = filenameField;
                     saveFlowgraphMailbox = true;
                     ImGui::CloseCurrentPopup();
-                } else {
-                    JST_CHECK_NOTIFY(result);
-                }
+                }();
             }
 
             ImGui::PopStyleVar();
@@ -1895,9 +1952,9 @@ Result Compositor::drawStatic() {
             ImGui::Text("to compare the performance between different devices and backends.");
 
             static std::ostringstream benchmarkData;
-            static std::string buildInfoStr = jst::fmt::format("V{} ({}) - Optimization: {} - Debug: {} - Native: {}", JETSTREAM_VERSION_STR,  
-                                                                                                                  JETSTREAM_BUILD_TYPE, 
-                                                                                                                  JETSTREAM_BUILD_OPTIMIZATION, 
+            static std::string buildInfoStr = jst::fmt::format("V{} ({}) - Optimization: {} - Debug: {} - Native: {}", JETSTREAM_VERSION_STR,
+                                                                                                                  JETSTREAM_BUILD_TYPE,
+                                                                                                                  JETSTREAM_BUILD_OPTIMIZATION,
                                                                                                                   JETSTREAM_BUILD_DEBUG,
                                                                                                                   JETSTREAM_BUILD_NATIVE);
 
@@ -1937,10 +1994,10 @@ Result Compositor::drawStatic() {
             const auto& results = Benchmark::GetResults();
 
             const ImVec2 tableHeight = ImVec2(0.50f * io.DisplaySize.x, 0.50f * io.DisplaySize.y);
-            const ImGuiTableFlags mainTableFlags = ImGuiTableFlags_PadOuterX | 
-                                                   ImGuiTableFlags_Borders | 
-                                                   ImGuiTableFlags_ScrollY | 
-                                                   ImGuiTableFlags_Reorderable | 
+            const ImGuiTableFlags mainTableFlags = ImGuiTableFlags_PadOuterX |
+                                                   ImGuiTableFlags_Borders |
+                                                   ImGuiTableFlags_ScrollY |
+                                                   ImGuiTableFlags_Reorderable |
                                                    ImGuiTableFlags_Hideable;
 
             if (ImGui::BeginTable("benchmark-table", 2, mainTableFlags, tableHeight)) {
@@ -2021,10 +2078,111 @@ Result Compositor::drawStatic() {
         ImGui::EndPopup();
     }
 
+    //
+    // Debug Latency Render
+    //
+
+    [&](){
+        if (!debugLatencyEnabled) {
+            return;
+        }
+
+        const auto& mainWindowWidth = io.DisplaySize.x;
+        const auto& mainWindowHeight = io.DisplaySize.y;
+
+        const auto timerWindowWidth  = 200.0f * scalingFactor;
+        const auto timerWindowHeight = 85.0f * scalingFactor;
+
+        static F32 x = 0.0f;
+        static F32 xd = 1.0f;
+
+        x += xd;
+
+        if (x > (mainWindowWidth - timerWindowWidth)) {
+            xd = -xd;
+        }
+        if (x < 0.0f) {
+            xd = -xd;
+        }
+
+        ImGui::SetNextWindowSize(ImVec2(timerWindowWidth, timerWindowHeight));
+        ImGui::SetNextWindowPos(ImVec2(x, (mainWindowHeight / 2.0f) - (timerWindowHeight / 2.0f)));
+
+        if (!ImGui::Begin("Lantency Debug", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+            ImGui::End();
+            return;
+        }
+
+        U64 ms = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        ImGui::TextFormatted("Time: {} ms", ms);
+
+        const F32 blockWidth = timerWindowWidth / 6.0f;
+        const F32 blockHeight = 35.0f;
+        ImVec2 windowPos = ImGui::GetWindowPos();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+        ImVec2 blockPos = ImVec2(windowPos.x, windowPos.y + timerWindowHeight - blockHeight);
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 0, 0, 255));      // Red
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 255, 0, 255));      // Green
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 255, 255));      // Blue
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 0, 255));    // Yellow
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 255, 255));  // White
+        blockPos.x += blockWidth;
+        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 0, 255));        // Black
+
+        ImGui::End();
+    }();
+
+    //
+    // Debug Viewport Render
+    //
+
+    [&](){
+        if (!debugViewportEnabled) {
+            return;
+        }
+
+        if (!ImGui::Begin("Viewport Debug")) {
+            ImGui::End();
+            return;
+        }
+
+        // Report the window size.
+
+        const auto& mainWindowWidth = io.DisplaySize.x;
+        const auto& mainWindowHeight = io.DisplaySize.y;
+        ImGui::Text("Window Size: %.2f x %.2f", mainWindowWidth, mainWindowHeight);
+
+        // Report the framebuffer scale.
+
+        const auto& framebufferWidth = io.DisplayFramebufferScale.x;
+        const auto& framebufferHeight = io.DisplayFramebufferScale.y;
+        ImGui::Text("Framebuffer Scale: %.2f x %.2f", framebufferWidth, framebufferHeight);
+
+        // Render window scale.
+
+        const auto& windowWidth = instance.window().scalingFactor();
+        ImGui::Text("Render Window Scale: %.2f", windowWidth);
+
+        ImGui::End();
+    }();
+
+    //
+    // Debug Demo Render
+    //
+
+    if (debugDemoEnabled) {
+        ImGui::ShowDemoWindow();
+    }
+
     return Result::SUCCESS;
 }
 
-Result Compositor::drawGraph() {
+Result Compositor::drawFlowgraph() {
     // Load local variables.
     const auto& scalingFactor = instance.window().scalingFactor();
     const auto& nodeStyle = ImNodes::GetStyle();
@@ -2046,7 +2204,7 @@ Result Compositor::drawGraph() {
             continue;
         }
 
-        ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f), 
+        ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f),
                                             ImVec2(io.DisplaySize.x, io.DisplaySize.y));
         ImGui::SetNextWindowSize(ImVec2(400.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin(jst::fmt::format("View - {}", state.title).c_str(),
@@ -2081,11 +2239,11 @@ Result Compositor::drawGraph() {
         ImGui::SetNextWindowSize(io.DisplaySize);
 
         const auto flags = ImGuiWindowFlags_NoTitleBar |
-                           ImGuiWindowFlags_NoResize | 
-                           ImGuiWindowFlags_NoMove | 
-                           ImGuiWindowFlags_NoScrollbar | 
-                           ImGuiWindowFlags_NoScrollWithMouse | 
-                           ImGuiWindowFlags_NoCollapse | 
+                           ImGuiWindowFlags_NoResize |
+                           ImGuiWindowFlags_NoMove |
+                           ImGuiWindowFlags_NoScrollbar |
+                           ImGuiWindowFlags_NoScrollWithMouse |
+                           ImGuiWindowFlags_NoCollapse |
                            ImGuiWindowFlags_NoSavedSettings;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -2116,7 +2274,7 @@ Result Compositor::drawGraph() {
             continue;
         }
 
-        ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f), 
+        ImGui::SetNextWindowSizeConstraints(ImVec2(64.0f, 64.0f),
                                             ImVec2(io.DisplaySize.x, io.DisplaySize.y));
         ImGui::SetNextWindowSize(ImVec2(400.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin(jst::fmt::format("Control - {}", state.title).c_str(),
@@ -2154,12 +2312,12 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
+        if (!flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().created()) {
             return;
         }
 
         ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
-        
+
         if (!ImGui::Begin("Flowgraph")) {
             ImGui::End();
             return;
@@ -2181,9 +2339,9 @@ Result Compositor::drawGraph() {
             F32 nodeWidth = block->state.nodeWidth * scalingFactor;
             const F32 titleWidth = ImGui::CalcTextSize(state.title.c_str()).x +
                                    ImGui::CalcTextSize(" " ICON_FA_CIRCLE_QUESTION).x +
-                                   ((!block->complete()) ? 
+                                   ((!block->complete()) ?
                                         ImGui::CalcTextSize(" " ICON_FA_SKULL).x : 0) +
-                                   ((!block->warning().empty() && block->complete()) ? 
+                                   ((!block->warning().empty() && block->complete()) ?
                                         ImGui::CalcTextSize(" " ICON_FA_TRIANGLE_EXCLAMATION).x : 0);
             const F32 controlWidth = block->shouldDrawControl() ? windowMinWidth: 0.0f;
             const F32 previewWidth = block->shouldDrawPreview() ? windowMinWidth : 0.0f;
@@ -2254,7 +2412,7 @@ Result Compositor::drawGraph() {
             if (ImGui::BeginPopupContextItem("fixed-block-description")) {
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), _markdownConfig);
                 ImGui::EndPopup();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
@@ -2267,7 +2425,7 @@ Result Compositor::drawGraph() {
                 ImGui::Text("(click to pin)");
                 ImGui::PopStyleColor();
                 ImGui::Separator();
-                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(moduleEntry.description.c_str(), moduleEntry.description.length(), _markdownConfig);
                 ImGui::EndTooltip();
             }
             ImGui::PopStyleVar();
@@ -2606,9 +2764,9 @@ Result Compositor::drawGraph() {
                 std::string attributes;
                 U64 i = 0;
                 for (const auto& [key, value] : rec.attributes) {
-                    attributes += jst::fmt::format("{}{}: {}{}", i == 0 ? "" : "             ", 
-                                                             key, 
-                                                             value, 
+                    attributes += jst::fmt::format("{}{}: {}{}", i == 0 ? "" : "             ",
+                                                             key,
+                                                             value,
                                                              i == rec.attributes.size() - 1 ? "" : ", \n");
                     i++;
                 }
@@ -2724,7 +2882,7 @@ Result Compositor::drawGraph() {
                 const auto& [inputDataType, outputDataType] = types;
                 const auto enabled = state.fingerprint.inputDataType == inputDataType &&
                                      state.fingerprint.outputDataType == outputDataType;
-                const auto label = (outputDataType.empty()) ? jst::fmt::format("{}", inputDataType) : 
+                const auto label = (outputDataType.empty()) ? jst::fmt::format("{}", inputDataType) :
                                                               jst::fmt::format("{} -> {}", inputDataType, outputDataType);
                 if (ImGui::MenuItem(label.c_str(), NULL, enabled)) {
                     changeBlockDataTypeMailbox = {locale, types};
@@ -2746,7 +2904,7 @@ Result Compositor::drawGraph() {
     //
 
     [&](){
-        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().imported()) {
+        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().created()) {
             return;
         }
 
@@ -2777,7 +2935,7 @@ Result Compositor::drawGraph() {
         ImGui::BeginChild("Block List", ImVec2(0, 0), true);
 
         for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
-            ImGui::PushFont(instance.window().boldFont());
+            ImGui::PushFont(_boldFont);
             ImGui::TextUnformatted(module.title.c_str());
             ImGui::PopFont();
             ImGui::SameLine();
@@ -2787,7 +2945,7 @@ Result Compositor::drawGraph() {
                 ImGui::BeginTooltip();
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
-                ImGui::Markdown(module.description.c_str(), module.description.length(), instance.window().markdownConfig());
+                ImGui::Markdown(module.description.c_str(), module.description.length(), _markdownConfig);
                 ImGui::EndTooltip();
             }
             ImGui::TextWrapped("%s", module.summary.c_str());
@@ -2838,7 +2996,7 @@ Result Compositor::drawGraph() {
         }
 
         const std::string text = "\n"
-                                 "       " ICON_FA_HAND_SPOCK 
+                                 "       " ICON_FA_HAND_SPOCK
                                  "\n\n"
                                  "-- END OF LIST --\n\n";
         auto windowWidth = ImGui::GetWindowSize().x;
@@ -2853,73 +3011,6 @@ Result Compositor::drawGraph() {
 
         ImGui::End();
     }();
-
-    //
-    // Debug Latency Render
-    //
-
-    [&](){
-        if (!debugLatencyEnabled) {
-            return;
-        }
-
-        const auto& mainWindowWidth = io.DisplaySize.x;
-        const auto& mainWindowHeight = io.DisplaySize.y;
-
-        const auto timerWindowWidth  = 200.0f * scalingFactor;
-        const auto timerWindowHeight = 85.0f * scalingFactor;
-
-        static F32 x = 0.0f;
-        static F32 xd = 1.0f;
-
-        x += xd;
-
-        if (x > (mainWindowWidth - timerWindowWidth)) {
-            xd = -xd;
-        }
-        if (x < 0.0f) {
-            xd = -xd;
-        }
-    
-        ImGui::SetNextWindowSize(ImVec2(timerWindowWidth, timerWindowHeight));
-        ImGui::SetNextWindowPos(ImVec2(x, (mainWindowHeight / 2.0f) - (timerWindowHeight / 2.0f)));
-
-        if (!ImGui::Begin("Timer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
-            ImGui::End();
-            return;
-        }
-
-        U64 ms = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        ImGui::TextFormatted("Time: {} ms", ms);
-
-        const F32 blockWidth = timerWindowWidth / 6.0f;
-        const F32 blockHeight = 35.0f;
-        ImVec2 windowPos = ImGui::GetWindowPos();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-        ImVec2 blockPos = ImVec2(windowPos.x, windowPos.y + timerWindowHeight - blockHeight);
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 0, 0, 255));      // Red
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 255, 0, 255));      // Green
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 255, 255));      // Blue
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 0, 255));    // Yellow
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(255, 255, 255, 255));  // White
-        blockPos.x += blockWidth;
-        drawList->AddRectFilled(blockPos, ImVec2(blockPos.x + blockWidth, blockPos.y + blockHeight), IM_COL32(0, 0, 0, 255));        // Black
-
-        ImGui::End();
-    }();
-
-    //
-    // Debug Demo Render
-    //
-
-    if (debugDemoEnabled) {
-        ImGui::ShowDemoWindow();
-    }
 
     return Result::SUCCESS;
 }

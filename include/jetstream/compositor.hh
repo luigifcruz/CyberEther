@@ -16,8 +16,14 @@
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/block.hh"
-#include "jetstream/render/base.hh"
 #include "jetstream/compute/base.hh"
+#include "jetstream/render/base.hh"
+#include "jetstream/render/tools/imnodes.h"
+#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/imgui_notify_ext.h"
+#include "jetstream/render/tools/imgui_markdown.hh"
+
+// TODO: Break this file up into smaller pieces.
 
 namespace Jetstream {
 
@@ -38,10 +44,10 @@ class JETSTREAM_API Compositor {
         return *this;
     }
 
-    Result addBlock(const Locale& locale, 
-                    const std::shared_ptr<Block>& block, 
-                    const Parser::RecordMap& inputMap, 
-                    const Parser::RecordMap& outputMap, 
+    Result addBlock(const Locale& locale,
+                    const std::shared_ptr<Block>& block,
+                    const Parser::RecordMap& inputMap,
+                    const Parser::RecordMap& outputMap,
                     const Parser::RecordMap& stateMap,
                     const Block::Fingerprint& fingerprint);
     Result removeBlock(const Locale& locale);
@@ -49,6 +55,10 @@ class JETSTREAM_API Compositor {
 
     Result draw();
     Result processInteractions();
+
+    constexpr ImGui::MarkdownConfig& markdownConfig() {
+        return _markdownConfig;
+    }
 
  private:
     typedef std::pair<std::string, Device> CreateBlockMail;
@@ -89,7 +99,7 @@ class JETSTREAM_API Compositor {
     Result checkAutoLayoutState();
 
     Result drawStatic();
-    Result drawGraph();
+    Result drawFlowgraph();
 
     Instance& instance;
 
@@ -103,19 +113,22 @@ class JETSTREAM_API Compositor {
     bool flowgraphEnabled;
     bool debugDemoEnabled;
     bool debugLatencyEnabled;
+    bool debugViewportEnabled;
     bool fullscreenEnabled;
     bool debugEnableTrace;
     U64 globalModalContentId;
     I32 nodeContextMenuNodeId;
     bool benchmarkRunning;
     std::string filenameField;
+    std::string flowgraphFilename;
+    std::vector<char> flowgraphBlob;
 
     std::atomic_flag interfaceHalt{false};
 
     std::shared_ptr<Render::Texture> primaryBannerTexture;
     std::shared_ptr<Render::Texture> secondaryBannerTexture;
-    Result loadImageAsset(const uint8_t* binary_data, 
-                          const U64& binary_len, 
+    Result loadImageAsset(const uint8_t* binary_data,
+                          const U64& binary_len,
                           std::shared_ptr<Render::Texture>& texture);
 
     std::unordered_map<Locale, NodeState, Locale::Hasher> nodeStates;
@@ -130,7 +143,7 @@ class JETSTREAM_API Compositor {
     std::unordered_map<NodeId, Locale> nodeLocaleMap;
 
     CreateBlockMail createBlockStagingMailbox;
-    
+
     std::optional<LinkMail> linkMailbox;
     std::optional<UnlinkMail> unlinkMailbox;
     std::optional<CreateBlockMail> createBlockMailbox;
@@ -142,8 +155,7 @@ class JETSTREAM_API Compositor {
     std::optional<ToggleBlockMail> toggleBlockMailbox;
     std::optional<bool> resetFlowgraphMailbox;
     std::optional<bool> closeFlowgraphMailbox;
-    std::optional<std::string> openFlowgraphUrlMailbox;
-    std::optional<std::string> openFlowgraphPathMailbox;
+    std::optional<bool> openFlowgraphPathMailbox;
     std::optional<const char*> openFlowgraphBlobMailbox;
     std::optional<bool> updateFlowgraphBlobMailbox;
     std::optional<bool> saveFlowgraphMailbox;
@@ -169,6 +181,30 @@ class JETSTREAM_API Compositor {
     static const U32 DisabledColor         = IM_COL32( 75,  75,  75, 255);
     static const U32 DisabledColorSelected = IM_COL32( 75,  75,  75, 255);
     static const U32 DefaultColor          = IM_COL32(255, 255, 255, 255);
+
+    // ImGui, ImNodes, and ImGuiMarkdown
+
+    ImFont* _bodyFont;
+    ImFont* _h1Font;
+    ImFont* _h2Font;
+    ImFont* _boldFont;
+
+    F32 previousScalingFactor;
+
+    ImGui::MarkdownConfig _markdownConfig;
+
+    void ImGuiLoadFonts();
+
+    void ImGuiStyleSetup();
+    void ImGuiStyleScale();
+
+    void ImNodesStyleSetup();
+    void ImNodesStyleScale();
+
+    void ImGuiMarkdownStyleSetup();
+
+    static void ImGuiMarkdownLinkCallback(ImGui::MarkdownLinkCallbackData data);
+    static void ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md_info, bool start);
 };
 
 }  // namespace Jetstream

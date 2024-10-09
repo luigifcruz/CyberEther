@@ -20,6 +20,7 @@
 
 namespace Jetstream {
 
+class Superluminal;
 class Instance;
 
 class JETSTREAM_API Flowgraph {
@@ -28,12 +29,13 @@ class JETSTREAM_API Flowgraph {
     ~Flowgraph();
 
     Result create();
-    Result create(const std::string& path);
-    Result create(const char* blob);
     Result destroy();
 
-    Result exportToFile();
-    Result exportToBlob();
+    Result importFromFile(const std::string& path);
+    Result importFromBlob(const std::vector<char>& blob);
+
+    Result exportToFile(const std::string& path);
+    Result exportToBlob(std::vector<char>& blob);
 
     Result print() const;
 
@@ -41,18 +43,9 @@ class JETSTREAM_API Flowgraph {
         return _nodes.empty();
     }
 
-    constexpr const bool& imported() const {
-        return _imported;
+    constexpr const bool& created() const {
+        return _created;
     }
-
-    constexpr const std::vector<char>& blob() const {
-        return _blob;
-    }
-
-    constexpr const std::string& filename() const {
-        return _filename;
-    }
-    Result setFilename(const std::string& filename);
 
     constexpr const std::string& protocolVersion() const {
         return _protocolVersion;
@@ -161,6 +154,7 @@ class JETSTREAM_API Flowgraph {
     }
 
     friend class Instance;
+    friend Superluminal;
 
  private:
     Instance& _instance;
@@ -171,9 +165,7 @@ class JETSTREAM_API Flowgraph {
     struct YamlImpl;
     std::unique_ptr<YamlImpl> _yaml;
 
-    std::string _filename;
-    std::vector<char> _blob;
-    bool _imported = false;
+    bool _created = false;
 
     std::string _protocolVersion;
     std::string _cyberetherVersion;
@@ -181,9 +173,7 @@ class JETSTREAM_API Flowgraph {
     std::string _summary;
     std::string _author;
     std::string _license;
-    std::string _description;
-
-    Result importFromBlob();    
+    std::string _description;  
 };
 
 }  // namespace Jetstream
