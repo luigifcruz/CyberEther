@@ -54,7 +54,7 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
             drawCommand.indexCount = buffer->getIndexCount();
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstIndex = 0;
-            drawCommand.baseVertex = i * buffer->getVertexCount();
+            drawCommand.baseVertex = i * (buffer->getIndexCount() - buffer->getVertexCount());
             drawCommand.firstInstance = i * config.numberOfInstances;
 
             indexedDrawCommands.push_back(drawCommand);
@@ -100,21 +100,6 @@ Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) 
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
-    JST_CHECK(buffer->encode(renderPassEncoder));
-
-    // WebGPU doesn't support multi-draw. So we need to call multiple times.
-    for (U64 i = 0; i < config.numberOfDraws; i++) {
-        if (buffer->isBuffered()) {
-            renderPassEncoder.DrawIndexedIndirect(indexedIndirectBuffer->getHandle(), i * sizeof(IndexedDrawCommand));
-        } else {
-            renderPassEncoder.DrawIndirect(indirectBuffer->getHandle(), i * sizeof(DrawCommand));
-        }
-    }
-
-    return Result::SUCCESS;
-}
-
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying draw.");
 
@@ -127,6 +112,21 @@ Result Implementation::destroy() {
     }
 
     JST_CHECK(buffer->destroy());
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
+    JST_CHECK(buffer->encode(renderPassEncoder));
+
+    // WebGPU doesn't support multi-draw. So we need to call multiple times.
+    for (U64 i = 0; i < config.numberOfDraws; i++) {
+        if (buffer->isBuffered()) {
+            renderPassEncoder.DrawIndexedIndirect(indexedIndirectBuffer->getHandle(), i * sizeof(IndexedDrawCommand));
+        } else {
+            renderPassEncoder.DrawIndirect(indirectBuffer->getHandle(), i * sizeof(DrawCommand));
+        }
+    }
 
     return Result::SUCCESS;
 }

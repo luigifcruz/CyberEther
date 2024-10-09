@@ -19,11 +19,11 @@ class VertexImp<Device::WebGPU> : public Vertex {
     Result destroy();
     Result encode(wgpu::RenderPassEncoder& renderPassEncoder);
 
-    constexpr U32 getVertexCount() const {
+    constexpr const U32& getVertexCount() const {
         return vertexCount;
     }
 
-    constexpr U32 getIndexCount() const {
+    constexpr const U32& getIndexCount() const {
         return indexCount;
     }
 
@@ -32,7 +32,7 @@ class VertexImp<Device::WebGPU> : public Vertex {
     }
 
  private:
-    U64 vertexCount;
+    U32 vertexCount;
     U32 indexCount;
 
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, U32>> vertices;

@@ -102,7 +102,7 @@ Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& a
     }
 
     const auto& [vertex, stride] = vertices[0];
-    vertexCount = vertex->byteSize() / sizeof(F32) / numberOfDraws / stride;
+    vertexCount = vertex->size() / numberOfDraws / stride;
 
     if (indices) {
         indexCount = indices->size();
@@ -111,26 +111,26 @@ Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& a
     return Result::SUCCESS;
 }
 
+Result Implementation::destroy() {
+    JST_DEBUG("[WebGPU] Destroying vertex.");
+
+    return Result::SUCCESS;
+}
+
 Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
     U32 bindingCount = 0;
 
-    for (const auto& [vertex, stride] : vertices) {
+    for (const auto& [vertex, _] : vertices) {
         renderPassEncoder.SetVertexBuffer(bindingCount++, vertex->getHandle(), 0, vertex->byteSize());
     }
 
-    for (const auto& [instance, stride] : instances) {
+    for (const auto& [instance, _] : instances) {
         renderPassEncoder.SetVertexBuffer(bindingCount++, instance->getHandle(), 0, instance->byteSize());
     }
 
     if (indices) {
         renderPassEncoder.SetIndexBuffer(indices->getHandle(), wgpu::IndexFormat::Uint32, 0, indices->byteSize());
     }
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::destroy() {
-    JST_DEBUG("[WebGPU] Destroying vertex.");
 
     return Result::SUCCESS;
 }
