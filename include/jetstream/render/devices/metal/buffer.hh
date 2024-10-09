@@ -31,6 +31,8 @@ class BufferImp<Device::Metal> : public Buffer {
     friend class ProgramImp<Device::Metal>;
     friend class VertexImp<Device::Metal>;
     friend class KernelImp<Device::Metal>;
+    friend class TextureImp<Device::Metal>;
+    friend class DrawImp<Device::Metal>;
 };
 
 }  // namespace Jetstream::Render

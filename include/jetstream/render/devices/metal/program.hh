@@ -19,7 +19,7 @@ class ProgramImp<Device::Metal> : public Program {
  private:
     MTL::RenderPipelineState* renderPipelineState = nullptr;
 
-    std::shared_ptr<DrawImp<Device::Metal>> _draw;
+    std::vector<std::shared_ptr<DrawImp<Device::Metal>>> draws;
     std::vector<std::shared_ptr<TextureImp<Device::Metal>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, Program::Target>> buffers;
 

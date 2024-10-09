@@ -8,7 +8,7 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal buffer.");
+    JST_DEBUG("[Metal] Creating buffer.");
 
     // TODO: Add usage hints.
     auto device = Backend::State<Device::Metal>()->getDevice();
@@ -27,7 +27,7 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("Destroying Metal buffer.");
+    JST_DEBUG("[Metal] Destroying buffer.");
 
     if (!config.enableZeroCopy && buffer) {
         buffer->release();

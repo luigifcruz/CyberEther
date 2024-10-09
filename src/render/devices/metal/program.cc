@@ -8,7 +8,11 @@ namespace Jetstream::Render {
 using Implementation = ProgramImp<Device::Metal>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
-    _draw = std::dynamic_pointer_cast<DrawImp<Device::Metal>>(config.draw);
+    for (auto& draw : config.draws) {
+        draws.push_back(
+            std::dynamic_pointer_cast<DrawImp<Device::Metal>>(draw)
+        );
+    }
 
     for (auto& texture : config.textures) {
         textures.push_back(
@@ -24,7 +28,7 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 }
 
 Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer) {
-    JST_DEBUG("Creating Metal program.");
+    JST_DEBUG("[Metal] Creating program.");
 
     if (config.shaders.contains(Device::Metal) == 0) {
         JST_ERROR("[Metal] Module doesn't have necessary shader.");       
@@ -69,7 +73,10 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
         }
     }
     auto vertDesc = MTL::VertexDescriptor::alloc()->init();
-    JST_CHECK(_draw->create(vertDesc, indexOffset));
+
+    for (auto& draw : draws) {
+        JST_CHECK(draw->create(vertDesc, indexOffset));
+    }
 
     auto renderPipelineDescriptor = MTL::RenderPipelineDescriptor::alloc()->init();
     JST_ASSERT(renderPipelineDescriptor);
@@ -105,7 +112,9 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
 }
 
 Result Implementation::destroy() {
-    JST_CHECK(_draw->destroy());
+    for (auto& draw : draws) {
+        JST_CHECK(draw->destroy());
+    }
 
     renderPipelineState->release();
 
@@ -133,7 +142,9 @@ Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
     }
 
     // Attach frame encoder.
-    JST_CHECK(_draw->encode(renderCmdEncoder));
+    for (auto& draw : draws) {
+        JST_CHECK(draw->encode(renderCmdEncoder));
+    }
 
     return Result::SUCCESS;
 }

@@ -14,7 +14,7 @@ Implementation::KernelImp(const Config& config) : Kernel(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("Creating Metal kernel.");
+    JST_DEBUG("[Metal] Creating kernel.");
 
     if (config.kernels.contains(Device::Metal) == 0) {
         JST_ERROR("[Metal] Module doesn't have necessary kernel.");       
@@ -86,7 +86,7 @@ Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
 
     // TODO: Implement 2D and 3D grid sizes.
     if (y != 1 || z != 1) {
-        JST_ERROR("[METAL] Only 1D grids are supported.");
+        JST_ERROR("[Metal] Only 1D grids are supported.");
         return Result::ERROR;
     }
 

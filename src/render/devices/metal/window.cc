@@ -67,7 +67,7 @@ Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
 }
 
 Result Implementation::underlyingCreate() {
-    JST_DEBUG("Creating Metal window.");
+    JST_DEBUG("[Metal] Creating window.");
 
     outerPool = NS::AutoreleasePool::alloc()->init();
 
@@ -87,12 +87,12 @@ Result Implementation::underlyingCreate() {
 }
 
 Result Implementation::underlyingDestroy() {
-    JST_DEBUG("Destroying Metal window.");
+    JST_DEBUG("[Metal] Destroying window.");
 
     JST_CHECK(destroyImgui());
 
     if (!buffers.empty() || !textures.empty() || !surfaces.empty()) {
-        JST_WARN("[METAL] Resources are still bounded to this window "
+        JST_WARN("[Metal] Resources are still bounded to this window "
                  "(buffers={}, textures={}, surfaces={}).", 
                  buffers.size(), textures.size(), surfaces.size());
     }
@@ -106,7 +106,7 @@ Result Implementation::underlyingDestroy() {
 }
 
 Result Implementation::createImgui() {
-    JST_DEBUG("Creating Metal ImGui.");
+    JST_DEBUG("[Metal] Creating ImGui.");
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -129,7 +129,7 @@ Result Implementation::createImgui() {
 }
 
 Result Implementation::destroyImgui() {
-    JST_DEBUG("Destroying Metal ImGui.");
+    JST_DEBUG("[Metal] Destroying ImGui.");
 
     ImGui_ImplMetal_Shutdown();
     JST_CHECK(viewport->destroyImgui());

@@ -19,6 +19,12 @@ class DrawImp<Device::Metal> : public Draw {
  private:
     std::shared_ptr<VertexImp<Device::Metal>> buffer;
 
+    std::shared_ptr<BufferImp<Device::Metal>> indexedIndirectBuffer;
+    std::shared_ptr<BufferImp<Device::Metal>> indirectBuffer;
+
+    std::vector<MTL::DrawIndexedPrimitivesIndirectArguments> indexedDrawCommands;
+    std::vector<MTL::DrawPrimitivesIndirectArguments> drawCommands;
+
     friend class ProgramImp<Device::Metal>;
 };
 
