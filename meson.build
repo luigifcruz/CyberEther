@@ -89,7 +89,6 @@ subdir('resources')
 subdir('flowgraphs')
 subdir('shaders')
 subdir('src')
-subdir('include')
 
 #
 # Declare Library
@@ -109,21 +108,25 @@ libjetstream_dep = declare_dependency(
     link_with: libjetstream
 )
 
+#
+# Python Bindings
+#
+
+if get_option('python')
+    subdir('python')
+endif
+
+#
+# Install Library
+#
+
+subdir('include')
+
 if not jst_is_static
     pkg = import('pkgconfig')
     pkg.generate(
         libjetstream,
         libraries: dep_lst,
-    )
-endif
-
-if not jst_is_ios and \
-   not jst_is_android
-    executable(
-        'cyberether', 
-        'main.cc',
-        dependencies: libjetstream_dep,
-        install: true,
     )
 endif
 
@@ -143,6 +146,16 @@ if not jst_is_browser and \
     subdir('examples')
 endif
 
+if not jst_is_ios and \
+   not jst_is_android
+    executable(
+        'cyberether', 
+        'main.cc',
+        dependencies: libjetstream_dep,
+        install: true,
+    )
+endif
+
 #
 # Print Summary
 #
@@ -152,4 +165,6 @@ summary({
     'prefix': get_option('prefix'),
     'buildtype': get_option('buildtype'),
     'crossbuild': jst_is_crossbuild,
+    'superluminal': cfg_lst.get('JETSTREAM_SUPERLUMINAL_AVAILABLE', false),
+    'python bindings': cfg_lst.get('JETSTREAM_SUPERLUMINAL_PYTHON_AVAILABLE', false),
 }, section: 'General', bool_yn: true)
