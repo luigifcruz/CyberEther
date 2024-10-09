@@ -95,7 +95,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     }
 
     const auto& [vertex, stride] = vertices[0];
-    vertexCount = vertex->byteSize() / sizeof(F32) / numberOfDraws / stride;
+    vertexCount = vertex->size() / numberOfDraws / stride;
 
     if (indices) {
         indexCount = indices->size();
@@ -104,19 +104,22 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer) {
-    // TODO: Is binding multiple buffers at once a good idea?
-    //       Not sure if other APIs support this.
+Result Implementation::destroy() {
+    JST_DEBUG("[VULKAN] Destroying vertex.");
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     U32 bindingCount = 0;
 
-    for (const auto& [vertex, stride] : vertices) {
+    for (const auto& [vertex, _] : vertices) {
         const VkBuffer buffers[] = { vertex->getHandle() };
         const VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, bindingCount++, 1, buffers, offsets);
     }
 
-    for (const auto& [instance, stride] : instances) {
+    for (const auto& [instance, _] : instances) {
         const VkBuffer buffers[] = { instance->getHandle() };
         const VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(commandBuffer, bindingCount++, 1, buffers, offsets);
@@ -125,12 +128,6 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     if (indices) {
         vkCmdBindIndexBuffer(commandBuffer, indices->getHandle(), 0, VK_INDEX_TYPE_UINT32);
     }
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::destroy() {
-    JST_DEBUG("[VULKAN] Destroying vertex.");
 
     return Result::SUCCESS;
 }

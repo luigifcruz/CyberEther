@@ -53,7 +53,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
             drawCommand.indexCount = buffer->getIndexCount();
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstIndex = 0;
-            drawCommand.vertexOffset = i * buffer->getVertexCount();
+            drawCommand.vertexOffset = i * (buffer->getIndexCount() - buffer->getVertexCount());
             drawCommand.firstInstance = i * config.numberOfInstances;
 
             indexedDrawCommands.push_back(drawCommand);
@@ -99,20 +99,6 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer) {
-    JST_CHECK(buffer->encode(commandBuffer));
-
-    if (buffer->isBuffered()) {
-        vkCmdDrawIndexedIndirect(commandBuffer, indexedIndirectBuffer->getHandle(), 0,
-                                 indexedDrawCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
-    } else {
-        vkCmdDrawIndirect(commandBuffer, indirectBuffer->getHandle(), 0,
-                          drawCommands.size(), sizeof(VkDrawIndirectCommand));
-    }
-
-    return Result::SUCCESS;
-}
-
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying draw.");
 
@@ -125,6 +111,20 @@ Result Implementation::destroy() {
     }
 
     JST_CHECK(buffer->destroy());
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+    JST_CHECK(buffer->encode(commandBuffer));
+
+    if (buffer->isBuffered()) {
+        vkCmdDrawIndexedIndirect(commandBuffer, indexedIndirectBuffer->getHandle(), 0,
+                                 indexedDrawCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
+    } else {
+        vkCmdDrawIndirect(commandBuffer, indirectBuffer->getHandle(), 0,
+                          drawCommands.size(), sizeof(VkDrawIndirectCommand));
+    }
 
     return Result::SUCCESS;
 }
