@@ -85,13 +85,13 @@ Result Superluminal::initialize(const InstanceConfig& config) {
     // Initialize the backend, viewport, and render.
 
     Backend::Config backendConfig {
+        .deviceId = impl->config.deviceId,
         .headless = impl->config.headless,
-        .deviceId =  impl->config.deviceId,
     };
 
     Viewport::Config viewportConfig {
-        .size =  impl->config.interfaceSize,
         .title = impl->config.windowTitle,
+        .size = impl->config.interfaceSize,
         .endpoint = impl->config.endpoint,
         .codec = Viewport::VideoCodec::H264,
     };
