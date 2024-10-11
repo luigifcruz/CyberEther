@@ -28,10 +28,10 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 }
 
 Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer) {
-    JST_DEBUG("[Metal] Creating program.");
+    JST_DEBUG("[METAL] Creating program.");
 
     if (config.shaders.contains(Device::Metal) == 0) {
-        JST_ERROR("[Metal] Module doesn't have necessary shader.");       
+        JST_ERROR("[METAL] Module doesn't have necessary shader.");       
         return Result::ERROR;
     }
 

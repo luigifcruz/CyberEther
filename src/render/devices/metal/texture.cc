@@ -8,7 +8,7 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("[Metal] Creating texture.");
+    JST_DEBUG("[METAL] Creating texture.");
 
     pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
 
@@ -44,7 +44,7 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("[Metal] Destroying texture.");
+    JST_DEBUG("[METAL] Destroying texture.");
 
     samplerState->release();
     texture->release();

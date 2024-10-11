@@ -1,1 +1,2 @@
 option('native', type : 'boolean', value : false, description: 'Enable native build.')
+option('python', type : 'boolean', value : false, description: 'Enable Superluminal Python bindings.')
