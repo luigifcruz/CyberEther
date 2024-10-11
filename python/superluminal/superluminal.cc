@@ -66,7 +66,9 @@ NB_MODULE(_impl, m) {
         .def_rw("device_id", &Superluminal::InstanceConfig::deviceId)
         .def_rw("interface_scale", &Superluminal::InstanceConfig::interfaceScale)
         .def_rw("interface_size", &Superluminal::InstanceConfig::interfaceSize)
-        .def_rw("window_title", &Superluminal::InstanceConfig::windowTitle);
+        .def_rw("window_title", &Superluminal::InstanceConfig::windowTitle)
+        .def_rw("headless", &Superluminal::InstanceConfig::headless)
+        .def_rw("endpoint", &Superluminal::InstanceConfig::endpoint);
 
     m.def("initialize", &Superluminal::Initialize, nb::arg("config") = Superluminal::InstanceConfig());
     m.def("terminate", &Superluminal::Terminate);

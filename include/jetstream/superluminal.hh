@@ -55,6 +55,8 @@ class Superluminal {
         F32 interfaceScale = 1.0f;
         Extent2D<U64> interfaceSize = {1280, 720};
         std::string windowTitle = "Superluminal";
+        bool headless = false;
+        std::string endpoint = "0.0.0.0:5002";
     };
 
     static Result Initialize(const InstanceConfig& config = {}) {

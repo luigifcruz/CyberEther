@@ -78,16 +78,22 @@ Superluminal* Superluminal::GetInstance() {
 Result Superluminal::initialize(const InstanceConfig& config) {
     JST_DEBUG("[SUPERLUMINAL] Initializing.");
 
+    // Copy configuration to memory.
+
+    impl->config = config;
+
     // Initialize the backend, viewport, and render.
 
     Backend::Config backendConfig {
-        .headless = false,
+        .headless = impl->config.headless,
         .deviceId =  impl->config.deviceId,
     };
 
     Viewport::Config viewportConfig {
         .size =  impl->config.interfaceSize,
         .title = impl->config.windowTitle,
+        .endpoint = impl->config.endpoint,
+        .codec = Viewport::VideoCodec::H264,
     };
 
     Render::Window::Config renderConfig {
