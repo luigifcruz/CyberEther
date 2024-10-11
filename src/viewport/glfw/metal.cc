@@ -12,7 +12,7 @@
 namespace Jetstream::Viewport {
 
 static void PrintGLFWError(int, const char* description) {
-    JST_FATAL("[Metal] GLFW error: {}", description);
+    JST_FATAL("[METAL] GLFW error: {}", description);
 }
 
 static bool keepRunningFlag;
@@ -20,11 +20,11 @@ static bool keepRunningFlag;
 using Implementation = GLFW<Device::Metal>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
-    JST_DEBUG("[Metal] Creating GLFW viewport.");
+    JST_DEBUG("[METAL] Creating GLFW viewport.");
 }
 
 Implementation::~GLFW() {
-    JST_DEBUG("[Metal] Destroying GLFW viewport.");
+    JST_DEBUG("[METAL] Destroying GLFW viewport.");
 }
 
 Result Implementation::create() {
@@ -41,7 +41,7 @@ Result Implementation::create() {
     // Initialize and configure GLFW.
 
     if (!glfwInit()) {
-        JST_ERROR("[Metal] Failed to initialize GLFW.");
+        JST_ERROR("[METAL] Failed to initialize GLFW.");
         return Result::ERROR;
     }
 
@@ -56,7 +56,7 @@ Result Implementation::create() {
 
     if (!window) {
         glfwTerminate();
-        JST_ERROR("[Metal] Failed to create window with GLFW.");
+        JST_ERROR("[METAL] Failed to create window with GLFW.");
         return Result::ERROR;
     }
 
