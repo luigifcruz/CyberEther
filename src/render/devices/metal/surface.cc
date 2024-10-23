@@ -32,7 +32,7 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("[Metal] Creating surface.");
+    JST_DEBUG("[METAL] Creating surface.");
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     JST_ASSERT(renderPassDescriptor);
@@ -53,7 +53,7 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("[Metal] Destroying surface.");
+    JST_DEBUG("[METAL] Destroying surface.");
 
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->destroy());
@@ -71,7 +71,7 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::createFramebuffer() {
-    JST_DEBUG("[Metal] Creating surface framebuffer.");
+    JST_DEBUG("[METAL] Creating surface framebuffer.");
 
     JST_CHECK(framebufferResolve->create());
     if (config.multisampled) {
@@ -105,7 +105,7 @@ Result Implementation::createFramebuffer() {
 }
 
 Result Implementation::destroyFramebuffer() {
-    JST_DEBUG("[Metal] Destroying surface framebuffer");
+    JST_DEBUG("[METAL] Destroying surface framebuffer");
 
     if (config.multisampled) {
         JST_CHECK(framebuffer->destroy());
