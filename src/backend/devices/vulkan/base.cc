@@ -417,7 +417,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
-        VkPhysicalDeviceFeatures deviceFeatures{};
+        // TODO: Add validation for these features.
+        VkPhysicalDeviceFeatures deviceFeatures = {};
+        deviceFeatures.multiDrawIndirect = true;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
