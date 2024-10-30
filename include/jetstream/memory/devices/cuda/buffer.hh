@@ -14,6 +14,10 @@ class TensorBuffer<Device::CUDA> : public TensorBufferBase {
                           const TensorPrototypeMetadata& prototype,
                           const bool& host_accessible = false);
 
+    explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                          const TensorPrototypeMetadata& prototype,
+                          void* ptr);
+
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     explicit TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
                           const TensorPrototypeMetadata& prototype,

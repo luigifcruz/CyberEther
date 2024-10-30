@@ -131,6 +131,25 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
 #endif
 }
 
+Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
+                             const TensorPrototypeMetadata& prototype,
+                             void* ptr) {
+    JST_TRACE("[CUDA:BUFFER] New buffer from raw pointer.");
+
+    // Initialize storage.
+
+    storage->root_device = Device::CUDA;
+    storage->compatible_devices = {
+        Device::CUDA
+    };
+
+    set_device_native();
+
+    // Initialize buffer.
+
+    buffer = ptr;
+}
+
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
                              const TensorPrototypeMetadata& prototype,
