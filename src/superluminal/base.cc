@@ -34,6 +34,7 @@ struct Superluminal::Impl {
         std::string name;
         Mosaic mosaic;
         Extent2D<U8> mosaicOffset;
+        Extent2D<U8> mosaicSize;
         PlotConfig config;
         std::shared_ptr<Jetstream::Block> block;
     };
@@ -221,8 +222,8 @@ Result Superluminal::start() {
                     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
                     ImVec2 workSize = {
-                        viewport->WorkSize.x / impl->mosaicDims.x,
-                        viewport->WorkSize.y / impl->mosaicDims.y
+                        (viewport->WorkSize.x / impl->mosaicDims.x) * plot.mosaicSize.x,
+                        (viewport->WorkSize.y / impl->mosaicDims.y) * plot.mosaicSize.y
                     };
 
                     ImVec2 workPos = {
@@ -411,18 +412,44 @@ Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const P
 
     // Calculate mosaic offset.
 
-    for (U8 x = 0; x < impl->mosaicDims.x; x++) {
-        for (U8 y = 0; y < impl->mosaicDims.y; y++) {
-            if (mosaic[y][x] != 0) {
-                state.mosaicOffset.x = x;
-                state.mosaicOffset.y = y;
+    state.mosaicOffset = [&](){
+        for (U8 x = 0; x < impl->mosaicDims.x; x++) {
+            for (U8 y = 0; y < impl->mosaicDims.y; y++) {
+                if (mosaic[y][x] != 0) {
+                    return Extent2D<U8>{x, y};
+                }
             }
         }
-    }
+    }();
 
     JST_DEBUG("[SUPERLUMINAL] Mosaic offsets for plot '{}' is (X: {}, Y: {}).", state.name,
                                                                                 state.mosaicOffset.x,
                                                                                 state.mosaicOffset.y);
+
+    // Calculate mosaic size.
+
+    state.mosaicSize = [&](){
+        U8 x = 0;
+        U8 y = 0;
+
+        for (U8 i = state.mosaicOffset.x; i < impl->mosaicDims.x; i++) {
+            if (mosaic[state.mosaicOffset.y][i] != 0) {
+                x += 1;
+            }
+        }
+
+        for (U8 i = state.mosaicOffset.y; i < impl->mosaicDims.y; i++) {
+            if (mosaic[i][state.mosaicOffset.x] != 0) {
+                y += 1;
+            }
+        }
+
+        return Extent2D<U8>{x, y};
+    }();
+
+    JST_DEBUG("[SUPERLUMINAL] Mosaic size for plot '{}' is (X: {}, Y: {}).", state.name,
+                                                                             state.mosaicSize.x,
+                                                                             state.mosaicSize.y);
 
     JST_INFO("[SUPERLUMINAL] Created plot '{}'.", state.name);
     return Result::SUCCESS;
