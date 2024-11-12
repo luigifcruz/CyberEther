@@ -16,6 +16,7 @@ class Superluminal {
         Heat,
         Scatter,
         Waterfall,
+        Interface,
     };
 
     enum class Domain {
@@ -125,6 +126,14 @@ class Superluminal {
         return GetInstance()->plot(name, mosaic, config);
     }
 
+    static Result Interface(const std::string& name, const Mosaic& mosaic, const std::function<void()>& callback) {
+        return GetInstance()->interface(name, mosaic, callback);
+    }
+
+    static std::vector<std::vector<U8>> MosaicLayout(U8 matrixHeight, U8 matrixWidth,
+                                                     U8 panelHeight, U8 panelWidth,
+                                                     U8 offsetX, U8 offsetY);
+
  private:
     Superluminal();
     ~Superluminal();
@@ -148,6 +157,7 @@ class Superluminal {
     Result blockAndLoop();
 
     Result plot(const std::string& name, const Mosaic& mosaic, const PlotConfig& config);
+    Result interface(const std::string& name, const Mosaic& mosaic, const std::function<void()>& callback);
 };
 
 }  // namespace Jetstream

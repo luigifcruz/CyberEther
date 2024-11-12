@@ -37,12 +37,19 @@ struct Superluminal::Impl {
         Extent2D<U8> mosaicSize;
         PlotConfig config;
         std::shared_ptr<Jetstream::Block> block;
+        std::function<void()> callback;
     };
 
     std::unordered_map<std::string, PlotState> plots;
 
     Result createGraph();
     Result destroyGraph();
+
+    Result validateBounds();
+    Result validateMosaic(const Mosaic& mosaic);
+    Result validateName(const std::string& name);
+
+    Result calculateMosaicParams(const Mosaic& mosaic, PlotState& state);
 
     Result buildLinePlotGraph(PlotState& state);
     Result buildWaterfallPlotGraph(PlotState& state);
@@ -228,15 +235,21 @@ Result Superluminal::start() {
                     };
 
                     ImVec2 workPos = {
-                        viewport->WorkPos.x + (workSize.x * plot.mosaicOffset.x),
-                        viewport->WorkPos.y + (workSize.y * plot.mosaicOffset.y)
+                        viewport->WorkPos.x + ((viewport->WorkSize.x / impl->mosaicDims.x) * plot.mosaicOffset.x),
+                        viewport->WorkPos.y + ((viewport->WorkSize.y / impl->mosaicDims.y) * plot.mosaicOffset.y)
                     };
 
                     ImGui::SetNextWindowPos(workPos);
                     ImGui::SetNextWindowSize(workSize);
 
                     ImGui::Begin(plot.name.c_str(), nullptr, flags);
-                    plot.block->drawView();
+
+                    if (plot.config.type == Type::Interface) {
+                        plot.callback();
+                    } else {
+                        plot.block->drawView();
+                    }
+                    
                     ImGui::End();
                 }
             }
@@ -357,65 +370,54 @@ Result Superluminal::pollEvents(const bool& wait) {
     return Result::SUCCESS;
 }
 
-Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const PlotConfig& config) {
-    JST_DEBUG("[SUPERLUMINAL] Registering new plot called '{}'.", name);
-
-    // Check boundaries.
-
-    if (!impl->initialized) {
-        JST_CHECK(initialize());
-    }
-
-    if (impl->running) {
-        JST_FATAL("[SUPERLUMINAL] Can't register new plot because the instance is already commited.");
-        return Result::ERROR;
-    }
-
+Result Superluminal::Impl::validateMosaic(const Mosaic& mosaic) {
     // Validate mosaic size.
 
-    Extent2D<U8> mosaicDims;
-    mosaicDims.y = mosaic.size();
+    Extent2D<U8> dims;
+    dims.y = mosaic.size();
 
-    if (mosaicDims.y == 0) {
+    if (dims.y == 0) {
         JST_FATAL("[SUPERLUMINAL] Mosaic should be a 2D matrix. Currently: '{}'. Example: '{{0}}', or '{{{{0, 0}}, {{0, 1}}}}'.", mosaic);
         return Result::ERROR;
     }
 
-    mosaicDims.x = mosaic[0].size();
+    dims.x = mosaic[0].size();
     for (auto& column : mosaic) {
-        if (mosaicDims.x != column.size()) {
+        if (dims.x != column.size()) {
             JST_FATAL("[SUPERLUMINAL] All mosaic rows should have the same size");
             return Result::ERROR;
         }
     }
 
-    if (impl->plots.size() == 0) {
-        impl->mosaicDims = mosaicDims;
+    if (plots.size() == 0) {
+        mosaicDims = dims;
     } else {
-        if (impl->mosaicDims != mosaicDims) {
+        if (mosaicDims != dims) {
             JST_FATAL("[SUPERLUMINAL] The mosaic dimensions of all plots need to be the same.");
             return Result::ERROR;
         }
     }
 
-    // Check plot name and create state.
+    return Result::SUCCESS;
+}
 
-    if (impl->plots.contains(name)) {
-        JST_FATAL("[SUPERLUMINAL] Plot with name '{}' already exists.", name);
+Result Superluminal::Impl::validateName(const std::string& name) {
+    // Check plot name.
+
+    if (name.empty()) {
+        JST_FATAL("[SUPERLUMINAL] Plot name cannot be empty.");
         return Result::ERROR;
     }
 
-    auto& state = impl->plots[name];
+    return Result::SUCCESS;
+}
 
-    state.config = config;
-    state.mosaic = mosaic;
-    state.name = name;
-
+Result Superluminal::Impl::calculateMosaicParams(const Mosaic& mosaic, PlotState& state) {
     // Calculate mosaic offset.
 
     state.mosaicOffset = [&](){
-        for (U8 x = 0; x < impl->mosaicDims.x; x++) {
-            for (U8 y = 0; y < impl->mosaicDims.y; y++) {
+        for (U8 x = 0; x < mosaicDims.x; x++) {
+            for (U8 y = 0; y < mosaicDims.y; y++) {
                 if (mosaic[y][x] != 0) {
                     return Extent2D<U8>{x, y};
                 }
@@ -433,13 +435,13 @@ Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const P
         U8 x = 0;
         U8 y = 0;
 
-        for (U8 i = state.mosaicOffset.x; i < impl->mosaicDims.x; i++) {
+        for (U8 i = state.mosaicOffset.x; i < mosaicDims.x; i++) {
             if (mosaic[state.mosaicOffset.y][i] != 0) {
                 x += 1;
             }
         }
 
-        for (U8 i = state.mosaicOffset.y; i < impl->mosaicDims.y; i++) {
+        for (U8 i = state.mosaicOffset.y; i < mosaicDims.y; i++) {
             if (mosaic[i][state.mosaicOffset.x] != 0) {
                 y += 1;
             }
@@ -452,8 +454,88 @@ Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const P
                                                                              state.mosaicSize.x,
                                                                              state.mosaicSize.y);
 
+    return Result::SUCCESS;
+}
+
+Result Superluminal::interface(const std::string& name, const Mosaic& mosaic, const std::function<void()>& callback) {
+    JST_DEBUG("[SUPERLUMINAL] Registering new interface called '{}'.", name);
+
+    // Check boundaries.
+
+    if (!impl->initialized) {
+        JST_CHECK(initialize());
+    }
+
+    if (impl->running) {
+        JST_FATAL("[SUPERLUMINAL] Can't register new interface because the instance is already commited.");
+        return Result::ERROR;
+    }
+
+    JST_CHECK(impl->validateMosaic(mosaic));
+    JST_CHECK(impl->validateName(name));
+
+    // Create plot state.
+
+    auto& state = impl->plots[name];
+
+    state.config.type = Type::Interface;
+    state.callback = callback;
+    state.mosaic = mosaic;
+    state.name = name;
+
+    JST_CHECK(impl->calculateMosaicParams(mosaic, state));
+
+    JST_INFO("[SUPERLUMINAL] Created interface '{}'.", state.name);
+    return Result::SUCCESS;
+}
+
+Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const PlotConfig& config) {
+    JST_DEBUG("[SUPERLUMINAL] Registering new plot called '{}'.", name);
+
+    // Check boundaries.
+
+    if (!impl->initialized) {
+        JST_CHECK(initialize());
+    }
+
+    if (impl->running) {
+        JST_FATAL("[SUPERLUMINAL] Can't register new plot because the instance is already commited.");
+        return Result::ERROR;
+    }
+
+    JST_CHECK(impl->validateMosaic(mosaic));
+    JST_CHECK(impl->validateName(name));
+
+    // Create plot state.
+
+    auto& state = impl->plots[name];
+
+    state.config = config;
+    state.mosaic = mosaic;
+    state.name = name;
+
+    JST_CHECK(impl->calculateMosaicParams(mosaic, state));
+
     JST_INFO("[SUPERLUMINAL] Created plot '{}'.", state.name);
     return Result::SUCCESS;
+}
+
+std::vector<std::vector<U8>> Superluminal::MosaicLayout(U8 matrixHeight, U8 matrixWidth,
+                                                        U8 panelHeight, U8 panelWidth,
+                                                        U8 offsetX, U8 offsetY) {
+    std::vector<std::vector<U8>> layout(matrixHeight, std::vector<U8>(matrixWidth, 0));
+    
+    for (int i = 0; i < panelHeight; ++i) {
+        for (int j = 0; j < panelWidth; ++j) {
+            int row = offsetY + i;
+            int col = offsetX + j;
+            if (row < matrixHeight && col < matrixWidth) {
+                layout[row][col] = 1;
+            }
+        }
+    }
+    
+    return layout;
 }
 
 struct VariantBufferTypeVisitor {
@@ -550,6 +632,7 @@ Result Superluminal::Impl::createGraph() {
                 break;
             case Type::Heat:
             case Type::Scatter:
+            case Type::Interface:
                 JST_FATAL("[SUPERLUMINAL] Plot type for '{}' not implemented yet.", name);
                 break;
         }
