@@ -45,7 +45,7 @@ class Superluminal {
         Domain source = Domain::Time;
         Domain display = Domain::Time;
         Operation operation = Operation::Amplitude;
-        std::map<std::string, std::variant<std::string, U64, F32>> options;
+        std::map<std::string, std::variant<std::string, I32, F32>> options;
     };
 
     struct InstanceConfig {

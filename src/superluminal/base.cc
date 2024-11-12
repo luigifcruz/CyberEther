@@ -630,9 +630,10 @@ Result Superluminal::Impl::createGraph() {
             case Type::Waterfall:
                 buildWaterfallPlotGraph(state);
                 break;
+            case Type::Interface:
+                break;
             case Type::Heat:
             case Type::Scatter:
-            case Type::Interface:
                 JST_FATAL("[SUPERLUMINAL] Plot type for '{}' not implemented yet.", name);
                 break;
         }
@@ -664,6 +665,16 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
 
+    // Poll options.
+
+    std::string averagingRate = "1";
+
+    if (state.config.options.contains("averaging")) {
+        auto averaging = std::get<I32>(state.config.options["averaging"]);
+        JST_DEBUG("[SUPERLUMINAL] Averaging set to {}.", averaging);
+        averagingRate = std::to_string(averaging);
+    }
+
     // Build graph.
 
     // TODO: Add Slice block in case of channel index.
@@ -680,7 +691,8 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
                 {{"range", "[-100, 0]"}},
                 {{"buffer", "${domain.amp.output.buffer}"}}}},
         {"lineplot",
-            {"lineplot", "cpu", {"F32"}, {},
+            {"lineplot", "cpu", {"F32"}, 
+                {{"averaging", averagingRate}},
                 {{"buffer", "${domain.scl.output.buffer}"}}}},
     }, state.name);
 
