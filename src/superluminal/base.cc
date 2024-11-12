@@ -45,6 +45,7 @@ struct Superluminal::Impl {
     Result destroyGraph();
 
     Result buildLinePlotGraph(PlotState& state);
+    Result buildWaterfallPlotGraph(PlotState& state);
 
     struct GraphNode {
         std::string module;
@@ -544,8 +545,10 @@ Result Superluminal::Impl::createGraph() {
             case Type::Line:
                 buildLinePlotGraph(state);
                 break;
-            case Type::Heat:
             case Type::Waterfall:
+                buildWaterfallPlotGraph(state);
+                break;
+            case Type::Heat:
             case Type::Scatter:
                 JST_FATAL("[SUPERLUMINAL] Plot type for '{}' not implemented yet.", name);
                 break;
@@ -603,6 +606,42 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
     // Update plot state.
 
     state.block = instance.flowgraph().nodes()[{state.name + "_lineplot"}]->block;
+
+    return Result::SUCCESS;
+}
+
+Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
+    JST_DEBUG("[SUPERLUMINAL] Building waterfall plot graph named '{}'.", state.name);
+
+    // Access buffer metadata.
+
+    auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
+
+    // Build graph.
+
+    // TODO: Add Slice block in case of channel index.
+
+    auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
+    auto hash = std::to_string(prototype.hash());
+
+    auto blob = GraphToYaml({
+        {"amp",
+            {"amplitude", "cpu", {"CF32", "F32"}, {},
+                {{"buffer", jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", domain, hash)}}}},
+        {"scl",
+            {"scale", "cpu", {"F32"},
+                {{"range", "[-100, 0]"}},
+                {{"buffer", "${domain.amp.output.buffer}"}}}},
+        {"waterfall",
+            {"waterfall", "cpu", {"F32"}, {},
+                {{"buffer", "${domain.scl.output.buffer}"}}}},
+    }, state.name);
+
+    instance.flowgraph().importFromBlob(blob);
+
+    // Update plot state.
+
+    state.block = instance.flowgraph().nodes()[{state.name + "_waterfall"}]->block;
 
     return Result::SUCCESS;
 }
