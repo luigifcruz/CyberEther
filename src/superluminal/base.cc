@@ -423,6 +423,7 @@ Result Superluminal::Impl::calculateMosaicParams(const Mosaic& mosaic, PlotState
                 }
             }
         }
+        return Extent2D<U8>{0, 0};
     }();
 
     JST_DEBUG("[SUPERLUMINAL] Mosaic offsets for plot '{}' is (X: {}, Y: {}).", state.name,
@@ -675,6 +676,14 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
         averagingRate = std::to_string(averaging);
     }
 
+    std::string decimationRate = "1";
+
+    if (state.config.options.contains("decimation")) {
+        auto decimation = std::get<I32>(state.config.options["decimation"]);
+        JST_DEBUG("[SUPERLUMINAL] Decimation set to {}.", decimation);
+        decimationRate = std::to_string(decimation);
+    }
+
     // Build graph.
 
     // TODO: Add Slice block in case of channel index.
@@ -692,7 +701,8 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
                 {{"buffer", "${domain.amp.output.buffer}"}}}},
         {"lineplot",
             {"lineplot", "cpu", {"F32"}, 
-                {{"averaging", averagingRate}},
+                {{"averaging", averagingRate},
+                 {"decimation", decimationRate}},
                 {{"buffer", "${domain.scl.output.buffer}"}}}},
     }, state.name);
 
