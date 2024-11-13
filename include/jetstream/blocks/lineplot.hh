@@ -14,6 +14,7 @@ class Lineplot : public Block {
 
     struct Config {
         U64 averaging = 1;
+        U64 decimation = 1;
         U64 numberOfVerticalLines = 11;
         U64 numberOfHorizontalLines = 5;
         Extent2D<U64> viewSize = {512, 384};
@@ -21,7 +22,7 @@ class Lineplot : public Block {
         F32 translation = 0.0f;
         F32 thickness = 1.0f;
 
-        JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
+        JST_SERDES(averaging, decimation, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness);
     };
 
     constexpr const Config& getConfig() const {
@@ -79,6 +80,7 @@ class Lineplot : public Block {
         JST_CHECK(instance().addModule(
             lineplot, "lineplot", {
                 .averaging = config.averaging,
+                .decimation = config.decimation,
                 .numberOfVerticalLines = config.numberOfVerticalLines,
                 .numberOfHorizontalLines = config.numberOfHorizontalLines,
                 .viewSize = config.viewSize,

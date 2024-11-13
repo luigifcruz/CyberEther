@@ -32,6 +32,7 @@ class Lineplot : public Module, public Compute, public Present {
 
     struct Config {
         U64 averaging = 1;
+        U64 decimation = 1;
         U64 numberOfVerticalLines = 11;
         U64 numberOfHorizontalLines = 5;
         Extent2D<U64> viewSize = {512, 384};
@@ -40,7 +41,7 @@ class Lineplot : public Module, public Compute, public Present {
         F32 thickness = 1.0f;
         F32 scale = 1.0f;
 
-        JST_SERDES(averaging, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness, scale);
+        JST_SERDES(averaging, decimation, numberOfVerticalLines, numberOfHorizontalLines, viewSize, zoom, translation, thickness, scale);
     };
 
     constexpr const Config& getConfig() const {
