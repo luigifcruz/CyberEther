@@ -728,25 +728,68 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     // Build graph.
 
-    // TODO: Add Slice block in case of channel index.
-
-    auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
+    auto graph = Graph{};
     auto hash = std::to_string(prototype.hash());
+    auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
+    auto port = jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", domain, hash);
 
-    auto blob = GraphToYaml({
-        {"amp",
-            {"amplitude", "cpu", {"CF32", "F32"}, {},
-                {{"buffer", jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", domain, hash)}}}},
-        {"scl",
-            {"scale", "cpu", {"F32"},
-                {{"range", "[-100, 0]"}},
-                {{"buffer", "${domain.amp.output.buffer}"}}}},
-        {"waterfall",
-            {"waterfall", "cpu", {"F32"}, {},
-                {{"buffer", "${domain.scl.output.buffer}"}}}},
-    }, state.name);
+    if (state.config.channelAxis != -1 && state.config.channelIndex != -1) {
+        U64 axis = state.config.channelAxis;
+        U64 index = state.config.channelIndex;
 
-    instance.flowgraph().importFromBlob(blob);
+        // Parse slice string.
+
+        std::string slice;
+        for (U64 i = 0; i < prototype.rank(); i++) {
+            if (i == axis) {
+                slice += jst::fmt::format("{}", index);
+            } else {
+                slice += jst::fmt::format(":");
+            }
+            if (i != prototype.rank() - 1) {
+                slice += ",";
+            }
+        }
+        slice = jst::fmt::format("'[{}]'", slice);
+
+        // Create slice module.
+
+        graph.push_back({
+            "slice",
+            {"slice", "cpu", {"CF32"},
+                {{"slice", slice}},
+                {{"buffer", port}}},
+        });
+
+        graph.push_back({
+            "duplicate",
+            {"duplicate", "cpu", {"CF32"}, {},
+                {{"buffer", "${domain.slice.output.buffer}"}}},
+        });
+
+        port = jst::fmt::format("${{domain.duplicate.output.buffer}}");
+    }
+
+    graph.push_back({
+        "amp",
+        {"amplitude", "cpu", {"CF32", "F32"}, {},
+            {{"buffer", port}}},
+    });
+
+    graph.push_back({
+        "scl",
+        {"scale", "cpu", {"F32"},
+            {{"range", "[-100, 0]"}},
+            {{"buffer", "${domain.amp.output.buffer}"}}},
+    });
+
+    graph.push_back({
+        "waterfall",
+        {"waterfall", "cpu", {"F32"}, {},
+            {{"buffer", "${domain.scl.output.buffer}"}}},
+    });
+
+    instance.flowgraph().importFromBlob(GraphToYaml(graph, state.name));
 
     // Update plot state.
 
