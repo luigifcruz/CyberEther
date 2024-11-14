@@ -564,6 +564,10 @@ Result Superluminal::Impl::createGraph() {
     std::unordered_map<U64, InputMemoryRecipe> buffer_map;
 
     for (auto& [_, state] : plots) {
+        if (state.config.type == Type::Interface) {
+            continue;
+        }
+
         auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
 
         auto& recipe = buffer_map[prototype.hash()];
