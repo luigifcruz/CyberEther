@@ -726,6 +726,16 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
 
+    // Poll options.
+
+    std::string height = "512";
+
+    if (state.config.options.contains("height")) {
+        auto h = std::get<I32>(state.config.options["height"]);
+        JST_DEBUG("[SUPERLUMINAL] Height set to {}.", h);
+        height = std::to_string(h);
+    }
+
     // Build graph.
 
     auto graph = Graph{};
@@ -785,7 +795,8 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     graph.push_back({
         "waterfall",
-        {"waterfall", "cpu", {"F32"}, {},
+        {"waterfall", "cpu", {"F32"}, 
+            {{"height", height}},
             {{"buffer", "${domain.scl.output.buffer}"}}},
     });
 
