@@ -67,8 +67,30 @@ class Invert : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Inverts the complex-valued input signal. Useful for ploting the spectrum of a signal.";
+        return "Inverts the complex-valued input signal by swapping the sign of both real and imaginary components.\n\n"
+               "The Invert block performs complex conjugation followed by sign inversion on complex input data. "
+               "This operation is particularly useful in signal processing for frequency spectrum manipulation "
+               "and mirroring operations.\n\n"
+               "Inputs:\n"
+               "- buffer: Complex-valued tensor (CF32) containing the signal to invert.\n\n"
+               "Outputs:\n"
+               "- buffer: Complex-valued tensor with the same shape as the input, but with inverted values.\n\n"
+               "Mathematical Operation:\n"
+               "- For complex values z = a + bi:\n"
+               "  - First computes the complex conjugate: z* = a - bi\n"
+               "  - Then negates both components: -z* = -a + bi\n"
+               "- Effectively reverses the sign of the real component only\n\n"
+               "Key Applications:\n"
+               "- Spectrum inversion in signal processing\n"
+               "- Upper/lower sideband conversion in SSB modulation\n"
+               "- Frequency mirroring operations\n"
+               "- Preparing data for specific visualization techniques\n"
+               "- Correcting for IQ swapping in some SDR receivers\n\n"
+               "Technical Details:\n"
+               "- Preserves the magnitude (absolute value) of the complex numbers\n"
+               "- Changes the phase by adding π (180 degrees) to the original phase\n"
+               "- Computationally efficient with minimal performance impact\n"
+               "- Implemented with hardware acceleration where available";
     }
 
     // Constructor

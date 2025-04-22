@@ -73,8 +73,31 @@ class Audio : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Downsamples the input to the output sample rate and plays it on the speaker.";
+        return "Plays audio data through the system's audio output device (speakers or headphones).\n\n"
+               "The Audio block takes audio samples as input and routes them to the computer's audio output. "
+               "It automatically handles resampling to match the system's audio device sample rate and manages "
+               "the audio playback buffer for smooth, glitch-free audio output.\n\n"
+               "Inputs:\n"
+               "- buffer: Real-valued tensor (F32 type) containing audio samples.\n"
+               "  - For mono audio: 1D tensor with shape [samples]\n"
+               "  - For stereo audio: 2D tensor with shape [2, samples]\n\n"
+               "Configuration Parameters:\n"
+               "- None (uses system default audio device)\n\n"
+               "Technical Details:\n"
+               "- Built on the cross-platform Miniaudio library\n"
+               "- Automatically resamples input to match device sample rate\n"
+               "- Uses ring buffer to handle timing differences between processing and playback\n"
+               "- Supports both mono and stereo audio format\n"
+               "- Low-latency playback when system supports it\n\n"
+               "Common Applications:\n"
+               "- Real-time audio monitoring\n"
+               "- Playback of processed audio signals\n"
+               "- SDR audio output\n"
+               "- Audio testing and verification\n\n"
+               "Tips for Use:\n"
+               "- Input values should be normalized to the [-1.0, 1.0] range\n"
+               "- For best results, ensure your processing chain can keep up with real-time audio rates\n"
+               "- Check system volume settings if no audio is heard";
     }
 
     // Constructor

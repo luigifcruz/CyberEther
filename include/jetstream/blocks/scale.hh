@@ -69,8 +69,30 @@ class Scale : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Multiplies each data point in the input by a specified scaling factor, adjusting its magnitude.";
+        return "Multiplies each data point in the input by a specified scaling factor, adjusting its magnitude.\n\n"
+               "The Scale block performs element-wise multiplication of the input tensor by a constant scaling factor. "
+               "This operation is useful for adjusting signal levels, normalizing data, or compensating for gain "
+               "differences in a processing chain.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor of any shape and supported data type (F32, CF32).\n"
+               "  - For real-valued data (F32), each value is multiplied by the scale factor.\n"
+               "  - For complex data (CF32), both real and imaginary parts are multiplied by the scale factor.\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor with the same shape and data type as the input, but with values scaled.\n\n"
+               "Configuration Parameters:\n"
+               "- constant: The scaling factor (default: 1.0) that multiplies each element.\n\n"
+               "Mathematical Operation:\n"
+               "- For real values: output[i] = input[i] * constant\n"
+               "- For complex values: output[i] = input[i] * constant (both real and imaginary parts are scaled)\n\n"
+               "Common Applications:\n"
+               "- Signal level adjustment\n"
+               "- Normalization of data values\n"
+               "- Gain compensation\n"
+               "- Attenuation or amplification\n"
+               "- Preparing data for visualization\n\n"
+               "Performance Notes:\n"
+               "- This operation is computationally efficient and has minimal impact on performance\n"
+               "- Implemented with hardware acceleration where available";
     }
 
     // Constructor

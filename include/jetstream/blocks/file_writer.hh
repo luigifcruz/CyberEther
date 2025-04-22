@@ -72,8 +72,47 @@ class FileWriter : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Writes a signal to a file.";
+        return "Writes tensor data to a file on disk, supporting various formats for data storage and interchange.\n\n"
+               "The File Writer block saves the input tensor data to a file on the local filesystem. This block is essential "
+               "for persisting processed data, storing analysis results, creating data for external applications, "
+               "or implementing data logging functionality in signal processing workflows.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor containing the data to write to file.\n"
+               "  - Can be any supported data type (F32, CF32, I16, etc.) and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- filename: Path to the output file where data will be written.\n"
+               "  - Can be absolute or relative to the current working directory.\n"
+               "- mode: File writing mode (default: 'overwrite').\n"
+               "  - 'overwrite': Replace existing file content with new data.\n"
+               "  - 'append': Add new data to the end of an existing file.\n"
+               "- format: Output file format (default depends on file extension).\n"
+               "  - 'binary': Raw binary data without headers.\n"
+               "  - 'text': Human-readable text format.\n"
+               "  - 'wav': Audio WAV format (for audio data).\n"
+               "  - 'csv': Comma-separated values.\n"
+               "- batch_size: Number of samples to accumulate before writing (default: 1).\n"
+               "  - Higher values improve performance by reducing I/O operations.\n\n"
+               "Operation Behavior:\n"
+               "- Creates or opens the file at the specified path\n"
+               "- Converts data to the appropriate format\n"
+               "- Writes data to disk in the selected mode\n"
+               "- Flushes buffers to ensure data is properly saved\n"
+               "- Handles errors gracefully with appropriate notifications\n\n"
+               "Key Applications:\n"
+               "- Saving processed signals for later analysis\n"
+               "- Exporting data to external applications\n"
+               "- Creating dataset files for training or testing\n"
+               "- Implementing data logging functionality\n"
+               "- Debugging intermediate processing results\n\n"
+               "Performance Considerations:\n"
+               "- File writing is typically I/O-bound and may introduce processing delays\n"
+               "- Using a larger batch_size reduces I/O overhead but increases memory usage\n"
+               "- Writing to fast storage (SSD) improves performance compared to mechanical drives\n"
+               "- Binary format is more efficient than text-based formats\n\n"
+               "Usage Notes:\n"
+               "- Ensure the target directory exists and has appropriate write permissions\n"
+               "- For large data sets, consider using append mode with batched writes\n"
+               "- The block does not modify the input tensor; it simply writes a copy to disk";
     }
 
     // Constructor

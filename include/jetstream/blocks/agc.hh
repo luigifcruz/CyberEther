@@ -67,8 +67,33 @@ class AGC : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Adjusts the gain of the input signal to a constant level.";
+        return "Automatically adjusts the gain of an input signal to maintain a relatively constant output level.\n\n"
+               "The AGC (Automatic Gain Control) block dynamically adjusts amplification or attenuation applied to "
+               "the input signal to maintain a consistent output power level. It's particularly useful for signals "
+               "with varying amplitudes, such as radio communications where signal strength can fluctuate.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor containing the signal with varying amplitude.\n"
+               "  - Can be real-valued (F32) or complex-valued (CF32).\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor with stabilized amplitude.\n"
+               "  - Same type and shape as the input tensor, but with normalized amplitude.\n\n"
+               "Operation Details:\n"
+               "- Continuously monitors the input signal level\n"
+               "- Computes a running average of the signal power\n"
+               "- Adjusts a variable gain factor to normalize the output level\n"
+               "- Uses attack and decay time constants to control adaptation speed\n"
+               "- Applies soft limiting to prevent sudden amplitude spikes\n\n"
+               "Key Applications:\n"
+               "- Radio receivers for compensating signal fading\n"
+               "- Audio processing to normalize volume levels\n"
+               "- Communication systems for maintaining optimal signal levels\n"
+               "- Preprocessing for demodulation stages\n"
+               "- Systems handling signals with unpredictable strength\n\n"
+               "Performance Considerations:\n"
+               "- AGC introduces some delay due to the averaging window\n"
+               "- Very fast signals may experience some transient distortion\n"
+               "- More effective for slowly varying signal envelopes\n"
+               "- Impact on signal phase is minimized by applying gain uniformly";
     }
 
     // Constructor

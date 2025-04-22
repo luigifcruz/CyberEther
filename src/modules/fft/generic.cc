@@ -10,23 +10,32 @@ Result FFT<D, IT, OT>::create() {
     JST_INIT_IO();
 
     // Calculate parameters.
+    
+    // Determine which axis to use
+    const U64 tensor_rank = input.buffer.rank();
+    U64 fft_axis = (config.axis < 0) ? (tensor_rank - 1) : config.axis;
+    
+    // Ensure the axis is valid
+    if (fft_axis >= tensor_rank) {
+        JST_ERROR("[FFT] Invalid axis: {} (rank is {})", fft_axis, tensor_rank);
+        return Result::ERROR;
+    }
 
-    const U64 last_axis = input.buffer.rank() - 1;
-
-    numberOfElements = input.buffer.shape()[last_axis];
+    numberOfElements = input.buffer.shape()[fft_axis];
 
     numberOfOperations = 1;
-    for (U64 i = 0; i < last_axis; i++) {
-        numberOfOperations *= input.buffer.shape()[i];
+    for (U64 i = 0; i < tensor_rank; i++) {
+        if (i != fft_axis) {
+            numberOfOperations *= input.buffer.shape()[i];
+        }
     }
 
     elementStride = 1;
 
-    JST_TRACE("[FFT] Number of elements: {};", numberOfElements);
-    JST_TRACE("[FFT] Number of operations: {};", numberOfOperations);
-    JST_TRACE("[FFT] Element stride: {};", elementStride);
-
-    // TODO: Implement axis selection for FFT.
+    JST_TRACE("[FFT] Using axis: {}", fft_axis);
+    JST_TRACE("[FFT] Number of elements: {}", numberOfElements);
+    JST_TRACE("[FFT] Number of operations: {}", numberOfOperations);
+    JST_TRACE("[FFT] Element stride: {}", elementStride);
 
     // Allocate output.
 
@@ -38,6 +47,7 @@ Result FFT<D, IT, OT>::create() {
 template<Device D, typename IT, typename OT>
 void FFT<D, IT, OT>::info() const {
     JST_DEBUG("  Forward: {}", config.forward ? "YES" : "NO");
+    JST_DEBUG("  Axis: {}", (config.axis < 0) ? "Last axis" : std::to_string(config.axis));
 }
 
 }  // namespace Jetstream

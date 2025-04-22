@@ -69,8 +69,36 @@ class MultiplyConstant : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Takes 'factor' as input and multiplied it with the const value producing the result as 'product'.";
+        return "Multiplies an input tensor by a configurable constant value, producing an output tensor with the product.\n\n"
+               "The Multiply Constant block performs element-wise multiplication of the input tensor by a user-specified "
+               "constant value. This block is similar to the Scale block but offers a more intuitive interface focused "
+               "specifically on multiplication by a constant.\n\n"
+               "Inputs:\n"
+               "- factor: Input tensor to be multiplied by the constant.\n"
+               "  - Can be real-valued (F32) or complex-valued (CF32).\n\n"
+               "Configuration Parameters:\n"
+               "- constant: The constant value to multiply with each element of the input tensor.\n"
+               "  - Can be configured through the block's UI.\n"
+               "  - Default value is 1.0 (no change).\n\n"
+               "Outputs:\n"
+               "- product: Output tensor containing the product of the input and the constant.\n"
+               "  - Same shape and data type as the input tensor.\n\n"
+               "Mathematical Operation:\n"
+               "- For real values: product[i] = factor[i] × constant\n"
+               "- For complex values: both real and imaginary parts are multiplied by the constant\n\n"
+               "Key Applications:\n"
+               "- Gain adjustment\n"
+               "- Signal scaling\n"
+               "- Normalization when using a calculated scaling factor\n"
+               "- Compensation for known attenuation\n"
+               "- Signal conditioning before processing\n\n"
+               "Differences from Scale Block:\n"
+               "- More intuitive interface specifically for multiplication\n"
+               "- Better user control through direct constant specification\n"
+               "- Simplified use case for straightforward scaling operations\n\n"
+               "Performance Notes:\n"
+               "- Very efficient operation with minimal processing overhead\n"
+               "- Implemented with hardware acceleration where available";
     }
 
     // Constructor

@@ -69,8 +69,29 @@ class Lineplot : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Visualizes input data in a line graph format, suitable for time-domain signals and waveform displays.";
+        return "Visualizes input data in a line graph format, suitable for time-domain signals and waveform displays.\n\n"
+               "The Lineplot block renders input data as a traditional line chart visualization with a customizable grid. "
+               "It's especially useful for waveform analysis, time-domain signals, and general plotting needs.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor containing the data to visualize. Supports 1D or 2D tensors.\n"
+               "  - For 1D tensors, the X-axis represents the sample index, and the Y-axis represents the sample value.\n"
+               "  - For 2D tensors, multiple lines are drawn, with each row representing a separate line.\n\n"
+               "Configuration:\n"
+               "- averaging: Number of samples to average (1 = no averaging)\n"
+               "- numberOfVerticalLines: Number of vertical grid lines to display\n"
+               "- numberOfHorizontalLines: Number of horizontal grid lines to display\n"
+               "- viewSize: Size of the visualization in pixels (width, height)\n"
+               "- zoom: Zoom level for the visualization (1.0 = default view)\n"
+               "- translation: Horizontal offset for panning the view\n"
+               "- thickness: Line thickness in pixels\n\n"
+               "Interactive Controls:\n"
+               "- Mouse wheel: Zoom in/out around the cursor position\n"
+               "- Mouse drag: Pan the view horizontally\n"
+               "- Right-click: Reset zoom and pan to default view\n"
+               "- Hovering: View the cursor position coordinates\n\n"
+               "Performance Notes:\n"
+               "- Increasing the averaging factor can smooth noisy signals but reduces temporal resolution\n"
+               "- For large datasets, increasing averaging can also improve rendering performance";
     }
 
     // Constructor

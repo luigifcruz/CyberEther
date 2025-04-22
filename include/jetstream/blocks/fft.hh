@@ -14,8 +14,9 @@ class FFT : public Block {
 
     struct Config {
         bool forward = true;
+        I64 axis = -1; // -1 means last axis
 
-        JST_SERDES(forward);
+        JST_SERDES(forward, axis);
     };
 
     constexpr const Config& getConfig() const {
@@ -69,8 +70,20 @@ class FFT : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Fast Fourier Transform that converts time-domain data to its frequency components. Supports real and complex data types.";
+        return "Fast Fourier Transform that converts time-domain data to its frequency components.\n\n"
+               "This block performs the FFT operation along a specified axis of the input tensor. "
+               "The operation can be performed in either forward (time to frequency) or "
+               "backward (frequency to time) direction.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor containing the data to transform\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor containing the transformed data\n\n"
+               "Configuration:\n"
+               "- Direction: Forward (time to frequency) or Backward (frequency to time)\n"
+               "- Axis: The tensor axis along which to perform the FFT (default: last axis)\n\n"
+               "Supported Data Types:\n"
+               "- Complex Float32 to Complex Float32\n"
+               "- Float32 to Complex Float32 (for real-to-complex transforms)";
     }
 
     // Constructor
@@ -79,6 +92,7 @@ class FFT : public Block {
         JST_CHECK(instance().addModule(
             fft, "fft", {
                 .forward = config.forward,
+                .axis = config.axis,
             }, {
                 .buffer = input.buffer,
             },
@@ -99,6 +113,7 @@ class FFT : public Block {
     // Interface
 
     void drawControl() {
+        // FFT Direction
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Direction");
@@ -129,6 +144,55 @@ class FFT : public Block {
                 ImGui::SetItemDefaultFocus();
             }
 
+            ImGui::EndCombo();
+        }
+        
+        // FFT Axis Selection
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Axis");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        
+        // Get the tensor rank first (if available)
+        I64 rank = 0;
+        if (!input.buffer.empty()) {
+            rank = static_cast<I64>(input.buffer.rank());
+        }
+        
+        // Create a string representation of the current axis
+        std::string axisLabel;
+        if (config.axis < 0) {
+            axisLabel = "Last axis";
+        } else {
+            axisLabel = "Axis " + std::to_string(config.axis);
+        }
+        
+        // Display a dropdown to select the axis
+        if (ImGui::BeginCombo("##fft-axis", axisLabel.c_str())) {
+            // "Last axis" option
+            if (ImGui::Selectable("Last axis", config.axis < 0)) {
+                config.axis = -1;
+                JST_DISPATCH_ASYNC([&](){
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                    JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+                });
+            }
+            
+            // Only show specific axis options if we have a valid input
+            if (rank > 0) {
+                for (I64 i = 0; i < rank; i++) {
+                    std::string option = "Axis " + std::to_string(i);
+                    if (ImGui::Selectable(option.c_str(), config.axis == i)) {
+                        config.axis = i;
+                        JST_DISPATCH_ASYNC([&](){
+                            ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                            JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+                        });
+                    }
+                }
+            }
+            
             ImGui::EndCombo();
         }
     }

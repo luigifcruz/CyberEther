@@ -73,8 +73,38 @@ class Filter : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "The Filter module creates Finite Impulse Response (FIR) bandpass filter coefficients (taps) based on specified frequency parameters. These taps can be used to filter input data, attenuating or amplifying certain frequency components.";
+        return "Applies Finite Impulse Response (FIR) filtering to selectively pass or reject frequency components of an input signal.\n\n"
+               "The Filter block implements a flexible FIR filter that can be configured as a lowpass, highpass, bandpass, or bandstop filter. "
+               "It automatically generates filter coefficients (taps) based on the specified frequency parameters and applies the filter to "
+               "the input signal using efficient frequency-domain processing via the overlap-add method.\n\n"
+               "Inputs:\n"
+               "- buffer: Real or complex-valued tensor containing the signal to be filtered.\n\n"
+               "Outputs:\n"
+               "- buffer: Filtered signal with the same data type as the input.\n\n"
+               "Configuration Parameters:\n"
+               "- type: Filter type (lowpass, highpass, bandpass, bandstop)\n"
+               "- cutoffLow: Lower cutoff frequency in Hz (for bandpass and bandstop)\n"
+               "- cutoffHigh: Upper cutoff frequency in Hz (for bandpass and bandstop)\n"
+               "- cutoff: Cutoff frequency in Hz (for lowpass and highpass)\n"
+               "- transitionWidth: Width of the transition band (how sharp the filter is)\n"
+               "- attenuation: Stopband attenuation in dB (higher values give better rejection)\n"
+               "- sampleRate: Input signal sample rate in Hz\n"
+               "- gain: Additional gain to apply to the filtered signal\n\n"
+               "Technical Details:\n"
+               "- Uses windowed sinc method for generating filter coefficients\n"
+               "- Implements overlap-add method for efficient frequency-domain filtering\n"
+               "- Automatically determines optimal FFT size based on filter parameters\n"
+               "- Supports both real and complex signal processing\n\n"
+               "Common Applications:\n"
+               "- Noise reduction\n"
+               "- Channel selection in SDR applications\n"
+               "- Audio frequency band isolation\n"
+               "- Signal conditioning and cleanup\n"
+               "- Harmonic isolation or rejection\n\n"
+               "Performance Notes:\n"
+               "- Narrower transition width requires more computational resources\n"
+               "- Higher attenuation requires more computational resources\n"
+               "- The filter introduces some processing delay";
     }
 
     // Constructor

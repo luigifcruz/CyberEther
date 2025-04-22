@@ -6,6 +6,7 @@ This is a list of people and organizations that have contributed to CyberEther.
 - **Luigi Cruz** ([@luigicruz](https://twitter.com/luigifcruz)) - Creator and maintainer of CyberEther.
 - **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)) - Feedback and Windows testing.
 - **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)) - Curated issues.
+- **Chase Valentine** ([@cvalentine99](https://github.com/cvalentine99)) - Implemented FFT axis selection feature.
 
 [//]: <> ([NEW CONTRIBUTOR HOOK])
 

@@ -68,8 +68,36 @@ class Multiply : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Takes 'factorA' and 'factorB' as inputs and outputs the result as 'product'.";
+        return "Performs element-wise multiplication of two input tensors, producing an output tensor with the product values.\n\n"
+               "The Multiply block takes two input tensors and multiplies them together element by element, similar to "
+               "the Hadamard product in linear algebra. This operation is fundamental for many signal processing tasks, "
+               "including modulation, windowing, and custom gain adjustments.\n\n"
+               "Inputs:\n"
+               "- factorA: First input tensor to be multiplied.\n"
+               "- factorB: Second input tensor to be multiplied.\n"
+               "  - Both tensors must have compatible shapes for element-wise operations.\n"
+               "  - Supported types include real (F32) and complex (CF32) tensors.\n"
+               "  - Broadcasting is supported for tensors of different shapes.\n\n"
+               "Outputs:\n"
+               "- product: Output tensor containing the element-wise product of the inputs.\n"
+               "  - The data type follows standard multiplication rules:\n"
+               "    - F32 × F32 → F32\n"
+               "    - F32 × CF32 → CF32\n"
+               "    - CF32 × CF32 → CF32\n\n"
+               "Mathematical Operation:\n"
+               "- For real values: product[i] = factorA[i] × factorB[i]\n"
+               "- For complex values: follows complex multiplication rules\n"
+               "- When shapes differ, the smaller tensor is broadcast to match the larger one\n\n"
+               "Key Applications:\n"
+               "- Signal mixing and modulation\n"
+               "- Applying window functions to signals\n"
+               "- Gain control using variable factors\n"
+               "- Point-wise signal masking\n"
+               "- Implementing custom signal operations\n\n"
+               "Performance Notes:\n"
+               "- Hardware accelerated on supported platforms\n"
+               "- More efficient when inputs have the same shape and stride\n"
+               "- Broadcasting may introduce additional overhead";
     }
 
     // Constructor

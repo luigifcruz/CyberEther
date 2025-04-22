@@ -72,8 +72,40 @@ class Reshape : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Reshapes a tensor to a new shape. Similar to Numpy's reshape.";
+        return "Transforms a tensor to a new shape while preserving the total number of elements.\n\n"
+               "The Reshape block changes the dimensional structure of a tensor without altering its data content. "
+               "This operation is analogous to NumPy's reshape function, allowing flexible restructuring of data "
+               "for various algorithmic needs while maintaining the same total element count.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be reshaped.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- shape: The target shape for the output tensor.\n"
+               "  - Must specify the size for each dimension, with one optional -1 dimension that will be automatically calculated.\n"
+               "  - Total number of elements must match the input tensor.\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor with the new shape.\n"
+               "  - Same data type and total element count as the input.\n"
+               "  - Data values are preserved but arranged according to the new dimensions.\n\n"
+               "Reshape Behavior:\n"
+               "- Total number of elements must remain unchanged\n"
+               "- Data is traversed in row-major order (C-style) and filled into the new shape\n"
+               "- A special value of -1 can be used for one dimension, which will be automatically calculated\n"
+               "- Data order is preserved; only the dimensional view changes\n\n"
+               "Key Differences from Fold Block:\n"
+               "- Reshape can transform the entire tensor structure, not just one dimension\n"
+               "- Reshape creates a contiguous tensor, potentially copying data if the input is non-contiguous\n"
+               "- Reshape is more flexible for arbitrary dimension changes\n\n"
+               "Common Applications:\n"
+               "- Converting between 1D and 2D representations\n"
+               "- Preparing data for blocks that expect specific dimensions\n"
+               "- Batching or un-batching operations\n"
+               "- Matrix transposition-like operations\n"
+               "- Interleaving or de-interleaving channels\n\n"
+               "Usage Notes:\n"
+               "- Use -1 for one dimension to have it automatically calculated\n"
+               "- Reshape does not change the underlying data, just how it's interpreted\n"
+               "- For more specialized dimension manipulation, consider the Fold block";
     }
 
     // Constructor

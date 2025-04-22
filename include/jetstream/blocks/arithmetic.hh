@@ -70,8 +70,42 @@ class Arithmetic : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Performs arithmetic operations on a signal.";
+        return "Performs basic arithmetic operations (addition, subtraction, multiplication, division) on input tensors.\n\n"
+               "The Arithmetic block provides a flexible way to perform element-wise arithmetic operations between "
+               "two input tensors. It supports all four basic operations: addition, subtraction, multiplication, and "
+               "division, making it a powerful tool for signal processing, data normalization, and custom algorithm implementation.\n\n"
+               "Inputs:\n"
+               "- a: First input tensor (operand A).\n"
+               "- b: Second input tensor (operand B).\n"
+               "  - Both tensors must have compatible shapes for element-wise operations.\n"
+               "  - Broadcasting is supported for tensors of different shapes.\n"
+               "  - Supported types include real (F32) and complex (CF32) tensors.\n\n"
+               "Configuration Parameters:\n"
+               "- operation: The arithmetic operation to perform:\n"
+               "  - ADD: a + b (addition)\n"
+               "  - SUB: a - b (subtraction)\n"
+               "  - MUL: a * b (multiplication) - similar to the Multiply block but with more operations available\n"
+               "  - DIV: a / b (division)\n\n"
+               "Outputs:\n"
+               "- result: Output tensor containing the result of the arithmetic operation.\n"
+               "  - Data type follows standard arithmetic rules for the selected operation.\n"
+               "  - Shape follows broadcasting rules when input shapes differ.\n\n"
+               "Mathematical Operations:\n"
+               "- Addition: result[i] = a[i] + b[i]\n"
+               "- Subtraction: result[i] = a[i] - b[i]\n"
+               "- Multiplication: result[i] = a[i] * b[i] (element-wise, not matrix multiplication)\n"
+               "- Division: result[i] = a[i] / b[i]\n"
+               "- Complex operations follow standard complex arithmetic rules\n\n"
+               "Key Applications:\n"
+               "- Signal combining and mixing\n"
+               "- Background subtraction\n"
+               "- Normalization by division\n"
+               "- Custom algorithm implementation\n"
+               "- Mathematical transformations\n\n"
+               "Performance Notes:\n"
+               "- All operations are optimized and hardware-accelerated where possible\n"
+               "- Division is typically the most computationally expensive operation\n"
+               "- Broadcasting may introduce additional overhead for tensors of different shapes";
     }
 
     // Constructor

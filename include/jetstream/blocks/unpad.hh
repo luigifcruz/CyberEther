@@ -75,8 +75,35 @@ class Unpad : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Removes padding from the end of a tensor along a given axis.";
+        return "Removes elements from the end of a tensor along a specified axis, reducing its size.\n\n"
+               "The Unpad block truncates a tensor by removing a specified number of elements from the end of a "
+               "designated dimension. This block is the complementary operation to the Pad block and is essential "
+               "for restoring original data dimensions after processing operations that require padding.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be unpadded (truncated).\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- axis: The dimension along which to remove elements (default is the last dimension).\n"
+               "- padding: The number of elements to remove from the end of the specified axis.\n\n"
+               "Outputs:\n"
+               "- buffer: Unpadded (truncated) output tensor.\n"
+               "  - Same data type as the input.\n"
+               "  - All dimensions are the same as input except the unpadded dimension, which is reduced by the padding amount.\n\n"
+               "Mathematical Operation:\n"
+               "- Extracts a subset of the original tensor\n"
+               "- Discards specified number of elements from the end of the chosen dimension\n"
+               "- Result size along unpadded axis = original_size - padding\n\n"
+               "Key Applications:\n"
+               "- Extracting useful data after FFT-based filtering operations\n"
+               "- Removing guard bands after overlap-add processing\n"
+               "- Restoring original signal dimensions after padded operations\n"
+               "- Extracting only the valid portion of convolution results\n"
+               "- Discarding algorithmic artifacts from processing operations\n\n"
+               "Usage Notes:\n"
+               "- Typically used after a Pad block to restore the original tensor dimensions\n"
+               "- Critical for maintaining consistent data sizes in multi-stage processing\n"
+               "- Care must be taken to ensure the padding value doesn't exceed the dimension size\n"
+               "- Often used in filter implementations based on the overlap-add method";
     }
 
     // Constructor

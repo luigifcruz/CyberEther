@@ -67,8 +67,35 @@ class Amplitude : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Calculates the amplitude of a complex signal.";
+        return "Calculates the amplitude (magnitude) of a complex signal, converting complex values to their absolute values.\n\n"
+               "The Amplitude block computes the magnitude of each complex value in the input tensor, effectively "
+               "calculating the distance from the origin in the complex plane for each sample. This operation "
+               "is fundamental in signal processing for analyzing signal strength and envelope detection.\n\n"
+               "Inputs:\n"
+               "- buffer: Complex-valued tensor (CF32) containing the signal to analyze.\n"
+               "  - Each complex value is represented as a pair of real and imaginary components.\n\n"
+               "Outputs:\n"
+               "- buffer: Real-valued tensor (F32) containing the amplitude values.\n"
+               "  - The output has the same shape as the input, but with each complex value converted to its magnitude.\n\n"
+               "Mathematical Operation:\n"
+               "- For complex value z = a + bi:\n"
+               "  - Amplitude = |z| = sqrt(a² + b²)\n"
+               "  - Where a is the real component and b is the imaginary component\n\n"
+               "Key Applications:\n"
+               "- Signal strength measurement\n"
+               "- Envelope detection\n"
+               "- AM demodulation\n"
+               "- Power spectrum calculation (when applied after FFT)\n"
+               "- Signal thresholding and detection\n\n"
+               "Technical Details:\n"
+               "- Uses optimized calculation methods based on the target hardware\n"
+               "- For CPU targets, uses sqrt(real² + imag²) with potential SIMD acceleration\n"
+               "- For GPU targets, uses hardware-accelerated vector operations\n"
+               "- Handles both scalar values and multi-dimensional tensors\n\n"
+               "Usage Notes:\n"
+               "- Often used after an FFT block to convert complex frequency components to magnitudes\n"
+               "- Commonly followed by logarithmic conversion for visualization purposes\n"
+               "- For power calculations, the output can be squared to get power instead of amplitude";
     }
 
     // Constructor

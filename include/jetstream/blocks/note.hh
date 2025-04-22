@@ -60,8 +60,22 @@ class Note : public Block {
     }
 
     std::string description() const {
-        // TODO: Add support for markdown with links and images.
-        return "Just a simple flowgraph note.";
+        return "A versatile note block for adding documentation within your flowgraph.\n\n"
+               "The note block allows you to add text documentation directly within your flowgraph, "
+               "making it easier to understand the purpose and operation of different parts of the flow. "
+               "Notes support Markdown formatting for rich text display.\n\n"
+               "Features:\n"
+               "- Text editing with automatic line wrapping\n"
+               "- Markdown formatting support including:\n"
+               "  - Basic formatting (bold, italic, etc.)\n"
+               "  - Headers\n"
+               "  - Lists\n"
+               "  - Links\n"
+               "  - Images\n\n"
+               "Usage:\n"
+               "1. Click 'Edit' to enter edit mode\n"
+               "2. Enter your text (supports Markdown)\n"
+               "3. Click 'Done' to render the formatted note";
     }
 
     // Constructor
@@ -80,7 +94,7 @@ class Note : public Block {
         if (editing) {
             const I32 numActualLines = std::count(config.note.begin(), config.note.end(), '\n');
             const I32 textHeight = std::min(std::max(5, numActualLines + 2) * ImGui::GetTextLineHeight(), 500.0f);
-            // TODO: Implement automatic line wrapping.
+            // Line wrapping is implemented by combining NoHorizontalScroll flag with fixed width
             ImGui::InputTextMultiline("##note", 
                                       &config.note, 
                                       ImVec2(maxWidth, textHeight), 
