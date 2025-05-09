@@ -584,11 +584,11 @@ Result Superluminal::Impl::createGraph() {
         // Fulfills Time -> Time and Frequency -> Frequency conversions.
 
         {
-            std::shared_ptr<Blocks::DynamicMemoryImport<Device::CPU, void, CF32>> import;
+            std::shared_ptr<Blocks::DynamicMemoryImport<Device::CUDA, void, CF32>> import;
 
             JST_CHECK(instance.addBlock(
                 import, jst::fmt::format("data_{}_{}", sourceDomain, hash), {
-                    .buffer = std::get<Tensor<Device::CPU, CF32>>(recipe.buffer),
+                    .buffer = std::get<Tensor<Device::CUDA, CF32>>(recipe.buffer),
                 }, {}, {}
             ));
         }
@@ -607,17 +607,17 @@ Result Superluminal::Impl::createGraph() {
 
         auto blob = GraphToYaml({
             {"win",
-                {"window", "cpu", {"CF32"},
+                {"window", "cuda", {"CF32"},
                     {{"size", jst::fmt::format("{}", prototype.size())}}, {}}},
             {"inv",
-                {"invert", "cpu", {"CF32"}, {},
+                {"invert", "cuda", {"CF32"}, {},
                     {{"buffer", "${graph.win.output.window}"}}}},
             {"win_mul",
-                {"multiply", "cpu", {"CF32"}, {},
+                {"multiply", "cuda", {"CF32"}, {},
                     {{"factorA", jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", sourceDomain, hash)},
                      {"factorB", "${graph.inv.output.buffer}"}}}},
             {jst::fmt::format("data_{}_{}", conversionDomain, hash),
-                {"fft", "cpu", {"CF32", "CF32"},
+                {"fft", "cuda", {"CF32", "CF32"},
                     {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
                     {{"buffer", "${graph.win_mul.output.product}"}}}},
         });
@@ -697,14 +697,14 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     auto blob = GraphToYaml({
         {"amp",
-            {"amplitude", "cpu", {"CF32", "F32"}, {},
+            {"amplitude", "cuda", {"CF32", "F32"}, {},
                 {{"buffer", jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", domain, hash)}}}},
         {"scl",
-            {"scale", "cpu", {"F32"},
+            {"scale", "cuda", {"F32"},
                 {{"range", "[-100, 0]"}},
                 {{"buffer", "${domain.amp.output.buffer}"}}}},
         {"lineplot",
-            {"lineplot", "cpu", {"F32"}, 
+            {"lineplot", "cuda", {"F32"}, 
                 {{"averaging", averagingRate},
                  {"decimation", decimationRate}},
                 {{"buffer", "${domain.scl.output.buffer}"}}}},
@@ -766,14 +766,14 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
         graph.push_back({
             "slice",
-            {"slice", "cpu", {"CF32"},
+            {"slice", "cuda", {"CF32"},
                 {{"slice", slice}},
                 {{"buffer", port}}},
         });
 
         graph.push_back({
             "duplicate",
-            {"duplicate", "cpu", {"CF32"}, {},
+            {"duplicate", "cuda", {"CF32"}, {},
                 {{"buffer", "${domain.slice.output.buffer}"}}},
         });
 
@@ -782,20 +782,20 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     graph.push_back({
         "amp",
-        {"amplitude", "cpu", {"CF32", "F32"}, {},
+        {"amplitude", "cuda", {"CF32", "F32"}, {},
             {{"buffer", port}}},
     });
 
     graph.push_back({
         "scl",
-        {"scale", "cpu", {"F32"},
+        {"scale", "cuda", {"F32"},
             {{"range", "[-100, 0]"}},
             {{"buffer", "${domain.amp.output.buffer}"}}},
     });
 
     graph.push_back({
         "waterfall",
-        {"waterfall", "cpu", {"F32"}, 
+        {"waterfall", "cuda", {"F32"}, 
             {{"height", height}},
             {{"buffer", "${domain.scl.output.buffer}"}}},
     });
