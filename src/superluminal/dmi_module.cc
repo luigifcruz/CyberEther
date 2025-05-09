@@ -18,5 +18,6 @@ Result DynamicMemoryImport<D, T>::create() {
 }
 
 JST_DYNAMIC_MEMORY_IMPORT_CPU(JST_INSTANTIATION)
+JST_DYNAMIC_MEMORY_IMPORT_CUDA(JST_INSTANTIATION)
 
 }  // namespace Jetstream

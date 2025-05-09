@@ -12,6 +12,11 @@ namespace Jetstream {
     MACRO(DynamicMemoryImport, CPU, F32) \
     MACRO(DynamicMemoryImport, CPU, CI8)
 
+#define JST_DYNAMIC_MEMORY_IMPORT_CUDA(MACRO) \
+    MACRO(DynamicMemoryImport, CUDA, CF32) \
+    MACRO(DynamicMemoryImport, CUDA, F32) \
+    MACRO(DynamicMemoryImport, CUDA, CI8)
+
 template<Device D, typename T = CF32>
 class DynamicMemoryImport : public Module, public Compute {
  public:
@@ -69,7 +74,12 @@ class DynamicMemoryImport : public Module, public Compute {
     JST_DEFINE_IO()
 };
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 JST_DYNAMIC_MEMORY_IMPORT_CPU(JST_SPECIALIZATION);
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+JST_DYNAMIC_MEMORY_IMPORT_CUDA(JST_SPECIALIZATION);
+#endif
 
 }  // namespace Jetstream
 

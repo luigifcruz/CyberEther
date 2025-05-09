@@ -33,7 +33,12 @@ class Superluminal {
 
     // TODO: Add support for more data types.
     // TODO: Add support for more devices.
-    typedef std::variant<Tensor<Device::CPU, CF32>> VariantBufferType;
+    typedef std::variant<
+        Tensor<Device::CPU, CF32>,
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        Tensor<Device::CUDA, CF32>
+#endif
+    > VariantBufferType;
     typedef std::vector<std::vector<U8>> Mosaic;
 
     struct PlotConfig {
