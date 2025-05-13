@@ -13,6 +13,7 @@ imgui.ini
 subprojects/*
 !subprojects/*.wrap
 !subprojects/libusb
+!subprojects/nanobind
 !subprojects/packagefiles
 
 build
