@@ -17,7 +17,11 @@ Result DynamicMemoryImport<D, T>::create() {
     return Result::SUCCESS;
 }
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 JST_DYNAMIC_MEMORY_IMPORT_CPU(JST_INSTANTIATION)
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 JST_DYNAMIC_MEMORY_IMPORT_CUDA(JST_INSTANTIATION)
+#endif
 
 }  // namespace Jetstream

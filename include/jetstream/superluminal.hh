@@ -9,6 +9,20 @@
 
 namespace Jetstream {
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+#define SPL_VARIANT_CPU Tensor<Device::CPU, CF32>
+#else
+#define SPL_VARIANT_CPU
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#define SPL_VARIANT_CUDA , Tensor<Device::CUDA, CF32>
+#else
+#define SPL_VARIANT_CUDA
+#endif
+
+#define SPL_VARIANT_BUFFER_TYPE_LIST SPL_VARIANT_CPU SPL_VARIANT_CUDA
+
 class Superluminal {
  public:
     enum class Type {
@@ -33,12 +47,7 @@ class Superluminal {
 
     // TODO: Add support for more data types.
     // TODO: Add support for more devices.
-    typedef std::variant<
-        Tensor<Device::CPU, CF32>,
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        Tensor<Device::CUDA, CF32>
-#endif
-    > VariantBufferType;
+    typedef std::variant<SPL_VARIANT_BUFFER_TYPE_LIST> VariantBufferType;
     typedef std::vector<std::vector<U8>> Mosaic;
 
     struct PlotConfig {
