@@ -149,7 +149,7 @@ Result Window::bind(const std::shared_ptr<WindowAttachment>& attachment) {
 
     // Wait queue to be processed.
 
-    if (graphicalLoopThreadStarted && (graphicalLoopThreadId != std::this_thread::get_id())) {
+    if (graphicalLoopThreadStarted && frameCount > 0 && (graphicalLoopThreadId != std::this_thread::get_id())) {
         while (!bindQueue.empty()) {
             std::this_thread::yield();
         }
@@ -169,7 +169,7 @@ Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
 
     // Wait queue to be processed.
 
-    if (graphicalLoopThreadStarted && (graphicalLoopThreadId != std::this_thread::get_id())) {
+    if (graphicalLoopThreadStarted && frameCount > 0 && (graphicalLoopThreadId != std::this_thread::get_id())) {
         while (!unbindQueue.empty()) {
             std::this_thread::yield();
         }
