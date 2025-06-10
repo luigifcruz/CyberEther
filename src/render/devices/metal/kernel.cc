@@ -17,7 +17,7 @@ Result Implementation::create() {
     JST_DEBUG("[METAL] Creating kernel.");
 
     if (config.kernels.contains(Device::Metal) == 0) {
-        JST_ERROR("[METAL] Module doesn't have necessary kernel.");       
+        JST_ERROR("[METAL] Module doesn't have necessary kernel.");
         return Result::ERROR;
     }
 
@@ -41,7 +41,7 @@ Result Implementation::create() {
     MTL::Function* func = library->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
     );
-    JST_ASSERT(func);
+    JST_ASSERT(func, "Failed to create function.");
 
     pipelineState = device->newComputePipelineState(func, &err);
     if (!pipelineState) {

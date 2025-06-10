@@ -34,10 +34,10 @@ Result Implementation::underlyingCreate() {
     dev = Backend::State<Device::Metal>()->getDevice();
 
     commandQueue = dev->newCommandQueue();
-    JST_ASSERT(commandQueue);
+    JST_ASSERT(commandQueue, "Failed to create command queue.");
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
-    JST_ASSERT(renderPassDescriptor);
+    JST_ASSERT(renderPassDescriptor, "Failed to create render pass descriptor.");
 
     JST_CHECK(createImgui());
 

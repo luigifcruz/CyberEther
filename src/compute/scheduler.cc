@@ -446,7 +446,7 @@ Result Scheduler::arrangeDependencyOrder() {
             JST_TRACE("Next empty. Resetting device.");
             continue;
         }
-        JST_ASSERT(!nextName.empty());
+        JST_ASSERT(!nextName.empty(), "Unexpected empty `nextName`.");
         queue.erase(queue.find(nextName));
         executionOrder.push_back(nextName);
 

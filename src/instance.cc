@@ -614,6 +614,10 @@ Result Instance::unloadDefaultFonts() {
 Result Instance::start() {
     JST_DEBUG("[INSTANCE] Starting instance.");
 
+    if (_window) {
+        JST_CHECK(_window->start());
+    }
+
     computeRunning = true;
     presentRunning = true;
 
@@ -628,6 +632,7 @@ Result Instance::stop() {
 
     if (_window) {
         JST_CHECK(_window->synchronize());
+        JST_CHECK(_window->stop());
     }
 
     return Result::SUCCESS;

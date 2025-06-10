@@ -11,11 +11,12 @@ class SurfaceImp<Device::Metal> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 
+    Result create();
+    Result destroy();
+
     const Extent2D<U64>& size(const Extent2D<U64>& size);
 
  protected:
-    Result create();
-    Result destroy();
     Result draw(MTL::CommandBuffer* commandBuffer);
 
  private:

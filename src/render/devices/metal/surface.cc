@@ -35,7 +35,7 @@ Result Implementation::create() {
     JST_DEBUG("[METAL] Creating surface.");
 
     renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
-    JST_ASSERT(renderPassDescriptor);
+    JST_ASSERT(renderPassDescriptor, "Failed to create render pass descriptor.");
 
     JST_CHECK(createFramebuffer());
 
@@ -78,9 +78,9 @@ Result Implementation::createFramebuffer() {
         JST_CHECK(framebuffer->create());
     }
 
-    const auto clearColor = MTL::ClearColor(config.clearColor.r, 
-                                            config.clearColor.g, 
-                                            config.clearColor.b, 
+    const auto clearColor = MTL::ClearColor(config.clearColor.r,
+                                            config.clearColor.g,
+                                            config.clearColor.b,
                                             config.clearColor.a);
 
     auto colorAttachDescOff = renderPassDescriptor->colorAttachments()->object(0)->init();
@@ -144,7 +144,7 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     return Result::SUCCESS;
 }
 
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) { 
+const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     if (!framebufferResolve) {
         return NullSize;
     }
@@ -152,6 +152,6 @@ const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     requestedSize = size;
 
     return framebufferResolve->size();
-} 
+}
 
 }  // namespace Jetstream::Render

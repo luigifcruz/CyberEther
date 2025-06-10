@@ -181,7 +181,7 @@ inline VkShaderModule LoadShader(const std::vector<U8>& data, VkDevice device) {
     moduleCreateInfo.pCode = reinterpret_cast<const U32*>(data.data());
 
     JST_VK_CHECK_THROW(vkCreateShaderModule(device, &moduleCreateInfo, nullptr, &shaderModule), [&]{
-        JST_FATAL("[VULKAN] Can't create shader module.");  
+        JST_FATAL("[VULKAN] Can't create shader module.");
     });
 
     return shaderModule;
@@ -199,16 +199,16 @@ inline Result ExecuteOnce(VkDevice& device,
     cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     JST_VK_CHECK(vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo), [&]{
-        JST_ERROR("[VULKAN] Failed to begin one time command buffer.");    
+        JST_ERROR("[VULKAN] Failed to begin one time command buffer.");
     });
 
     JST_CHECK(func(commandBuffer));
 
     JST_VK_CHECK(vkEndCommandBuffer(commandBuffer), [&]{
-        JST_ERROR("[VULKAN] Failed to end one time command buffer.");   
+        JST_ERROR("[VULKAN] Failed to end one time command buffer.");
     });
 
-    JST_ASSERT(waitSemaphores.size() == waitSemaphoresStageMasks.size());
+    JST_ASSERT(waitSemaphores.size() == waitSemaphoresStageMasks.size(), "Unexpected number of wait semaphores.");
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -222,7 +222,7 @@ inline Result ExecuteOnce(VkDevice& device,
     submitInfo.pSignalSemaphores = nullptr;
 
     JST_VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, fence), [&]{
-        JST_ERROR("[VULKAN] Can't submit one time queue.");            
+        JST_ERROR("[VULKAN] Can't submit one time queue.");
     });
 
     vkWaitForFences(device, 1, &fence, true, UINT64_MAX);
@@ -259,7 +259,7 @@ inline Result TransitionImageLayout(VkCommandBuffer& commandBuffer,
 
         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && 
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
                newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;

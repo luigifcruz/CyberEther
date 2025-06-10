@@ -27,8 +27,6 @@ Result Window::create() {
 }
 
 Result Window::destroy() {
-    graphicalLoopThreadStarted = false;
-
     // Unbind unclaimed components.
 
     while (!components.empty()) {
@@ -54,7 +52,7 @@ Result Window::destroy() {
     // Process pending attachment destruction.
 
     while (!destroyQueue.empty()) {
-        auto& [_, attachment] = destroyQueue.front();
+        auto [_, attachment] = destroyQueue.front();
         destroyQueue.pop();
 
         JST_CHECK(attachment->destroy());
@@ -67,13 +65,14 @@ Result Window::destroy() {
 }
 
 Result Window::begin() {
+    // Assert window is started.
+    JST_ASSERT(graphicalLoopThreadStarted, "Window is not started.");
+
+    // Save current thread ID.
+    graphicalLoopThreadId = std::this_thread::get_id();
+
     // Process attachment queues.
     JST_CHECK(processAttachmentQueues());
-
-    // Record graphical thread ID.
-
-    graphicalLoopThreadStarted = true;
-    graphicalLoopThreadId = std::this_thread::get_id();
 
     // Lock the frame queue.
     newFrameQueueMutex.lock();
@@ -90,6 +89,20 @@ Result Window::begin() {
     return res;
 }
 
+Result Window::start() {
+    JST_ASSERT(!graphicalLoopThreadStarted, "Window is already started.");
+    graphicalLoopThreadStarted = true;
+
+    return Result::SUCCESS;
+}
+
+Result Window::stop() {
+    JST_ASSERT(graphicalLoopThreadStarted, "Window is not started.");
+    graphicalLoopThreadStarted = false;
+
+    return Result::SUCCESS;
+}
+
 Result Window::end() {
     // Call frame end.
     const auto& res = underlyingEnd();
@@ -98,7 +111,7 @@ Result Window::end() {
 
     int count = destroyQueue.size();
     while (count > 0) {
-        auto& [expiration, attachment] = destroyQueue.front();
+        auto [expiration, attachment] = destroyQueue.front();
 
         if (expiration <= frameCount) {
             JST_CHECK(attachment->destroy());
@@ -154,6 +167,16 @@ Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
     // Add attachment to unbind queue.
     unbindQueue.push(attachment);
 
+    // Wait queue to be processed.
+
+    if (graphicalLoopThreadStarted && (graphicalLoopThreadId != std::this_thread::get_id())) {
+        while (!unbindQueue.empty()) {
+            std::this_thread::yield();
+        }
+    } else {
+        processAttachmentQueues();
+    }
+
     // Remove component from the list.
     attachments.erase(std::remove(attachments.begin(), attachments.end(), attachment), attachments.end());
 
@@ -163,49 +186,57 @@ Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
 Result Window::processAttachmentQueues() {
     std::lock_guard<std::mutex> lock(newFrameQueueMutex);
 
+    // Allocate space for belated attachments.
+
+    std::vector<std::shared_ptr<WindowAttachment>> belated;
+    belated.reserve(unbindQueue.size() + bindQueue.size());
+
     // Process unbind attachment queue.
 
     while (!unbindQueue.empty()) {
         auto attachment = unbindQueue.front();
         unbindQueue.pop();
 
-        // Schedule for destruction.
-
-        destroyQueue.push({
-            .expiration = frameCount + 4,  // TODO: Replace hardcoded value with implementation-specific value.
-            .attachment = attachment
-        });
-
         // Unregister Surface.
 
         if (attachment->type() == WindowAttachment::Type::Surface) {
             JST_CHECK(unbindSurface(std::dynamic_pointer_cast<Surface>(attachment)));
         }
+
+        // Belay attachment destruction schedule.
+
+        belated.push_back(attachment);
     }
 
-    // Process bind attachment queue.
+    for (auto& attachment : belated) {
+        destroyQueue.push({
+            .expiration = frameCount + 4,  // TODO: Replace with value from implementation.
+            .attachment = attachment,
+        });
+    }
+    belated.clear();
 
-    std::vector<std::shared_ptr<Surface>> surfaces;
+    // Process bind attachment queue.
 
     while (!bindQueue.empty()) {
         auto attachment = bindQueue.front();
         bindQueue.pop();
 
-        // Create attachment
+        // Create attachment.
+
         JST_CHECK(attachment->create());
 
-        // Schedule Surface registration.
+        // Belay attachment binding.
 
         if (attachment->type() == WindowAttachment::Type::Surface) {
-            surfaces.push_back(std::dynamic_pointer_cast<Surface>(attachment));
+            belated.push_back(attachment);
         }
     }
 
-    // Register Surfaces.
-
-    for (auto& surface : surfaces) {
-        JST_CHECK(bindSurface(surface));
+    for (auto& attachment : belated) {
+        JST_CHECK(bindSurface(std::dynamic_pointer_cast<Surface>(attachment)));
     }
+    belated.clear();
 
     return Result::SUCCESS;
 }

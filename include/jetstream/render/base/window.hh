@@ -47,6 +47,9 @@ class Window {
     Result create();
     Result destroy();
 
+    Result start();
+    Result stop();
+
     Result begin();
     Result end();
 

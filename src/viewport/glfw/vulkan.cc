@@ -37,7 +37,7 @@ Result Implementation::create() {
     });
 
     // Check if we are running in headless mode.
-    JST_ASSERT(!Backend::State<Device::Vulkan>()->headless());
+    JST_ASSERT(!Backend::State<Device::Vulkan>()->headless(), "Headless mode is not supported.");
 
     // Initialize and configure GLFW.
 

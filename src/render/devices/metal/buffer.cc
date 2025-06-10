@@ -18,10 +18,10 @@ Result Implementation::create() {
         buffer = reinterpret_cast<MTL::Buffer*>(config.buffer);
     } else {
         buffer = device->newBuffer(config.buffer,
-                                   byteSize, 
-                                   MTL::ResourceStorageModeShared); 
+                                   byteSize,
+                                   MTL::ResourceStorageModeShared);
     }
-    JST_ASSERT(buffer);
+    JST_ASSERT(buffer, "Failed to create buffer.");
 
     return Result::SUCCESS;
 }

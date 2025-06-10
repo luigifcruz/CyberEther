@@ -245,7 +245,7 @@ class Parser {
 
             if (anyVar.type() == typeid(std::string)) {
                 const auto& values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                JST_ASSERT(values.size() == 2);
+                JST_ASSERT(values.size() == 2, "Unexpected number of values.");
                 variable = std::move(Range<F32>{std::stof(values[0]), std::stof(values[1])});
                 return Result::SUCCESS;
             }
@@ -256,7 +256,7 @@ class Parser {
 
             if (anyVar.type() == typeid(std::string)) {
                 const auto& values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                JST_ASSERT(values.size() == 2);
+                JST_ASSERT(values.size() == 2, "Unexpected number of values.");
                 variable = std::move(Extent2D<U64>{std::stoull(values[0]), std::stoull(values[1])});
                 return Result::SUCCESS;
             }
@@ -267,7 +267,7 @@ class Parser {
 
             if (anyVar.type() == typeid(std::string)) {
                 const auto& values = SplitString(std::any_cast<std::string>(anyVar), ", ");
-                JST_ASSERT(values.size() == 2);
+                JST_ASSERT(values.size() == 2, "Unexpected number of values.");
                 variable = std::move(Extent2D<F32>{std::stof(values[0]), std::stof(values[1])});
                 return Result::SUCCESS;
             }

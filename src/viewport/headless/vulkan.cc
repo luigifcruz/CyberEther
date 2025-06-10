@@ -29,7 +29,7 @@ Result Implementation::create() {
     });
 
     // Check if we are running in headless mode.
-    JST_ASSERT(Backend::State<Device::Vulkan>()->headless());
+    JST_ASSERT(Backend::State<Device::Vulkan>()->headless(), "Headless mode is not enabled");
 
     // Initialize variables.
 
@@ -85,7 +85,7 @@ Result Implementation::createSwapchain() {
         imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &swapchainImages[i]), [&]{
-            JST_ERROR("[VULKAN] Failed to create swapchain image.");   
+            JST_ERROR("[VULKAN] Failed to create swapchain image.");
         });
     }
 
@@ -178,7 +178,7 @@ Result Implementation::createSwapchain() {
         createInfo.subresourceRange.layerCount = 1;
 
         JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &swapchainImageViews[i]), [&]{
-            JST_ERROR("[VULKAN] Failed to create swapchain image view."); 
+            JST_ERROR("[VULKAN] Failed to create swapchain image view.");
         });
     }
 
@@ -272,7 +272,7 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     lastTime = currentTime;
 
     // Update ImGui state.
-    
+
     auto& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(config.size.x, config.size.y);
     io.DeltaTime = deltaTime;
@@ -352,7 +352,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
 
     auto& graphicsQueue = Backend::State<Device::Vulkan>()->getGraphicsQueue();
     JST_VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, swapchainFences[_currentDrawableIndex]), [&]{
-        JST_ERROR("[VULKAN] Can't submit headless queue.");            
+        JST_ERROR("[VULKAN] Can't submit headless queue.");
     });
 
     // Submit frame to endpoint.
@@ -363,7 +363,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
         endpointFrameSubmissionCondition.notify_one();
     }
 
-    // Update Viewport state. 
+    // Update Viewport state.
 
     _currentDrawableIndex = (_currentDrawableIndex + 1) % 2;
 
@@ -380,11 +380,11 @@ void Implementation::endpointFrameSubmissionLoop() {
 
         {
             std::unique_lock<std::mutex> lock(endpointFrameSubmissionMutex);
-            endpointFrameSubmissionCondition.wait(lock, [&]{ 
+            endpointFrameSubmissionCondition.wait(lock, [&]{
                 return !endpointFrameSubmissionQueue.empty() || !endpointFrameSubmissionRunning;
             });
 
-            if (!endpointFrameSubmissionRunning && 
+            if (!endpointFrameSubmissionRunning &&
                  endpointFrameSubmissionQueue.empty()) {
                 return;
             }
@@ -419,7 +419,7 @@ U32 Implementation::getSwapchainImageViewsCount() const {
 }
 
 const VkExtent2D& Implementation::getSwapchainExtent() const {
-    return swapchainExtent;       
+    return swapchainExtent;
 }
 
 Result Implementation::waitEvents() {
@@ -434,4 +434,4 @@ bool Implementation::keepRunning() {
     return keepRunningFlag;
 }
 
-}  // namespace Jetstream::Viewport 
+}  // namespace Jetstream::Viewport
