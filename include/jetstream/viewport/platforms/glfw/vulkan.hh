@@ -59,7 +59,6 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
     };
 
     GLFWwindow* window = nullptr;
-    bool framebufferDidResize = false;
     U32 _currentDrawableIndex;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;
@@ -67,13 +66,12 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
     std::vector<VkImageView> swapchainImageViews;
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
+    std::mutex frameScopeMutex;
 
     SwapChainSupportDetails querySwapChainSupport(const VkPhysicalDevice& device);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
-
-    static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 };
 
 }  // namespace Jetstream::Viewport

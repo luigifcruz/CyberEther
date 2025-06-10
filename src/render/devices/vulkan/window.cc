@@ -17,61 +17,16 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-template<typename T>
-Result Implementation::bindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
-    // Cast generic resource.
-    auto _resource = std::dynamic_pointer_cast<T>(resource);
-
-    // Create the resource.
-    JST_CHECK(_resource->create());
-
-    // Add resource to container.
-    container.push_back(_resource);
-
-    return Result::SUCCESS;
-}
-
-template<typename T>
-Result Implementation::unbindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
-    // Sychronize all outstanding command buffers.
-    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_ERROR("[VULKAN] Can't wait for queue to complete.");
-    });
-
-    // Cast generic resource.
-    auto _resource = std::dynamic_pointer_cast<T>(resource);
-
-    // Remove resource from container.
-    container.erase(std::remove(container.begin(), container.end(), _resource), container.end());
-
-    // Destroy the resource.
-    JST_CHECK(_resource->destroy());
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::bindBuffer(const std::shared_ptr<Buffer>& buffer) {
-    return bindResource<BufferImp<Device::Vulkan>>(buffer, buffers);
-}
-
-Result Implementation::unbindBuffer(const std::shared_ptr<Buffer>& buffer) {
-    return unbindResource<BufferImp<Device::Vulkan>>(buffer, buffers);
-}
-
-Result Implementation::bindTexture(const std::shared_ptr<Texture>& texture) {
-    return bindResource<TextureImp<Device::Vulkan>>(texture, textures);
-}
-
-Result Implementation::unbindTexture(const std::shared_ptr<Texture>& texture) {
-    return unbindResource<TextureImp<Device::Vulkan>>(texture, textures);
-}
-
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    return bindResource<SurfaceImp<Device::Vulkan>>(surface, surfaces);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    surfaces.push_back(_resource);
+    return Result::SUCCESS;
 }
 
 Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    return unbindResource<SurfaceImp<Device::Vulkan>>(surface, surfaces);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _resource), surfaces.end());
+    return Result::SUCCESS;
 }
 
 Result Implementation::underlyingCreate() {
@@ -84,6 +39,7 @@ Result Implementation::underlyingCreate() {
     // Reseting internal variables.
 
     statsData.droppedFrames = 0;
+    statsData.recreatedFrames = 0;
 
     // Create render pass.
 
@@ -125,7 +81,7 @@ Result Implementation::underlyingCreate() {
     renderPassInfo.pDependencies = &dependency;
 
     JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
-        JST_ERROR("[VULKAN] Failed to create render pass.");   
+        JST_ERROR("[VULKAN] Failed to create render pass.");
     });
 
     // Create command pool.
@@ -167,38 +123,31 @@ Result Implementation::underlyingCreate() {
 Result Implementation::underlyingDestroy() {
     JST_DEBUG("[VULKAN] Destroying window.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    // Release resources.
 
-    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_ERROR("[VULKAN] Can't wait for graphics queue to destroy window.");
-    });
-
-    JST_CHECK(destroyImgui());
+    JST_CHECK(underlyingSynchronize());
 
     JST_CHECK(destroySynchronizationObjects());
-
-    if (!buffers.empty() || !textures.empty() || !surfaces.empty()) {
-        JST_WARN("[VULKAN] Resources are still bounded to this window "
-                 "(buffers={}, textures={}, surfaces={}).", 
-                 buffers.size(), textures.size(), surfaces.size());
-    }
-
-    vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
-
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    vkDestroyRenderPass(device, renderPass, nullptr);
-
     JST_CHECK(destroyFramebuffer());
+    JST_CHECK(destroyImgui());
+
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
+    vkDestroyCommandPool(device, commandPool, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
 
     return Result::SUCCESS;
 }
 
 Result Implementation::recreate() {
+    JST_CHECK(underlyingSynchronize());
+
+    JST_CHECK(destroySynchronizationObjects());
     JST_CHECK(destroyFramebuffer());
     JST_CHECK(viewport->destroySwapchain());
     JST_CHECK(viewport->createSwapchain());
     JST_CHECK(createFramebuffer());
+    JST_CHECK(createSynchronizationObjects());
 
     return Result::SUCCESS;
 }
@@ -233,10 +182,7 @@ Result Implementation::createFramebuffer() {
 Result Implementation::destroyFramebuffer() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
-    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
-        JST_ERROR("[VULKAN] Can't wait for graphics queue to destroy framebuffer.");
-    });
-
+    JST_CHECK(underlyingSynchronize());
     for (auto framebuffer : swapchainFramebuffers) {
         vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
@@ -306,7 +252,7 @@ Result Implementation::beginImgui() {
 
 Result Implementation::endImgui() {
     ImGui::Render();
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), currentCommandBuffer);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[currentFrame]);
 
     return Result::SUCCESS;
 }
@@ -325,28 +271,34 @@ Result Implementation::underlyingBegin() {
     if (result == Result::SKIP) {
         statsData.droppedFrames += 1;
         return Result::SKIP;
-    } else if (result == Result::RECREATE) {
+    }
+
+    if (result == Result::RECREATE) {
+        statsData.recreatedFrames += 1;
         JST_CHECK(recreate());
-        return Result::SKIP;       
-    } else if (result != Result::SUCCESS) {
-        return result;
+        return Result::SKIP;
     }
 
-    // Wait for fences.
-    if (imagesInFlight[viewport->currentDrawableIndex()] != VK_NULL_HANDLE) {
-        vkWaitForFences(device, 1, &imagesInFlight[viewport->currentDrawableIndex()], VK_TRUE, UINT64_MAX);
+    if (result != Result::SUCCESS) {
+        JST_FATAL("[VULKAN] Failed to acquire next viewport drawable.");
+        return Result::ERROR;
     }
-    imagesInFlight[viewport->currentDrawableIndex()] = inFlightFences[currentFrame];
 
-    // Set current command buffer.
-    currentCommandBuffer = commandBuffers[viewport->currentDrawableIndex()];
+    // Reset fences before using them.
+
+    vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
     // Refresh command buffer and begin new render pass.
 
+    JST_VK_CHECK(vkResetCommandBuffer(commandBuffers[currentFrame], 0), [&]{
+        JST_ERROR("[VULKAN] Can't reset command buffer.");
+    });
+
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    JST_VK_CHECK(vkBeginCommandBuffer(currentCommandBuffer, &commandBufferBeginInfo), [&]{
-        JST_ERROR("[VULKAN] Can't begin command buffer.");     
+    commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    JST_VK_CHECK(vkBeginCommandBuffer(commandBuffers[currentFrame], &commandBufferBeginInfo), [&]{
+        JST_ERROR("[VULKAN] Can't begin command buffer.");
     });
 
     VkRenderPassBeginInfo renderPassBeginInfo = {};
@@ -361,10 +313,10 @@ Result Implementation::underlyingBegin() {
     renderPassBeginInfo.pClearValues = &clearColor;
 
     for (auto &surface : surfaces) {
-        JST_CHECK(surface->encode(currentCommandBuffer));
+        JST_CHECK(surface->encode(commandBuffers[currentFrame]));
     }
 
-    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     // Begin secondary renders.
 
@@ -380,32 +332,29 @@ Result Implementation::underlyingEnd() {
 
     // End render pass and command buffer.
 
-    vkCmdEndRenderPass(currentCommandBuffer);
+    vkCmdEndRenderPass(commandBuffers[currentFrame]);
 
-    JST_VK_CHECK(vkEndCommandBuffer(currentCommandBuffer), [&]{
+    JST_VK_CHECK(vkEndCommandBuffer(commandBuffers[currentFrame]), [&]{
         JST_ERROR("[VULKAN] Can't end command buffer.");
     });
 
     // Reset synchronization fences and submit to queue.
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    std::vector<VkSemaphore> waitSemaphores = { imageAvailableSemaphores[currentFrame] };
-    std::vector<VkSemaphore> signalSemaphores = { renderFinishedSemaphores[currentFrame] };
-
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+    submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores.data();
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[viewport->currentDrawableIndex()];
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores.data();
 
-    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    submitInfo.commandBufferCount = 1;
+
+    std::vector<VkSemaphore> signalSemaphores = { renderFinishedSemaphores[currentFrame] };
+    submitInfo.pSignalSemaphores = signalSemaphores.data();
+    submitInfo.signalSemaphoreCount = signalSemaphores.size();
 
     auto& graphicsQueue = Backend::State<Device::Vulkan>()->getGraphicsQueue();
     if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
@@ -413,15 +362,25 @@ Result Implementation::underlyingEnd() {
         return Result::ERROR;
     }
 
-    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
     // Commit framebuffer to viewport.
 
     const auto& result = viewport->commitDrawable(signalSemaphores);
+
     if (result == Result::RECREATE) {
-        return recreate();
+        statsData.recreatedFrames += 1;
+        JST_CHECK(recreate());
+        return Result::SKIP;
     }
-    return result;
+
+    if (result != Result::SUCCESS) {
+        return result;
+    }
+
+    // Increment frame counter.
+
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    return Result::SUCCESS;
 }
 
 Result Implementation::underlyingSynchronize() {
@@ -439,7 +398,6 @@ Result Implementation::createSynchronizationObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-    imagesInFlight.resize(swapchainFramebuffers.size(), nullptr);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -468,7 +426,6 @@ Result Implementation::destroySynchronizationObjects() {
         vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
         vkDestroyFence(device, inFlightFences[i], nullptr);
     }
-    std::fill(imagesInFlight.begin(), imagesInFlight.end(), nullptr);
 
     return Result::SUCCESS;
 }

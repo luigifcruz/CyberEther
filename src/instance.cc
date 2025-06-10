@@ -682,9 +682,15 @@ bool Instance::running() {
 
 Result Instance::begin() {
     // Create new render frame.
-    JST_CHECK(_window->begin());
+    const auto& res = _window->begin();
 
-    return Result::SUCCESS;
+    if (res != Result::SUCCESS &&
+        res != Result::SKIP) {
+        presentRunning = false;
+        return res;
+    }
+
+    return res;
 }
 
 Result Instance::present() {
@@ -702,7 +708,13 @@ Result Instance::end() {
     }
 
     // Finish the render frame.
-    JST_CHECK(_window->end());
+    const auto& res = _window->end();
+
+    if (res != Result::SUCCESS &&
+        res != Result::SKIP) {
+        presentRunning = false;
+        return res;
+    }
 
     // Process interactions after finishing frame.
 

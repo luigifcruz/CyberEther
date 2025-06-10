@@ -8,10 +8,11 @@
 #include "jetstream/render/base/buffer.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
+#include "jetstream/render/base/window_attachment.hh"
 
 namespace Jetstream::Render {
 
-class Texture {
+class Texture : public WindowAttachment {
  public:
     enum class PixelFormat : U64 {
         RGBA,
@@ -41,12 +42,13 @@ class Texture {
     explicit Texture(const Config& config) : config(config) {}
     virtual ~Texture() = default;
 
+    Type type() const override {
+        return Type::Texture;
+    }
+
     const Config& getConfig() const {
         return config;
     }
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
 
     constexpr const bool& multisampled() const {
         return config.multisampled;
@@ -61,7 +63,7 @@ class Texture {
     virtual Result fill() = 0;
     virtual Result fillRow(const U64& y, const U64& height) = 0;
 
-    template<Device D> 
+    template<Device D>
     static std::shared_ptr<Texture> Factory(const Config& config) {
         return std::make_shared<TextureImp<D>>(config);
     }

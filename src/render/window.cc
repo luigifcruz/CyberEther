@@ -1,3 +1,5 @@
+#include "jetstream/render/base/surface.hh"
+#include "jetstream/render/base/window_attachment.hh"
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/platform.hh"
@@ -10,6 +12,7 @@ Result Window::create() {
     _scalingFactor = 1.0f;
     _previousScalingFactor = 0.0f;
     graphicalLoopThreadStarted = false;
+    frameCount = 0;
 
     // Lock the frame queue.
     newFrameQueueMutex.lock();
@@ -26,19 +29,36 @@ Result Window::create() {
 Result Window::destroy() {
     graphicalLoopThreadStarted = false;
 
-    // Destroy unclaimed components.
+    // Unbind unclaimed components.
 
-    for (const auto& component : components) {
+    while (!components.empty()) {
         JST_WARN("[WINDOW] Destroying unclaimed component.");
-        component->destroy(this);
+        JST_CHECK(unbind(components.front()));
     }
-    JST_CHECK(processUnbindQueues());
+    JST_CHECK(processAttachmentQueues());
+
+    // Destroy unclaimed attachments.
+
+    while (!attachments.empty()) {
+        JST_WARN("[WINDOW] Destroying unclaimed attachment.");
+        JST_CHECK(unbind(attachments.front()));
+    }
+    JST_CHECK(processAttachmentQueues());
 
     // Lock the frame queue.
     newFrameQueueMutex.lock();
 
     // Call underlying destroy.
     const auto& res = underlyingDestroy();
+
+    // Process pending attachment destruction.
+
+    while (!destroyQueue.empty()) {
+        auto& [_, attachment] = destroyQueue.front();
+        destroyQueue.pop();
+
+        JST_CHECK(attachment->destroy());
+    }
 
     // Unlock the frame queue.
     newFrameQueueMutex.unlock();
@@ -47,11 +67,11 @@ Result Window::destroy() {
 }
 
 Result Window::begin() {
-    // Process bind and unbind queue.
-    JST_CHECK(processUnbindQueues());
-    JST_CHECK(processBindQueues());
+    // Process attachment queues.
+    JST_CHECK(processAttachmentQueues());
 
     // Record graphical thread ID.
+
     graphicalLoopThreadStarted = true;
     graphicalLoopThreadId = std::this_thread::get_id();
 
@@ -62,6 +82,7 @@ Result Window::begin() {
     const auto& res = underlyingBegin();
 
     // Unlock the frame queue if failed.
+
     if (res != Result::SUCCESS) {
         newFrameQueueMutex.unlock();
     }
@@ -72,6 +93,23 @@ Result Window::begin() {
 Result Window::end() {
     // Call frame end.
     const auto& res = underlyingEnd();
+
+    // Process attachment destruction queue.
+
+    int count = destroyQueue.size();
+    while (count > 0) {
+        auto& [expiration, attachment] = destroyQueue.front();
+
+        if (expiration <= frameCount) {
+            JST_CHECK(attachment->destroy());
+            destroyQueue.pop();
+        }
+
+        count--;
+    }
+
+    // Increment frame count.
+    frameCount++;
 
     // Unlock the frame queue.
     newFrameQueueMutex.unlock();
@@ -92,162 +130,81 @@ Result Window::synchronize() {
     return res;
 }
 
-Result Window::bind(const std::shared_ptr<Components::Generic>& component) {
-    // Call create on the component.
-    JST_CHECK(component->create(this));
+Result Window::bind(const std::shared_ptr<WindowAttachment>& attachment) {
+    // Add attachment to bind queue.
+    bindQueue.push(attachment);
 
-    // Push new component to the bind queue.
-    components.push_back(component);
+    // Wait queue to be processed.
+
+    if (graphicalLoopThreadStarted && (graphicalLoopThreadId != std::this_thread::get_id())) {
+        while (!bindQueue.empty()) {
+            std::this_thread::yield();
+        }
+    } else {
+        processAttachmentQueues();
+    }
+
+    // Push attachment to the list.
+    attachments.push_back(attachment);
 
     return Result::SUCCESS;
 }
 
-Result Window::unbind(const std::shared_ptr<Components::Generic>& component) {
-    // Call destroy on the component.
-    JST_CHECK(component->destroy(this));
+Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
+    // Add attachment to unbind queue.
+    unbindQueue.push(attachment);
 
     // Remove component from the list.
-    components.erase(std::remove(components.begin(), components.end(), component), components.end());
+    attachments.erase(std::remove(attachments.begin(), attachments.end(), attachment), attachments.end());
 
     return Result::SUCCESS;
 }
 
-Result Window::bind(const std::shared_ptr<Buffer>& buffer) {
-    // Push new buffer to the bind queue.
-    bufferBindQueue.push(buffer);
-
-    // Submit bind queues.
-    JST_CHECK(submitBindQueues());
-
-    return Result::SUCCESS;
-}
-
-Result Window::unbind(const std::shared_ptr<Buffer>& buffer) {
-    // Push new buffer to the unbind queue.
-    bufferUnbindQueue.push(buffer);
-
-    // Submit unbind queues.
-    JST_CHECK(submitUnbindQueues());
-
-    return Result::SUCCESS;
-}
-
-Result Window::bind(const std::shared_ptr<Texture>& texture) {
-    // Push new texture to the bind queue.
-    textureBindQueue.push(texture);
-
-    // Submit bind queues.
-    JST_CHECK(submitBindQueues());
-
-    return Result::SUCCESS;
-}
-
-Result Window::unbind(const std::shared_ptr<Texture>& texture) {
-    // Push new texture to the unbind queue.
-    textureUnbindQueue.push(texture);
-
-    // Submit unbind queues.
-    JST_CHECK(submitUnbindQueues());
-
-    return Result::SUCCESS;
-}
-
-Result Window::bind(const std::shared_ptr<Surface>& surface) {
-    // Push new surface to the bind queue.
-    surfaceBindQueue.push(surface);
-
-    // Submit bind queues.
-    JST_CHECK(submitBindQueues());
-
-    return Result::SUCCESS;
-}
-
-Result Window::unbind(const std::shared_ptr<Surface>& surface) {
-    // Push new surface to the unbind queue.
-    surfaceUnbindQueue.push(surface);
-
-    // Submit unbind queues.
-    JST_CHECK(submitUnbindQueues());
-
-    return Result::SUCCESS;
-}
-
-Result Window::submitBindQueues() {
-    // This is overcomplicated because of Emscripten.
-    // The browser won't allow calling WebGPU function from other thread.
-    // So we need to find a way to make it work for everyone.
-
-    // If graphical loop didn't start yet. Call the function directly.
-    if (!graphicalLoopThreadStarted) {
-        JST_CHECK(processBindQueues());
-    }
-    // Wait for graphical loop to process queue if current thread is different.
-    else if (graphicalLoopThreadId != std::this_thread::get_id()) {
-        while (!surfaceBindQueue.empty() && !bufferBindQueue.empty() && !textureBindQueue.empty()) {
-            std::this_thread::yield();
-        }
-    }
-    // Call the function directly as fallback.
-    else {
-        JST_CHECK(processBindQueues());
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Window::submitUnbindQueues() {
-    // Wait completion.
-    if (graphicalLoopThreadId != std::this_thread::get_id()) {
-        while (!surfaceUnbindQueue.empty() && !bufferUnbindQueue.empty() && !textureUnbindQueue.empty()) {
-            std::this_thread::yield();
-        }
-    }
-    // Call the function directly as fallback.
-    else {
-        JST_CHECK(processUnbindQueues());
-    }
-
-    return Result::SUCCESS;
-}
-
-
-Result Window::processBindQueues() {
+Result Window::processAttachmentQueues() {
     std::lock_guard<std::mutex> lock(newFrameQueueMutex);
 
-    while (!bufferBindQueue.empty()) {
-        JST_CHECK(bindBuffer(bufferBindQueue.front()));
-        bufferBindQueue.pop();
+    // Process unbind attachment queue.
+
+    while (!unbindQueue.empty()) {
+        auto attachment = unbindQueue.front();
+        unbindQueue.pop();
+
+        // Schedule for destruction.
+
+        destroyQueue.push({
+            .expiration = frameCount + 4,  // TODO: Replace hardcoded value with implementation-specific value.
+            .attachment = attachment
+        });
+
+        // Unregister Surface.
+
+        if (attachment->type() == WindowAttachment::Type::Surface) {
+            JST_CHECK(unbindSurface(std::dynamic_pointer_cast<Surface>(attachment)));
+        }
     }
 
-    while (!textureBindQueue.empty()) {
-        JST_CHECK(bindTexture(textureBindQueue.front()));
-        textureBindQueue.pop();
+    // Process bind attachment queue.
+
+    std::vector<std::shared_ptr<Surface>> surfaces;
+
+    while (!bindQueue.empty()) {
+        auto attachment = bindQueue.front();
+        bindQueue.pop();
+
+        // Create attachment
+        JST_CHECK(attachment->create());
+
+        // Schedule Surface registration.
+
+        if (attachment->type() == WindowAttachment::Type::Surface) {
+            surfaces.push_back(std::dynamic_pointer_cast<Surface>(attachment));
+        }
     }
 
-    while (!surfaceBindQueue.empty()) {
-        JST_CHECK(bindSurface(surfaceBindQueue.front()));
-        surfaceBindQueue.pop();
-    }
+    // Register Surfaces.
 
-    return Result::SUCCESS;
-}
-
-Result Window::processUnbindQueues() {
-    std::lock_guard<std::mutex> lock(newFrameQueueMutex);
-
-    while (!surfaceUnbindQueue.empty()) {
-        JST_CHECK(unbindSurface(surfaceUnbindQueue.front()));
-        surfaceUnbindQueue.pop();
-    }
-
-    while (!bufferUnbindQueue.empty()) {
-        JST_CHECK(unbindBuffer(bufferUnbindQueue.front()));
-        bufferUnbindQueue.pop();
-    }
-
-    while (!textureUnbindQueue.empty()) {
-        JST_CHECK(unbindTexture(textureUnbindQueue.front()));
-        textureUnbindQueue.pop();
+    for (auto& surface : surfaces) {
+        JST_CHECK(bindSurface(surface));
     }
 
     return Result::SUCCESS;
@@ -262,6 +219,26 @@ void Window::scaleStyle(const Viewport::Generic& viewport) {
     }
 
     _previousScalingFactor = _scalingFactor;
+}
+
+Result Window::bind(const std::shared_ptr<Components::Generic>& component) {
+    // Call create on the component.
+    JST_CHECK(component->create(this));
+
+    // Push component to the list.
+    components.push_back(component);
+
+    return Result::SUCCESS;
+}
+
+Result Window::unbind(const std::shared_ptr<Components::Generic>& component) {
+    // Call destroy on the component.
+    JST_CHECK(component->destroy(this));
+
+    // Remove component from the list.
+    components.erase(std::remove(components.begin(), components.end(), component), components.end());
+
+    return Result::SUCCESS;
 }
 
 bool Window::hasFont(const std::string& name) const {

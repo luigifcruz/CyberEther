@@ -66,24 +66,38 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    // Initialize variables.
+    swapchain = VK_NULL_HANDLE;
+
+    // Create surface.
 
     auto& instance = Backend::State<Device::Vulkan>()->getInstance();
     JST_VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface), [&]{
         JST_ERROR("[VULKAN] GLFW failed to create window surface.");
     });
 
+    // Create swapchain.
     JST_CHECK(createSwapchain());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
-    JST_CHECK(destroySwapchain());
-
+    auto& device = Backend::State<Device::Vulkan>()->getDevice();
     auto& instance = Backend::State<Device::Vulkan>()->getInstance();
+
+    // Destroy swapchain.
+
+    for (auto& swapchainImageView : swapchainImageViews) {
+        vkDestroyImageView(device, swapchainImageView, nullptr);
+    }
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+
+    // Destroy surface.
+
     vkDestroySurfaceKHR(instance, surface, nullptr);
+
+    // Destroy GLFW.
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -95,9 +109,18 @@ Result Implementation::createSwapchain() {
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
+    // Save current swapchain.
+
+    VkSwapchainKHR oldSwapchain = swapchain;
+    swapchain = VK_NULL_HANDLE;
+
     // Create swapchain.
 
     auto swapchainSupport = querySwapChainSupport(physicalDevice);
+    if (swapchainSupport.formats.empty()) {
+        JST_ERROR("[VULKAN] No supported swapchain formats.");
+        return Result::ERROR;
+    }
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapchainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapchainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapchainSupport.capabilities);
@@ -134,7 +157,7 @@ Result Implementation::createSwapchain() {
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
+    createInfo.oldSwapchain = oldSwapchain;
 
     JST_VK_CHECK(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapchain), [&]{
         JST_ERROR("[VULKAN] Can't create swapchain.");
@@ -146,6 +169,17 @@ Result Implementation::createSwapchain() {
 
     swapchainImageFormat = surfaceFormat.format;
     swapchainExtent = extent;
+    _currentDrawableIndex = 0;
+
+    // Destroy old swapchain.
+
+    if (oldSwapchain) {
+        vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+
+        for (auto& swapchainImageView : swapchainImageViews) {
+            vkDestroyImageView(device, swapchainImageView, nullptr);
+        }
+    }
 
     // Create image views.
 
@@ -169,7 +203,7 @@ Result Implementation::createSwapchain() {
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        JST_VK_CHECK(vkCreateImageView(device, &createInfo, NULL, &swapchainImageViews[i]), [&]{
+        JST_VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &swapchainImageViews[i]), [&]{
             JST_ERROR("[VULKAN] Failed to create image view.");
         });
     }
@@ -178,13 +212,6 @@ Result Implementation::createSwapchain() {
 }
 
 Result Implementation::destroySwapchain() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-
-    for (auto& swapchainImageView : swapchainImageViews) {
-        vkDestroyImageView(device, swapchainImageView, nullptr);
-    }
-    vkDestroySwapchainKHR(device, swapchain, nullptr);
-
     return Result::SUCCESS;
 }
 
@@ -220,6 +247,19 @@ Result Implementation::destroyImgui() {
 }
 
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
+    // Check if framebuffer size is different from swapchain extent.
+
+    int fb_width, fb_height;
+    glfwGetFramebufferSize(window, &fb_width, &fb_height);
+
+    int sf_width = static_cast<int>(swapchainExtent.width);
+    int sf_height = static_cast<int>(swapchainExtent.height);
+    if (fb_width > 0 && fb_height > 0 && (fb_width != sf_width || fb_height != sf_height)) {
+        return Result::RECREATE;
+    }
+
+    // Get next drawable.
+
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     const VkResult result = vkAcquireNextImageKHR(device,
@@ -229,9 +269,13 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
                                                   VK_NULL_HANDLE,
                                                   &_currentDrawableIndex);
 
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR ||
+        result == VK_ERROR_SURFACE_LOST_KHR ||
+        result == VK_SUBOPTIMAL_KHR) {
         return Result::RECREATE;
-    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    }
+
+    if (result != VK_SUCCESS) {
         return Result::ERROR;
     }
 
@@ -241,25 +285,33 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
 }
 
 Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
-    VkSwapchainKHR swapchains[] = {swapchain};
-
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
+
     presentInfo.pWaitSemaphores = semaphores.data();
-    presentInfo.swapchainCount = 1;
+    presentInfo.waitSemaphoreCount = semaphores.size();
+
+    VkSwapchainKHR swapchains[] = {swapchain};
     presentInfo.pSwapchains = swapchains;
+    presentInfo.swapchainCount = 1;
+
     presentInfo.pImageIndices = &_currentDrawableIndex;
 
+    VkResult result = VK_SUCCESS;
     auto& presentQueue = Backend::State<Device::Vulkan>()->getPresentQueue();
-    const VkResult result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+    {
+        std::scoped_lock lock(frameScopeMutex);
+        result = vkQueuePresentKHR(presentQueue, &presentInfo);
+    }
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR ||
-        result == VK_SUBOPTIMAL_KHR ||
-        framebufferDidResize) {
-        framebufferDidResize = false;
+        result == VK_ERROR_SURFACE_LOST_KHR ||
+        result == VK_SUBOPTIMAL_KHR) {
         return Result::RECREATE;
-    } else if (result != VK_SUCCESS) {
+    }
+
+    if (result != VK_SUCCESS) {
         return Result::ERROR;
     }
 
@@ -271,18 +323,28 @@ Implementation::SwapChainSupportDetails Implementation::querySwapChainSupport(co
     U32 presentModeCount;
     SwapChainSupportDetails details;
 
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+    JST_VK_CHECK_THROW(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities), [&]{
+        JST_FATAL("[VULKAN] Failed to get surface capabilities.")
+    });
+    JST_VK_CHECK_THROW(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr), [&]{
+        JST_FATAL("[VULKAN] Failed to get surface formats.")
+    });
+    JST_VK_CHECK_THROW(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr), [&]{
+        JST_FATAL("[VULKAN] Failed to get surface present modes.")
+    });
 
     if (formatCount != 0) {
         details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
+        JST_VK_CHECK_THROW(vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data()), [&]{
+            JST_FATAL("[VULKAN] Failed to get surface formats.")
+        });
     }
 
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+        JST_VK_CHECK_THROW(vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data()), [&]{
+            JST_FATAL("[VULKAN] Failed to get surface present modes.")
+        });
     }
 
     return details;
@@ -325,16 +387,14 @@ VkExtent2D Implementation::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
             static_cast<U32>(height)
         };
 
-        actualExtent.width = std::max(capabilities.minImageExtent.width,
-                                      std::min(capabilities.maxImageExtent.width, actualExtent.width));
-        actualExtent.height = std::max(capabilities.minImageExtent.height,
-                                       std::min(capabilities.maxImageExtent.height, actualExtent.height));
+        actualExtent.width = std::clamp(actualExtent.width,
+                                        capabilities.minImageExtent.width,
+                                        capabilities.maxImageExtent.width);
+        actualExtent.height = std::clamp(actualExtent.height,
+                                         capabilities.minImageExtent.height,
+                                         capabilities.maxImageExtent.height);
 
         return actualExtent;
-}
-
-void Implementation::framebufferResizeCallback(GLFWwindow *window, int, int) {
-    reinterpret_cast<Implementation*>(glfwGetWindowUserPointer(window))->framebufferDidResize = true;
 }
 
 const VkFormat& Implementation::getSwapchainImageFormat() const {
@@ -354,12 +414,19 @@ const VkExtent2D& Implementation::getSwapchainExtent() const {
 }
 
 Result Implementation::waitEvents() {
-    glfwWaitEventsTimeout(0.150);
+    {
+        std::scoped_lock lock(frameScopeMutex);
+        glfwPollEvents();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(3));
     return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {
-    glfwPollEvents();
+    {
+        std::scoped_lock lock(frameScopeMutex);
+        glfwPollEvents();
+    }
     return Result::SUCCESS;
 }
 

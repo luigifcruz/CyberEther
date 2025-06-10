@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 
+#include "jetstream/render/base/window_attachment.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
@@ -33,6 +34,7 @@ class Window {
 
     struct Stats {
         U64 droppedFrames;
+        U64 recreatedFrames;
     };
 
     explicit Window(const Config& config) : config(config) {}
@@ -58,14 +60,8 @@ class Window {
     Result bind(const std::shared_ptr<Components::Generic>& component);
     Result unbind(const std::shared_ptr<Components::Generic>& component);
 
-    Result bind(const std::shared_ptr<Buffer>& buffer);
-    Result unbind(const std::shared_ptr<Buffer>& buffer);
-
-    Result bind(const std::shared_ptr<Texture>& texture);
-    Result unbind(const std::shared_ptr<Texture>& texture);
-
-    Result bind(const std::shared_ptr<Surface>& surface);
-    Result unbind(const std::shared_ptr<Surface>& surface);
+    Result bind(const std::shared_ptr<WindowAttachment>& attachment);
+    Result unbind(const std::shared_ptr<WindowAttachment>& attachment);
 
     template<class T>
     inline Result JETSTREAM_API build(std::shared_ptr<T>& member,
@@ -77,7 +73,7 @@ class Window {
         }
 
         // If the type is not a component, create it based on the device.
-        
+
         if constexpr (!std::is_base_of_v<Components::Generic, T>)  {
             switch (this->device()) {
     #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
@@ -116,12 +112,6 @@ class Window {
  protected:
     Config config;
 
-    virtual Result bindBuffer(const std::shared_ptr<Buffer>& buffer) = 0;
-    virtual Result unbindBuffer(const std::shared_ptr<Buffer>& buffer) = 0;
-
-    virtual Result bindTexture(const std::shared_ptr<Texture>& texture) = 0;
-    virtual Result unbindTexture(const std::shared_ptr<Texture>& texture) = 0;
-
     virtual Result bindSurface(const std::shared_ptr<Surface>& surface) = 0;
     virtual Result unbindSurface(const std::shared_ptr<Surface>& surface) = 0;
 
@@ -153,24 +143,25 @@ class Window {
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
     std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;
 
+    uint32_t frameCount;
     bool graphicalLoopThreadStarted;
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;
 
-    Result processBindQueues();
-    Result processUnbindQueues();
+    // Attachment State
 
-    Result submitBindQueues();
-    Result submitUnbindQueues();
+    struct PendingDestruction {
+        uint32_t expiration;
+        std::shared_ptr<WindowAttachment> attachment;
+    };
 
-    std::queue<std::shared_ptr<Buffer>> bufferBindQueue;
-    std::queue<std::shared_ptr<Buffer>> bufferUnbindQueue;
+    Result processAttachmentQueues();
 
-    std::queue<std::shared_ptr<Texture>> textureBindQueue;
-    std::queue<std::shared_ptr<Texture>> textureUnbindQueue;
+    std::queue<std::shared_ptr<WindowAttachment>> bindQueue;
+    std::queue<std::shared_ptr<WindowAttachment>> unbindQueue;
+    std::queue<PendingDestruction> destroyQueue;
 
-    std::queue<std::shared_ptr<Surface>> surfaceBindQueue;
-    std::queue<std::shared_ptr<Surface>> surfaceUnbindQueue;
+    std::vector<std::shared_ptr<WindowAttachment>> attachments;
 };
 
 }  // namespace Jetstream::Render

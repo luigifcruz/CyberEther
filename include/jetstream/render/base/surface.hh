@@ -11,10 +11,11 @@
 #include "jetstream/render/base/kernel.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
+#include "jetstream/render/base/window_attachment.hh"
 
 namespace Jetstream::Render {
 
-class Surface {
+class Surface : public WindowAttachment {
  public:
     struct Config {
         std::shared_ptr<Texture> framebuffer;
@@ -26,6 +27,10 @@ class Surface {
 
     explicit Surface(const Config& config) : config(config) {}
     virtual ~Surface() = default;
+
+    Type type() const override {
+        return Type::Surface;
+    }
 
     const Config& getConfig() const {
         return config;
@@ -43,7 +48,7 @@ class Surface {
     }
     virtual const Extent2D<U64>& size(const Extent2D<U64>& size) = 0;
 
-    template<Device D> 
+    template<Device D>
     static std::shared_ptr<Surface> Factory(const Config& config) {
         return std::make_shared<SurfaceImp<D>>(config);
     }

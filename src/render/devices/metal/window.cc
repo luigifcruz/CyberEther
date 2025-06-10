@@ -14,56 +14,16 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-template<typename T>
-Result Implementation::bindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
-    // Cast generic resource.
-    auto _resource = std::dynamic_pointer_cast<T>(resource);
-
-    // Create the resource.
-    JST_CHECK(_resource->create());
-
-    // Add resource to container.
-    container.push_back(_resource);
-
-    return Result::SUCCESS;
-}
-
-template<typename T>
-Result Implementation::unbindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
-    // Cast generic resource.
-    auto _resource = std::dynamic_pointer_cast<T>(resource);
-
-    // Destroy the resource.
-    JST_CHECK(_resource->destroy());
-
-    // Remove resource from container.
-    container.erase(std::remove(container.begin(), container.end(), _resource), container.end());
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::bindBuffer(const std::shared_ptr<Buffer>& buffer) {
-    return bindResource<BufferImp<Device::Metal>>(buffer, buffers);
-}
-
-Result Implementation::unbindBuffer(const std::shared_ptr<Buffer>& buffer) {
-    return unbindResource<BufferImp<Device::Metal>>(buffer, buffers);
-}
-
-Result Implementation::bindTexture(const std::shared_ptr<Texture>& texture) {
-    return bindResource<TextureImp<Device::Metal>>(texture, textures);
-}
-
-Result Implementation::unbindTexture(const std::shared_ptr<Texture>& texture) {
-    return unbindResource<TextureImp<Device::Metal>>(texture, textures);
-}
-
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    return bindResource<SurfaceImp<Device::Metal>>(surface, surfaces);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    surfaces.push_back(_resource);
+    return Result::SUCCESS;
 }
 
 Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    return unbindResource<SurfaceImp<Device::Metal>>(surface, surfaces);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _resource), surfaces.end());
+    return Result::SUCCESS;
 }
 
 Result Implementation::underlyingCreate() {
@@ -81,8 +41,11 @@ Result Implementation::underlyingCreate() {
 
     JST_CHECK(createImgui());
 
+    // Reseting internal variables.
+
     statsData.droppedFrames = 0;
-    
+    statsData.recreatedFrames = 0;
+
     return Result::SUCCESS;
 }
 
@@ -90,12 +53,6 @@ Result Implementation::underlyingDestroy() {
     JST_DEBUG("[METAL] Destroying window.");
 
     JST_CHECK(destroyImgui());
-
-    if (!buffers.empty() || !textures.empty() || !surfaces.empty()) {
-        JST_WARN("[METAL] Resources are still bounded to this window "
-                 "(buffers={}, textures={}, surfaces={}).", 
-                 buffers.size(), textures.size(), surfaces.size());
-    }
 
     renderPassDescriptor->release();
     commandQueue->release();
@@ -118,7 +75,7 @@ Result Implementation::createImgui() {
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 #endif
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    
+
     JST_CHECK(viewport->createImgui());
 
     this->scaleStyle(*viewport);
