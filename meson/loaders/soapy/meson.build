@@ -17,7 +17,7 @@ if (jst_is_windows or jst_is_macos or jst_is_linux) and jst_is_static
     deps += [
         dependency('soapysdr', 'SoapySDR', required: true),
         dependency('soapyairspy', required: true).as_link_whole(),
-        dependency('soapyrtlsdr', required: true).as_link_whole(),  
+        dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
 endif
 
@@ -25,13 +25,13 @@ all_deps_found = true
 
 if jst_is_browser
     deps += [
-        # dependency('soapysdr', 'SoapySDR', required: true),
-        # dependency('soapyairspy', required: true).as_link_whole(),
-        # dependency('soapyrtlsdr', required: true).as_link_whole(),
+        dependency('soapysdr', 'SoapySDR', required: true),
+        dependency('soapyairspy', required: true).as_link_whole(),
+        dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
 
     # TODO: Fix libusb build on Emscripten.
-    all_deps_found = false
+    all_deps_found = true
 endif
 
 if jst_is_android
