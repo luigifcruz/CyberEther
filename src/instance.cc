@@ -676,6 +676,10 @@ bool Instance::presenting() {
     return presentRunning;
 }
 
+bool Instance::running() {
+    return computing() && presenting() && _viewport->keepRunning();
+}
+
 Result Instance::begin() {
     // Create new render frame.
     JST_CHECK(_window->begin());

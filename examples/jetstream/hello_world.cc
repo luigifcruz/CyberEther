@@ -142,7 +142,7 @@ class UI {
 
         // Wait user to close the window.
 
-        while (instance.viewport().keepRunning()) {
+        while (instance.running()) {
             instance.viewport().waitEvents();
         }
 

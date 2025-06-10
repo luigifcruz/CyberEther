@@ -419,6 +419,7 @@ class JETSTREAM_API Instance {
 
     bool computing();
     bool presenting();
+    bool running();
 
     Result loadDefaultFonts();
     Result unloadDefaultFonts();

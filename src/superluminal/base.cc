@@ -323,7 +323,7 @@ Result Superluminal::update(const std::string&) {
 }
 
 bool Superluminal::presenting() {
-    return impl->instance.viewport().keepRunning();
+    return impl->instance.presenting();
 }
 
 Result Superluminal::block() {
@@ -341,7 +341,7 @@ Result Superluminal::block() {
 
     // Block until the instance is done inputting.
 
-    while (impl->instance.viewport().keepRunning()) {
+    while (impl->instance.running()) {
         impl->instance.viewport().waitEvents();
     }
 
