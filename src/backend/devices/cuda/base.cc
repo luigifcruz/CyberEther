@@ -83,28 +83,20 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     }
 
     {
-        nvmlInit();
-        char driverVersion[256];
-        nvmlSystemGetDriverVersion(driverVersion, 256);
-        cache.driverVersion = driverVersion;
-        nvmlShutdown();
-    }
-
-    {
         int query = 0;
 
         // TODO: Find a valid attribute for this.
         cache.canImportDeviceMemory = true;
 
-        JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query, 
-                                                  CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR_SUPPORTED, 
+        JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query,
+                                                  CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR_SUPPORTED,
                                                   device), [&]{
             JST_FATAL("[CUDA] Cannot get device attribute: {}", err);
         });
         cache.canExportDeviceMemory = query;
 
-        JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query, 
-                                                  CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM, 
+        JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query,
+                                                  CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM,
                                                   device), [&]{
             JST_FATAL("[CUDA] Cannot get device attribute: {}", err);
         });
@@ -120,7 +112,6 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("Device Type:        {}", getPhysicalDeviceType());
     JST_INFO("API Version:        {}", getApiVersion());
     JST_INFO("Compute Capability: {}", getComputeCapability());
-    JST_INFO("Driver Version:     {}", getDriverVersion());
     JST_INFO("Unified Memory:     {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Device Memory:      {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("Interoperability:");
@@ -146,10 +137,6 @@ std::string CUDA::getDeviceName() const {
 
 std::string CUDA::getApiVersion() const {
     return cache.apiVersion;
-}
-
-std::string CUDA::getDriverVersion() const {
-    return cache.driverVersion;
 }
 
 std::string CUDA::getComputeCapability() const {
