@@ -153,7 +153,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     {
         const auto& requiredExtensions = getRequiredInstanceExtensions();
         const auto& optionalExtensions = getOptionalInstanceExtensions();
-    
+
         JST_DEBUG("[VULKAN] Required instance extensions: {}", requiredExtensions);
         JST_DEBUG("[VULKAN] Optional instance extensions: {}", optionalExtensions);
 
@@ -166,7 +166,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
                 unsupportedInstanceExtensions.insert(extension);
             }
         }
-        
+
         if (!unsupportedInstanceExtensions.empty()) {
             JST_FATAL("[VULKAN] Required instance extensions are not supported: {}.", unsupportedInstanceExtensions);
             JST_CHECK_THROW(Result::FATAL);
@@ -246,7 +246,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         // Create instance.
 
         JST_VK_CHECK_THROW(vkCreateInstance(&instanceCreateInfo, nullptr, &instance), [&]{
-            JST_FATAL("[VULKAN] Couldn't create instance.");        
+            JST_FATAL("[VULKAN] Couldn't create instance.");
         });
     }
 
@@ -262,7 +262,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
         if (!vkCreateDebugReportCallbackEXT) {
             JST_FATAL("[VULKAN] Failed to create validation.");
-            JST_CHECK_THROW(Result::FATAL);       
+            JST_CHECK_THROW(Result::FATAL);
         }
         JST_VK_CHECK_THROW(vkCreateDebugReportCallbackEXT(instance, &debugReportCreateInfo, nullptr, &debugReportCallback), [&]{
             JST_FATAL("[VULKAN] Failed to create validation.");
@@ -274,7 +274,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     {
         U32 physicalDeviceCount = 0;
         JST_VK_CHECK_THROW(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr), [&]{
-            JST_FATAL("[VULKAN] Can't enumerate physical devices.");     
+            JST_FATAL("[VULKAN] Can't enumerate physical devices.");
         });
         if (physicalDeviceCount == 0) {
             JST_FATAL("[VULKAN] No physical devices found.");
@@ -447,7 +447,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 
         JST_VK_CHECK_THROW(vkCreateDevice(physicalDevice, &createInfo, nullptr, &device), [&]{
-            JST_FATAL("[VULKAN] Can't create logical device.");     
+            JST_FATAL("[VULKAN] Can't create logical device.");
         });
 
         vkGetDeviceQueue(device, indices.graphicFamily.value(), 0, &graphicsQueue);
@@ -509,7 +509,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = config.stagingBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | 
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                            VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -535,9 +535,9 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         JST_VK_CHECK_THROW(vkBindBufferMemory(device, stagingBuffer, stagingBufferMemory, 0), [&]{
             JST_FATAL("[VULKAN] Failed to bind memory to staging buffer.");
         });
-        
+
         JST_VK_CHECK_THROW(vkMapMemory(device, stagingBufferMemory, 0, config.stagingBufferSize, 0, &stagingBufferMappedMemory), [&]{
-            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");        
+            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");
         });
     }
 
@@ -578,7 +578,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
         JST_VK_CHECK_THROW(vkCreateFence(device, &fenceInfo, nullptr, &defaultFence), [&]{
-            JST_ERROR("[VULKAN] Failed to create default fence.");            
+            JST_ERROR("[VULKAN] Failed to create default fence.");
         });
     }
 
@@ -647,11 +647,11 @@ std::string Vulkan::getDeviceName() const {
 }
 
 std::string Vulkan::getApiVersion() const {
-    return cache.apiVersion;       
+    return cache.apiVersion;
 }
 
 PhysicalDeviceType Vulkan::getPhysicalDeviceType() const {
-    return cache.physicalDeviceType; 
+    return cache.physicalDeviceType;
 }
 
 bool Vulkan::hasUnifiedMemory() const {

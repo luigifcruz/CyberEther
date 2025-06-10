@@ -112,7 +112,7 @@ Result Implementation::createImgui() {
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
     ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
-    
+
     return Result::SUCCESS;
 }
 

@@ -301,7 +301,7 @@ Result Instance::renameBlock(Locale input, const std::string& id) {
     return Result::SUCCESS;
 }
 
-Result Instance::blockUpdater(Locale locale, 
+Result Instance::blockUpdater(Locale locale,
                               const std::function<Result(std::shared_ptr<Flowgraph::Node>&)>& updater) {
     // List all dependencies.
 
@@ -345,7 +345,7 @@ Result Instance::blockUpdater(Locale locale,
 
     // Check if the module store has such a record fingerprint.
     if (!Store::BlockConstructorList().contains(record->fingerprint)) {
-        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: '{}'.", record->fingerprint);        
+        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: '{}'.", record->fingerprint);
         return Result::ERROR;
     } else {
         res = Store::BlockConstructorList().at(record->fingerprint)(*this,
@@ -434,7 +434,7 @@ Result Instance::blockUpdater(Locale locale,
                 if (inputLocale.blockId == record->id && recordBackup.id != record->id) {
                     inputLocale.blockId = recordBackup.id;
                 }
-                
+
                 // Update input of dependency block record.
                 const auto& outputRecord = _flowgraph.nodes().at(inputLocale.block());
                 inputRecord = outputRecord->outputMap.at(inputLocale.pinId);

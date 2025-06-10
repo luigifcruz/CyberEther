@@ -12,7 +12,7 @@ using namespace nb::literals;
 using namespace Jetstream;
 
 template<Device D, typename T>
-Tensor<D, T> numpy_to_tensor(nb::ndarray<nb::numpy, T, nb::c_contig, nb::device::cpu> array) {    
+Tensor<D, T> numpy_to_tensor(nb::ndarray<nb::numpy, T, nb::c_contig, nb::device::cpu> array) {
     auto pointer = static_cast<T*>(array.data());
     
     return Tensor<D, T>(pointer, {1, 8192});
@@ -46,8 +46,8 @@ NB_MODULE(_impl, m) {
     nb::class_<Superluminal::PlotConfig>(m, "plot_config")
         .def(nb::init<>())
         .def_prop_rw("buffer",
-            [](Superluminal::PlotConfig &self) { 
-                return self.buffer; 
+            [](Superluminal::PlotConfig &self) {
+                return self.buffer;
             },
             [](Superluminal::PlotConfig &self, nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cpu> array) {
                 self.buffer = numpy_to_tensor<Device::CPU, CF32>(array);

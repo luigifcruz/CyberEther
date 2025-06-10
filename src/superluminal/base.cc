@@ -525,7 +525,7 @@ std::vector<std::vector<U8>> Superluminal::MosaicLayout(U8 matrixHeight, U8 matr
                                                         U8 panelHeight, U8 panelWidth,
                                                         U8 offsetX, U8 offsetY) {
     std::vector<std::vector<U8>> layout(matrixHeight, std::vector<U8>(matrixWidth, 0));
-    
+
     for (int i = 0; i < panelHeight; ++i) {
         for (int j = 0; j < panelWidth; ++j) {
             int row = offsetY + i;
@@ -535,7 +535,7 @@ std::vector<std::vector<U8>> Superluminal::MosaicLayout(U8 matrixHeight, U8 matr
             }
         }
     }
-    
+
     return layout;
 }
 

@@ -82,7 +82,7 @@ Result Implementation::underlyingCreate() {
     auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
 
     // Reseting internal variables.
- 
+
     statsData.droppedFrames = 0;
 
     // Create render pass.
@@ -95,9 +95,9 @@ Result Implementation::underlyingCreate() {
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = (headless ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : 
+    colorAttachment.finalLayout = (headless ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL :
                                               VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-    
+
     VkAttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -254,13 +254,13 @@ Result Implementation::createImgui() {
     style = &ImGui::GetStyle();
 
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    
+
     JST_CHECK(viewport->createImgui());
 
     this->scaleStyle(*viewport);
 
     auto& backend = Backend::State<Device::Vulkan>();
-    
+
     ImGui_ImplVulkan_InitInfo init_info = {
         .Instance = backend->getInstance(),
         .PhysicalDevice = backend->getPhysicalDevice(),
@@ -279,7 +279,7 @@ Result Implementation::createImgui() {
         .CheckVkResultFn = nullptr,
         .MinAllocationSize = 0,
     };
-    ImGui_ImplVulkan_Init(&init_info, renderPass); 
+    ImGui_ImplVulkan_Init(&init_info, renderPass);
 
     return Result::SUCCESS;
 }
@@ -315,9 +315,11 @@ Result Implementation::underlyingBegin() {
     auto& device = Backend::State<Device::Vulkan>()->getDevice();
 
     // Wait for a frame to be available.
+
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     // Get next viewport framebuffer.
+
     const Result& result = viewport->nextDrawable(imageAvailableSemaphores[currentFrame]);
 
     if (result == Result::SKIP) {
