@@ -149,7 +149,7 @@ endif
 if not jst_is_ios and \
    not jst_is_android
     executable(
-        'cyberether', 
+        'cyberether',
         'main.cc',
         dependencies: libjetstream_dep,
         install: true,
