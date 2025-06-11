@@ -77,6 +77,8 @@ class TensorPrototype {
 
     void set_locale(const Locale& locale) noexcept;
 
+    void set_hash(const U64& hash) noexcept;
+
     U64 shape_to_offset(const std::vector<U64>& shape) const;
 
     void offset_to_shape(U64 index, std::vector<U64>& shape) const;
@@ -92,7 +94,7 @@ class TensorPrototype {
     Result broadcast_to(const std::vector<U64>& shape);
 
     Result slice(const std::vector<Token>& slice);
-    
+
  protected:
     TensorPrototypeMetadata prototype;
 
