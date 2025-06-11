@@ -98,6 +98,10 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
         Device::CPU,
     };
 
+    // Initialize buffer.
+
+    buffer = ptr;
+
     // Add compatible devices.
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
@@ -106,9 +110,11 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>& storage,
     }
 #endif
 
-    // Initialize buffer.
-
-    buffer = ptr;
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (TensorBuffer<Device::CUDA>::CanImport(*this)) {
+        storage->compatible_devices.insert(Device::CUDA);
+    }
+#endif
 }
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
