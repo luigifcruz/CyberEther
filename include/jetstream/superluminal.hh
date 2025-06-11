@@ -10,13 +10,13 @@
 namespace Jetstream {
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-#define SPL_VARIANT_CPU Tensor<Device::CPU, CF32>
+#define SPL_VARIANT_CPU Tensor<Device::CPU, CF32>, Tensor<Device::CPU, F32>
 #else
 #define SPL_VARIANT_CPU
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#define SPL_VARIANT_CUDA , Tensor<Device::CUDA, CF32>
+#define SPL_VARIANT_CUDA , Tensor<Device::CUDA, CF32>, Tensor<Device::CUDA, F32>
 #else
 #define SPL_VARIANT_CUDA
 #endif
@@ -72,6 +72,7 @@ class Superluminal {
         std::string windowTitle = "Superluminal";
         bool headless = false;
         std::string endpoint = "0.0.0.0:5002";
+        Device preferredDevice = Device::CPU;
     };
 
     static Result Initialize(const InstanceConfig& config = {}) {
@@ -144,9 +145,9 @@ class Superluminal {
         return GetInstance()->interface(name, mosaic, callback);
     }
 
-    static std::vector<std::vector<U8>> MosaicLayout(U8 matrixHeight, U8 matrixWidth,
-                                                     U8 panelHeight, U8 panelWidth,
-                                                     U8 offsetX, U8 offsetY);
+    static Mosaic MosaicLayout(U8 matrixHeight, U8 matrixWidth,
+                               U8 panelHeight, U8 panelWidth,
+                               U8 offsetX, U8 offsetY);
 
  private:
     Superluminal();

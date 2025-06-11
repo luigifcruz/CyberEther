@@ -38,6 +38,7 @@ struct Superluminal::Impl {
         PlotConfig config;
         std::shared_ptr<Jetstream::Block> block;
         std::function<void()> callback;
+        bool active = false;
     };
 
     std::unordered_map<std::string, PlotState> plots;
@@ -186,10 +187,6 @@ Result Superluminal::start() {
         return Result::SUCCESS;
     }
 
-    // Build graph and start instance.
-
-    JST_CHECK(impl->instance.start());
-
     // Customize ImGui style.
 
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
@@ -197,6 +194,10 @@ Result Superluminal::start() {
     // Create graph.
 
     JST_CHECK(impl->createGraph());
+
+    // Build graph and start instance.
+
+    JST_CHECK(impl->instance.start());
 
     // Start the compute, present, and input threads.
 
@@ -249,7 +250,7 @@ Result Superluminal::start() {
                     } else {
                         plot.block->drawView();
                     }
-                    
+
                     ImGui::End();
                 }
             }
@@ -583,15 +584,54 @@ Result Superluminal::Impl::createGraph() {
 
         // Fulfills Time -> Time and Frequency -> Frequency conversions.
 
-        {
-            std::shared_ptr<Blocks::DynamicMemoryImport<Device::CUDA, void, CF32>> import;
+        auto convert = [&]<Device D, typename T>() {
+            if (std::holds_alternative<Tensor<D, T>>(recipe.buffer)) {
+                std::shared_ptr<Blocks::DynamicMemoryImport<D, void, T>> import;
 
-            JST_CHECK(instance.addBlock(
-                import, jst::fmt::format("data_{}_{}", sourceDomain, hash), {
-                    .buffer = std::get<Tensor<Device::CUDA, CF32>>(recipe.buffer),
-                }, {}, {}
-            ));
-        }
+                JST_CHECK(instance.addBlock(
+                    import, jst::fmt::format("data_{}_{}_{}", GetDeviceName(D), sourceDomain, hash), {
+                        .buffer = std::get<Tensor<D, T>>(recipe.buffer),
+                    }, {}, {}
+                ));
+
+                if (D != config.preferredDevice) {
+                    std::string deviceNameStr;
+
+                    if ((D == Device::CUDA) and (config.preferredDevice == Device::CPU)) {
+                        deviceNameStr = "cuda";
+                    }
+
+                    if ((D == Device::CPU) and (config.preferredDevice == Device::CUDA)) {
+                        deviceNameStr = "cuda";
+                    }
+
+                    if (deviceNameStr.empty()) {
+                        JST_ERROR("[SUPERLUMINAL] Unsupported device conversion.");
+                        return Result::ERROR;
+                    }
+
+                    auto blob = GraphToYaml({
+                        {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), sourceDomain, hash),
+                            {"duplicate", deviceNameStr, {NumericTypeInfo<T>::name}, {
+                                {{"hostAccessible", "true"}}},
+                                {{"buffer", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(D), sourceDomain, hash)}}}},
+                    });
+
+                    instance.flowgraph().importFromBlob(blob);
+                }
+            }
+            return Result::SUCCESS;
+        };
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        JST_CHECK(convert.operator()<Device::CPU, CF32>());
+        JST_CHECK(convert.operator()<Device::CPU, F32>());
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        JST_CHECK(convert.operator()<Device::CUDA, CF32>());
+        JST_CHECK(convert.operator()<Device::CUDA, F32>());
+#endif
 
         // Check if a conversion is needed.
 
@@ -605,24 +645,34 @@ Result Superluminal::Impl::createGraph() {
         auto& prototype = std::visit(VariantBufferTypeVisitor{}, recipe.buffer);
         auto forward = (recipe.source == Domain::Time && recipe.display.contains(Domain::Frequency));
 
-        auto blob = GraphToYaml({
-            {"win",
-                {"window", "cuda", {"CF32"},
-                    {{"size", jst::fmt::format("{}", prototype.size())}}, {}}},
-            {"inv",
-                {"invert", "cuda", {"CF32"}, {},
-                    {{"buffer", "${graph.win.output.window}"}}}},
-            {"win_mul",
-                {"multiply", "cuda", {"CF32"}, {},
-                    {{"factorA", jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", sourceDomain, hash)},
-                     {"factorB", "${graph.inv.output.buffer}"}}}},
-            {jst::fmt::format("data_{}_{}", conversionDomain, hash),
-                {"fft", "cuda", {"CF32", "CF32"},
-                    {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
-                    {{"buffer", "${graph.win_mul.output.product}"}}}},
-        });
-
-        instance.flowgraph().importFromBlob(blob);
+        if (config.preferredDevice == Device::CPU) {
+            auto blob = GraphToYaml({
+                {"win",
+                    {"window", GetDeviceName(config.preferredDevice), {"CF32"},
+                        {{"size", jst::fmt::format("{}", prototype.size())}}, {}}},
+                {"inv",
+                    {"invert", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+                        {{"buffer", "${graph.win.output.window}"}}}},
+                {"win_mul",
+                    {"multiply", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+                        {{"factorA", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)},
+                        {"factorB", "${graph.inv.output.buffer}"}}}},
+                {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
+                    {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
+                        {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
+                        {{"buffer", "${graph.win_mul.output.product}"}}}},
+            });
+            instance.flowgraph().importFromBlob(blob);
+        } else {
+            // TODO: The Multiply block doesn't support CUDA yet. This is a temporary bypass.
+            auto blob = GraphToYaml({
+                {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
+                    {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
+                        {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
+                        {{"buffer",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
+            });
+            instance.flowgraph().importFromBlob(blob);
+        }
     }
 
     // Create plots graph.
@@ -697,14 +747,14 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     auto blob = GraphToYaml({
         {"amp",
-            {"amplitude", "cuda", {"CF32", "F32"}, {},
-                {{"buffer", jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", domain, hash)}}}},
+            {"amplitude", GetDeviceName(config.preferredDevice), {"CF32", "F32"}, {},
+                {{"buffer", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), domain, hash)}}}},
         {"scl",
-            {"scale", "cuda", {"F32"},
+            {"scale", GetDeviceName(config.preferredDevice), {"F32"},
                 {{"range", "[-100, 0]"}},
                 {{"buffer", "${domain.amp.output.buffer}"}}}},
         {"lineplot",
-            {"lineplot", "cuda", {"F32"}, 
+            {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
                 {{"averaging", averagingRate},
                  {"decimation", decimationRate}},
                 {{"buffer", "${domain.scl.output.buffer}"}}}},
@@ -741,7 +791,7 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
     auto graph = Graph{};
     auto hash = std::to_string(prototype.hash());
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
-    auto port = jst::fmt::format("${{graph.data_{}_{}.output.buffer}}", domain, hash);
+    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), domain, hash);
 
     if (state.config.channelAxis != -1 && state.config.channelIndex != -1) {
         U64 axis = state.config.channelAxis;
@@ -766,14 +816,14 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
         graph.push_back({
             "slice",
-            {"slice", "cuda", {"CF32"},
+            {"slice", GetDeviceName(config.preferredDevice), {"CF32"},
                 {{"slice", slice}},
                 {{"buffer", port}}},
         });
 
         graph.push_back({
             "duplicate",
-            {"duplicate", "cuda", {"CF32"}, {},
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"}, {},
                 {{"buffer", "${domain.slice.output.buffer}"}}},
         });
 
@@ -782,20 +832,20 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     graph.push_back({
         "amp",
-        {"amplitude", "cuda", {"CF32", "F32"}, {},
+        {"amplitude", GetDeviceName(config.preferredDevice), {"CF32", "F32"}, {},
             {{"buffer", port}}},
     });
 
     graph.push_back({
         "scl",
-        {"scale", "cuda", {"F32"},
+        {"scale", GetDeviceName(config.preferredDevice), {"F32"},
             {{"range", "[-100, 0]"}},
             {{"buffer", "${domain.amp.output.buffer}"}}},
     });
 
     graph.push_back({
         "waterfall",
-        {"waterfall", "cuda", {"F32"}, 
+        {"waterfall", GetDeviceName(config.preferredDevice), {"F32"},
             {{"height", height}},
             {{"buffer", "${domain.scl.output.buffer}"}}},
     });

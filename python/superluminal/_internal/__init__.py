@@ -15,17 +15,17 @@ class constant:
     @property
     def key(self):
         return self._key
-    
+
     @property
     def value(self):
         return self._value
-    
+
 def _create_constants(names_list):
     for k, v in names_list.items():
         globals()[k] = constant(k, v)
 
 _operations_lst = {
-    'real': operation.real, 
+    'real': operation.real,
     'imag': operation.imaginary,
     'amplitude': operation.amplitude,
     'phase': operation.phase,
@@ -43,6 +43,12 @@ _types_lst = {
     'waterfall': type.waterfall,
 }
 
+_device_lst = {
+    'cpu': device.cpu,
+    'cuda': device.cuda,
+}
+
 _create_constants(_operations_lst)
 _create_constants(_domains_lst)
 _create_constants(_types_lst)
+_create_constants(_device_lst)

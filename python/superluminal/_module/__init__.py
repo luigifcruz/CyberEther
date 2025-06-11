@@ -4,12 +4,20 @@ import numpy as np
 
 import superluminal._internal as lm
 
+try:
+    import cupy as cp
+except:
+    cp = None
+
 def plot(data: np.ndarray,
          type: lm.constant,
          label: str = "",
          mosaic: list[list[int]] = [[1]],
          domain: tuple[lm.constant, lm.constant] = (lm.time, lm.time),
          operation: lm.constant = lm.amplitude,
+         batch_axis: int = -1,
+         channel_axis: int = -1,
+         channel_index: int = -1,
          options: dict[str, any] = {}):
     #
     # Check classes.
@@ -17,8 +25,8 @@ def plot(data: np.ndarray,
 
     # Check data.
 
-    if not isinstance(data, np.ndarray):
-        raise TypeError("Data must be a numpy array.")
+    if not isinstance(data, np.ndarray) and (cp and not isinstance(data, cp.ndarray)):
+        raise TypeError("Data must be a numpy or cupy array.")
 
     # Check type.
 
@@ -88,6 +96,22 @@ def plot(data: np.ndarray,
         raise ValueError(f"Invalid operation: {operation.key}")
 
     #
+    # Check batch.
+    #
+
+    # TODO: Implement.
+
+    #
+    # Check channel.
+    #
+
+    if (channel_axis + 1) > len(data.shape):
+        raise ValueError(f"Invalid channel axis: {channel_axis}")
+
+    if (channel_index + 1) > data.shape[channel_axis]:
+        raise ValueError(f"Invalid channel index: {channel_index}")
+
+    #
     # Plot.
     #
 
@@ -97,9 +121,21 @@ def plot(data: np.ndarray,
     cfg.source = domain[0].value
     cfg.display = domain[1].value
     cfg.operation = operation.value
+    cfg.batch_axis = batch_axis
+    cfg.channel_axis = channel_axis
+    cfg.channel_index = channel_index
     cfg.options = options
 
     lm.plot(label, mosaic, cfg)
+
+def configure(preferred_device: lm.constant = lm.cpu,
+              device_id: int = 0,
+              window_title: str = "Superluminal"):
+    cfg = lm.instance_config()
+    cfg.device_id = device_id
+    cfg.preferred_device = preferred_device.value
+    cfg.window_title = window_title
+    lm.initialize(cfg)
 
 def show():
     lm.start()
@@ -114,11 +150,21 @@ def running():
 def realtime(callback):
     lm.start()
 
-    threading.Thread(target=callback).start()
+    t = threading.Thread(target=callback)
+    t.start()
 
     while lm.presenting():
         lm.poll_events(False)
         time.sleep(0.02)
 
+    t.join()
+
     lm.stop()
     lm.terminate()
+
+def layout(matrix_height, matrix_width,
+           panel_height, panel_width,
+           offset_x, offset_y):
+    return lm.mosaic_layout(matrix_height, matrix_width,
+                            panel_height, panel_width,
+                            offset_x, offset_y)
