@@ -1,7 +1,7 @@
 #include "jetstream/modules/constellation.hh"
 
-#include "shaders/constellation_shaders.hh"
-#include "assets/constants.hh"
+#include "resources/shaders/constellation_shaders.hh"
+#include "jetstream/constants.hh"
 
 #include "benchmark.cc"
 

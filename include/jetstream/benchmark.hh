@@ -1,11 +1,13 @@
 #ifndef JETSTREAM_BENCHMARK_HH
 #define JETSTREAM_BENCHMARK_HH
 
+#include <iostream>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 
-#include "jetstream/tools/nanobench.h"
+#include <nanobench.h>
 
 namespace Jetstream {
 
@@ -17,7 +19,7 @@ class Benchmark {
         F64 ms_per_op;
         F64 error;
     };
-    
+
     typedef std::function<void(ankerl::nanobench::Bench& bench, std::string name)> BenchmarkFuncType;
     typedef std::map<std::string, std::vector<std::pair<std::string, BenchmarkFuncType>>> BenchmarkMapType;
     typedef std::map<std::string, std::vector<ResultEntry>> ResultMapType;

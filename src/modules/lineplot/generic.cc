@@ -5,9 +5,9 @@
 #include "jetstream/modules/lineplot.hh"
 #include "jetstream/render/utils.hh"
 
-#include "shaders/lineplot_shaders.hh"
-#include "shaders/global_shaders.hh"
-#include "assets/constants.hh"
+#include "resources/shaders/lineplot_shaders.hh"
+#include "resources/shaders/global_shaders.hh"
+#include "jetstream/constants.hh"
 
 #include "benchmark.cc"
 

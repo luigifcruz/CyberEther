@@ -21,7 +21,7 @@ static void PrintGLFWError(int, const char* description) {
 }
 
 namespace Jetstream::Viewport {
-    
+
 using Implementation = GLFW<Device::WebGPU>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
@@ -101,7 +101,7 @@ Result Implementation::createSwapchain() {
 
 Result Implementation::destroySwapchain() {
     swapchain = nullptr;
-    
+
     return Result::SUCCESS;
 }
 
@@ -112,7 +112,7 @@ Result Implementation::createImgui() {
 }
 
 F32 Implementation::scale(const F32& scale) const {
-    // No scaling needed. ImGui was modified to handle HiDPI. 
+    // No scaling needed. ImGui was modified to handle HiDPI.
     return scale;
 }
 
@@ -138,7 +138,7 @@ Result Implementation::nextDrawable() {
 
 Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
     framebufferTexture = swapchain.GetCurrentTextureView();
-    
+
     return Result::SUCCESS;
 }
 

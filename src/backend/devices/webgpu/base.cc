@@ -7,11 +7,11 @@ namespace Jetstream::Backend {
 static void WebGPUErrorCallback(WGPUErrorType error_type, const char* message, void*) {
     const char* error_type_lbl = "";
     switch (error_type) {
-        case WGPUErrorType_Validation:  error_type_lbl = "Validation";    break;
-        case WGPUErrorType_OutOfMemory: error_type_lbl = "Out of memory"; break;
-        case WGPUErrorType_Unknown:     error_type_lbl = "Unknown";       break;
-        case WGPUErrorType_DeviceLost:  error_type_lbl = "Device lost";   break;
-        default:                        error_type_lbl = "Unknown";
+        case WGPUErrorType_Validation:  return "Validation error";
+        case WGPUErrorType_OutOfMemory: return "Out of memory";
+        case WGPUErrorType_Internal:    return "Internal error";
+        case WGPUErrorType_Unknown:     return "Unknown error";
+        default:                        return "Error";
     }
     JST_FATAL("[WebGPU] {} error: {}", error_type_lbl, message);
     JST_CHECK_THROW(Result::FATAL);
@@ -50,11 +50,11 @@ std::string WebGPU::getDeviceName() const {
 }
 
 std::string WebGPU::getApiVersion() const {
-    return cache.apiVersion;       
+    return cache.apiVersion;
 }
 
 PhysicalDeviceType WebGPU::getPhysicalDeviceType() const {
-    return cache.physicalDeviceType; 
+    return cache.physicalDeviceType;
 }
 
 bool WebGPU::hasUnifiedMemory() const {

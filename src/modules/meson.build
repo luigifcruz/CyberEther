@@ -1,6 +1,6 @@
 sum_lst = {}
 
-# Processing 
+# Processing
 subdir('fft')
 subdir('agc')
 subdir('window')
@@ -29,6 +29,5 @@ subdir('lineplot')
 subdir('waterfall')
 subdir('spectrogram')
 subdir('constellation')
-subdir('remote')
 
 summary(sum_lst, section: 'Modules', bool_yn: true)

@@ -43,7 +43,7 @@ struct GetBackend {
 template<>
 struct GetBackend<Device::Metal> {
     static constexpr bool enabled = true;
-    using Type = Metal;  
+    using Type = Metal;
 };
 #endif
 
@@ -51,7 +51,7 @@ struct GetBackend<Device::Metal> {
 template<>
 struct GetBackend<Device::Vulkan> {
     static constexpr bool enabled = true;
-    using Type = Vulkan;  
+    using Type = Vulkan;
 };
 #endif
 
@@ -67,7 +67,7 @@ struct GetBackend<Device::WebGPU> {
 template<>
 struct GetBackend<Device::CPU> {
     static constexpr bool enabled = true;
-    using Type = CPU;  
+    using Type = CPU;
 };
 #endif
 
@@ -75,7 +75,7 @@ struct GetBackend<Device::CPU> {
 template<>
 struct GetBackend<Device::CUDA> {
     static constexpr bool enabled = true;
-    using Type = CUDA;  
+    using Type = CUDA;
 };
 #endif
 
@@ -105,10 +105,10 @@ class JETSTREAM_API Instance {
     const auto& state() {
         using BackendType = typename GetBackend<DeviceId>::Type;
         if (!backends.contains(DeviceId)) {
-            JST_WARN("The {} backend is not initialized. Initializing with default headless settings.", DeviceId);
+            JST_WARN("The {} backend is not initialized. Initializing with default remote settings.", DeviceId);
 
             Backend::Config config;
-            config.headless = true;
+            config.remote = true;
             JST_CHECK_THROW(initialize<DeviceId>(config));
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);

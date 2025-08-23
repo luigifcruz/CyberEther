@@ -1,8 +1,8 @@
 #include "jetstream/modules/waterfall.hh"
 #include "jetstream/render/utils.hh"
 
-#include "shaders/waterfall_shaders.hh"
-#include "assets/constants.hh"
+#include "resources/shaders/waterfall_shaders.hh"
+#include "jetstream/constants.hh"
 
 #include "benchmark.cc"
 

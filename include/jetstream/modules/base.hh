@@ -83,10 +83,6 @@
 #include "jetstream/modules/constellation.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_REMOTE_AVAILABLE
-#include "jetstream/modules/remote.hh"
-#endif
-
 #include "jetstream/modules/tensor_modifier.hh"
 
 #ifdef JETSTREAM_MODULE_FOLD_AVAILABLE

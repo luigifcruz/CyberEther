@@ -96,7 +96,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
 
     Backend::Config backendConfig {
         .deviceId = impl->config.deviceId,
-        .headless = impl->config.headless,
+        .remote = impl->config.remote,
     };
 
     Viewport::Config viewportConfig {

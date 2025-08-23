@@ -1,9 +1,9 @@
 #include "jetstream/compositor.hh"
 #include "jetstream/instance.hh"
 
-#include "assets/compressed_jbmm.hh"
-#include "assets/compressed_jbmb.hh"
-#include "assets/compressed_fa.hh"
+#include "resources/fonts/compressed_jbmm.hh"
+#include "resources/fonts/compressed_jbmb.hh"
+#include "resources/fonts/compressed_fa.hh"
 
 namespace Jetstream {
 

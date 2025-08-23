@@ -4,7 +4,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
 
-#include "assets/compressed_jbmm.hh"
+#include "resources/fonts/compressed_jbmm.hh"
 
 namespace Jetstream {
 
@@ -27,7 +27,7 @@ Result Instance::build(const Config& config) {
         Device::WebGPU,
     };
 
-    if (config.backendConfig.headless) {
+    if (config.backendConfig.remote) {
         for (const auto& device : devicePriority) {
             switch (device) {
 #ifdef JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE

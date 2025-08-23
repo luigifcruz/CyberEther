@@ -6,8 +6,8 @@
 #include "jetstream/store.hh"
 #include "jetstream/platform.hh"
 
-#include "stb_image.hh"
-#include "resources/resources.hh"
+#include <stb_image.h>
+#include "resources/images/base.hh"
 
 // Looks like GCC-13 has a false-positive bug that is quite annoying.
 // Silencing this for now. This should be fixed in GCC-14.
@@ -1927,6 +1927,9 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
             ImGui::BulletText("imgui_markdown - Zlib License");
             ImGui::BulletText("GLM - Happy Bunny License");
+            ImGui::BulletText("cpp-httplib - MIT License");
+            ImGui::BulletText("nlohmann/json - MIT License");
+            ImGui::BulletText("FTXUI - MIT License");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();

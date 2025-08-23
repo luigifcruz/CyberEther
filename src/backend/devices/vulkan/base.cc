@@ -22,7 +22,7 @@ std::set<std::string> Vulkan::getRequiredInstanceExtensions() {
 
     // Presentation extensions.
 
-    if (!config.headless) {
+    if (!config.remote) {
         extensions.insert(VK_KHR_SURFACE_EXTENSION_NAME);
 
 #if defined(JST_OS_LINUX)
@@ -72,7 +72,7 @@ std::set<std::string> Vulkan::getRequiredValidationLayers() {
 std::set<std::string> Vulkan::getRequiredDeviceExtensions() {
     std::set<std::string> extensions;
 
-    if (!config.headless) {
+    if (!config.remote) {
         extensions.insert(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
 

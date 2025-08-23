@@ -20,7 +20,7 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Multiply : public Module, public Compute {
  public:
-    // Configuration 
+    // Configuration
 
     struct Config {
         JST_SERDES();

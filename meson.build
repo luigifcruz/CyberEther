@@ -87,7 +87,6 @@ cfg_lst.set('JST_OS_WINDOWS', jst_is_windows)
 subdir('meson')
 subdir('resources')
 subdir('flowgraphs')
-subdir('shaders')
 subdir('src')
 
 #

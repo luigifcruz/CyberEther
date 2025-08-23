@@ -74,7 +74,7 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
     VkExtent2D swapchainExtent;
     U32 _currentDrawableIndex;
 
-    Endpoint endpoint;
+    Remote remote;
     std::queue<U64> endpointFrameSubmissionQueue;
     std::mutex endpointFrameSubmissionMutex;
     std::condition_variable endpointFrameSubmissionCondition;

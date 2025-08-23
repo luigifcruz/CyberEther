@@ -1,3 +1,16 @@
 [submodule "subprojects/nanobind"]
 	path = subprojects/nanobind
 	url = https://github.com/wjakob/nanobind.git
+	branch = v2.8.0
+[submodule "subprojects/nanobench"]
+	path = subprojects/nanobench
+	url = https://github.com/martinus/nanobench.git
+	branch = v4.3.11
+[submodule "subprojects/cpp-httplib"]
+	path = subprojects/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib.git
+	branch = v0.25.0
+[submodule "subprojects/json"]
+	path = subprojects/json
+	url = https://github.com/nlohmann/json.git
+	branch = v3.12.0

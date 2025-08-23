@@ -1,8 +1,8 @@
 #include "jetstream/modules/spectrogram.hh"
 #include "jetstream/render/utils.hh"
 
-#include "shaders/spectrogram_shaders.hh"
-#include "assets/constants.hh"
+#include "resources/shaders/spectrogram_shaders.hh"
+#include "jetstream/constants.hh"
 
 #include "benchmark.cc"
 

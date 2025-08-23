@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_LOGGER_HH
 #define JETSTREAM_LOGGER_HH
 
-#include <iostream>
+#include <ostream>
 #include <string>
 #include <mutex>
 
@@ -9,11 +9,11 @@
 #define JST_FMT_INCLUDED
 
 #define JST_FMT_HEADER_ONLY
-#include "jetstream/tools/fmt/format.h"
-#include "jetstream/tools/fmt/color.h"
-#include "jetstream/tools/fmt/ostream.h"
-#include "jetstream/tools/fmt/ranges.h"
-#include "jetstream/tools/fmt/chrono.h"
+#include <fmt/format.h>
+#include <fmt/color.h>
+#include <fmt/ostream.h>
+#include <fmt/ranges.h>
+#include <fmt/chrono.h>
 
 #endif  // JST_FMT_INCLUDED
 
@@ -33,16 +33,17 @@ void JST_LOG_SET_DEBUG_LEVEL(int level);
 
 std::mutex& _JST_LOG_MUTEX();
 int& _JST_LOG_DEBUG_LEVEL();
+std::ostream& JST_LOG_SINK();
+void JST_LOG_SET_SINK(std::ostream*);
+void JST_LOG_RESTORE_STDOUT();
+void JST_LOG_COLOR(bool);
+jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
 
-#define _JST_LOG_SINK          std::cout
-#define _JST_LOG_ENDL          std::endl;
+#define _JST_LOG_SINK          (JST_LOG_SINK())
+#define _JST_LOG_ENDL          std::endl
 #define _JST_LOG_FORMAT        jst::fmt::format
 
-#if defined(JST_OS_IOS) or defined(JST_OS_BROWSER)
-#define _JST_LOG_TAINT(first, ...)   _JST_LOG_FORMAT(__VA_ARGS__)
-#else
-#define _JST_LOG_TAINT(...)          _JST_LOG_FORMAT(__VA_ARGS__)
-#endif
+#define _JST_LOG_TAINT(style, ...)   _JST_LOG_FORMAT(JST_LOG_STYLE(style), __VA_ARGS__)
 
 #define _JST_LOG_DEFAULT(...)  _JST_LOG_FORMAT(__VA_ARGS__)
 #define _JST_LOG_BOLD(...)     _JST_LOG_TAINT(jst::fmt::emphasis::bold, __VA_ARGS__)
