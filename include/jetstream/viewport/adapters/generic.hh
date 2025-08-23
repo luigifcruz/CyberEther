@@ -29,7 +29,8 @@ struct Config {
     /// @brief The video codec of the remote viewport.
     Viewport::VideoCodec codec = Viewport::VideoCodec::H264;
 
-    /// @brief Enable auto-join in the remote viewport (insercure).
+    /// @brief Enable auto-join in the remote viewport (insecure).
+    // TODO: [beta1] Implement auto-join functionality.
     bool autoJoin = false;
 
     /// @brief Whether hardware acceleration is enabled.

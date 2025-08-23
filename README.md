@@ -269,6 +269,7 @@ At this time, software video encoding will be used on most platforms. Work is be
 To initialize a remote instance of CyberEther, run the command below on the server. If you want lossless video, use the `--codec ffv1` option instead. The lossless video will use quite a lot of bandwidth, so make sure you have a good connection.
 
 ```bash
+// TODO: [beta1] Update documentation on remote system.
 $ ./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264
 ```
 
