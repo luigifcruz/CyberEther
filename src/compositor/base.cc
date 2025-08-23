@@ -682,32 +682,32 @@ Result Compositor::drawStatic() {
         interactionTrigger = 99;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_S, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_S, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Save document shortcut pressed.");
         interactionTrigger = 1;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_N, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_N, 0, flag)) {
         JST_TRACE("[COMPOSITOR] New document shortcut pressed.");
         interactionTrigger = 2;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_O, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_O, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Open document shortcut pressed.");
         interactionTrigger = 3;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_I, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_I, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Info document shortcut pressed.");
         interactionTrigger = 4;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_W, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_W, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Close document shortcut pressed.");
         interactionTrigger = 5;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_L, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_L, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Exit fullscreen shortcut pressed.");
         interactionTrigger = 9;
     }
@@ -1305,7 +1305,7 @@ Result Compositor::drawStatic() {
 
         ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT);
         ImGui::SameLine();
-        ImGui::PushFont(_boldFont);
+        ImGui::PushFont(_boldFont, 0.0f);
         ImGui::TextUnformatted("Welcome to CyberEther!");
         ImGui::PopFont();
         ImGui::SameLine();
@@ -1594,7 +1594,7 @@ Result Compositor::drawStatic() {
                     }
 
                     ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
-                    ImGui::PushFont(_h2Font);
+                    ImGui::PushFont(_h2Font, 0.0f);
                     ImGui::Text("%s", flowgraph.title.c_str());
                     ImGui::PopFont();
                     ImGui::SameLine();
@@ -2538,7 +2538,7 @@ Result Compositor::drawFlowgraph() {
                 block->shouldDrawPreview() ||
                 block->shouldDrawControl() ||
                 block->shouldDrawInfo()) {
-                ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None);
+                ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None, ImVec2(nodeWidth, 0.0f));
                 const F32 buttonSize = 25.0f * scalingFactor;
                 ImGui::TableSetupColumn("Switches", ImGuiTableColumnFlags_WidthFixed, nodeWidth - (buttonSize * 2.0f) -
                                                                                       (guiStyle.CellPadding.x * 4.0f));
@@ -2938,7 +2938,7 @@ Result Compositor::drawFlowgraph() {
         ImGui::BeginChild("Block List", ImVec2(0, 0), true);
 
         for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
-            ImGui::PushFont(_boldFont);
+            ImGui::PushFont(_boldFont, 0.0f);
             ImGui::TextUnformatted(module.title.c_str());
             ImGui::PopFont();
             ImGui::SameLine();

@@ -215,17 +215,17 @@ Result Implementation::createImgui() {
         .Queue = backend->getGraphicsQueue(),
         .PipelineCache = {},
         .DescriptorPool = backend->getDescriptorPool(),
+        .RenderPass = renderPass,
         .Subpass = {},
         .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .UseDynamicRendering = false,
-        .ColorAttachmentFormat = VK_FORMAT_UNDEFINED,
         .Allocator = {},
         .CheckVkResultFn = nullptr,
         .MinAllocationSize = 0,
     };
-    ImGui_ImplVulkan_Init(&init_info, renderPass);
+    ImGui_ImplVulkan_Init(&init_info);
 
     return Result::SUCCESS;
 }

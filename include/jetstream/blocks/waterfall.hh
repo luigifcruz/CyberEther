@@ -103,7 +103,7 @@ class Waterfall : public Block {
         const auto& ratio = size.ratio();
         const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-        ImGui::Image(waterfall->getTexture().raw(), ImVec2(width, width/ratio));
+        ImGui::Image(ImTextureRef(waterfall->getTexture().raw()), ImVec2(width, width/ratio));
     }
 
     constexpr bool shouldDrawPreview() const {
@@ -117,7 +117,7 @@ class Waterfall : public Block {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(waterfall->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(ImTextureRef(waterfall->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
 
         // TODO: Upgrade zoom and panning API.
 

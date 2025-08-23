@@ -110,7 +110,7 @@ class Lineplot : public Block {
         const auto& ratio = size.ratio();
         const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, width/ratio));
+        ImGui::Image(ImTextureRef(lineplot->getTexture().raw()), ImVec2(width, width/ratio));
     }
 
     constexpr bool shouldDrawPreview() const {
@@ -121,7 +121,7 @@ class Lineplot : public Block {
         lineplot->scale(ImGui::GetIO().DisplayFramebufferScale.x);
 
         const auto& viewSize = lineplot->viewSize(GetContentRegion());
-        ImGui::Image(lineplot->getTexture().raw(), ImVec2(viewSize.x, viewSize.y));
+        ImGui::Image(ImTextureRef(lineplot->getTexture().raw()), ImVec2(viewSize.x, viewSize.y));
 
         if (ImGui::IsItemHovered()) {
             const auto& mouseRelPos = GetRelativeMousePos(viewSize, lineplot->translation(), config.zoom);

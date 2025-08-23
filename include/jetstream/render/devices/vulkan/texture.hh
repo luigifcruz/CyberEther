@@ -20,8 +20,8 @@ class TextureImp<Device::Vulkan> : public Texture {
     Result fill();
     Result fillRow(const U64& y, const U64& height);
 
-    void* raw() {
-        return descriptorSet;
+    uint64_t raw() {
+        return (uint64_t)(void*)descriptorSet;
     }
 
  protected:
@@ -45,7 +45,7 @@ class TextureImp<Device::Vulkan> : public Texture {
         return extent;
     }
 
-    static VkFormat ConvertPixelFormat(const PixelFormat&, 
+    static VkFormat ConvertPixelFormat(const PixelFormat&,
                                        const PixelType&);
     static U64 GetPixelByteSize(const VkFormat&);
 

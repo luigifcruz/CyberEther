@@ -20,7 +20,7 @@ class TextureImp<Device::WebGPU> : public Texture {
     Result fill();
     Result fillRow(const U64& y, const U64& height);
 
-    void* raw() {
+    uint64_t raw() {
         return textureView.Get();
     }
 
@@ -49,7 +49,7 @@ class TextureImp<Device::WebGPU> : public Texture {
         return samplerBindingLayout;
     }
 
-    static wgpu::TextureFormat ConvertPixelFormat(const PixelFormat&, 
+    static wgpu::TextureFormat ConvertPixelFormat(const PixelFormat&,
                                                   const PixelType&);
     static U64 GetPixelByteSize(const wgpu::TextureFormat&);
 

@@ -109,7 +109,7 @@ class Fold : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 axis = config.axis;
-        if (ImGui::InputFloat("##axis", &axis, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##axis", &axis, 1.0f, 1.0f, "%.0f")) {
             if (axis >= 0 and axis < input.buffer.rank()) {
                 config.axis = static_cast<U64>(axis);
 
@@ -126,7 +126,7 @@ class Fold : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 offset = config.offset;
-        if (ImGui::InputFloat("##offset", &offset, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##offset", &offset, 1.0f, 1.0f, "%.0f")) {
             if (offset >= 0 and offset <= input.buffer.shape()[config.axis]) {
                 config.offset = static_cast<U64>(offset);
 
@@ -143,7 +143,7 @@ class Fold : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 size = config.size;
-        if (ImGui::InputFloat("##size", &size, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##size", &size, 1.0f, 1.0f, "%.0f")) {
             if (size >= 0 and size <= input.buffer.shape()[config.axis]) {
                 config.size = static_cast<U64>(size);
 

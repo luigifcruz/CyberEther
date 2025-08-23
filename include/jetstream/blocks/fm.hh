@@ -105,7 +105,7 @@ class FM : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / 1e6f;
-        if (ImGui::InputFloat("##sample-rate", &sampleRate, 0.1f, 0.2f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##sample-rate", &sampleRate, 0.1f, 0.2f, "%.3f MHz")) {
             config.sampleRate = sampleRate * 1e6;
 
             JST_DISPATCH_ASYNC([&](){

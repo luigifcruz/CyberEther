@@ -124,14 +124,14 @@ class Arithmetic : public Block {
             }
             ImGui::EndCombo();
         }
-        
+
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Axis");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 axis = config.axis;
-        if (ImGui::InputFloat("##axis", &axis, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##axis", &axis, 1.0f, 1.0f, "%.0f")) {
             if (axis >= 0 and axis < input.buffer.rank()) {
                 config.axis = static_cast<U64>(axis);
 

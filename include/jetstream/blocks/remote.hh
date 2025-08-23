@@ -104,7 +104,7 @@ class Remote : public Block {
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Framebuffer");
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextFormatted("{}x{} @ {:.0f} Hz", remote->getRemoteFramebufferSize().x, 
+        ImGui::TextFormatted("{}x{} @ {:.0f} Hz", remote->getRemoteFramebufferSize().x,
                                                   remote->getRemoteFramebufferSize().y,
                                                   remote->getRemoteFramerate());
 
@@ -118,9 +118,9 @@ class Remote : public Block {
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted("Status");
         ImGui::TableSetColumnIndex(1);
-        ImGui::PushStyleColor(ImGuiCol_Text, remote->isBrokerConnected() ? ImVec4(0.196f, 0.804f, 0.194f, 1.0f) : 
+        ImGui::PushStyleColor(ImGuiCol_Text, remote->isBrokerConnected() ? ImVec4(0.196f, 0.804f, 0.194f, 1.0f) :
                                                                            ImVec4(1.0f, 0.325f, 0.286f, 1.0f));
-        ImGui::TextFormatted("{} {}", remote->isBrokerConnected() ? "Connected" : "Disconnected", 
+        ImGui::TextFormatted("{} {}", remote->isBrokerConnected() ? "Connected" : "Disconnected",
                                       remote->isSocketStreaming() ? "Streaming" : "");
         ImGui::PopStyleColor();
     }
@@ -134,7 +134,7 @@ class Remote : public Block {
         const auto& ratio = size.ratio();
         const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-        ImGui::Image(remote->getTexture().raw(), ImVec2(width, width/ratio));
+        ImGui::Image(ImTextureRef(remote->getTexture().raw()), ImVec2(width, width/ratio));
     }
 
     constexpr bool shouldDrawPreview() const {
@@ -149,7 +149,7 @@ class Remote : public Block {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(remote->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(ImTextureRef(remote->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
         const bool isImageHovered = ImGui::IsItemHovered();
 
         // Register mouse position.
@@ -286,7 +286,7 @@ class Remote : public Block {
 
 }  // namespace Jetstream::Blocks
 
-JST_BLOCK_ENABLE(Remote, is_specialized<Jetstream::Remote<D>>::value && 
+JST_BLOCK_ENABLE(Remote, is_specialized<Jetstream::Remote<D>>::value &&
                          std::is_same<IT, void>::value &&
                          std::is_same<OT, void>::value)
 

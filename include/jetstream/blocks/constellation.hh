@@ -98,7 +98,7 @@ class Constellation : public Block {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(constellation->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(ImTextureRef(constellation->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
     }
 
     constexpr bool shouldDrawView() const {
@@ -110,7 +110,7 @@ class Constellation : public Block {
         const auto& ratio = size.ratio();
         const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-        ImGui::Image(constellation->getTexture().raw(), ImVec2(width, width/ratio));
+        ImGui::Image(ImTextureRef(constellation->getTexture().raw()), ImVec2(width, width/ratio));
     }
 
     constexpr bool shouldDrawPreview() const {

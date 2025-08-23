@@ -116,7 +116,7 @@ class Audio : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 inSampleRate = config.inSampleRate / 1e6f;
-        if (ImGui::InputFloat("##in-sample-rate", &inSampleRate, 0.1f, 0.2f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##in-sample-rate", &inSampleRate, 0.1f, 0.2f, "%.3f MHz")) {
             config.inSampleRate = inSampleRate * 1e6;
 
             JST_DISPATCH_ASYNC([&](){
@@ -149,7 +149,7 @@ class Audio : public Block {
             }
             ImGui::EndCombo();
         }
-        
+
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TableSetColumnIndex(1);

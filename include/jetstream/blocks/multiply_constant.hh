@@ -103,7 +103,7 @@ class MultiplyConstant : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 constant = config.constant;
-        if (ImGui::InputFloat("##constant-val", &constant, 1.0f, 2.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##constant-val", &constant, 1.0f, 2.0f, "%.3f")) {
             config.constant = constant;
 
             JST_DISPATCH_ASYNC([&](){

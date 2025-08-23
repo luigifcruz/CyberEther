@@ -20,8 +20,8 @@ class TextureImp<Device::Metal> : public Texture {
     Result fill();
     Result fillRow(const U64& y, const U64& height);
 
-    void* raw() {
-        return texture;
+    uint64_t raw() {
+        return (uint64_t)(void*)texture;
     }
 
  protected:
@@ -37,7 +37,7 @@ class TextureImp<Device::Metal> : public Texture {
         return samplerState;
     }
 
-    static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&, 
+    static MTL::PixelFormat ConvertPixelFormat(const PixelFormat&,
                                                const PixelType&);
     static U64 GetPixelByteSize(const MTL::PixelFormat&);
 

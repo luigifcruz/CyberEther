@@ -113,7 +113,7 @@ class Unpad : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 axis = config.axis;
-        if (ImGui::InputFloat("##pad-axis", &axis, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##pad-axis", &axis, 1.0f, 1.0f, "%.0f")) {
             if (axis >= 0 and axis < input.padded.rank()) {
                 config.axis = static_cast<U64>(axis);
 
@@ -130,7 +130,7 @@ class Unpad : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 size = config.size;
-        if (ImGui::InputFloat("##pad-size", &size, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##pad-size", &size, 1.0f, 1.0f, "%.0f")) {
             if (size >= 0) {
                 config.size = static_cast<U64>(size);
 
