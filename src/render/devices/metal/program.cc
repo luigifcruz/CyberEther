@@ -28,10 +28,10 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
 }
 
 Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer) {
-    JST_DEBUG("[Metal] Creating program.");
+    JST_DEBUG("[METAL] Creating program.");
 
     if (config.shaders.contains(Device::Metal) == 0) {
-        JST_ERROR("[Metal] Module doesn't have necessary shader.");       
+        JST_ERROR("[METAL] Module doesn't have necessary shader.");
         return Result::ERROR;
     }
 
@@ -58,12 +58,12 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
     MTL::Function* vertFunc = vertLibrary->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
     );
-    JST_ASSERT(vertFunc);
+    JST_ASSERT(vertFunc, "Failed to create vertex function.");
 
     MTL::Function* fragFunc = fragLibrary->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
     );
-    JST_ASSERT(fragFunc);
+    JST_ASSERT(fragFunc, "Failed to create fragment function.");
 
     U64 indexOffset = 0;
     for (U64 i = 0; i < buffers.size(); i++) {
@@ -79,7 +79,7 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
     }
 
     auto renderPipelineDescriptor = MTL::RenderPipelineDescriptor::alloc()->init();
-    JST_ASSERT(renderPipelineDescriptor);
+    JST_ASSERT(renderPipelineDescriptor, "Failed to create render pipeline descriptor.");
     renderPipelineDescriptor->setVertexDescriptor(vertDesc);
     renderPipelineDescriptor->setVertexFunction(vertFunc);
     renderPipelineDescriptor->setFragmentFunction(fragFunc);

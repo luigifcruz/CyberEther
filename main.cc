@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
 #ifdef JST_OS_BROWSER
     emscripten_runtime_keepalive_push();
 #else
-    while (instance.viewport().keepRunning()) {
+    while (instance.running()) {
         instance.viewport().waitEvents();
     }
 #endif

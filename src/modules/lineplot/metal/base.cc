@@ -14,6 +14,7 @@ static const char shadersSrc[] = R"""(
         ushort gridSize;
         float normalizationFactor;
         size_t average;
+        size_t decimation;
     };
 
     // TODO: This can be ported to use shared memory and other tricks.
@@ -29,7 +30,7 @@ static const char shadersSrc[] = R"""(
         // Compute average amplitude within a batch.
         float amplitude = 0.0f;
         for (uint i = 0; i < constants.batchSize; ++i) {
-            amplitude += input[id + (i * constants.gridSize)];
+            amplitude += input[(id * constants.decimation) + (i * constants.gridSize)];
         }
         amplitude = (amplitude * constants.normalizationFactor) - 1.0f;
 
@@ -51,6 +52,7 @@ struct Lineplot<D, T>::Impl {
         U16 gridSize;
         F32 normalizationFactor;
         U64 average;
+        U64 decimation;
     };
 
     MTL::ComputePipelineState* lineplotState;
@@ -91,6 +93,7 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
     constants->gridSize = numberOfElements;
     constants->normalizationFactor = normalizationFactor;
     constants->average = config.averaging;
+    constants->decimation = config.decimation;
 
     {
         auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();

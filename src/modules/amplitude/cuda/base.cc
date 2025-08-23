@@ -38,7 +38,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
                     float2 number = input[id];
                     float real = number.x;
                     float imag = number.y;
-                    float pwr = sqrtf((real * real) + (imag * imag));
+                    float pwr = fmaxf(sqrtf((real * real) + (imag * imag)), 1e-20f);
                     output[id] = 20.0f * log10f(pwr) + scalingCoeff;
                 }
             }
@@ -48,7 +48,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
             __global__ void amplitude(const float* input, float* output, float scalingCoeff, size_t size) {
                 size_t id = blockIdx.x * blockDim.x + threadIdx.x;
                 if (id < size) {
-                    float pwr = fabs(input[id]);
+                    float pwr = fmaxf(fabs(input[id]), 1e-20f);
                     output[id] = 20.0f * log10f(pwr) + scalingCoeff;
                 }
             }

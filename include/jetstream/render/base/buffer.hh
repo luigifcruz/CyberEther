@@ -7,10 +7,11 @@
 #include "jetstream/logger.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
+#include "jetstream/render/base/window_attachment.hh"
 
 namespace Jetstream::Render {
 
-class Buffer {
+class Buffer : public WindowAttachment {
  public:
     enum class Target : U16 {
         VERTEX          = 1 << 0,
@@ -35,12 +36,13 @@ class Buffer {
     explicit Buffer(const Config& config) : config(config) {}
     virtual ~Buffer() = default;
 
+    Type type() const override {
+        return Type::Buffer;
+    }
+
     const Config& getConfig() const {
         return config;
     }
-
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
 
     constexpr U64 size() const {
         return config.size;

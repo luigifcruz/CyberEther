@@ -8,13 +8,13 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("[Metal] Creating texture.");
+    JST_DEBUG("[METAL] Creating texture.");
 
-    pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
+    pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype);
 
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
             pixelFormat, config.size.x, config.size.y, false);
-    JST_ASSERT(textureDesc);
+    JST_ASSERT(textureDesc, "Failed to create texture descriptor.");
 
     if (config.multisampled) {
         textureDesc->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
@@ -23,12 +23,12 @@ Result Implementation::create() {
 
     // TODO: Check if memoryless is an option here.
 
-    textureDesc->setUsage(MTL::TextureUsagePixelFormatView | 
+    textureDesc->setUsage(MTL::TextureUsagePixelFormatView |
                           MTL::TextureUsageRenderTarget |
                           MTL::TextureUsageShaderRead);
     auto device = Backend::State<Device::Metal>()->getDevice();
-    texture = device->newTexture(textureDesc); 
-    JST_ASSERT(texture);
+    texture = device->newTexture(textureDesc);
+    JST_ASSERT(texture, "Failed to create texture.");
 
     auto samplerDesc = MTL::SamplerDescriptor::alloc()->init();
     samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
@@ -44,7 +44,7 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("[Metal] Destroying texture.");
+    JST_DEBUG("[METAL] Destroying texture.");
 
     samplerState->release();
     texture->release();

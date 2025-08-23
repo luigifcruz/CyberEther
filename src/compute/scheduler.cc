@@ -411,6 +411,10 @@ Result Scheduler::arrangeDependencyOrder() {
             edges.insert(moduleOutputCache.at(inputMeta->locale.hash()));
         }
         for (const auto& [_, outputMeta] : state.activeOutputs) {
+            // TODO: Temporary fix for Slice block crash.
+            if (!moduleInputCache.contains(outputMeta->locale.hash())) {
+                continue;
+            }
             const auto& matches = moduleInputCache.at(outputMeta->locale.hash());
             edges.insert(matches.begin(), matches.end());
         }
@@ -442,7 +446,7 @@ Result Scheduler::arrangeDependencyOrder() {
             JST_TRACE("Next empty. Resetting device.");
             continue;
         }
-        JST_ASSERT(!nextName.empty());
+        JST_ASSERT(!nextName.empty(), "Unexpected empty `nextName`.");
         queue.erase(queue.find(nextName));
         executionOrder.push_back(nextName);
 

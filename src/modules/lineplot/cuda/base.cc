@@ -33,13 +33,13 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Create CUDA kernel.
 
     ctx.cuda->createKernel("lineplot", R"""(
-        __global__ void lineplot(const float* input, float2* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements, size_t averaging) {
+        __global__ void lineplot(const float* input, float2* output, float normalizationFactor, size_t numberOfBatches, size_t numberOfElements, size_t averaging, size_t decimation) {
             size_t id = blockIdx.x * blockDim.x + threadIdx.x;
             if (id < numberOfElements) {
                 // Compute average amplitude within a batch.
                 float amplitude = 0.0f;
                 for (size_t i = 0; i < numberOfBatches; ++i) {
-                    amplitude += input[id + (i * numberOfElements)];
+                    amplitude += input[(id * decimation) + (i * numberOfElements)];
                 }
                 amplitude = (amplitude * normalizationFactor) - 1.0f;
 
@@ -80,6 +80,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
         &numberOfBatches,
         &numberOfElements,
         &config.averaging,
+        &config.decimation,
     };
 
     return Result::SUCCESS;

@@ -1201,9 +1201,9 @@ Result Compositor::drawStatic() {
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Dropped Frames:");
+            ImGui::Text("Frames:");
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextFormatted("{}", instance.window().stats().droppedFrames);
+            ImGui::TextFormatted("{} dropped, {} recreated", instance.window().stats().droppedFrames, instance.window().stats().recreatedFrames);
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);

@@ -14,56 +14,16 @@ Implementation::WindowImp(const Config& config,
          : Window(config), viewport(viewport) {
 }
 
-template<typename T>
-Result Implementation::bindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
-    // Cast generic resource.
-    auto _resource = std::dynamic_pointer_cast<T>(resource);
-
-    // Create the resource.
-    JST_CHECK(_resource->create());
-
-    // Add resource to container.
-    container.push_back(_resource);
-
-    return Result::SUCCESS;
-}
-
-template<typename T>
-Result Implementation::unbindResource(const auto& resource, std::vector<std::shared_ptr<T>>& container) {
-    // Cast generic resource.
-    auto _resource = std::dynamic_pointer_cast<T>(resource);
-
-    // Destroy the resource.
-    JST_CHECK(_resource->destroy());
-
-    // Remove resource from container.
-    container.erase(std::remove(container.begin(), container.end(), _resource), container.end());
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::bindBuffer(const std::shared_ptr<Buffer>& buffer) {
-    return bindResource<BufferImp<Device::WebGPU>>(buffer, buffers);
-}
-
-Result Implementation::unbindBuffer(const std::shared_ptr<Buffer>& buffer) {
-    return unbindResource<BufferImp<Device::WebGPU>>(buffer, buffers);
-}
-
-Result Implementation::bindTexture(const std::shared_ptr<Texture>& texture) {
-    return bindResource<TextureImp<Device::WebGPU>>(texture, textures);
-}
-
-Result Implementation::unbindTexture(const std::shared_ptr<Texture>& texture) {
-    return unbindResource<TextureImp<Device::WebGPU>>(texture, textures);
-}
-
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    return bindResource<SurfaceImp<Device::WebGPU>>(surface, surfaces);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    surfaces.push_back(_resource);
+    return Result::SUCCESS;
 }
 
 Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    return unbindResource<SurfaceImp<Device::WebGPU>>(surface, surfaces);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _resource), surfaces.end());
+    return Result::SUCCESS;
 }
 
 Result Implementation::underlyingCreate() {
@@ -71,12 +31,15 @@ Result Implementation::underlyingCreate() {
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
-    queue = device.GetQueue();    
+    queue = device.GetQueue();
 
     JST_CHECK(createImgui());
 
+    // Reseting internal variables.
+
     statsData.droppedFrames = 0;
-    
+    statsData.recreatedFrames = 0;
+
     return Result::SUCCESS;
 }
 
@@ -84,12 +47,6 @@ Result Implementation::underlyingDestroy() {
     JST_DEBUG("[WebGPU] Destroying window.");
 
     JST_CHECK(destroyImgui());
-
-    if (!buffers.empty() || !textures.empty() || !surfaces.empty()) {
-        JST_WARN("[WebGPU] Resources are still bounded to this window "
-                 "(buffers={}, textures={}, surfaces={}).", 
-                 buffers.size(), textures.size(), surfaces.size());
-    }
 
     return Result::SUCCESS;
 }
@@ -105,14 +62,14 @@ Result Implementation::createImgui() {
 
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    
+
     JST_CHECK(viewport->createImgui());
 
     this->scaleStyle(*viewport);
 
     auto& device = Backend::State<Device::WebGPU>()->getDevice();
     ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
-    
+
     return Result::SUCCESS;
 }
 
@@ -160,11 +117,17 @@ Result Implementation::underlyingBegin() {
     if (result == Result::SKIP) {
         statsData.droppedFrames += 1;
         return Result::SKIP;
-    } else if (result == Result::RECREATE) {
+    }
+
+    if (result == Result::RECREATE) {
+        statsData.recreatedFrames += 1;
         JST_CHECK(recreate());
         return Result::SKIP;
-    } else if (result != Result::SUCCESS) {
-        return result;
+    }
+
+    if (result != Result::SUCCESS) {
+        JST_FATAL("[VULKAN] Failed to acquire next viewport drawable.");
+        return Result::ERROR;
     }
 
     wgpu::TextureView framebufferTexture;

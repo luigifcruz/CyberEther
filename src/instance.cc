@@ -301,7 +301,7 @@ Result Instance::renameBlock(Locale input, const std::string& id) {
     return Result::SUCCESS;
 }
 
-Result Instance::blockUpdater(Locale locale, 
+Result Instance::blockUpdater(Locale locale,
                               const std::function<Result(std::shared_ptr<Flowgraph::Node>&)>& updater) {
     // List all dependencies.
 
@@ -345,7 +345,7 @@ Result Instance::blockUpdater(Locale locale,
 
     // Check if the module store has such a record fingerprint.
     if (!Store::BlockConstructorList().contains(record->fingerprint)) {
-        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: '{}'.", record->fingerprint);        
+        JST_ERROR("[INSTANCE] Module fingerprint doesn't exist: '{}'.", record->fingerprint);
         return Result::ERROR;
     } else {
         res = Store::BlockConstructorList().at(record->fingerprint)(*this,
@@ -434,7 +434,7 @@ Result Instance::blockUpdater(Locale locale,
                 if (inputLocale.blockId == record->id && recordBackup.id != record->id) {
                     inputLocale.blockId = recordBackup.id;
                 }
-                
+
                 // Update input of dependency block record.
                 const auto& outputRecord = _flowgraph.nodes().at(inputLocale.block());
                 inputRecord = outputRecord->outputMap.at(inputLocale.pinId);
@@ -614,6 +614,10 @@ Result Instance::unloadDefaultFonts() {
 Result Instance::start() {
     JST_DEBUG("[INSTANCE] Starting instance.");
 
+    if (_window) {
+        JST_CHECK(_window->start());
+    }
+
     computeRunning = true;
     presentRunning = true;
 
@@ -628,6 +632,7 @@ Result Instance::stop() {
 
     if (_window) {
         JST_CHECK(_window->synchronize());
+        JST_CHECK(_window->stop());
     }
 
     return Result::SUCCESS;
@@ -676,11 +681,21 @@ bool Instance::presenting() {
     return presentRunning;
 }
 
+bool Instance::running() {
+    return computing() && presenting() && _viewport->keepRunning();
+}
+
 Result Instance::begin() {
     // Create new render frame.
-    JST_CHECK(_window->begin());
+    const auto& res = _window->begin();
 
-    return Result::SUCCESS;
+    if (res != Result::SUCCESS &&
+        res != Result::SKIP) {
+        presentRunning = false;
+        return res;
+    }
+
+    return res;
 }
 
 Result Instance::present() {
@@ -698,7 +713,13 @@ Result Instance::end() {
     }
 
     // Finish the render frame.
-    JST_CHECK(_window->end());
+    const auto& res = _window->end();
+
+    if (res != Result::SUCCESS &&
+        res != Result::SKIP) {
+        presentRunning = false;
+        return res;
+    }
 
     // Process interactions after finishing frame.
 

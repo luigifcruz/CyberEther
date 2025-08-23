@@ -1,4 +1,4 @@
-FROM dockcross/windows-static-x64-posix
+FROM dockcross/windows-static-x64-posix:20240104-6eda627
 
 ARG DEBIAN_FRONTEND=noninteractive
 

@@ -46,7 +46,7 @@ Result Lineplot<D, T>::compute(const Context&) {
 
     for (U64 b = 0; b < numberOfBatches; b++) {
         for (U64 i = 0; i < numberOfElements; i++) {
-            pimpl->sums[i] += input.buffer[i + b * numberOfElements];
+            pimpl->sums[i] += input.buffer[(i * config.decimation) + b * numberOfElements];
         }
     }
 

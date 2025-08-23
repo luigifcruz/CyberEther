@@ -1,6 +1,6 @@
 #include <cassert>
 
-#include "jetstream/memory/prototype.hh" 
+#include "jetstream/memory/prototype.hh"
 
 namespace Jetstream {
 
@@ -43,10 +43,10 @@ void TensorPrototype::update_cache() {
         prototype.size *= dim;
     }
 
-    prototype.size_bytes = prototype.size * 
+    prototype.size_bytes = prototype.size *
                            prototype.element_size;
 
-    prototype.offset_bytes = prototype.offset * 
+    prototype.offset_bytes = prototype.offset *
                              prototype.element_size;
 }
 
@@ -68,6 +68,10 @@ U64 TensorPrototype::ndims() const noexcept {
 
 void TensorPrototype::set_locale(const Locale& locale) noexcept {
     prototype.locale = locale;
+}
+
+void TensorPrototype::set_hash(const U64& hash) noexcept {
+    prototype.hash = hash;
 }
 
 U64 TensorPrototype::shape_to_offset(const std::vector<U64>& shape) const {

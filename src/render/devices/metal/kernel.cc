@@ -14,10 +14,10 @@ Implementation::KernelImp(const Config& config) : Kernel(config) {
 }
 
 Result Implementation::create() {
-    JST_DEBUG("[Metal] Creating kernel.");
+    JST_DEBUG("[METAL] Creating kernel.");
 
     if (config.kernels.contains(Device::Metal) == 0) {
-        JST_ERROR("[Metal] Module doesn't have necessary kernel.");       
+        JST_ERROR("[METAL] Module doesn't have necessary kernel.");
         return Result::ERROR;
     }
 
@@ -41,7 +41,7 @@ Result Implementation::create() {
     MTL::Function* func = library->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
     );
-    JST_ASSERT(func);
+    JST_ASSERT(func, "Failed to create function.");
 
     pipelineState = device->newComputePipelineState(func, &err);
     if (!pipelineState) {
@@ -86,7 +86,7 @@ Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
 
     // TODO: Implement 2D and 3D grid sizes.
     if (y != 1 || z != 1) {
-        JST_ERROR("[Metal] Only 1D grids are supported.");
+        JST_ERROR("[METAL] Only 1D grids are supported.");
         return Result::ERROR;
     }
 

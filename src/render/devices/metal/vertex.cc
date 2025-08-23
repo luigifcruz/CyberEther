@@ -27,7 +27,7 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc,
                               const U64& numberOfDraws,
                               const U64&,
                               const U64& offset) {
-    JST_DEBUG("[Metal] Creating vertex.");
+    JST_DEBUG("[METAL] Creating vertex.");
 
     // Set attachment offset (buffer attachments goes first).
 
@@ -107,7 +107,7 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc,
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("[Metal] Destroying vertex.");
+    JST_DEBUG("[METAL] Destroying vertex.");
 
     return Result::SUCCESS;
 }

@@ -11,7 +11,7 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
 }
 
 Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset) {
-    JST_DEBUG("[Metal] Creating draw.");
+    JST_DEBUG("[METAL] Creating draw.");
 
     JST_CHECK(buffer->create(vertDesc, 
                              config.numberOfDraws, 
@@ -73,7 +73,7 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
 }
 
 Result Implementation::destroy() {
-    JST_DEBUG("[Metal] Destroying draw.");
+    JST_DEBUG("[METAL] Destroying draw.");
 
     if (buffer->isBuffered()) {
         JST_CHECK(indexedIndirectBuffer->destroy());

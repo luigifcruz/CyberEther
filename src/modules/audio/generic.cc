@@ -22,7 +22,7 @@ struct Audio<D, T>::Impl {
     ma_resampler_config resamplerConfig;
     ma_resampler resamplerCtx;
 
-    Memory::CircularBuffer<F32> buffer;  
+    Memory::CircularBuffer<F32> buffer;
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount);
     static std::vector<std::pair<ma_device_id, std::string>> GetAvailableDevice();
@@ -139,7 +139,7 @@ Result Audio<D, T>::create() {
 
     pimpl->resamplerConfig = ma_resampler_config_init(
         ma_format_f32,
-        1, 
+        1,
         static_cast<U32>(config.inSampleRate),
         static_cast<U32>(config.outSampleRate),
         ma_resample_algorithm_linear
@@ -152,9 +152,9 @@ Result Audio<D, T>::create() {
     }
 
     // Get available audio devices.
-    
+
     const auto& devices = Impl::GetAvailableDevice();
-    
+
     if (devices.empty()) {
         JST_ERROR("No audio devices found.");
         return Result::ERROR;
@@ -162,8 +162,8 @@ Result Audio<D, T>::create() {
 
     ma_device_id selectedDeviceId;
     bool foundConfigDevice = false;
-    bool useDefaultDevice = config.deviceName == "Default" || 
-                            config.deviceName == "default" || 
+    bool useDefaultDevice = config.deviceName == "Default" ||
+                            config.deviceName == "default" ||
                             config.deviceName == "";
 
     JST_DEBUG("Found audio device:");
@@ -262,7 +262,7 @@ Result Audio<D, T>::compute(const Context&) {
         return Result::ERROR;
     }
 
-    JST_ASSERT(frameCountOut == output.buffer.size());
+    JST_ASSERT(frameCountOut == output.buffer.size(), "Frame count mismatch.");
 
     pimpl->buffer.put(output.buffer.data(), frameCountOut);
 

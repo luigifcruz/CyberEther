@@ -1,0 +1,38 @@
+[build-system]
+requires = [
+  "numpy",
+  "meson >= 1.0.0",
+  "meson-python >= 0.14.0",
+]
+build-backend = "mesonpy"
+
+[project]
+name = "superluminal"
+version = "v1.0.0-beta6"
+description = "Multi-platform GPU-accelerated interface for compute-intensive pipelines. Radio, the final frontier."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  {name = "Luigi Cruz", email = "hello@luigi.ltd"},
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: POSIX",
+  "Operating System :: Unix",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Scientific/Engineering",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+[tool.meson-python.args]
+install = ["--skip-subprojects"]
+setup = ["--default-library=static"]

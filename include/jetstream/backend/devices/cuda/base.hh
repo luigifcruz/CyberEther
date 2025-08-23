@@ -16,7 +16,6 @@ class CUDA {
     bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;
-    std::string getDriverVersion() const;
     std::string getComputeCapability() const;
     PhysicalDeviceType getPhysicalDeviceType() const;
     U64 getPhysicalMemory() const;
@@ -29,7 +28,7 @@ class CUDA {
     constexpr const U64& getDeviceId() const {
         return config.deviceId;
     }
-    
+
  private:
     Config config;
     CUdevice device;
@@ -39,7 +38,6 @@ class CUDA {
     struct {
         std::string deviceName;
         std::string apiVersion;
-        std::string driverVersion;
         std::string computeCapability;
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;

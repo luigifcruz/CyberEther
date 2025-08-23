@@ -41,17 +41,18 @@
 #endif  // JST_CHECK_THROW
 
 #ifndef JST_ASSERT
-#define JST_ASSERT(...) { \
-    if (!(__VA_ARGS__)) { \
+#define JST_ASSERT(condition, message) { \
+    if (!(condition)) { \
+        printf("Assertion failed: %s (%s@%d)\n", message, __FILE__, __LINE__); \
         return Result::ERROR; \
     } \
 }
 #endif  // JST_ASSERT
 
 #ifndef JST_ASSERT_THROW
-#define JST_ASSERT_THROW(...) { \
-    if (!(__VA_ARGS__)) { \
-        printf("Function %s (%s@%d) throwed!\n", __func__, __FILE__, __LINE__); \
+#define JST_ASSERT_THROW(condition, message) { \
+    if (!(condition)) { \
+        printf("Assertion failed: %s (%s@%d)\n", message, __FILE__, __LINE__); \
         throw Result::ERROR; \
     } \
 }

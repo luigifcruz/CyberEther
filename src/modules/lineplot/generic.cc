@@ -52,7 +52,7 @@ Result Lineplot<D, T>::create() {
     // Calculate parameters.
 
     const U64 last_axis = input.buffer.rank() - 1;
-    numberOfElements = input.buffer.shape()[last_axis];
+    numberOfElements = input.buffer.shape()[last_axis] / config.decimation;
     numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
     normalizationFactor = 1.0f / (0.5f * numberOfBatches);
 
@@ -79,6 +79,7 @@ Result Lineplot<D, T>::create() {
 template<Device D, typename T>
 void Lineplot<D, T>::info() const {
     JST_DEBUG("  Averaging: {}", config.averaging);
+    JST_DEBUG("  Decimation: {}", config.decimation);
     JST_DEBUG("  Number of Vertical Lines: {}", config.numberOfVerticalLines);
     JST_DEBUG("  Number of Horizontal Lines: {}", config.numberOfHorizontalLines);
     JST_DEBUG("  Size: [{}, {}]", config.viewSize.x, config.viewSize.y);
