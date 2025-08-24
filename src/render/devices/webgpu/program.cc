@@ -28,21 +28,21 @@ Implementation::ProgramImp(const Config& config) : Program(config) {
     }
 }
 
-Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
+Result Implementation::create(const WGPUTextureFormat& pixelFormat) {
     JST_DEBUG("[WebGPU] Creating program.");
 
     // Load shaders from memory.
 
     if (config.shaders.contains(Device::WebGPU) == 0) {
-        JST_ERROR("[WebGPU] Module doesn't have necessary shader.");       
+        JST_ERROR("[WebGPU] Module doesn't have necessary shader.");
         return Result::ERROR;
     }
 
     auto device = Backend::State<Device::WebGPU>()->getDevice();
 
     const auto& shader = config.shaders[Device::WebGPU];
-    wgpu::ShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
-    wgpu::ShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
+    WGPUShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
+    WGPUShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
 
     // Enumerate the bindings of program targers.
 
@@ -50,10 +50,10 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, target] = buffers[i];
 
-        wgpu::BufferBindingLayout bindingLayout{};
+        WGPUBufferBindingLayout bindingLayout = WGPU_BUFFER_BINDING_LAYOUT_INIT;
         bindingLayout.type = BufferDescriptorType(buffer);
 
-        wgpu::BindGroupLayoutEntry binding{};
+        WGPUBindGroupLayoutEntry binding = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
         binding.binding = bindingOffset++;
         binding.visibility = TargetToShaderStage(target);
         binding.buffer = bindingLayout;
@@ -64,39 +64,39 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         auto& texture = textures[i];
 
         {
-            wgpu::BindGroupLayoutEntry binding{};
+            WGPUBindGroupLayoutEntry binding = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
             binding.binding = bindingOffset++;
-            binding.visibility = wgpu::ShaderStage::Fragment;
+            binding.visibility = WGPUShaderStage_Fragment;
             binding.texture = texture->getTextureBindingLayout();
             bindings.push_back(binding);
         }
 
         {
-            wgpu::BindGroupLayoutEntry binding{};
+            WGPUBindGroupLayoutEntry binding = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
             binding.binding = bindingOffset++;
-            binding.visibility = wgpu::ShaderStage::Fragment;
+            binding.visibility = WGPUShaderStage_Fragment;
             binding.sampler = texture->getSamplerBindingLayout();
             bindings.push_back(binding);
         }
     }
 
     if (!bindings.empty()) {
-        wgpu::BindGroupLayoutDescriptor bglDesc{};
-        bglDesc.entryCount = bindings.size();
+        WGPUBindGroupLayoutDescriptor bglDesc = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
+        bglDesc.entryCount = static_cast<uint32_t>(bindings.size());
         bglDesc.entries = bindings.data();
-        bindGroupLayout = device.CreateBindGroupLayout(&bglDesc);
+        bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &bglDesc);
 
-        wgpu::PipelineLayoutDescriptor layoutDesc{};
+        WGPUPipelineLayoutDescriptor layoutDesc = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
         layoutDesc.bindGroupLayoutCount = 1;
         layoutDesc.bindGroupLayouts = &bindGroupLayout;
-        pipelineLayout = device.CreatePipelineLayout(&layoutDesc);
+        pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &layoutDesc);
     }
 
     bindingOffset = 0;
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, target] = buffers[i];
 
-        wgpu::BindGroupEntry bindGroupEntry{};
+        WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
         bindGroupEntry.binding = bindingOffset++;
         bindGroupEntry.buffer = buffer->getHandle();
         bindGroupEntry.size = buffer->byteSize();
@@ -109,7 +109,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         auto& texture = textures[i];
 
         {
-            wgpu::BindGroupEntry bindGroupEntry;
+            WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
             bindGroupEntry.binding = bindingOffset++;
             bindGroupEntry.textureView = texture->getViewHandle();
             bindGroupEntry.offset = 0;
@@ -118,7 +118,7 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
         }
 
         {
-            wgpu::BindGroupEntry bindGroupEntry;
+            WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
             bindGroupEntry.binding = bindingOffset++;
             bindGroupEntry.sampler = texture->getSamplerHandle();
             bindGroupEntry.offset = 0;
@@ -128,37 +128,37 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     }
 
     if (!bindings.empty()) {
-        wgpu::BindGroupDescriptor bindGroupDescriptor{};
+        WGPUBindGroupDescriptor bindGroupDescriptor = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         bindGroupDescriptor.layout = bindGroupLayout;
-        bindGroupDescriptor.entryCount = bindGroupEntries.size();
+        bindGroupDescriptor.entryCount = static_cast<uint32_t>(bindGroupEntries.size());
         bindGroupDescriptor.entries = bindGroupEntries.data();
 
-        bindGroup = device.CreateBindGroup(&bindGroupDescriptor);
+        bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDescriptor);
     }
 
-    wgpu::BlendState blendState;
-    blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
-    blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
-    blendState.color.operation = wgpu::BlendOperation::Add;
-    blendState.alpha.srcFactor = wgpu::BlendFactor::One;
-    blendState.alpha.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
-    blendState.alpha.operation = wgpu::BlendOperation::Add;
+    WGPUBlendState blendState = WGPU_BLEND_STATE_INIT;
+    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
+    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blendState.color.operation = WGPUBlendOperation_Add;
+    blendState.alpha.srcFactor = WGPUBlendFactor_One;
+    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blendState.alpha.operation = WGPUBlendOperation_Add;
 
-    wgpu::ColorTargetState colorTarget{};
+    WGPUColorTargetState colorTarget = WGPU_COLOR_TARGET_STATE_INIT;
     colorTarget.format = pixelFormat;
-    colorTarget.writeMask = wgpu::ColorWriteMask::All;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
 
     if (config.enableAlphaBlending) {
         colorTarget.blend = &blendState;
     }
 
-    wgpu::FragmentState fragment{};
+    WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
     fragment.module = fragShaderModule;
-    fragment.entryPoint = "main";
+    fragment.entryPoint = {"main", WGPU_STRLEN};
     fragment.targetCount = 1;
     fragment.targets = &colorTarget;
 
-    wgpu::RenderPipelineDescriptor renderPipelineDescriptor;
+    WGPURenderPipelineDescriptor renderPipelineDescriptor = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
     renderPipelineDescriptor.fragment = &fragment;
     renderPipelineDescriptor.layout = pipelineLayout;
     renderPipelineDescriptor.depthStencil = nullptr;
@@ -172,9 +172,9 @@ Result Implementation::create(const wgpu::TextureFormat& pixelFormat) {
     }
 
     renderPipelineDescriptor.vertex.module = vertShaderModule;
-    renderPipelineDescriptor.vertex.entryPoint = "main";
+    renderPipelineDescriptor.vertex.entryPoint = {"main", WGPU_STRLEN};
 
-    pipeline = device.CreateRenderPipeline(&renderPipelineDescriptor);
+    pipeline = wgpuDeviceCreateRenderPipeline(device, &renderPipelineDescriptor);
 
     return Result::SUCCESS;
 }
@@ -190,11 +190,11 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
-    renderPassEncoder.SetPipeline(pipeline);
+Result Implementation::draw(WGPURenderPassEncoder& renderPassEncoder) {
+    wgpuRenderPassEncoderSetPipeline(renderPassEncoder, pipeline);
 
     if (!bindings.empty()) {
-        renderPassEncoder.SetBindGroup(0, bindGroup, 0, 0);
+        wgpuRenderPassEncoderSetBindGroup(renderPassEncoder, 0, bindGroup, 0, nullptr);
     }
 
     for (auto& draw : draws) {
@@ -204,29 +204,29 @@ Result Implementation::draw(wgpu::RenderPassEncoder& renderPassEncoder) {
     return Result::SUCCESS;
 }
 
-wgpu::ShaderStage Implementation::TargetToShaderStage(const Program::Target& target) {
-    auto flags = wgpu::ShaderStage::None;
+WGPUShaderStage Implementation::TargetToShaderStage(const Program::Target& target) {
+    WGPUShaderStage flags = WGPUShaderStage_None;
 
     if ((target & Program::Target::VERTEX) == Program::Target::VERTEX) {
-        flags |= wgpu::ShaderStage::Vertex;
+        flags |= WGPUShaderStage_Vertex;
     }
 
     if ((target & Program::Target::FRAGMENT) == Program::Target::FRAGMENT) {
-        flags |= wgpu::ShaderStage::Fragment;
+        flags |= WGPUShaderStage_Fragment;
     }
-        
+
     return flags;
 }
 
-wgpu::BufferBindingType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
+WGPUBufferBindingType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer) {
     const auto& bufferType = buffer->getConfig().target;
 
     if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
-        return wgpu::BufferBindingType::Uniform;
+        return WGPUBufferBindingType_Uniform;
     }
 
     if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
-        return wgpu::BufferBindingType::ReadOnlyStorage;
+        return WGPUBufferBindingType_ReadOnlyStorage;
     }
 
     JST_ERROR("[WebGPU] Invalid buffer usage.");

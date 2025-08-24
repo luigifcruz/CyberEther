@@ -21,12 +21,12 @@ class BufferImp<Device::WebGPU> : public Buffer {
     Result update(const U64& offset, const U64& size);
 
  protected:
-    constexpr wgpu::Buffer& getHandle() {
+    constexpr WGPUBuffer getHandle() const {
         return buffer;
     }
 
  private:
-    wgpu::Buffer buffer;
+    WGPUBuffer buffer;
 
     friend class SurfaceImp<Device::WebGPU>;
     friend class ProgramImp<Device::WebGPU>;

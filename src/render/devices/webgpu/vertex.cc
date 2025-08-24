@@ -23,8 +23,8 @@ Implementation::VertexImp(const Config& config) : Vertex(config) {
     }
 }
 
-Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& attributeDescription,
-                              std::vector<wgpu::VertexBufferLayout>& vertexLayouts,
+Result Implementation::create(std::vector<std::vector<WGPUVertexAttribute>>& attributeDescription,
+                              std::vector<WGPUVertexBufferLayout>& vertexLayouts,
                               const U64& numberOfDraws,
                               const U64&) {
     JST_DEBUG("[WebGPU] Creating vertex.");
@@ -36,20 +36,20 @@ Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& a
         auto& attributes = attributeDescription.back();
 
         for (U32 i = 0; i < stride; i += 4) {
-            wgpu::VertexAttribute attribute = {};
+            WGPUVertexAttribute attribute = WGPU_VERTEX_ATTRIBUTE_INIT;
 
             switch ((stride - i) % 4) {
                 case 1:
-                    attribute.format = wgpu::VertexFormat::Float32;
+                    attribute.format = WGPUVertexFormat_Float32;
                     break;
                 case 2:
-                    attribute.format = wgpu::VertexFormat::Float32x2;
+                    attribute.format = WGPUVertexFormat_Float32x2;
                     break;
                 case 3:
-                    attribute.format = wgpu::VertexFormat::Float32x3;
+                    attribute.format = WGPUVertexFormat_Float32x3;
                     break;
                 case 0:
-                    attribute.format = wgpu::VertexFormat::Float32x4;
+                    attribute.format = WGPUVertexFormat_Float32x4;
                     break;
             }
 
@@ -58,11 +58,11 @@ Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& a
             attributes.push_back(attribute);
         }
 
-        wgpu::VertexBufferLayout layout = {};
+        WGPUVertexBufferLayout layout = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
         layout.arrayStride = stride * sizeof(F32);
-        layout.attributeCount = attributes.size();
+        layout.attributeCount = static_cast<uint32_t>(attributes.size());
         layout.attributes = attributes.data();
-        layout.stepMode = wgpu::VertexStepMode::Vertex;
+        layout.stepMode = WGPUVertexStepMode_Vertex;
         vertexLayouts.push_back(layout);
     }
 
@@ -71,20 +71,20 @@ Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& a
         auto& attributes = attributeDescription.back();
 
         for (U32 i = 0; i < stride; i += 4) {
-            wgpu::VertexAttribute attribute = {};
+            WGPUVertexAttribute attribute = WGPU_VERTEX_ATTRIBUTE_INIT;
 
             switch ((stride - i) % 4) {
                 case 1:
-                    attribute.format = wgpu::VertexFormat::Float32;
+                    attribute.format = WGPUVertexFormat_Float32;
                     break;
                 case 2:
-                    attribute.format = wgpu::VertexFormat::Float32x2;
+                    attribute.format = WGPUVertexFormat_Float32x2;
                     break;
                 case 3:
-                    attribute.format = wgpu::VertexFormat::Float32x3;
+                    attribute.format = WGPUVertexFormat_Float32x3;
                     break;
                 case 0:
-                    attribute.format = wgpu::VertexFormat::Float32x4;
+                    attribute.format = WGPUVertexFormat_Float32x4;
                     break;
             }
 
@@ -93,11 +93,11 @@ Result Implementation::create(std::vector<std::vector<wgpu::VertexAttribute>>& a
             attributes.push_back(attribute);
         }
 
-        wgpu::VertexBufferLayout layout = {};
+        WGPUVertexBufferLayout layout = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
         layout.arrayStride = stride * sizeof(F32);
-        layout.attributeCount = attributes.size();
+        layout.attributeCount = static_cast<uint32_t>(attributes.size());
         layout.attributes = attributes.data();
-        layout.stepMode = wgpu::VertexStepMode::Instance;
+        layout.stepMode = WGPUVertexStepMode_Instance;
         vertexLayouts.push_back(layout);
     }
 
@@ -117,19 +117,31 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
+Result Implementation::encode(WGPURenderPassEncoder& renderPassEncoder) {
     U32 bindingCount = 0;
 
     for (const auto& [vertex, _] : vertices) {
-        renderPassEncoder.SetVertexBuffer(bindingCount++, vertex->getHandle(), 0, vertex->byteSize());
+        wgpuRenderPassEncoderSetVertexBuffer(renderPassEncoder,
+                                             bindingCount++,
+                                             vertex->getHandle(),
+                                             0,
+                                             vertex->byteSize());
     }
 
     for (const auto& [instance, _] : instances) {
-        renderPassEncoder.SetVertexBuffer(bindingCount++, instance->getHandle(), 0, instance->byteSize());
+        wgpuRenderPassEncoderSetVertexBuffer(renderPassEncoder,
+                                             bindingCount++,
+                                             instance->getHandle(),
+                                             0,
+                                             instance->byteSize());
     }
 
     if (indices) {
-        renderPassEncoder.SetIndexBuffer(indices->getHandle(), wgpu::IndexFormat::Uint32, 0, indices->byteSize());
+        wgpuRenderPassEncoderSetIndexBuffer(renderPassEncoder,
+                                            indices->getHandle(),
+                                            WGPUIndexFormat_Uint32,
+                                            0,
+                                            indices->byteSize());
     }
 
     return Result::SUCCESS;

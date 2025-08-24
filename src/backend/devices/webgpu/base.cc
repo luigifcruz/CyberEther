@@ -4,30 +4,10 @@
 
 namespace Jetstream::Backend {
 
-static void WebGPUErrorCallback(WGPUErrorType error_type, const char* message, void*) {
-    const char* error_type_lbl = "";
-    switch (error_type) {
-        case WGPUErrorType_Validation:  return "Validation error";
-        case WGPUErrorType_OutOfMemory: return "Out of memory";
-        case WGPUErrorType_Internal:    return "Internal error";
-        case WGPUErrorType_Unknown:     return "Unknown error";
-        default:                        return "Error";
-    }
-    JST_FATAL("[WebGPU] {} error: {}", error_type_lbl, message);
-    JST_CHECK_THROW(Result::FATAL);
-}
-
-EM_JS(WGPUAdapter, wgpuInstanceRequestAdapterSync, (), {
-    return Module["preinitializedWebGPUAdapter"];
-});
-
 WebGPU::WebGPU(const Config& _config) : config(_config), cache({}) {
     // Create application.
 
-    adapter = wgpu::Adapter::Acquire(wgpuInstanceRequestAdapterSync());
-    device = wgpu::Device::Acquire(emscripten_webgpu_get_device());
-
-    device.SetUncapturedErrorCallback(&WebGPUErrorCallback, nullptr);
+    device = emscripten_webgpu_get_device();
 
     // Print device information.
 

@@ -8,9 +8,7 @@
 #include <memory>
 
 #include <emscripten.h>
-#include <emscripten/html5.h>
-#include <webgpu/webgpu_cpp.h>
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 
 #include "jetstream/backend/config.hh"
 
@@ -29,20 +27,20 @@ class WebGPU {
     bool getLowPowerStatus() const;
     U64 getThermalState() const;
 
-    constexpr wgpu::Device& getDevice() {
+    WGPUDevice getDevice() const {
         return device;
     }
 
-    constexpr wgpu::Adapter& getAdapter() {
+    WGPUAdapter getAdapter() const {
         return adapter;
     }
 
  private:
     Config config;
 
-    wgpu::Adapter adapter;
-    wgpu::Device device;
-    wgpu::Surface surface;
+    WGPUAdapter adapter;
+    WGPUDevice device;
+    WGPUSurface surface;
 
     struct {
         std::string deviceName;

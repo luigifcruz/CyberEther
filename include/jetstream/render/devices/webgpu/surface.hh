@@ -17,7 +17,7 @@ class SurfaceImp<Device::WebGPU> : public Surface {
     const Extent2D<U64>& size(const Extent2D<U64>& size);
 
  protected:
-    Result draw(wgpu::CommandEncoder& commandEncoder);
+    Result draw(WGPUCommandEncoder& commandEncoder);
 
  private:
     std::shared_ptr<TextureImp<Device::WebGPU>> framebuffer;

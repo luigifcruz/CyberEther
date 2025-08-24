@@ -1,12 +1,15 @@
 #ifndef JETSTREAM_BASE_HH
 #define JETSTREAM_BASE_HH
 
+#include "macros.hh"
+
 //
 // Platform Specific
-// 
+//
 
 #ifdef JST_OS_BROWSER
 #include "emscripten.h"
+#include "emscripten/eventloop.h"
 #endif
 
 //
