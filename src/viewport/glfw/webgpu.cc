@@ -5,11 +5,11 @@
 #include "tools/imgui_impl_glfw.h"
 
 EM_JS(int, getWindowWidth, (), {
-    return window.innerWidth;
+    return Module['canvas'].clientWidth;
 });
 
 EM_JS(int, getWindowHeight, (), {
-    return window.innerHeight;
+    return Module['canvas'].clientHeight;
 });
 
 EM_JS(int, getPixelRatio, (), {

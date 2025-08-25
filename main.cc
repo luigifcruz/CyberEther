@@ -4,6 +4,18 @@
 
 using namespace Jetstream;
 
+#ifdef JST_OS_BROWSER
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void cyberether_shutdown() {
+    JST_INFO("Shutting down...");
+    emscripten_cancel_main_loop();
+    emscripten_runtime_keepalive_pop();
+    emscripten_force_exit(0);
+}
+}
+#endif
+
 int main(int argc, char* argv[]) {
     // Parse command line arguments.
 
