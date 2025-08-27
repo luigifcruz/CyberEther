@@ -126,11 +126,6 @@
 #define JETSTREAM_BLOCK_CAST_AVAILABLE
 #endif
 
-#if defined(JETSTREAM_MODULE_SPEECH_RECOGNITION_AVAILABLE)
-#include "jetstream/blocks/speech_recognition.hh"
-#define JETSTREAM_BLOCK_SPEECH_RECOGNITION_AVAILABLE
-#endif
-
 #include "jetstream/blocks/note.hh"
 #define JETSTREAM_BLOCK_NOTE_AVAILABLE
 
