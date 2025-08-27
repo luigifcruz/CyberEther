@@ -70,8 +70,37 @@ class OverlapAdd : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Sums the overlap data with the buffer data along the specified axis.";
+        return "Implements the overlap-add method, combining overlapping segments of a signal by adding their common parts.\n\n"
+               "The Overlap-Add block performs a key operation in block-based signal processing, particularly for efficient "
+               "FFT-based filtering. It combines consecutive data blocks by adding their overlapping regions, which is essential "
+               "for reconstructing continuous output signals when processing is done in segments.\n\n"
+               "Inputs:\n"
+               "- buffer: Main input tensor containing the current data segment.\n"
+               "- overlap: Tensor containing the overlap data from previous segments.\n"
+               "  - Both tensors should have the same data type and compatible shapes.\n\n"
+               "Configuration Parameters:\n"
+               "- axis: The dimension along which to perform the overlap-add operation (default is the last dimension).\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor containing the combined data.\n"
+               "- overlap: Output tensor containing the portion of the current input that will overlap with the next segment.\n\n"
+               "Mathematical Operation:\n"
+               "- Splits the input buffer into two parts: the part that overlaps with previous data and the part that will overlap with future data\n"
+               "- Adds the overlapping part to the stored overlap from the previous iteration\n"
+               "- Outputs the combined result and stores the future overlap portion\n\n"
+               "Key Applications:\n"
+               "- Efficient FFT-based filtering using the overlap-add method\n"
+               "- Continuous processing of streaming data in block-based algorithms\n"
+               "- Convolution operations with long impulse responses\n"
+               "- Real-time audio processing\n"
+               "- Efficient frequency-domain operations on large datasets\n\n"
+               "Technical Details:\n"
+               "- The overlap size is determined by the size of the overlap input tensor\n"
+               "- State is maintained between processing iterations to ensure continuity\n"
+               "- Critical for avoiding edge artifacts in block-wise signal processing\n\n"
+               "Usage Notes:\n"
+               "- Typically used in combination with Pad, FFT, and Unpad blocks for efficient filtering\n"
+               "- The overlap size should match the filter impulse response length minus one\n"
+               "- Proper synchronization of processing blocks is essential for correct operation";
     }
 
     // Constructor

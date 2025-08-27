@@ -64,8 +64,32 @@ class Constellation : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Visualizes modulated data in a 2D scatter plot. Commonly used in digital communication to represent symbol modulation.";
+        return "Visualizes modulated data in a 2D scatter plot, commonly used in digital communications to represent symbol modulation.\n\n"
+               "The Constellation block creates a scatter plot visualization that plots the in-phase (I) component on the X-axis "
+               "and the quadrature (Q) component on the Y-axis of complex data samples. This representation is crucial for "
+               "analyzing digital modulation schemes such as QPSK, QAM, PSK, and other digital modulations.\n\n"
+               "Inputs:\n"
+               "- buffer: Complex-valued tensor (CF32 type) containing I/Q data samples.\n"
+               "  - Each complex value becomes a point on the constellation diagram.\n"
+               "  - For digital signals, these points tend to cluster around the expected symbol positions.\n\n"
+               "Configuration Parameters:\n"
+               "- viewSize: Size of the visualization in pixels (width, height)\n\n"
+               "Visual Representation:\n"
+               "- X-axis: In-phase (I) component of the complex signal\n"
+               "- Y-axis: Quadrature (Q) component of the complex signal\n"
+               "- Points: Individual signal samples visualized in I/Q space\n"
+               "- Grid: Reference lines for zero crossings and unit circles\n\n"
+               "Key Applications:\n"
+               "- Analyzing digital modulation quality\n"
+               "- Identifying modulation types\n"
+               "- Diagnosing signal impairments (phase noise, amplitude imbalance, etc.)\n"
+               "- Evaluating signal-to-noise ratio\n"
+               "- Troubleshooting digital communication systems\n\n"
+               "Interpretation:\n"
+               "- Clear, distinct clusters indicate good signal quality\n"
+               "- Smeared or scattered points suggest channel impairments or noise\n"
+               "- Rotation indicates frequency offset or phase drift\n"
+               "- Elliptical shape instead of circular suggests I/Q imbalance";
     }
 
     // Constructor

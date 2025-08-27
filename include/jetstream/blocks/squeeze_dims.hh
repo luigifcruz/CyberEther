@@ -69,8 +69,39 @@ class SqueezeDims : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Squeezes the dimensions of a tensor. Similar to numpy.squeeze().";
+        return "Removes dimensions of size 1 from a tensor's shape, similar to NumPy's squeeze() function.\n\n"
+               "The Squeeze Dims block simplifies tensor shapes by eliminating singleton dimensions (dimensions with size 1), "
+               "which often result from operations that preserve dimensionality but reduce elements along certain axes. "
+               "This operation is purely a shape transformation and doesn't change the actual data content or total element count.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor with potential singleton dimensions to remove.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- axes: Optional list of specific axes to squeeze (default: all axes with size 1).\n"
+               "  - If specified, only the listed dimensions with size 1 will be removed.\n"
+               "  - If omitted, all dimensions with size 1 will be removed.\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor with singleton dimensions removed.\n"
+               "  - Same data type and total element count as the input.\n"
+               "  - Shape has fewer dimensions if any singleton dimensions were removed.\n\n"
+               "Operation Behavior:\n"
+               "- Identifies all dimensions with size 1 (or only those specified in axes)\n"
+               "- Removes these dimensions from the shape metadata\n"
+               "- Preserves all actual data values and their order\n"
+               "- If no dimensions can be squeezed, returns a tensor with the same shape\n\n"
+               "Key Applications:\n"
+               "- Simplifying tensor shapes after operations that create singleton dimensions\n"
+               "- Preparing data for blocks that expect specific dimension counts\n"
+               "- Cleaning up after expand_dims operations\n"
+               "- Converting between column/row vectors and 1D arrays\n"
+               "- Standardizing data structures in a processing pipeline\n\n"
+               "Complementary Operations:\n"
+               "- Expand Dims: Adds singleton dimensions (inverse operation to Squeeze Dims)\n"
+               "- Reshape: More general shape transformation that can also remove singleton dimensions\n\n"
+               "Usage Notes:\n"
+               "- This operation modifies only the shape metadata, not the underlying data\n"
+               "- The resulting tensor will be contiguous in memory\n"
+               "- For tensors with no singleton dimensions, this block has no effect";
     }
 
     // Constructor

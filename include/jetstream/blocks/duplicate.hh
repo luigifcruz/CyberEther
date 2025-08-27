@@ -69,10 +69,37 @@ class Duplicate : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Duplicates the input signal by copying it to the output buffer. "
-               "This block also converts non-contiguous input buffers to contiguous output buffers. "
-               "This block is also useful to transfer data between host and device with the `Host Acessible` option.";
+        return "Creates an exact copy of the input tensor, with optional memory management optimizations.\n\n"
+               "The Duplicate block creates a complete copy of the input tensor in the output tensor. While seemingly "
+               "simple, this block provides essential functionality for memory management, data transfer between devices, "
+               "and ensuring contiguous memory layouts for optimal processing.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be duplicated.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor containing an exact copy of the input.\n"
+               "  - Same data type, shape, and values as the input tensor.\n"
+               "  - Always in contiguous memory layout, even if the input was non-contiguous.\n\n"
+               "Key Functions:\n"
+               "- Basic duplication of data for parallel processing chains\n"
+               "- Converting non-contiguous tensors to contiguous memory layout\n"
+               "- Transferring data between different memory domains (CPU/GPU)\n"
+               "- Creating independent copies that can be modified without affecting the original\n"
+               "- Memory management optimization through the Host Accessible option\n\n"
+               "Configuration Options:\n"
+               "- Host Accessible: When enabled, ensures the output data is accessible from the host (CPU) memory.\n"
+               "  - Useful for transferring data between host and device (GPU) memory.\n"
+               "  - May involve additional memory transfers depending on the input location.\n\n"
+               "Usage Scenarios:\n"
+               "- Creating branches in a flowgraph where data needs to follow multiple paths\n"
+               "- Ensuring data is in the optimal memory format before intensive processing\n"
+               "- Moving data between different processing devices\n"
+               "- Creating data snapshots that won't be affected by downstream modifications\n"
+               "- Implementing efficient buffer management strategies\n\n"
+               "Performance Considerations:\n"
+               "- Involves a full memory copy, which can be expensive for large tensors\n"
+               "- Host/device transfers may introduce latency\n"
+               "- Creates additional memory usage proportional to the input size";
     }
 
     // Constructor

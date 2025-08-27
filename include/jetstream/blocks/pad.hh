@@ -70,8 +70,34 @@ class Pad : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Adds padding to the end of a tensor along a given axis.";
+        return "Adds zero-padding to the end of a tensor along a specified axis, increasing its size.\n\n"
+               "The Pad block extends a tensor by adding zeros to the end of a specified dimension. This operation "
+               "is essential for many signal processing algorithms, particularly those involving convolution, filtering, "
+               "and frequency-domain processing, where specific tensor sizes are often required.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be padded.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- axis: The dimension along which to add padding (default is the last dimension).\n"
+               "- padding: The number of zero elements to add along the specified axis.\n\n"
+               "Outputs:\n"
+               "- buffer: Padded output tensor.\n"
+               "  - Same data type as the input.\n"
+               "  - All dimensions are the same as input except the padded dimension, which is increased by the padding amount.\n\n"
+               "Mathematical Operation:\n"
+               "- Preserves all original values from the input tensor\n"
+               "- Adds zeros to the end of the specified dimension\n"
+               "- Result size along padded axis = original_size + padding\n\n"
+               "Key Applications:\n"
+               "- Preparing data for FFT operations (power-of-two sizing)\n"
+               "- Signal processing filter operations\n"
+               "- Zero-padding for convolution operations\n"
+               "- Preparing data for batch processing\n"
+               "- Creating guard bands for overlap-add method\n\n"
+               "Usage Notes:\n"
+               "- Often used in combination with the Unpad block to restore original dimensions\n"
+               "- Commonly paired with the Overlap-Add block for efficient filtering operations\n"
+               "- For multi-stage processing, padding should be carefully calculated to ensure correct results";
     }
 
     // Constructor

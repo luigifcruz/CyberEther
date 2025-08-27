@@ -72,8 +72,43 @@ class Slice : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Creates a slice of a tensor. Similar to Numpy's slicing.";
+        return "Extracts a subset of data from a tensor along specified dimensions, similar to NumPy's slicing functionality.\n\n"
+               "The Slice block creates a view or copy of a portion of the input tensor, allowing extraction of specific regions "
+               "of interest. This powerful indexing operation enables focused analysis on particular data segments without "
+               "processing the entire tensor, similar to array slicing in NumPy and other scientific computing libraries.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be sliced.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- start: Starting indices for each dimension (inclusive).\n"
+               "  - Specified as a comma-separated list of integers, one per dimension.\n"
+               "  - Negative indices count from the end (-1 is the last element).\n"
+               "- stop: Ending indices for each dimension (exclusive).\n"
+               "  - Specified as a comma-separated list of integers, one per dimension.\n"
+               "  - Negative indices count from the end (-1 is the last element).\n"
+               "- step: Step size for each dimension (optional).\n"
+               "  - Specified as a comma-separated list of integers, one per dimension.\n"
+               "  - Default is 1 for each dimension if not specified.\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor containing the sliced data.\n"
+               "  - Same data type as the input.\n"
+               "  - Shape depends on the slice specifications.\n\n"
+               "Slicing Behavior:\n"
+               "- For each dimension, extracts elements from start (inclusive) to stop (exclusive) with the given step\n"
+               "- Negative indices are supported and count from the end of the dimension\n"
+               "- When step > 1, only takes every step-th element\n"
+               "- Follows NumPy's semantics for slicing operations\n\n"
+               "Key Applications:\n"
+               "- Extracting regions of interest from signals or images\n"
+               "- Data windowing for time-series analysis\n"
+               "- Channel selection from multi-channel data\n"
+               "- Downsampling by using step > 1\n"
+               "- Implementing sliding window algorithms\n\n"
+               "Technical Notes:\n"
+               "- Creates a view of the data when possible, avoiding unnecessary copying\n"
+               "- Resulting tensor may have non-standard strides\n"
+               "- More memory-efficient than extracting data via multiple operations\n"
+               "- Bounds checking ensures valid indices are used";
     }
 
     // Constructor

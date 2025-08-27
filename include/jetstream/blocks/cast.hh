@@ -69,8 +69,37 @@ class Cast : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Casts from one numeric type to another.";
+        return "Converts data from one numeric type to another, enabling interoperability between different data formats.\n\n"
+               "The Cast block performs type conversion of tensor data, allowing signals to be transformed between "
+               "different numeric representations. This operation is essential for interfacing between blocks with different "
+               "type requirements, handling data from external sources, or optimizing memory usage and computational efficiency.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be converted to a new data type.\n"
+               "  - Can be any supported data type (F32, CF32, I32, I16, etc.).\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor with the same data but converted to the target type.\n"
+               "  - Data shape remains unchanged, only the representation changes.\n"
+               "  - Value precision may change based on the conversion (e.g., float to int).\n\n"
+               "Supported Conversions:\n"
+               "- Real to Real: F32 → I16, I16 → F32, etc.\n"
+               "- Complex to Real: CF32 → F32 (takes real part only)\n"
+               "- Real to Complex: F32 → CF32 (imaginary part set to zero)\n"
+               "- Various bit-depth conversions: I16 → I8, etc.\n\n"
+               "Key Applications:\n"
+               "- Interface with hardware that requires specific formats (e.g., audio devices, SDRs)\n"
+               "- Reduce memory usage by converting to smaller data types\n"
+               "- Prepare data for specialized processing blocks\n"
+               "- Convert incoming data from external sources to internal formats\n"
+               "- Extract real components from complex signals\n\n"
+               "Technical Details:\n"
+               "- Conversion is done element-wise across the entire tensor\n"
+               "- Type conversions follow C++ casting rules with appropriate scaling\n"
+               "- When converting to smaller bit-depth types, values outside the representable range are clamped\n"
+               "- Complex to real conversion extracts only the real component\n\n"
+               "Performance Considerations:\n"
+               "- Type conversion adds some computational overhead\n"
+               "- Converting to smaller types can improve performance in downstream blocks\n"
+               "- Implemented with hardware acceleration where available";
     }
 
     // Constructor

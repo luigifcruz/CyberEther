@@ -71,8 +71,38 @@ class Fold : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Folds the input signal along the specified axis.";
+        return "Reshapes a tensor by folding one dimension into multiple dimensions, transforming a flat array into a multi-dimensional structure.\n\n"
+               "The Fold block performs a dimensional restructuring operation that transforms a single dimension of a tensor "
+               "into multiple dimensions. This operation is particularly useful for converting one-dimensional signals into "
+               "multi-dimensional forms for processing with algorithms that expect structured data, such as image or matrix operations.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to be folded.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- axis: The dimension to fold (split into multiple dimensions).\n"
+               "- shape: The shape to fold the selected dimension into (must multiply to the original dimension size).\n\n"
+               "Outputs:\n"
+               "- buffer: Folded output tensor with higher dimensionality.\n"
+               "  - Same data type as the input but with transformed dimensions.\n"
+               "  - Total number of elements remains the same, but organized differently.\n\n"
+               "Mathematical Operation:\n"
+               "- Takes a single dimension and restructures it into multiple dimensions\n"
+               "- The product of the new dimensions must equal the original dimension size\n"
+               "- Data ordering is preserved, just viewed with a different dimensional structure\n\n"
+               "Key Applications:\n"
+               "- Converting time-series data to 2D matrices for image-based processing\n"
+               "- Restructuring data for efficient batch processing\n"
+               "- Preparing data for multi-dimensional FFT operations\n"
+               "- Signal segmentation for frame-based processing\n"
+               "- Implementation of stride-based operations\n\n"
+               "Technical Details:\n"
+               "- Doesn't involve copying data, just changes the view of the data\n"
+               "- The resulting tensor may have non-standard strides\n"
+               "- The original dimension is replaced with the new dimensions in the same position\n\n"
+               "Usage Notes:\n"
+               "- Often paired with the Unfold block to restore the original structure\n"
+               "- The specified shape must multiply to exactly match the original dimension size\n"
+               "- Useful for implementing frame-based operations on streaming signals";
     }
 
     // Constructor

@@ -30,8 +30,9 @@ class FFT : public Module, public Compute {
 
     struct Config {
         bool forward = true;
+        I64 axis = -1; // -1 means last axis
 
-        JST_SERDES(forward);
+        JST_SERDES(forward, axis);
     };
 
     constexpr const Config& getConfig() const {

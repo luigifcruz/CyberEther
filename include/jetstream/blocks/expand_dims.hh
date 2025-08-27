@@ -69,8 +69,40 @@ class ExpandDims : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Expands the dimensions of a tensor. Similar to numpy.expand_dims().";
+        return "Inserts new singleton dimensions (dimensions of size 1) into a tensor's shape, similar to NumPy's expand_dims() function.\n\n"
+               "The Expand Dims block increases the dimensionality of a tensor by adding new axes with size 1 at specified positions. "
+               "This operation is useful when working with blocks that expect inputs with specific numbers of dimensions, or when "
+               "preparing data for operations like broadcasting or batch processing.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor to expand with new dimensions.\n"
+               "  - Can be any supported data type and shape.\n\n"
+               "Configuration Parameters:\n"
+               "- axes: The positions at which to insert new singleton dimensions.\n"
+               "  - Specified as a comma-separated list of integers.\n"
+               "  - Positive values insert before the specified position (0 inserts at the beginning).\n"
+               "  - Negative values count from the end (-1 inserts before the last dimension).\n\n"
+               "Outputs:\n"
+               "- buffer: Output tensor with added singleton dimensions.\n"
+               "  - Same data type and total element count as the input.\n"
+               "  - Shape has more dimensions than the input, with size 1 at the specified positions.\n\n"
+               "Operation Behavior:\n"
+               "- Inserts new dimensions with size 1 at the specified positions\n"
+               "- Preserves all actual data values and their order\n"
+               "- The rank of the output tensor equals (input rank + number of axes specified)\n"
+               "- Does not create a copy of the data, only modifies the shape metadata\n\n"
+               "Key Applications:\n"
+               "- Preparing tensors for broadcasting operations\n"
+               "- Adding batch dimensions for batch processing\n"
+               "- Creating channel dimensions for multi-channel processing\n"
+               "- Converting vectors to row or column matrices\n"
+               "- Adapting tensor shapes for blocks with specific dimension requirements\n\n"
+               "Complementary Operations:\n"
+               "- Squeeze Dims: Removes singleton dimensions (inverse operation to Expand Dims)\n"
+               "- Reshape: More general shape transformation that can also add dimensions\n\n"
+               "Usage Notes:\n"
+               "- This operation only modifies the shape metadata, not the underlying data\n"
+               "- Multiple dimensions can be added in a single operation\n"
+               "- The axes parameter can contain multiple values to add dimensions at multiple positions";
     }
 
     // Constructor

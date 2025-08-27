@@ -34,7 +34,9 @@ Result FFT<D, IT, OT>::createCompute(const Context&) {
         pimpl->o_stride.push_back(static_cast<U32>(input.buffer.stride()[i]) * sizeof(OT));
     }
 
-    pimpl->axes.push_back(output.buffer.rank() - 1);
+    // Use the specified axis or default to the last axis
+    U64 fft_axis = (config.axis < 0) ? (output.buffer.rank() - 1) : config.axis;
+    pimpl->axes.push_back(static_cast<U32>(fft_axis));
 
     return Result::SUCCESS;
 }

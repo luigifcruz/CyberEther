@@ -64,8 +64,28 @@ class Spectrogram : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Visualizes how frequencies of input data change over time. Represents amplitude of frequencies using color.";
+        return "Visualizes how frequencies of input data change over time, representing amplitude using color intensity.\n\n"
+               "The Spectrogram block creates a 2D visualization similar to a waterfall plot, but optimized for real-time "
+               "frequency analysis. It displays frequencies on the X-axis, time on the Y-axis, and uses color to represent "
+               "signal amplitude at each time-frequency point.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor containing frequency domain data. Typically, this is the output of an FFT block.\n"
+               "  - Each new data frame represents a single frequency slice at a specific point in time.\n"
+               "  - The amplitude values in the data determine the color intensity.\n\n"
+               "Configuration:\n"
+               "- height: Maximum number of time slices to retain in history\n"
+               "- viewSize: Size of the visualization in pixels (width, height)\n\n"
+               "Visual Representation:\n"
+               "- Horizontal axis (X): Frequency\n"
+               "- Vertical axis (Y): Time (newest data at the bottom, scrolls upward)\n"
+               "- Color: Signal intensity (typically cooler colors for lower amplitudes, warmer colors for higher amplitudes)\n\n"
+               "Key Features:\n"
+               "- Optimized for real-time spectral monitoring\n"
+               "- Automatic scaling of color mapping to maximize visibility\n"
+               "- Efficient memory usage with configurable history depth\n\n"
+               "Differences from Waterfall:\n"
+               "- Spectrogram is optimized for real-time display with simpler controls\n"
+               "- Waterfall provides more visualization options and user interaction";
     }
 
     // Constructor

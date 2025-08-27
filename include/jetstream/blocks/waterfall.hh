@@ -67,8 +67,29 @@ class Waterfall : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Visualizes frequency-domain data over time in a 2D color-coded format. Suitable for spectral analysis.";
+        return "Visualizes frequency-domain data over time in a 2D color-coded format. Suitable for spectral analysis.\n\n"
+               "The Waterfall block creates a 2D visualization where the X-axis represents frequency, the Y-axis represents time, "
+               "and color intensity represents signal strength. New data is continuously added at the bottom of the display and "
+               "scrolls upward over time, creating a cascading 'waterfall' effect.\n\n"
+               "Inputs:\n"
+               "- buffer: Input tensor containing frequency domain data to visualize. Typically this is the output of an FFT block.\n"
+               "  - Each row of data represents a single frequency-domain snapshot.\n"
+               "  - The data amplitude influences the color mapping.\n\n"
+               "Configuration:\n"
+               "- zoom: Magnification factor for viewing details\n"
+               "- offset: Value offset applied to the input data before visualization\n"
+               "- height: Maximum number of time slices to retain in the display\n"
+               "- interpolate: Enable/disable color interpolation between data points\n"
+               "- viewSize: Size of the visualization in pixels (width, height)\n\n"
+               "Color Mapping:\n"
+               "- Lower amplitudes are displayed in darker colors (blue/black)\n"
+               "- Higher amplitudes are displayed in brighter colors (yellow/white)\n"
+               "- The color scale is automatically adjusted based on the data range\n\n"
+               "Common Applications:\n"
+               "- RF spectrum analysis\n"
+               "- Audio spectrograms\n"
+               "- Signal detection and analysis\n"
+               "- Time-frequency studies";
     }
 
     // Constructor

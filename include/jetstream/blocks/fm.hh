@@ -69,8 +69,29 @@ class FM : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Demodulates a complex-valued frequency modulated signal.";
+        return "Demodulates a complex-valued frequency modulated (FM) signal into its audio content.\n\n"
+               "The FM block performs frequency demodulation on complex IQ samples (typically coming from an SDR or signal source), "
+               "extracting the audio or data content that was encoded using frequency modulation. This block uses the "
+               "polar discrimination method, which calculates the instantaneous phase difference between consecutive samples.\n\n"
+               "Inputs:\n"
+               "- buffer: Complex-valued input tensor (CF32 type) containing IQ samples of the FM signal.\n"
+               "  - The signal should be centered at 0 Hz (baseband).\n"
+               "  - For best results, the signal should be filtered to contain only the desired FM channel.\n\n"
+               "Outputs:\n"
+               "- buffer: Real-valued output tensor (F32 type) containing the demodulated audio signal.\n\n"
+               "Technical Details:\n"
+               "- Implements polar discriminator method for FM demodulation\n"
+               "- Uses atan2(Q[n]*I[n-1] - I[n]*Q[n-1], I[n]*I[n-1] + Q[n]*Q[n-1]) for phase difference calculation\n"
+               "- The output amplitude is proportional to the frequency deviation\n\n"
+               "Applications:\n"
+               "- FM broadcast radio reception\n"
+               "- Amateur radio communications\n"
+               "- Two-way radio demodulation\n"
+               "- Wireless communications systems\n\n"
+               "Tips for Use:\n"
+               "- Input signal should be filtered to remove unwanted channels\n"
+               "- For broadcast FM, typically follow with audio filtering and de-emphasis blocks\n"
+               "- For narrowband FM, use appropriate bandwidth filtering before demodulation";
     }
 
     // Constructor
