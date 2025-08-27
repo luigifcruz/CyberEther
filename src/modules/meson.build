@@ -21,7 +21,7 @@ subdir('multiply_constant')
 subdir('take')
 subdir('duplicate')
 subdir('arithmetic')
-subdir('file')
+subdir('file_writer')
 
 # Graphical
 subdir('lineplot')

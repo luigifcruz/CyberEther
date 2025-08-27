@@ -21,7 +21,7 @@ class FileWriter : public Module, public Compute {
     FileWriter();
     ~FileWriter();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         FileFormatType fileFormat = FileFormatType::SigMF;
@@ -109,7 +109,7 @@ class FileWriter : public Module, public Compute {
     JST_DEFINE_IO()
 };
 
-#ifdef JETSTREAM_MODULE_FILE_CPU_AVAILABLE
+#ifdef JETSTREAM_MODULE_FILE_WRITER_CPU_AVAILABLE
 JST_FILE_WRITER_CPU(JST_SPECIALIZATION);
 #endif
 

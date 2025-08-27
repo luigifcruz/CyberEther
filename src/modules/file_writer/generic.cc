@@ -3,7 +3,7 @@
 #include <fstream>
 #include <chrono>
 
-#include "jetstream/modules/file.hh"
+#include "jetstream/modules/file_writer.hh"
 
 namespace Jetstream {
 

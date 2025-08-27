@@ -3,7 +3,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/instance.hh"
-#include "jetstream/modules/file.hh"
+#include "jetstream/modules/file_writer.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Blocks {

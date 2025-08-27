@@ -89,10 +89,6 @@
 #include "jetstream/modules/fold.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_SPEECH_RECOGNITION_AVAILABLE
-#include "jetstream/modules/speech_recognition.hh"
-#endif
-
 #ifdef JETSTREAM_MODULE_TAKE_AVAILABLE
 #include "jetstream/modules/take.hh"
 #endif
@@ -101,8 +97,8 @@
 #include "jetstream/modules/duplicate.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_FILE_AVAILABLE
-#include "jetstream/modules/file.hh"
+#ifdef JETSTREAM_MODULE_FILE_WRITER_AVAILABLE
+#include "jetstream/modules/file_writer.hh"
 #endif
 
 // [NEW MODULE HOOK]

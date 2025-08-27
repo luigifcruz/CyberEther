@@ -170,7 +170,7 @@
 #include "jetstream/blocks/reshape.hh"
 #define JETSTREAM_BLOCK_RESHAPE_AVAILABLE
 
-#if defined(JETSTREAM_MODULE_FILE_AVAILABLE)
+#if defined(JETSTREAM_MODULE_FILE_WRITER_AVAILABLE)
 #include "jetstream/blocks/file_writer.hh"
 #define JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
 #endif
