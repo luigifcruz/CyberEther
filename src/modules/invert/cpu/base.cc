@@ -5,6 +5,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Invert<D, T>::Impl {};
+
+template<Device D, typename T>
+Invert<D, T>::Invert() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Invert<D, T>::~Invert() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Invert<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Invert compute core.");
     return Result::SUCCESS;
@@ -28,5 +41,5 @@ Result Invert<D, T>::compute(const Context&) {
 
 JST_INVERT_CPU(JST_INSTANTIATION)
 JST_INVERT_CPU(JST_BENCHMARK)
-    
+
 }  // namespace Jetstream

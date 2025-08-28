@@ -9,6 +9,10 @@ struct FFT<D, IT, OT>::Impl {
     cufftHandle plan;
 
     Tensor<Device::CUDA, IT> input;
+
+    U64 numberOfOperations = 0;
+    U64 numberOfElements = 0;
+    U64 elementStride = 0;
 };
 
 template<Device D, typename IT, typename OT>
@@ -47,13 +51,13 @@ Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
     int rank = 1;
 
     // FFT size for each dimension.
-    int n[] = { static_cast<int>(input.buffer.shape()[last_axis]) }; 
+    int n[] = { static_cast<int>(input.buffer.shape()[last_axis]) };
 
     // Distance between successive input element and output element.
     int istride = input.buffer.stride()[last_axis];
     int ostride = 1;
 
-    // Number of batched FFTs. 
+    // Number of batched FFTs.
     U64 numberOfOperations = 1;
     for (U64 i = 0; i < last_axis; i++) {
         numberOfOperations *= input.buffer.shape()[i];
@@ -64,7 +68,7 @@ Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
     int odist = input.buffer.shape()[last_axis];
 
     // Input size with pitch, this is ignored for 1D tansformations.
-    int inembed[] = { 0 }; 
+    int inembed[] = { 0 };
     int onembed[] = { 0 };
 
     JST_CUFFT_CHECK(cufftPlanMany(&pimpl->plan,

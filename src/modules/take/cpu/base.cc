@@ -5,6 +5,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Take<D, T>::Impl {};
+
+template<Device D, typename T>
+Take<D, T>::Take() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Take<D, T>::~Take() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Take<D, T>::compute(const Context&) {
     std::vector<U64> shape = input.buffer.shape();
     for (U64 i = 0; i < output.buffer.size(); i++) {

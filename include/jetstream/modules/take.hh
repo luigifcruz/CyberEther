@@ -16,7 +16,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Take : public Module, public Compute {
  public:
-    // Configuration 
+    Take();
+    ~Take();
+
+    // Configuration
 
     struct Config {
         U64 index = 0;
@@ -73,6 +76,9 @@ class Take : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
     JST_DEFINE_IO()
 };
 

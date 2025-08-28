@@ -1,6 +1,6 @@
 #include "../generic.cc"
 
-#pragma GCC diagnostic push 
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
@@ -18,6 +18,10 @@ struct FFT<D, IT, OT>::Impl {
     VkFFTConfiguration* configuration;
     const MTL::Buffer* input;
     MTL::Buffer* output;
+
+    U64 numberOfOperations = 0;
+    U64 numberOfElements = 0;
+    U64 elementStride = 0;
 };
 
 template<Device D, typename IT, typename OT>
@@ -42,11 +46,11 @@ Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
     pimpl->app = new VkFFTApplication({});
     pimpl->configuration = new VkFFTConfiguration({});
     pimpl->configuration->FFTdim = 1;
-    pimpl->configuration->size[0] = numberOfElements;
+    pimpl->configuration->size[0] = pimpl->numberOfElements;
     pimpl->configuration->device = Backend::State<Device::Metal>()->getDevice();
     pimpl->configuration->queue = ctx.metal->commandQueue();
     pimpl->configuration->doublePrecision = false;
-    pimpl->configuration->numberBatches = numberOfOperations;
+    pimpl->configuration->numberBatches = pimpl->numberOfOperations;
     pimpl->configuration->isInputFormatted = 1;
     pimpl->configuration->inputBufferSize = new U64(input.buffer.size_bytes());
     pimpl->configuration->inputBuffer = const_cast<MTL::Buffer**>(&pimpl->input);
@@ -70,7 +74,7 @@ Result FFT<D, IT, OT>::destroyCompute(const Context&) {
     }
 
     deleteVkFFT(pimpl->app);
-  
+
     free(pimpl->configuration->inputBufferSize);
     free(pimpl->configuration->bufferSize);
     free(pimpl->configuration);

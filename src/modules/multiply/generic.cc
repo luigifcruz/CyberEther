@@ -25,13 +25,13 @@ Result Multiply<D, T>::create() {
     JST_TRACE("[MULTIPLY] Pad A {}; Pad B {};", pad_a, pad_b);
 
     for (U64 i = 0; i < min_rank; i++) {
-        JST_TRACE("[MULTIPLY] Checking rank {} -> {} vs {}.", i, input.factorA.shape()[pad_a + i], 
+        JST_TRACE("[MULTIPLY] Checking rank {} -> {} vs {}.", i, input.factorA.shape()[pad_a + i],
                                                                  input.factorB.shape()[pad_b + i]);
 
-        if (input.factorA.shape()[pad_a + i] != input.factorB.shape()[pad_b + i] && 
-            input.factorA.shape()[pad_a + i] != 1 && 
+        if (input.factorA.shape()[pad_a + i] != input.factorB.shape()[pad_b + i] &&
+            input.factorA.shape()[pad_a + i] != 1 &&
             input.factorB.shape()[pad_b + i] != 1) {
-            JST_ERROR("Input A {} and B {} shapes are not broadcastable.", input.factorA.shape(), 
+            JST_ERROR("Input A {} and B {} shapes are not broadcastable.", input.factorA.shape(),
                                                                            input.factorB.shape());
             return Result::ERROR;
         }
@@ -51,12 +51,12 @@ Result Multiply<D, T>::create() {
 
     // Broadcast input.
 
-    a = input.factorA;
-    b = input.factorB;
-    c = output.product;
+    impl->a = input.factorA;
+    impl->b = input.factorB;
+    impl->c = output.product;
 
-    JST_CHECK(a.broadcast_to(c.shape()));
-    JST_CHECK(b.broadcast_to(c.shape()));
+    JST_CHECK(impl->a.broadcast_to(impl->c.shape()));
+    JST_CHECK(impl->b.broadcast_to(impl->c.shape()));
 
     return Result::SUCCESS;
 }

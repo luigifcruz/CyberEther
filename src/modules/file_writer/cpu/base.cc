@@ -44,12 +44,12 @@ Result FileWriter<D, T>::compute(const Context&) {
 }
 
 template<Device D, typename T>
-Result FileWriter<D, T>::underlyingStartRecording() {
+Result FileWriter<D, T>::GImpl::underlyingStartRecording() {
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result FileWriter<D, T>::underlyingStopRecording() {
+Result FileWriter<D, T>::GImpl::underlyingStopRecording() {
     return Result::SUCCESS;
 }
 

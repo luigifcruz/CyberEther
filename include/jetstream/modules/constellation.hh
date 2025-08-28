@@ -20,7 +20,7 @@ class Constellation : public Module, public Compute, public Present {
     Constellation();
     ~Constellation();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         Extent2D<U64> viewSize = {512, 512};
@@ -63,7 +63,7 @@ class Constellation : public Module, public Compute, public Present {
     void info() const final;
 
     // Constructor
-    
+
     Result create();
 
     // Miscellaneous
@@ -89,27 +89,6 @@ class Constellation : public Module, public Compute, public Present {
 
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
-
-    Tensor<D, F32> timeSamples;
-
-    std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
-    std::shared_ptr<Render::Buffer> signalUniformBuffer;
-
-    std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Texture> signalTexture;
-    std::shared_ptr<Render::Texture> lutTexture;
-
-    std::shared_ptr<Render::Program> program;
-
-    std::shared_ptr<Render::Surface> surface;
-
-    std::shared_ptr<Render::Vertex> vertex;
-
-    std::shared_ptr<Render::Draw> drawVertex;
-
-    F32 decayFactor;
 
     JST_DEFINE_IO()
 };

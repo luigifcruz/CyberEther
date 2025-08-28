@@ -11,7 +11,7 @@ Result Scale<D, T>::create() {
 
     // Calculate parameters.
 
-    numberOfElements = input.buffer.size();
+    impl->numberOfElements = input.buffer.size();
 
     // Initialize coefficients.
 
@@ -32,8 +32,8 @@ const Range<T>& Scale<D, T>::range(const Range<T>& range) {
 
     // Calculate parameters.
 
-    scalingCoeff = 1.0f / (config.range.max - config.range.min);
-    offsetCoeff = -config.range.min * scalingCoeff;
+    impl->scalingCoeff = 1.0f / (config.range.max - config.range.min);
+    impl->offsetCoeff = -config.range.min * impl->scalingCoeff;
 
     return range;
 }

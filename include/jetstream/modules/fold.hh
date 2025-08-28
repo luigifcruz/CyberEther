@@ -16,7 +16,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Fold : public Module, public Compute {
  public:
-    // Configuration 
+    Fold();
+    ~Fold();
+
+    // Configuration
 
     struct Config {
         U64 axis = 0;
@@ -74,7 +77,8 @@ class Fold : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    U64 decimationFactor;
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

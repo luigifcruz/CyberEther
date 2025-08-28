@@ -25,7 +25,7 @@ class Arithmetic : public Module, public Compute {
     Arithmetic();
     ~Arithmetic();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         ArithmeticOp operation = ArithmeticOp::Add;
@@ -89,8 +89,6 @@ class Arithmetic : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    Tensor<D, T> broadcasted_output;
 
     JST_DEFINE_IO()
 };

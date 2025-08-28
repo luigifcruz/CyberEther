@@ -15,7 +15,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class FilterTaps : public Module, public Compute {
  public:
-    // Configuration 
+    FilterTaps();
+    ~FilterTaps();
+
+    // Configuration
 
     struct Config {
         std::vector<F32> center = {0.0e6f};
@@ -95,15 +98,8 @@ class FilterTaps : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    Tensor<D, typename T::value_type> sincCoeffs;
-    Tensor<D, typename T::value_type> windowCoeffs;
-    Tensor<D, T> upconvertCoeffs;
-
-    bool baked = false;
-
-    Result generateSincFunction();
-    Result generateWindow();
-    Result generateUpconvert();
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

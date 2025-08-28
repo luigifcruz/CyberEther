@@ -5,6 +5,21 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Fold<D, T>::Impl {
+    U64 decimationFactor;
+};
+
+template<Device D, typename T>
+Fold<D, T>::Fold() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Fold<D, T>::~Fold() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Fold<D, T>::compute(const Context&) {
     // Zero-out output buffer.
 
@@ -30,7 +45,7 @@ Result Fold<D, T>::compute(const Context&) {
     // Average output buffer.
 
     for (U64 i = 0; i < output.buffer.size(); i++) {
-        output.buffer[i] /= decimationFactor;
+        output.buffer[i] /= impl->decimationFactor;
     }
 
     return Result::SUCCESS;

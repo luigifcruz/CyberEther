@@ -15,6 +15,27 @@ struct Constellation<D, T>::GImpl {
         F32 offset;
         F32 zoom;
     } signalUniforms;
+
+    Tensor<D, F32> timeSamples;
+
+    std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
+
+    std::shared_ptr<Render::Texture> framebufferTexture;
+    std::shared_ptr<Render::Texture> signalTexture;
+    std::shared_ptr<Render::Texture> lutTexture;
+
+    std::shared_ptr<Render::Program> program;
+
+    std::shared_ptr<Render::Surface> surface;
+
+    std::shared_ptr<Render::Vertex> vertex;
+
+    std::shared_ptr<Render::Draw> drawVertex;
+
+    F32 decayFactor;
 };
 
 template<Device D, typename T>
@@ -24,7 +45,7 @@ Result Constellation<D, T>::create() {
 
     // Allocate internal buffers.
 
-    timeSamples = Tensor<D, F32>({config.viewSize.x, config.viewSize.y});
+    gimpl->timeSamples = Tensor<D, F32>({config.viewSize.x, config.viewSize.y});
 
     return Result::SUCCESS;
 }
@@ -44,8 +65,8 @@ Result Constellation<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(float);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
-        JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
+        JST_CHECK(window->build(gimpl->fillScreenVerticesBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->fillScreenVerticesBuffer));
     }
 
     {
@@ -54,8 +75,8 @@ Result Constellation<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(float);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
-        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
+        JST_CHECK(window->build(gimpl->fillScreenTextureVerticesBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->fillScreenTextureVerticesBuffer));
     }
 
     {
@@ -64,44 +85,44 @@ Result Constellation<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
-        JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
+        JST_CHECK(window->build(gimpl->fillScreenIndicesBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->fillScreenIndicesBuffer));
     }
 
     {
         Render::Vertex::Config cfg;
         cfg.vertices = {
-            {fillScreenVerticesBuffer, 3},
-            {fillScreenTextureVerticesBuffer, 2},
+            {gimpl->fillScreenVerticesBuffer, 3},
+            {gimpl->fillScreenTextureVerticesBuffer, 2},
         };
-        cfg.indices = fillScreenIndicesBuffer;
-        JST_CHECK(window->build(vertex, cfg));
+        cfg.indices = gimpl->fillScreenIndicesBuffer;
+        JST_CHECK(window->build(gimpl->vertex, cfg));
     }
 
     {
         Render::Draw::Config cfg;
-        cfg.buffer = vertex;
+        cfg.buffer = gimpl->vertex;
         cfg.mode = Render::Draw::Mode::TRIANGLES;
-        JST_CHECK(window->build(drawVertex, cfg));
+        JST_CHECK(window->build(gimpl->drawVertex, cfg));
     }
 
     {
         Render::Texture::Config cfg;
-        cfg.buffer = (U8*)(timeSamples.data());
-        cfg.size = {timeSamples.shape()[0], timeSamples.shape()[1]};
+        cfg.buffer = (U8*)(gimpl->timeSamples.data());
+        cfg.size = {gimpl->timeSamples.shape()[0], gimpl->timeSamples.shape()[1]};
         cfg.dfmt = Render::Texture::DataFormat::F32;
         cfg.pfmt = Render::Texture::PixelFormat::RED;
         cfg.ptype = Render::Texture::PixelType::F32;
-        JST_CHECK(window->build(signalTexture, cfg));
-        JST_CHECK(window->bind(signalTexture));
+        JST_CHECK(window->build(gimpl->signalTexture, cfg));
+        JST_CHECK(window->bind(gimpl->signalTexture));
     }
 
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
-        JST_CHECK(window->build(lutTexture, cfg));
-        JST_CHECK(window->bind(lutTexture));
+        JST_CHECK(window->build(gimpl->lutTexture, cfg));
+        JST_CHECK(window->bind(gimpl->lutTexture));
     }
 
     {
@@ -111,22 +132,22 @@ Result Constellation<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(gimpl->signalUniforms);
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::STORAGE;
-        JST_CHECK(window->build(signalUniformBuffer, cfg));
-        JST_CHECK(window->bind(signalUniformBuffer));
+        JST_CHECK(window->build(gimpl->signalUniformBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->signalUniformBuffer));
     }
 
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
         cfg.draws = {
-            drawVertex,
+            gimpl->drawVertex,
         };
-        cfg.textures = {signalTexture, lutTexture};
+        cfg.textures = {gimpl->signalTexture, gimpl->lutTexture};
         cfg.buffers = {
-            {signalUniformBuffer, Render::Program::Target::VERTEX |
-                                  Render::Program::Target::FRAGMENT},
+            {gimpl->signalUniformBuffer, Render::Program::Target::VERTEX |
+                                         Render::Program::Target::FRAGMENT},
         };
-        JST_CHECK(window->build(program, cfg));
+        JST_CHECK(window->build(gimpl->program, cfg));
     }
 
     // Surface.
@@ -134,16 +155,16 @@ Result Constellation<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = config.viewSize;
-        JST_CHECK(window->build(framebufferTexture, cfg));
+        JST_CHECK(window->build(gimpl->framebufferTexture, cfg));
     }
 
     {
         Render::Surface::Config cfg;
-        cfg.framebuffer = framebufferTexture;
-        cfg.programs = {program};
+        cfg.framebuffer = gimpl->framebufferTexture;
+        cfg.programs = {gimpl->program};
         cfg.clearColor = {0.1f, 0.1f, 0.1f, 1.0f};
-        JST_CHECK(window->build(surface, cfg));
-        JST_CHECK(window->bind(surface));
+        JST_CHECK(window->build(gimpl->surface, cfg));
+        JST_CHECK(window->bind(gimpl->surface));
     }
 
     return Result::SUCCESS;
@@ -151,48 +172,48 @@ Result Constellation<D, T>::createPresent() {
 
 template<Device D, typename T>
 Result Constellation<D, T>::present() {
-    signalTexture->fill();
+    gimpl->signalTexture->fill();
 
-    gimpl->signalUniforms.width = timeSamples.shape()[0];
-    gimpl->signalUniforms.height = timeSamples.shape()[1];
+    gimpl->signalUniforms.width = gimpl->timeSamples.shape()[0];
+    gimpl->signalUniforms.height = gimpl->timeSamples.shape()[1];
     gimpl->signalUniforms.zoom = 1.0;
     gimpl->signalUniforms.offset = 0.0;
 
-    signalUniformBuffer->update();
+    gimpl->signalUniformBuffer->update();
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Constellation<D, T>::destroyPresent() {
-    JST_CHECK(window->unbind(surface));
-    JST_CHECK(window->unbind(signalTexture));
-    JST_CHECK(window->unbind(lutTexture));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(signalUniformBuffer));
+    JST_CHECK(window->unbind(gimpl->surface));
+    JST_CHECK(window->unbind(gimpl->signalTexture));
+    JST_CHECK(window->unbind(gimpl->lutTexture));
+    JST_CHECK(window->unbind(gimpl->fillScreenVerticesBuffer));
+    JST_CHECK(window->unbind(gimpl->fillScreenTextureVerticesBuffer));
+    JST_CHECK(window->unbind(gimpl->fillScreenIndicesBuffer));
+    JST_CHECK(window->unbind(gimpl->signalUniformBuffer));
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 const Extent2D<U64>& Constellation<D, T>::viewSize(const Extent2D<U64>& viewSize) {
-    if (surface->size(viewSize) != this->viewSize()) {
+    if (gimpl->surface->size(viewSize) != this->viewSize()) {
         JST_TRACE("Constellation size changed from [{}, {}] to [{}, {}].",
                 config.viewSize.x,
                 config.viewSize.y,
                 viewSize.x,
                 viewSize.y);
 
-        config.viewSize = surface->size();
+        config.viewSize = gimpl->surface->size();
     }
     return this->viewSize();
 }
 
 template<Device D, typename T>
 Render::Texture& Constellation<D, T>::getTexture() {
-    return *framebufferTexture;
+    return *gimpl->framebufferTexture;
 };
 
 }  // namespace Jetstream

@@ -58,7 +58,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel size.
 
     U64 threadsPerBlock = 256;
-    U64 blocksPerGrid = (numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
+    U64 blocksPerGrid = (gimpl->numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
 
     pimpl->grid = { blocksPerGrid, 1, 1 };
     pimpl->block = { threadsPerBlock, 1, 1 };
@@ -75,10 +75,10 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
 
     pimpl->argumentsLineplot = {
         pimpl->input.data_ptr(),
-        signalPoints.data_ptr(),
-        &normalizationFactor,
-        &numberOfBatches,
-        &numberOfElements,
+        gimpl->signalPoints.data_ptr(),
+        &gimpl->normalizationFactor,
+        &gimpl->numberOfBatches,
+        &gimpl->numberOfElements,
         &config.averaging,
         &config.decimation,
     };
@@ -94,12 +94,12 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
 
     // TODO: Join kernels.
 
-    JST_CHECK(ctx.cuda->launchKernel("lineplot", 
-                                     pimpl->grid, 
-                                     pimpl->block, 
+    JST_CHECK(ctx.cuda->launchKernel("lineplot",
+                                     pimpl->grid,
+                                     pimpl->block,
                                      pimpl->argumentsLineplot.data()));
 
-    updateSignalPointsFlag = true;
+    gimpl->updateSignalPointsFlag = true;
 
     return Result::SUCCESS;
 }

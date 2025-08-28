@@ -3,6 +3,21 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct OverlapAdd<D, T>::Impl {
+    Tensor<D, T> previousOverlap;
+};
+
+template<Device D, typename T>
+OverlapAdd<D, T>::OverlapAdd() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+OverlapAdd<D, T>::~OverlapAdd() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result OverlapAdd<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Overlap Add compute core using CPU backend.");
 
@@ -26,22 +41,22 @@ Result OverlapAdd<D, T>::compute(const Context&) {
             auto& sample = output.buffer[shape];
 
             if (shape[0] == 0) {
-                sample += previousOverlap[shape];
+                sample += impl->previousOverlap[shape];
             } else {
                 shape[0] -= 1;
                 sample += input.overlap[shape];
             }
         }
     }
-    
+
     // Get last batch element from overlap.
 
     {
-        std::vector<U64> shape = previousOverlap.shape();
-        for (U64 i = 0; i < previousOverlap.size(); i++) {
-            previousOverlap.offset_to_shape(i, shape);
+        std::vector<U64> shape = impl->previousOverlap.shape();
+        for (U64 i = 0; i < impl->previousOverlap.size(); i++) {
+            impl->previousOverlap.offset_to_shape(i, shape);
             shape[0] = input.overlap.shape()[0] - 1;
-            previousOverlap[i] = input.overlap[shape];
+            impl->previousOverlap[i] = input.overlap[shape];
         }
     }
 
@@ -49,5 +64,5 @@ Result OverlapAdd<D, T>::compute(const Context&) {
 }
 
 JST_OVERLAP_ADD_CPU(JST_INSTANTIATION)
-    
+
 }  // namespace Jetstream

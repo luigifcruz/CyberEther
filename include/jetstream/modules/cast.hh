@@ -17,7 +17,10 @@ namespace Jetstream {
 template<Device D, typename IT = F32, typename OT = I16>
 class Cast : public Module, public Compute {
  public:
-    // Configuration 
+    Cast();
+    ~Cast();
+
+    // Configuration
 
     struct Config {
         F32 scaler = 0.0f;
@@ -63,7 +66,7 @@ class Cast : public Module, public Compute {
         return D;
     }
 
-    void info() const final; 
+    void info() const final;
 
     // Constructor
 
@@ -72,6 +75,10 @@ class Cast : public Module, public Compute {
  protected:
     Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

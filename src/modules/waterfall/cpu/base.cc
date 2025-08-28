@@ -18,15 +18,15 @@ Waterfall<D, T>::~Waterfall() {
 }
 
 template<Device D, typename T>
-Result Waterfall<D, T>::underlyingCompute(const Context&) {
-    const auto totalSize = input.buffer.size();
+Result Waterfall<D, T>::GImpl::underlyingCompute(Waterfall<D, T>& m, const Context&) {
+    const auto totalSize = m.input.buffer.size();
     const auto fftSize = numberOfElements;
     const auto offset = inc * fftSize;
-    const auto size = JST_MIN(totalSize, (config.height - inc) * fftSize);
+    const auto size = JST_MIN(totalSize, (m.config.height - inc) * fftSize);
 
-    std::copy(input.buffer.begin(), input.buffer.begin() + size, frequencyBins.data() + offset);
+    std::copy(m.input.buffer.begin(), m.input.buffer.begin() + size, frequencyBins.data() + offset);
     if (size < totalSize) {
-        std::copy(input.buffer.begin() + size, input.buffer.end(), frequencyBins.data());
+        std::copy(m.input.buffer.begin() + size, m.input.buffer.end(), frequencyBins.data());
     }
 
     return Result::SUCCESS;
@@ -34,5 +34,5 @@ Result Waterfall<D, T>::underlyingCompute(const Context&) {
 
 JST_WATERFALL_CPU(JST_INSTANTIATION)
 JST_WATERFALL_CPU(JST_BENCHMARK)
-    
+
 }  // namespace Jetstream

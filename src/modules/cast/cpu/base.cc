@@ -5,6 +5,19 @@
 namespace Jetstream {
 
 template<Device D, typename IT, typename OT>
+struct Cast<D, IT, OT>::Impl {};
+
+template<Device D, typename IT, typename OT>
+Cast<D, IT, OT>::Cast() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename IT, typename OT>
+Cast<D, IT, OT>::~Cast() {
+    impl.reset();
+}
+
+template<Device D, typename IT, typename OT>
 Result Cast<D, IT, OT>::createCompute(const Context&) {
     JST_TRACE("Create Cast compute core using CPU backend.");
     return Result::SUCCESS;

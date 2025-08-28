@@ -17,7 +17,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Unpad : public Module, public Compute {
  public:
-    // Configuration 
+    Unpad();
+    ~Unpad();
+
+    // Configuration
 
     struct Config {
         U64 size = 33;
@@ -78,6 +81,10 @@ class Unpad : public Module, public Compute {
  protected:
     Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

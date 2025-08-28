@@ -47,8 +47,8 @@ class Soapy : public Module, public Compute {
         U64 bufferMultiplier = 4;
 
         JST_SERDES(deviceString, streamString,
-                   frequency, sampleRate, automaticGain, 
-                   numberOfBatches, numberOfTimeSamples, 
+                   frequency, sampleRate, automaticGain,
+                   numberOfBatches, numberOfTimeSamples,
                    bufferMultiplier);
     };
 
@@ -97,21 +97,10 @@ class Soapy : public Module, public Compute {
 
     // Miscellaneous
 
-    constexpr Memory::CircularBuffer<T>& getCircularBuffer() {
-        return buffer;
-    }
-
-    constexpr const std::string& getDeviceName() const {
-        return deviceName;
-    }
-
-    constexpr const std::string& getDeviceHardwareKey() const {
-        return deviceHardwareKey;
-    }
-
-    constexpr const std::string& getDeviceLabel() const {
-        return deviceLabel;
-    }
+    Memory::CircularBuffer<T>& getCircularBuffer();
+    const std::string& getDeviceName() const;
+    const std::string& getDeviceHardwareKey() const;
+    const std::string& getDeviceLabel() const;
 
     Result setTunerFrequency(F32& frequency);
     Result setSampleRate(F32& sampleRate);
@@ -126,18 +115,7 @@ class Soapy : public Module, public Compute {
 
  private:
     struct Impl;
-    std::unique_ptr<Impl> pimpl;
-
-    std::thread producer;
-    bool errored = false;
-    bool streaming = false;
-    std::string deviceLabel;
-    std::string deviceName;
-    std::string deviceHardwareKey;
-    Memory::CircularBuffer<T> buffer;
-    Tensor<Device::CPU, T> hostOutputBuffer;
-
-    Result soapyThreadLoop();
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

@@ -100,12 +100,6 @@ class FileWriter : public Module, public Compute {
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
 
-    Result startRecording();
-    Result stopRecording();
-
-    Result underlyingStartRecording();
-    Result underlyingStopRecording();
-
     JST_DEFINE_IO()
 };
 

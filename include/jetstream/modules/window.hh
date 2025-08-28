@@ -15,7 +15,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Window : public Module, public Compute {
  public:
-    // Configuration 
+    Window();
+    ~Window();
+
+    // Configuration
 
     struct Config {
         U64 size;
@@ -69,7 +72,8 @@ class Window : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    bool baked = false;
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

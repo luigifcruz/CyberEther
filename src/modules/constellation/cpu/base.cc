@@ -22,15 +22,15 @@ template<Device D, typename T>
 Result Constellation<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Constellation compute core using CPU backend.");
 
-    decayFactor = pow(0.999, input.buffer.shape()[0]);
+    gimpl->decayFactor = pow(0.999, input.buffer.shape()[0]);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Constellation<D, T>::compute(const Context&) {
-    for (U64 x = 0; x < timeSamples.size(); x++) {
-        timeSamples[x] *= decayFactor;
+    for (U64 x = 0; x < gimpl->timeSamples.size(); x++) {
+        gimpl->timeSamples[x] *= gimpl->decayFactor;
     }
 
     auto& v = input.buffer;
@@ -51,11 +51,11 @@ Result Constellation<D, T>::compute(const Context&) {
         for (U64 x = 0; x < input.buffer.shape()[1]; x++) {
             const CF32& sample = input.buffer[{b, x}];
 
-            const U64 r = ((sample.real() - min_real) / (max_real - min_real)) * timeSamples.shape()[0];
-            const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * timeSamples.shape()[0];
+            const U64 r = ((sample.real() - min_real) / (max_real - min_real)) * gimpl->timeSamples.shape()[0];
+            const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * gimpl->timeSamples.shape()[0];
 
-            if (r < timeSamples.shape()[0] and i < timeSamples.shape()[1]) {
-                timeSamples[{r, i}] += 0.02;
+            if (r < gimpl->timeSamples.shape()[0] and i < gimpl->timeSamples.shape()[1]) {
+                gimpl->timeSamples[{r, i}] += 0.02;
             }
         }
     }

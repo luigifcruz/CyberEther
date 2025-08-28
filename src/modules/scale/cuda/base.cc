@@ -12,16 +12,20 @@ struct Scale<D, T>::Impl {
     std::vector<void*> arguments;
 
     Tensor<Device::CUDA, T> input;
+
+    F32 scalingCoeff;
+    F32 offsetCoeff;
+    U64 numberOfElements;
 };
 
 template<Device D, typename T>
 Scale<D, T>::Scale() {
-    pimpl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
 }
 
 template<Device D, typename T>
 Scale<D, T>::~Scale() {
-    pimpl.reset();
+    impl.reset();
 }
 
 template<Device D, typename T>
@@ -42,27 +46,27 @@ Result Scale<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel size.
 
     U64 threadsPerBlock = 512;
-    U64 blocksPerGrid = (numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
+    U64 blocksPerGrid = (impl->numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
 
-    pimpl->grid = { blocksPerGrid, 1, 1 };
-    pimpl->block = { threadsPerBlock, 1, 1 };
+    impl->grid = { blocksPerGrid, 1, 1 };
+    impl->block = { threadsPerBlock, 1, 1 };
 
     // Initialize kernel input.
 
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        pimpl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
+        impl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
     } else {
-        pimpl->input = input.buffer;
+        impl->input = input.buffer;
     }
 
     // Initialize kernel arguments.
 
-    pimpl->arguments = {
-        pimpl->input.data_ptr(),
+    impl->arguments = {
+        impl->input.data_ptr(),
         output.buffer.data_ptr(),
-        &scalingCoeff,
-        &offsetCoeff,
-        &numberOfElements,
+        &impl->scalingCoeff,
+        &impl->offsetCoeff,
+        &impl->numberOfElements,
     };
 
     return Result::SUCCESS;
@@ -71,13 +75,13 @@ Result Scale<D, T>::createCompute(const Context& ctx) {
 template<Device D, typename T>
 Result Scale<D, T>::compute(const Context& ctx) {
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(Memory::Copy(impl->input, input.buffer, ctx.cuda->stream()));
     }
 
-    JST_CHECK(ctx.cuda->launchKernel("scale", 
-                                     pimpl->grid, 
-                                     pimpl->block, 
-                                     pimpl->arguments.data()));
+    JST_CHECK(ctx.cuda->launchKernel("scale",
+                                     impl->grid,
+                                     impl->block,
+                                     impl->arguments.data()));
 
     return Result::SUCCESS;
 }

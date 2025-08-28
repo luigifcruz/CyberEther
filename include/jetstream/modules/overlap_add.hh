@@ -17,7 +17,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class OverlapAdd : public Module, public Compute {
  public:
-    // Configuration 
+    OverlapAdd();
+    ~OverlapAdd();
+
+    // Configuration
 
     struct Config {
         U64 axis = 1;
@@ -74,7 +77,9 @@ class OverlapAdd : public Module, public Compute {
     Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
 
-    Tensor<D, T> previousOverlap;
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

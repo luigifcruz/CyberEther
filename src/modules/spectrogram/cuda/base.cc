@@ -75,7 +75,7 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
 
     {
         U64 threadsPerBlock = 512;
-        U64 blocksPerGrid = (totalFrequencyBins + threadsPerBlock - 1) / threadsPerBlock;
+        U64 blocksPerGrid = (gimpl->totalFrequencyBins + threadsPerBlock - 1) / threadsPerBlock;
 
         pimpl->decayGrid = { blocksPerGrid, 1, 1 };
         pimpl->decayBlock = { threadsPerBlock, 1, 1 };
@@ -83,7 +83,7 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
 
     {
         U64 threadsPerBlock = 512;
-        U64 blocksPerGrid = (numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
+        U64 blocksPerGrid = (gimpl->numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
 
         pimpl->riseGrid = { blocksPerGrid, 1, 1 };
         pimpl->riseBlock = { threadsPerBlock, 1, 1 };
@@ -92,16 +92,16 @@ Result Spectrogram<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel arguments.
 
     pimpl->decayArguments = {
-        frequencyBins.data_ptr(),
-        &decayFactor,
-        &totalFrequencyBins,
+        gimpl->frequencyBins.data_ptr(),
+        &gimpl->decayFactor,
+        &gimpl->totalFrequencyBins,
     };
 
     pimpl->riseArguments = {
         input.buffer.data_ptr(),
-        frequencyBins.data_ptr(),
-        &numberOfElements,
-        &numberOfBatches,
+        gimpl->frequencyBins.data_ptr(),
+        &gimpl->numberOfElements,
+        &gimpl->numberOfBatches,
         &config.height,
     };
 
@@ -114,14 +114,14 @@ Result Spectrogram<D, T>::compute(const Context& ctx) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 
-    JST_CHECK(ctx.cuda->launchKernel("decay", 
-                                     pimpl->decayGrid, 
-                                     pimpl->decayBlock, 
+    JST_CHECK(ctx.cuda->launchKernel("decay",
+                                     pimpl->decayGrid,
+                                     pimpl->decayBlock,
                                      pimpl->decayArguments.data()));
 
-    JST_CHECK(ctx.cuda->launchKernel("rise", 
-                                     pimpl->riseGrid, 
-                                     pimpl->riseBlock, 
+    JST_CHECK(ctx.cuda->launchKernel("rise",
+                                     pimpl->riseGrid,
+                                     pimpl->riseBlock,
                                      pimpl->riseArguments.data()));
 
     return Result::SUCCESS;

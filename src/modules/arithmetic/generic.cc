@@ -40,8 +40,8 @@ Result Arithmetic<D, T>::create() {
 
     output.buffer = Tensor<D, T>(output_shape);
 
-    broadcasted_output = output.buffer;
-    JST_CHECK(broadcasted_output.broadcast_to(input.buffer.shape()));
+    pimpl->broadcasted_output = output.buffer;
+    JST_CHECK(pimpl->broadcasted_output.broadcast_to(input.buffer.shape()));
 
     return Result::SUCCESS;
 }

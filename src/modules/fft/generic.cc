@@ -13,18 +13,18 @@ Result FFT<D, IT, OT>::create() {
 
     const U64 last_axis = input.buffer.rank() - 1;
 
-    numberOfElements = input.buffer.shape()[last_axis];
+    pimpl->numberOfElements = input.buffer.shape()[last_axis];
 
-    numberOfOperations = 1;
+    pimpl->numberOfOperations = 1;
     for (U64 i = 0; i < last_axis; i++) {
-        numberOfOperations *= input.buffer.shape()[i];
+        pimpl->numberOfOperations *= input.buffer.shape()[i];
     }
 
-    elementStride = 1;
+    pimpl->elementStride = 1;
 
-    JST_TRACE("[FFT] Number of elements: {};", numberOfElements);
-    JST_TRACE("[FFT] Number of operations: {};", numberOfOperations);
-    JST_TRACE("[FFT] Element stride: {};", elementStride);
+    JST_TRACE("[FFT] Number of elements: {};", pimpl->numberOfElements);
+    JST_TRACE("[FFT] Number of operations: {};", pimpl->numberOfOperations);
+    JST_TRACE("[FFT] Element stride: {};", pimpl->elementStride);
 
     // TODO: Implement axis selection for FFT.
 

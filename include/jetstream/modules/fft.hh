@@ -26,7 +26,7 @@ class FFT : public Module, public Compute {
     FFT();
     ~FFT();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         bool forward = true;
@@ -86,10 +86,6 @@ class FFT : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    U64 numberOfOperations = 0;
-    U64 numberOfElements = 0;
-    U64 elementStride = 0;
 
     JST_DEFINE_IO()
 };

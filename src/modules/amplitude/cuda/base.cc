@@ -12,6 +12,9 @@ struct Amplitude<D, IT, OT>::Impl {
     std::vector<void*> arguments;
 
     Tensor<Device::CUDA, IT> input;
+
+    F32 scalingCoeff = 0.0f;
+    U64 numberOfElements = 0;
 };
 
 template<Device D, typename IT, typename OT>
@@ -58,7 +61,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     // Initialize kernel size.
 
     U64 threadsPerBlock = 512;
-    U64 blocksPerGrid = (numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
+    U64 blocksPerGrid = (pimpl->numberOfElements + threadsPerBlock - 1) / threadsPerBlock;
 
     pimpl->grid = { blocksPerGrid, 1, 1 };
     pimpl->block = { threadsPerBlock, 1, 1 };
@@ -76,8 +79,8 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     pimpl->arguments = {
         pimpl->input.data_ptr(),
         output.buffer.data_ptr(),
-        &scalingCoeff,
-        &numberOfElements,
+        &pimpl->scalingCoeff,
+        &pimpl->numberOfElements,
     };
 
     return Result::SUCCESS;
@@ -89,9 +92,9 @@ Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
         JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
     }
 
-    JST_CHECK(ctx.cuda->launchKernel("amplitude", 
-                                     pimpl->grid, 
-                                     pimpl->block, 
+    JST_CHECK(ctx.cuda->launchKernel("amplitude",
+                                     pimpl->grid,
+                                     pimpl->block,
                                      pimpl->arguments.data()));
 
     return Result::SUCCESS;
