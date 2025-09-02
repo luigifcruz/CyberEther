@@ -1640,7 +1640,7 @@ Result Compositor::drawStatic() {
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    const auto& res = Platform::PickFile(globalModalPath);
+                    const auto& res = Platform::PickFile(globalModalPath, {"yaml", "yml"});
                     if (res == Result::SUCCESS) {
                         openFile |= true;
                     }

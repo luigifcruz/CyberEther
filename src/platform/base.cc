@@ -90,7 +90,7 @@ Result OpenUrl(const std::string& url) {
 
 #elif defined(JST_OS_BROWSER)
 
-EM_ASYNC_JS(void, jst_pick_file, (), {
+EM_ASYNC_JS(void, jst_pick_file, (const char* extensions_json), {
     if (typeof window === 'undefined') {
         console.error("File Picker: window is not defined.");
         return;
@@ -103,17 +103,26 @@ EM_ASYNC_JS(void, jst_pick_file, (), {
     }
 
     return new Promise((resolve) => {
-        const options = {
-            types: [
-                {
-                    description: 'Flowgraph Files',
-                    accept: {
-                        'text/plain': ['.yml', '.yaml'],
-                    },
-                },
-            ],
+        const extensionsStr = UTF8ToString(extensions_json);
+        let extensions = [];
+        if (extensionsStr && extensionsStr.length > 0) {
+            extensions = JSON.parse(extensionsStr);
+        }
+
+        let options = {
             multiple: false,
         };
+
+        if (extensions.length > 0) {
+            options.types = [
+                {
+                    description: 'Selected Files',
+                    accept: {
+                        'text/plain': extensions.map(ext => ext.startsWith('.') ? ext : '.' + ext),
+                    },
+                },
+            ];
+        }
 
         window
             .showOpenFilePicker(options)
@@ -135,6 +144,7 @@ EM_ASYNC_JS(void, jst_pick_file, (), {
                 resolve();
             })
             .catch(err => {
+                console.log(err);
                 window.jst.error = 1;
                 window.jst.error_string = "User cancelled file picker.";
                 resolve();
@@ -142,8 +152,15 @@ EM_ASYNC_JS(void, jst_pick_file, (), {
     });
 });
 
-Result PickFile(std::string& path) {
-    jst_pick_file();
+Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
+    std::string extensions_json = "[";
+    for (size_t i = 0; i < extensions.size(); ++i) {
+        if (i > 0) extensions_json += ",";
+        extensions_json += "\"" + extensions[i] + "\"";
+    }
+    extensions_json += "]";
+
+    jst_pick_file(extensions_json.c_str());
     if (jst_file_error()) {
         JST_ERROR("{}", jst_file_error_string());
         return Result::ERROR;
@@ -154,9 +171,19 @@ Result PickFile(std::string& path) {
 
 #elif defined(JST_OS_LINUX)
 
-Result PickFile(std::string& path) {
+Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
     std::array<char, 1024> buffer;
-    std::string command = "zenity --file-selection --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
+    std::string command = "zenity --file-selection ";
+
+    if (!extensions.empty()) {
+        command += "--file-filter='Selected files | ";
+        for (size_t i = 0; i < extensions.size(); ++i) {
+            if (i > 0) command += " ";
+            command += "*." + extensions[i];
+        }
+        command += "' ";
+    }
+    command += "2>/dev/null";
 
     auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
     std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
@@ -193,7 +220,7 @@ Result PickFile(std::string& path) {
 
 #elif defined(JST_OS_WINDOWS)
 
-Result PickFile(std::string& path) {
+Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
     // File path buffer
     char buf[256] = {'\0'};
     memcpy_s(buf, 256, path.c_str(), path.length());
@@ -207,8 +234,24 @@ Result PickFile(std::string& path) {
     ofn.hwndOwner = NULL;
     ofn.lpstrFile = buf;
     ofn.nMaxFile = 256;
-    ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
-    ofn.nFilterIndex = 2;
+
+    std::string filter = "All Files\0*.*\0";
+    if (!extensions.empty()) {
+        filter += "Selected Files (";
+        for (size_t i = 0; i < extensions.size(); ++i) {
+            if (i > 0) filter += ", ";
+            filter += "." + extensions[i];
+        }
+        filter += ")\0";
+        for (size_t i = 0; i < extensions.size(); ++i) {
+            if (i > 0) filter += ";";
+            filter += "*." + extensions[i];
+        }
+        filter += "\0";
+        ofn.nFilterIndex = 2;
+    }
+    ofn.nFilterIndex = 1;
+    ofn.lpstrFilter = filter.c_str();
 
     bool ret = GetOpenFileNameA(&ofn);
     if (!ret) {
@@ -232,7 +275,7 @@ Result PickFile(std::string& path) {
 
 #else
 
-Result PickFile(std::string& path) {
+Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
     JST_ERROR("Picking files is not supported in this platform.");
     return Result::ERROR;
 }
