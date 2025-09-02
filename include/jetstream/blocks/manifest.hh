@@ -199,6 +199,12 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::FileWriter);
 #endif
+#ifdef JETSTREAM_BLOCK_FILE_READER_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::FileReader);
+#endif
+#ifdef JETSTREAM_BLOCK_THROTTLE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Throttle);
+#endif
     // [NEW BLOCK HOOK]
 }
 

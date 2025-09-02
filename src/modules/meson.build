@@ -22,6 +22,8 @@ subdir('take')
 subdir('duplicate')
 subdir('arithmetic')
 subdir('file_writer')
+subdir('file_reader')
+subdir('throttle')
 
 # Graphical
 subdir('lineplot')

@@ -101,6 +101,14 @@
 #include "jetstream/modules/file_writer.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_FILE_READER_AVAILABLE
+#include "jetstream/modules/file_reader.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_THROTTLE_AVAILABLE
+#include "jetstream/modules/throttle.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH

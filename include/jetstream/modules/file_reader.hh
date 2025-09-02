@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_MODULES_FILE_WRITER_HH
-#define JETSTREAM_MODULES_FILE_WRITER_HH
+#ifndef JETSTREAM_MODULES_FILE_READER_HH
+#define JETSTREAM_MODULES_FILE_READER_HH
 
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
@@ -10,30 +10,26 @@
 
 namespace Jetstream {
 
-#define JST_FILE_WRITER_CPU(MACRO) \
-    MACRO(FileWriter, CPU, CF32) \
-    MACRO(FileWriter, CPU, F32)
+#define JST_FILE_READER_CPU(MACRO) \
+    MACRO(FileReader, CPU, CF32) \
+    MACRO(FileReader, CPU, F32)
 
 template<Device D, typename T = CF32>
-class FileWriter : public Module, public Compute {
+class FileReader : public Module, public Compute {
  public:
-    FileWriter();
-    ~FileWriter();
+    FileReader();
+    ~FileReader();
 
     // Configuration
 
     struct Config {
         FileFormatType fileFormat = FileFormatType::Raw;
         std::string filepath = "";
-        std::string name = "";
-        std::string description = "";
-        std::string author = "CyberEther User";
-        F32 sampleRate = 0.0f;
-        F32 centerFrequency = 0.0f;
-        bool overwrite = false;
-        bool recording = false;
+        bool playing = false;
+        bool loop = true;
+        std::vector<U64> shape = {8192};
 
-        JST_SERDES(fileFormat, filepath, name, description, author, sampleRate, centerFrequency, overwrite, recording);
+        JST_SERDES(fileFormat, filepath, playing, loop, shape);
     };
 
     constexpr const Config& getConfig() const {
@@ -43,9 +39,7 @@ class FileWriter : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> buffer;
-
-        JST_SERDES_INPUT(buffer);
+        JST_SERDES_INPUT();
     };
 
     constexpr const Input& getInput() const {
@@ -55,7 +49,9 @@ class FileWriter : public Module, public Compute {
     // Output
 
     struct Output {
-        JST_SERDES_OUTPUT();
+        Tensor<D, T> buffer;
+
+        JST_SERDES_OUTPUT(buffer);
     };
 
     constexpr const Output& getOutput() const {
@@ -82,10 +78,13 @@ class FileWriter : public Module, public Compute {
 
     // Miscellaneous
 
-    Result recording(const bool& recording);
-    constexpr const bool& recording() const {
-        return config.recording;
+    Result playing(const bool& playing);
+    constexpr const bool& playing() const {
+        return config.playing;
     }
+
+    U64 getFileSize() const;
+    U64 getCurrentPosition() const;
 
  protected:
     Result createCompute(const Context& ctx) final;
@@ -102,8 +101,8 @@ class FileWriter : public Module, public Compute {
     JST_DEFINE_IO()
 };
 
-#ifdef JETSTREAM_MODULE_FILE_WRITER_CPU_AVAILABLE
-JST_FILE_WRITER_CPU(JST_SPECIALIZATION);
+#ifdef JETSTREAM_MODULE_FILE_READER_CPU_AVAILABLE
+JST_FILE_READER_CPU(JST_SPECIALIZATION);
 #endif
 
 }  // namespace Jetstream

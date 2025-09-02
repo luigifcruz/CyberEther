@@ -175,6 +175,16 @@
 #define JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
 #endif
 
+#if defined(JETSTREAM_MODULE_FILE_READER_AVAILABLE)
+#include "jetstream/blocks/file_reader.hh"
+#define JETSTREAM_BLOCK_FILE_READER_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_THROTTLE_AVAILABLE)
+#include "jetstream/blocks/throttle.hh"
+#define JETSTREAM_BLOCK_THROTTLE_AVAILABLE
+#endif
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH

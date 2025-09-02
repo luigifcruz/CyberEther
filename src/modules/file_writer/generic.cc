@@ -2,8 +2,9 @@
 #include <filesystem>
 #include <fstream>
 
-
 #include "jetstream/modules/file_writer.hh"
+
+// TODO: Correctly separate Device implementations.
 
 namespace Jetstream {
 

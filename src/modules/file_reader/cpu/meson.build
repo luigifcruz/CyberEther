@@ -7,7 +7,7 @@ endforeach
 
 if all_deps_found
     backend_lst += 'CPU'
-    cfg_lst.set('JETSTREAM_MODULE_FILE_WRITER_CPU_AVAILABLE', true)
+    cfg_lst.set('JETSTREAM_MODULE_FILE_READER_CPU_AVAILABLE', true)
     src_lst += files([
         'base.cc',
     ])
