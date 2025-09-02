@@ -27,31 +27,25 @@ Result FileReader<D, T>::create() {
     JST_DEBUG("Initializing File Reader module.");
     JST_INIT_IO();
 
-    // Initialize output buffer
-    output.buffer = Tensor<D, T>(config.shape);
-    if (output.buffer.size() == 0) {
-        JST_ERROR("Output buffer size is zero.");
-        return Result::ERROR;
-    }
-
     // Initialize state
     gimpl->fileSize = 0;
     gimpl->currentPosition = 0;
 
-    // Start playback
-    if (config.playing) {
-        const auto& res = gimpl->startPlaying(*this);
-
-        if (res != Result::SUCCESS) {
-            config.playing = false;
-            return res;
-        }
-
-        return Result::SUCCESS;
+    // Check playback status.
+    if (!config.playing) {
+        JST_ERROR("Not playing.");
+        return Result::ERROR;
     }
 
-    JST_ERROR("Playback was not initiated.");
-    return Result::ERROR;
+    // Start playback
+    const auto& res = gimpl->startPlaying(*this);
+
+    if (res != Result::SUCCESS) {
+        config.playing = false;
+        return res;
+    }
+
+    return Result::SUCCESS;
 }
 
 template<Device D, typename T>
@@ -92,6 +86,13 @@ U64 FileReader<D, T>::getCurrentPosition() const {
 
 template<Device D, typename T>
 Result FileReader<D, T>::GImpl::startPlaying(FileReader<D, T>& m) {
+    // Initialize output buffer
+    m.output.buffer = Tensor<D, T>(m.config.shape);
+    if (m.output.buffer.size() == 0) {
+        JST_ERROR("Buffer shape is zero.");
+        return Result::ERROR;
+    }
+
     // Check file format type.
     if (m.config.fileFormat != FileFormatType::Raw) {
         JST_ERROR("File format '{}' is not supported.", m.config.fileFormat);
