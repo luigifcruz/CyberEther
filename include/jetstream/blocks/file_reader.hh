@@ -105,7 +105,7 @@ class FileReader : public Block {
             locale()
         ));
 
-        JST_CHECK(Block::LinkOutput("buffer", output.buffer, file_reader->getOutput().buffer));
+        JST_CHECK(Block::LinkOutput("buffer", output.buffer, file_reader->getOutputBuffer()));
 
         return Result::SUCCESS;
     }

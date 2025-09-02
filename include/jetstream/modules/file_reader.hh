@@ -58,6 +58,10 @@ class FileReader : public Module, public Compute {
         return output;
     }
 
+    constexpr const Tensor<D, T>& getOutputBuffer() const {
+        return this->output.buffer;
+    }
+
     // Taint & Housekeeping
 
     constexpr Device device() const {
