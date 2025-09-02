@@ -25,8 +25,8 @@ class FileWriter : public Module, public Compute {
 
     struct Config {
         FileFormatType fileFormat = FileFormatType::SigMF;
-        std::string name = "";
         std::string filepath = "";
+        std::string name = "";
         std::string description = "";
         std::string author = "CyberEther User";
         F32 sampleRate = 0.0f;
@@ -34,7 +34,7 @@ class FileWriter : public Module, public Compute {
         bool overwrite = false;
         bool recording = false;
 
-        JST_SERDES(fileFormat, name, filepath, description, author, sampleRate, centerFrequency, overwrite, recording);
+        JST_SERDES(fileFormat, filepath, name, description, author, sampleRate, centerFrequency, overwrite, recording);
     };
 
     constexpr const Config& getConfig() const {

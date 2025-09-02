@@ -3,7 +3,10 @@
 #include <fstream>
 #include <chrono>
 
+#include <nlohmann/json.hpp>
 #include "jetstream/modules/file_writer.hh"
+
+using json = nlohmann::json;
 
 namespace Jetstream {
 
@@ -162,25 +165,26 @@ Result FileWriter<D, T>::GImpl::startRecording(FileWriter<D, T>& m) {
 
     // Write the SigMF core metadata.
 
-    // TODO: Replace with JSON library.
-    metaFile << "{\n";
-    metaFile << "  \"global\": {\n";
-    metaFile << "    \"core:author\": \"" << m.config.author << "\",\n";
-    metaFile << "    \"core:datatype\": \"cf32_le\",\n";
-    metaFile << "    \"core:description\": \"" << m.config.description << "\",\n";
-    metaFile << "    \"core:recorder\": \"CyberEther v" << JETSTREAM_VERSION_STR << "\",\n";
-    metaFile << "    \"core:sample_rate\": " << jst::fmt::format("{}", m.config.sampleRate) << ",\n";
-    metaFile << "    \"core:version\": \"v1.0.0\"\n";
-    metaFile << "  },\n";
-    metaFile << "  \"captures\": [\n";
-    metaFile << "    {\n";
-    metaFile << "      \"core:frequency\": " << jst::fmt::format("{}", m.config.centerFrequency) << ",\n";
-    metaFile << "      \"core:sample_start\": 0,\n";
-    metaFile << "      \"core:datetime\": \"" << jst::fmt::format("{:%Y-%m-%dT%H:%M:%SZ}", t) << "\"\n";
-    metaFile << "    }\n";
-    metaFile << "  ],\n";
-    metaFile << "  \"annotations\": []\n";
-    metaFile << "}\n";
+    json sigmfMeta = {
+        {"global", {
+            {"core:author", m.config.author},
+            {"core:datatype", "cf32_le"},
+            {"core:description", m.config.description},
+            {"core:recorder", jst::fmt::format("CyberEther v{}", JETSTREAM_VERSION_STR)},
+            {"core:sample_rate", m.config.sampleRate},
+            {"core:version", "v1.0.0"}
+        }},
+        {"captures", json::array({
+            {
+                {"core:frequency", m.config.centerFrequency},
+                {"core:sample_start", 0},
+                {"core:datetime", jst::fmt::format("{:%Y-%m-%dT%H:%M:%SZ}", t)}
+            }
+        })},
+        {"annotations", json::array()}
+    };
+
+    metaFile << sigmfMeta.dump(2) << std::endl;
 
     // Start underlying recording.
 
@@ -222,8 +226,8 @@ Result FileWriter<D, T>::GImpl::stopRecording() {
 template<Device D, typename T>
 void FileWriter<D, T>::info() const {
     JST_DEBUG("  File Format: {}", config.fileFormat);
-    JST_DEBUG("  Name: {}", config.name);
     JST_DEBUG("  Filepath: {}", config.filepath);
+    JST_DEBUG("  Name: {}", config.name);
     JST_DEBUG("  Description: {}", config.description);
     JST_DEBUG("  Author: {}", config.author);
     JST_DEBUG("  Sample Rate: {:.2f} MHz", config.sampleRate / JST_MHZ);
