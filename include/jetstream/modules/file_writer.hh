@@ -13,7 +13,7 @@ namespace Jetstream {
     MACRO(FileWriter, CPU, CF32) \
     MACRO(FileWriter, CPU, F32)
 
-JST_SERDES_ENUM(FileFormatType, SigMF);
+JST_SERDES_ENUM(FileFormatType, Raw);
 
 template<Device D, typename T = CF32>
 class FileWriter : public Module, public Compute {
@@ -24,7 +24,7 @@ class FileWriter : public Module, public Compute {
     // Configuration
 
     struct Config {
-        FileFormatType fileFormat = FileFormatType::SigMF;
+        FileFormatType fileFormat = FileFormatType::Raw;
         std::string filepath = "";
         std::string name = "";
         std::string description = "";

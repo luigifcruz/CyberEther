@@ -14,7 +14,7 @@ class FileWriter : public Block {
     // Configuration
 
     struct Config {
-        FileFormatType fileFormat = FileFormatType::SigMF;
+        FileFormatType fileFormat = FileFormatType::Raw;
         std::string filepath = "";
         std::string name = "";
         std::string description = "";
@@ -144,7 +144,7 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         const F32 fullWidth = ImGui::GetContentRegionAvail().x;
         if (ImGui::Button("Pick File Path", ImVec2(fullWidth, 0))) {
-            JST_CHECK_NOTIFY(Platform::PickFolder(config.filepath));
+            JST_CHECK_NOTIFY(Platform::SaveFile(config.filepath));
         }
 
         ImGui::TableNextRow();
