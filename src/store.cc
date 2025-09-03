@@ -6,7 +6,7 @@
 #include "jetstream/viewport/base.hh"
 #include "jetstream/backend/base.hh"
 
-#include "flowgraphs/manifest.hh"
+#include "examples/flowgraphs/manifest.hh"
 #include "jetstream/blocks/manifest.hh"
 
 namespace Jetstream {
@@ -22,8 +22,8 @@ Store::Store() {
 }
 
 Result Store::_blockList(const std::string& filter) {
-    // Return if the filter is the same as last time. 
-    if (filter == lastBlockFilter && 
+    // Return if the filter is the same as last time.
+    if (filter == lastBlockFilter &&
         !blockFilteredMetadataList.empty()) {
         return Result::SUCCESS;
     }
@@ -58,8 +58,8 @@ Result Store::_blockList(const std::string& filter) {
 }
 
 Result Store::_flowgraphList(const std::string& filter) {
-    // Return if the filter is the same as last time. 
-    if (filter == lastFlowgraphFilter && 
+    // Return if the filter is the same as last time.
+    if (filter == lastFlowgraphFilter &&
         !filteredFlowgraphMetadataList.empty()) {
         return Result::SUCCESS;
     }

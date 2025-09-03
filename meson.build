@@ -86,7 +86,7 @@ cfg_lst.set('JST_OS_WINDOWS', jst_is_windows)
 
 subdir('meson')
 subdir('resources')
-subdir('flowgraphs')
+subdir('examples')
 subdir('src')
 
 #
@@ -137,12 +137,6 @@ if not jst_is_browser and \
    not jst_is_android and \
    not jst_is_ios
     subdir('tests')
-endif
-
-if not jst_is_browser and \
-   not jst_is_android and \
-   not jst_is_ios
-    subdir('examples')
 endif
 
 if not jst_is_ios and \
