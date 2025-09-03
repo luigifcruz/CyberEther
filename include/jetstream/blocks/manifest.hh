@@ -205,6 +205,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_THROTTLE_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::Throttle);
 #endif
+#ifdef JETSTREAM_BLOCK_DECIMATOR_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Decimator);
+#endif
     // [NEW BLOCK HOOK]
 }
 
