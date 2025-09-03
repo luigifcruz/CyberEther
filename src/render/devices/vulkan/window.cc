@@ -433,19 +433,8 @@ Result Implementation::destroySynchronizationObjects() {
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Vulkan>();
 
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Device Name:");
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(-1);
-    ImGui::TextFormatted("{}", backend->getDeviceName());
-
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Device Memory:");
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(-1);
-    ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
+    ImGui::TextFormatted("{} ({:.0f} GB)", backend->getDeviceName(),
+                                           (float)backend->getPhysicalMemory() / (1024*1024*1024));
 }
 
 const Window::Stats& Implementation::stats() const {

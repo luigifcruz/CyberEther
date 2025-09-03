@@ -192,11 +192,6 @@ Result Implementation::underlyingSynchronize() {
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::WebGPU>();
 
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Device Name:");
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(-1);
     ImGui::TextFormatted("{}", backend->getDeviceName());
 }
 

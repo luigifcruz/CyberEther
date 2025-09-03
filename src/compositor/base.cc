@@ -1174,7 +1174,7 @@ Result Compositor::drawStatic() {
                                              ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_Tooltip;
 
-        const F32 windowPad = 6.0f * scalingFactor;
+        const F32 windowPad = 10.0f * scalingFactor;
         ImVec2 workPos = viewport->WorkPos;
         ImVec2 workSize = viewport->WorkSize;
         ImVec2 windowPos, windowPosPivot;
@@ -1188,55 +1188,12 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowBgAlpha(0.35f);
         ImGui::Begin("Info HUD", nullptr, windowFlags);
 
-        if (ImGui::TreeNodeEx("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
-            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
-            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthStretch);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("FPS:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextFormatted("{:.1f} Hz", ImGui::GetIO().Framerate);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Frames:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextFormatted("{} dropped, {} recreated", instance.window().stats().droppedFrames, instance.window().stats().recreatedFrames);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Render Backend:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            ImGui::TextFormatted("{}", GetDevicePrettyName(instance.window().device()));
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Viewport:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            ImGui::TextFormatted("{}", instance.viewport().name());
-
-            instance.window().drawDebugMessage();
-
-            ImGui::EndTable();
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNodeEx("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
-            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
-            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthStretch);
-
-            instance.scheduler().drawDebugMessage();
-
-            ImGui::EndTable();
-            ImGui::TreePop();
-        }
-
-        ImGui::Dummy(ImVec2(variableWidth * 2.3f, 0.0f));
+        ImGui::TextFormatted("{:.1f} Hz ({}D:{}R)", ImGui::GetIO().Framerate,
+                                                    instance.window().stats().droppedFrames,
+                                                    instance.window().stats().recreatedFrames);
+        ImGui::TextFormatted("{} - {}", GetDevicePrettyName(instance.window().device()),
+                                        instance.viewport().name());
+        instance.window().drawDebugMessage();
 
         ImGui::End();
     }();
