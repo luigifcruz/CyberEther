@@ -7,6 +7,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/modules/tensor_modifier.hh"
+#include "jetstream/modules/duplicate.hh"
 
 namespace Jetstream::Blocks {
 
@@ -17,8 +18,9 @@ class Slice : public Block {
 
     struct Config {
         std::string slice = "[...]";
+        bool contiguous = false;
 
-        JST_SERDES(slice);
+        JST_SERDES(slice, contiguous);
     };
 
     constexpr const Config& getConfig() const {
@@ -72,8 +74,10 @@ class Slice : public Block {
     }
 
     std::string description() const {
-        // TODO: Add decent block description describing internals and I/O.
-        return "Creates a slice of a tensor. Similar to Numpy's slicing.";
+        return "Creates a slice of a tensor using NumPy-like slicing syntax. "
+               "Optionally ensures the output data is contiguous in memory by copying "
+               "the sliced data through the Duplicate module when the 'Contiguous' option is enabled. "
+               "This guarantees optimal memory layout for subsequent operations that require contiguous data.";
     }
 
     // Constructor
@@ -106,14 +110,14 @@ class Slice : public Block {
                 std::smatch match = *i;
                 elements.push_back(match.str());
             }
-            
+
             JST_TRACE("[SLICE] Found {} elements in slice string: {}", elements.size(), elements);
 
             // Parse the token strings into tokens.
 
             for (const auto& element : elements) {
                 // Parse Ellipsis.
-                
+
                 if (element == "...") {
                     tokens.emplace_back("...");
                     JST_TRACE("[SLICE] Found ellipsis token.");
@@ -173,7 +177,7 @@ class Slice : public Block {
                     std::vector<Token> tokens;
                     JST_CHECK(sliceParser(config.slice, tokens));
                     JST_CHECK(mod.slice(tokens));
-                
+
                     return Result::SUCCESS;
                 }
             }, {
@@ -182,13 +186,33 @@ class Slice : public Block {
             locale()
         ));
 
-        JST_CHECK(Block::LinkOutput("buffer", output.buffer, modifier->getOutputBuffer()));
+        auto currentOutput = modifier->getOutputBuffer();
+
+        if (config.contiguous) {
+            JST_CHECK(instance().addModule(
+                duplicate, "duplicate", {
+                    .hostAccessible = true,
+                }, {
+                    .buffer = currentOutput,
+                },
+                locale()
+            ));
+            currentOutput = duplicate->getOutputBuffer();
+        }
+
+        JST_CHECK(Block::LinkOutput("buffer", output.buffer, currentOutput));
 
         return Result::SUCCESS;
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(modifier->locale()));
+        if (duplicate) {
+            JST_CHECK(instance().eraseModule(duplicate->locale()));
+        }
+
+        if (modifier) {
+            JST_CHECK(instance().eraseModule(modifier->locale()));
+        }
 
         return Result::SUCCESS;
     }
@@ -207,6 +231,18 @@ class Slice : public Block {
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
             });
         }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Contiguous");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Checkbox("##contiguous", &config.contiguous)) {
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+            });
+        }
     }
 
     constexpr bool shouldDrawControl() const {
@@ -215,6 +251,7 @@ class Slice : public Block {
 
  private:
     std::shared_ptr<Jetstream::TensorModifier<D, IT>> modifier;
+    std::shared_ptr<Jetstream::Duplicate<D, IT>> duplicate;
 
     JST_DEFINE_IO()
 };
@@ -222,6 +259,7 @@ class Slice : public Block {
 }  // namespace Jetstream::Blocks
 
 JST_BLOCK_ENABLE(Slice, !std::is_same<IT, void>::value &&
-                         std::is_same<OT, void>::value)
+                         std::is_same<OT, void>::value &&
+                         is_specialized<Jetstream::Duplicate<D, IT>>::value)
 
 #endif

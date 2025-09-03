@@ -211,7 +211,8 @@ graph:
     device: cpu
     dataType: CF32
     config:
-      slice: "[:, 0]"
+      slice: "[:, 0, :]"
+      contiguous: true
     input:
       buffer: ${graph.overlap_add.output.buffer}
     interface:
