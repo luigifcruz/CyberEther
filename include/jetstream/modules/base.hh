@@ -89,9 +89,7 @@
 #include "jetstream/modules/fold.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_TAKE_AVAILABLE
-#include "jetstream/modules/take.hh"
-#endif
+
 
 #ifdef JETSTREAM_MODULE_DUPLICATE_AVAILABLE
 #include "jetstream/modules/duplicate.hh"

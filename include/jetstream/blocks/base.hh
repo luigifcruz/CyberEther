@@ -129,10 +129,6 @@
 #include "jetstream/blocks/note.hh"
 #define JETSTREAM_BLOCK_NOTE_AVAILABLE
 
-#if defined(JETSTREAM_MODULE_TAKE_AVAILABLE)
-#include "jetstream/blocks/take.hh"
-#define JETSTREAM_BLOCK_TAKE_AVAILABLE
-#endif
 
 #include "jetstream/blocks/squeeze_dims.hh"
 #define JETSTREAM_BLOCK_SQUEEZE_DIMS_AVAILABLE

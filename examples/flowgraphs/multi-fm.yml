@@ -62,8 +62,8 @@ graph:
       note: |-
         # 1. Multi-FM Example
         This is a simplified flowgraph from what was presented in the `Overlap-Add-Fold` example. That entire mechanism was abstracted  away with the `Filter Engine` block.
-        
-        Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the `Index` in the `Take` block.
+
+        Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the appropriate slice configuration in the `Slice` block.
     interface:
       previewEnabled: true
       viewEnabled: false
@@ -96,13 +96,13 @@ graph:
       note: |+
         # 2. Observe!
         The Filter Engine block will also try to resample the signal after filtering to the input filter's bandwidth. In this case, two sets of 200 kHz bandwidth centered in 0.0 MHz and 0.6 MHz.
-        
+
         ## < On The Left
         On the left, you can see the entire 2 MHz of the input signal.
-        
+
         ## On The Right >
         On the right, you can see the filtered and resampled 200 kHz signal of a single FM station.
-        
+
     interface:
       previewEnabled: true
       viewEnabled: false
@@ -115,7 +115,7 @@ graph:
     config:
       note: |-
         # Tip
-        You can also add more filters if you have 
+        You can also add more filters if you have
         more FM stations to filter. Simply increase the number of `Heads` and set the correct `Center` in the `Filter` block.
     interface:
       previewEnabled: true
@@ -123,13 +123,12 @@ graph:
       nodeWidth: 308.96252
       nodePos: [855.0375, -40.562256]
       controlEnabled: false
-  tak23:
-    module: take
+  sli23:
+    module: slice
     device: cpu
     dataType: CF32
     config:
-      axis: 1
-      index: 1
+      slice: "[:, 1]"
     input:
       buffer: ${graph.fil_engine36.output.buffer}
     interface:
@@ -146,7 +145,7 @@ graph:
     config:
       sampleRate: 200000
     input:
-      buffer: ${graph.tak23.output.buffer}
+      buffer: ${graph.sli23.output.buffer}
     interface:
       previewEnabled: false
       viewEnabled: false
@@ -165,7 +164,7 @@ graph:
       lineplot: true
       spectrogram: false
     input:
-      buffer: ${graph.tak23.output.buffer}
+      buffer: ${graph.sli23.output.buffer}
     interface:
       previewEnabled: true
       viewEnabled: false

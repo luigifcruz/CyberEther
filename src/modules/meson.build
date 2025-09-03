@@ -18,7 +18,7 @@ subdir('unpad')
 subdir('overlap_add')
 subdir('invert')
 subdir('multiply_constant')
-subdir('take')
+
 subdir('duplicate')
 subdir('arithmetic')
 subdir('file_writer')

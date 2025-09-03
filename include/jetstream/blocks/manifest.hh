@@ -172,9 +172,7 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_NOTE_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::Note);
 #endif
-#ifdef JETSTREAM_BLOCK_TAKE_AVAILABLE
-    JST_BLOCKS_MANIFEST(Blocks::Take);
-#endif
+
 #ifdef JETSTREAM_BLOCK_SQUEEZE_DIMS_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::SqueezeDims);
 #endif

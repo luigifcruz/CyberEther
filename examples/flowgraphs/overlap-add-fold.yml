@@ -14,7 +14,7 @@ graph:
       note: |-
         # Overlap-Add-Fold Example
         To understand the Overlap-Add section of this flowgraph, please, open the `Overlap-Add` example flowgraph. This is a continuationof that example that adds a `Fold` block for resampling the filtered signal. This decreases the computation necessary by reducing the IFFT size for each station.
-        
+
         ### Suggestion
         The next example flowgraph `Multi-FM` abstracts this whole mechanism in a single `Filter Engine` block. Making it more practical for reuse.
     interface:
@@ -206,13 +206,12 @@ graph:
       nodeWidth: 300
       nodePos: [2610, 321]
       controlEnabled: false
-  tak51:
-    module: take
+  sli51:
+    module: slice
     device: cpu
     dataType: CF32
     config:
-      axis: 1
-      index: 0
+      slice: "[:, 0]"
     input:
       buffer: ${graph.overlap_add.output.buffer}
     interface:
@@ -229,7 +228,7 @@ graph:
     config:
       sampleRate: 200000
     input:
-      buffer: ${graph.tak51.output.buffer}
+      buffer: ${graph.sli51.output.buffer}
     interface:
       previewEnabled: false
       viewEnabled: false
@@ -256,7 +255,7 @@ graph:
     device: cpu
     dataType: CF32
     input:
-      buffer: ${graph.tak51.output.buffer}
+      buffer: ${graph.sli51.output.buffer}
     interface:
       previewEnabled: false
       viewEnabled: false
