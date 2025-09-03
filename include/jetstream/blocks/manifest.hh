@@ -208,6 +208,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_DECIMATOR_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::Decimator);
 #endif
+#ifdef JETSTREAM_BLOCK_SPECTRUM_ENGINE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::SpectrumEngine);
+#endif
     // [NEW BLOCK HOOK]
 }
 
