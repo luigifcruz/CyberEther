@@ -1,7 +1,10 @@
 cmake = import('cmake')
 
 opts = cmake.subproject_options()
-opts.add_cmake_defines({'NANOBENCH_BUILD_TESTS': false})
+opts.add_cmake_defines({
+    'NANOBENCH_BUILD_TESTS': false,
+    'CMAKE_POSITION_INDEPENDENT_CODE': true,
+})
 
 nanobench_proj = cmake.subproject('nanobench', options: opts, required: true)
 
