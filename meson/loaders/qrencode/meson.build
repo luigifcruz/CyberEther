@@ -1,5 +1,5 @@
 deps = [
-    dependency('libqrencode', required: false)
+    dependency('libqrencode', required: true)
 ]
 
 all_deps_found = true

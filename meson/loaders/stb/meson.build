@@ -1,5 +1,5 @@
 deps = [
-    subproject('stb').get_variable('stb_dep')
+    subproject('stb', required: true).get_variable('stb_dep')
 ]
 
 all_deps_found = true

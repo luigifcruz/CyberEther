@@ -1,6 +1,7 @@
 ftxui = subproject(
     'ftxui',
-    default_options: []
+    default_options: [],
+    required: true
 )
 
 deps = [

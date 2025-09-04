@@ -1,5 +1,5 @@
 deps = [
-    subproject('fmt').get_variable('fmt_dep'),
+    subproject('fmt', required: true).get_variable('fmt_dep'),
 ]
 
 all_deps_found = true
