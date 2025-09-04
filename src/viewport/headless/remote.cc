@@ -54,10 +54,11 @@ struct Remote::Impl {
     std::string roomId;
     std::string consumerToken;
     std::string producerToken;
+    std::string clientUrl;
+    std::string webrtcUrl;
     std::vector<std::string> waitlist;
     std::vector<std::string> sessions;
 
-    std::string brokerUrl;
     bool brokerRunning;
     std::thread brokerThread;
     std::unique_ptr<httplib::Client> brokerClient;
@@ -223,11 +224,8 @@ Result Remote::Impl::createBroker() {
     // Connect to broker.
 
     {
-        const auto protocol = (config.broker.find("localhost") != std::string::npos ||
-                               config.broker.find("127.0.0.1") != std::string::npos) ? "http" : "https";
-        brokerUrl = jst::fmt::format("{}://{}", protocol, config.broker);
-        JST_INFO("[REMOTE] Connecting to broker at '{}'.", brokerUrl);
-        brokerClient = std::make_unique<httplib::Client>(brokerUrl);
+        JST_INFO("[REMOTE] Connecting to broker at '{}'.", config.broker);
+        brokerClient = std::make_unique<httplib::Client>(config.broker);
     }
 
     // Register room with broker.
@@ -265,7 +263,7 @@ Result Remote::Impl::createBroker() {
         JST_LOG_COLOR(false);
         JST_LOG_SET_SINK(log_history.sink());
 
-        const std::string invite_url = jst::fmt::format("{}/remote#{}", brokerUrl, consumerToken);
+        const std::string invite_url = jst::fmt::format("{}/remote#{}", clientUrl, consumerToken);
 
         std::string clientAuthorizationCode;
         int logs_content_height = 0;
@@ -1057,8 +1055,6 @@ Result Remote::Impl::startStream() {
         g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
     }
 
-    g_object_set(elements["webrtc"], "signalling-server-host", "localhost", nullptr);
-
     GstStructure *s = gst_structure_new_empty("meta");
     gst_structure_set(s, "token", G_TYPE_STRING, producerToken.c_str(), nullptr);
     g_object_set(elements["webrtc"], "meta", s, NULL);
@@ -1067,6 +1063,7 @@ Result Remote::Impl::startStream() {
     GObject* signaller;
     g_object_get(elements["webrtc"], "signaller", &signaller, nullptr);
     if (signaller) {
+        g_object_set(signaller, "uri", webrtcUrl.c_str(), nullptr);
         g_signal_connect(G_OBJECT(signaller), "webrtcbin-ready", G_CALLBACK(rtcReadyCallback), this);
         g_object_unref(signaller);
     } else {
@@ -1253,6 +1250,8 @@ Result Remote::Impl::createRoom() {
         roomId = j["roomId"].get<std::string>();
         producerToken = j["producerToken"].get<std::string>();
         consumerToken = j["consumerToken"].get<std::string>();
+        webrtcUrl = j["webrtcUrl"].get<std::string>();
+        clientUrl = j["clientUrl"].get<std::string>();
     } catch (const std::exception& e) {
         JST_ERROR("[REMOTE] JSON parse error '{}': {}", e.what(), res->body);
         return Result::ERROR;

@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Usage: " << argv[0] << " [options] [flowgraph]" << std::endl;
             std::cout << "Options:" << std::endl;
             std::cout << "  --remote                Enable remote viewport mode." << std::endl;
-            std::cout << "  --broker [url]          Set the broker of the remote viewport. Default: `cyberether.luigi.ltd`" << std::endl;
+            std::cout << "  --broker [url]          Set the broker of the remote viewport. Default: `https://api.cyberether.org`" << std::endl;
             std::cout << "  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`)." << std::endl;
             std::cout << "  --framerate [value]     Set the framerate of the te viewport (FPS). Default: `60`" << std::endl;
             std::cout << "  --multisampling [value] Set the multisampling anti-aliasing factor (`1`, `4`, or `8`). Default: `4`" << std::endl;
