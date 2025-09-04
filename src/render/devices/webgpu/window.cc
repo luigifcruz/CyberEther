@@ -190,9 +190,7 @@ Result Implementation::underlyingSynchronize() {
 }
 
 void Implementation::drawDebugMessage() const {
-    auto& backend = Backend::State<Device::WebGPU>();
-
-    ImGui::TextFormatted("{}", backend->getDeviceName());
+    // WebGPU doesn't expose any useful device information.
 }
 
 const Window::Stats& Implementation::stats() const {
