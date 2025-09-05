@@ -102,7 +102,6 @@ Result Superluminal::initialize(const InstanceConfig& config) {
     Viewport::Config viewportConfig {
         .title = impl->config.windowTitle,
         .size = impl->config.interfaceSize,
-        .endpoint = impl->config.endpoint,
         .codec = Viewport::VideoCodec::H264,
     };
 

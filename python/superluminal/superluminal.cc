@@ -88,17 +88,25 @@ NB_MODULE(_impl, m) {
         .def_prop_rw("buffer",
             [](Superluminal::PlotConfig &self) { return self.buffer; },
             [](Superluminal::PlotConfig &self, nb::handle input) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
                 if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cpu>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CPU, CF32>(input);
+                    return;
                 } else if (nb::isinstance<nb::ndarray<nb::numpy, F32, nb::c_contig, nb::device::cpu>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CPU, F32>(input);
-                } else if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cuda>>(input)) {
+                    return;
+                }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+                if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cuda>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CUDA, CF32>(input);
+                    return;
                 } else if (nb::isinstance<nb::ndarray<nb::numpy, F32, nb::c_contig, nb::device::cuda>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CUDA, F32>(input);
-                } else {
-                    throw std::invalid_argument("Unsupported buffer type or device");
+                    return;
                 }
+#endif
+                throw std::invalid_argument("Unsupported buffer type or device");
             },
             "Set the buffer")
         .def_rw("type", &Superluminal::PlotConfig::type)
@@ -116,8 +124,7 @@ NB_MODULE(_impl, m) {
         .def_rw("interface_scale", &Superluminal::InstanceConfig::interfaceScale)
         .def_rw("interface_size", &Superluminal::InstanceConfig::interfaceSize)
         .def_rw("window_title", &Superluminal::InstanceConfig::windowTitle)
-        .def_rw("headless", &Superluminal::InstanceConfig::headless)
-        .def_rw("endpoint", &Superluminal::InstanceConfig::endpoint)
+        .def_rw("remote", &Superluminal::InstanceConfig::remote)
         .def_rw("preferred_device", &Superluminal::InstanceConfig::preferredDevice);
 
     m.def("initialize", &Superluminal::Initialize, nb::arg("config") = Superluminal::InstanceConfig());

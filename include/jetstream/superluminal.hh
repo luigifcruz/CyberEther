@@ -64,14 +64,12 @@ class Superluminal {
 
     struct InstanceConfig {
         InstanceConfig() {}
-        // TODO: Add headless option.
         // TODO: Add preferred renderer option.
         U64 deviceId = 0;
         F32 interfaceScale = 1.0f;
         Extent2D<U64> interfaceSize = {1280, 720};
         std::string windowTitle = "Superluminal";
-        bool headless = false;
-        std::string endpoint = "0.0.0.0:5002";
+        bool remote = false;
         Device preferredDevice = Device::CPU;
     };
 
