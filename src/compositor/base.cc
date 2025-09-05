@@ -1188,11 +1188,16 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowBgAlpha(0.35f);
         ImGui::Begin("Info HUD", nullptr, windowFlags);
 
-        ImGui::TextFormatted("{:.1f} Hz ({}D:{}R)", ImGui::GetIO().Framerate,
-                                                    instance.window().stats().droppedFrames,
-                                                    instance.window().stats().recreatedFrames);
-        ImGui::TextFormatted("{} - {}", GetDevicePrettyName(instance.window().device()),
-                                        instance.viewport().name());
+        float fps = ImGui::GetIO().Framerate;
+        if (fps > 50.0f) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
+        }
+        ImGui::TextFormatted("{:.0f} Hz", fps);
+        if (fps > 50.0f) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::SameLine();
+        ImGui::TextFormatted("{}", instance.viewport().name());
         instance.window().drawDebugMessage();
 
         ImGui::End();
