@@ -18,6 +18,7 @@ subdir('unpad')
 subdir('overlap_add')
 subdir('invert')
 subdir('multiply_constant')
+subdir('signal_generator')
 
 subdir('duplicate')
 subdir('arithmetic')

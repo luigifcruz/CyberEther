@@ -209,6 +209,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_SPECTRUM_ENGINE_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::SpectrumEngine);
 #endif
+#ifdef JETSTREAM_BLOCK_SIGNAL_GENERATOR_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::SignalGenerator);
+#endif
     // [NEW BLOCK HOOK]
 }
 

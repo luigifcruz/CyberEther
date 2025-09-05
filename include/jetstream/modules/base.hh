@@ -107,6 +107,10 @@
 #include "jetstream/modules/throttle.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_SIGNAL_GENERATOR_AVAILABLE
+#include "jetstream/modules/signal_generator.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH
