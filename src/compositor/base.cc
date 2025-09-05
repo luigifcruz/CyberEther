@@ -980,9 +980,8 @@ Result Compositor::drawStatic() {
                 static bool shouldScrollToSelected = false;
 
                 const F32 searchWidth = 350.0f * scalingFactor;
-                const F32 buttonWidth = 30.0f * scalingFactor;
 
-                const F32 totalWidth = searchWidth + buttonWidth + 10.0f * scalingFactor;
+                const F32 totalWidth = searchWidth + 10.0f * scalingFactor;
                 const F32 availableWidth = ImGui::GetWindowWidth() - ImGui::GetCursorPosX();
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availableWidth - totalWidth);
 
@@ -1062,23 +1061,6 @@ Result Compositor::drawStatic() {
                 }
                 searchInputActive = inputActive;
 
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_LAYER_GROUP, ImVec2(buttonWidth, 0))) {
-                    showModuleDropdown = true;
-                    moduleSearchText.clear();
-                    selectedModuleIndex = 0;
-
-                    filteredModules.clear();
-                    for (const auto& [id, module] : Store::BlockMetadataList("")) {
-                        for (const auto& [device, _] : module.options) {
-                            filteredModules.push_back({id, device});
-                        }
-                    }
-                    if (filteredModules.empty()) {
-                        selectedModuleIndex = -1;
-                    }
-                }
-
                 if (moduleAttachMode) {
                     ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 
@@ -1093,7 +1075,7 @@ Result Compositor::drawStatic() {
 
                         ImVec2 textSize = ImGui::CalcTextSize(displayText.c_str());
                         ImVec2 tooltipSize = ImVec2(textSize.x + 16.0f * scalingFactor, textSize.y + 12.0f * scalingFactor);
-                        ImVec2 tooltipPos = ImVec2(mousePos.x + 15.0f * scalingFactor, mousePos.y - tooltipSize.y - 10.0f * scalingFactor);
+                        ImVec2 tooltipPos = ImVec2(mousePos.x + 5.0f * scalingFactor, mousePos.y - tooltipSize.y - 5.0f * scalingFactor);
 
                         drawList->AddRectFilled(tooltipPos,
                                                ImVec2(tooltipPos.x + tooltipSize.x, tooltipPos.y + tooltipSize.y),
@@ -1231,12 +1213,12 @@ Result Compositor::drawStatic() {
                                 }
 
                                 if (isSelected) {
-                                    float margin = 5.0f * scalingFactor;
+                                    float margin = -1.0f * scalingFactor;
                                     ImVec2 pos = ImGui::GetCursorScreenPos();
-                                    ImVec2 itemMin = ImVec2(pos.x - margin + ImGui::CalcTextSize(" ").x, pos.y - margin);
-                                    ImVec2 itemMax = ImVec2(pos.x + margin + ImGui::CalcTextSize(" ").x + ImGui::CalcTextSize(ICON_FA_CUBE).x, pos.y + margin + ImGui::GetTextLineHeight());
+                                    ImVec2 itemMin = ImVec2(pos.x - margin, pos.y - margin);
+                                    ImVec2 itemMax = ImVec2(pos.x + margin + ImGui::CalcTextSize(ICON_FA_CUBE).x, pos.y + margin + ImGui::GetTextLineHeight());
                                     ImDrawList* drawList = ImGui::GetWindowDrawList();
-                                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 50), 3.0f);
+                                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 75), 3.0f);
 
                                     if (shouldScrollToSelected) {
                                         ImGui::SetScrollHereY(0.5f);
@@ -1245,7 +1227,7 @@ Result Compositor::drawStatic() {
                                 }
 
                                 ImGui::PushStyleColor(ImGuiCol_Text, deviceColor);
-                                ImGui::Text(" " ICON_FA_CUBE);
+                                ImGui::Text(ICON_FA_CUBE);
                                 ImGui::PopStyleColor();
 
                                 if (ImGui::IsItemClicked()) {
