@@ -6,7 +6,7 @@
 #include "jetstream/viewport/base.hh"
 #include "jetstream/backend/base.hh"
 
-#include "examples/flowgraphs/manifest.hh"
+#include "flowgraph_manifest.hh"
 #include "jetstream/blocks/manifest.hh"
 
 namespace Jetstream {

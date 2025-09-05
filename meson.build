@@ -86,7 +86,6 @@ cfg_lst.set('JST_OS_WINDOWS', jst_is_windows)
 
 subdir('meson')
 subdir('resources')
-subdir('examples')
 subdir('src')
 
 #
@@ -132,6 +131,8 @@ endif
 #
 # Optionals
 #
+
+subdir('examples')
 
 if not jst_is_browser and \
    not jst_is_android and \

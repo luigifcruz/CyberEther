@@ -1,11 +1,11 @@
 src_lst += files([
-   'instance.cc',
-   'store.cc',
    'parser.cc',
+   'instance.cc',
    'logger.cc',
    'benchmark.cc',
 ])
 
+subdir('store')
 subdir('backend')
 subdir('memory')
 subdir('viewport')
@@ -15,4 +15,4 @@ subdir('compute')
 subdir('flowgraph')
 subdir('platform')
 subdir('compositor')
-#subdir('superluminal')
+subdir('superluminal')
