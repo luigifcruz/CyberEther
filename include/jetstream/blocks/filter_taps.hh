@@ -107,7 +107,7 @@ class FilterTaps : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / JST_MHZ;
-        if (ImGui::InputFloat("##filter-sample-rate", &sampleRate, 1.0f, 1.0f, "%.3f MHz")) {
+        if (ImGui::InputFloat("##filter-sample-rate", &sampleRate, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.sampleRate = sampleRate * JST_MHZ;
 
             JST_DISPATCH_ASYNC([&](){
@@ -122,7 +122,7 @@ class FilterTaps : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 bandwidth = config.bandwidth / JST_MHZ;
-        if (ImGui::InputFloat("##filter-bandwidth", &bandwidth, 1.0f, 1.0f, "%.3f MHz")) {
+        if (ImGui::InputFloat("##filter-bandwidth", &bandwidth, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.bandwidth = bandwidth * JST_MHZ;
 
             JST_DISPATCH_ASYNC([&](){
@@ -137,7 +137,7 @@ class FilterTaps : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 taps = config.taps;
-        if (ImGui::InputFloat("##filter-taps", &taps, 2.0f, 2.0f, "%.0f")) {
+        if (ImGui::InputFloat("##filter-taps", &taps, 2.0f, 2.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.taps = static_cast<U64>(taps);
 
             JST_DISPATCH_ASYNC([&](){
@@ -152,7 +152,7 @@ class FilterTaps : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 heads = config.center.size();
-        if (ImGui::InputFloat("##filter-heads", &heads, 1.0f, 1.0f, "%.0f")) {
+        if (ImGui::InputFloat("##filter-heads", &heads, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (heads != config.center.size() && heads > 0) {
                 config.center.resize(heads);
 
@@ -171,7 +171,7 @@ class FilterTaps : public Block {
             ImGui::SetNextItemWidth(-1);
             const std::string id = jst::fmt::format("##filter-center-{}", i);
             F32 center = config.center[i] / JST_MHZ;
-            if (ImGui::InputFloat(id.c_str(), &center, 1.0f, 1.0f, "%.3f MHz")) {
+            if (ImGui::InputFloat(id.c_str(), &center, 1.0f, 1.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 config.center[i] = center * JST_MHZ;
 
                 JST_DISPATCH_ASYNC([&](){

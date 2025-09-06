@@ -105,7 +105,7 @@ class Cast : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 scaler = config.scaler;
-        if (ImGui::InputFloat("##scaler", &scaler, 1.0f, 1.0f, "%.0f")) {
+        if (ImGui::InputFloat("##scaler", &scaler, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (scaler >= 0.0f) {
                 config.scaler = scaler;
 

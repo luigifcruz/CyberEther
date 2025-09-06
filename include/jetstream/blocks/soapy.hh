@@ -186,7 +186,7 @@ class Soapy : public Block {
             static_cast<I32>(config.numberOfBatches),
             static_cast<I32>(config.numberOfTimeSamples)
         };
-        if (ImGui::InputInt2("##batch-samples", taps)) {
+        if (ImGui::InputInt2("##batch-samples", taps, ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.numberOfBatches = static_cast<U64>(taps[0]);
             config.numberOfTimeSamples = static_cast<U64>(taps[1]);
 

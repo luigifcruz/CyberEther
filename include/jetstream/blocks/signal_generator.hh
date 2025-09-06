@@ -314,7 +314,7 @@ class SignalGenerator : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 bufferSize = static_cast<F32>(config.bufferSize);
-        if (ImGui::InputFloat("##bufferSize", &bufferSize, 1.0f, 1.0f, "%.0f")) {
+        if (ImGui::InputFloat("##bufferSize", &bufferSize, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (bufferSize > 0) {
                 config.bufferSize = static_cast<U64>(bufferSize);
                 reloadBlock();

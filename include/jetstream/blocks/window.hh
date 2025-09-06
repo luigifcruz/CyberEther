@@ -101,7 +101,7 @@ class Window : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 size = config.size;
-        if (ImGui::InputFloat("##window-size", &size, 2.0f, 2.0f, "%.0f")) {
+        if (ImGui::InputFloat("##window-size", &size, 2.0f, 2.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
             config.size = static_cast<U64>(size);
 
             JST_DISPATCH_ASYNC([&](){
