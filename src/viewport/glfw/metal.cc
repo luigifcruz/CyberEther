@@ -33,6 +33,7 @@ Result Implementation::create() {
     keepRunningFlag = true;
     std::signal(SIGINT, [](int){
         if (!keepRunningFlag) {
+            JST_DEBUG("[METAL] Exiting via SIGINT...");
             std::exit(0);
         }
         keepRunningFlag = false;
@@ -51,7 +52,7 @@ Result Implementation::create() {
     glfwWindowHint(GLFW_DOUBLEBUFFER, config.vsync);
 
     auto [width, height] = config.size;
-    window = glfwCreateWindow(width, height, 
+    window = glfwCreateWindow(width, height,
         config.title.c_str(), nullptr, nullptr);
 
     if (!window) {
@@ -77,7 +78,7 @@ Result Implementation::destroy() {
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    swapchain->release(); 
+    swapchain->release();
 
     return Result::SUCCESS;
 }
@@ -103,7 +104,7 @@ void* Implementation::nextDrawable() {
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     swapchain->setDrawableSize({
-        static_cast<CGFloat>(width), 
+        static_cast<CGFloat>(width),
         static_cast<CGFloat>(height)
     });
 
@@ -126,5 +127,4 @@ bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window) && keepRunningFlag;
 }
 
-}  // namespace Jetstream::Viewport 
-
+}  // namespace Jetstream::Viewport
