@@ -99,7 +99,9 @@ class Unpad : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(unpad->locale()));
+        if (unpad) {
+            JST_CHECK(instance().eraseModule(unpad->locale()));
+        }
 
         return Result::SUCCESS;
     }

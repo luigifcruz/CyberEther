@@ -87,7 +87,9 @@ class Invert : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(invert->locale()));
+        if (invert) {
+            JST_CHECK(instance().eraseModule(invert->locale()));
+        }
 
         return Result::SUCCESS;
     }

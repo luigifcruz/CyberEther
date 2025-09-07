@@ -91,7 +91,9 @@ class Throttle : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(throttle->locale()));
+        if (throttle) {
+            JST_CHECK(instance().eraseModule(throttle->locale()));
+        }
 
         return Result::SUCCESS;
     }

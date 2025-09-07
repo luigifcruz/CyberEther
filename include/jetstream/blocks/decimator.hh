@@ -134,9 +134,18 @@ class Decimator : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(duplicate->locale()));
-        JST_CHECK(instance().eraseModule(slicer->locale()));
-        JST_CHECK(instance().eraseModule(arithmetic->locale()));
+        // Destroy modules in reverse order of creation with guards
+        if (duplicate) {
+            JST_CHECK(instance().eraseModule(duplicate->locale()));
+        }
+
+        if (slicer) {
+            JST_CHECK(instance().eraseModule(slicer->locale()));
+        }
+
+        if (arithmetic) {
+            JST_CHECK(instance().eraseModule(arithmetic->locale()));
+        }
 
         return Result::SUCCESS;
     }

@@ -200,25 +200,46 @@ class Spectroscope : public Block {
     }
 
     Result destroy() {
-        if (spectrogram) {
-            JST_CHECK(instance().eraseModule(spectrogram->locale()));
+        // Destroy modules in reverse order of creation with guards
+        if (waterfall) {
+            JST_CHECK(instance().eraseModule(waterfall->locale()));
         }
 
         if (lineplot) {
             JST_CHECK(instance().eraseModule(lineplot->locale()));
         }
 
-        if (waterfall) {
-            JST_CHECK(instance().eraseModule(waterfall->locale()));
+        if (spectrogram) {
+            JST_CHECK(instance().eraseModule(spectrogram->locale()));
         }
 
-        JST_CHECK(instance().eraseModule(scale->locale()));
-        JST_CHECK(instance().eraseModule(amplitude->locale()));
-        JST_CHECK(instance().eraseModule(fft->locale()));
-        JST_CHECK(instance().eraseModule(agc->locale()));
-        JST_CHECK(instance().eraseModule(multiply->locale()));
-        JST_CHECK(instance().eraseModule(invert->locale()));
-        JST_CHECK(instance().eraseModule(window->locale()));
+        if (scale) {
+            JST_CHECK(instance().eraseModule(scale->locale()));
+        }
+
+        if (amplitude) {
+            JST_CHECK(instance().eraseModule(amplitude->locale()));
+        }
+
+        if (fft) {
+            JST_CHECK(instance().eraseModule(fft->locale()));
+        }
+
+        if (agc) {
+            JST_CHECK(instance().eraseModule(agc->locale()));
+        }
+
+        if (multiply) {
+            JST_CHECK(instance().eraseModule(multiply->locale()));
+        }
+
+        if (invert) {
+            JST_CHECK(instance().eraseModule(invert->locale()));
+        }
+
+        if (window) {
+            JST_CHECK(instance().eraseModule(window->locale()));
+        }
 
         return Result::SUCCESS;
     }

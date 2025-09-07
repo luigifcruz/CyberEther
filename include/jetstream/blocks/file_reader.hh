@@ -111,7 +111,9 @@ class FileReader : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(file_reader->locale()));
+        if (file_reader) {
+            JST_CHECK(instance().eraseModule(file_reader->locale()));
+        }
 
         return Result::SUCCESS;
     }

@@ -85,7 +85,9 @@ class Spectrogram : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(spectrogram->locale()));
+        if (spectrogram) {
+            JST_CHECK(instance().eraseModule(spectrogram->locale()));
+        }
 
         return Result::SUCCESS;
     }

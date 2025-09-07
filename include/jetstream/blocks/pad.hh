@@ -93,7 +93,9 @@ class Pad : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(pad->locale()));
+        if (pad) {
+            JST_CHECK(instance().eraseModule(pad->locale()));
+        }
 
         return Result::SUCCESS;
     }

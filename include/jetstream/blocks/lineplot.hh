@@ -98,7 +98,9 @@ class Lineplot : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(lineplot->locale()));
+        if (lineplot) {
+            JST_CHECK(instance().eraseModule(lineplot->locale()));
+        }
 
         return Result::SUCCESS;
     }

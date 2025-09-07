@@ -98,7 +98,9 @@ class SqueezeDims : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(modifier->locale()));
+        if (modifier) {
+            JST_CHECK(instance().eraseModule(modifier->locale()));
+        }
 
         return Result::SUCCESS;
     }

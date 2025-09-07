@@ -91,7 +91,9 @@ class Waterfall : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(waterfall->locale()));
+        if (waterfall) {
+            JST_CHECK(instance().eraseModule(waterfall->locale()));
+        }
 
         return Result::SUCCESS;
     }

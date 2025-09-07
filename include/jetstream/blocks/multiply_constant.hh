@@ -89,7 +89,9 @@ class MultiplyConstant : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(multiply->locale()));
+        if (multiply) {
+            JST_CHECK(instance().eraseModule(multiply->locale()));
+        }
 
         return Result::SUCCESS;
     }

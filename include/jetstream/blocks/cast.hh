@@ -91,7 +91,9 @@ class Cast : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(cast->locale()));
+        if (cast) {
+            JST_CHECK(instance().eraseModule(cast->locale()));
+        }
 
         return Result::SUCCESS;
     }

@@ -192,6 +192,7 @@ class SpectrumEngine : public Block {
     }
 
     Result destroy() {
+        // Destroy modules in reverse order of creation with guards
         if (scale) {
             JST_CHECK(instance().eraseModule(scale->locale()));
         }

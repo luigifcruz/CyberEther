@@ -143,7 +143,9 @@ class SignalGenerator : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(generator->locale()));
+        if (generator) {
+            JST_CHECK(instance().eraseModule(generator->locale()));
+        }
 
         return Result::SUCCESS;
     }

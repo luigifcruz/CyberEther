@@ -93,7 +93,9 @@ class Arithmetic : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(arithmetic->locale()));
+        if (arithmetic) {
+            JST_CHECK(instance().eraseModule(arithmetic->locale()));
+        }
 
         return Result::SUCCESS;
     }

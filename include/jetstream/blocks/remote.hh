@@ -86,7 +86,9 @@ class Remote : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(remote->locale()));
+        if (remote) {
+            JST_CHECK(instance().eraseModule(remote->locale()));
+        }
 
         return Result::SUCCESS;
     }

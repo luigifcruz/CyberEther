@@ -104,8 +104,14 @@ class Filter : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseInternalBlock(engine));
-        JST_CHECK(instance().eraseInternalBlock(taps));
+        // Destroy internal blocks in reverse order of creation with guards
+        if (engine) {
+            JST_CHECK(instance().eraseInternalBlock(engine));
+        }
+
+        if (taps) {
+            JST_CHECK(instance().eraseInternalBlock(taps));
+        }
 
         return Result::SUCCESS;
     }

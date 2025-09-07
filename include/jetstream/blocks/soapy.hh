@@ -127,7 +127,9 @@ class Soapy : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(soapy->locale()));
+        if (soapy) {
+            JST_CHECK(instance().eraseModule(soapy->locale()));
+        }
 
         return Result::SUCCESS;
     }

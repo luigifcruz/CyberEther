@@ -93,7 +93,9 @@ class FilterTaps : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(taps->locale()));
+        if (taps) {
+            JST_CHECK(instance().eraseModule(taps->locale()));
+        }
 
         return Result::SUCCESS;
     }

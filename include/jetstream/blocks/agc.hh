@@ -87,7 +87,9 @@ class AGC : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(agc->locale()));
+        if (agc) {
+            JST_CHECK(instance().eraseModule(agc->locale()));
+        }
 
         return Result::SUCCESS;
     }

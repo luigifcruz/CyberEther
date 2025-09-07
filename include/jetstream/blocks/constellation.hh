@@ -84,7 +84,9 @@ class Constellation : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(constellation->locale()));
+        if (constellation) {
+            JST_CHECK(instance().eraseModule(constellation->locale()));
+        }
 
         return Result::SUCCESS;
     }

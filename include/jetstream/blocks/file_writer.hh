@@ -102,7 +102,9 @@ class FileWriter : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(file_writer->locale()));
+        if (file_writer) {
+            JST_CHECK(instance().eraseModule(file_writer->locale()));
+        }
 
         return Result::SUCCESS;
     }
