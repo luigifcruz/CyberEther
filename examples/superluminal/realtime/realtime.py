@@ -5,7 +5,6 @@ import superluminal as lm
 print("Welcome to Superluminal!")
 
 data = np.random.rand(1, 8192).astype(np.complex64)
-
 lm.plot(data, lm.line, label="Sine")
 
 def callback():
@@ -15,7 +14,7 @@ def callback():
         # Generate sine wave
         for i in range(data.shape[1]):
             data[0, i] = np.sin(i * 0.01 + phase) * 20 + 30
-        
+
         phase += 0.1
 
         # Update the plot.

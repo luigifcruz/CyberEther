@@ -1,6 +1,7 @@
 import time
 import threading
 import numpy as np
+import os
 
 import superluminal._internal as lm
 
@@ -140,7 +141,11 @@ def configure(preferred_device: lm.constant = lm.cpu,
 def show():
     lm.start()
     lm.update()
-    lm.block()
+
+    while lm.presenting():
+        lm.poll_events(False)
+        time.sleep(0.01)
+
     lm.stop()
     lm.terminate()
 
@@ -168,3 +173,91 @@ def layout(matrix_height, matrix_width,
     return lm.mosaic_layout(matrix_height, matrix_width,
                             panel_height, panel_width,
                             offset_x, offset_y)
+
+def box(title: str, mosaic: list[list[int]], callback):
+    """
+    Create a box with UI elements.
+
+    Args:
+        title: The title of the box
+        mosaic: The layout mosaic (e.g., [[1]] for full screen)
+        callback: A function that defines the UI elements
+    """
+    if not isinstance(title, str):
+        raise TypeError("Title must be a string.")
+
+    if not isinstance(mosaic, list):
+        raise TypeError("Mosaic must be a list.")
+
+    if not callable(callback):
+        raise TypeError("Callback must be callable.")
+
+    lm.box(title, mosaic, callback)
+
+def text(format_string: str, *args):
+    """
+    Display formatted text.
+
+    Args:
+        format_string: The format string (can include {} placeholders)
+        *args: Arguments to format into the string
+    """
+    if args:
+        content = format_string.format(*args)
+    else:
+        content = format_string
+    lm.text(content)
+
+def slider(label: str, min_val: float, max_val: float, value: list):
+    """
+    Display a slider control.
+
+    Args:
+        label: The label for the slider
+        min_val: Minimum value
+        max_val: Maximum value
+        value: A list containing a single value (modified in place)
+    """
+    if not isinstance(value, list) or len(value) != 1:
+        raise ValueError("Value must be a list with exactly one element")
+
+    lm.slider(label, min_val, max_val, value)
+
+def markdown(content: str):
+    """
+    Display markdown formatted text.
+
+    Args:
+        content: The markdown content to display
+    """
+    if not isinstance(content, str):
+        raise TypeError("Content must be a string.")
+
+    lm.markdown(content)
+
+def image(filepath: str, width: float = -1.0, height: float = -1.0, fit_to_window: bool = False):
+    """
+    Display an image from a file.
+
+    Args:
+        filepath: Path to the image file
+        width: Display width (if -1, auto-calculate from height or use original)
+        height: Display height (if -1, auto-calculate from width or use original)
+        fit_to_window: If True, scale image to fit available window space while preserving aspect ratio
+    """
+    if not isinstance(filepath, str):
+        raise TypeError("Filepath must be a string.")
+
+    if not isinstance(width, (int, float)):
+        raise TypeError("Width must be a number.")
+
+    if not isinstance(height, (int, float)):
+        raise TypeError("Height must be a number.")
+
+    if not isinstance(fit_to_window, bool):
+        raise TypeError("fit_to_window must be a boolean.")
+
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(os.environ.get("PWD", os.getcwd()), filepath)
+
+    lm.image(filepath, float(width), float(height), fit_to_window)

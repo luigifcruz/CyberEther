@@ -3,9 +3,11 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <fstream>
+
+#include <stb_image.h>
 
 #include "jetstream/superluminal.hh"
-
 #include "jetstream/macros.hh"
 #include "jetstream/store.hh"
 #include "jetstream/blocks/manifest.hh"
@@ -43,6 +45,15 @@ struct Superluminal::Impl {
 
     std::unordered_map<std::string, PlotState> plots;
 
+    // Image cache for loaded textures
+    struct ImageData {
+        std::shared_ptr<Render::Texture> texture;
+        int width;
+        int height;
+    };
+    std::unordered_map<std::string, ImageData> imageCache;
+    std::unordered_set<std::string> failedImagePaths;
+
     Result createGraph();
     Result destroyGraph();
 
@@ -54,6 +65,8 @@ struct Superluminal::Impl {
 
     Result buildLinePlotGraph(PlotState& state);
     Result buildWaterfallPlotGraph(PlotState& state);
+
+    Result loadImageFromFile(const std::string& filepath, ImageData& imageData);
 
     struct GraphNode {
         std::string module;
@@ -111,7 +124,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
 
     Instance::Config instanceConfig = {
         .preferredDevice = Device::None,
-        .enableCompositor = false,
+        .enableCompositor = true,
         .backendConfig = backendConfig,
         .viewportConfig = viewportConfig,
         .renderConfig = renderConfig,
@@ -154,6 +167,11 @@ Result Superluminal::terminate() {
         JST_CHECK(stop());
     }
 
+    // Clear image cache and failed paths before destroying instance.
+
+    impl->imageCache.clear();
+    impl->failedImagePaths.clear();
+
     // Destroy instance.
 
     impl->instance.destroy();
@@ -186,10 +204,6 @@ Result Superluminal::start() {
         return Result::SUCCESS;
     }
 
-    // Customize ImGui style.
-
-    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
-
     // Create graph.
 
     JST_CHECK(impl->createGraph());
@@ -197,6 +211,11 @@ Result Superluminal::start() {
     // Build graph and start instance.
 
     JST_CHECK(impl->instance.start());
+
+    // Customize ImGui style.
+
+    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
+    ImGui::GetStyle().WindowRounding = 0.0f;
 
     // Start the compute, present, and input threads.
 
@@ -316,6 +335,8 @@ Result Superluminal::stop() {
 }
 
 Result Superluminal::update(const std::string&) {
+    // TODO: Implement plot level update logic.
+
     impl->computeSync.clear();
     impl->computeSync.notify_all();
 
@@ -323,7 +344,7 @@ Result Superluminal::update(const std::string&) {
 }
 
 bool Superluminal::presenting() {
-    return impl->instance.presenting();
+    return impl->instance.running();
 }
 
 Result Superluminal::block() {
@@ -921,6 +942,150 @@ std::vector<char> Superluminal::Impl::GraphToYaml(const Graph& graph, std::strin
     std::vector<char> blob;
     std::copy(yaml.begin(), yaml.end(), std::back_inserter(blob));
     return blob;
+}
+
+Result Superluminal::box(const std::string& title, const Mosaic& mosaic, const std::function<void()>& callback) {
+    JST_DEBUG("[SUPERLUMINAL] Registering new box called '{}'.", title);
+
+    // Check boundaries.
+
+    if (!impl->initialized) {
+        JST_CHECK(initialize());
+    }
+
+    if (impl->running) {
+        JST_FATAL("[SUPERLUMINAL] Can't register new box because the instance is already commited.");
+        return Result::ERROR;
+    }
+
+    JST_CHECK(impl->validateMosaic(mosaic));
+    JST_CHECK(impl->validateName(title));
+
+    // Create plot state.
+
+    auto& state = impl->plots[title];
+
+    state.config.type = Type::Interface;
+    state.callback = callback;
+    state.mosaic = mosaic;
+    state.name = title;
+
+    JST_CHECK(impl->calculateMosaicParams(mosaic, state));
+
+    JST_INFO("[SUPERLUMINAL] Created box '{}'.", state.name);
+    return Result::SUCCESS;
+}
+
+Result Superluminal::text(const std::string& content) {
+    ImGui::TextUnformatted(content.c_str());
+    return Result::SUCCESS;
+}
+
+Result Superluminal::slider(const std::string& label, F32 min, F32 max, F32& value) {
+    ImGui::SliderFloat(label.c_str(), &value, min, max);
+    return Result::SUCCESS;
+}
+
+Result Superluminal::markdown(const std::string& content) {
+    ImGui::Markdown(content.c_str(), content.length(), impl->instance.compositor().markdownConfig());
+    return Result::SUCCESS;
+}
+
+Result Superluminal::Impl::loadImageFromFile(const std::string& filepath, ImageData& imageData) {
+    if (failedImagePaths.contains(filepath)) {
+        return Result::ERROR;
+    }
+
+    int width, height, channels;
+
+    // Read file into memory
+    std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+    if (!file) {
+        JST_ERROR("[SUPERLUMINAL] Failed to open image file '{}'", filepath);
+        failedImagePaths.insert(filepath);
+        return Result::ERROR;
+    }
+
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<unsigned char> buffer(fileSize);
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), fileSize)) {
+        JST_ERROR("[SUPERLUMINAL] Failed to read image file '{}'", filepath);
+        failedImagePaths.insert(filepath);
+        return Result::ERROR;
+    }
+
+    unsigned char* data = stbi_load_from_memory(buffer.data(), static_cast<int>(fileSize), &width, &height, &channels, 4);
+    if (!data) {
+        const char* error = stbi_failure_reason();
+        JST_ERROR("[SUPERLUMINAL] Failed to load image '{}': {}", filepath, error ? error : "Unknown error");
+        failedImagePaths.insert(filepath);
+        return Result::ERROR;
+    }
+
+    Render::Texture::Config config;
+    config.size = {
+        static_cast<U64>(width),
+        static_cast<U64>(height)
+    };
+    config.buffer = static_cast<uint8_t*>(data);
+
+    JST_CHECK(instance.window().build(imageData.texture, config));
+    JST_CHECK(imageData.texture->create());
+
+    imageData.width = width;
+    imageData.height = height;
+
+    stbi_image_free(data);
+
+    JST_INFO("[SUPERLUMINAL] Successfully loaded image '{}' ({}x{})", filepath, width, height);
+    return Result::SUCCESS;
+}
+
+Result Superluminal::image(const std::string& filepath, F32 width, F32 height, bool fitToWindow) {
+    auto it = impl->imageCache.find(filepath);
+    if (it == impl->imageCache.end()) {
+        Impl::ImageData imageData;
+        JST_CHECK(impl->loadImageFromFile(filepath, imageData));
+        impl->imageCache[filepath] = imageData;
+        it = impl->imageCache.find(filepath);
+    }
+
+    const auto& imageData = it->second;
+
+    // Calculate display size
+    ImVec2 displaySize;
+
+    if (fitToWindow) {
+        // Fit to available content region while preserving aspect ratio
+        ImVec2 availableSize = ImGui::GetContentRegionAvail();
+        F32 imageAspectRatio = static_cast<F32>(imageData.width) / static_cast<F32>(imageData.height);
+        F32 windowAspectRatio = availableSize.x / availableSize.y;
+
+        if (imageAspectRatio > windowAspectRatio) {
+            displaySize = ImVec2(availableSize.x, availableSize.x / imageAspectRatio);
+        } else {
+            displaySize = ImVec2(availableSize.y * imageAspectRatio, availableSize.y);
+        }
+    } else if (width <= 0 && height <= 0) {
+        // Use original size
+        displaySize = ImVec2(static_cast<F32>(imageData.width), static_cast<F32>(imageData.height));
+    } else if (width <= 0) {
+        // Calculate width based on height and aspect ratio
+        F32 aspectRatio = static_cast<F32>(imageData.width) / static_cast<F32>(imageData.height);
+        displaySize = ImVec2(height * aspectRatio, height);
+    } else if (height <= 0) {
+        // Calculate height based on width and aspect ratio
+        F32 aspectRatio = static_cast<F32>(imageData.height) / static_cast<F32>(imageData.width);
+        displaySize = ImVec2(width, width * aspectRatio);
+    } else {
+        // Use specified dimensions
+        displaySize = ImVec2(width, height);
+    }
+
+    ImGui::Image(ImTextureRef(imageData.texture->raw()), displaySize);
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream
