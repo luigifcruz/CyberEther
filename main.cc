@@ -183,7 +183,7 @@ int main(int argc, char* argv[]) {
 
     Instance::Config config = {
         .preferredDevice = prefferedBackend,
-        .enableCompositor = true,
+        .renderCompositor = true,
         .backendConfig = backendConfig,
         .viewportConfig = viewportConfig,
         .renderConfig = renderConfig
