@@ -83,6 +83,21 @@ Result FFT<Device::CPU, F32, CF32>::compute(const Context&) {
     return Result::SUCCESS;
 }
 
+template<>
+Result FFT<Device::CPU, F32, F32>::compute(const Context&) {
+    pocketfft::r2r_fftpack(pimpl->shape,
+                           pimpl->i_stride,
+                           pimpl->o_stride,
+                           pimpl->axes,
+                           true,  // real2hermitian
+                           config.forward,
+                           input.buffer.data(),
+                           output.buffer.data(),
+                           1.0f);
+
+    return Result::SUCCESS;
+}
+
 JST_FFT_CPU(JST_INSTANTIATION)
 JST_FFT_CPU(JST_BENCHMARK)
 

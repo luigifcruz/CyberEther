@@ -12,7 +12,8 @@ namespace Jetstream {
 
 #define JST_FFT_CPU(MACRO) \
     MACRO(FFT, CPU, CF32, CF32) \
-    MACRO(FFT, CPU, F32, CF32)
+    MACRO(FFT, CPU, F32, CF32) \
+    MACRO(FFT, CPU, F32, F32)
 
 #define JST_FFT_METAL(MACRO) \
     MACRO(FFT, Metal, CF32, CF32)
