@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory/devices/cpu/helpers.hh"
+
 namespace Jetstream {
 
 template<Device D, typename T>
@@ -22,16 +24,23 @@ template<Device D, typename T>
 Result Constellation<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Constellation compute core using CPU backend.");
 
-    gimpl->decayFactor = pow(0.999, input.buffer.shape()[0]);
+    if (input.buffer.size() == 0) {
+        JST_ERROR("Input buffer is empty in createCompute.");
+        return Result::ERROR;
+    }
+
+    // Use the total number of samples for decay calculation
+    U64 sampleCount = input.buffer.size();
+    gimpl->decayFactor = pow(0.999, sampleCount);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Constellation<D, T>::compute(const Context&) {
-    for (U64 x = 0; x < gimpl->timeSamples.size(); x++) {
-        gimpl->timeSamples[x] *= gimpl->decayFactor;
-    }
+    Memory::CPU::AutomaticIterator([&](auto& sample) {
+        sample *= gimpl->decayFactor;
+    }, gimpl->timeSamples);
 
     auto& v = input.buffer;
 
@@ -47,18 +56,21 @@ Result Constellation<D, T>::compute(const Context&) {
         max_imag = std::max(max_imag, value.imag());
     }
 
-    for (U64 b = 0; b < input.buffer.shape()[0]; b++) {
-        for (U64 x = 0; x < input.buffer.shape()[1]; x++) {
-            const CF32& sample = input.buffer[{b, x}];
+    // Avoid division by zero
+    float real_range = max_real - min_real;
+    float imag_range = max_imag - min_imag;
 
-            const U64 r = ((sample.real() - min_real) / (max_real - min_real)) * gimpl->timeSamples.shape()[0];
-            const U64 i = ((sample.imag() - min_imag) / (max_imag - min_imag)) * gimpl->timeSamples.shape()[0];
+    if (real_range == 0.0f) real_range = 1.0f;
+    if (imag_range == 0.0f) imag_range = 1.0f;
 
-            if (r < gimpl->timeSamples.shape()[0] and i < gimpl->timeSamples.shape()[1]) {
-                gimpl->timeSamples[{r, i}] += 0.02;
-            }
+    Memory::CPU::AutomaticIterator([&](const auto& sample) {
+        const U64 r = ((sample.real() - min_real) / real_range) * (gimpl->timeSamples.shape()[0] - 1);
+        const U64 i = ((sample.imag() - min_imag) / imag_range) * (gimpl->timeSamples.shape()[1] - 1);
+
+        if (r < gimpl->timeSamples.shape()[0] && i < gimpl->timeSamples.shape()[1]) {
+            gimpl->timeSamples[{r, i}] += 0.75;
         }
-    }
+    }, input.buffer);
 
     return Result::SUCCESS;
 }

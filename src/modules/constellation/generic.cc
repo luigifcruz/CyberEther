@@ -43,6 +43,18 @@ Result Constellation<D, T>::create() {
     JST_DEBUG("Initializing Constellation module.");
     JST_INIT_IO();
 
+    // Check input parameters.
+
+    if (input.buffer.rank() == 0) {
+        JST_ERROR("Input buffer rank is 0.");
+        return Result::ERROR;
+    }
+
+    if (input.buffer.size() == 0) {
+        JST_ERROR("Input is empty during initialization.");
+        return Result::ERROR;
+    }
+
     // Allocate internal buffers.
 
     gimpl->timeSamples = Tensor<D, F32>({config.viewSize.x, config.viewSize.y});
