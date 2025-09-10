@@ -203,6 +203,11 @@
 #define JETSTREAM_BLOCK_SIGNAL_GENERATOR_AVAILABLE
 #endif
 
+#if defined(JETSTREAM_MODULE_PSK_DEMOD_AVAILABLE)
+#include "jetstream/blocks/psk_demod.hh"
+#define JETSTREAM_BLOCK_PSK_DEMOD_AVAILABLE
+#endif
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH

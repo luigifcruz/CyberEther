@@ -19,6 +19,7 @@ subdir('overlap_add')
 subdir('invert')
 subdir('multiply_constant')
 subdir('signal_generator')
+subdir('psk_demod')
 
 subdir('duplicate')
 subdir('arithmetic')

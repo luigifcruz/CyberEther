@@ -111,6 +111,10 @@
 #include "jetstream/modules/signal_generator.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_PSK_DEMOD_AVAILABLE
+#include "jetstream/modules/psk_demod.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH

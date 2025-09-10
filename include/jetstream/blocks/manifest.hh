@@ -212,6 +212,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_SIGNAL_GENERATOR_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::SignalGenerator);
 #endif
+#ifdef JETSTREAM_BLOCK_PSK_DEMOD_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::PskDemod);
+#endif
     // [NEW BLOCK HOOK]
 }
 

@@ -50,7 +50,7 @@ foreach shader_pkg: shader_pkg_lst
         #
 
         build_msl = spirvcross_bin.found() and build_spirv
-  
+
         if build_msl
             msl_vert = custom_target(
                 input: spirv_vert,
@@ -123,7 +123,7 @@ foreach shader_pkg: shader_pkg_lst
         #
 
         build_msl = spirvcross_bin.found() and build_spirv
-  
+
         if build_msl
             msl = custom_target(
                 input: spirv,
