@@ -567,6 +567,16 @@ struct VariantBufferTypeVisitor {
     }
 };
 
+template<typename TargetType>
+struct BufferTypeDetectorVisitor {
+    bool matches = false;
+
+    template<Device D, typename T>
+    void operator()(const Tensor<D, T>&) {
+        matches = std::is_same_v<T, TargetType>;
+    }
+};
+
 Result Superluminal::Impl::createGraph() {
     JST_DEBUG("[SUPERLUMINAL] Create graph.");
 
@@ -665,29 +675,46 @@ Result Superluminal::Impl::createGraph() {
         auto& prototype = std::visit(VariantBufferTypeVisitor{}, recipe.buffer);
         auto forward = (recipe.source == Domain::Time && recipe.display.contains(Domain::Frequency));
 
-        if (config.preferredDevice == Device::CPU) {
-            auto blob = GraphToYaml({
-                {"win",
-                    {"window", GetDeviceName(config.preferredDevice), {"CF32"},
-                        {{"size", jst::fmt::format("{}", prototype.size())}}, {}}},
-                {"inv",
-                    {"invert", GetDeviceName(config.preferredDevice), {"CF32"}, {},
-                        {{"buffer", "${graph.win.output.window}"}}}},
-                {"win_mul",
-                    {"multiply", GetDeviceName(config.preferredDevice), {"CF32"}, {},
-                        {{"factorA", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)},
-                        {"factorB", "${graph.inv.output.buffer}"}}}},
-                {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
-                    {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
-                        {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
-                        {{"buffer", "${graph.win_mul.output.product}"}}}},
-            });
-            instance.flowgraph().importFromBlob(blob);
+        // Check if buffer is real (F32) or complex (CF32)
+        BufferTypeDetectorVisitor<CF32> detector;
+        std::visit(detector, recipe.buffer);
+        bool isComplexBuffer = detector.matches;
+
+        if (isComplexBuffer) {
+            // Complex signal path - needs windowing, inversion, and multiplication
+            if (config.preferredDevice == Device::CPU) {
+                auto blob = GraphToYaml({
+                    {"win",
+                        {"window", GetDeviceName(config.preferredDevice), {"CF32"},
+                            {{"size", jst::fmt::format("{}", prototype.size())}}, {}}},
+                    {"inv",
+                        {"invert", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+                            {{"buffer", "${graph.win.output.window}"}}}},
+                    {"win_mul",
+                        {"multiply", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+                            {{"factorA", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)},
+                            {"factorB", "${graph.inv.output.buffer}"}}}},
+                    {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
+                        {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
+                            {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
+                            {{"buffer", "${graph.win_mul.output.product}"}}}},
+                });
+                instance.flowgraph().importFromBlob(blob);
+            } else {
+                // TODO: The Multiply block doesn't support CUDA yet. This is a temporary bypass.
+                auto blob = GraphToYaml({
+                    {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
+                        {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
+                            {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
+                            {{"buffer",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
+                });
+                instance.flowgraph().importFromBlob(blob);
+            }
         } else {
-            // TODO: The Multiply block doesn't support CUDA yet. This is a temporary bypass.
+            // Real signal path - direct FFT without windowing for domain conversion
             auto blob = GraphToYaml({
                 {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
-                    {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
+                    {"fft", GetDeviceName(config.preferredDevice), {"F32", "F32"},
                         {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
                         {{"buffer",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
             });
@@ -764,23 +791,46 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
     auto hash = std::to_string(prototype.hash());
+    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), domain, hash);
 
-    auto blob = GraphToYaml({
-        {"amp",
-            {"amplitude", GetDeviceName(config.preferredDevice), {"CF32", "F32"}, {},
-                {{"buffer", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), domain, hash)}}}},
-        {"scl",
-            {"scale", GetDeviceName(config.preferredDevice), {"F32"},
-                {{"range", "[-100, 0]"}},
-                {{"buffer", "${domain.amp.output.buffer}"}}}},
-        {"lineplot",
-            {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
-                {{"averaging", averagingRate},
-                 {"decimation", decimationRate}},
-                {{"buffer", "${domain.scl.output.buffer}"}}}},
-    }, state.name);
+    // Check if the source buffer is real (F32) or complex (CF32)
+    BufferTypeDetectorVisitor<F32> realDetector;
+    std::visit(realDetector, state.config.buffer);
+    bool isRealBuffer = realDetector.matches;
 
-    instance.flowgraph().importFromBlob(blob);
+    // For real signals in time domain, we don't need amplitude conversion
+    if (isRealBuffer && state.config.display == Domain::Time) {
+        auto blob = GraphToYaml({
+            {"scl",
+                {"scale", GetDeviceName(config.preferredDevice), {"F32"},
+                    {{"range", "[-1, 1]"}},  // Real signals typically have different scale range
+                    {{"buffer", port}}}},
+            {"lineplot",
+                {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
+                    {{"averaging", averagingRate},
+                     {"decimation", decimationRate}},
+                    {{"buffer", "${domain.scl.output.buffer}"}}}},
+        }, state.name);
+        instance.flowgraph().importFromBlob(blob);
+    } else {
+        std::string inputType = isRealBuffer ? "F32" : "CF32";
+
+        auto blob = GraphToYaml({
+            {"amp",
+                {"amplitude", GetDeviceName(config.preferredDevice), {inputType, "F32"}, {},
+                    {{"buffer", port}}}},
+            {"scl",
+                {"scale", GetDeviceName(config.preferredDevice), {"F32"},
+                    {{"range", "[-100, 0]"}},
+                    {{"buffer", "${domain.amp.output.buffer}"}}}},
+            {"lineplot",
+                {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
+                    {{"averaging", averagingRate},
+                     {"decimation", decimationRate}},
+                    {{"buffer", "${domain.scl.output.buffer}"}}}},
+        }, state.name);
+        instance.flowgraph().importFromBlob(blob);
+    }
 
     // Update plot state.
 
@@ -850,18 +900,35 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
         port = jst::fmt::format("${{domain.duplicate.output.buffer}}");
     }
 
-    graph.push_back({
-        "amp",
-        {"amplitude", GetDeviceName(config.preferredDevice), {"CF32", "F32"}, {},
-            {{"buffer", port}}},
-    });
+    // Check if the source buffer is real (F32) or complex (CF32)
+    BufferTypeDetectorVisitor<F32> realDetector;
+    std::visit(realDetector, state.config.buffer);
+    bool isRealBuffer = realDetector.matches;
 
-    graph.push_back({
-        "scl",
-        {"scale", GetDeviceName(config.preferredDevice), {"F32"},
-            {{"range", "[-100, 0]"}},
-            {{"buffer", "${domain.amp.output.buffer}"}}},
-    });
+    // For real signals in time domain, skip amplitude conversion
+    if (isRealBuffer && state.config.display == Domain::Time) {
+        graph.push_back({
+            "scl",
+            {"scale", GetDeviceName(config.preferredDevice), {"F32"},
+                {{"range", "[-1, 1]"}},  // Real signals typically have different scale range
+                {{"buffer", port}}},
+        });
+    } else {
+        std::string inputType = isRealBuffer ? "F32" : "CF32";
+
+        graph.push_back({
+            "amp",
+            {"amplitude", GetDeviceName(config.preferredDevice), {inputType, "F32"}, {},
+                {{"buffer", port}}},
+        });
+
+        graph.push_back({
+            "scl",
+            {"scale", GetDeviceName(config.preferredDevice), {"F32"},
+                {{"range", "[-100, 0]"}},
+                {{"buffer", "${domain.amp.output.buffer}"}}},
+        });
+    }
 
     graph.push_back({
         "waterfall",

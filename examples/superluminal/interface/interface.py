@@ -59,7 +59,7 @@ lm.box("Controls", [[1, 0, 0], [1, 0, 0]], lambda: [
 ])
 
 # Signal visualization
-lm.plot(data, lm.line, mosaic=[[0, 1, 1], [0, 1, 1]], label="Sine")
+lm.plot(data, lm.line, mosaic=[[0, 1, 1], [0, 1, 1]], label="Sine", domain=(lm.time, lm.frequency))
 
 def realtime_callback():
     """
