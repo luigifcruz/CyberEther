@@ -97,7 +97,7 @@ Result Implementation::create() {
     renderPassInfo.pDependencies = &dependency;
 
     JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
-        JST_ERROR("[VULKAN] Failed to create render pass.");   
+        JST_ERROR("[VULKAN] Failed to create render pass.");
     });
 
     JST_CHECK(framebufferResolve->create());
@@ -182,6 +182,28 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
         JST_CHECK(kernel->encode(commandBuffer));
     }
 
+    // Ensure compute writes are visible to graphics.
+
+    if (!kernels.empty()) {
+        VkMemoryBarrier memoryBarrier{};
+        memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT |
+                                      VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |
+                                      VK_ACCESS_INDEX_READ_BIT |
+                                      VK_ACCESS_UNIFORM_READ_BIT |
+                                      VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        vkCmdPipelineBarrier(commandBuffer,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                             0,
+                             1, &memoryBarrier,
+                             0, nullptr,
+                             0, nullptr);
+    }
+
     // Begin render pass.
 
     VkRenderPassBeginInfo renderPassInfo{};
@@ -216,7 +238,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     return Result::SUCCESS;
 }
 
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) { 
+const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     if (!framebufferResolve) {
         return NullSize;
     }
@@ -224,6 +246,6 @@ const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     requestedSize = size;
 
     return framebufferResolve->size();
-} 
+}
 
 }  // namespace Jetstream::Render

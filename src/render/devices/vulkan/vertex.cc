@@ -54,7 +54,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
                     attribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
                     break;
             }
-            
+
             attribute.binding = binding.binding;
             attribute.location = attributeDescription.size();
             attribute.offset = i * sizeof(F32);
