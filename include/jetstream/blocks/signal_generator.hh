@@ -179,12 +179,11 @@ class SignalGenerator : public Block {
         ImGui::TextUnformatted("Sample Rate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        F64 sampleRate = config.sampleRate / JST_MHZ;
-        if (ImGui::InputDouble("##sampleRate", &sampleRate, 0.001, 0.01, "%.3f")) {
+        F32 sampleRate = config.sampleRate / JST_MHZ;
+        if (ImGui::InputFloat("##sampleRate", &sampleRate, 0.001f, 0.01f, "%.3f")) {
             if (sampleRate > 0) {
                 config.sampleRate = sampleRate * JST_MHZ;
-                F64 sampleRateHz = config.sampleRate;
-                JST_MODULE_UPDATE(generator, setSampleRate(sampleRateHz));
+                JST_MODULE_UPDATE(generator, setSampleRate(config.sampleRate));
             }
         }
 
@@ -197,8 +196,8 @@ class SignalGenerator : public Block {
             ImGui::TextUnformatted("Frequency");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            F64 frequency = config.frequency / JST_MHZ;
-            if (ImGui::InputDouble("##frequency", &frequency, 0.0001, 0.001, "%.4f")) {
+            F32 frequency = config.frequency / JST_MHZ;
+            if (ImGui::InputFloat("##frequency", &frequency, 0.0001f, 0.001f, "%.4f")) {
                 config.frequency = frequency * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setFrequency(config.frequency));
             }
@@ -211,8 +210,8 @@ class SignalGenerator : public Block {
             ImGui::TextUnformatted("Start Freq");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            F64 chirpStartFreq = config.chirpStartFreq / JST_MHZ;
-            if (ImGui::InputDouble("##chirpStartFreq", &chirpStartFreq, 0.0001, 0.001, "%.4f")) {
+            F32 chirpStartFreq = config.chirpStartFreq / JST_MHZ;
+            if (ImGui::InputFloat("##chirpStartFreq", &chirpStartFreq, 0.0001f, 0.001f, "%.4f")) {
                 config.chirpStartFreq = chirpStartFreq * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setChirpStartFreq(config.chirpStartFreq));
             }
@@ -222,8 +221,8 @@ class SignalGenerator : public Block {
             ImGui::TextUnformatted("End Freq");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            F64 chirpEndFreq = config.chirpEndFreq / JST_MHZ;
-            if (ImGui::InputDouble("##chirpEndFreq", &chirpEndFreq, 0.0001, 0.001, "%.4f")) {
+            F32 chirpEndFreq = config.chirpEndFreq / JST_MHZ;
+            if (ImGui::InputFloat("##chirpEndFreq", &chirpEndFreq, 0.0001f, 0.001f, "%.4f")) {
                 config.chirpEndFreq = chirpEndFreq * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setChirpEndFreq(config.chirpEndFreq));
             }
@@ -235,8 +234,8 @@ class SignalGenerator : public Block {
         ImGui::TextUnformatted("Amplitude");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        F64 amplitude = config.amplitude;
-        if (ImGui::InputDouble("##amplitude", &amplitude, 0.1, 1.0, "%.3f")) {
+        F32 amplitude = config.amplitude;
+        if (ImGui::InputFloat("##amplitude", &amplitude, 0.1f, 1.0f, "%.3f")) {
             if (amplitude >= 0) {
                 config.amplitude = amplitude;
                 JST_MODULE_UPDATE(generator, setAmplitude(config.amplitude));
@@ -250,8 +249,8 @@ class SignalGenerator : public Block {
             ImGui::TextUnformatted("Phase (rad)");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            F64 phase = config.phase;
-            if (ImGui::InputDouble("##phase", &phase, 0.1, 1.0, "%.3f")) {
+            F32 phase = config.phase;
+            if (ImGui::InputFloat("##phase", &phase, 0.1f, 1.0f, "%.3f")) {
                 config.phase = phase;
                 JST_MODULE_UPDATE(generator, setPhase(config.phase));
             }
@@ -263,8 +262,8 @@ class SignalGenerator : public Block {
         ImGui::TextUnformatted("DC Offset");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        F64 dcOffset = config.dcOffset;
-        if (ImGui::InputDouble("##dcOffset", &dcOffset, 0.1, 1.0, "%.3f")) {
+        F32 dcOffset = config.dcOffset;
+        if (ImGui::InputFloat("##dcOffset", &dcOffset, 0.1f, 1.0f, "%.3f")) {
             config.dcOffset = dcOffset;
             JST_MODULE_UPDATE(generator, setDcOffset(config.dcOffset));
         }
@@ -276,8 +275,8 @@ class SignalGenerator : public Block {
             ImGui::TextUnformatted("Noise Variance");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            F64 noiseVariance = config.noiseVariance;
-            if (ImGui::InputDouble("##noiseVariance", &noiseVariance, 0.01, 0.1, "%.4f")) {
+            F32 noiseVariance = config.noiseVariance;
+            if (ImGui::InputFloat("##noiseVariance", &noiseVariance, 0.01f, 0.1f, "%.4f")) {
                 if (noiseVariance > 0) {
                     config.noiseVariance = noiseVariance;
                     JST_MODULE_UPDATE(generator, setNoiseVariance(config.noiseVariance));
@@ -292,8 +291,8 @@ class SignalGenerator : public Block {
             ImGui::TextUnformatted("Duration (s)");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
-            F64 chirpDuration = config.chirpDuration;
-            if (ImGui::InputDouble("##chirpDuration", &chirpDuration, 0.1, 1.0, "%.2f")) {
+            F32 chirpDuration = config.chirpDuration;
+            if (ImGui::InputFloat("##chirpDuration", &chirpDuration, 0.1f, 1.0f, "%.2f")) {
                 if (chirpDuration > 0) {
                     config.chirpDuration = chirpDuration;
                     JST_MODULE_UPDATE(generator, setChirpDuration(config.chirpDuration));

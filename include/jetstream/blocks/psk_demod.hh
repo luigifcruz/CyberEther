@@ -178,10 +178,10 @@ class PskDemod : public Block {
         ImGui::TextUnformatted("Sample Rate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        F64 sampleRate = config.sampleRate;
-        if (ImGui::InputDouble("##sampleRate", &sampleRate, 1000.0, 10000.0, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        F32 sampleRate = config.sampleRate / JST_MHZ;
+        if (ImGui::InputFloat("##sampleRate", &sampleRate, 0.1f, 0.1f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (sampleRate > 0) {
-                config.sampleRate = sampleRate;
+                config.sampleRate = sampleRate * JST_MHZ;
 
                 JST_DISPATCH_ASYNC([&](){
                     ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
@@ -195,10 +195,10 @@ class PskDemod : public Block {
         ImGui::TextUnformatted("Symbol Rate");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        F64 symbolRate = config.symbolRate;
-        if (ImGui::InputDouble("##symbolRate", &symbolRate, 1000.0, 10000.0, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        F32 symbolRate = config.symbolRate / JST_MHZ;
+        if (ImGui::InputFloat("##symbolRate", &symbolRate, 0.1f, 0.1f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
             if (symbolRate > 0 && symbolRate < config.sampleRate) {
-                config.symbolRate = symbolRate;
+                config.symbolRate = symbolRate * JST_MHZ;
 
                 JST_DISPATCH_ASYNC([&](){
                     ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
@@ -209,7 +209,7 @@ class PskDemod : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Freq Loop BW");
+        ImGui::TextUnformatted("Freq Loop");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 freqBW = static_cast<F32>(config.frequencyLoopBandwidth);
@@ -220,7 +220,7 @@ class PskDemod : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Timing Loop BW");
+        ImGui::TextUnformatted("Timing Loop");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 timingBW = static_cast<F32>(config.timingLoopBandwidth);
