@@ -208,6 +208,11 @@
 #define JETSTREAM_BLOCK_PSK_DEMOD_AVAILABLE
 #endif
 
+#if defined(JETSTREAM_MODULE_RRC_FILTER_AVAILABLE)
+#include "jetstream/blocks/rrc_filter.hh"
+#define JETSTREAM_BLOCK_RRC_FILTER_AVAILABLE
+#endif
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH

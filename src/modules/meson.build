@@ -20,6 +20,7 @@ subdir('invert')
 subdir('multiply_constant')
 subdir('signal_generator')
 subdir('psk_demod')
+subdir('rrc_filter')
 
 subdir('duplicate')
 subdir('arithmetic')

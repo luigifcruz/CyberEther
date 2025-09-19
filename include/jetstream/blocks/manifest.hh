@@ -215,6 +215,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_PSK_DEMOD_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::PskDemod);
 #endif
+#ifdef JETSTREAM_BLOCK_RRC_FILTER_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::RRCFilter);
+#endif
     // [NEW BLOCK HOOK]
 }
 

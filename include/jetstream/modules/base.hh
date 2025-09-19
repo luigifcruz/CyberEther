@@ -115,6 +115,10 @@
 #include "jetstream/modules/psk_demod.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_RRC_FILTER_AVAILABLE
+#include "jetstream/modules/rrc_filter.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH
