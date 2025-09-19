@@ -8,8 +8,7 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-inline std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Render::Window>& window, 
-                                                       Tensor<D, T>& tensor) {
+inline std::tuple<void*, bool> ConvertToOptimalStorage(auto& window, Tensor<D, T>& tensor) {
     void* buffer = nullptr;
     bool enableZeroCopy = false;
 
@@ -69,7 +68,7 @@ inline std::tuple<void*, bool> ConvertToOptimalStorage(const std::shared_ptr<Ren
         optimalDevice = Device::CPU;
     }
 
-    JST_TRACE("[RENDER] Tensor Device: {} | Render Device: {} | Optimal Device: {} | Zero-Copy: {}", 
+    JST_TRACE("[RENDER] Tensor Device: {} | Render Device: {} | Optimal Device: {} | Zero-Copy: {}",
               tensor.device(), renderDevice, optimalDevice, enableZeroCopy ? "YES" : "NO");
 
     return {buffer, enableZeroCopy};
