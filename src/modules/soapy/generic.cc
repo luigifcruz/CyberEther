@@ -90,8 +90,19 @@ Result Soapy<D, T>::create() {
 
     // Gather device ranges.
 
-    impl->sampleRateRanges = impl->soapyDevice->getSampleRateRange(SOAPY_SDR_RX, 0);
-    impl->frequencyRanges = impl->soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
+    try {
+        impl->sampleRateRanges = impl->soapyDevice->getSampleRateRange(SOAPY_SDR_RX, 0);
+        impl->frequencyRanges = impl->soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to get device ranges.");
+        JST_TRACE("SoapySDR Error: {}", e.what());
+        SoapySDR::Device::unmake(impl->soapyDevice);
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to get device ranges.");
+        SoapySDR::Device::unmake(impl->soapyDevice);
+        return Result::ERROR;
+    }
 
     // Check if requested configuration is supported.
 
@@ -109,20 +120,60 @@ Result Soapy<D, T>::create() {
 
     // Apply requested configuration.
 
-    impl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
-    impl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
-    impl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+    try {
+        try {
+            impl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to set sample rate ({}).", e.what());
+            return Result::ERROR;
+        } catch(...) {
+            JST_ERROR("Failed to set sample rate.");
+            return Result::ERROR;
+        }
+        try {
+            impl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to set frequency ({}).", e.what());
+            return Result::ERROR;
+        } catch(...) {
+            JST_ERROR("Failed to set frequency.");
+            return Result::ERROR;
+        }
+        try {
+            impl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to set gain mode ({}).", e.what());
+            return Result::ERROR;
+        } catch(...) {
+            JST_ERROR("Failed to set gain mode.");
+            return Result::ERROR;
+        }
 
-    impl->soapyStream = impl->soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
-    if (impl->soapyStream == nullptr) {
-        JST_ERROR("Failed to setup SoapySDR stream.");
+        impl->soapyStream = impl->soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
+        if (impl->soapyStream == nullptr) {
+            JST_ERROR("Failed to setup SoapySDR stream.");
+            SoapySDR::Device::unmake(impl->soapyDevice);
+            return Result::ERROR;
+        }
+        impl->soapyDevice->activateStream(impl->soapyStream, 0, 0, 0);
+
+        impl->deviceName = impl->soapyDevice->getDriverKey();
+        impl->deviceHardwareKey = impl->soapyDevice->getHardwareKey();
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to configure device or setup stream ({}).", e.what());
+        if (impl->soapyStream) {
+            try { impl->soapyDevice->closeStream(impl->soapyStream); } catch(...) {}
+        }
+        SoapySDR::Device::unmake(impl->soapyDevice);
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to configure device or setup stream.");
+        if (impl->soapyStream) {
+            try { impl->soapyDevice->closeStream(impl->soapyStream); } catch(...) {}
+        }
         SoapySDR::Device::unmake(impl->soapyDevice);
         return Result::ERROR;
     }
-    impl->soapyDevice->activateStream(impl->soapyStream, 0, 0, 0);
-
-    impl->deviceName = impl->soapyDevice->getDriverKey();
-    impl->deviceHardwareKey = impl->soapyDevice->getHardwareKey();
 
     // Calculate shape.
 
@@ -158,10 +209,22 @@ Result Soapy<D, T>::destroy() {
         impl->producer.join();
     }
 
-    impl->soapyDevice->deactivateStream(impl->soapyStream, 0, 0);
-    impl->soapyDevice->closeStream(impl->soapyStream);
+    try {
+        impl->soapyDevice->deactivateStream(impl->soapyStream, 0, 0);
+        impl->soapyDevice->closeStream(impl->soapyStream);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to deactivate/close stream ({}).", e.what());
+    } catch(...) {
+        JST_ERROR("Failed to deactivate/close stream.");
+    }
 
-    SoapySDR::Device::unmake(impl->soapyDevice);
+    try {
+        SoapySDR::Device::unmake(impl->soapyDevice);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to unmake device ({}).", e.what());
+    } catch(...) {
+        JST_ERROR("Failed to unmake device.");
+    }
 
     return Result::SUCCESS;
 }
@@ -176,9 +239,19 @@ Result Soapy<D, T>::Impl::soapyThreadLoop() {
     // TODO: Replace with zero-copy Soapy API.
     streaming = true;
     while (streaming) {
-        int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
-        if (ret > 0 && streaming && !errored) {
-            buffer.put(tmp, ret);
+        try {
+            int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
+            if (ret > 0 && streaming && !errored) {
+                buffer.put(tmp, ret);
+            }
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to read stream ({}).", e.what());
+            errored = true;
+            break;
+        } catch(...) {
+            JST_ERROR("Failed to read stream.");
+            errored = true;
+            break;
         }
     }
 
@@ -211,7 +284,15 @@ Result Soapy<D, T>::setTunerFrequency(F32& frequency) {
         return Result::RELOAD;
     }
 
-    impl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+    try {
+        impl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to set frequency ({}).", e.what());
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to set frequency.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -230,7 +311,15 @@ Result Soapy<D, T>::setSampleRate(F32& sampleRate) {
         return Result::RELOAD;
     }
 
-    impl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+    try {
+        impl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to set sample rate ({}).", e.what());
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to set sample rate.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -243,7 +332,15 @@ Result Soapy<D, T>::setAutomaticGain(bool& automaticGain) {
         return Result::RELOAD;
     }
 
-    impl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+    try {
+        impl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to set gain mode ({}).", e.what());
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to set gain mode.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -291,8 +388,14 @@ typename Soapy<D, T>::DeviceList Soapy<D, T>::ListAvailableDevices(const std::st
     DeviceList deviceMap;
     const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
 
-    for (const auto& device : SoapySDR::Device::enumerate(args)) {
-        deviceMap[device.at("label")] = device;
+    try {
+        for (const auto& device : SoapySDR::Device::enumerate(args)) {
+            deviceMap[device.at("label")] = device;
+        }
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to enumerate SoapySDR devices ({}).", e.what());
+    } catch(...) {
+        JST_ERROR("Failed to enumerate SoapySDR devices.");
     }
 
     return deviceMap;
