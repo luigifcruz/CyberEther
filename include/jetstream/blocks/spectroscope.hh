@@ -200,7 +200,6 @@ class Spectroscope : public Block {
     }
 
     Result destroy() {
-        // Destroy modules in reverse order of creation with guards
         if (waterfall) {
             JST_CHECK(instance().eraseModule(waterfall->locale()));
         }

@@ -16,8 +16,9 @@ class Decimator : public Block {
 
     struct Config {
         U64 axis = 1;
+        U64 ratio = 4;
 
-        JST_SERDES(axis);
+        JST_SERDES(axis, ratio);
     };
 
     constexpr const Config& getConfig() const {
@@ -71,36 +72,56 @@ class Decimator : public Block {
     }
 
     std::string description() const {
-        return "The Decimator block reduces tensor dimensionality by summing elements along a specified axis, "
-               "then extracting the first element of the reduced dimension. This effectively collapses "
-               "multi-dimensional data into lower-dimensional output while preserving accumulated values.\n\n"
+        return "The Decimator block reduces tensor dimensionality by first reshaping the input to separate "
+               "the specified axis into ratio chunks, then summing elements along the new axis, and finally "
+               "extracting the first element of the reduced dimension. This effectively decimates the signal "
+               "by the specified ratio while preserving accumulated values.\n\n"
 
                "## Parameters\n"
-               "- **Axis**: The axis along which to sum and slice the input tensor.\n\n"
+               "- **Axis**: The axis along which to reshape and decimate the input tensor.\n"
+               "- **Ratio**: The decimation ratio that determines how many chunks to create from the axis.\n\n"
 
                "## Useful For:\n"
-               "- Implementing simple decimation filters for signal processing.\n"
+               "- Implementing decimation filters for signal processing.\n"
+               "- Downsampling data by a fixed ratio.\n"
                "- Aggregating sensor data from multiple sources.\n\n"
 
                "## Examples:\n"
                "- Time-domain decimation:\n"
-               "  Config: Axis=1\n"
-               "  Input: CF32[8192, 128] → Output: CF32[8192]\n\n"
+               "  Config: Axis=1, Ratio=4\n"
+               "  Input: CF32[8192] → Output: CF32[2048]\n"
 
                "## Implementation:\n"
-               "Input → Add Axis → Squeeze Axis → Duplicate → Output\n"
-               "1. Arithmetic module sums all elements along the specified axis.\n"
-               "2. Tensor modifier slices the result to extract index 0 from the reduced dimension.\n"
-               "3. Duplicate module ensures proper output buffering and host accessibility.";
+               "Input → Reshape → Add Axis → Squeeze Axis → Duplicate → Output\n"
+               "1. Reshape module separates the specified axis into ratio chunks.\n"
+               "2. Arithmetic module sums all elements along the new ratio axis.\n"
+               "3. Tensor modifier slices the result to extract index 0 from the reduced dimension.\n"
+               "4. Duplicate module ensures proper output buffering and host accessibility.";
     }
 
     // Constructor
 
     Result create() {
         JST_CHECK(instance().addModule(
-            arithmetic, "arithmetic", {
-                .operation = ArithmeticOp::Add,
-                .axis = config.axis,
+            reshape, "reshape", {
+                .callback = [&](auto& mod) {
+                    // Separate the axis into ratio chunks
+                    // e.g. [8192] -> [2048, 4] where axis size / ratio = new size
+                    const auto& shape = input.buffer.shape();
+                    auto new_shape = shape;
+
+                    if (config.axis < shape.size()) {
+                        U64 axis_size = shape[config.axis];
+                        U64 new_axis_size = axis_size / config.ratio;
+
+                        new_shape[config.axis] = new_axis_size;
+                        new_shape.insert(new_shape.begin() + config.axis + 1, config.ratio);
+
+                        mod.reshape(new_shape);
+                    }
+
+                    return Result::SUCCESS;
+                }
             }, {
                 .buffer = input.buffer,
             },
@@ -108,9 +129,19 @@ class Decimator : public Block {
         ));
 
         JST_CHECK(instance().addModule(
+            arithmetic, "arithmetic", {
+                .operation = ArithmeticOp::Add,
+                .axis = config.axis + 1,  // Adjust axis after reshape
+            }, {
+                .buffer = reshape->getOutputBuffer(),
+            },
+            locale()
+        ));
+
+        JST_CHECK(instance().addModule(
             slicer, "slicer", {
                 .callback = [&](auto& mod) {
-                    mod.squeeze_dims(config.axis);
+                    mod.squeeze_dims(config.axis + 1);
                     return Result::SUCCESS;
                 }
             }, {
@@ -134,7 +165,6 @@ class Decimator : public Block {
     }
 
     Result destroy() {
-        // Destroy modules in reverse order of creation with guards
         if (duplicate) {
             JST_CHECK(instance().eraseModule(duplicate->locale()));
         }
@@ -145,6 +175,10 @@ class Decimator : public Block {
 
         if (arithmetic) {
             JST_CHECK(instance().eraseModule(arithmetic->locale()));
+        }
+
+        if (reshape) {
+            JST_CHECK(instance().eraseModule(reshape->locale()));
         }
 
         return Result::SUCCESS;
@@ -169,6 +203,23 @@ class Decimator : public Block {
                 });
             }
         }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Ratio");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        F32 ratio = config.ratio;
+        if (ImGui::InputFloat("##ratio", &ratio, 1.0f, 1.0f, "%.0f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (ratio >= 1) {
+                config.ratio = static_cast<U64>(ratio);
+
+                JST_DISPATCH_ASYNC([&](){
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                    JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+                });
+            }
+        }
     }
 
     constexpr bool shouldDrawControl() const {
@@ -176,6 +227,7 @@ class Decimator : public Block {
     }
 
  private:
+    std::shared_ptr<Jetstream::TensorModifier<D, IT>> reshape;
     std::shared_ptr<Jetstream::Arithmetic<D, IT>> arithmetic;
     std::shared_ptr<Jetstream::TensorModifier<D, IT>> slicer;
     std::shared_ptr<Jetstream::Duplicate<D, IT>> duplicate;
