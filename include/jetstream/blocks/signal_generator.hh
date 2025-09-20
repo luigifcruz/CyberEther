@@ -180,7 +180,7 @@ class SignalGenerator : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / JST_MHZ;
-        if (ImGui::InputFloat("##sampleRate", &sampleRate, 0.001f, 0.01f, "%.3f")) {
+        if (ImGui::InputFloat("##sampleRate", &sampleRate, 0.001f, 0.01f, "%.3f MHz")) {
             if (sampleRate > 0) {
                 config.sampleRate = sampleRate * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setSampleRate(config.sampleRate));
@@ -197,7 +197,7 @@ class SignalGenerator : public Block {
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
             F32 frequency = config.frequency / JST_MHZ;
-            if (ImGui::InputFloat("##frequency", &frequency, 0.0001f, 0.001f, "%.4f")) {
+            if (ImGui::InputFloat("##frequency", &frequency, 0.0001f, 0.001f, "%.3f MHz")) {
                 config.frequency = frequency * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setFrequency(config.frequency));
             }
@@ -211,7 +211,7 @@ class SignalGenerator : public Block {
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
             F32 chirpStartFreq = config.chirpStartFreq / JST_MHZ;
-            if (ImGui::InputFloat("##chirpStartFreq", &chirpStartFreq, 0.0001f, 0.001f, "%.4f")) {
+            if (ImGui::InputFloat("##chirpStartFreq", &chirpStartFreq, 0.0001f, 0.001f, "%.3f MHz")) {
                 config.chirpStartFreq = chirpStartFreq * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setChirpStartFreq(config.chirpStartFreq));
             }
@@ -222,7 +222,7 @@ class SignalGenerator : public Block {
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
             F32 chirpEndFreq = config.chirpEndFreq / JST_MHZ;
-            if (ImGui::InputFloat("##chirpEndFreq", &chirpEndFreq, 0.0001f, 0.001f, "%.4f")) {
+            if (ImGui::InputFloat("##chirpEndFreq", &chirpEndFreq, 0.0001f, 0.001f, "%.3f MHz")) {
                 config.chirpEndFreq = chirpEndFreq * JST_MHZ;
                 JST_MODULE_UPDATE(generator, setChirpEndFreq(config.chirpEndFreq));
             }
