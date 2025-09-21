@@ -2,6 +2,8 @@ import time
 import threading
 import numpy as np
 import os
+import tempfile
+import urllib.request
 
 import superluminal._internal as lm
 
@@ -9,6 +11,8 @@ try:
     import cupy as cp
 except:
     cp = None
+
+_url_cache = {}
 
 def plot(data: np.ndarray,
          type: lm.constant,
@@ -237,27 +241,29 @@ def markdown(content: str):
 
 def image(filepath: str, width: float = -1.0, height: float = -1.0, fit_to_window: bool = False):
     """
-    Display an image from a file.
+    Display an image from a file or URL.
 
     Args:
-        filepath: Path to the image file
-        width: Display width (if -1, auto-calculate from height or use original)
-        height: Display height (if -1, auto-calculate from width or use original)
-        fit_to_window: If True, scale image to fit available window space while preserving aspect ratio
+        filepath: Path to the local image file or a URL.
+        width: Display width in pixels. If -1, auto-calculate from height or use original.
+        height: Display height in pixels. If -1, auto-calculate from width or use original.
+        fit_to_window: If True, scale image to fit available window space while preserving aspect ratio.
     """
-    if not isinstance(filepath, str):
-        raise TypeError("Filepath must be a string.")
 
-    if not isinstance(width, (int, float)):
-        raise TypeError("Width must be a number.")
+    # Handle URL
+    if filepath.startswith(('http://', 'https://')):
+        if filepath in _url_cache and os.path.exists(_url_cache[filepath]):
+            filepath = _url_cache[filepath]
+        else:
+            request = urllib.request.Request(filepath, headers={'User-Agent': 'Superluminal/1.0'})
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filepath)[1]) as tmp:
+                with urllib.request.urlopen(request) as response:
+                    tmp.write(response.read())
+                _url_cache[filepath] = tmp.name
+                filepath = tmp.name
 
-    if not isinstance(height, (int, float)):
-        raise TypeError("Height must be a number.")
-
-    if not isinstance(fit_to_window, bool):
-        raise TypeError("fit_to_window must be a boolean.")
-
-    if not os.path.isabs(filepath):
+    # Handle relative path
+    elif not os.path.isabs(filepath):
         filepath = os.path.join(os.environ.get("PWD", os.getcwd()), filepath)
 
     lm.image(filepath, float(width), float(height), fit_to_window)
