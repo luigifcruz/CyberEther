@@ -4,6 +4,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/macros.hh"
+#include "jetstream/modules/tensor_modifier.hh"
 #include "jetstream/modules/window.hh"
 #include "jetstream/modules/multiply.hh"
 #include "jetstream/modules/fft.hh"
@@ -113,12 +114,26 @@ class SpectrumEngine : public Block {
 
     Result create() {
         // Get the window size from the input shape at the specified axis
-        if (config.axis >= input.buffer.rank()) {
-            JST_ERROR("Axis {} is out of bounds for input tensor rank {}", config.axis, input.buffer.rank());
-            return Result::ERROR;
-        }
 
-        const U64 windowSize = input.buffer.shape()[config.axis];
+        U64 windowSize = 0;
+
+        JST_CHECK(instance().addModule(
+            modifier, "modifier", {
+                .callback = [&](auto&) {
+                    if (config.axis >= input.buffer.rank()) {
+                        JST_ERROR("Axis {} is out of bounds for input tensor rank {}.", config.axis, input.buffer.rank());
+                        return Result::ERROR;
+                    }
+
+                    windowSize = input.buffer.shape()[config.axis];
+
+                    return Result::SUCCESS;
+                }
+            }, {
+                .buffer = input.buffer,
+            },
+            locale()
+        ));
 
         JST_CHECK(instance().addModule(
             window, "window", {
@@ -136,7 +151,7 @@ class SpectrumEngine : public Block {
 
         JST_CHECK(instance().addModule(
             multiply, "multiply", {}, {
-                .factorA = input.buffer,
+                .factorA = modifier->getOutputBuffer(),
                 .factorB = invert->getOutputBuffer(),
             },
             locale()
@@ -220,6 +235,10 @@ class SpectrumEngine : public Block {
             JST_CHECK(instance().eraseModule(window->locale()));
         }
 
+        if (modifier) {
+            JST_CHECK(instance().eraseModule(modifier->locale()));
+        }
+
         return Result::SUCCESS;
     }
 
@@ -286,6 +305,7 @@ class SpectrumEngine : public Block {
     }
 
  private:
+    std::shared_ptr<Jetstream::TensorModifier<D, IT>> modifier;
     std::shared_ptr<Jetstream::Window<D, IT>> window;
     std::shared_ptr<Jetstream::Invert<D, IT>> invert;
     std::shared_ptr<Jetstream::Multiply<D, IT>> multiply;
