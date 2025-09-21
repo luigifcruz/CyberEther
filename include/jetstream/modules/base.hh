@@ -119,6 +119,10 @@
 #include "jetstream/modules/rrc_filter.hh"
 #endif
 
+#ifdef JETSTREAM_MODULE_ADD_AVAILABLE
+#include "jetstream/modules/add.hh"
+#endif
+
 // [NEW MODULE HOOK]
 
 #endif  // JETSTREAM_MODULES_BASE_HH

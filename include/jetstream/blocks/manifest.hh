@@ -218,6 +218,9 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_RRC_FILTER_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::RRCFilter);
 #endif
+#ifdef JETSTREAM_BLOCK_ADD_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Add);
+#endif
     // [NEW BLOCK HOOK]
 }
 

@@ -213,6 +213,11 @@
 #define JETSTREAM_BLOCK_RRC_FILTER_AVAILABLE
 #endif
 
+#if defined(JETSTREAM_MODULE_ADD_AVAILABLE)
+#include "jetstream/blocks/add.hh"
+#define JETSTREAM_BLOCK_ADD_AVAILABLE
+#endif
+
 // [NEW BLOCK HOOK]
 
 #endif  // JETSTREAM_BLOCKS_BASE_HH
