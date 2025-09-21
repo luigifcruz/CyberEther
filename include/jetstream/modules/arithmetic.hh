@@ -30,8 +30,9 @@ class Arithmetic : public Module, public Compute {
     struct Config {
         ArithmeticOp operation = ArithmeticOp::Add;
         U64 axis = 0;
+        bool squeeze = false;
 
-        JST_SERDES(operation, axis);
+        JST_SERDES(operation, axis, squeeze);
     };
 
     constexpr const Config& getConfig() const {

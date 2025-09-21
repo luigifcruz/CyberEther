@@ -15,8 +15,9 @@ class Arithmetic : public Block {
     struct Config {
         ArithmeticOp operation = ArithmeticOp::Add;
         U64 axis = 0;
+        bool squeeze = false;
 
-        JST_SERDES(operation, axis);
+        JST_SERDES(operation, axis, squeeze);
     };
 
     constexpr const Config& getConfig() const {
@@ -81,6 +82,7 @@ class Arithmetic : public Block {
             arithmetic, "arithmetic", {
                 .operation = config.operation,
                 .axis = config.axis,
+                .squeeze = config.squeeze,
             }, {
                 .buffer = input.buffer,
             },
@@ -142,6 +144,17 @@ class Arithmetic : public Block {
                     JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
                 });
             }
+        }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Squeeze");
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Checkbox("##squeeze", &config.squeeze)) {
+            JST_DISPATCH_ASYNC([&](){
+                ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
+                JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
+            });
         }
     }
 
