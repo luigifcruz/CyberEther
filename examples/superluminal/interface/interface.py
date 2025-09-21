@@ -56,6 +56,11 @@ lm.box("Controls", [[1, 0, 0], [1, 0, 0]], lambda: [
     lm.slider("Frequency (Hz)", 100.0, 5000.0, state.frequency),
     lm.slider("Amplitude", 0.1, 2.0, state.amplitude),
     lm.slider("Noise Level", 0.0, 0.5, state.noise_level),
+
+    # Example image.
+    lm.markdown("# Example Image"),
+    lm.markdown("Add a simple image from a local path or URL."),
+    lm.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/Fourier2.jpg/500px-Fourier2.jpg", fit_to_window=True)
 ])
 
 # Signal visualization
