@@ -59,7 +59,7 @@ class Texture : public WindowAttachment {
     }
     virtual bool size(const Extent2D<U64>& size) = 0;
 
-    virtual void* raw() = 0;
+    virtual uint64_t raw() = 0;
     virtual Result fill() = 0;
     virtual Result fillRow(const U64& y, const U64& height) = 0;
 

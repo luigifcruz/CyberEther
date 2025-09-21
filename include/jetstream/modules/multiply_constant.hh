@@ -12,7 +12,7 @@ namespace Jetstream {
 
 #define JST_MULTIPLY_CONSTANT_CPU(MACRO) \
     MACRO(MultiplyConstant, CPU, CF32) \
-    MACRO(MultiplyConstant, CPU, F32) 
+    MACRO(MultiplyConstant, CPU, F32)
 
 #define JST_MULTIPLY_CONSTANT_METAL(MACRO) \
     MACRO(MultiplyConstant, Metal, CF32) \
@@ -21,7 +21,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class MultiplyConstant : public Module, public Compute {
  public:
-    // Configuration 
+    MultiplyConstant();
+    ~MultiplyConstant();
+
+    // Configuration
 
     struct Config {
         T constant;
@@ -78,18 +81,8 @@ class MultiplyConstant : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct MetalConstants {
-        F32 constantReal;
-        F32 constantImage;
-    };
-
-    struct {
-        MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
-    } metal;
-#endif
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

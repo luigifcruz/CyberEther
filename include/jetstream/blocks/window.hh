@@ -87,7 +87,9 @@ class Window : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(window->locale()));
+        if (window) {
+            JST_CHECK(instance().eraseModule(window->locale()));
+        }
 
         return Result::SUCCESS;
     }

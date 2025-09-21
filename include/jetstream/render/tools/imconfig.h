@@ -16,8 +16,11 @@
 
 #include "jetstream/config.hh"
 
+#define IMGUI_STB_NAMESPACE ImStb
+#define IMGUI_IMPL_WEBGPU_BACKEND_DAWN
+
 #define IMGUI_IMPL_METAL_CPP
-#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS  // Necessary for `ImTextureRef(void*)`.
 #define IMGUI_DEFINE_MATH_OPERATORS
 
 #ifndef JST_DEBUG_MODE

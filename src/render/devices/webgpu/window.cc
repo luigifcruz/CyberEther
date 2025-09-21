@@ -29,9 +29,11 @@ Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
 Result Implementation::underlyingCreate() {
     JST_DEBUG("[WebGPU] Creating window.");
 
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
 
-    queue = device.GetQueue();
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
+
+
+    queue = wgpuDeviceGetQueue(device);
 
     JST_CHECK(createImgui());
 
@@ -67,8 +69,15 @@ Result Implementation::createImgui() {
 
     this->scaleStyle(*viewport);
 
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
-    ImGui_ImplWGPU_Init(device.Get(), 3, WGPUTextureFormat_BGRA8Unorm, WGPUTextureFormat_Undefined);
+
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
+
+    ImGui_ImplWGPU_InitInfo info;
+    info.Device = device;
+    info.NumFramesInFlight = 3;
+    info.RenderTargetFormat = WGPUTextureFormat_BGRA8Unorm;
+    info.DepthStencilFormat = WGPUTextureFormat_Undefined;
+    ImGui_ImplWGPU_Init(&info);
 
     return Result::SUCCESS;
 }
@@ -104,7 +113,8 @@ Result Implementation::beginImgui() {
 Result Implementation::endImgui() {
     ImGui::Render();
 
-    auto renderPassEncoder = encoder.BeginRenderPass(&renderPassDesc).MoveToCHandle();
+    // Begin the render pass using the C API.
+    WGPURenderPassEncoder renderPassEncoder = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
     ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPassEncoder);
     wgpuRenderPassEncoderEnd(renderPassEncoder);
 
@@ -130,27 +140,31 @@ Result Implementation::underlyingBegin() {
         return Result::ERROR;
     }
 
-    wgpu::TextureView framebufferTexture;
-    JST_CHECK(viewport->commitDrawable(framebufferTexture));
 
-    colorAttachments = {};
-    colorAttachments.loadOp = wgpu::LoadOp::Clear;
-    colorAttachments.storeOp = wgpu::StoreOp::Store;
+    WGPUTextureView framebufferTexture = {};
+    JST_CHECK(viewport->commitDrawable(&framebufferTexture));
+
+    colorAttachments = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+    colorAttachments.loadOp = WGPULoadOp_Clear;
+    colorAttachments.storeOp = WGPUStoreOp_Store;
     colorAttachments.clearValue.r = 0.0f;
     colorAttachments.clearValue.g = 0.0f;
     colorAttachments.clearValue.b = 0.0f;
     colorAttachments.clearValue.a = 1.0f;
     colorAttachments.view = framebufferTexture;
 
-    renderPassDesc = {};
+
+    renderPassDesc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
     renderPassDesc.colorAttachmentCount = 1;
     renderPassDesc.colorAttachments = &colorAttachments;
     renderPassDesc.depthStencilAttachment = nullptr;
 
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
-    wgpu::CommandEncoderDescriptor encDesc{};
-    encoder = device.CreateCommandEncoder(&encDesc);
 
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    WGPUCommandEncoderDescriptor encDesc = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+    encoder = wgpuDeviceCreateCommandEncoder(device, &encDesc);
+
+    // Let each bound surface draw into the command encoder.
     for (auto &surface : surfaces) {
         JST_CHECK(surface->draw(encoder));
     }
@@ -163,10 +177,10 @@ Result Implementation::underlyingBegin() {
 Result Implementation::underlyingEnd() {
     JST_CHECK(endImgui());
 
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
-    wgpu::CommandBufferDescriptor cmdBufferDesc{};
-    wgpu::CommandBuffer cmdBuffer = encoder.Finish(&cmdBufferDesc);
-    device.GetQueue().Submit(1, &cmdBuffer);
+
+    WGPUCommandBufferDescriptor cmdBufferDesc = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
+    wgpuQueueSubmit(queue, 1, &cmdBuffer);
 
     return Result::SUCCESS;
 }
@@ -176,14 +190,7 @@ Result Implementation::underlyingSynchronize() {
 }
 
 void Implementation::drawDebugMessage() const {
-    auto& backend = Backend::State<Device::WebGPU>();
-
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Device Name:");
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(-1);
-    ImGui::TextFormatted("{}", backend->getDeviceName());
+    // WebGPU doesn't expose any useful device information.
 }
 
 const Window::Stats& Implementation::stats() const {

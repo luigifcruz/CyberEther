@@ -3,6 +3,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Unpad<D, T>::Impl {};
+
+template<Device D, typename T>
+Unpad<D, T>::Unpad() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Unpad<D, T>::~Unpad() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Unpad<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Unpad compute core using CPU backend.");
     return Result::SUCCESS;
@@ -30,5 +43,5 @@ Result Unpad<D, T>::compute(const Context&) {
 }
 
 JST_UNPAD_CPU(JST_INSTANTIATION)
-    
+
 }  // namespace Jetstream

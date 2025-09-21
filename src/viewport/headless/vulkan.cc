@@ -23,6 +23,7 @@ Result Implementation::create() {
     keepRunningFlag = true;
     std::signal(SIGINT, [](int){
         if (!keepRunningFlag) {
+            JST_DEBUG("[METAL] Exiting via SIGINT...");
             std::exit(0);
         }
         keepRunningFlag = false;
@@ -40,14 +41,14 @@ Result Implementation::create() {
 
     // Create endpoint.
 
-    JST_CHECK(endpoint.create(config, Device::Vulkan));
+    JST_CHECK(remote.create(config, Device::Vulkan));
     JST_CHECK(createSwapchain());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::destroy() {
-    JST_CHECK(endpoint.destroy());
+    JST_CHECK(remote.destroy());
     JST_CHECK(destroySwapchain());
 
     return Result::SUCCESS;
@@ -113,7 +114,7 @@ Result Implementation::createSwapchain() {
 
     // Create staging buffer.
 
-    const auto& inputMemoryDevice = endpoint.inputMemoryDevice();
+    const auto& inputMemoryDevice = remote.inputMemoryDevice();
 
     for (U32 i = 0; i < stagingBuffers.size(); i++) {
         stagingBuffers[i] = Tensor<Device::Vulkan, U8>({config.size.x, config.size.y, 4}, inputMemoryDevice == Device::CPU);
@@ -396,7 +397,7 @@ void Implementation::endpointFrameSubmissionLoop() {
         auto& device = Backend::State<Device::Vulkan>()->getDevice();
         vkWaitForFences(device, 1, &swapchainFences[fenceIndex], true, UINT64_MAX);
 
-        const auto& result = endpoint.pushNewFrame(swapchainMemoryMapped[fenceIndex]);
+        const auto& result = remote.pushNewFrame(swapchainMemoryMapped[fenceIndex]);
         if (result != Result::SUCCESS) {
             endpointFrameSubmissionResult = result;
         }

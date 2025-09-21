@@ -95,7 +95,9 @@ class Fold : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(fold->locale()));
+        if (fold) {
+            JST_CHECK(instance().eraseModule(fold->locale()));
+        }
 
         return Result::SUCCESS;
     }

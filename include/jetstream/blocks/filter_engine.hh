@@ -211,24 +211,45 @@ class FilterEngine : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(overlap->locale()));
-        JST_CHECK(instance().eraseModule(unpad->locale()));
-        JST_CHECK(instance().eraseModule(ifft->locale()));
+        if (overlap) {
+            JST_CHECK(instance().eraseModule(overlap->locale()));
+        }
+
+        if (unpad) {
+            JST_CHECK(instance().eraseModule(unpad->locale()));
+        }
+
+        if (ifft) {
+            JST_CHECK(instance().eraseModule(ifft->locale()));
+        }
 
         if (fold) {
             JST_CHECK(instance().eraseModule(fold->locale()));
         }
 
-        JST_CHECK(instance().eraseModule(multiply->locale()));
+        if (multiply) {
+            JST_CHECK(instance().eraseModule(multiply->locale()));
+        }
 
         if (expandDims) {
             JST_CHECK(instance().eraseModule(expandDims->locale()));
         }
 
-        JST_CHECK(instance().eraseModule(fftFilter->locale()));
-        JST_CHECK(instance().eraseModule(fftSignal->locale()));
-        JST_CHECK(instance().eraseModule(padFilter->locale()));
-        JST_CHECK(instance().eraseModule(padSignal->locale()));
+        if (fftFilter) {
+            JST_CHECK(instance().eraseModule(fftFilter->locale()));
+        }
+
+        if (fftSignal) {
+            JST_CHECK(instance().eraseModule(fftSignal->locale()));
+        }
+
+        if (padFilter) {
+            JST_CHECK(instance().eraseModule(padFilter->locale()));
+        }
+
+        if (padSignal) {
+            JST_CHECK(instance().eraseModule(padSignal->locale()));
+        }
 
         resamplerOffset = 0;
         resamplerSize = 0;

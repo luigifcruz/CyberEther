@@ -92,8 +92,8 @@ class Spectroscope : public Block {
         U64 signalMaxRank = input.buffer.rank() - 1;
         const U64 signalSize = input.buffer.shape()[signalMaxRank];
 
-        numberOfRows = ((config.spectrogram) ? 1 : 0) + 
-                       ((config.lineplot) ? 1 : 0) + 
+        numberOfRows = ((config.spectrogram) ? 1 : 0) +
+                       ((config.lineplot) ? 1 : 0) +
                        ((config.waterfall) ? 1 : 0);
 
         auto individualViewSize = config.viewSize;
@@ -200,25 +200,45 @@ class Spectroscope : public Block {
     }
 
     Result destroy() {
-        if (spectrogram) {
-            JST_CHECK(instance().eraseModule(spectrogram->locale()));
-        }
-    
-        if (lineplot) {
-            JST_CHECK(instance().eraseModule(lineplot->locale()));
-        }
-
         if (waterfall) {
             JST_CHECK(instance().eraseModule(waterfall->locale()));
         }
 
-        JST_CHECK(instance().eraseModule(scale->locale()));
-        JST_CHECK(instance().eraseModule(amplitude->locale()));
-        JST_CHECK(instance().eraseModule(fft->locale()));
-        JST_CHECK(instance().eraseModule(agc->locale()));
-        JST_CHECK(instance().eraseModule(multiply->locale()));
-        JST_CHECK(instance().eraseModule(invert->locale()));
-        JST_CHECK(instance().eraseModule(window->locale()));
+        if (lineplot) {
+            JST_CHECK(instance().eraseModule(lineplot->locale()));
+        }
+
+        if (spectrogram) {
+            JST_CHECK(instance().eraseModule(spectrogram->locale()));
+        }
+
+        if (scale) {
+            JST_CHECK(instance().eraseModule(scale->locale()));
+        }
+
+        if (amplitude) {
+            JST_CHECK(instance().eraseModule(amplitude->locale()));
+        }
+
+        if (fft) {
+            JST_CHECK(instance().eraseModule(fft->locale()));
+        }
+
+        if (agc) {
+            JST_CHECK(instance().eraseModule(agc->locale()));
+        }
+
+        if (multiply) {
+            JST_CHECK(instance().eraseModule(multiply->locale()));
+        }
+
+        if (invert) {
+            JST_CHECK(instance().eraseModule(invert->locale()));
+        }
+
+        if (window) {
+            JST_CHECK(instance().eraseModule(window->locale()));
+        }
 
         return Result::SUCCESS;
     }
@@ -271,7 +291,7 @@ class Spectroscope : public Block {
                 ImGui::InsertNotification({ ImGuiToastType_Info, 1000, "Reloading block..." });
                 JST_CHECK_NOTIFY(instance().reloadBlock(locale()));
             });
-        }    
+        }
     }
 
     constexpr bool shouldDrawControl() const {
@@ -284,7 +304,7 @@ class Spectroscope : public Block {
             const auto& ratio = size.ratio();
             const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-            ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width, width/ratio));
+            ImGui::Image(ImTextureRef(spectrogram->getTexture().raw()), ImVec2(width, width/ratio));
         }
 
         if (lineplot) {
@@ -292,7 +312,7 @@ class Spectroscope : public Block {
             const auto& ratio = size.ratio();
             const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-            ImGui::Image(lineplot->getTexture().raw(), ImVec2(width, width/ratio));
+            ImGui::Image(ImTextureRef(lineplot->getTexture().raw()), ImVec2(width, width/ratio));
         }
 
         if (waterfall) {
@@ -300,7 +320,7 @@ class Spectroscope : public Block {
             const auto& ratio = size.ratio();
             const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-            ImGui::Image(waterfall->getTexture().raw(), ImVec2(width, width/ratio));
+            ImGui::Image(ImTextureRef(waterfall->getTexture().raw()), ImVec2(width, width/ratio));
         }
     }
 
@@ -325,17 +345,17 @@ class Spectroscope : public Block {
 
         if (spectrogram) {
             auto [width, height] = spectrogram->viewSize(blockSize);
-            ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+            ImGui::Image(ImTextureRef(spectrogram->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
         }
 
         if (lineplot) {
             auto [width, height] = lineplot->viewSize(blockSize);
-            ImGui::Image(lineplot->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+            ImGui::Image(ImTextureRef(lineplot->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
         }
-        
+
         if (waterfall) {
             auto [width, height] = waterfall->viewSize(blockSize);
-            ImGui::Image(waterfall->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+            ImGui::Image(ImTextureRef(waterfall->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
         }
     }
 

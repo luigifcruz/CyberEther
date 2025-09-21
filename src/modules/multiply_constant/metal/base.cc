@@ -32,18 +32,39 @@ static const char shadersSrc[] = R"""(
 )""";
 
 template<Device D, typename T>
+struct MultiplyConstant<D, T>::Impl {
+    struct MetalConstants {
+        F32 constantReal;
+        F32 constantImage;
+    };
+
+    struct {
+        MTL::ComputePipelineState* state;
+        Tensor<Device::Metal, U8> constants;
+    } metal;
+};
+
+template<Device D, typename T>
+MultiplyConstant<D, T>::MultiplyConstant() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+MultiplyConstant<D, T>::~MultiplyConstant() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result MultiplyConstant<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply Constant compute core using Metal backend.");
 
-    auto& assets = metal;
-
-    auto* constants = Metal::CreateConstants<MetalConstants>(assets);
+    auto* constants = Metal::CreateConstants<typename Impl::MetalConstants>(impl->metal);
     if constexpr (IsComplex<T>::value) {
-        JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply_complex", &assets.state));
+        JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply_complex", &impl->metal.state));
         constants->constantReal = config.constant.real();
         constants->constantImage = config.constant.imag();
     } else {
-        JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply", &assets.state));
+        JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply", &impl->metal.state));
         constants->constantReal = config.constant;
     }
 
@@ -52,15 +73,13 @@ Result MultiplyConstant<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result MultiplyConstant<D, T>::compute(const Context& ctx) {
-    auto& assets = metal;
-
     auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(assets.state);
-    cmdEncoder->setBuffer(assets.constants.data(), 0, 0);
+    cmdEncoder->setComputePipelineState(impl->metal.state);
+    cmdEncoder->setBuffer(impl->metal.constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.factor.data(), 0, 1);
     cmdEncoder->setBuffer(output.product.data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(output.product.size(), 1, 1),
-                                MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
+                                MTL::Size(impl->metal.state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;

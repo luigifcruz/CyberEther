@@ -5,6 +5,23 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Multiply<D, T>::Impl {
+    Tensor<D, T> a;
+    Tensor<D, T> b;
+    Tensor<D, T> c;
+};
+
+template<Device D, typename T>
+Multiply<D, T>::Multiply() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Multiply<D, T>::~Multiply() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Multiply<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using CPU backend.");
     return Result::SUCCESS;
@@ -19,7 +36,7 @@ Result Multiply<D, T>::compute(const Context&) {
         } else {
             c = a * b;
         }
-    }, a, b, c);
+    }, impl->a, impl->b, impl->c);
 
     return Result::SUCCESS;
 }

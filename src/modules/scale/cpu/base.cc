@@ -3,16 +3,20 @@
 namespace Jetstream {
 
 template<Device D, typename T>
-struct Scale<D, T>::Impl {};
+struct Scale<D, T>::Impl {
+    F32 scalingCoeff;
+    F32 offsetCoeff;
+    U64 numberOfElements;
+};
 
 template<Device D, typename T>
 Scale<D, T>::Scale() {
-    pimpl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
 }
 
 template<Device D, typename T>
 Scale<D, T>::~Scale() {
-    pimpl.reset();
+    impl.reset();
 }
 
 template<Device D, typename T>
@@ -25,7 +29,7 @@ Result Scale<D, T>::createCompute(const Context&) {
 template<Device D, typename T>
 Result Scale<D, T>::compute(const Context&) {
     for (U64 i = 0; i < input.buffer.size(); i++) {
-        output.buffer[i] = input.buffer[i] * scalingCoeff + offsetCoeff;
+        output.buffer[i] = input.buffer[i] * impl->scalingCoeff + impl->offsetCoeff;
     }
 
     return Result::SUCCESS;
@@ -33,5 +37,5 @@ Result Scale<D, T>::compute(const Context&) {
 
 JST_SCALE_CPU(JST_INSTANTIATION)
 JST_SCALE_CPU(JST_BENCHMARK)
-    
+
 }  // namespace Jetstream

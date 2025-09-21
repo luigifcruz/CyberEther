@@ -109,9 +109,7 @@ class Lineplot : public Module, public Compute, public Present {
     }
     const F32& scale(const F32& scale);
 
-    constexpr const Extent2D<F32>& cursor() const {
-        return cursorPos;
-    }
+    const Extent2D<F32>& cursor() const;
     const Extent2D<F32>& cursor(const Extent2D<F32>& cursorPos);
 
     Render::Texture& getTexture();
@@ -131,62 +129,7 @@ class Lineplot : public Module, public Compute, public Present {
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
 
-    // TODO: Move all of this to internal implementation.
     // TODO: Abstract signal and grid with Line Component.
-
-    Tensor<D, F32> signalPoints;
-    Tensor<D, F32> signalVertices;
-    Tensor<Device::CPU, F32> gridPoints;
-    Tensor<Device::CPU, F32> cursorSignalPoint;
-    Tensor<D, F32> gridVertices;
-
-    std::shared_ptr<Render::Buffer> signalPointsBuffer;
-    std::shared_ptr<Render::Buffer> signalVerticesBuffer;
-    std::shared_ptr<Render::Buffer> signalUniformBuffer;
-    std::shared_ptr<Render::Buffer> gridPointsBuffer;
-    std::shared_ptr<Render::Buffer> gridVerticesBuffer;
-    std::shared_ptr<Render::Buffer> gridUniformBuffer;
-    std::shared_ptr<Render::Buffer> cursorVerticesBuffer;
-    std::shared_ptr<Render::Buffer> cursorIndicesBuffer;
-    std::shared_ptr<Render::Buffer> cursorUniformBuffer;
-
-    std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Texture> lutTexture;
-
-    std::shared_ptr<Render::Kernel> gridKernel;
-    std::shared_ptr<Render::Kernel> signalKernel;
-
-    std::shared_ptr<Render::Program> signalProgram;
-    std::shared_ptr<Render::Program> gridProgram;
-    std::shared_ptr<Render::Program> cursorProgram;
-
-    std::shared_ptr<Render::Surface> surface;
-
-    std::shared_ptr<Render::Vertex> gridVertex;
-    std::shared_ptr<Render::Vertex> signalVertex;
-    std::shared_ptr<Render::Vertex> cursorVertex;
-
-    std::shared_ptr<Render::Draw> drawGridVertex;
-    std::shared_ptr<Render::Draw> drawSignalVertex;
-    std::shared_ptr<Render::Draw> drawCursorVertex;
-
-    std::shared_ptr<Render::Components::Text> text;
-
-    U64 numberOfElements = 0;
-    U64 numberOfBatches = 0;
-    F32 normalizationFactor = 0.0f;
-
-    Extent2D<F32> cursorPos = {0.0f, 0.0f};
-
-    bool updateGridPointsFlag = false;
-    bool updateSignalPointsFlag = false;
-    bool updateCursorUniformBufferFlag = false;
-    bool updateSignalUniformBufferFlag = false;
-    bool updateGridUniformBufferFlag = false;
-
-    void updateState();
-    void updateCursorState();
-    void generateGridPoints();
 
     JST_DEFINE_IO()
 };

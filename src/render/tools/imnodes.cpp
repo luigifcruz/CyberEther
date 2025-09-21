@@ -354,7 +354,7 @@ void ImDrawListGrowChannels(ImDrawList* draw_list, const int num_channels)
         {
             ImDrawCmd draw_cmd;
             draw_cmd.ClipRect = draw_list->_ClipRectStack.back();
-            draw_cmd.TextureId = draw_list->_TextureIdStack.back();
+            draw_cmd.TexRef = draw_list->_TextureStack.back();
             channel._CmdBuffer.push_back(draw_cmd);
         }
     }
@@ -586,7 +586,7 @@ void BeginNodeSelection(ImNodesEditorContext& editor, const int node_idx)
 
     // UPDATE-ME: Hover return false.
     editor.ClickInteraction.HoveredNodeIdx = GImNodes->HoveredNodeIdx.Value();
-    
+
     editor.ClickInteraction.Type = ImNodesClickInteractionType_Node;
     // If the node is not already contained in the selection, then we want only
     // the interaction node to be selected, effective immediately.

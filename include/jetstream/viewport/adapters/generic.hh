@@ -20,24 +20,28 @@ struct Config {
     /// @brief The size of the application or window.
     Extent2D<U64> size = {1920, 1080};
 
-    /// @brief The framerate of the headless viewport.
+    /// @brief The framerate of the remote viewport.
     U64 framerate = 60;
 
-    /// @brief The endpoint of the headless viewport.
-    std::string endpoint = "/tmp/cyberether";
+    /// @brief The broker address server of the remote viewport.
+    std::string broker = "https://api.cyberether.org";
 
-    /// @brief The video codec of the headless viewport.
-    Viewport::VideoCodec codec = Viewport::VideoCodec::FFV1;
+    /// @brief The video codec of the remote viewport.
+    Viewport::VideoCodec codec = Viewport::VideoCodec::H264;
+
+    /// @brief Enable auto-join in the remote viewport (insecure).
+    // TODO: [beta1] Implement auto-join functionality.
+    bool autoJoin = false;
 
     /// @brief Whether hardware acceleration is enabled.
     bool hardwareAcceleration = true;
 
-    JST_SERDES(vsync, title, size, framerate, endpoint, codec, hardwareAcceleration);
+    JST_SERDES(vsync, title, size, framerate, broker, codec, autoJoin, hardwareAcceleration);
 };
 
 class Generic {
  public:
-    explicit Generic(const Config& config);   
+    explicit Generic(const Config& config);
     virtual ~Generic() = default;
 
     virtual std::string id() const = 0;

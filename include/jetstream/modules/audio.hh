@@ -23,7 +23,7 @@ class Audio : public Module, public Compute {
 
     typedef std::vector<std::string> DeviceList;
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         std::string deviceName = "Default";
@@ -80,9 +80,7 @@ class Audio : public Module, public Compute {
 
     // Miscellaneous
 
-    constexpr const std::string& getDeviceName() const {
-        return deviceName;
-    }
+    const std::string& getDeviceName() const;
 
     static DeviceList ListAvailableDevices();
 
@@ -93,8 +91,6 @@ class Audio : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    std::string deviceName;
 
     JST_DEFINE_IO()
 };

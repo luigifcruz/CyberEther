@@ -12,12 +12,12 @@ class VertexImp<Device::WebGPU> : public Vertex {
     explicit VertexImp(const Config& config);
 
  protected:
-    Result create(std::vector<std::vector<wgpu::VertexAttribute>>& attributeDescription,
-                  std::vector<wgpu::VertexBufferLayout>& vertexLayouts,
+    Result create(std::vector<std::vector<WGPUVertexAttribute>>& attributeDescription,
+                  std::vector<WGPUVertexBufferLayout>& vertexLayouts,
                   const U64& numberOfDraws,
                   const U64& numberOfInstances);
     Result destroy();
-    Result encode(wgpu::RenderPassEncoder& renderPassEncoder);
+    Result encode(WGPURenderPassEncoder& renderPassEncoder);
 
     constexpr const U32& getVertexCount() const {
         return vertexCount;

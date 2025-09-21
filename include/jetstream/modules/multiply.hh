@@ -20,7 +20,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Multiply : public Module, public Compute {
  public:
-    // Configuration 
+    Multiply();
+    ~Multiply();
+
+    // Configuration
 
     struct Config {
         JST_SERDES();
@@ -85,16 +88,8 @@ class Multiply : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    Tensor<D, T> a;
-    Tensor<D, T> b;
-    Tensor<D, T> c;
-
-    // TODO: Remove backend specific code from header in favor of `pimpl->`.
-#ifdef JETSTREAM_MODULE_MULTIPLY_METAL_AVAILABLE
-    struct {
-        MTL::ComputePipelineState* state;
-    } metal;
-#endif
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

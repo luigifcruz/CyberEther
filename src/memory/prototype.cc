@@ -292,11 +292,21 @@ Result TensorPrototype::slice(const std::vector<Token>& slice) {
     JST_TRACE("[MEMORY] Slice stride: {} -> {}.", prototype.stride, stride);
     JST_TRACE("[MEMORY] Slice offset: {}.", offset);
 
+    prototype.contiguous = true;
+    if (!shape.empty()) {
+        U64 expected_stride = 1;
+        for (int64_t i = shape.size() - 1; i >= 0; i--) {
+            if (stride[i] != expected_stride) {
+                prototype.contiguous = false;
+                break;
+            }
+            expected_stride *= shape[i];
+        }
+    }
+
     prototype.shape = shape;
     prototype.stride = stride;
     prototype.offset = offset;
-    // TODO: Actually check if contiguous.
-    prototype.contiguous = true;
 
     update_cache();
 

@@ -33,7 +33,7 @@ void Compositor::ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md
             if (start) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                 if (fmt.font) {
-                    ImGui::PushFont( fmt.font );
+                    ImGui::PushFont(fmt.font, 0.0f);
                 }
             } else {
                 if (fmt.font) {
@@ -52,7 +52,7 @@ void Compositor::ImGuiMarkdownFormatCallback(const ImGui::MarkdownFormatInfo& md
             }
             if (start) {
                 if (fmt.font) {
-                    ImGui::PushFont(fmt.font);
+                    ImGui::PushFont(fmt.font, 0.0f);
                 }
             } else {
                 if (fmt.separator) {

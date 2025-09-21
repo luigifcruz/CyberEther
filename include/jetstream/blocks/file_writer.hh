@@ -3,7 +3,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/instance.hh"
-#include "jetstream/modules/file.hh"
+#include "jetstream/modules/file_writer.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Blocks {
@@ -14,9 +14,9 @@ class FileWriter : public Block {
     // Configuration
 
     struct Config {
-        FileFormatType fileFormat = FileFormatType::SigMF;
-        std::string name = "";
+        FileFormatType fileFormat = FileFormatType::Raw;
         std::string filepath = "";
+        std::string name = "";
         std::string description = "";
         std::string author = "CyberEther User";
         F32 sampleRate = 0.0f;
@@ -24,7 +24,7 @@ class FileWriter : public Block {
         bool overwrite = false;
         bool recording = false;
 
-        JST_SERDES(fileFormat, name, filepath, description, author, sampleRate, centerFrequency, overwrite, recording);
+        JST_SERDES(fileFormat, filepath, name, description, author, sampleRate, centerFrequency, overwrite, recording);
     };
 
     constexpr const Config& getConfig() const {
@@ -82,8 +82,8 @@ class FileWriter : public Block {
         JST_CHECK(instance().addModule(
             file_writer, "file_writer", {
                 .fileFormat = config.fileFormat,
-                .name = config.name,
                 .filepath = config.filepath,
+                .name = config.name,
                 .description = config.description,
                 .author = config.author,
                 .sampleRate = config.sampleRate,
@@ -102,7 +102,9 @@ class FileWriter : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(file_writer->locale()));
+        if (file_writer) {
+            JST_CHECK(instance().eraseModule(file_writer->locale()));
+        }
 
         return Result::SUCCESS;
     }
@@ -134,14 +136,7 @@ class FileWriter : public Block {
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Name");
-        ImGui::TableSetColumnIndex(1);
-        ImGui::SetNextItemWidth(-1);
-        ImGui::InputText("##FileName", &config.name);
-
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("Path");
+        ImGui::TextUnformatted("File");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##FilePath", &config.filepath);
@@ -151,8 +146,15 @@ class FileWriter : public Block {
         ImGui::TableSetColumnIndex(1);
         const F32 fullWidth = ImGui::GetContentRegionAvail().x;
         if (ImGui::Button("Pick File Path", ImVec2(fullWidth, 0))) {
-            JST_CHECK_NOTIFY(Platform::PickFolder(config.filepath));
+            JST_CHECK_NOTIFY(Platform::SaveFile(config.filepath));
         }
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("Name");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputText("##FileName", &config.name);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);

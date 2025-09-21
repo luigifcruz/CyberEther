@@ -91,7 +91,9 @@ class FFT : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(fft->locale()));
+        if (fft) {
+            JST_CHECK(instance().eraseModule(fft->locale()));
+        }
 
         return Result::SUCCESS;
     }

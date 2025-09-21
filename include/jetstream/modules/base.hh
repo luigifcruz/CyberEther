@@ -83,30 +83,44 @@
 #include "jetstream/modules/constellation.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_REMOTE_AVAILABLE
-#include "jetstream/modules/remote.hh"
-#endif
-
 #include "jetstream/modules/tensor_modifier.hh"
 
 #ifdef JETSTREAM_MODULE_FOLD_AVAILABLE
 #include "jetstream/modules/fold.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_SPEECH_RECOGNITION_AVAILABLE
-#include "jetstream/modules/speech_recognition.hh"
-#endif
 
-#ifdef JETSTREAM_MODULE_TAKE_AVAILABLE
-#include "jetstream/modules/take.hh"
-#endif
 
 #ifdef JETSTREAM_MODULE_DUPLICATE_AVAILABLE
 #include "jetstream/modules/duplicate.hh"
 #endif
 
-#ifdef JETSTREAM_MODULE_FILE_AVAILABLE
-#include "jetstream/modules/file.hh"
+#ifdef JETSTREAM_MODULE_FILE_WRITER_AVAILABLE
+#include "jetstream/modules/file_writer.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_FILE_READER_AVAILABLE
+#include "jetstream/modules/file_reader.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_THROTTLE_AVAILABLE
+#include "jetstream/modules/throttle.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_SIGNAL_GENERATOR_AVAILABLE
+#include "jetstream/modules/signal_generator.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_PSK_DEMOD_AVAILABLE
+#include "jetstream/modules/psk_demod.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_RRC_FILTER_AVAILABLE
+#include "jetstream/modules/rrc_filter.hh"
+#endif
+
+#ifdef JETSTREAM_MODULE_ADD_AVAILABLE
+#include "jetstream/modules/add.hh"
 #endif
 
 // [NEW MODULE HOOK]

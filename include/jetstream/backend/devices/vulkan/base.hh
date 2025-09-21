@@ -56,7 +56,7 @@ class Vulkan {
     }
 
     constexpr const bool& headless() const {
-        return config.headless;
+        return config.remote;
     }
 
     constexpr VkDevice& getDevice() {
@@ -88,19 +88,19 @@ class Vulkan {
     }
 
     constexpr void* getStagingBufferMappedMemory() {
-        return stagingBufferMappedMemory;       
+        return stagingBufferMappedMemory;
     }
 
     constexpr VkDeviceMemory& getStagingBufferMemory() {
-        return stagingBufferMemory;       
+        return stagingBufferMemory;
     }
 
     constexpr VkBuffer& getStagingBuffer() {
-        return stagingBuffer;       
+        return stagingBuffer;
     }
 
     constexpr const U64& getStagingBufferSize() {
-        return config.stagingBufferSize;       
+        return config.stagingBufferSize;
     }
 
     constexpr VkFence& getDefaultFence() {
@@ -150,7 +150,7 @@ class Vulkan {
     } cache;
 
     VkDebugReportCallbackEXT debugReportCallback{};
-    
+
     std::set<std::string> getRequiredInstanceExtensions();
     std::set<std::string> getOptionalInstanceExtensions();
     std::set<std::string> checkInstanceExtensionSupport(const std::set<std::string>& extensions);
@@ -160,7 +160,7 @@ class Vulkan {
 
     std::set<std::string> getRequiredDeviceExtensions();
     std::set<std::string> getOptionalDeviceExtensions();
-    std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device, 
+    std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device,
                                                       const std::set<std::string>& extensions);
 
     bool isDeviceSuitable(const VkPhysicalDevice& device);

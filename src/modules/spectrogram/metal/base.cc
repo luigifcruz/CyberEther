@@ -71,10 +71,10 @@ Result Spectrogram<D, T>::createCompute(const Context&) {
     JST_CHECK(Metal::CompileKernel(shadersSrc, "activate", &pimpl->stateActivate));
 
     auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
-    constants->width = numberOfElements;
-    constants->height = config.height; 
-    constants->decayFactor = decayFactor;
-    constants->batchSize = numberOfBatches;
+    constants->width = gimpl->numberOfElements;
+    constants->height = config.height;
+    constants->decayFactor = gimpl->decayFactor;
+    constants->batchSize = gimpl->numberOfBatches;
 
     return Result::SUCCESS;
 }
@@ -85,12 +85,12 @@ Result Spectrogram<D, T>::compute(const Context& ctx) {
         auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
         cmdEncoder->setComputePipelineState(pimpl->stateDecay);
         cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
-        cmdEncoder->setBuffer(frequencyBins.data(), 0, 1);
+        cmdEncoder->setBuffer(gimpl->frequencyBins.data(), 0, 1);
 
         auto w = pimpl->stateDecay->threadExecutionWidth();
         auto h = pimpl->stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(numberOfElements, config.height, 1);
+        auto threadsPerGrid = MTL::Size(gimpl->numberOfElements, config.height, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();
@@ -101,12 +101,12 @@ Result Spectrogram<D, T>::compute(const Context& ctx) {
         cmdEncoder->setComputePipelineState(pimpl->stateActivate);
         cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
         cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
-        cmdEncoder->setBuffer(frequencyBins.data(), 0, 2);
+        cmdEncoder->setBuffer(gimpl->frequencyBins.data(), 0, 2);
 
         auto w = pimpl->stateDecay->threadExecutionWidth();
         auto h = pimpl->stateDecay->maxTotalThreadsPerThreadgroup() / w;
         auto threadsPerThreadgroup = MTL::Size(w, h, 1);
-        auto threadsPerGrid = MTL::Size(numberOfElements, numberOfBatches, 1);
+        auto threadsPerGrid = MTL::Size(gimpl->numberOfElements, gimpl->numberOfBatches, 1);
         cmdEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
         cmdEncoder->endEncoding();

@@ -14,23 +14,23 @@ class KernelImp<Device::WebGPU> : public Kernel {
  protected:
     Result create();
     Result destroy();
-    Result encode(wgpu::ComputePassEncoder& computePassEncoder);
+    Result encode(WGPUComputePassEncoder& computePassEncoder);
 
  private:
-    wgpu::ComputePipeline pipeline;
-    wgpu::PipelineLayout pipelineLayout;
-    wgpu::BindGroupLayout bindGroupLayout;
-    wgpu::BindGroup bindGroup;
+    WGPUComputePipeline pipeline;
+    WGPUPipelineLayout pipelineLayout;
+    WGPUBindGroupLayout bindGroupLayout;
+    WGPUBindGroup bindGroup;
 
-    std::vector<wgpu::BindGroupLayoutEntry> bindings;
-    std::vector<wgpu::BindGroupEntry> bindGroupEntries;
+    std::vector<WGPUBindGroupLayoutEntry> bindings;
+    std::vector<WGPUBindGroupEntry> bindGroupEntries;
 
     std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, Kernel::AccessMode>> buffers;
 
-    static wgpu::BufferBindingType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer, 
-                                                        const Kernel::AccessMode& mode);
+    static WGPUBufferBindingType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer,
+                                                      const Kernel::AccessMode& mode);
 
-    friend class SurfaceImp<Device::WebGPU>; 
+    friend class SurfaceImp<Device::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

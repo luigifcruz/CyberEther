@@ -25,13 +25,14 @@ class Arithmetic : public Module, public Compute {
     Arithmetic();
     ~Arithmetic();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         ArithmeticOp operation = ArithmeticOp::Add;
         U64 axis = 0;
+        bool squeeze = false;
 
-        JST_SERDES(operation, axis);
+        JST_SERDES(operation, axis, squeeze);
     };
 
     constexpr const Config& getConfig() const {
@@ -89,8 +90,6 @@ class Arithmetic : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    Tensor<D, T> broadcasted_output;
 
     JST_DEFINE_IO()
 };

@@ -30,41 +30,45 @@ struct Scale<D, T>::Impl {
 
     MTL::ComputePipelineState* state;
     Tensor<Device::Metal, U8> constants;
+
+    F32 scalingCoeff;
+    F32 offsetCoeff;
+    U64 numberOfElements;
 };
 
 template<Device D, typename T>
 Scale<D, T>::Scale() {
-    pimpl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
 }
 
 template<Device D, typename T>
 Scale<D, T>::~Scale() {
-    pimpl.reset();
+    impl.reset();
 }
 
 template<Device D, typename T>
 Result Scale<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Scale compute core using CPU backend.");
 
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &pimpl->state));
-    Metal::CreateConstants<typename Impl::Constants>(*pimpl);
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "scale", &impl->state));
+    Metal::CreateConstants<typename Impl::Constants>(*impl);
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Scale<D, T>::compute(const Context& ctx) {
-    auto* constants = Metal::Constants<typename Impl::Constants>(*pimpl);
-    constants->min = scalingCoeff;
-    constants->max = offsetCoeff;
+    auto* constants = Metal::Constants<typename Impl::Constants>(*impl);
+    constants->min = impl->scalingCoeff;
+    constants->max = impl->offsetCoeff;
 
     auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(pimpl->state);
-    cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
+    cmdEncoder->setComputePipelineState(impl->state);
+    cmdEncoder->setBuffer(impl->constants.data(), 0, 0);
     cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
     cmdEncoder->setBuffer(output.buffer.data(), 0, 2);
-    cmdEncoder->dispatchThreads(MTL::Size(output.buffer.size(), 1, 1), 
-                                MTL::Size(pimpl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
+    cmdEncoder->dispatchThreads(MTL::Size(output.buffer.size(), 1, 1),
+                                MTL::Size(impl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;

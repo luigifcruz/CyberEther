@@ -91,7 +91,9 @@ class FM : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(fm->locale()));
+        if (fm) {
+            JST_CHECK(instance().eraseModule(fm->locale()));
+        }
 
         return Result::SUCCESS;
     }

@@ -126,18 +126,9 @@
 #define JETSTREAM_BLOCK_CAST_AVAILABLE
 #endif
 
-#if defined(JETSTREAM_MODULE_SPEECH_RECOGNITION_AVAILABLE)
-#include "jetstream/blocks/speech_recognition.hh"
-#define JETSTREAM_BLOCK_SPEECH_RECOGNITION_AVAILABLE
-#endif
-
 #include "jetstream/blocks/note.hh"
 #define JETSTREAM_BLOCK_NOTE_AVAILABLE
 
-#if defined(JETSTREAM_MODULE_TAKE_AVAILABLE)
-#include "jetstream/blocks/take.hh"
-#define JETSTREAM_BLOCK_TAKE_AVAILABLE
-#endif
 
 #include "jetstream/blocks/squeeze_dims.hh"
 #define JETSTREAM_BLOCK_SQUEEZE_DIMS_AVAILABLE
@@ -175,9 +166,56 @@
 #include "jetstream/blocks/reshape.hh"
 #define JETSTREAM_BLOCK_RESHAPE_AVAILABLE
 
-#if defined(JETSTREAM_MODULE_FILE_AVAILABLE)
+#if defined(JETSTREAM_MODULE_FILE_WRITER_AVAILABLE)
 #include "jetstream/blocks/file_writer.hh"
 #define JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_FILE_READER_AVAILABLE)
+#include "jetstream/blocks/file_reader.hh"
+#define JETSTREAM_BLOCK_FILE_READER_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_THROTTLE_AVAILABLE)
+#include "jetstream/blocks/throttle.hh"
+#define JETSTREAM_BLOCK_THROTTLE_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_ARITHMETIC_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_DUPLICATE_AVAILABLE)
+#include "jetstream/blocks/decimator.hh"
+#define JETSTREAM_BLOCK_DECIMATOR_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_WINDOW_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_MULTIPLY_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_INVERT_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_FFT_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_AGC_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_AMPLITUDE_AVAILABLE) && \
+    defined(JETSTREAM_MODULE_SCALE_AVAILABLE)
+#include "jetstream/blocks/spectrum_engine.hh"
+#define JETSTREAM_BLOCK_SPECTRUM_ENGINE_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_SIGNAL_GENERATOR_AVAILABLE)
+#include "jetstream/blocks/signal_generator.hh"
+#define JETSTREAM_BLOCK_SIGNAL_GENERATOR_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_PSK_DEMOD_AVAILABLE)
+#include "jetstream/blocks/psk_demod.hh"
+#define JETSTREAM_BLOCK_PSK_DEMOD_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_RRC_FILTER_AVAILABLE)
+#include "jetstream/blocks/rrc_filter.hh"
+#define JETSTREAM_BLOCK_RRC_FILTER_AVAILABLE
+#endif
+
+#if defined(JETSTREAM_MODULE_ADD_AVAILABLE)
+#include "jetstream/blocks/add.hh"
+#define JETSTREAM_BLOCK_ADD_AVAILABLE
 #endif
 
 // [NEW BLOCK HOOK]

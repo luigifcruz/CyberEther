@@ -26,7 +26,7 @@ class Spectrogram : public Module, public Compute, public Present {
     Spectrogram();
     ~Spectrogram();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         U64 height = 256;
@@ -34,7 +34,7 @@ class Spectrogram : public Module, public Compute, public Present {
 
         JST_SERDES(height, viewSize);
     };
-    
+
     constexpr const Config& getConfig() const {
         return config;
     }
@@ -68,7 +68,7 @@ class Spectrogram : public Module, public Compute, public Present {
     }
 
     void info() const final;
-    
+
     // Constructor
 
     Result create();
@@ -96,30 +96,6 @@ class Spectrogram : public Module, public Compute, public Present {
 
     struct GImpl;
     std::unique_ptr<GImpl> gimpl;
-
-    Tensor<D, F32> frequencyBins;
-
-    std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
-    std::shared_ptr<Render::Buffer> signalBuffer;
-    std::shared_ptr<Render::Buffer> signalUniformBuffer;
-
-    std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Texture> lutTexture;
-
-    std::shared_ptr<Render::Program> signalProgram;
-
-    std::shared_ptr<Render::Surface> surface;
-
-    std::shared_ptr<Render::Vertex> vertex;
-
-    std::shared_ptr<Render::Draw> drawVertex;
-
-    F32 decayFactor;
-    U64 numberOfElements = 0;
-    U64 numberOfBatches = 0;
-    U64 totalFrequencyBins = 0;
 
     JST_DEFINE_IO()
 };

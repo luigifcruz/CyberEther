@@ -13,30 +13,30 @@ Result Implementation::create() {
     auto device = Backend::State<Device::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
-    wgpu::BufferUsage bufferUsageFlag{};
-    bufferUsageFlag |= wgpu::BufferUsage::CopySrc;
-    bufferUsageFlag |= wgpu::BufferUsage::CopyDst;
+    WGPUBufferUsage bufferUsageFlag = 0;
+    bufferUsageFlag |= WGPUBufferUsage_CopySrc;
+    bufferUsageFlag |= WGPUBufferUsage_CopyDst;
 
     if ((config.target & Target::VERTEX) == Target::VERTEX) {
-        bufferUsageFlag |= wgpu::BufferUsage::Vertex;
+        bufferUsageFlag |= WGPUBufferUsage_Vertex;
     }
 
     if ((config.target & Target::VERTEX_INDICES) == Target::VERTEX_INDICES) {
-        bufferUsageFlag |= wgpu::BufferUsage::Index;
+        bufferUsageFlag |= WGPUBufferUsage_Index;
     }
 
     if ((config.target & Target::STORAGE) == Target::STORAGE ||
         (config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC) {
-        bufferUsageFlag |= wgpu::BufferUsage::Storage;
+        bufferUsageFlag |= WGPUBufferUsage_Storage;
     }
 
     if ((config.target & Target::UNIFORM) == Target::UNIFORM ||
         (config.target & Target::UNIFORM_DYNAMIC) == Target::UNIFORM_DYNAMIC) {
-        bufferUsageFlag |= wgpu::BufferUsage::Uniform;
+        bufferUsageFlag |= WGPUBufferUsage_Uniform;
     }
 
     if ((config.target & Target::INDIRECT) == Target::INDIRECT) {
-        bufferUsageFlag |= wgpu::BufferUsage::Indirect;
+        bufferUsageFlag |= WGPUBufferUsage_Indirect;
     }
 
     if ((config.target & Target::STORAGE_DYNAMIC) == Target::STORAGE_DYNAMIC ||
@@ -45,11 +45,11 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    wgpu::BufferDescriptor bufferDescriptor{};
+    WGPUBufferDescriptor bufferDescriptor = WGPU_BUFFER_DESCRIPTOR_INIT;
     bufferDescriptor.size = byteSize;
     bufferDescriptor.usage = bufferUsageFlag;
 
-    buffer = device.CreateBuffer(&bufferDescriptor);
+    buffer = wgpuDeviceCreateBuffer(device, &bufferDescriptor);
 
     if (config.buffer) {
         JST_CHECK(update());
@@ -61,7 +61,7 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying buffer.");
 
-    buffer.Destroy();
+    wgpuBufferDestroy(buffer);
 
     return Result::SUCCESS;
 }
@@ -75,12 +75,13 @@ Result Implementation::update(const U64& offset, const U64& size) {
         return Result::SUCCESS;
     }
 
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
 
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
-    device.GetQueue().WriteBuffer(buffer, byteOffset, (uint8_t*)config.buffer+byteOffset, byteSize);
+    WGPUQueue queue = wgpuDeviceGetQueue(device);
+    wgpuQueueWriteBuffer(queue, buffer, byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
 
     return Result::SUCCESS;
 }

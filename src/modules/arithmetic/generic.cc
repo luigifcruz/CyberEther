@@ -40,8 +40,13 @@ Result Arithmetic<D, T>::create() {
 
     output.buffer = Tensor<D, T>(output_shape);
 
-    broadcasted_output = output.buffer;
-    JST_CHECK(broadcasted_output.broadcast_to(input.buffer.shape()));
+    pimpl->broadcasted_output = output.buffer;
+    JST_CHECK(pimpl->broadcasted_output.broadcast_to(input.buffer.shape()));
+
+    // Apply squeeze if requested.
+    if (config.squeeze) {
+        output.buffer.squeeze_dims(config.axis);
+    }
 
     return Result::SUCCESS;
 }
@@ -50,6 +55,7 @@ template<Device D, typename T>
 void Arithmetic<D, T>::info() const {
     JST_DEBUG("  Operation: {}", config.operation);
     JST_DEBUG("  Axis: {}", config.axis);
+    JST_DEBUG("  Squeeze: {}", config.squeeze);
 }
 
 }  // namespace Jetstream

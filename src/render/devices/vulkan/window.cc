@@ -213,19 +213,16 @@ Result Implementation::createImgui() {
         .Device = backend->getDevice(),
         .QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value(),
         .Queue = backend->getGraphicsQueue(),
-        .PipelineCache = {},
         .DescriptorPool = backend->getDescriptorPool(),
-        .Subpass = {},
+        .RenderPass = renderPass,
         .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .UseDynamicRendering = false,
-        .ColorAttachmentFormat = VK_FORMAT_UNDEFINED,
-        .Allocator = {},
         .CheckVkResultFn = nullptr,
         .MinAllocationSize = 0,
     };
-    ImGui_ImplVulkan_Init(&init_info, renderPass);
+    ImGui_ImplVulkan_Init(&init_info);
 
     return Result::SUCCESS;
 }
@@ -433,19 +430,8 @@ Result Implementation::destroySynchronizationObjects() {
 void Implementation::drawDebugMessage() const {
     auto& backend = Backend::State<Device::Vulkan>();
 
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Device Name:");
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(-1);
-    ImGui::TextFormatted("{}", backend->getDeviceName());
-
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text("Device Memory:");
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(-1);
-    ImGui::TextFormatted("{:.0f} GB", (float)backend->getPhysicalMemory() / (1024*1024*1024));
+    ImGui::TextFormatted("{} ({:.0f} GB)", backend->getDeviceName(),
+                                           (float)backend->getPhysicalMemory() / (1024*1024*1024));
 }
 
 const Window::Stats& Implementation::stats() const {

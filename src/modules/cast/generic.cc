@@ -12,8 +12,10 @@ Result Cast<D, IT, OT>::create() {
     // Configure scaler.
 
     if (config.scaler == 0.0f) {
-        if constexpr (std::is_same<IT, F32>::value && std::is_same<IT, I32>::value) {
-            config.scaler = 32768.0f;
+        if constexpr (std::is_same<IT, CI8>::value && std::is_same<OT, CF32>::value) {
+            config.scaler = 128.0f;
+        } else if constexpr (std::is_same<IT, CF32>::value && std::is_same<OT, F32>::value) {
+            config.scaler = 1.0f;
         } else {
             JST_ERROR("[CAST] No default scaler for the cast operation.");
             return Result::ERROR;

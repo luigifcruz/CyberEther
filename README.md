@@ -1,7 +1,7 @@
 <h1 align="center"><b>⚡️ CyberEther ⚡️</b></h1>
 <h3 align="center">Multi-platform GPU-accelerated interface for compute-intensive pipelines.</h3>
 <br>
- 
+
 - 🖼️ Graphical support for any device with **Vulkan**, **Metal**, or **WebGPU**.
 - 🦑 Portable GPU acceleration for compute: **NVIDIA (CUDA)**, **Apple (Metal)**, **Raspberry Pi (Vulkan)**, etc.
 - 🔋 Runtime configurable flowgraph pipeline with heterogeneously-accelerated modular blocks.
@@ -132,7 +132,7 @@ $ apt install libsoapysdr-dev soapysdr-module-rtlsdr
 # For Remote capabilities.
 $ apt install libgstreamer1.0-dev gstreamer1.0-libav
 $ apt install gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev
-$ apt install libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev 
+$ apt install libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev
 $ apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 
 # For examples metadata.
@@ -201,26 +201,26 @@ Done! The executable will be installed in the default terminal path. For usage i
 
 Build project with cross-compilation to WebAssembly.
 ```bash
-$ meson setup --cross-file crosscompile/emscripten.ini -Dbuildtype=debugoptimized build-browser && cd build-browser
+$ meson setup --cross-file meson/crosscompile/emscripten.ini -Dbuildtype=debugoptimized build-browser && cd build-browser
 $ ninja
 ```
 
 Copy dependencies to the build directory.
 ```bash
-$ cp ../resources/cyberether.html .
-$ cp ../resources/cyberether.png .
+$ cp ../resources/web/cyberether.html .
+$ cp ../resources/images/cyberether.png .
 ```
 
 Start the web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
 ```bash
-$ python ../tools/local_server.py
+$ python ../resources/web/local_server.py
 ```
 
 #### iOS (iPhone & iPad)
 
 Build the project with cross-compilation to iOS and install binaries in the Xcode project.
 ```bash
-$ meson setup --cross-file crosscompile/ios.ini \
+$ meson setup --cross-file meson/crosscompile/ios.ini \
               --prefix $(pwd)/apps/ios/CyberEtherMobile/Library \
               -Dbuildtype=debugoptimized build-ios && cd build-ios
 $ ninja install
@@ -269,6 +269,7 @@ At this time, software video encoding will be used on most platforms. Work is be
 To initialize a remote instance of CyberEther, run the command below on the server. If you want lossless video, use the `--codec ffv1` option instead. The lossless video will use quite a lot of bandwidth, so make sure you have a good connection.
 
 ```bash
+// TODO: [beta1] Update documentation on remote system.
 $ ./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264
 ```
 
@@ -282,7 +283,7 @@ CyberEther comes with a neat runtime benchmark tool that can be used to compare 
 The benchmarking tool can also be run from the command line in headless mode. To do this, run the command below. The results will be printed in the terminal. The format of the results can be changed by specifying `csv`, `json`, or `markdown` after the `--benchmark` option. For example, `--benchmark csv`.
 
 ```bash
-$ JST_DEBUG=2 ./cyberether --benchmark 
+$ JST_DEBUG=2 ./cyberether --benchmark
 ```
 
 ### Examples

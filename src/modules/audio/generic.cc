@@ -17,6 +17,8 @@ Audio<D, T>::~Audio() {
 
 template<Device D, typename T>
 struct Audio<D, T>::Impl {
+    std::string deviceName;
+
     ma_device_config deviceConfig;
     ma_device deviceCtx;
     ma_resampler_config resamplerConfig;
@@ -198,7 +200,7 @@ Result Audio<D, T>::create() {
         return Result::ERROR;
     }
 
-    deviceName = pimpl->deviceCtx.playback.name;
+    pimpl->deviceName = pimpl->deviceCtx.playback.name;
 
     if (ma_device_start(&pimpl->deviceCtx) != MA_SUCCESS) {
         JST_ERROR("Failed to start playback device.");
@@ -267,6 +269,11 @@ Result Audio<D, T>::compute(const Context&) {
     pimpl->buffer.put(output.buffer.data(), frameCountOut);
 
     return Result::SUCCESS;
+}
+
+template<Device D, typename T>
+const std::string& Audio<D, T>::getDeviceName() const {
+    return pimpl->deviceName;
 }
 
 JST_AUDIO_CPU(JST_INSTANTIATION)

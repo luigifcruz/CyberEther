@@ -27,12 +27,12 @@ template<Device D, typename T>
 Result Lineplot<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using CPU backend.");
 
-    pimpl->sums = Tensor<Device::CPU, F32>({numberOfElements});
-    pimpl->averaging = Tensor<Device::CPU, F32>({numberOfElements});
+    pimpl->sums = Tensor<Device::CPU, F32>({gimpl->numberOfElements});
+    pimpl->averaging = Tensor<Device::CPU, F32>({gimpl->numberOfElements});
 
-    for (U64 i = 0; i < numberOfElements; i++) {
-        signalPoints[(i * 2) + 0] = i * 2.0f / (numberOfElements - 1) - 1.0f;
-        signalPoints[(i * 2) + 1] = 0.0f;
+    for (U64 i = 0; i < gimpl->numberOfElements; i++) {
+        gimpl->signalPoints[(i * 2) + 0] = i * 2.0f / (gimpl->numberOfElements - 1) - 1.0f;
+        gimpl->signalPoints[(i * 2) + 1] = 0.0f;
     }
 
     return Result::SUCCESS;
@@ -40,29 +40,29 @@ Result Lineplot<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result Lineplot<D, T>::compute(const Context&) {
-    for (U64 i = 0; i < numberOfElements; i++) {
+    for (U64 i = 0; i < gimpl->numberOfElements; i++) {
         pimpl->sums[i] = 0.0f;
     }
 
-    for (U64 b = 0; b < numberOfBatches; b++) {
-        for (U64 i = 0; i < numberOfElements; i++) {
-            pimpl->sums[i] += input.buffer[(i * config.decimation) + b * numberOfElements];
+    for (U64 b = 0; b < gimpl->numberOfBatches; b++) {
+        for (U64 i = 0; i < gimpl->numberOfElements; i++) {
+            pimpl->sums[i] += input.buffer[(i * config.decimation) + b * gimpl->numberOfElements];
         }
     }
 
-    for (U64 i = 0; i < numberOfElements; i++) {
+    for (U64 i = 0; i < gimpl->numberOfElements; i++) {
         // Get amplitude
-        const auto& amplitude = (pimpl->sums[i] * normalizationFactor) - 1.0f;
+        const auto& amplitude = (pimpl->sums[i] * gimpl->normalizationFactor) - 1.0f;
 
         // Calculate moving average
         auto& average = pimpl->averaging[i];
         average -= average / config.averaging;
         average += amplitude / config.averaging;
 
-        signalPoints[(i * 2) + 1] = average;
+        gimpl->signalPoints[(i * 2) + 1] = average;
     }
 
-    updateSignalPointsFlag = true;
+    gimpl->updateSignalPointsFlag = true;
 
     return Result::SUCCESS;
 }

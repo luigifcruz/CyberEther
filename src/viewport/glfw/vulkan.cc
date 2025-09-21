@@ -31,6 +31,7 @@ Result Implementation::create() {
     keepRunningFlag = true;
     std::signal(SIGINT, [](int){
         if (!keepRunningFlag) {
+            JST_DEBUG("[METAL] Exiting via SIGINT...");
             std::exit(0);
         }
         keepRunningFlag = false;

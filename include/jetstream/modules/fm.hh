@@ -16,7 +16,10 @@ namespace Jetstream {
 template<Device D, typename IT = CF32, typename OT = F32>
 class FM : public Module, public Compute {
  public:
-    // Configuration 
+    FM();
+    ~FM();
+
+    // Configuration
 
     struct Config {
         F32 sampleRate = 240e3f;
@@ -73,8 +76,8 @@ class FM : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
-    F32 kf;
-    F32 ref;
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

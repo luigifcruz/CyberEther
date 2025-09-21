@@ -12,7 +12,8 @@ namespace Jetstream {
 
 #define JST_FFT_CPU(MACRO) \
     MACRO(FFT, CPU, CF32, CF32) \
-    MACRO(FFT, CPU, F32, CF32)
+    MACRO(FFT, CPU, F32, CF32) \
+    MACRO(FFT, CPU, F32, F32)
 
 #define JST_FFT_METAL(MACRO) \
     MACRO(FFT, Metal, CF32, CF32)
@@ -26,7 +27,7 @@ class FFT : public Module, public Compute {
     FFT();
     ~FFT();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         bool forward = true;
@@ -86,10 +87,6 @@ class FFT : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    U64 numberOfOperations = 0;
-    U64 numberOfElements = 0;
-    U64 elementStride = 0;
 
     JST_DEFINE_IO()
 };

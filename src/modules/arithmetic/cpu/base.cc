@@ -6,6 +6,7 @@ namespace Jetstream {
 
 template<Device D, typename T>
 struct Arithmetic<D, T>::Impl {
+    Tensor<D, T> broadcasted_output;
 };
 
 template<Device D, typename T>
@@ -35,22 +36,22 @@ Result Arithmetic<D, T>::compute(const Context&) {
         case ArithmeticOp::Add:
             Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
                 a += b;
-            }, broadcasted_output, input.buffer);
+            }, pimpl->broadcasted_output, input.buffer);
             break;
         case ArithmeticOp::Sub:
             Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
                 a -= b;
-            }, broadcasted_output, input.buffer);
+            }, pimpl->broadcasted_output, input.buffer);
             break;
         case ArithmeticOp::Mul:
             Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
                 a *= b;
-            }, broadcasted_output, input.buffer);
+            }, pimpl->broadcasted_output, input.buffer);
             break;
         case ArithmeticOp::Div:
             Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
                 a /= b;
-            }, broadcasted_output, input.buffer);
+            }, pimpl->broadcasted_output, input.buffer);
             break;
     }
 

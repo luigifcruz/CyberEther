@@ -26,8 +26,8 @@ class Soapy : public Block {
         U64 bufferMultiplier = 4;
 
         JST_SERDES(hintString, deviceString, streamString,
-                   frequency, sampleRate, automaticGain, 
-                   numberOfBatches, numberOfTimeSamples, 
+                   frequency, sampleRate, automaticGain,
+                   numberOfBatches, numberOfTimeSamples,
                    bufferMultiplier);
     };
 
@@ -127,7 +127,9 @@ class Soapy : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(soapy->locale()));
+        if (soapy) {
+            JST_CHECK(instance().eraseModule(soapy->locale()));
+        }
 
         return Result::SUCCESS;
     }
@@ -183,7 +185,7 @@ class Soapy : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         I32 taps[2] = {
-            static_cast<I32>(config.numberOfBatches), 
+            static_cast<I32>(config.numberOfBatches),
             static_cast<I32>(config.numberOfTimeSamples)
         };
         if (ImGui::InputInt2("##batch-samples", taps, ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -202,7 +204,7 @@ class Soapy : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 sampleRate = config.sampleRate / 1e6f;
-        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##SampleRate", &sampleRate, 1.0f, 2.0f, "%.3f MHz")) {
             config.sampleRate = sampleRate * 1e6;
             JST_MODULE_UPDATE(soapy, setSampleRate(config.sampleRate));
         }
@@ -247,7 +249,7 @@ class Soapy : public Block {
             }
             ImGui::EndCombo();
         }
-        
+
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TableSetColumnIndex(1);
@@ -266,7 +268,7 @@ class Soapy : public Block {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         F32 frequency = config.frequency / JST_MHZ;
-        if (ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz", ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (ImGui::InputFloat("##Frequency", &frequency, stepSize, stepSize, "%.3f MHz")) {
             config.frequency = frequency * JST_MHZ;
             JST_MODULE_UPDATE(soapy, setTunerFrequency(config.frequency));
         }
@@ -287,7 +289,7 @@ class Soapy : public Block {
     F32 stepSize = 10.0f;
     std::string currentDevice;
     typename SoapyModule::DeviceList availableDeviceList;
-    
+
     std::shared_ptr<SoapyModule> soapy;
 
     JST_DEFINE_IO()

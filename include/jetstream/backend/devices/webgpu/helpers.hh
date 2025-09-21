@@ -8,15 +8,15 @@
 
 namespace Jetstream::Backend {
 
-inline wgpu::ShaderModule LoadShader(const std::vector<U8>& data, wgpu::Device& device) {
-    wgpu::ShaderModuleWGSLDescriptor wgsl{};
-    wgsl.sType = wgpu::SType::ShaderModuleWGSLDescriptor;
-    wgsl.code = reinterpret_cast<const char*>(data.data());
+inline WGPUShaderModule LoadShader(const std::vector<U8>& data, WGPUDevice device) {
+    WGPUShaderSourceWGSL wgsl = {};
+    wgsl.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgsl.code = { (const char*)data.data(), data.size() };
 
-    wgpu::ShaderModuleDescriptor desc{};
-    desc.nextInChain = reinterpret_cast<wgpu::ChainedStruct*>(&wgsl);
+    WGPUShaderModuleDescriptor desc = {};
+    desc.nextInChain = &wgsl.chain;
 
-    return device.CreateShaderModule(&desc);
+    return wgpuDeviceCreateShaderModule(device, &desc);
 }
 
 }  // namespace Jetstream::Backend

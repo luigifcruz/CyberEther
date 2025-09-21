@@ -1,3 +1,12 @@
 [submodule "subprojects/nanobind"]
 	path = subprojects/nanobind
 	url = https://github.com/wjakob/nanobind.git
+[submodule "subprojects/nanobench"]
+	path = subprojects/nanobench
+	url = https://github.com/martinus/nanobench.git
+[submodule "subprojects/cpp-httplib"]
+	path = subprojects/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib.git
+[submodule "subprojects/json"]
+	path = subprojects/json
+	url = https://github.com/nlohmann/json.git

@@ -25,7 +25,7 @@ class Scale : public Module, public Compute {
     Scale();
     ~Scale();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         Range<T> range = {-1.0, +1.0};
@@ -76,7 +76,7 @@ class Scale : public Module, public Compute {
     // Constructor
 
     Result create();
-    
+
     // Miscellaneous
 
     constexpr const Range<T>& range() const {
@@ -91,11 +91,7 @@ class Scale : public Module, public Compute {
 
  private:
     struct Impl;
-    std::unique_ptr<Impl> pimpl;
-
-    F32 scalingCoeff;
-    F32 offsetCoeff;
-    U64 numberOfElements;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

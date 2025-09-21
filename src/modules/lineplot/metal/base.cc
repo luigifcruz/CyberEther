@@ -89,9 +89,9 @@ Result Lineplot<D, T>::createCompute(const Context&) {
 template<Device D, typename T>
 Result Lineplot<D, T>::compute(const Context& ctx) {
     auto* constants = Metal::Constants<typename Impl::Constants>(*pimpl);
-    constants->batchSize = numberOfBatches;
-    constants->gridSize = numberOfElements;
-    constants->normalizationFactor = normalizationFactor;
+    constants->batchSize = gimpl->numberOfBatches;
+    constants->gridSize = gimpl->numberOfElements;
+    constants->normalizationFactor = gimpl->normalizationFactor;
     constants->average = config.averaging;
     constants->decimation = config.decimation;
 
@@ -100,13 +100,13 @@ Result Lineplot<D, T>::compute(const Context& ctx) {
         cmdEncoder->setComputePipelineState(pimpl->lineplotState);
         cmdEncoder->setBuffer(pimpl->constants.data(), 0, 0);
         cmdEncoder->setBuffer(input.buffer.data(), 0, 1);
-        cmdEncoder->setBuffer(signalPoints.data(), 0, 2);
-        cmdEncoder->dispatchThreads(MTL::Size(numberOfElements, 1, 1),
+        cmdEncoder->setBuffer(gimpl->signalPoints.data(), 0, 2);
+        cmdEncoder->dispatchThreads(MTL::Size(gimpl->numberOfElements, 1, 1),
                                     MTL::Size(pimpl->lineplotState->maxTotalThreadsPerThreadgroup(), 1, 1));
         cmdEncoder->endEncoding();
     }
 
-    updateSignalPointsFlag = true;
+    gimpl->updateSignalPointsFlag = true;
 
     return Result::SUCCESS;
 }

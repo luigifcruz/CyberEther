@@ -6,8 +6,8 @@
 #include "jetstream/store.hh"
 #include "jetstream/platform.hh"
 
-#include "stb_image.hh"
-#include "resources/resources.hh"
+#include <stb_image.h>
+#include "resources/images/base.hh"
 
 // Looks like GCC-13 has a false-positive bug that is quite annoying.
 // Silencing this for now. This should be fixed in GCC-14.
@@ -668,7 +668,6 @@ Result Compositor::drawStatic() {
     const auto& io = ImGui::GetIO();
     const auto& scalingFactor = instance.window().scalingFactor();
     const bool flowgraphLoaded = instance.flowgraph().created();
-    const F32 variableWidth = 100.0f * scalingFactor;
     I32 interactionTrigger = 0;
 
     //
@@ -682,32 +681,32 @@ Result Compositor::drawStatic() {
         interactionTrigger = 99;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_S, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_S, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Save document shortcut pressed.");
         interactionTrigger = 1;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_N, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_N, 0, flag)) {
         JST_TRACE("[COMPOSITOR] New document shortcut pressed.");
         interactionTrigger = 2;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_O, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_O, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Open document shortcut pressed.");
         interactionTrigger = 3;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_I, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_I, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Info document shortcut pressed.");
         interactionTrigger = 4;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_W, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_W, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Close document shortcut pressed.");
         interactionTrigger = 5;
     }
 
-    if (ImGui::Shortcut(ImGuiMod_Shortcut | ImGuiKey_L, 0, flag)) {
+    if (ImGui::Shortcut(ImGuiMod_Super | ImGuiKey_L, 0, flag)) {
         JST_TRACE("[COMPOSITOR] Exit fullscreen shortcut pressed.");
         interactionTrigger = 9;
     }
@@ -783,7 +782,6 @@ Result Compositor::drawStatic() {
             if (ImGui::MenuItem("Show Info Panel", nullptr, &infoPanelEnabled)) { }
             if (ImGui::MenuItem("Show Flowgraph Source", nullptr, &sourceEditorEnabled, flowgraphLoaded)) { }
             if (ImGui::MenuItem("Show Flowgraph", nullptr, &flowgraphEnabled, flowgraphLoaded)) { }
-            if (ImGui::MenuItem("Show Block Store", nullptr, &moduleStoreEnabled, flowgraphLoaded && flowgraphEnabled)) { }
             ImGui::EndMenu();
         }
 
@@ -965,6 +963,316 @@ Result Compositor::drawStatic() {
                     ImGui::PopTextWrapPos();
                     ImGui::EndTooltip();
                 }
+
+                ImGui::SameLine();
+            }
+
+            // Spotlight-style module search in toolbar
+            if (flowgraphLoaded) {
+                static std::string moduleSearchText = "";
+                static bool showModuleDropdown = false;
+                static bool searchInputActive = false;
+                static ImVec2 searchInputPos;
+                static int selectedModuleIndex = -1;
+                static std::vector<std::pair<std::string, Device>> filteredModules;
+                static bool moduleAttachMode = false;
+                static std::pair<std::string, Device> moduleToAttach;
+                static bool shouldScrollToSelected = false;
+
+                const F32 searchWidth = 350.0f * scalingFactor;
+
+                const F32 totalWidth = searchWidth + 10.0f * scalingFactor;
+                const F32 availableWidth = ImGui::GetWindowWidth() - ImGui::GetCursorPosX();
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availableWidth - totalWidth);
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
+                    ImGui::SetKeyboardFocusHere();
+                    moduleSearchText.clear();
+                    showModuleDropdown = true;
+                    selectedModuleIndex = -1;
+
+                    filteredModules.clear();
+                    for (const auto& [id, module] : Store::BlockMetadataList("")) {
+                        for (const auto& [device, _] : module.options) {
+                            filteredModules.push_back({id, device});
+                        }
+                    }
+                    interactionTrigger = false;
+                }
+
+                ImGui::SetNextItemWidth(searchWidth);
+                searchInputPos = ImGui::GetCursorScreenPos();
+
+                static char searchBuffer[256];
+                if (moduleSearchText.size() < sizeof(searchBuffer)) {
+                    strcpy(searchBuffer, moduleSearchText.c_str());
+                }
+                bool inputChanged = ImGui::InputTextWithHint("##ModuleSearch", ICON_FA_MAGNIFYING_GLASS " Search blocks... (/)", searchBuffer, sizeof(searchBuffer));
+                if (inputChanged) {
+                    moduleSearchText = searchBuffer;
+                }
+                bool inputActive = ImGui::IsItemActive();
+                bool inputFocused = ImGui::IsItemFocused();
+
+                if ((inputFocused || inputActive) && showModuleDropdown) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                        showModuleDropdown = false;
+                        selectedModuleIndex = -1;
+                        moduleSearchText.clear();
+                        moduleAttachMode = false;
+                    } else if (!filteredModules.empty()) {
+                        bool navigationKeyPressed = false;
+                        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+                            selectedModuleIndex = (selectedModuleIndex + 1) % (int)filteredModules.size();
+                            navigationKeyPressed = true;
+                        } else if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+                            selectedModuleIndex = selectedModuleIndex <= 0 ? (int)filteredModules.size() - 1 : selectedModuleIndex - 1;
+                            navigationKeyPressed = true;
+                        } else if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) && selectedModuleIndex >= 0 && static_cast<size_t>(selectedModuleIndex) < filteredModules.size()) {
+                            auto selectedPair = filteredModules[selectedModuleIndex];
+
+                            moduleToAttach = selectedPair;
+                            moduleAttachMode = true;
+                            showModuleDropdown = false;
+                            selectedModuleIndex = -1;
+                            moduleSearchText.clear();
+                        }
+
+                        if (navigationKeyPressed) {
+                            shouldScrollToSelected = true;
+                        }
+                    }
+                }
+
+                if (inputChanged || (inputActive && !searchInputActive)) {
+                    showModuleDropdown = true;
+                    selectedModuleIndex = 0;
+
+                    filteredModules.clear();
+                    const char* filterText = moduleSearchText.empty() ? "" : moduleSearchText.c_str();
+                    for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
+                        for (const auto& [device, _] : module.options) {
+                            filteredModules.push_back({id, device});
+                        }
+                    }
+                    if (filteredModules.empty()) {
+                        selectedModuleIndex = -1;
+                    }
+                }
+                searchInputActive = inputActive;
+
+                if (moduleAttachMode) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+                    ImVec2 mousePos = ImGui::GetMousePos();
+                    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+
+                    const auto& [moduleId, device] = moduleToAttach;
+                    auto blockMetadataList = Store::BlockMetadataList("");
+                    const auto moduleEntry = blockMetadataList.find(moduleId);
+                    if (moduleEntry != blockMetadataList.end()) {
+                        std::string displayText = ICON_FA_CUBE " " + moduleEntry->second.title + " (" + std::string(GetDevicePrettyName(device)) + ")";
+
+                        ImVec2 textSize = ImGui::CalcTextSize(displayText.c_str());
+                        ImVec2 tooltipSize = ImVec2(textSize.x + 16.0f * scalingFactor, textSize.y + 12.0f * scalingFactor);
+                        ImVec2 tooltipPos = ImVec2(mousePos.x + 5.0f * scalingFactor, mousePos.y - tooltipSize.y - 5.0f * scalingFactor);
+
+                        drawList->AddRectFilled(tooltipPos,
+                                               ImVec2(tooltipPos.x + tooltipSize.x, tooltipPos.y + tooltipSize.y),
+                                               IM_COL32(45, 45, 48, 240),
+                                               4.0f * scalingFactor);
+
+                        drawList->AddRect(tooltipPos,
+                                         ImVec2(tooltipPos.x + tooltipSize.x, tooltipPos.y + tooltipSize.y),
+                                         IM_COL32(80, 80, 80, 255),
+                                         4.0f * scalingFactor,
+                                         0,
+                                         1.0f);
+
+                        U32 deviceColor;
+                        switch (device) {
+                            case Device::CPU: deviceColor = CpuColor; break;
+                            case Device::CUDA: deviceColor = CudaColor; break;
+                            case Device::Metal: deviceColor = MetalColor; break;
+                            case Device::Vulkan: deviceColor = VulkanColor; break;
+                            case Device::WebGPU: deviceColor = WebGPUColor; break;
+                            default: deviceColor = IM_COL32(255, 255, 255, 255);
+                        }
+
+                        drawList->AddText(ImVec2(tooltipPos.x + 8.0f * scalingFactor, tooltipPos.y + 6.0f * scalingFactor),
+                                         deviceColor,
+                                         displayText.c_str());
+                    }
+
+                    if (ImGui::IsMouseClicked(0) || ImGui::IsMouseReleased(0)) {
+                        createBlockStagingMailbox = moduleToAttach;
+                        createBlockMailbox = moduleToAttach;
+                        moduleAttachMode = false;
+                    } else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                        moduleAttachMode = false;
+                    }
+                }
+
+                if (!moduleAttachMode && !inputActive && !inputFocused && ImGui::IsMouseClicked(0)) {
+                    ImVec2 mousePos = ImGui::GetMousePos();
+                    ImVec2 dropdownPos = ImVec2(searchInputPos.x, searchInputPos.y + ImGui::GetFrameHeight());
+                    const F32 dropdownWidth = searchWidth;
+                    const F32 dropdownHeight = 400.0f * scalingFactor;
+
+                    if (mousePos.x < dropdownPos.x || mousePos.x > dropdownPos.x + dropdownWidth ||
+                        mousePos.y < dropdownPos.y || mousePos.y > dropdownPos.y + dropdownHeight) {
+                        showModuleDropdown = false;
+                        selectedModuleIndex = -1;
+                    }
+                }
+
+                if (showModuleDropdown) {
+                    const F32 dropdownWidth = searchWidth;
+                    const F32 dropdownHeight = 400.0f * scalingFactor;
+
+                    ImVec2 dropdownPos = ImVec2(searchInputPos.x, searchInputPos.y + ImGui::GetFrameHeight());
+
+                    ImGui::SetNextWindowPos(dropdownPos);
+                    ImGui::SetNextWindowSize(ImVec2(dropdownWidth, dropdownHeight));
+
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * scalingFactor, 8.0f * scalingFactor));
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scalingFactor);
+                    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.1f, 0.95f));
+
+                    if (ImGui::Begin("##ModuleDropdown", nullptr, ImGuiWindowFlags_NoTitleBar |
+                                                                  ImGuiWindowFlags_NoResize |
+                                                                  ImGuiWindowFlags_NoMove |
+                                                                  ImGuiWindowFlags_NoScrollbar |
+                                                                  ImGuiWindowFlags_NoSavedSettings |
+                                                                  ImGuiWindowFlags_NoFocusOnAppearing)) {
+
+                        ImGui::BeginChild("ModuleList", ImVec2(0, 0), false, ImGuiWindowFlags_NoNavInputs);
+
+                        if (inputChanged && !moduleSearchText.empty()) {
+                            ImGui::SetScrollY(0);
+                        }
+
+                        const char* filterText = moduleSearchText.empty() ? "" : moduleSearchText.c_str();
+
+                        int flatIndex = 0;
+                        for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
+
+                            ImGui::PushFont(_boldFont, 0.0f);
+                            ImGui::TextUnformatted(module.title.c_str());
+                            ImGui::PopFont();
+                            ImGui::SameLine();
+                            ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
+
+                            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 8.0f, scalingFactor * 8.0f));
+                            ImGui::SetNextWindowSize(ImVec2(600.0f * scalingFactor, 0.0f));
+                            if (ImGui::BeginPopupContextItem(("fixed-block-description-" + id).c_str())) {
+                                ImGui::TextWrapped(ICON_FA_BOOK " Description");
+                                ImGui::Separator();
+                                ImGui::Markdown(module.description.c_str(), module.description.length(), _markdownConfig);
+                                ImGui::EndPopup();
+                            }
+                            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                                ImGui::OpenPopupOnItemClick(("fixed-block-description-" + id).c_str(), ImGuiPopupFlags_MouseButtonLeft);
+                                ImGui::SetNextWindowSize(ImVec2(600.0f * scalingFactor, 0.0f));
+                                ImGui::BeginTooltip();
+                                ImGui::TextWrapped(ICON_FA_BOOK " Description");
+                                ImGui::SameLine();
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+                                ImGui::Text("(click to pin)");
+                                ImGui::PopStyleColor();
+                                ImGui::Separator();
+                                ImGui::Markdown(module.description.c_str(), module.description.length(), _markdownConfig);
+                                ImGui::EndTooltip();
+                            }
+                            ImGui::PopStyleVar();
+
+                            ImGui::TextWrapped("%s", module.summary.c_str());
+
+                            for (const auto& [device, _] : module.options) {
+                                bool isSelected = (flatIndex == selectedModuleIndex);
+
+                                U32 deviceColor;
+                                switch (device) {
+                                    case Device::CPU:
+                                        deviceColor = CpuColor;
+                                        break;
+                                    case Device::CUDA:
+                                        deviceColor = CudaColor;
+                                        break;
+                                    case Device::Metal:
+                                        deviceColor = MetalColor;
+                                        break;
+                                    case Device::Vulkan:
+                                        deviceColor = VulkanColor;
+                                        break;
+                                    case Device::WebGPU:
+                                        deviceColor = WebGPUColor;
+                                        break;
+                                    default:
+                                        continue;
+                                }
+
+                                if (isSelected) {
+                                    float margin = -1.0f * scalingFactor;
+                                    ImVec2 pos = ImGui::GetCursorScreenPos();
+                                    ImVec2 itemMin = ImVec2(pos.x - margin, pos.y - margin);
+                                    ImVec2 itemMax = ImVec2(pos.x + margin + ImGui::CalcTextSize(ICON_FA_CUBE).x, pos.y + margin + ImGui::GetTextLineHeight());
+                                    ImDrawList* drawList = ImGui::GetWindowDrawList();
+                                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 75), 3.0f);
+
+                                    if (shouldScrollToSelected) {
+                                        ImGui::SetScrollHereY(0.5f);
+                                        shouldScrollToSelected = false;
+                                    }
+                                }
+
+                                ImGui::PushStyleColor(ImGuiCol_Text, deviceColor);
+                                ImGui::Text(ICON_FA_CUBE);
+                                ImGui::PopStyleColor();
+
+                                if (ImGui::IsItemClicked()) {
+                                    moduleToAttach = {id, device};
+                                    moduleAttachMode = true;
+                                    showModuleDropdown = false;
+                                    selectedModuleIndex = -1;
+                                    moduleSearchText.clear();
+                                }
+
+                                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                                    ImGui::BeginTooltip();
+                                    ImGui::Text("%s (%s)", module.title.c_str(), GetDevicePrettyName(device));
+                                    ImGui::EndTooltip();
+                                }
+
+                                auto deviceIter = std::find_if(module.options.begin(), module.options.end(),
+                                    [&device](const auto& pair) { return pair.first == device; });
+                                if (deviceIter != module.options.end() && std::next(deviceIter) != module.options.end()) {
+                                    ImGui::SameLine();
+                                }
+
+                                flatIndex++;
+                            }
+
+                            ImGui::Spacing();
+                            ImGui::Separator();
+                        }
+
+                        const std::string text = "\n       " ICON_FA_HAND_SPOCK "\n\n-- END OF LIST --\n\n";
+                        auto windowWidth = ImGui::GetWindowSize().x;
+                        auto textWidth   = ImGui::CalcTextSize(text.c_str()).x;
+
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
+                        ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
+                        ImGui::TextUnformatted(text.c_str());
+                        ImGui::PopStyleColor();
+
+                        ImGui::EndChild();
+                        ImGui::End();
+                    }
+
+                    ImGui::PopStyleColor();
+                    ImGui::PopStyleVar(2);
+                }
             }
 
             ImGui::PopStyleVar();
@@ -1136,16 +1444,15 @@ Result Compositor::drawStatic() {
         ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
         if (isDockNew && stack == "Graph") {
-            ImGuiID dock_id_left, dock_id_right;
+            ImGuiID dock_id_main;
 
             ImGui::DockBuilderRemoveNode(id);
             ImGui::DockBuilderAddNode(id);
             ImGui::DockBuilderSetNodePos(id, ImVec2(viewport->Pos.x, currentHeight));
             ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
 
-            ImGui::DockBuilderSplitNode(id, ImGuiDir_Left, 0.8f, &dock_id_left, &dock_id_right);
-            ImGui::DockBuilderDockWindow("Flowgraph", dock_id_left);
-            ImGui::DockBuilderDockWindow("Store", dock_id_right);
+            dock_id_main = id;
+            ImGui::DockBuilderDockWindow("Flowgraph", dock_id_main);
 
             ImGui::DockBuilderFinish(id);
         }
@@ -1174,7 +1481,7 @@ Result Compositor::drawStatic() {
                                              ImGuiWindowFlags_NoMove |
                                              ImGuiWindowFlags_Tooltip;
 
-        const F32 windowPad = 6.0f * scalingFactor;
+        const F32 windowPad = 10.0f * scalingFactor;
         ImVec2 workPos = viewport->WorkPos;
         ImVec2 workSize = viewport->WorkSize;
         ImVec2 windowPos, windowPosPivot;
@@ -1188,55 +1495,17 @@ Result Compositor::drawStatic() {
         ImGui::SetNextWindowBgAlpha(0.35f);
         ImGui::Begin("Info HUD", nullptr, windowFlags);
 
-        if (ImGui::TreeNodeEx("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
-            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
-            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthStretch);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("FPS:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextFormatted("{:.1f} Hz", ImGui::GetIO().Framerate);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Frames:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextFormatted("{} dropped, {} recreated", instance.window().stats().droppedFrames, instance.window().stats().recreatedFrames);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Render Backend:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            ImGui::TextFormatted("{}", GetDevicePrettyName(instance.window().device()));
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("Viewport:");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            ImGui::TextFormatted("{}", instance.viewport().name());
-
-            instance.window().drawDebugMessage();
-
-            ImGui::EndTable();
-            ImGui::TreePop();
+        float fps = ImGui::GetIO().Framerate;
+        if (fps > 50.0f) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
         }
-
-        if (ImGui::TreeNodeEx("Compute", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::BeginTable("##InfoTableGraphics", 2, ImGuiTableFlags_None);
-            ImGui::TableSetupColumn("Variable", ImGuiTableColumnFlags_WidthFixed, variableWidth);
-            ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthStretch);
-
-            instance.scheduler().drawDebugMessage();
-
-            ImGui::EndTable();
-            ImGui::TreePop();
+        ImGui::TextFormatted("{:.0f} Hz", fps);
+        if (fps > 50.0f) {
+            ImGui::PopStyleColor();
         }
-
-        ImGui::Dummy(ImVec2(variableWidth * 2.3f, 0.0f));
+        ImGui::SameLine();
+        ImGui::TextFormatted("{}", instance.viewport().name());
+        instance.window().drawDebugMessage();
 
         ImGui::End();
     }();
@@ -1305,7 +1574,7 @@ Result Compositor::drawStatic() {
 
         ImGui::TextUnformatted(ICON_FA_USER_ASTRONAUT);
         ImGui::SameLine();
-        ImGui::PushFont(_boldFont);
+        ImGui::PushFont(_boldFont, 0.0f);
         ImGui::TextUnformatted("Welcome to CyberEther!");
         ImGui::PopFont();
         ImGui::SameLine();
@@ -1594,7 +1863,7 @@ Result Compositor::drawStatic() {
                     }
 
                     ImGui::SetCursorScreenPos(ImVec2(cellMin.x + textPadding, cellMin.y + textPadding));
-                    ImGui::PushFont(_h2Font);
+                    ImGui::PushFont(_h2Font, 0.0f);
                     ImGui::Text("%s", flowgraph.title.c_str());
                     ImGui::PopFont();
                     ImGui::SameLine();
@@ -1640,7 +1909,7 @@ Result Compositor::drawStatic() {
 
                 ImGui::TableSetColumnIndex(1);
                 if (ImGui::Button("Browse File", ImVec2(-1, 0))) {
-                    const auto& res = Platform::PickFile(globalModalPath);
+                    const auto& res = Platform::PickFile(globalModalPath, {"yaml", "yml"});
                     if (res == Result::SUCCESS) {
                         openFile |= true;
                     }
@@ -1927,6 +2196,9 @@ Result Compositor::drawStatic() {
             ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
             ImGui::BulletText("imgui_markdown - Zlib License");
             ImGui::BulletText("GLM - Happy Bunny License");
+            ImGui::BulletText("cpp-httplib - MIT License");
+            ImGui::BulletText("nlohmann/json - MIT License");
+            ImGui::BulletText("FTXUI - MIT License");
             // [NEW DEPENDENCY HOOK]
 
             ImGui::Spacing();
@@ -2408,7 +2680,7 @@ Result Compositor::drawFlowgraph() {
             ImGui::Text(ICON_FA_CIRCLE_QUESTION);
             ImGui::PopStyleColor();
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(scalingFactor * 8.0f, scalingFactor * 8.0f));
-            ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(600.0f * scalingFactor, 0.0f));
             if (ImGui::BeginPopupContextItem("fixed-block-description")) {
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::Separator();
@@ -2417,7 +2689,7 @@ Result Compositor::drawFlowgraph() {
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
                 ImGui::OpenPopupOnItemClick("fixed-block-description", ImGuiPopupFlags_MouseButtonLeft);
-                ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 0.0f));
+                ImGui::SetNextWindowSize(ImVec2(600.0f * scalingFactor, 0.0f));
                 ImGui::BeginTooltip();
                 ImGui::TextWrapped(ICON_FA_BOOK " Description");
                 ImGui::SameLine();
@@ -2535,7 +2807,7 @@ Result Compositor::drawFlowgraph() {
                 block->shouldDrawPreview() ||
                 block->shouldDrawControl() ||
                 block->shouldDrawInfo()) {
-                ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None);
+                ImGui::BeginTable("##NodeInterfacingOptionsTable", 3, ImGuiTableFlags_None, ImVec2(nodeWidth, 0.0f));
                 const F32 buttonSize = 25.0f * scalingFactor;
                 ImGui::TableSetupColumn("Switches", ImGuiTableColumnFlags_WidthFixed, nodeWidth - (buttonSize * 2.0f) -
                                                                                       (guiStyle.CellPadding.x * 4.0f));
@@ -2665,14 +2937,6 @@ Result Compositor::drawFlowgraph() {
         }
 
         ImNodes::EndNodeEditor();
-
-        // Create drop zone for new module creation.
-        if (ImGui::BeginDragDropTarget()) {
-            if (ImGui::AcceptDragDropPayload("MODULE_DRAG")) {
-                createBlockMailbox = createBlockStagingMailbox;
-            }
-            ImGui::EndDragDropTarget();
-        }
 
         // Update internal state node position.
         for (const auto& [locale, state] : nodeStates) {
@@ -2899,118 +3163,6 @@ Result Compositor::drawFlowgraph() {
         nodeContextMenuNodeId = 0;
     }
 
-    //
-    // Block Store
-    //
-
-    [&](){
-        if (!moduleStoreEnabled || !flowgraphEnabled || fullscreenEnabled || !instance.flowgraph().created()) {
-            return;
-        }
-
-        ImGui::SetNextWindowSize(ImVec2(250.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("Store")) {
-            ImGui::End();
-            return;
-        }
-
-        static char filterText[256] = "";
-
-        ImGui::Text("Search Blocks");
-        ImGui::SameLine();
-        ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-            ImGui::BeginTooltip();
-            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-            ImGui::TextWrapped("Use the text box below to filter the list of available modules.\n"
-                               "The cube icon below the module represents the backends available.\n"
-                               "Drag and drop a cube into the flowgraph to create a new module.\n");
-            ImGui::PopTextWrapPos();
-            ImGui::EndTooltip();
-        }
-        ImGui::PushItemWidth(-1);
-        ImGui::InputText("##Filter", filterText, IM_ARRAYSIZE(filterText));
-        ImGui::Spacing();
-
-        ImGui::BeginChild("Block List", ImVec2(0, 0), true);
-
-        for (const auto& [id, module] : Store::BlockMetadataList(filterText)) {
-            ImGui::PushFont(_boldFont);
-            ImGui::TextUnformatted(module.title.c_str());
-            ImGui::PopFont();
-            ImGui::SameLine();
-            ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-                ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 0.0f));
-                ImGui::BeginTooltip();
-                ImGui::TextWrapped(ICON_FA_BOOK " Description");
-                ImGui::Separator();
-                ImGui::Markdown(module.description.c_str(), module.description.length(), _markdownConfig);
-                ImGui::EndTooltip();
-            }
-            ImGui::TextWrapped("%s", module.summary.c_str());
-
-            for (const auto& [device, _] : module.options) {
-                switch (device) {
-                    case Device::CPU:
-                        ImGui::PushStyleColor(ImGuiCol_Text, CpuColor);
-                        break;
-                    case Device::CUDA:
-                        ImGui::PushStyleColor(ImGuiCol_Text, CudaColor);
-                        break;
-                    case Device::Metal:
-                        ImGui::PushStyleColor(ImGuiCol_Text, MetalColor);
-                        break;
-                    case Device::Vulkan:
-                        ImGui::PushStyleColor(ImGuiCol_Text, VulkanColor);
-                        break;
-                    case Device::WebGPU:
-                        ImGui::PushStyleColor(ImGuiCol_Text, WebGPUColor);
-                        break;
-                    default:
-                        continue;
-                }
-                ImGui::Text(ICON_FA_CUBE " ");
-                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-                    createBlockStagingMailbox = {id, device};
-                    ImGui::SetDragDropPayload("MODULE_DRAG", nullptr, 0);
-                    ImGui::Text(ICON_FA_CUBE);
-                    ImGui::SameLine();
-                    ImGui::PopStyleColor();
-                    ImGui::Text(" %s (%s)", module.title.c_str(), GetDevicePrettyName(device));
-                    ImGui::EndDragDropSource();
-                } else {
-                    ImGui::PopStyleColor();
-                }
-
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-                    ImGui::BeginTooltip();
-                    ImGui::Text("%s (%s)", module.title.c_str(), GetDevicePrettyName(device));
-                    ImGui::EndTooltip();
-                }
-                ImGui::SameLine();
-            }
-
-            ImGui::Spacing();
-            ImGui::Separator();
-        }
-
-        const std::string text = "\n"
-                                 "       " ICON_FA_HAND_SPOCK
-                                 "\n\n"
-                                 "-- END OF LIST --\n\n";
-        auto windowWidth = ImGui::GetWindowSize().x;
-        auto textWidth   = ImGui::CalcTextSize(text.c_str()).x;
-
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.4f));
-        ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
-        ImGui::TextUnformatted(text.c_str());
-        ImGui::PopStyleColor();
-
-        ImGui::EndChild();
-
-        ImGui::End();
-    }();
 
     return Result::SUCCESS;
 }

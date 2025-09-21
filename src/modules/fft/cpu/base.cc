@@ -12,6 +12,10 @@ struct FFT<D, IT, OT>::Impl {
     pocketfft::stride_t i_stride;
     pocketfft::stride_t o_stride;
     pocketfft::shape_t axes;
+
+    U64 numberOfOperations = 0;
+    U64 numberOfElements = 0;
+    U64 elementStride = 0;
 };
 
 template<Device D, typename IT, typename OT>
@@ -53,13 +57,13 @@ Result FFT<D, IT, OT>::destroyCompute(const Context&) {
 
 template<>
 Result FFT<Device::CPU, CF32, CF32>::compute(const Context&) {
-    pocketfft::c2c(pimpl->shape, 
-                   pimpl->i_stride, 
-                   pimpl->o_stride, 
-                   pimpl->axes, 
-                   config.forward, 
-                   input.buffer.data(), 
-                   output.buffer.data(), 
+    pocketfft::c2c(pimpl->shape,
+                   pimpl->i_stride,
+                   pimpl->o_stride,
+                   pimpl->axes,
+                   config.forward,
+                   input.buffer.data(),
+                   output.buffer.data(),
                    1.0f);
 
     return Result::SUCCESS;
@@ -67,14 +71,29 @@ Result FFT<Device::CPU, CF32, CF32>::compute(const Context&) {
 
 template<>
 Result FFT<Device::CPU, F32, CF32>::compute(const Context&) {
-    pocketfft::r2c(pimpl->shape, 
-                   pimpl->i_stride, 
-                   pimpl->o_stride, 
-                   pimpl->axes, 
-                   config.forward, 
-                   input.buffer.data(), 
-                   output.buffer.data(), 
+    pocketfft::r2c(pimpl->shape,
+                   pimpl->i_stride,
+                   pimpl->o_stride,
+                   pimpl->axes,
+                   config.forward,
+                   input.buffer.data(),
+                   output.buffer.data(),
                    1.0f);
+
+    return Result::SUCCESS;
+}
+
+template<>
+Result FFT<Device::CPU, F32, F32>::compute(const Context&) {
+    pocketfft::r2r_fftpack(pimpl->shape,
+                           pimpl->i_stride,
+                           pimpl->o_stride,
+                           pimpl->axes,
+                           true,  // real2hermitian
+                           config.forward,
+                           input.buffer.data(),
+                           output.buffer.data(),
+                           1.0f);
 
     return Result::SUCCESS;
 }

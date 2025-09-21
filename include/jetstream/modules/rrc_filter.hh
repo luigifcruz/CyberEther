@@ -1,0 +1,101 @@
+#ifndef JETSTREAM_MODULES_RRC_FILTER_HH
+#define JETSTREAM_MODULES_RRC_FILTER_HH
+
+#include "jetstream/logger.hh"
+#include "jetstream/module.hh"
+#include "jetstream/types.hh"
+
+#include "jetstream/memory/base.hh"
+
+namespace Jetstream {
+
+#define JST_RRC_FILTER_CPU(MACRO) \
+    MACRO(RRCFilter, CPU, CF32) \
+    MACRO(RRCFilter, CPU, F32)
+
+template<Device D, typename T = CF32>
+class RRCFilter : public Module, public Compute {
+ public:
+    RRCFilter();
+    ~RRCFilter();
+
+    // Configuration
+
+    struct Config {
+        F32 symbolRate = 1.0e6f;
+        F32 sampleRate = 2.0e6f;
+        F32 rollOff = 0.35f;
+        U64 taps = 101;
+
+        JST_SERDES(symbolRate, sampleRate, rollOff, taps);
+    };
+
+    constexpr const Config& getConfig() const {
+        return config;
+    }
+
+    // Input
+
+    struct Input {
+        Tensor<D, T> buffer;
+
+        JST_SERDES_INPUT(buffer);
+    };
+
+    constexpr const Input& getInput() const {
+        return input;
+    }
+
+    // Output
+
+    struct Output {
+        Tensor<D, T> buffer;
+
+        JST_SERDES_OUTPUT(buffer);
+    };
+
+    constexpr const Output& getOutput() const {
+        return output;
+    }
+
+    constexpr const Tensor<D, T>& getOutputBuffer() const {
+        return output.buffer;
+    }
+
+    // Taint & Housekeeping
+
+    constexpr Device device() const {
+        return D;
+    }
+
+    void info() const final;
+
+    // Constructor
+
+    Result create();
+    Result destroy();
+
+    // Runtime Configuration Functions
+
+    Result setSymbolRate(F32& symbolRate);
+    Result setSampleRate(F32& sampleRate);
+    Result setRollOff(F32& rollOff);
+    Result setTaps(U64& taps);
+
+ protected:
+    Result compute(const Context& ctx) final;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
+    JST_DEFINE_IO()
+};
+
+#ifdef JETSTREAM_MODULE_RRC_FILTER_CPU_AVAILABLE
+JST_RRC_FILTER_CPU(JST_SPECIALIZATION);
+#endif
+
+}  // namespace Jetstream
+
+#endif

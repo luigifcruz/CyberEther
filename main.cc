@@ -4,6 +4,18 @@
 
 using namespace Jetstream;
 
+#ifdef JST_OS_BROWSER
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void cyberether_shutdown() {
+    JST_INFO("Shutting down...");
+    emscripten_cancel_main_loop();
+    emscripten_runtime_keepalive_pop();
+    emscripten_force_exit(0);
+}
+}
+#endif
+
 int main(int argc, char* argv[]) {
     // Parse command line arguments.
 
@@ -16,15 +28,15 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
         const std::string arg = std::string(argv[i]);
 
-        if (arg == "--headless") {
-            backendConfig.headless = true;
+        if (arg == "--remote") {
+            backendConfig.remote = true;
 
             continue;
         }
 
-        if (arg == "--endpoint") {
+        if (arg == "--broker") {
             if (i + 1 < argc) {
-                viewportConfig.endpoint = argv[++i];
+                viewportConfig.broker = argv[++i];
             }
 
             continue;
@@ -134,12 +146,12 @@ int main(int argc, char* argv[]) {
         if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " [options] [flowgraph]" << std::endl;
             std::cout << "Options:" << std::endl;
-            std::cout << "  --headless              Enable headless mode." << std::endl;
-            std::cout << "  --endpoint [endpoint]   Set the endpoint of the headless viewport (`1.1.1.1:8000`, `./vid.mp4`, etc). Default: `/tmp/cyberether`" << std::endl;
+            std::cout << "  --remote                Enable remote viewport mode." << std::endl;
+            std::cout << "  --broker [url]          Set the broker of the remote viewport. Default: `https://api.cyberether.org`" << std::endl;
             std::cout << "  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`)." << std::endl;
-            std::cout << "  --framerate [value]     Set the framerate of the headless viewport (FPS). Default: `60`" << std::endl;
+            std::cout << "  --framerate [value]     Set the framerate of the te viewport (FPS). Default: `60`" << std::endl;
             std::cout << "  --multisampling [value] Set the multisampling anti-aliasing factor (`1`, `4`, or `8`). Default: `4`" << std::endl;
-            std::cout << "  --codec [codec]         Set the video codec of the headless viewport. Default: `FFV1`" << std::endl;
+            std::cout << "  --codec [codec]         Set the video codec of the remote viewport. Default: `H264`" << std::endl;
             std::cout << "  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`" << std::endl;
             std::cout << "  --scale [scale]         Set the scale of the render window. Default: `1.0`" << std::endl;
             std::cout << "  --benchmark [type]      Run the benchmark and output the results (`markdown`, `json`, or `csv`). Default: `markdown`" << std::endl;
@@ -171,7 +183,7 @@ int main(int argc, char* argv[]) {
 
     Instance::Config config = {
         .preferredDevice = prefferedBackend,
-        .enableCompositor = true,
+        .renderCompositor = true,
         .backendConfig = backendConfig,
         .viewportConfig = viewportConfig,
         .renderConfig = renderConfig

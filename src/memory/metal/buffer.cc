@@ -114,7 +114,7 @@ Implementation::TensorBuffer(std::shared_ptr<TensorStorageMetadata>&,
     // Allocate memory buffer.
 
     auto device = Backend::State<Device::Metal>()->getDevice();
-    auto* ptr = root_buffer->data(); 
+    auto* ptr = root_buffer->data();
     const auto alignedSizeBytes = JST_PAGE_ALIGNED_SIZE(prototype.size_bytes);
     buffer = device->newBuffer(ptr, alignedSizeBytes, MTL::ResourceStorageModeShared, nullptr);
     if (!buffer) {

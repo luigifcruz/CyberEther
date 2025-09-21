@@ -37,10 +37,10 @@ class WindowImp<Device::WebGPU> : public Window {
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
-    wgpu::CommandEncoder encoder;
-    wgpu::RenderPassColorAttachment colorAttachments;
-    wgpu::RenderPassDescriptor renderPassDesc;
-    wgpu::Queue queue;
+    WGPUCommandEncoder encoder;
+    WGPURenderPassColorAttachment colorAttachments;
+    WGPURenderPassDescriptor renderPassDesc;
+    WGPUQueue queue;
     std::vector<std::shared_ptr<SurfaceImp<Device::WebGPU>>> surfaces;
 
     std::shared_ptr<Viewport::Adapter<Device::WebGPU>> viewport;

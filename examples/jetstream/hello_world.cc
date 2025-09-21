@@ -225,7 +225,7 @@ class UI {
 
         lpt->scale(ImGui::GetIO().DisplayFramebufferScale.x);
         const auto& viewSize = lpt->viewSize(GetContentRegion());
-        ImGui::Image(lpt->getTexture().raw(), ImVec2(viewSize.x, viewSize.y));
+        ImGui::Image(ImTextureRef(lpt->getTexture().raw()), ImVec2(viewSize.x, viewSize.y));
 
         if (ImGui::IsItemHovered()) {
             const auto& mouseRelPos = GetRelativeMousePos(viewSize, lpt->translation(), config.zoom);

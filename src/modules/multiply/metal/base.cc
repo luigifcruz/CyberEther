@@ -12,37 +12,52 @@ static const char shadersSrc[] = R"""(
                          device float *product [[ buffer(2) ]],
                          uint id[[ thread_position_in_grid ]]) {
         const uint index = id * 2;
-        product[index + 0] = (factorA[index + 0] * (factorB[index + 0])) - 
+        product[index + 0] = (factorA[index + 0] * (factorB[index + 0])) -
                              (factorA[index + 1] * (factorB[index + 1]));
-        product[index + 1] = (factorA[index + 0] * (factorB[index + 1])) + 
+        product[index + 1] = (factorA[index + 0] * (factorB[index + 1])) +
                              (factorA[index + 1] * (factorB[index + 0]));
     }
 )""";
 
 template<Device D, typename T>
+struct Multiply<D, T>::Impl {
+    Tensor<D, T> a;
+    Tensor<D, T> b;
+    Tensor<D, T> c;
+
+    MTL::ComputePipelineState* state;
+};
+
+template<Device D, typename T>
+Multiply<D, T>::Multiply() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Multiply<D, T>::~Multiply() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Multiply<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply compute core using Metal backend.");
 
-    auto& assets = this->metal;
-
-    JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply", &assets.state));
+    JST_CHECK(Metal::CompileKernel(shadersSrc, "multiply", &impl->state));
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Multiply<D, T>::compute(const Context& ctx) {
-    auto& assets = this->metal;
-
     // TODO: Implement new multiplication logic.
-    
+
     auto cmdEncoder = ctx.metal->commandBuffer()->computeCommandEncoder();
-    cmdEncoder->setComputePipelineState(assets.state);
+    cmdEncoder->setComputePipelineState(impl->state);
     cmdEncoder->setBuffer(input.factorA.data(), 0, 0);
     cmdEncoder->setBuffer(input.factorB.data(), 0, 1);
     cmdEncoder->setBuffer(output.product.data(), 0, 2);
     cmdEncoder->dispatchThreads(MTL::Size(output.product.size(), 1, 1),
-                                MTL::Size(assets.state->maxTotalThreadsPerThreadgroup(), 1, 1));
+                                MTL::Size(impl->state->maxTotalThreadsPerThreadgroup(), 1, 1));
     cmdEncoder->endEncoding();
 
     return Result::SUCCESS;
@@ -50,5 +65,5 @@ Result Multiply<D, T>::compute(const Context& ctx) {
 
 JST_MULTIPLY_METAL(JST_INSTANTIATION)
 JST_MULTIPLY_METAL(JST_BENCHMARK)
-    
+
 }  // namespace Jetstream

@@ -23,7 +23,7 @@ class JETSTREAM_API Instance {
  public:
     struct Config {
         Device preferredDevice = Device::None;
-        bool enableCompositor = false;
+        bool renderCompositor = false;
         Backend::Config backendConfig = {};
         Viewport::Config viewportConfig = {};
         Render::Window::Config renderConfig = {};
@@ -374,14 +374,12 @@ class JETSTREAM_API Instance {
 
         // Add block to the compositor.
 
-        if (_compositor) {
-            JST_CHECK(_compositor->addBlock(locale,
-                                            block,
-                                            node->inputMap,
-                                            node->outputMap,
-                                            node->stateMap,
-                                            node->fingerprint));
-        }
+        JST_CHECK(_compositor->addBlock(locale,
+                                        block,
+                                        node->inputMap,
+                                        node->outputMap,
+                                        node->stateMap,
+                                        node->fingerprint));
 
         return Result::SUCCESS;
     }
@@ -454,6 +452,8 @@ class JETSTREAM_API Instance {
     }
 
  private:
+    Config config;
+
     Scheduler _scheduler;
     Flowgraph _flowgraph;
 

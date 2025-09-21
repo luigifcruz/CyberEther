@@ -16,7 +16,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class AGC : public Module, public Compute {
  public:
-    // Configuration 
+    AGC();
+    ~AGC();
+
+    // Configuration
 
     struct Config {
         JST_SERDES();
@@ -70,6 +73,9 @@ class AGC : public Module, public Compute {
     Result compute(const Context& ctx) final;
 
  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+
     JST_DEFINE_IO()
 };
 

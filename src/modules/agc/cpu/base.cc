@@ -5,6 +5,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct AGC<D, T>::Impl {};
+
+template<Device D, typename T>
+AGC<D, T>::AGC() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+AGC<D, T>::~AGC() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result AGC<D, T>::compute(const Context&) {
     const F32 desiredLevel = 1.0f;
 

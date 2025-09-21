@@ -10,33 +10,33 @@ Implementation::DrawImp(const Config& config) : Draw(config) {
     buffer = std::dynamic_pointer_cast<VertexImp<Device::WebGPU>>(config.buffer);
 }
 
-Result Implementation::create(wgpu::RenderPipelineDescriptor& renderDescriptor) {
+Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
     JST_DEBUG("[WebGPU] Creating draw.");
 
-    auto topology = wgpu::PrimitiveTopology::PointList;
-        
+    WGPUPrimitiveTopology topology = WGPUPrimitiveTopology_PointList;
+
     switch (config.mode) {
         case Mode::TRIANGLE_STRIP:
-            topology = wgpu::PrimitiveTopology::TriangleStrip;
+            topology = WGPUPrimitiveTopology_TriangleStrip;
             break;
         case Mode::TRIANGLES:
-            topology = wgpu::PrimitiveTopology::TriangleList;
+            topology = WGPUPrimitiveTopology_TriangleList;
             break;
         case Mode::LINES:
-            topology = wgpu::PrimitiveTopology::LineList;
+            topology = WGPUPrimitiveTopology_LineList;
             break;
         case Mode::LINE_STRIP:
-            topology = wgpu::PrimitiveTopology::LineStrip;
+            topology = WGPUPrimitiveTopology_LineStrip;
             break;
         case Mode::POINTS:
-            topology = wgpu::PrimitiveTopology::PointList;
+            topology = WGPUPrimitiveTopology_PointList;
             break;
     }
 
-    renderDescriptor.primitive.frontFace = wgpu::FrontFace::CCW;
-    renderDescriptor.primitive.cullMode = wgpu::CullMode::None;
+    renderDescriptor.primitive.frontFace = WGPUFrontFace_CCW;
+    renderDescriptor.primitive.cullMode = WGPUCullMode_None;
     renderDescriptor.primitive.topology = topology;
-    renderDescriptor.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined;
+    renderDescriptor.primitive.stripIndexFormat = WGPUIndexFormat_Undefined;
 
     JST_CHECK(buffer->create(attributeDescription,
                              vertexLayouts,
@@ -116,15 +116,15 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(wgpu::RenderPassEncoder& renderPassEncoder) {
+Result Implementation::encode(WGPURenderPassEncoder& renderPassEncoder) {
     JST_CHECK(buffer->encode(renderPassEncoder));
 
     // WebGPU doesn't support multi-draw. So we need to call multiple times.
     for (U64 i = 0; i < config.numberOfDraws; i++) {
         if (buffer->isBuffered()) {
-            renderPassEncoder.DrawIndexedIndirect(indexedIndirectBuffer->getHandle(), i * sizeof(IndexedDrawCommand));
+            wgpuRenderPassEncoderDrawIndexedIndirect(renderPassEncoder, indexedIndirectBuffer->getHandle(), i * sizeof(IndexedDrawCommand));
         } else {
-            renderPassEncoder.DrawIndirect(indirectBuffer->getHandle(), i * sizeof(DrawCommand));
+            wgpuRenderPassEncoderDrawIndirect(renderPassEncoder, indirectBuffer->getHandle(), i * sizeof(DrawCommand));
         }
     }
 

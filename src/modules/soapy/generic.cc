@@ -20,17 +20,28 @@ struct Soapy<D, T>::Impl {
     SoapySDR::Device* soapyDevice;
     SoapySDR::Stream* soapyStream;
 
-    static bool CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val); 
+    std::thread producer;
+    bool errored = false;
+    bool streaming = false;
+    std::string deviceLabel;
+    std::string deviceName;
+    std::string deviceHardwareKey;
+    Memory::CircularBuffer<T> buffer;
+    Tensor<Device::CPU, T> hostOutputBuffer;
+
+    Result soapyThreadLoop();
+
+    static bool CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val);
 };
 
 template<Device D, typename T>
 Soapy<D, T>::Soapy() {
-    pimpl = std::make_unique<Impl>();
+    impl = std::make_unique<Impl>();
 }
 
 template<Device D, typename T>
 Soapy<D, T>::~Soapy() {
-    pimpl.reset();
+    impl.reset();
 }
 
 template<Device D, typename T>
@@ -38,10 +49,10 @@ Result Soapy<D, T>::create() {
     JST_DEBUG("Initializing Soapy module.");
     JST_INIT_IO();
 
-    errored = false;
-    streaming = false;
-    deviceName = "None";
-    deviceHardwareKey = "None";
+    impl->errored = false;
+    impl->streaming = false;
+    impl->deviceName = "None";
+    impl->deviceHardwareKey = "None";
 
     // If browser, check if WebUSB is supported.
 
@@ -62,8 +73,8 @@ Result Soapy<D, T>::create() {
 
     try {
         const auto devices = SoapySDR::Device::enumerate(args);
-        deviceLabel = devices.at(0).at("label");
-        pimpl->soapyDevice = SoapySDR::Device::make(devices.at(0));
+        impl->deviceLabel = devices.at(0).at("label");
+        impl->soapyDevice = SoapySDR::Device::make(devices.at(0));
     } catch(const std::exception& e) {
         JST_ERROR("Failed to open device. Reason: {}", e.what());
         return Result::ERROR;
@@ -72,46 +83,97 @@ Result Soapy<D, T>::create() {
         return Result::ERROR;
     }
 
-    if (pimpl->soapyDevice == nullptr) {
+    if (impl->soapyDevice == nullptr) {
         JST_ERROR("Can't open SoapySDR device.");
         return Result::ERROR;
     }
 
     // Gather device ranges.
 
-    pimpl->sampleRateRanges = pimpl->soapyDevice->getSampleRateRange(SOAPY_SDR_RX, 0);
-    pimpl->frequencyRanges = pimpl->soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
-
-    // Check if requested configuration is supported.
-
-    if (!Impl::CheckValidRange(pimpl->sampleRateRanges, config.sampleRate)) {
-        JST_ERROR("Sample rate requested ({:.2f} MHz) is not supported by the device.", config.sampleRate / JST_MHZ);
-        SoapySDR::Device::unmake(pimpl->soapyDevice);
+    try {
+        impl->sampleRateRanges = impl->soapyDevice->getSampleRateRange(SOAPY_SDR_RX, 0);
+        impl->frequencyRanges = impl->soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to get device ranges.");
+        JST_TRACE("SoapySDR Error: {}", e.what());
+        SoapySDR::Device::unmake(impl->soapyDevice);
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to get device ranges.");
+        SoapySDR::Device::unmake(impl->soapyDevice);
         return Result::ERROR;
     }
 
-    if (!Impl::CheckValidRange(pimpl->frequencyRanges, config.frequency)) {
+    // Check if requested configuration is supported.
+
+    if (!Impl::CheckValidRange(impl->sampleRateRanges, config.sampleRate)) {
+        JST_ERROR("Sample rate requested ({:.2f} MHz) is not supported by the device.", config.sampleRate / JST_MHZ);
+        SoapySDR::Device::unmake(impl->soapyDevice);
+        return Result::ERROR;
+    }
+
+    if (!Impl::CheckValidRange(impl->frequencyRanges, config.frequency)) {
         JST_ERROR("Frequency requested ({:.2f} MHz) is not supported by the device.", config.frequency / JST_MHZ);
-        SoapySDR::Device::unmake(pimpl->soapyDevice);
+        SoapySDR::Device::unmake(impl->soapyDevice);
         return Result::ERROR;
     }
 
     // Apply requested configuration.
 
-    pimpl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
-    pimpl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
-    pimpl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+    try {
+        try {
+            impl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to set sample rate ({}).", e.what());
+            return Result::ERROR;
+        } catch(...) {
+            JST_ERROR("Failed to set sample rate.");
+            return Result::ERROR;
+        }
+        try {
+            impl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to set frequency ({}).", e.what());
+            return Result::ERROR;
+        } catch(...) {
+            JST_ERROR("Failed to set frequency.");
+            return Result::ERROR;
+        }
+        try {
+            impl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to set gain mode ({}).", e.what());
+            return Result::ERROR;
+        } catch(...) {
+            JST_ERROR("Failed to set gain mode.");
+            return Result::ERROR;
+        }
 
-    pimpl->soapyStream = pimpl->soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
-    if (pimpl->soapyStream == nullptr) {
-        JST_ERROR("Failed to setup SoapySDR stream.");
-        SoapySDR::Device::unmake(pimpl->soapyDevice);
+        impl->soapyStream = impl->soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
+        if (impl->soapyStream == nullptr) {
+            JST_ERROR("Failed to setup SoapySDR stream.");
+            SoapySDR::Device::unmake(impl->soapyDevice);
+            return Result::ERROR;
+        }
+        impl->soapyDevice->activateStream(impl->soapyStream, 0, 0, 0);
+
+        impl->deviceName = impl->soapyDevice->getDriverKey();
+        impl->deviceHardwareKey = impl->soapyDevice->getHardwareKey();
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to configure device or setup stream ({}).", e.what());
+        if (impl->soapyStream) {
+            try { impl->soapyDevice->closeStream(impl->soapyStream); } catch(...) {}
+        }
+        SoapySDR::Device::unmake(impl->soapyDevice);
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to configure device or setup stream.");
+        if (impl->soapyStream) {
+            try { impl->soapyDevice->closeStream(impl->soapyStream); } catch(...) {}
+        }
+        SoapySDR::Device::unmake(impl->soapyDevice);
         return Result::ERROR;
     }
-    pimpl->soapyDevice->activateStream(pimpl->soapyStream, 0, 0, 0);
-
-    deviceName = pimpl->soapyDevice->getDriverKey();
-    deviceHardwareKey = pimpl->soapyDevice->getHardwareKey();
 
     // Calculate shape.
 
@@ -123,15 +185,15 @@ Result Soapy<D, T>::create() {
 
     // Allocate circular buffer.
 
-    buffer.resize(output.buffer.size() * config.bufferMultiplier);
+    impl->buffer.resize(output.buffer.size() * config.bufferMultiplier);
 
     // Initialize thread for ingest.
 
-    producer = std::thread([&]{
+    impl->producer = std::thread([&]{
         try {
-            JST_CHECK_THROW(soapyThreadLoop());
+            JST_CHECK_THROW(impl->soapyThreadLoop());
         } catch(...) {
-            errored = true;
+            impl->errored = true;
             JST_FATAL("[SOAPY] Device thread crashed.");
         }
     });
@@ -141,22 +203,34 @@ Result Soapy<D, T>::create() {
 
 template<Device D, typename T>
 Result Soapy<D, T>::destroy() {
-    streaming = false;
+    impl->streaming = false;
 
-    if (producer.joinable()) {
-        producer.join();
+    if (impl->producer.joinable()) {
+        impl->producer.join();
     }
 
-    pimpl->soapyDevice->deactivateStream(pimpl->soapyStream, 0, 0);
-    pimpl->soapyDevice->closeStream(pimpl->soapyStream);
+    try {
+        impl->soapyDevice->deactivateStream(impl->soapyStream, 0, 0);
+        impl->soapyDevice->closeStream(impl->soapyStream);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to deactivate/close stream ({}).", e.what());
+    } catch(...) {
+        JST_ERROR("Failed to deactivate/close stream.");
+    }
 
-    SoapySDR::Device::unmake(pimpl->soapyDevice);
+    try {
+        SoapySDR::Device::unmake(impl->soapyDevice);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to unmake device ({}).", e.what());
+    } catch(...) {
+        JST_ERROR("Failed to unmake device.");
+    }
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
-Result Soapy<D, T>::soapyThreadLoop() {
+Result Soapy<D, T>::Impl::soapyThreadLoop() {
     int flags;
     long long timeNs;
     CF32 tmp[8192];
@@ -165,9 +239,19 @@ Result Soapy<D, T>::soapyThreadLoop() {
     // TODO: Replace with zero-copy Soapy API.
     streaming = true;
     while (streaming) {
-        int ret = pimpl->soapyDevice->readStream(pimpl->soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
-        if (ret > 0 && streaming && !errored) {
-            buffer.put(tmp, ret);
+        try {
+            int ret = soapyDevice->readStream(soapyStream, tmp_buffers, 8192, flags, timeNs, 1e5);
+            if (ret > 0 && streaming && !errored) {
+                buffer.put(tmp, ret);
+            }
+        } catch(const std::exception& e) {
+            JST_ERROR("Failed to read stream ({}).", e.what());
+            errored = true;
+            break;
+        } catch(...) {
+            JST_ERROR("Failed to read stream.");
+            errored = true;
+            break;
         }
     }
 
@@ -188,7 +272,7 @@ void Soapy<D, T>::info() const {
 
 template<Device D, typename T>
 Result Soapy<D, T>::setTunerFrequency(F32& frequency) {
-    if (!Impl::CheckValidRange(pimpl->frequencyRanges, frequency)) {
+    if (!Impl::CheckValidRange(impl->frequencyRanges, frequency)) {
         JST_WARN("Frequency requested ({:.2f} MHz) is not supported by the device.", frequency / JST_MHZ);
         frequency = config.frequency;
         return Result::WARNING;
@@ -196,18 +280,26 @@ Result Soapy<D, T>::setTunerFrequency(F32& frequency) {
 
     config.frequency = frequency;
 
-    if (!streaming) {
+    if (!impl->streaming) {
         return Result::RELOAD;
     }
 
-    pimpl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+    try {
+        impl->soapyDevice->setFrequency(SOAPY_SDR_RX, 0, config.frequency);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to set frequency ({}).", e.what());
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to set frequency.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Soapy<D, T>::setSampleRate(F32& sampleRate) {
-    if (!Impl::CheckValidRange(pimpl->sampleRateRanges, sampleRate)) {
+    if (!Impl::CheckValidRange(impl->sampleRateRanges, sampleRate)) {
         JST_WARN("Sample rate requested ({:.2f} MHz) is not supported by the device.", sampleRate / JST_MHZ);
         sampleRate = config.sampleRate;
         return Result::WARNING;
@@ -215,11 +307,19 @@ Result Soapy<D, T>::setSampleRate(F32& sampleRate) {
 
     config.sampleRate = sampleRate;
 
-    if (!streaming) {
+    if (!impl->streaming) {
         return Result::RELOAD;
     }
 
-    pimpl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+    try {
+        impl->soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, config.sampleRate);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to set sample rate ({}).", e.what());
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to set sample rate.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -228,11 +328,19 @@ template<Device D, typename T>
 Result Soapy<D, T>::setAutomaticGain(bool& automaticGain) {
     config.automaticGain = automaticGain;
 
-    if (!streaming) {
+    if (!impl->streaming) {
         return Result::RELOAD;
     }
 
-    pimpl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+    try {
+        impl->soapyDevice->setGainMode(SOAPY_SDR_RX, 0, config.automaticGain);
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to set gain mode ({}).", e.what());
+        return Result::ERROR;
+    } catch(...) {
+        JST_ERROR("Failed to set gain mode.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -245,8 +353,8 @@ Result Soapy<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result Soapy<D, T>::computeReady() {
-    if (buffer.getOccupancy() < output.buffer.size()) {
-        return buffer.waitBufferOccupancy(output.buffer.size());
+    if (impl->buffer.getOccupancy() < output.buffer.size()) {
+        return impl->buffer.waitBufferOccupancy(output.buffer.size());
     }
 
     return Result::SUCCESS;
@@ -254,15 +362,15 @@ Result Soapy<D, T>::computeReady() {
 
 template<Device D, typename T>
 Result Soapy<D, T>::compute(const Context&) {
-    if (errored) {
+    if (impl->errored) {
         return Result::ERROR;
     }
 
-    if (buffer.getOccupancy() < output.buffer.size()) {
+    if (impl->buffer.getOccupancy() < output.buffer.size()) {
         return Result::YIELD;
     }
 
-    buffer.get(output.buffer.data(), output.buffer.size());
+    impl->buffer.get(output.buffer.data(), output.buffer.size());
 
     return Result::SUCCESS;
 }
@@ -280,8 +388,14 @@ typename Soapy<D, T>::DeviceList Soapy<D, T>::ListAvailableDevices(const std::st
     DeviceList deviceMap;
     const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
 
-    for (const auto& device : SoapySDR::Device::enumerate(args)) {
-        deviceMap[device.at("label")] = device;
+    try {
+        for (const auto& device : SoapySDR::Device::enumerate(args)) {
+            deviceMap[device.at("label")] = device;
+        }
+    } catch(const std::exception& e) {
+        JST_ERROR("Failed to enumerate SoapySDR devices ({}).", e.what());
+    } catch(...) {
+        JST_ERROR("Failed to enumerate SoapySDR devices.");
     }
 
     return deviceMap;
@@ -299,6 +413,25 @@ bool Soapy<D, T>::Impl::CheckValidRange(const std::vector<SoapySDR::Range>& rang
     }
 
     return isSampleRateSupported;
+}
+template<Device D, typename T>
+Memory::CircularBuffer<T>& Soapy<D, T>::getCircularBuffer() {
+    return impl->buffer;
+}
+
+template<Device D, typename T>
+const std::string& Soapy<D, T>::getDeviceName() const {
+    return impl->deviceName;
+}
+
+template<Device D, typename T>
+const std::string& Soapy<D, T>::getDeviceHardwareKey() const {
+    return impl->deviceHardwareKey;
+}
+
+template<Device D, typename T>
+const std::string& Soapy<D, T>::getDeviceLabel() const {
+    return impl->deviceLabel;
 }
 
 JST_SOAPY_CPU(JST_INSTANTIATION)

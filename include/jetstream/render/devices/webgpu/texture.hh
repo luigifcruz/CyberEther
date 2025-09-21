@@ -20,46 +20,46 @@ class TextureImp<Device::WebGPU> : public Texture {
     Result fill();
     Result fillRow(const U64& y, const U64& height);
 
-    void* raw() {
-        return textureView.Get();
+    uint64_t raw() {
+        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(textureView));
     }
 
  protected:
-    constexpr wgpu::Texture& getHandle() {
+    constexpr WGPUTexture getHandle() const {
         return texture;
     }
 
-    constexpr wgpu::Sampler& getSamplerHandle() {
+    constexpr WGPUSampler getSamplerHandle() const {
         return sampler;
     }
 
-    constexpr wgpu::TextureView& getViewHandle() {
+    constexpr WGPUTextureView getViewHandle() const {
         return textureView;
     }
 
-    constexpr const wgpu::TextureFormat& getTextureFormat() const {
+    constexpr const WGPUTextureFormat& getTextureFormat() const {
         return textureFormat;
     }
 
-    constexpr const wgpu::TextureBindingLayout& getTextureBindingLayout() const {
+    constexpr const WGPUTextureBindingLayout& getTextureBindingLayout() const {
         return textureBindingLayout;
     }
 
-    constexpr const wgpu::SamplerBindingLayout& getSamplerBindingLayout() const {
+    constexpr const WGPUSamplerBindingLayout& getSamplerBindingLayout() const {
         return samplerBindingLayout;
     }
 
-    static wgpu::TextureFormat ConvertPixelFormat(const PixelFormat&, 
-                                                  const PixelType&);
-    static U64 GetPixelByteSize(const wgpu::TextureFormat&);
+    static WGPUTextureFormat ConvertPixelFormat(const PixelFormat&,
+                                                const PixelType&);
+    static U64 GetPixelByteSize(const WGPUTextureFormat&);
 
  private:
-    wgpu::Texture texture;
-    wgpu::TextureView textureView;
-    wgpu::Sampler sampler;
-    wgpu::TextureFormat textureFormat;
-    wgpu::SamplerBindingLayout samplerBindingLayout;
-    wgpu::TextureBindingLayout textureBindingLayout;
+    WGPUTexture texture;
+    WGPUTextureView textureView;
+    WGPUSampler sampler;
+    WGPUTextureFormat textureFormat;
+    WGPUSamplerBindingLayout samplerBindingLayout;
+    WGPUTextureBindingLayout textureBindingLayout;
 
     friend class SurfaceImp<Device::WebGPU>;
     friend class ProgramImp<Device::WebGPU>;

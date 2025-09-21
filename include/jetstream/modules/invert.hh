@@ -16,7 +16,10 @@ namespace Jetstream {
 template<Device D, typename T = CF32>
 class Invert : public Module, public Compute {
  public:
-    // Configuration 
+    Invert();
+    ~Invert();
+
+    // Configuration
 
     struct Config {
         JST_SERDES();
@@ -69,6 +72,10 @@ class Invert : public Module, public Compute {
  protected:
     Result createCompute(const Context& ctx) final;
     Result compute(const Context& ctx) final;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
 
     JST_DEFINE_IO()
 };

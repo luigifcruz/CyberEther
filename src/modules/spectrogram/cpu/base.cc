@@ -26,19 +26,19 @@ Result Spectrogram<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result Spectrogram<D, T>::compute(const Context&) {
-    const U64& size = frequencyBins.size();
-    const F32 factor = decayFactor;
+    const U64& size = gimpl->frequencyBins.size();
+    const F32 factor = gimpl->decayFactor;
     for (U64 x = 0; x < size; ++x) {
-        frequencyBins[x] *= factor;
+        gimpl->frequencyBins[x] *= factor;
     }
 
-    for (U64 b = 0; b < numberOfBatches; b++) {
-        for (U64 x = 0; x < numberOfElements; x++) {
+    for (U64 b = 0; b < gimpl->numberOfBatches; b++) {
+        for (U64 x = 0; x < gimpl->numberOfElements; x++) {
             const U16 index = input.buffer[{b, x}] * config.height;
 
             if (index < config.height && index > 0) {
-                auto& val = frequencyBins[x + (index * numberOfElements)];
-                val = std::min(val + 0.02, 1.0); 
+                auto& val = gimpl->frequencyBins[x + (index * gimpl->numberOfElements)];
+                val = std::min(val + 0.02, 1.0);
             }
         }
     }

@@ -25,6 +25,8 @@ struct Arithmetic<D, T>::Impl {
     std::vector<void*> arguments;
 
     Tensor<Device::CUDA, T> input;
+
+    Tensor<D, T> broadcasted_output;
 };
 
 template<Device D, typename T>
@@ -63,7 +65,7 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
             if (id > size) {
                 return;
             }
-            
+
             // Calculate shape from ID.
 
             size_t shape[8];
@@ -150,15 +152,15 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
     }
 
     pimpl->outputMeta = {
-        reinterpret_cast<uint8_t*>(broadcasted_output.data()) + broadcasted_output.offset_bytes(),
-        broadcasted_output.rank(),
+        reinterpret_cast<uint8_t*>(pimpl->broadcasted_output.data()) + pimpl->broadcasted_output.offset_bytes(),
+        pimpl->broadcasted_output.rank(),
         {},
         {},
     };
 
-    for (U64 i = 0; i < broadcasted_output.rank(); i++) {
-        pimpl->outputMeta.shape[i] = broadcasted_output.shape()[i];
-        pimpl->outputMeta.strides[i] = broadcasted_output.stride()[i];
+    for (U64 i = 0; i < pimpl->broadcasted_output.rank(); i++) {
+        pimpl->outputMeta.shape[i] = pimpl->broadcasted_output.shape()[i];
+        pimpl->outputMeta.strides[i] = pimpl->broadcasted_output.stride()[i];
     }
 
     pimpl->size = input.buffer.size();
@@ -182,9 +184,9 @@ Result Arithmetic<D, T>::compute(const Context& ctx) {
         JST_ERROR("Failed to clear output buffer: {}", err);
     });
 
-    JST_CHECK(ctx.cuda->launchKernel("arithmetic", 
-                                     pimpl->grid, 
-                                     pimpl->block, 
+    JST_CHECK(ctx.cuda->launchKernel("arithmetic",
+                                     pimpl->grid,
+                                     pimpl->block,
                                      pimpl->arguments.data()));
 
     return Result::SUCCESS;

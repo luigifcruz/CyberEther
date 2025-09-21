@@ -3,6 +3,21 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Window<D, T>::Impl {
+    bool baked = false;
+};
+
+template<Device D, typename T>
+Window<D, T>::Window() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Window<D, T>::~Window() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Window<D, T>::create() {
     JST_DEBUG("Initializing Window module.");
     JST_INIT_IO();
@@ -11,14 +26,14 @@ Result Window<D, T>::create() {
     output.window = Tensor<D, T>({config.size});
 
     // Configure initial state.
-    baked = false;
+    impl->baked = false;
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Window<D, T>::compute(const Context&) {
-    if (baked) {
+    if (impl->baked) {
         return Result::SUCCESS;
     }
 
@@ -32,7 +47,7 @@ Result Window<D, T>::compute(const Context&) {
         window[i] = T(tap, 0.0);
     }
 
-    baked = true;
+    impl->baked = true;
 
     return Result::SUCCESS;
 }

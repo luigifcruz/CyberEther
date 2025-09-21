@@ -38,7 +38,7 @@ Result OpenUrl(const std::string& url) {
     return Result::SUCCESS;
 }
 
-Result PickFile(std::string& path) {
+Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
     __block Result result = Result::ERROR;
 
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
@@ -50,9 +50,20 @@ Result PickFile(std::string& path) {
         [panel setCanChooseDirectories:NO];
         [panel setAllowsMultipleSelection:NO];
 
-        UTType* yamlType = [UTType typeWithFilenameExtension:@"yaml"];
-        UTType* ymlType = [UTType typeWithFilenameExtension:@"yml"];
-        [panel setAllowedContentTypes:@[yamlType, ymlType]];
+        if (!extensions.empty()) {
+            NSMutableArray* allowedTypes = [NSMutableArray array];
+            for (const auto& ext : extensions) {
+                NSString* nsExt = [NSString stringWithUTF8String:ext.c_str()];
+                UTType* type = [UTType typeWithFilenameExtension:nsExt];
+                if (type) {
+                    [allowedTypes addObject:type];
+                }
+            }
+            if ([allowedTypes count] > 0) {
+                [panel setAllowedContentTypes:allowedTypes];
+            }
+        }
+        // If extensions is empty, don't set allowedContentTypes to allow all file types
 
         if ([panel runModal] == NSModalResponseOK) {
             NSURL* url = [[panel URLs] objectAtIndex:0];

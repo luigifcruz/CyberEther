@@ -93,7 +93,9 @@ class Duplicate : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(duplicate->locale()));
+        if (duplicate) {
+            JST_CHECK(instance().eraseModule(duplicate->locale()));
+        }
 
         return Result::SUCCESS;
     }

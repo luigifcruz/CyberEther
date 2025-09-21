@@ -6,6 +6,7 @@ __pycache__
 .ipynb_checkpoints
 .vscode
 .idea
+.ropeproject
 builddir
 imgui.ini
 
@@ -14,6 +15,9 @@ subprojects/*
 !subprojects/*.wrap
 !subprojects/libusb
 !subprojects/nanobind
+!subprojects/nanobench
+!subprojects/cpp-httplib
+!subprojects/json
 !subprojects/packagefiles
 
 build

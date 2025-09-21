@@ -1,8 +1,8 @@
 #include "jetstream/modules/waterfall.hh"
 #include "jetstream/render/utils.hh"
 
-#include "shaders/waterfall_shaders.hh"
-#include "assets/constants.hh"
+#include "resources/shaders/waterfall_shaders.hh"
+#include "jetstream/constants.hh"
 
 #include "benchmark.cc"
 
@@ -19,6 +19,31 @@ struct Waterfall<D, T>::GImpl {
         float zoom;
         bool interpolate;
     } signalUniforms;
+
+    Tensor<D, F32> frequencyBins;
+
+    std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
+    std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
+    std::shared_ptr<Render::Buffer> signalBuffer;
+    std::shared_ptr<Render::Buffer> signalUniformBuffer;
+
+    std::shared_ptr<Render::Texture> framebufferTexture;
+    std::shared_ptr<Render::Texture> lutTexture;
+
+    std::shared_ptr<Render::Program> signalProgram;
+
+    std::shared_ptr<Render::Surface> surface;
+
+    std::shared_ptr<Render::Vertex> vertex;
+
+    std::shared_ptr<Render::Draw> drawVertex;
+
+    U64 numberOfElements = 0;
+    U64 numberOfBatches = 0;
+    int inc = 0, last = 0, ymax = 0;
+
+    Result underlyingCompute(Waterfall<D, T>& m, const Context& ctx);
 };
 
 template<Device D, typename T>
@@ -36,12 +61,12 @@ Result Waterfall<D, T>::create() {
     // Calculate parameters.
 
     const U64 last_axis = input.buffer.rank() - 1;
-    numberOfElements = input.buffer.shape()[last_axis];
-    numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
+    gimpl->numberOfElements = input.buffer.shape()[last_axis];
+    gimpl->numberOfBatches = (input.buffer.rank() == 2) ? input.buffer.shape()[0] : 1;
 
     // Allocate internal buffers.
 
-    frequencyBins = Tensor<D, F32>({numberOfElements,  config.height});
+    gimpl->frequencyBins = Tensor<D, F32>({gimpl->numberOfElements, config.height});
 
     return Result::SUCCESS;
 }
@@ -65,8 +90,8 @@ Result Waterfall<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(float);
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
-        JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
+        JST_CHECK(window->build(gimpl->fillScreenVerticesBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->fillScreenVerticesBuffer));
     }
 
     {
@@ -75,8 +100,8 @@ Result Waterfall<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(float);
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
-        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
+        JST_CHECK(window->build(gimpl->fillScreenTextureVerticesBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->fillScreenTextureVerticesBuffer));
     }
 
     {
@@ -85,46 +110,46 @@ Result Waterfall<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
-        JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
+        JST_CHECK(window->build(gimpl->fillScreenIndicesBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->fillScreenIndicesBuffer));
     }
 
     {
         Render::Vertex::Config cfg;
         cfg.vertices = {
-            {fillScreenVerticesBuffer, 3},
-            {fillScreenTextureVerticesBuffer, 2},
+            {gimpl->fillScreenVerticesBuffer, 3},
+            {gimpl->fillScreenTextureVerticesBuffer, 2},
         };
-        cfg.indices = fillScreenIndicesBuffer;
-        JST_CHECK(window->build(vertex, cfg));
+        cfg.indices = gimpl->fillScreenIndicesBuffer;
+        JST_CHECK(window->build(gimpl->vertex, cfg));
     }
 
     {
         Render::Draw::Config cfg;
-        cfg.buffer = vertex;
+        cfg.buffer = gimpl->vertex;
         cfg.mode = Render::Draw::Mode::TRIANGLES;
-        JST_CHECK(window->build(drawVertex, cfg));
+        JST_CHECK(window->build(gimpl->drawVertex, cfg));
     }
 
     {
-        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, frequencyBins);
+        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, gimpl->frequencyBins);
 
         Render::Buffer::Config cfg;
         cfg.buffer = buffer;
-        cfg.size = frequencyBins.size();
+        cfg.size = gimpl->frequencyBins.size();
         cfg.elementByteSize = sizeof(F32);
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = enableZeroCopy;
-        JST_CHECK(window->build(signalBuffer, cfg));
-        JST_CHECK(window->bind(signalBuffer));
+        JST_CHECK(window->build(gimpl->signalBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->signalBuffer));
     }
 
     {
         Render::Texture::Config cfg;
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
-        JST_CHECK(window->build(lutTexture, cfg));
-        JST_CHECK(window->bind(lutTexture));
+        JST_CHECK(window->build(gimpl->lutTexture, cfg));
+        JST_CHECK(window->bind(gimpl->lutTexture));
     }
 
     {
@@ -133,23 +158,23 @@ Result Waterfall<D, T>::createPresent() {
         cfg.elementByteSize = sizeof(gimpl->signalUniforms);
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
-        JST_CHECK(window->build(signalUniformBuffer, cfg));
-        JST_CHECK(window->bind(signalUniformBuffer));
+        JST_CHECK(window->build(gimpl->signalUniformBuffer, cfg));
+        JST_CHECK(window->bind(gimpl->signalUniformBuffer));
     }
 
     {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
         cfg.draws = {
-            drawVertex,
+            gimpl->drawVertex,
         };
-        cfg.textures = {lutTexture};
+        cfg.textures = {gimpl->lutTexture};
         cfg.buffers = {
-            {signalUniformBuffer, Render::Program::Target::VERTEX |
+            {gimpl->signalUniformBuffer, Render::Program::Target::VERTEX |
                             Render::Program::Target::FRAGMENT},
-            {signalBuffer, Render::Program::Target::FRAGMENT},
+            {gimpl->signalBuffer, Render::Program::Target::FRAGMENT},
         };
-        JST_CHECK(window->build(signalProgram, cfg));
+        JST_CHECK(window->build(gimpl->signalProgram, cfg));
     }
 
     // Surface.
@@ -157,16 +182,16 @@ Result Waterfall<D, T>::createPresent() {
     {
         Render::Texture::Config cfg;
         cfg.size = config.viewSize;
-        JST_CHECK(window->build(framebufferTexture, cfg));
+        JST_CHECK(window->build(gimpl->framebufferTexture, cfg));
     }
 
     {
         Render::Surface::Config cfg;
-        cfg.framebuffer = framebufferTexture;
-        cfg.programs = {signalProgram};
+        cfg.framebuffer = gimpl->framebufferTexture;
+        cfg.programs = {gimpl->signalProgram};
         cfg.multisampled = false;
-        JST_CHECK(window->build(surface, cfg));
-        JST_CHECK(window->bind(surface));
+        JST_CHECK(window->build(gimpl->surface, cfg));
+        JST_CHECK(window->bind(gimpl->surface));
     }
 
     return Result::SUCCESS;
@@ -174,44 +199,44 @@ Result Waterfall<D, T>::createPresent() {
 
 template<Device D, typename T>
 Result Waterfall<D, T>::destroyPresent() {
-    JST_CHECK(window->unbind(surface));
-    JST_CHECK(window->unbind(lutTexture));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(signalBuffer));
-    JST_CHECK(window->unbind(signalUniformBuffer));
+    JST_CHECK(window->unbind(gimpl->surface));
+    JST_CHECK(window->unbind(gimpl->lutTexture));
+    JST_CHECK(window->unbind(gimpl->fillScreenVerticesBuffer));
+    JST_CHECK(window->unbind(gimpl->fillScreenTextureVerticesBuffer));
+    JST_CHECK(window->unbind(gimpl->fillScreenIndicesBuffer));
+    JST_CHECK(window->unbind(gimpl->signalBuffer));
+    JST_CHECK(window->unbind(gimpl->signalUniformBuffer));
 
     return Result::SUCCESS;
 }
 
 template<Device D, typename T>
 Result Waterfall<D, T>::present() {
-    int start = last;
-    int blocks = (inc - last);
+    int start = gimpl->last;
+    int blocks = (gimpl->inc - gimpl->last);
 
     // TODO: Fix this horrible thing.
     if (blocks < 0) {
-        blocks = config.height - last;
+        blocks = config.height - gimpl->last;
 
-        signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
+        gimpl->signalBuffer->update(start * gimpl->numberOfElements, blocks * gimpl->numberOfElements);
 
         start = 0;
-        blocks = inc;
+        blocks = gimpl->inc;
     }
 
-    signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
-    last = inc;
+    gimpl->signalBuffer->update(start * gimpl->numberOfElements, blocks * gimpl->numberOfElements);
+    gimpl->last = gimpl->inc;
 
     gimpl->signalUniforms.zoom = config.zoom;
-    gimpl->signalUniforms.width = numberOfElements;
+    gimpl->signalUniforms.width = gimpl->numberOfElements;
     gimpl->signalUniforms.height = config.height;
     gimpl->signalUniforms.interpolate = config.interpolate;
-    gimpl->signalUniforms.index = inc / (float)gimpl->signalUniforms.height;
+    gimpl->signalUniforms.index = gimpl->inc / (float)gimpl->signalUniforms.height;
     gimpl->signalUniforms.offset = config.offset / (float)config.viewSize.x;
     gimpl->signalUniforms.maxSize = gimpl->signalUniforms.width * gimpl->signalUniforms.height;
 
-    signalUniformBuffer->update();
+    gimpl->signalUniformBuffer->update();
 
     return Result::SUCCESS;
 }
@@ -223,8 +248,8 @@ Result Waterfall<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result Waterfall<D, T>::compute(const Context& ctx) {
-    auto res = underlyingCompute(ctx);
-    inc = (inc + numberOfBatches) % config.height;
+    auto res = gimpl->underlyingCompute(*this, ctx);
+    gimpl->inc = (gimpl->inc + gimpl->numberOfBatches) % config.height;
     return res;
 }
 
@@ -250,21 +275,21 @@ const I32& Waterfall<D, T>::offset(const I32& offset) {
 
 template<Device D, typename T>
 const Extent2D<U64>& Waterfall<D, T>::viewSize(const Extent2D<U64>& viewSize) {
-    if (surface->size(viewSize) != this->viewSize()) {
+    if (gimpl->surface->size(viewSize) != this->viewSize()) {
         JST_DEBUG("Waterfall size changed from [{}, {}] to [{}, {}].",
                 config.viewSize.x,
                 config.viewSize.y,
                 viewSize.x,
                 viewSize.y);
 
-        config.viewSize = surface->size();
+        config.viewSize = gimpl->surface->size();
     }
     return this->viewSize();
 }
 
 template<Device D, typename T>
 Render::Texture& Waterfall<D, T>::getTexture() {
-    return *framebufferTexture;
+    return *gimpl->framebufferTexture;
 };
 
 }  // namespace Jetstream

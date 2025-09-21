@@ -102,7 +102,9 @@ class Audio : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(audio->locale()));
+        if (audio) {
+            JST_CHECK(instance().eraseModule(audio->locale()));
+        }
 
         return Result::SUCCESS;
     }
@@ -149,7 +151,7 @@ class Audio : public Block {
             }
             ImGui::EndCombo();
         }
-        
+
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::TableSetColumnIndex(1);

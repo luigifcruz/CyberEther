@@ -85,7 +85,9 @@ class Spectrogram : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(spectrogram->locale()));
+        if (spectrogram) {
+            JST_CHECK(instance().eraseModule(spectrogram->locale()));
+        }
 
         return Result::SUCCESS;
     }
@@ -97,7 +99,7 @@ class Spectrogram : public Block {
         const auto& ratio = size.ratio();
         const F32 width = (size.x < maxWidth) ? size.x : maxWidth;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ((maxWidth - width) / 2.0f));
-        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width, width/ratio));
+        ImGui::Image(ImTextureRef(spectrogram->getTexture().raw()), ImVec2(width, width/ratio));
     }
 
     constexpr bool shouldDrawPreview() const {
@@ -111,7 +113,7 @@ class Spectrogram : public Block {
             static_cast<U64>(x*scale.x),
             static_cast<U64>(y*scale.y)
         });
-        ImGui::Image(spectrogram->getTexture().raw(), ImVec2(width/scale.x, height/scale.y));
+        ImGui::Image(ImTextureRef(spectrogram->getTexture().raw()), ImVec2(width/scale.x, height/scale.y));
     }
 
     constexpr bool shouldDrawView() const {

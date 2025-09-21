@@ -51,6 +51,9 @@ struct Amplitude<D, IT, OT>::Impl {
 
     MTL::ComputePipelineState* state;
     Tensor<Device::Metal, U8> constants;
+
+    F32 scalingCoeff = 0.0f;
+    U64 numberOfElements = 0;
 };
 
 template<Device D, typename IT, typename OT>
@@ -74,7 +77,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context&) {
     }
 
     auto* constants = Metal::CreateConstants<typename Impl::Constants>(*pimpl);
-    constants->scalingCoeff = scalingCoeff;
+    constants->scalingCoeff = pimpl->scalingCoeff;
 
     return Result::SUCCESS;
 }
@@ -95,5 +98,5 @@ Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
 
 JST_AMPLITUDE_METAL(JST_INSTANTIATION)
 JST_AMPLITUDE_METAL(JST_BENCHMARK)
-    
+
 }  // namespace Jetstream

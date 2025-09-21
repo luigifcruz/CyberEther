@@ -16,13 +16,13 @@ Result OverlapAdd<D, T>::create() {
     }
 
     if (input.buffer.rank() != input.overlap.rank()) {
-        JST_ERROR("Input buffer rank ({}) is not equal to the overlap rank ({}).", 
+        JST_ERROR("Input buffer rank ({}) is not equal to the overlap rank ({}).",
                   input.buffer.rank(), input.overlap.rank());
         return Result::ERROR;
     }
 
     if (input.buffer.shape()[config.axis] < input.overlap.shape()[config.axis]) {
-        JST_ERROR("Overlap buffer size ({}) is larger than the buffer size ({}).", 
+        JST_ERROR("Overlap buffer size ({}) is larger than the buffer size ({}).",
                   input.overlap.shape()[config.axis], input.buffer.shape()[config.axis]);
         return Result::ERROR;
     }
@@ -37,7 +37,7 @@ Result OverlapAdd<D, T>::create() {
     if (input.buffer.rank() > 1) {
         previousOverlapShape[0] = 1;
     }
-    previousOverlap = Tensor<D, T>(previousOverlapShape);
+    impl->previousOverlap = Tensor<D, T>(previousOverlapShape);
 
     return Result::SUCCESS;
 }

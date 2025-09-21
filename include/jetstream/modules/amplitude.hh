@@ -27,7 +27,7 @@ class Amplitude : public Module, public Compute {
     Amplitude();
     ~Amplitude();
 
-    // Configuration 
+    // Configuration
 
     struct Config {
         JST_SERDES();
@@ -71,7 +71,7 @@ class Amplitude : public Module, public Compute {
         return D;
     }
 
-    void info() const final; 
+    void info() const final;
 
     // Constructor
 
@@ -84,9 +84,6 @@ class Amplitude : public Module, public Compute {
  private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
-
-    F32 scalingCoeff = 0.0f;
-    U64 numberOfElements = 0;
 
     JST_DEFINE_IO()
 };

@@ -3,6 +3,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct Pad<D, T>::Impl {};
+
+template<Device D, typename T>
+Pad<D, T>::Pad() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+Pad<D, T>::~Pad() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result Pad<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Pad compute core using CPU backend.");
     return Result::SUCCESS;
@@ -24,5 +37,5 @@ Result Pad<D, T>::compute(const Context&) {
 }
 
 JST_PAD_CPU(JST_INSTANTIATION)
-    
+
 }  // namespace Jetstream

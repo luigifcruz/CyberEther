@@ -6,7 +6,7 @@
 #include "jetstream/render/base.hh"
 #include "jetstream/render/components/text.hh"
 
-#include "shaders/global_shaders.hh"
+#include "resources/shaders/global_shaders.hh"
 
 namespace Jetstream::Render::Components {
 

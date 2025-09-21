@@ -81,15 +81,13 @@ class Note : public Block {
             const I32 numActualLines = std::count(config.note.begin(), config.note.end(), '\n');
             const I32 textHeight = std::min(std::max(5, numActualLines + 2) * ImGui::GetTextLineHeight(), 500.0f);
             // TODO: Implement automatic line wrapping.
-            ImGui::InputTextMultiline("##note", 
-                                      &config.note, 
-                                      ImVec2(maxWidth, textHeight), 
+            ImGui::InputTextMultiline("##note",
+                                      &config.note,
+                                      ImVec2(maxWidth, textHeight),
                                       ImGuiInputTextFlags_NoHorizontalScroll);
         } else {
             ImGui::SetNextWindowSizeConstraints(ImVec2(maxWidth, 50.0f), ImVec2(maxWidth, 500.0f));
-            // UPDATE-ME: Markdown rendering.
-            ImGui::BeginChild("##note-markdown", ImVec2(maxWidth, 0.0f), ImGuiChildFlags_AutoResizeY | 
-                                                                         ImGuiChildFrags_AlwaysUseParentDrawList, 
+            ImGui::BeginChild("##note-markdown", ImVec2(maxWidth, 0.0f), ImGuiChildFlags_AutoResizeY |
                                                                          ImGuiWindowFlags_NoBackground);
             ImGui::Markdown(config.note.c_str(), config.note.length(), instance().compositor().markdownConfig());
             ImGui::EndChild();
@@ -112,7 +110,7 @@ class Note : public Block {
 }  // namespace Jetstream::Blocks
 
 JST_BLOCK_ENABLE(Note, std::is_same<IT, void>::value &&
-                       std::is_same<OT, void>::value && 
+                       std::is_same<OT, void>::value &&
                        D == Device::CPU);
 
 #endif

@@ -20,40 +20,40 @@ Result Implementation::create() {
     // Load kernel from memory.
 
     if (config.kernels.contains(Device::WebGPU) == 0) {
-        JST_ERROR("[WebGPU] Module doesn't have necessary kernel.");       
+        JST_ERROR("[WebGPU] Module doesn't have necessary kernel.");
         return Result::ERROR;
     }
 
     auto device = Backend::State<Device::WebGPU>()->getDevice();
 
     const auto& kernels = config.kernels[Device::WebGPU];
-    wgpu::ShaderModule kernelModule = Backend::LoadShader(kernels[0], device);
+    WGPUShaderModule kernelModule = Backend::LoadShader(kernels[0], device);
 
     // Create bind group layout.
 
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, mode] = buffers[i];
 
-        wgpu::BindGroupLayoutEntry entry{};
+        WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
         entry.binding = i;
-        entry.visibility = wgpu::ShaderStage::Compute;
+        entry.visibility = WGPUShaderStage_Compute;
         entry.buffer.type = BufferDescriptorType(buffer, mode);
 
         bindings.push_back(entry);
     }
 
-    wgpu::BindGroupLayoutDescriptor layoutDesc{};
+    WGPUBindGroupLayoutDescriptor layoutDesc = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
     layoutDesc.entryCount = static_cast<U32>(bindings.size());
     layoutDesc.entries = bindings.data();
 
-    bindGroupLayout = device.CreateBindGroupLayout(&layoutDesc);
+    bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
 
     // Create bind group.
 
     for (U64 i = 0; i < buffers.size(); i++) {
         auto& [buffer, _] = buffers[i];
 
-        wgpu::BindGroupEntry entry{};
+        WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
         entry.binding = i;
         entry.buffer = buffer->getHandle();
         entry.offset = 0;
@@ -62,29 +62,29 @@ Result Implementation::create() {
         bindGroupEntries.push_back(entry);
     }
 
-    wgpu::BindGroupDescriptor bindGroupDesc{};
+    WGPUBindGroupDescriptor bindGroupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
     bindGroupDesc.layout = bindGroupLayout;
     bindGroupDesc.entryCount = static_cast<U32>(bindGroupEntries.size());
     bindGroupDesc.entries = bindGroupEntries.data();
 
-    bindGroup = device.CreateBindGroup(&bindGroupDesc);
+    bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 
     // Create pipeline layout.
 
-    wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{};
+    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
     pipelineLayoutDesc.bindGroupLayoutCount = 1;
     pipelineLayoutDesc.bindGroupLayouts = &bindGroupLayout;
 
-    pipelineLayout = device.CreatePipelineLayout(&pipelineLayoutDesc);
+    pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
 
     // Create compute pipeline.
 
-    wgpu::ComputePipelineDescriptor computePipelineDescriptor{};
+    WGPUComputePipelineDescriptor computePipelineDescriptor = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
     computePipelineDescriptor.compute.module = kernelModule;
-    computePipelineDescriptor.compute.entryPoint = "main";
+    computePipelineDescriptor.compute.entryPoint = {"main", WGPU_STRLEN};
     computePipelineDescriptor.layout = pipelineLayout;
 
-    pipeline = device.CreateComputePipeline(&computePipelineDescriptor);
+    pipeline = wgpuDeviceCreateComputePipeline(device, &computePipelineDescriptor);
 
     // Clean up.
 
@@ -100,7 +100,7 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(wgpu::ComputePassEncoder& computePassEncoder) {
+Result Implementation::encode(WGPUComputePassEncoder& computePassEncoder) {
     // Check if data needs to be updated.
 
     if (!this->updated) {
@@ -110,8 +110,8 @@ Result Implementation::encode(wgpu::ComputePassEncoder& computePassEncoder) {
 
     // Create compute pass.
 
-    computePassEncoder.SetPipeline(pipeline);
-    computePassEncoder.SetBindGroup(0, bindGroup);
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, pipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0, nullptr);
 
     // Dispatch compute work.
 
@@ -122,25 +122,25 @@ Result Implementation::encode(wgpu::ComputePassEncoder& computePassEncoder) {
         return Result::ERROR;
     }
 
-    computePassEncoder.DispatchWorkgroups(x, y, z);
+    wgpuComputePassEncoderDispatchWorkgroups(computePassEncoder, x, y, z);
 
     return Result::SUCCESS;
 }
 
-wgpu::BufferBindingType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer, 
-                                                             const Kernel::AccessMode& mode) {
+WGPUBufferBindingType Implementation::BufferDescriptorType(const std::shared_ptr<Buffer>& buffer,
+                                                           const Kernel::AccessMode& mode) {
     const auto& bufferType = buffer->getConfig().target;
 
     if ((bufferType & Buffer::Target::UNIFORM) == Buffer::Target::UNIFORM) {
-        return wgpu::BufferBindingType::Uniform;
+        return WGPUBufferBindingType_Uniform;
     }
 
     if ((bufferType & Buffer::Target::STORAGE) == Buffer::Target::STORAGE) {
         if ((mode & Kernel::AccessMode::READ) == Kernel::AccessMode::READ &&
             (mode & Kernel::AccessMode::WRITE) != Kernel::AccessMode::WRITE) {
-            return wgpu::BufferBindingType::ReadOnlyStorage;
+            return WGPUBufferBindingType_ReadOnlyStorage;
         }
-        return wgpu::BufferBindingType::Storage;
+        return WGPUBufferBindingType_Storage;
     }
 
     JST_ERROR("[WebGPU] Invalid buffer usage.");

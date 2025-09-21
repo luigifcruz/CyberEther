@@ -5,11 +5,11 @@
 #include "tools/imgui_impl_glfw.h"
 
 EM_JS(int, getWindowWidth, (), {
-    return window.innerWidth;
+    return Module['canvas'].clientWidth;
 });
 
 EM_JS(int, getWindowHeight, (), {
-    return window.innerHeight;
+    return Module['canvas'].clientHeight;
 });
 
 EM_JS(int, getPixelRatio, (), {
@@ -21,7 +21,7 @@ static void PrintGLFWError(int, const char* description) {
 }
 
 namespace Jetstream::Viewport {
-    
+
 using Implementation = GLFW<Device::WebGPU>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
@@ -57,15 +57,17 @@ Result Implementation::create() {
     }
     glfwMakeContextCurrent(window);
 
-    wgpu::SurfaceDescriptorFromCanvasHTMLSelector html_surface_desc{};
-    html_surface_desc.selector = "#canvas";
+    WGPUSurfaceDescriptor surfaceDesc = WGPU_SURFACE_DESCRIPTOR_INIT;
 
-    wgpu::SurfaceDescriptor surface_desc{};
-    surface_desc.nextInChain = &html_surface_desc;
+    WGPUEmscriptenSurfaceSourceCanvasHTMLSelector surfaceSource = WGPU_EMSCRIPTEN_SURFACE_SOURCE_CANVAS_HTML_SELECTOR_INIT;
+    surfaceSource.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
+    surfaceSource.selector = {"#canvas", WGPU_STRLEN};
 
-    instance = wgpu::CreateInstance(nullptr);
+    surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&surfaceSource);
 
-    surface = instance.CreateSurface(&surface_desc);
+    instance = wgpuCreateInstance(nullptr);
+
+    surface = wgpuInstanceCreateSurface(instance, &surfaceDesc);
 
     JST_CHECK(createSwapchain());
 
@@ -86,22 +88,21 @@ Result Implementation::destroy() {
 Result Implementation::createSwapchain() {
     glfwSetWindowSize(window, swapchainSize.x, swapchainSize.y);
 
-    wgpu::SwapChainDescriptor swapchainDesc{};
-    swapchainDesc.usage = wgpu::TextureUsage::RenderAttachment;
-    swapchainDesc.format = wgpu::TextureFormat::BGRA8Unorm;
-    swapchainDesc.width = swapchainSize.x * getPixelRatio();
-    swapchainDesc.height = swapchainSize.y * getPixelRatio();
-    swapchainDesc.presentMode = wgpu::PresentMode::Fifo;
+    auto device = Backend::State<Device::WebGPU>()->getDevice();
 
-    auto& device = Backend::State<Device::WebGPU>()->getDevice();
-    swapchain = device.CreateSwapChain(surface, &swapchainDesc);
+    WGPUSurfaceConfiguration conf = WGPU_SURFACE_CONFIGURATION_INIT;
+    conf.device = device;
+    conf.usage = WGPUTextureUsage_RenderAttachment;
+    conf.format = WGPUTextureFormat_BGRA8Unorm;
+    conf.width = swapchainSize.x * getPixelRatio();
+    conf.height = swapchainSize.y * getPixelRatio();
+    conf.presentMode = WGPUPresentMode_Fifo;
+    wgpuSurfaceConfigure(surface, &conf);
 
     return Result::SUCCESS;
 }
 
 Result Implementation::destroySwapchain() {
-    swapchain = nullptr;
-    
     return Result::SUCCESS;
 }
 
@@ -112,7 +113,7 @@ Result Implementation::createImgui() {
 }
 
 F32 Implementation::scale(const F32& scale) const {
-    // No scaling needed. ImGui was modified to handle HiDPI. 
+    // No scaling needed. ImGui was modified to handle HiDPI.
     return scale;
 }
 
@@ -136,10 +137,19 @@ Result Implementation::nextDrawable() {
     return Result::SUCCESS;
 }
 
-Result Implementation::commitDrawable(wgpu::TextureView& framebufferTexture) {
-    framebufferTexture = swapchain.GetCurrentTextureView();
-    
-    return Result::SUCCESS;
+Result Implementation::commitDrawable(WGPUTextureView* framebufferTexture) {
+    WGPUSurfaceTexture st = WGPU_SURFACE_TEXTURE_INIT;
+    wgpuSurfaceGetCurrentTexture(surface, &st);
+
+    if (st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
+        st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+        *framebufferTexture = nullptr;
+        return Result::RECREATE;
+    }
+
+    *framebufferTexture = wgpuTextureCreateView(st.texture, nullptr);
+
+    return (*framebufferTexture != nullptr) ? Result::SUCCESS : Result::RECREATE;
 }
 
 Result Implementation::waitEvents() {

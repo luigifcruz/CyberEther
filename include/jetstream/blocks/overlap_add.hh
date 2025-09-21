@@ -93,7 +93,9 @@ class OverlapAdd : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(overlap_add->locale()));
+        if (overlap_add) {
+            JST_CHECK(instance().eraseModule(overlap_add->locale()));
+        }
 
         return Result::SUCCESS;
     }

@@ -71,7 +71,7 @@ Result Implementation::destroyFramebuffer() {
     return framebuffer->destroy();
 }
 
-Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
+Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
     if (framebuffer->size(requestedSize)) {
         JST_CHECK(destroyFramebuffer());
         JST_CHECK(createFramebuffer());
@@ -79,51 +79,53 @@ Result Implementation::draw(wgpu::CommandEncoder& commandEncoder) {
 
     // Encode kernels.
 
-    auto computePassEncoder = commandEncoder.BeginComputePass();
+    WGPUComputePassEncoder computePassEncoder =
+        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
 
     for (auto& kernel : kernels) {
         JST_CHECK(kernel->encode(computePassEncoder));
     }
 
-    computePassEncoder.End();
+    wgpuComputePassEncoderEnd(computePassEncoder);
 
     // Begin render pass.
 
-    wgpu::RenderPassColorAttachment colorAttachment{};
+    WGPURenderPassColorAttachment colorAttachment = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
     colorAttachment.view = framebuffer->getViewHandle();
-    colorAttachment.loadOp = wgpu::LoadOp::Clear;
-    colorAttachment.storeOp = wgpu::StoreOp::Store;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue.r = config.clearColor.r;
     colorAttachment.clearValue.g = config.clearColor.g;
     colorAttachment.clearValue.b = config.clearColor.b;
     colorAttachment.clearValue.a = config.clearColor.a;
 
-    wgpu::RenderPassDescriptor renderPass{};
+    WGPURenderPassDescriptor renderPass = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
     renderPass.colorAttachmentCount = 1;
     renderPass.colorAttachments = &colorAttachment;
     renderPass.depthStencilAttachment = nullptr;
 
     // Encode programs.
 
-    auto renderPassEncoder = commandEncoder.BeginRenderPass(&renderPass);
+    WGPURenderPassEncoder renderPassEncoder =
+        wgpuCommandEncoderBeginRenderPass(commandEncoder, &renderPass);
 
     for (auto& program : programs) {
         JST_CHECK(program->draw(renderPassEncoder));
     }
 
-    renderPassEncoder.End();
+    wgpuRenderPassEncoderEnd(renderPassEncoder);
 
     return Result::SUCCESS;
 }
 
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) { 
+const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     if (!framebuffer) {
-        return NullSize;
+        return NullSize2D;
     }
 
     requestedSize = size;
 
     return framebuffer->size();
-} 
+}
 
 }  // namespace Jetstream::Render

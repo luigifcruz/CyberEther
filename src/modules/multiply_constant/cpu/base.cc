@@ -3,6 +3,19 @@
 namespace Jetstream {
 
 template<Device D, typename T>
+struct MultiplyConstant<D, T>::Impl {};
+
+template<Device D, typename T>
+MultiplyConstant<D, T>::MultiplyConstant() {
+    impl = std::make_unique<Impl>();
+}
+
+template<Device D, typename T>
+MultiplyConstant<D, T>::~MultiplyConstant() {
+    impl.reset();
+}
+
+template<Device D, typename T>
 Result MultiplyConstant<D, T>::createCompute(const Context&) {
     JST_TRACE("Create Multiply Constant compute core using CPU backend.");
     return Result::SUCCESS;

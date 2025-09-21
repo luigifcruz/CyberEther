@@ -4,7 +4,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/store.hh"
 
-#include "assets/compressed_jbmm.hh"
+#include "resources/fonts/compressed_jbmm.hh"
 
 namespace Jetstream {
 
@@ -20,6 +20,8 @@ Result Instance::build(const Config& config) {
         return Result::ERROR;
     }
 
+    this->config = config;
+
     std::vector<Device> devicePriority = {
         config.preferredDevice,
         Device::Metal,
@@ -27,7 +29,7 @@ Result Instance::build(const Config& config) {
         Device::WebGPU,
     };
 
-    if (config.backendConfig.headless) {
+    if (config.backendConfig.remote) {
         for (const auto& device : devicePriority) {
             switch (device) {
 #ifdef JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE
@@ -36,9 +38,7 @@ Result Instance::build(const Config& config) {
                     JST_CHECK(Backend::Initialize<Device::Vulkan>(config.backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::Headless<Device::Vulkan>>(config.viewportConfig));
                     JST_CHECK(this->buildRender<Device::Vulkan>(config.renderConfig));
-                    if (config.enableCompositor) {
-                        JST_CHECK(this->buildCompositor());
-                    }
+                    JST_CHECK(this->buildCompositor());
                     return Result::SUCCESS;
 #endif
 #endif
@@ -58,9 +58,7 @@ Result Instance::build(const Config& config) {
                     JST_CHECK(Backend::Initialize<Device::Metal>(config.backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Metal>>(config.viewportConfig));
                     JST_CHECK(this->buildRender<Device::Metal>(config.renderConfig));
-                    if (config.enableCompositor) {
-                        JST_CHECK(this->buildCompositor());
-                    }
+                    JST_CHECK(this->buildCompositor());
                     return Result::SUCCESS;
 #endif
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
@@ -68,9 +66,7 @@ Result Instance::build(const Config& config) {
                     JST_CHECK(Backend::Initialize<Device::Vulkan>(config.backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::GLFW<Device::Vulkan>>(config.viewportConfig));
                     JST_CHECK(this->buildRender<Device::Vulkan>(config.renderConfig));
-                    if (config.enableCompositor) {
-                        JST_CHECK(this->buildCompositor());
-                    }
+                    JST_CHECK(this->buildCompositor());
                     return Result::SUCCESS;
 #endif
 #ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
@@ -78,9 +74,7 @@ Result Instance::build(const Config& config) {
                     JST_CHECK(Backend::Initialize<Device::WebGPU>(config.backendConfig));
                     JST_CHECK(this->buildViewport<Viewport::GLFW<Device::WebGPU>>(config.viewportConfig));
                     JST_CHECK(this->buildRender<Device::WebGPU>(config.renderConfig));
-                    if (config.enableCompositor) {
-                        JST_CHECK(this->buildCompositor());
-                    }
+                    JST_CHECK(this->buildCompositor());
                     return Result::SUCCESS;
 #endif
 #endif
@@ -708,7 +702,7 @@ Result Instance::present() {
 Result Instance::end() {
     // Draw the main interface.
 
-    if (_compositor) {
+    if (_compositor && config.renderCompositor) {
         JST_CHECK(_compositor->draw());
     }
 
@@ -723,7 +717,7 @@ Result Instance::end() {
 
     // Process interactions after finishing frame.
 
-    if (_compositor) {
+    if (_compositor && config.renderCompositor) {
         JST_CHECK(_compositor->processInteractions());
     }
 

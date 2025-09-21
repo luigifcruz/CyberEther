@@ -172,9 +172,7 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #ifdef JETSTREAM_BLOCK_NOTE_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::Note);
 #endif
-#ifdef JETSTREAM_BLOCK_TAKE_AVAILABLE
-    JST_BLOCKS_MANIFEST(Blocks::Take);
-#endif
+
 #ifdef JETSTREAM_BLOCK_SQUEEZE_DIMS_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::SqueezeDims);
 #endif
@@ -198,6 +196,30 @@ inline void GetDefaultManifest(Block::ConstructorManifest& constructorManifest,
 #endif
 #ifdef JETSTREAM_BLOCK_FILE_WRITER_AVAILABLE
     JST_BLOCKS_MANIFEST(Blocks::FileWriter);
+#endif
+#ifdef JETSTREAM_BLOCK_FILE_READER_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::FileReader);
+#endif
+#ifdef JETSTREAM_BLOCK_THROTTLE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Throttle);
+#endif
+#ifdef JETSTREAM_BLOCK_DECIMATOR_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Decimator);
+#endif
+#ifdef JETSTREAM_BLOCK_SPECTRUM_ENGINE_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::SpectrumEngine);
+#endif
+#ifdef JETSTREAM_BLOCK_SIGNAL_GENERATOR_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::SignalGenerator);
+#endif
+#ifdef JETSTREAM_BLOCK_PSK_DEMOD_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::PskDemod);
+#endif
+#ifdef JETSTREAM_BLOCK_RRC_FILTER_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::RRCFilter);
+#endif
+#ifdef JETSTREAM_BLOCK_ADD_AVAILABLE
+    JST_BLOCKS_MANIFEST(Blocks::Add);
 #endif
     // [NEW BLOCK HOOK]
 }

@@ -37,17 +37,16 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
     Result destroySwapchain();
 
     Result nextDrawable();
-    Result commitDrawable(wgpu::TextureView& framebufferTexture);
-    
+    Result commitDrawable(WGPUTextureView* framebufferTexture);
+
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
 
  private:
     GLFWwindow* window;
-    wgpu::Surface surface;
-    wgpu::SwapChain swapchain;
-    wgpu::Instance instance;
+    WGPUSurface surface;
+    WGPUInstance instance;
     Extent2D<U64> swapchainSize;
 
     static void framebufferResizeCallback(GLFWwindow *window, int width, int height);

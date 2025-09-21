@@ -88,17 +88,25 @@ NB_MODULE(_impl, m) {
         .def_prop_rw("buffer",
             [](Superluminal::PlotConfig &self) { return self.buffer; },
             [](Superluminal::PlotConfig &self, nb::handle input) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
                 if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cpu>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CPU, CF32>(input);
+                    return;
                 } else if (nb::isinstance<nb::ndarray<nb::numpy, F32, nb::c_contig, nb::device::cpu>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CPU, F32>(input);
-                } else if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cuda>>(input)) {
+                    return;
+                }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+                if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cuda>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CUDA, CF32>(input);
+                    return;
                 } else if (nb::isinstance<nb::ndarray<nb::numpy, F32, nb::c_contig, nb::device::cuda>>(input)) {
                     self.buffer = numpy_to_tensor<Device::CUDA, F32>(input);
-                } else {
-                    throw std::invalid_argument("Unsupported buffer type or device");
+                    return;
                 }
+#endif
+                throw std::invalid_argument("Unsupported buffer type or device");
             },
             "Set the buffer")
         .def_rw("type", &Superluminal::PlotConfig::type)
@@ -116,19 +124,51 @@ NB_MODULE(_impl, m) {
         .def_rw("interface_scale", &Superluminal::InstanceConfig::interfaceScale)
         .def_rw("interface_size", &Superluminal::InstanceConfig::interfaceSize)
         .def_rw("window_title", &Superluminal::InstanceConfig::windowTitle)
-        .def_rw("headless", &Superluminal::InstanceConfig::headless)
-        .def_rw("endpoint", &Superluminal::InstanceConfig::endpoint)
+        .def_rw("remote", &Superluminal::InstanceConfig::remote)
         .def_rw("preferred_device", &Superluminal::InstanceConfig::preferredDevice);
 
     m.def("initialize", &Superluminal::Initialize, nb::arg("config") = Superluminal::InstanceConfig());
-    m.def("terminate", &Superluminal::Terminate);
     m.def("start", &Superluminal::Start);
     m.def("stop", &Superluminal::Stop);
     m.def("presenting", &Superluminal::Presenting);
     m.def("update", &Superluminal::Update, nb::arg("name") = std::string());
-    m.def("block", &Superluminal::Block);
     m.def("poll_events", &Superluminal::PollEvents, nb::arg("wait") = true);
     m.def("plot", &Superluminal::Plot);
+
+    static std::vector<std::shared_ptr<nb::object>> stored_callbacks;
+
+    m.def("box", [](const std::string& title, const Superluminal::Mosaic& mosaic, nb::object callback) {
+        stored_callbacks.push_back(std::make_shared<nb::object>(std::move(callback)));
+        return Superluminal::Box(title, mosaic, [&]() {
+            if (Py_IsInitialized()) {
+                nb::gil_scoped_acquire gil;
+                (*stored_callbacks.back())();
+            }
+        });
+    }, nb::arg("title"), nb::arg("mosaic"), nb::arg("callback"));
+
+    m.def("terminate", []() {
+        stored_callbacks.clear();
+        Superluminal::Terminate();
+    });
+
+    m.def("text", [](const std::string& text) {
+        return Superluminal::Text("{}", text);
+    }, nb::arg("text"));
+
+    m.def("slider", [](const std::string& label, F32 min, F32 max, nb::list value_list) {
+        if (value_list.size() != 1) {
+            throw std::invalid_argument("Slider value list must contain exactly one element");
+        }
+        F32 value = nb::cast<F32>(value_list[0]);
+        auto result = Superluminal::Slider(label, min, max, value);
+        value_list[0] = value;
+        return result;
+    }, nb::arg("label"), nb::arg("min"), nb::arg("max"), nb::arg("value"));
+
+    m.def("markdown", &Superluminal::Markdown, nb::arg("content"));
+
+    m.def("image", &Superluminal::Image, nb::arg("filepath"), nb::arg("width") = -1.0f, nb::arg("height") = -1.0f, nb::arg("fit_to_window") = false);
 
     m.def("mosaic_layout", &Superluminal::MosaicLayout);
 }

@@ -87,7 +87,9 @@ class Amplitude : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(amplitude->locale()));
+        if (amplitude) {
+            JST_CHECK(instance().eraseModule(amplitude->locale()));
+        }
 
         return Result::SUCCESS;
     }

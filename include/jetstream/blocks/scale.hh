@@ -91,7 +91,9 @@ class Scale : public Block {
     }
 
     Result destroy() {
-        JST_CHECK(instance().eraseModule(scale->locale()));
+        if (scale) {
+            JST_CHECK(instance().eraseModule(scale->locale()));
+        }
 
         return Result::SUCCESS;
     }

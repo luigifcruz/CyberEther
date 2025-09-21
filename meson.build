@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.0.0-alpha6',
+    version: '1.0.0-beta1',
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
@@ -86,8 +86,6 @@ cfg_lst.set('JST_OS_WINDOWS', jst_is_windows)
 
 subdir('meson')
 subdir('resources')
-subdir('flowgraphs')
-subdir('shaders')
 subdir('src')
 
 #
@@ -134,16 +132,12 @@ endif
 # Optionals
 #
 
-if not jst_is_browser and \
-   not jst_is_android and \
-   not jst_is_ios
-    subdir('tests')
-endif
+subdir('examples')
 
 if not jst_is_browser and \
    not jst_is_android and \
    not jst_is_ios
-    subdir('examples')
+    subdir('tests')
 endif
 
 if not jst_is_ios and \
