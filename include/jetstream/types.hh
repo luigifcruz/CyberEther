@@ -23,12 +23,10 @@ enum class Result : uint16_t {
     TIMEOUT     = 8,
 };
 
-/**
- * @enum Taint
- * @brief Represents the taint status of a module's input or output.
- *
- * This enum class is used to describe various taint or state conditions of data being processed by a module. 
- */
+//
+// Taint
+//
+
 enum class Taint : uint64_t {
     CLEAN               = 0 << 0, ///< No taint set, data is in its original state.
     IN_PLACE            = 1 << 0, ///< Module will overwrite input, modifying it directly.
@@ -38,6 +36,10 @@ enum class Taint : uint64_t {
 inline Taint operator&(const Taint& lhs, const Taint& rhs) {
     return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
 }
+
+//
+// ColorRGBA
+//
 
 template<typename T = F32>
 struct ColorRGBA {
@@ -54,6 +56,10 @@ struct ColorRGBA {
         return (r != c.r || g != c.g || b != c.b || a != c.a);
     }
 };
+
+//
+// Extent2D
+//
 
 template<typename T = U64>
 struct Extent2D {
@@ -87,7 +93,86 @@ Extent2D<T> operator/(const Extent2D<T>& a, const F32& b) {
     return {static_cast<T>(a.x / b), static_cast<T>(a.y / b)};
 }
 
-inline Extent2D<U64> NullSize = {0, 0};
+inline Extent2D<U64> NullSize2D = {0, 0};
+
+//
+// Extent3D
+//
+
+template<typename T = U64>
+struct Extent3D {
+    T x;
+    T y;
+    T z;
+
+    F32 ratio() const {
+        return static_cast<F32>(x) / y;
+    }
+
+    bool operator==(const Extent3D<T>& a) const {
+        return (x == a.x && y == a.y && z == a.z);
+    }
+
+    bool operator!=(const Extent3D<T>& a) const {
+        return (x != a.x || y != a.y || z != a.z);
+    }
+
+    bool operator<=(const Extent3D<T>& a) const {
+        return (x <= a.x || y <= a.y || z <= a.z);
+    }
+};
+
+template<typename T>
+Extent3D<T> operator*(const Extent3D<T>& a, const F32& b) {
+    return {static_cast<T>(a.x * b), static_cast<T>(a.y * b), static_cast<T>(a.z * b)};
+}
+
+template<typename T>
+Extent3D<T> operator/(const Extent3D<T>& a, const F32& b) {
+    return {static_cast<T>(a.x / b), static_cast<T>(a.y / b), static_cast<T>(a.z / b)};
+}
+
+inline Extent3D<U64> NullSize3D = {0, 0, 0};
+
+//
+// Extent4D
+//
+
+template<typename T = U64>
+struct Extent4D {
+    T x;
+    T y;
+    T z;
+    T w;
+
+    F32 ratio() const {
+        return static_cast<F32>(x) / y;
+    }
+
+    bool operator==(const Extent4D<T>& a) const {
+        return (x == a.x && y == a.y && z == a.z && w == a.w);
+    }
+
+    bool operator!=(const Extent4D<T>& a) const {
+        return (x != a.x || y != a.y || z != a.z || w != a.w);
+    }
+
+    bool operator<=(const Extent4D<T>& a) const {
+        return (x <= a.x || y <= a.y || z <= a.z || w <= a.w);
+    }
+};
+
+template<typename T>
+Extent4D<T> operator*(const Extent4D<T>& a, const F32& b) {
+    return {static_cast<T>(a.x * b), static_cast<T>(a.y * b), static_cast<T>(a.z * b), static_cast<T>(a.w * b)};
+}
+
+template<typename T>
+Extent4D<T> operator/(const Extent4D<T>& a, const F32& b) {
+    return {static_cast<T>(a.x / b), static_cast<T>(a.y / b), static_cast<T>(a.z / b), static_cast<T>(a.w / b)};
+}
+
+inline Extent4D<U64> NullSize4D = {0, 0, 0, 0};
 
 }  // namespace Jetstream
 

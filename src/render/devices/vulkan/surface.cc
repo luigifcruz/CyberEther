@@ -240,7 +240,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
 
 const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     if (!framebufferResolve) {
-        return NullSize;
+        return NullSize2D;
     }
 
     requestedSize = size;

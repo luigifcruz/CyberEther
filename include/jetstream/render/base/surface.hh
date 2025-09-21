@@ -44,7 +44,7 @@ class Surface : public WindowAttachment {
         if (config.framebuffer) {
             return config.framebuffer->size();
         }
-        return NullSize;
+        return NullSize2D;
     }
     virtual const Extent2D<U64>& size(const Extent2D<U64>& size) = 0;
 
