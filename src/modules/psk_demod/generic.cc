@@ -1,5 +1,8 @@
 #include "jetstream/modules/psk_demod.hh"
 
+#include <algorithm>
+#include <deque>
+
 namespace Jetstream {
 
 template<Device D, typename T>
@@ -15,15 +18,22 @@ struct PskDemod<D, T>::Impl {
     F64 freqBeta;
 
     // Timing recovery state
-    F64 timingAccumulator;
-    F64 timingError;
     F64 timingAlpha;
     F64 timingBeta;
-    T lastSample;
+    F64 timingMu;
+    F64 timingOmega;
+    F64 timingOmegaNominal;
+    F64 timingOmegaMin;
+    F64 timingOmegaMax;
+    U64 timingIndex;
 
-    // Interpolation state for timing recovery
-    std::vector<T> delayLine;
-    U64 delayLineIndex;
+    // Symbol history for MM detector
+    bool hasLastSymbol;
+    T lastSymbol;
+    T lastDecision;
+
+    // Raw sample history for interpolation across buffers
+    std::deque<T> sampleHistory;
 
     // Safety parameters
     static constexpr F64 MAX_TIMING_ERROR = 1.0;
@@ -32,8 +42,10 @@ struct PskDemod<D, T>::Impl {
     static constexpr F64 MIN_FREQUENCY_ERROR = -1.0;
 
     // Helper methods
-    T interpolate(const std::vector<T>& samples, F64 mu) const;
-    F64 gardnerTimingError(const T& early, const T& prompt, const T& late) const;
+    T interpolate(const T& a, const T& b, F64 mu) const;
+    T decision(const T& sample) const;
+    F64 muellerMullerError(const T& prevSymbol, const T& prevDecision,
+                           const T& currentSymbol, const T& currentDecision) const;
     F64 costasLoopError(const T& sample) const;
     T correctFrequency(const T& sample, F64 phase) const;
     void initializeParameters();
@@ -116,10 +128,19 @@ Result PskDemod<D, T>::create() {
 
     // Initialize PSK demod state
     pimpl->phaseAccumulator = 0.0;
-    pimpl->timingAccumulator = 0.0;
     pimpl->frequencyError = 0.0;
-    pimpl->timingError = 0.0;
-    pimpl->lastSample = T{0};
+
+    F64 nominalOmega = config.sampleRate / config.symbolRate;
+    pimpl->timingOmegaNominal = nominalOmega;
+    pimpl->timingOmega = nominalOmega;
+    pimpl->timingMu = 0.0;
+    pimpl->timingIndex = 0;
+    pimpl->timingOmegaMin = std::max(0.5, nominalOmega * 0.5);
+    pimpl->timingOmegaMax = std::max(pimpl->timingOmegaMin + 1e-6, nominalOmega * 1.5);
+    pimpl->sampleHistory.clear();
+    pimpl->hasLastSymbol = false;
+    pimpl->lastSymbol = T{0};
+    pimpl->lastDecision = T{0};
 
     JST_CHECK(pimpl->refresh_values(config));
 
