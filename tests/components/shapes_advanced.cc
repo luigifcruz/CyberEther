@@ -13,46 +13,35 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
         Render::Components::Shapes::Config cfg;
         cfg.pixelSize = {2.0f / 1400.0f, 2.0f / 900.0f};
 
+        // Removed all LINE entries and all *_xl entries.
         cfg.elements = {
             {"basic_triangle", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1}},
-            {"basic_rect", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1}},
-            {"basic_circle", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1}},
-            {"basic_rect_line", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1}},
+            {"basic_rect",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1}},
+            {"basic_circle",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1}},
 
             {"rotate_triangle", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1}},
-            {"rotate_rect", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1}},
-            {"rotate_circle", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1}},
-            {"rotate_rect_line", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1}},
+            {"rotate_rect",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1}},
+            {"rotate_circle",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1}},
 
             {"corner_triangle", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1, .cornerRadius = 0.5f}},
-            {"corner_rect", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1, .cornerRadius = 0.5f}},
-            {"corner_circle", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1, .cornerRadius = 0.5f}},
-            {"corner_rect_line", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1, .cornerRadius = 0.5f}},
+            {"corner_rect",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1, .cornerRadius = 0.5f}},
+            {"corner_circle",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1, .cornerRadius = 0.5f}},
 
             {"border_triangle", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1, .borderWidth = 2.0f, .borderColor = {1.0f, 0.3f, 0.3f, 1.0f}}},
-            {"border_rect", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1, .borderWidth = 1.0f, .borderColor = {0.3f, 1.0f, 0.3f, 1.0f}}},
-            {"border_circle", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1, .borderWidth = 1.0f, .borderColor = {0.3f, 0.3f, 1.0f, 1.0f}}},
-            {"border_rect_line", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1, .borderWidth = 1.0f, .borderColor = {1.0f, 1.0f, 0.3f, 1.0f}}},
+            {"border_rect",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1, .borderWidth = 3.0f, .borderColor = {1.0f, 1.0f, 1.0f, 1.0f}}},
+            {"border_circle",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1, .borderWidth = 2.0f, .borderColor = {0.3f, 0.3f, 1.0f, 1.0f}}},
 
             {"triangle_s", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1}},
+            {"rect_s",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1}},
+            {"circle_s",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1}},
+
             {"triangle_m", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1}},
+            {"rect_m",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1}},
+            {"circle_m",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1}},
+
             {"triangle_l", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1}},
-            {"triangle_xl", {.type = Render::Components::Shapes::Type::TRIANGLE, .numberOfInstances = 1}},
-
-            {"rect_s", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1}},
-            {"rect_m", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1}},
-            {"rect_l", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1}},
-            {"rect_xl", {.type = Render::Components::Shapes::Type::RECT, .numberOfInstances = 1}},
-
-            {"circle_s", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1}},
-            {"circle_m", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1}},
-            {"circle_l", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1}},
-            {"circle_xl", {.type = Render::Components::Shapes::Type::CIRCLE, .numberOfInstances = 1}},
-
-            {"line_s", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1}},
-            {"line_m", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1}},
-            {"line_l", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1}},
-            {"line_xl", {.type = Render::Components::Shapes::Type::LINE, .numberOfInstances = 1}},
+            {"rect_l",     {.type = Render::Components::Shapes::Type::RECT,     .numberOfInstances = 1}},
+            {"circle_l",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1}},
         };
 
         JST_CHECK(instance.window().build(component, cfg));
@@ -93,37 +82,38 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
 
     Result renderInfoPanel([[maybe_unused]] const ImVec2& totalSize, [[maybe_unused]] const ImVec2& contentSize) override {
         ImGui::Separator();
-        ImGui::Text("Grid Layout (8x4):");
-        ImGui::TextWrapped("Basic shapes, rotating variations, corner radius, border width, and size variations");
+        ImGui::Text("Grid Layout (7x3):");
+        ImGui::TextWrapped("Rows: Basic, Rotating, Corner Radius, Border Width, then S / M / L size rows. Columns: Triangle | Rect | Circle. No lines, no XL.");
         ImGui::Separator();
         ImGui::Text("Shape Types:");
         ImGui::BulletText("Triangles");
         ImGui::BulletText("Rectangles");
         ImGui::BulletText("Circles");
-        ImGui::BulletText("Lines (thin rects)");
         return Result::SUCCESS;
     }
 
  private:
     void setupShapeGrid() {
-        const float gridSpacingX = 0.4f;
+        // Re-organized placement for a 7 (rows) x 3 (columns) grid:
+        // Columns: Triangle | Rect | Circle
+        // Rows:    Basic, Rotate, Corner, Border, S, M, L
+        const float gridSpacingX = 0.50f;
         const float gridSpacingY = 0.22f;
-        const float startX = -0.6f;
+        const float startX = -0.50f; // centers 3 columns at ~[-0.5, 0.0, +0.5]
         const float startY = 0.75f;
-        const float defaultSize = 35.0f;
-        const float sizeS = 20.0f;
-        const float sizeM = 30.0f;
-        const float sizeL = 40.0f;
-        const float sizeXL = 50.0f;
-        const float lineThickness = 4.0f;
-        ColorRGBA<F32> basicColor = {0.8f, 0.8f, 0.8f, 1.0f};
+
+        const float defaultSize = 60.0f;
+        const float sizeS = 40.0f;
+        const float sizeM = 60.0f;
+        const float sizeL = 80.0f;
+
+        ColorRGBA<F32> basicColor  = {0.8f, 0.8f, 0.8f, 1.0f};
         ColorRGBA<F32> rotateColor = {0.9f, 0.6f, 0.2f, 1.0f};
         ColorRGBA<F32> cornerColor = {0.2f, 0.8f, 0.5f, 1.0f};
         ColorRGBA<F32> borderColor = {0.3f, 0.6f, 0.9f, 1.0f};
         ColorRGBA<F32> triangleColor = {1.0f, 0.3f, 0.3f, 1.0f};
-        ColorRGBA<F32> rectColor = {0.3f, 1.0f, 0.3f, 1.0f};
-        ColorRGBA<F32> circleColor = {0.3f, 0.3f, 1.0f, 1.0f};
-        ColorRGBA<F32> lineColor = {1.0f, 1.0f, 0.3f, 1.0f};
+        ColorRGBA<F32> rectColor     = {0.3f, 1.0f, 0.3f, 1.0f};
+        ColorRGBA<F32> circleColor   = {0.3f, 0.3f, 1.0f, 1.0f};
 
         auto setupShape = [&](const std::string& name, float x, float y, float width, float height,
                              const ColorRGBA<F32>& color, float rotation = 0.0f) {
@@ -150,45 +140,40 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
             }
         };
 
-        setupShape("basic_triangle", startX, startY, defaultSize, defaultSize, basicColor);
-        setupShape("basic_rect", startX + gridSpacingX, startY, defaultSize, defaultSize, basicColor);
-        setupShape("basic_circle", startX + 2*gridSpacingX, startY, defaultSize, defaultSize, basicColor);
-        setupShape("basic_rect_line", startX + 3*gridSpacingX, startY, defaultSize, lineThickness, basicColor);
+        // Row 0: Basic
+        setupShape("basic_triangle", startX + 0*gridSpacingX, startY - 0*gridSpacingY, defaultSize, defaultSize, basicColor);
+        setupShape("basic_rect",     startX + 1*gridSpacingX, startY - 0*gridSpacingY, defaultSize, defaultSize, basicColor);
+        setupShape("basic_circle",   startX + 2*gridSpacingX, startY - 0*gridSpacingY, defaultSize, defaultSize, basicColor);
 
-        setupShape("rotate_triangle", startX, startY - gridSpacingY, defaultSize, defaultSize, rotateColor);
-        setupShape("rotate_rect", startX + gridSpacingX, startY - gridSpacingY, defaultSize, defaultSize, rotateColor);
-        setupShape("rotate_circle", startX + 2*gridSpacingX, startY - gridSpacingY, defaultSize, defaultSize, rotateColor);
-        setupShape("rotate_rect_line", startX + 3*gridSpacingX, startY - gridSpacingY, defaultSize, lineThickness, rotateColor);
+        // Row 1: Rotating
+        setupShape("rotate_triangle", startX + 0*gridSpacingX, startY - 1*gridSpacingY, defaultSize, defaultSize, rotateColor);
+        setupShape("rotate_rect",     startX + 1*gridSpacingX, startY - 1*gridSpacingY, defaultSize, defaultSize, rotateColor);
+        setupShape("rotate_circle",   startX + 2*gridSpacingX, startY - 1*gridSpacingY, defaultSize, defaultSize, rotateColor);
 
-        setupShape("corner_triangle", startX, startY - 2*gridSpacingY, defaultSize, defaultSize, cornerColor);
-        setupShape("corner_rect", startX + gridSpacingX, startY - 2*gridSpacingY, defaultSize, defaultSize, cornerColor);
-        setupShape("corner_circle", startX + 2*gridSpacingX, startY - 2*gridSpacingY, defaultSize, defaultSize, cornerColor);
-        setupShape("corner_rect_line", startX + 3*gridSpacingX, startY - 2*gridSpacingY, defaultSize, lineThickness, cornerColor);
+        // Row 2: Corner radius
+        setupShape("corner_triangle", startX + 0*gridSpacingX, startY - 2*gridSpacingY, defaultSize, defaultSize, cornerColor);
+        setupShape("corner_rect",     startX + 1*gridSpacingX, startY - 2*gridSpacingY, defaultSize, defaultSize, cornerColor);
+        setupShape("corner_circle",   startX + 2*gridSpacingX, startY - 2*gridSpacingY, defaultSize, defaultSize, cornerColor);
 
-        setupShape("border_triangle", startX, startY - 3*gridSpacingY, defaultSize, defaultSize, borderColor);
-        setupShape("border_rect", startX + gridSpacingX, startY - 3*gridSpacingY, defaultSize, defaultSize, borderColor);
-        setupShape("border_circle", startX + 2*gridSpacingX, startY - 3*gridSpacingY, defaultSize, defaultSize, borderColor);
-        setupShape("border_rect_line", startX + 3*gridSpacingX, startY - 3*gridSpacingY, defaultSize, lineThickness, borderColor);
+        // Row 3: Border width
+        setupShape("border_triangle", startX + 0*gridSpacingX, startY - 3*gridSpacingY, defaultSize, defaultSize, borderColor);
+        setupShape("border_rect",     startX + 1*gridSpacingX, startY - 3*gridSpacingY, defaultSize, defaultSize, borderColor);
+        setupShape("border_circle",   startX + 2*gridSpacingX, startY - 3*gridSpacingY, defaultSize, defaultSize, borderColor);
 
-        setupShape("triangle_s", startX, startY - 4*gridSpacingY, sizeS, sizeS, triangleColor);
-        setupShape("triangle_m", startX + gridSpacingX, startY - 4*gridSpacingY, sizeM, sizeM, triangleColor);
-        setupShape("triangle_l", startX + 2*gridSpacingX, startY - 4*gridSpacingY, sizeL, sizeL, triangleColor);
-        setupShape("triangle_xl", startX + 3*gridSpacingX, startY - 4*gridSpacingY, sizeXL, sizeXL, triangleColor);
+        // Row 4: S
+        setupShape("triangle_s", startX + 0*gridSpacingX, startY - 4*gridSpacingY, sizeS, sizeS, triangleColor);
+        setupShape("rect_s",     startX + 1*gridSpacingX, startY - 4*gridSpacingY, sizeS, sizeS, rectColor);
+        setupShape("circle_s",   startX + 2*gridSpacingX, startY - 4*gridSpacingY, sizeS, sizeS, circleColor);
 
-        setupShape("rect_s", startX, startY - 5*gridSpacingY, sizeS, sizeS, rectColor);
-        setupShape("rect_m", startX + gridSpacingX, startY - 5*gridSpacingY, sizeM, sizeM, rectColor);
-        setupShape("rect_l", startX + 2*gridSpacingX, startY - 5*gridSpacingY, sizeL, sizeL, rectColor);
-        setupShape("rect_xl", startX + 3*gridSpacingX, startY - 5*gridSpacingY, sizeXL, sizeXL, rectColor);
+        // Row 5: M
+        setupShape("triangle_m", startX + 0*gridSpacingX, startY - 5*gridSpacingY, sizeM, sizeM, triangleColor);
+        setupShape("rect_m",     startX + 1*gridSpacingX, startY - 5*gridSpacingY, sizeM, sizeM, rectColor);
+        setupShape("circle_m",   startX + 2*gridSpacingX, startY - 5*gridSpacingY, sizeM, sizeM, circleColor);
 
-        setupShape("circle_s", startX, startY - 6*gridSpacingY, sizeS, sizeS, circleColor);
-        setupShape("circle_m", startX + gridSpacingX, startY - 6*gridSpacingY, sizeM, sizeM, circleColor);
-        setupShape("circle_l", startX + 2*gridSpacingX, startY - 6*gridSpacingY, sizeL, sizeL, circleColor);
-        setupShape("circle_xl", startX + 3*gridSpacingX, startY - 6*gridSpacingY, sizeXL, sizeXL, circleColor);
-
-        setupShape("line_s", startX, startY - 7*gridSpacingY, sizeS, lineThickness, lineColor);
-        setupShape("line_m", startX + gridSpacingX, startY - 7*gridSpacingY, sizeM, lineThickness, lineColor);
-        setupShape("line_l", startX + 2*gridSpacingX, startY - 7*gridSpacingY, sizeL, lineThickness, lineColor);
-        setupShape("line_xl", startX + 3*gridSpacingX, startY - 7*gridSpacingY, sizeXL, lineThickness, lineColor);
+        // Row 6: L
+        setupShape("triangle_l", startX + 0*gridSpacingX, startY - 6*gridSpacingY, sizeL, sizeL, triangleColor);
+        setupShape("rect_l",     startX + 1*gridSpacingX, startY - 6*gridSpacingY, sizeL, sizeL, rectColor);
+        setupShape("circle_l",   startX + 2*gridSpacingX, startY - 6*gridSpacingY, sizeL, sizeL, circleColor);
     }
 
     void updateRotatingShapes() {
@@ -196,7 +181,7 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
         rotation += 0.02f;
 
         const std::vector<std::string> rotatingShapes = {
-            "rotate_triangle", "rotate_rect", "rotate_circle", "rotate_rect_line"
+            "rotate_triangle", "rotate_rect", "rotate_circle"
         };
 
         for (const auto& shapeName : rotatingShapes) {

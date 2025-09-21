@@ -3,7 +3,6 @@
 
 // TODO: Implement borders.
 // TODO: Implement rounded corners.
-// TODO: Implement propper lines.
 
 layout(location = 0) in vec2 inLocalPos;
 layout(location = 1) in vec4 inFillColor;
@@ -17,7 +16,6 @@ layout(location = 0) out vec4 outColor;
 const int TYPE_TRIANGLE = 0;
 const int TYPE_RECT = 1;
 const int TYPE_CIRCLE = 2;
-const int TYPE_LINE = 3;
 
 float sdfCircle(vec2 p, float radius) {
     return length(p) - radius;
@@ -50,7 +48,7 @@ void main() {
     // Calculate signed distance based on shape type
     if (shapeType == TYPE_CIRCLE) {
         distance = sdfCircle(inLocalPos, 0.5);
-    } else if (shapeType == TYPE_RECT || shapeType == TYPE_LINE) {
+    } else if (shapeType == TYPE_RECT) {
         distance = sdfRect(inLocalPos, vec2(1.0));
     } else if (shapeType == TYPE_TRIANGLE) {
         distance = sdfTriangle(inLocalPos);
@@ -66,5 +64,5 @@ void main() {
     float fillAlpha = smoothstep(edgeSharpness * width, -edgeSharpness * width, distance);
 
     // Combine fill and border
-    outColor = vec4(inFillColor.r, inFillColor.g, inFillColor.b, fillAlpha);
+    outColor = vec4(inFillColor.r, inFillColor.g, inFillColor.b, inFillColor.a * fillAlpha);
 }

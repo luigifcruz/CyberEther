@@ -19,7 +19,6 @@ class Shapes : public Generic {
         TRIANGLE = 0,
         RECT = 1,
         CIRCLE = 2,
-        LINE = 3,
     };
 
     struct ElementConfig {
