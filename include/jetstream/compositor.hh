@@ -168,19 +168,19 @@ class JETSTREAM_API Compositor {
     Locale renameBlockLocale;
     std::string renameBlockNewId;
 
-    static const U32 CpuColor              = IM_COL32(224, 146,   0, 255);
-    static const U32 CpuColorSelected      = IM_COL32(184, 119,   0, 255);
-    static const U32 CudaColor             = IM_COL32( 95, 161,   2, 255);
-    static const U32 CudaColorSelected     = IM_COL32( 85, 140,   2, 255);
-    static const U32 MetalColor            = IM_COL32( 98,  60, 234, 255);
-    static const U32 MetalColorSelected    = IM_COL32( 76,  33, 232, 255);
-    static const U32 VulkanColor           = IM_COL32(238,  27,  52, 255);
-    static const U32 VulkanColorSelected   = IM_COL32(209,  16,  38, 255);
-    static const U32 WebGPUColor           = IM_COL32( 59, 165, 147, 255);
-    static const U32 WebGPUColorSelected   = IM_COL32( 49, 135, 121, 255);
-    static const U32 DisabledColor         = IM_COL32( 75,  75,  75, 255);
-    static const U32 DisabledColorSelected = IM_COL32( 75,  75,  75, 255);
-    static const U32 DefaultColor          = IM_COL32(255, 255, 255, 255);
+    static constexpr const U32 CpuColor              = IM_COL32(224, 146,   0, 255);
+    static constexpr const U32 CpuColorSelected      = IM_COL32(184, 119,   0, 255);
+    static constexpr const U32 CudaColor             = IM_COL32( 95, 161,   2, 255);
+    static constexpr const U32 CudaColorSelected     = IM_COL32( 85, 140,   2, 255);
+    static constexpr const U32 MetalColor            = IM_COL32( 98,  60, 234, 255);
+    static constexpr const U32 MetalColorSelected    = IM_COL32( 76,  33, 232, 255);
+    static constexpr const U32 VulkanColor           = IM_COL32(238,  27,  52, 255);
+    static constexpr const U32 VulkanColorSelected   = IM_COL32(209,  16,  38, 255);
+    static constexpr const U32 WebGPUColor           = IM_COL32( 59, 165, 147, 255);
+    static constexpr const U32 WebGPUColorSelected   = IM_COL32( 49, 135, 121, 255);
+    static constexpr const U32 DisabledColor         = IM_COL32( 75,  75,  75, 255);
+    static constexpr const U32 DisabledColorSelected = IM_COL32( 75,  75,  75, 255);
+    static constexpr const U32 DefaultColor          = IM_COL32(255, 255, 255, 255);
 
     // ImGui, ImNodes, and ImGuiMarkdown
 
