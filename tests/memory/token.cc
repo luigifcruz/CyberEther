@@ -10,55 +10,55 @@ using namespace Jetstream;
 TEST_CASE("Token Class Tests", "[Token]") {
     SECTION("Default Constructor") {
         Token token;
-        REQUIRE(token.get_type() == Token::Type::Colon);
+        REQUIRE(token.getType() == Token::Type::Colon);
     }
 
     SECTION("Constructor with Single U64 Parameter") {
         Token token(42);
-        REQUIRE(token.get_type() == Token::Type::Number);
-        REQUIRE(token.get_a() == 42);
+        REQUIRE(token.getType() == Token::Type::Number);
+        REQUIRE(token.getA() == 42);
     }
 
     SECTION("Constructor with Two U64 Parameters") {
         Token token(42, 43);
-        REQUIRE(token.get_type() == Token::Type::Colon);
-        REQUIRE(token.get_a() == 42);
-        REQUIRE(token.get_b() == 43);
-        REQUIRE(token.get_c() == 1);
+        REQUIRE(token.getType() == Token::Type::Colon);
+        REQUIRE(token.getA() == 42);
+        REQUIRE(token.getB() == 43);
+        REQUIRE(token.getC() == 1);
     }
 
     SECTION("Constructor with Three U64 Parameters") {
         Token token(42, 43, 44);
-        REQUIRE(token.get_type() == Token::Type::Colon);
-        REQUIRE(token.get_a() == 42);
-        REQUIRE(token.get_b() == 43);
-        REQUIRE(token.get_c() == 44);
+        REQUIRE(token.getType() == Token::Type::Colon);
+        REQUIRE(token.getA() == 42);
+        REQUIRE(token.getB() == 43);
+        REQUIRE(token.getC() == 44);
     }
 
     SECTION("Constructor with Single I32 Parameter") {
         Token token(static_cast<I32>(42));
-        REQUIRE(token.get_type() == Token::Type::Number);
-        REQUIRE(token.get_a() == 42);
+        REQUIRE(token.getType() == Token::Type::Number);
+        REQUIRE(token.getA() == 42);
     }
 
     SECTION("Constructor with Two I32 Parameters") {
         Token token(static_cast<I32>(42), static_cast<I32>(43));
-        REQUIRE(token.get_type() == Token::Type::Colon);
-        REQUIRE(token.get_a() == 42);
-        REQUIRE(token.get_b() == 43);
+        REQUIRE(token.getType() == Token::Type::Colon);
+        REQUIRE(token.getA() == 42);
+        REQUIRE(token.getB() == 43);
     }
 
     SECTION("Constructor with Three I32 Parameters") {
         Token token(static_cast<I32>(42), static_cast<I32>(43), static_cast<I32>(44));
-        REQUIRE(token.get_type() == Token::Type::Colon);
-        REQUIRE(token.get_a() == 42);
-        REQUIRE(token.get_b() == 43);
-        REQUIRE(token.get_c() == 44);
+        REQUIRE(token.getType() == Token::Type::Colon);
+        REQUIRE(token.getA() == 42);
+        REQUIRE(token.getB() == 43);
+        REQUIRE(token.getC() == 44);
     }
 
     SECTION("Constructor with const char* Parameter") {
         Token token("...");
-        REQUIRE(token.get_type() == Token::Type::Ellipsis);
+        REQUIRE(token.getType() == Token::Type::Ellipsis);
     }
 
     SECTION("Output Stream Overload") {
@@ -102,19 +102,19 @@ TEST_CASE("Token Class Tests", "[Token]") {
     SECTION("std::vector<Token> with Mixed Initializer List") {
         std::vector<Token> tokens = {42, "...", {0, 8, 2}, {24, 48}};
 
-        REQUIRE(tokens[0].get_type() == Token::Type::Number);
-        REQUIRE(tokens[0].get_a() == 42);
+        REQUIRE(tokens[0].getType() == Token::Type::Number);
+        REQUIRE(tokens[0].getA() == 42);
 
-        REQUIRE(tokens[1].get_type() == Token::Type::Ellipsis);
+        REQUIRE(tokens[1].getType() == Token::Type::Ellipsis);
 
-        REQUIRE(tokens[2].get_type() == Token::Type::Colon);
-        REQUIRE(tokens[2].get_a() == 0);
-        REQUIRE(tokens[2].get_b() == 8);
-        REQUIRE(tokens[2].get_c() == 2);
+        REQUIRE(tokens[2].getType() == Token::Type::Colon);
+        REQUIRE(tokens[2].getA() == 0);
+        REQUIRE(tokens[2].getB() == 8);
+        REQUIRE(tokens[2].getC() == 2);
 
-        REQUIRE(tokens[3].get_type() == Token::Type::Colon);
-        REQUIRE(tokens[3].get_a() == 24);
-        REQUIRE(tokens[3].get_b() == 48);
+        REQUIRE(tokens[3].getType() == Token::Type::Colon);
+        REQUIRE(tokens[3].getA() == 24);
+        REQUIRE(tokens[3].getB() == 48);
 
         std::ostringstream os;
         os << tokens;

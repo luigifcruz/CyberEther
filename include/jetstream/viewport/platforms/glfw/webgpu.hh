@@ -9,7 +9,7 @@ struct GLFWwindow;
 namespace Jetstream::Viewport {
 
 template<>
-class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
+class GLFW<DeviceType::WebGPU> : public Adapter<DeviceType::WebGPU> {
  public:
     explicit GLFW(const Config& config);
     virtual ~GLFW();
@@ -22,8 +22,8 @@ class GLFW<Device::WebGPU> : public Adapter<Device::WebGPU> {
         return "GLFW (WebGPU)";
     }
 
-    constexpr Device device() const {
-        return Device::WebGPU;
+    constexpr DeviceType device() const {
+        return DeviceType::WebGPU;
     };
 
     Result create();

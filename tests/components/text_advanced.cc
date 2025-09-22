@@ -5,14 +5,15 @@
 
 class TextTestUI : public TestUIBase<Render::Components::Text> {
  public:
-    TextTestUI(Instance& instance) : TestUIBase(instance, "Surface Test") {
+    TextTestUI(const std::shared_ptr<Instance>& instance)
+        : TestUIBase(instance, "Surface Test") {
         startTime = std::chrono::steady_clock::now();
         frameCounter = 0;
     }
 
  protected:
     Result setupComponent() override {
-        if (!instance.window().hasFont("default_mono")) {
+        if (!render->hasFont("default_mono")) {
             JST_ERROR("Font 'default_mono' not found.");
             return Result::ERROR;
         }
@@ -20,7 +21,7 @@ class TextTestUI : public TestUIBase<Render::Components::Text> {
         Render::Components::Text::Config cfg;
         cfg.maxCharacters = 512;
         cfg.color = {0.9f, 0.9f, 0.9f, 1.0f}; // Light gray for general text
-        cfg.font = instance.window().font("default_mono");
+        cfg.font = render->font("default_mono");
         cfg.elements = {
             {"title", {3.0f, {0.0f, 0.8f}, {1, 1}, 0.0f, "Text Component Demo"}},
             {"large", {2.0f, {-0.8f, 0.5f}, {0, 0}, 0.0f, "Large Text (2.0x)"}},
@@ -42,12 +43,12 @@ class TextTestUI : public TestUIBase<Render::Components::Text> {
             {"info", {0.9f, {-0.8f, -0.3f}, {0, 0}, 0.0f, "Interactive text demo"}},
             {"controls", {0.8f, {-0.8f, -0.4f}, {0, 0}, 0.0f, "Dynamic animations"}},
         };
-        JST_CHECK(instance.window().build(component, cfg));
-        return instance.window().bind(component);
+        JST_CHECK(render->build(component, cfg));
+        return render->bind(component);
     }
 
     Result setupFramebuffer() override {
-        return instance.window().build<Render::Texture>(framebufferTexture, Render::Texture::Config{
+        return render->build<Render::Texture>(framebufferTexture, Render::Texture::Config{
             .size = {800, 600}
         });
     }
@@ -59,8 +60,8 @@ class TextTestUI : public TestUIBase<Render::Components::Text> {
         cfg.multisampled = false;
 
         JST_CHECK(component->surface(cfg));
-        JST_CHECK(instance.window().build(surface, cfg));
-        return instance.window().bind(surface);
+        JST_CHECK(render->build(surface, cfg));
+        return render->bind(surface);
     }
 
     void updatePixelSize(U64 width, U64 height) override {
@@ -148,7 +149,7 @@ class TextTestUI : public TestUIBase<Render::Components::Text> {
 };
 
 int main() {
-    return runComponentTest("Text Component Demo", "Text Component Demo", {1400, 900}, [](Instance& instance) {
+    return runComponentTest("Text Component Demo", "Text Component Demo", {1400, 900}, [](const std::shared_ptr<Instance>& instance) {
         TextTestUI(instance).run();
     });
 }

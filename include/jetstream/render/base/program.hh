@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_PROGRAM_HH
 #define JETSTREAM_RENDER_BASE_PROGRAM_HH
 
+#include <optional>
 #include <utility>
 #include <memory>
 #include <vector>
@@ -26,8 +27,9 @@ class Program {
         std::vector<std::shared_ptr<Draw>> draws;
         std::vector<std::shared_ptr<Texture>> textures;
         std::vector<std::pair<std::shared_ptr<Buffer>, Target>> buffers;
-        std::unordered_map<Device, std::vector<std::vector<U8>>> shaders;
+        std::unordered_map<DeviceType, std::vector<std::vector<U8>>> shaders;
         bool enableAlphaBlending = false;
+        std::optional<ScissorRect> scissorRect;
     };
 
     explicit Program(const Config& config) : config(config) {}
@@ -37,7 +39,11 @@ class Program {
         return config;
     }
 
-    template<Device D>
+    void scissorRect(const std::optional<ScissorRect>& rect) {
+        config.scissorRect = rect;
+    }
+
+    template<DeviceType D>
     static std::shared_ptr<Program> Factory(const Config& config) {
         return std::make_shared<ProgramImp<D>>(config);
     }

@@ -25,7 +25,7 @@ class Kernel {
     struct Config {
         std::tuple<U64, U64, U64> gridSize;
         std::vector<std::pair<std::shared_ptr<Buffer>, AccessMode>> buffers;
-        std::unordered_map<Device, std::vector<std::vector<U8>>> kernels;
+        std::unordered_map<DeviceType, std::vector<std::vector<U8>>> kernels;
     };
 
     explicit Kernel(const Config& config) : config(config) {}
@@ -39,7 +39,7 @@ class Kernel {
         updated = true;
     }
 
-    template<Device D> 
+    template<DeviceType D> 
     static std::shared_ptr<Kernel> Factory(const Config& config) {
         return std::make_shared<KernelImp<D>>(config);
     }

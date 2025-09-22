@@ -27,7 +27,7 @@ class Vertex {
         return config;
     }
 
-    template<Device D>
+    template<DeviceType D>
     static std::shared_ptr<Vertex> Factory(const Config& config) {
         return std::make_shared<VertexImp<D>>(config);
     }

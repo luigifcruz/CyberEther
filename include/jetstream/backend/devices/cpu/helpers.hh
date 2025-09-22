@@ -5,7 +5,6 @@
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
-#include "jetstream/memory/base.hh"
 
 namespace Jetstream::Backend {
 
@@ -109,7 +108,7 @@ inline I32 GetSocketBufferSize() {
 
     if (maxSocketSize < bufferSize) {
         bufferSize = maxSocketSize;
-        JST_WARN("Can't increase socket buffer size to {:.2f} MB. Maximum system socket buffer size is {:.2f} MB.", 
+        JST_WARN("Can't increase socket buffer size to {:.2f} MB. Maximum system socket buffer size is {:.2f} MB.",
                  static_cast<F32>(bufferSize) / JST_MB, static_cast<F32>(maxSocketSize) / JST_MB);
     }
 #endif

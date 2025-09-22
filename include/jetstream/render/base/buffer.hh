@@ -55,7 +55,7 @@ class Buffer : public WindowAttachment {
     virtual Result update() = 0;
     virtual Result update(const U64& offset, const U64& size) = 0;
 
-    template<Device D>
+    template<DeviceType D>
     static std::shared_ptr<Buffer> Factory(const Config& config) {
         return std::make_shared<BufferImp<D>>(config);
     }

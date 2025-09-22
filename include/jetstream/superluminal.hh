@@ -1,28 +1,15 @@
 #ifndef JETSTREAM_SUPERLUMINAL_HH
 #define JETSTREAM_SUPERLUMINAL_HH
 
+#include <atomic>
+#include <chrono>
 #include <thread>
-#include <variant>
 
 #include "jetstream/base.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 
 namespace Jetstream {
-
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-#define SPL_VARIANT_CPU Tensor<Device::CPU, CF32>, Tensor<Device::CPU, F32>
-#else
-#define SPL_VARIANT_CPU
-#endif
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#define SPL_VARIANT_CUDA , Tensor<Device::CUDA, CF32>, Tensor<Device::CUDA, F32>
-#else
-#define SPL_VARIANT_CUDA
-#endif
-
-#define SPL_VARIANT_BUFFER_TYPE_LIST SPL_VARIANT_CPU SPL_VARIANT_CUDA
 
 class Superluminal {
  public:
@@ -46,13 +33,10 @@ class Superluminal {
         Phase,
     };
 
-    // TODO: Add support for more data types.
-    // TODO: Add support for more devices.
-    typedef std::variant<SPL_VARIANT_BUFFER_TYPE_LIST> VariantBufferType;
     typedef std::vector<std::vector<U8>> Mosaic;
 
     struct PlotConfig {
-        VariantBufferType buffer;
+        Tensor buffer;
         Type type;
         I32 batchAxis = -1;
         I32 channelAxis = -1;
@@ -71,7 +55,7 @@ class Superluminal {
         Extent2D<U64> interfaceSize = {1280, 720};
         std::string windowTitle = "Superluminal";
         bool remote = false;
-        Device preferredDevice = Device::CPU;
+        DeviceType preferredDevice = DeviceType::CPU;
     };
 
     static Result Initialize(const InstanceConfig& config = {}) {
@@ -128,8 +112,22 @@ class Superluminal {
 
     static Result Show() {
         JST_CHECK(Superluminal::Start());
-        JST_CHECK(Superluminal::Update());
+
+        std::atomic<bool> running = true;
+        auto child = std::thread([&running]() {
+            while (running.load() && Superluminal::Presenting()) {
+                Superluminal::Update();
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            }
+        });
+
         JST_CHECK(Superluminal::Block());
+
+        running.store(false);
+        if (child.joinable()) {
+            child.join();
+        }
+
         JST_CHECK(Superluminal::Stop());
         JST_CHECK(Superluminal::Terminate());
 
@@ -167,10 +165,6 @@ class Superluminal {
         return GetInstance()->markdown(content);
     }
 
-    static Result Image(const std::string& filepath, F32 width = -1.0f, F32 height = -1.0f, bool fitToWindow = false) {
-        return GetInstance()->image(filepath, width, height, fitToWindow);
-    }
-
     static Mosaic MosaicLayout(U8 matrixHeight, U8 matrixWidth,
                                U8 panelHeight, U8 panelWidth,
                                U8 offsetX, U8 offsetY);
@@ -189,7 +183,6 @@ class Superluminal {
 
     Result start();
     Result stop();
-
     bool presenting();
     Result update(const std::string& name = {});
 
@@ -203,7 +196,6 @@ class Superluminal {
     Result text(const std::string& content);
     Result slider(const std::string& label, F32 min, F32 max, F32& value);
     Result markdown(const std::string& content);
-    Result image(const std::string& filepath, F32 width = -1.0f, F32 height = -1.0f, bool fitToWindow = false);
 };
 
 }  // namespace Jetstream

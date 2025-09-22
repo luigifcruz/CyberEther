@@ -7,18 +7,18 @@
 namespace Jetstream::Render {
 
 template<>
-class BufferImp<Device::Vulkan> : public Buffer {
+class BufferImp<DeviceType::Vulkan> : public Buffer {
  public:
     explicit BufferImp(const Config& config);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
 
     using Render::Buffer::size;
     using Render::Buffer::byteSize;
 
-    Result update();
-    Result update(const U64& offset, const U64& size);
+    Result update() override;
+    Result update(const U64& offset, const U64& size) override;
 
  protected:
     constexpr const VkBuffer& getHandle() const {
@@ -29,12 +29,12 @@ class BufferImp<Device::Vulkan> : public Buffer {
     VkBuffer buffer;
     VkDeviceMemory memory;
 
-    friend class SurfaceImp<Device::Vulkan>;
-    friend class ProgramImp<Device::Vulkan>;
-    friend class VertexImp<Device::Vulkan>;
-    friend class KernelImp<Device::Vulkan>;
-    friend class TextureImp<Device::Vulkan>;
-    friend class DrawImp<Device::Vulkan>;
+    friend class SurfaceImp<DeviceType::Vulkan>;
+    friend class ProgramImp<DeviceType::Vulkan>;
+    friend class VertexImp<DeviceType::Vulkan>;
+    friend class KernelImp<DeviceType::Vulkan>;
+    friend class TextureImp<DeviceType::Vulkan>;
+    friend class DrawImp<DeviceType::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

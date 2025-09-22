@@ -1,4 +1,4 @@
-#include "jetstream/memory/token.hh" 
+#include "jetstream/memory/token.hh"
 
 namespace Jetstream {
 
@@ -12,15 +12,15 @@ Token::Token(I32 _a, I32 _b, I32 _c) : a(_a), b(_b), c(_c), type(Type::Colon) {}
 Token::Token(const char*) : type(Type::Ellipsis) {}
 
 std::ostream& operator<<(std::ostream& os, const Token& token) {
-    switch (token.get_type()) {
+    switch (token.getType()) {
         case Token::Type::Number:
-            os << token.get_a();
+            os << token.getA();
             break;
         case Token::Type::Colon:
-            if (token.get_c() == 1) {
-                os << token.get_a() << ":" << token.get_b();
+            if (token.getC() == 1) {
+                os << token.getA() << ":" << token.getB();
             } else {
-                os << token.get_a() << ":" << token.get_b() << ":" << token.get_c();
+                os << token.getA() << ":" << token.getB() << ":" << token.getC();
             }
             break;
         case Token::Type::Ellipsis:

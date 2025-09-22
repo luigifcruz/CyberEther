@@ -6,6 +6,7 @@
 
 #include "jetstream/types.hh"
 
+// TODO: Remove testing namespace.
 namespace Jetstream {
 
 struct Token {
@@ -21,19 +22,19 @@ struct Token {
     Token(I32 _a, I32 _b, I32 _c);
     Token(const char*);
 
-    constexpr const Type& get_type() const {
+    constexpr const Type& getType() const {
         return type;
     }
 
-    constexpr const U64& get_a() const {
+    constexpr const U64& getA() const {
         return a;
     }
 
-    constexpr const U64& get_b() const {
+    constexpr const U64& getB() const {
         return b;
     }
 
-    constexpr const U64& get_c() const {
+    constexpr const U64& getC() const {
         return c;
     }
 
@@ -52,4 +53,4 @@ struct Token {
 template <> struct jst::fmt::formatter<Jetstream::Token> : ostream_formatter {};
 template <> struct jst::fmt::formatter<std::vector<Jetstream::Token>> : ostream_formatter {};
 
-#endif
+#endif  // JETSTREAM_MEMORY_TOKEN_HH

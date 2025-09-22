@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class VertexImp<Device::Metal> : public Vertex {
+class VertexImp<DeviceType::Metal> : public Vertex {
  public:
     explicit VertexImp(const Config& config);
 
@@ -38,11 +38,11 @@ class VertexImp<Device::Metal> : public Vertex {
     U32 indexCount;
     U32 indexOffset;
 
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, U32>> vertices;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, U32>> instances;
-    std::shared_ptr<BufferImp<Device::Metal>> indices;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::Metal>>, U32>> vertices;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::Metal>>, U32>> instances;
+    std::shared_ptr<BufferImp<DeviceType::Metal>> indices;
 
-    friend class DrawImp<Device::Metal>;
+    friend class DrawImp<DeviceType::Metal>;
 };
 
 }  // namespace Jetstream::Render

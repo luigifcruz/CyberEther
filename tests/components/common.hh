@@ -8,13 +8,9 @@
 
 using namespace Jetstream;
 
-constexpr static Device ComputeDevice = Device::CPU;
-constexpr static Device RenderDevice  = Device::Metal;
-using ViewportPlatform = Viewport::GLFW<RenderDevice>;
-
 class MagnifierGlass {
  public:
-    void render(ImTextureRef textureRef, const ImVec2& imagePos, const ImVec2& imageSize, 
+    void render(ImTextureRef textureRef, const ImVec2& imagePos, const ImVec2& imageSize,
                 const ImVec2& windowPos, const ImVec2& totalSize, float contentWidth) {
         if (!enabled) return;
 
@@ -136,40 +132,53 @@ class MagnifierGlass {
 template<typename ComponentType>
 class TestUIBase {
  public:
-    TestUIBase(Instance& instance, const std::string& testName) 
+    TestUIBase(const std::shared_ptr<Instance>& instance, const std::string& testName)
         : instance(instance), testName(testName) {}
 
     virtual ~TestUIBase() = default;
 
     Result run() {
+        JST_CHECK(instance->renderGet(render));
+
         JST_CHECK(setupComponent());
         JST_CHECK(setupFramebuffer());
         JST_CHECK(setupSurface());
 
         ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
 
-        instance.start();
+        JST_CHECK(instance->start());
 
         graphicalWorker = std::thread([&]{
             closing = false;
-            while (instance.presenting()) {
-                this->graphicalThreadLoop();
+            while (instance->presenting()) {
+                const auto result = instance->present([&]() -> Result {
+                    if (closing) {
+                        return Result::SUCCESS;
+                    }
+
+                    JST_CHECK(updateComponent());
+                    JST_CHECK(drawSplitLayout());
+                    return Result::SUCCESS;
+                });
+
+                if (result != Result::SUCCESS) {
+                    break;
+                }
             }
         });
 
-        while (instance.running()) {
-            instance.viewport().waitEvents();
+        while (instance->polling()) {
+            JST_CHECK(instance->poll());
         }
 
         closing = true;
-        instance.reset();
-        instance.stop();
+        JST_CHECK(instance->stop());
 
         if (graphicalWorker.joinable()) {
             graphicalWorker.join();
         }
 
-        instance.destroy();
+        JST_CHECK(instance->destroy());
 
         return Result::SUCCESS;
     }
@@ -195,9 +204,10 @@ class TestUIBase {
         const auto& scale = ImGui::GetIO().DisplayFramebufferScale;
         const auto& totalSize = ImGui::GetContentRegionAvail();
 
-        // Split layout: 75% content, 25% info
+        // Split layout: 75% content, 25% info, accounting for SameLine spacing
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
         const float contentWidth = totalSize.x * 0.75f;
-        const float infoWidth = totalSize.x * 0.25f;
+        const float infoWidth = totalSize.x - contentWidth - spacing;
 
         // Left side - Content framebuffer
         ImGui::BeginChild("ContentFramebuffer", ImVec2(contentWidth, totalSize.y), true);
@@ -218,7 +228,7 @@ class TestUIBase {
 
         // Render magnifier glass if enabled
         ImVec2 windowPos = ImGui::GetWindowPos();
-        magnifier.render(ImTextureRef(framebufferTexture->raw()), imagePos, imageSize, 
+        magnifier.render(ImTextureRef(framebufferTexture->raw()), imagePos, imageSize,
                         windowPos, totalSize, contentWidth);
 
         ImGui::EndChild();
@@ -249,24 +259,9 @@ class TestUIBase {
 
     virtual void updatePixelSize(U64 width, U64 height) = 0;
 
-    void graphicalThreadLoop() {
-        if (instance.begin() == Result::SKIP) {
-            return;
-        }
-
-        if (!closing) {
-            JST_CHECK_THROW(updateComponent());
-            JST_CHECK_THROW(drawSplitLayout());
-        }
-
-        JST_CHECK_THROW(instance.present());
-        if (instance.end() == Result::SKIP) {
-            return;
-        }
-    }
-
  protected:
-    Instance& instance;
+    std::shared_ptr<Instance> instance;
+    std::shared_ptr<Render::Window> render;
     std::string testName;
     std::thread graphicalWorker;
     bool closing = false;
@@ -279,31 +274,17 @@ class TestUIBase {
 };
 
 inline int runComponentTest(const std::string& appName, const std::string& windowTitle,
-                           const Extent2D<U64>& windowSize, 
-                           std::function<void(Instance&)> testFunction) {
+                           const Extent2D<U64>& windowSize,
+                           std::function<void(const std::shared_ptr<Instance>&)> testFunction) {
+    (void)windowTitle;
     std::cout << appName << " - CyberEther" << std::endl;
 
-    if (Backend::Initialize<ComputeDevice>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize compute backend.");
-        return 1;
-    }
+    auto instance = std::make_shared<Instance>();
 
-    if (Backend::Initialize<RenderDevice>({}) != Result::SUCCESS) {
-        JST_FATAL("Cannot initialize render backend.");
-        return 1;
-    }
+    Instance::Config config;
+    config.size = windowSize;
 
-    Instance instance;
-
-    Viewport::Config viewportCfg;
-    viewportCfg.vsync = true;
-    viewportCfg.size = windowSize;
-    viewportCfg.title = windowTitle;
-    JST_CHECK_THROW(instance.buildViewport<ViewportPlatform>(viewportCfg));
-
-    Render::Window::Config renderCfg;
-    renderCfg.scale = 1.0f;
-    JST_CHECK_THROW(instance.buildRender<RenderDevice>(renderCfg));
+    JST_CHECK_THROW(instance->create(config));
 
     testFunction(instance);
 

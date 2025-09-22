@@ -28,8 +28,6 @@ class Window {
  public:
     struct Config {
         F32 scale = 1.0f;
-
-        JST_SERDES(scale);
     };
 
     struct Stats {
@@ -56,9 +54,9 @@ class Window {
     Result synchronize();
 
     virtual const Stats& stats() const = 0;
-    virtual void drawDebugMessage() const = 0;
+    virtual std::string info() const = 0;
 
-    virtual constexpr Device device() const = 0;
+    virtual constexpr DeviceType device() const = 0;
 
     Result bind(const std::shared_ptr<Components::Generic>& component);
     Result unbind(const std::shared_ptr<Components::Generic>& component);
@@ -80,18 +78,18 @@ class Window {
         if constexpr (!std::is_base_of_v<Components::Generic, T>)  {
             switch (this->device()) {
     #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
-                case Device::Metal:
-                    member = T::template Factory<Device::Metal>(config);
+                case DeviceType::Metal:
+                    member = T::template Factory<DeviceType::Metal>(config);
                     break;
     #endif
     #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-                case Device::Vulkan:
-                    member = T::template Factory<Device::Vulkan>(config);
+                case DeviceType::Vulkan:
+                    member = T::template Factory<DeviceType::Vulkan>(config);
                     break;
     #endif
     #ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
-                case Device::WebGPU:
-                    member = T::template Factory<Device::WebGPU>(config);
+                case DeviceType::WebGPU:
+                    member = T::template Factory<DeviceType::WebGPU>(config);
                     break;
     #endif
                 default:
@@ -138,9 +136,6 @@ class Window {
     void scaleStyle(const Viewport::Generic& viewport);
 
  private:
-    std::vector<std::shared_ptr<Buffer>> buffers;
-    std::vector<std::shared_ptr<Texture>> textures;
-
     std::vector<std::shared_ptr<Components::Generic>> components;
 
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;

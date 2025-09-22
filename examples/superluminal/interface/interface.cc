@@ -9,7 +9,7 @@ using namespace Jetstream;
  * Generates a test signal combining a sine wave with noise
  * This demonstrates typical signal processing scenarios
  */
-void GenerateTestSignal(auto& data, float frequency = 1000.0f, float amplitude = 1.0f, float noise_level = 0.1f) {
+void GenerateTestSignal(Tensor& data, float frequency = 1000.0f, float amplitude = 1.0f, float noise_level = 0.1f) {
     const float sample_rate = 44100.0f;
 
     for (U64 j = 0; j < data.shape(1); j++) {
@@ -22,7 +22,7 @@ void GenerateTestSignal(auto& data, float frequency = 1000.0f, float amplitude =
         float noise = (std::rand() / float(RAND_MAX) - 0.5f) * noise_level;
 
         // Store as complex number (real part only for simplicity)
-        data[{0, j}] = CF32(signal + noise, 0.0f);
+        data.at<CF32>(0, j) = CF32(signal + noise, 0.0f);
     }
 }
 
@@ -39,7 +39,7 @@ int main() {
     std::cout << "Initializing Superluminal Interface..." << std::endl;
 
     // Create memory buffer
-    auto data = Tensor<Device::CPU, CF32>({1, 8192});
+    Tensor data(DeviceType::CPU, TypeToDataType<CF32>(), {1, 8192});
 
     // Create initial test signal
     GenerateTestSignal(data);
@@ -69,11 +69,12 @@ int main() {
     });
 
     // Signal visualization - shows domain transform capability
-    Superluminal::Plot("Signal Visualization", {{0, 1, 1}, {0, 1, 1}}, {
+    Superluminal::Plot("Sine", {{0, 1, 1}, {0, 1, 1}}, {
         .buffer = data,
         .type = Superluminal::Type::Line,
         .source = Superluminal::Domain::Time,       // Input is time domain data
         .display = Superluminal::Domain::Frequency, // Display as frequency domain
+        .options = {},
     });
 
     Superluminal::RealtimeLoop([&](const bool& running){

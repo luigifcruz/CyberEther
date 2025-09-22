@@ -42,7 +42,7 @@ def bin_to_header(path, stub):
                 f.write(',0x00};\n')
 
         f.write('\n')
-        f.write(f'static std::unordered_map<std::string, std::unordered_map<Jetstream::Device, '
+        f.write(f'static std::unordered_map<std::string, std::unordered_map<Jetstream::DeviceType, '
                 f'std::vector<std::vector<U8>>>> {decorator}ShadersPackage = {{\n')
 
         for name in names:
@@ -50,11 +50,11 @@ def bin_to_header(path, stub):
 
             for target in targets:
                 if target == 'msl':
-                    device_str = 'Jetstream::Device::Metal'
+                    device_str = 'Jetstream::DeviceType::Metal'
                 if target == 'spv':
-                    device_str = 'Jetstream::Device::Vulkan'
+                    device_str = 'Jetstream::DeviceType::Vulkan'
                 if target == 'wgsl':
-                    device_str = 'Jetstream::Device::WebGPU'
+                    device_str = 'Jetstream::DeviceType::WebGPU'
 
                 f.write('{ ' + device_str + ', { ')
 
@@ -89,7 +89,7 @@ def bin_to_header(path, stub):
             f.write(',0x00};\n')
 
         f.write('\n')
-        f.write(f'static std::unordered_map<std::string, std::unordered_map<Jetstream::Device, '
+        f.write(f'static std::unordered_map<std::string, std::unordered_map<Jetstream::DeviceType, '
                 f'std::vector<std::vector<U8>>>> {decorator}KernelsPackage = {{\n')
 
         for name in names:
@@ -97,11 +97,11 @@ def bin_to_header(path, stub):
 
             for target in targets:
                 if target == 'msl':
-                    device_str = 'Jetstream::Device::Metal'
+                    device_str = 'Jetstream::DeviceType::Metal'
                 if target == 'spv':
-                    device_str = 'Jetstream::Device::Vulkan'
+                    device_str = 'Jetstream::DeviceType::Vulkan'
                 if target == 'wgsl':
-                    device_str = 'Jetstream::Device::WebGPU'
+                    device_str = 'Jetstream::DeviceType::WebGPU'
 
                 f.write('{ ' + device_str + ', { ')
 

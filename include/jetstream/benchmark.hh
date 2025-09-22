@@ -1,74 +1,95 @@
 #ifndef JETSTREAM_BENCHMARK_HH
 #define JETSTREAM_BENCHMARK_HH
 
+#include <functional>
 #include <iostream>
+#include <map>
+#include <memory>
+#include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
-#include "jetstream/logger.hh"
-
-#include <nanobench.h>
+#include "jetstream/memory/types.hh"
+#include "jetstream/runtime.hh"
+#include "jetstream/provider.hh"
+#include "jetstream/parser.hh"
+#include "jetstream/registry.hh"
 
 namespace Jetstream {
 
-class Benchmark {
+class Module;
+
+class JETSTREAM_API Benchmark {
  public:
     struct ResultEntry {
         std::string name;
-        F64 ops_per_sec;
-        F64 ms_per_op;
+        F64 opsPerSec;
+        F64 msPerOp;
         F64 error;
     };
 
-    typedef std::function<void(ankerl::nanobench::Bench& bench, std::string name)> BenchmarkFuncType;
-    typedef std::map<std::string, std::vector<std::pair<std::string, BenchmarkFuncType>>> BenchmarkMapType;
-    typedef std::map<std::string, std::vector<ResultEntry>> ResultMapType;
+    struct InputSpec {
+        std::string name;
+        DataType dtype;
+        Shape shape;
+    };
 
-    static void Add(const std::string& module,
-                    const std::string& device,
-                    const std::string& type,
-                    const BenchmarkFuncType& benchmark) {
-        getInstance().add(module, device, type, benchmark);
-    }
+    struct BenchmarkSpec {
+        std::string variant;
+        std::vector<InputSpec> inputs;
+        Parser::Map config;
+    };
 
-    static void Run(const std::string& outputType, std::ostream& out = std::cout) {
-        getInstance().run(outputType, out);
-    }
+    using BenchmarkSpecFunc = std::function<std::vector<BenchmarkSpec>()>;
+    using ResultMapType = std::map<std::string, std::vector<ResultEntry>>;
 
-    static U64 TotalCount() {
-        return getInstance().totalCount();
-    }
+    struct ModuleBenchmarkSpecs {
+        std::string moduleType;
+        BenchmarkSpecFunc specFunc;
+    };
 
-    static U64 CurrentCount() {
-        return getInstance().currentCount();
-    }
-
-    static void ResetResults() {
-        getInstance().resetResults();
-    }
-
-    static const ResultMapType& GetResults() {
-        return getInstance().getResults();
-    }
+    static void RegisterModuleBenchmarkSpecs(const std::string& moduleType,
+                                             BenchmarkSpecFunc specFunc);
+    static void Run(const std::string& outputType, std::ostream& out = std::cout);
+    static U64 TotalCount();
+    static U64 CurrentCount();
+    static void ResetResults();
+    static const ResultMapType& GetResults();
+    static const std::vector<ModuleBenchmarkSpecs>& ListModuleBenchmarkSpecs();
 
  private:
-    static Benchmark& getInstance();
-
-    BenchmarkMapType benchmarks;
-    ResultMapType results;
-
-    U64 totalCount();
-    U64 currentCount();
-    void resetResults();
-    const ResultMapType& getResults();
-
-    void add(const std::string& module,
-             const std::string& device,
-             const std::string& type,
-             const BenchmarkFuncType& benchmark);
-    void run(const std::string& outputType, std::ostream& out);
+    struct Impl;
+    static Impl& benchmark();
 };
 
 }  // namespace Jetstream
 
-#endif
+#define JST_BENCHMARK_INPUT(name, dtype, ...) \
+    ::Jetstream::Benchmark::InputSpec{name, ::Jetstream::DataType::dtype, {__VA_ARGS__}}
+
+#define JST_BENCHMARK_CONFIG(...) \
+    [&]() { \
+        ::Jetstream::Parser::Map m; \
+        (__VA_ARGS__).serialize(m); \
+        return m; \
+    }()
+
+#define JST_DETAIL_BENCHMARKS(module_type_str, id) \
+    static std::vector<::Jetstream::Benchmark::BenchmarkSpec> \
+    JST_DETAIL_CONCAT(__jst_benchmark_specs_, id)(); \
+    namespace { \
+    [[maybe_unused]] static const bool JST_DETAIL_CONCAT(__jst_register_benchmarks_, id) = []() { \
+        ::Jetstream::Benchmark::RegisterModuleBenchmarkSpecs( \
+            module_type_str, \
+            &JST_DETAIL_CONCAT(__jst_benchmark_specs_, id) \
+        ); \
+        return true; \
+    }(); \
+    } \
+    static std::vector<::Jetstream::Benchmark::BenchmarkSpec> \
+    JST_DETAIL_CONCAT(__jst_benchmark_specs_, id)()
+
+#define JST_BENCHMARKS(module_type_str) \
+    JST_DETAIL_BENCHMARKS(module_type_str, __COUNTER__)
+
+#endif  // JETSTREAM_BENCHMARK_HH

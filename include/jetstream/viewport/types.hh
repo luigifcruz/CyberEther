@@ -32,18 +32,18 @@ inline std::string VideoCodecToString(const VideoCodec& codec) {
 }
 
 inline VideoCodec StringToVideoCodec(const std::string& codec) {
-    std::string codec_l = codec;
-    std::transform(codec_l.begin(), codec_l.end(), codec_l.begin(), ::tolower);
+    std::string sanitizedCodec = codec;
+    std::transform(sanitizedCodec.begin(), sanitizedCodec.end(), sanitizedCodec.begin(), ::tolower);
 
-    if (codec_l == "av1") {
+    if (sanitizedCodec == "av1") {
         return VideoCodec::AV1;
-    } else if (codec_l == "vp8") {
+    } else if (sanitizedCodec == "vp8") {
         return VideoCodec::VP8;
-    } else if (codec_l == "vp9") {
+    } else if (sanitizedCodec == "vp9") {
         return VideoCodec::VP9;
-    } else if (codec_l == "h264") {
+    } else if (sanitizedCodec == "h264") {
         return VideoCodec::H264;
-    } else if (codec_l == "ffv1") {
+    } else if (sanitizedCodec == "ffv1") {
         return VideoCodec::FFV1;
     }
 

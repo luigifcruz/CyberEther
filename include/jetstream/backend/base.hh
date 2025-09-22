@@ -10,7 +10,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/backend/config.hh"
 
-// TODO: Refactor this entire thing. It's a mess.
+// TODO: Refactor to turn into Device class.
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/devices/metal/base.hh"
@@ -34,14 +34,14 @@
 
 namespace Jetstream::Backend {
 
-template<Device DeviceId>
+template<DeviceType DeviceId>
 struct GetBackend {
     static constexpr bool enabled = false;
 };
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 template<>
-struct GetBackend<Device::Metal> {
+struct GetBackend<DeviceType::Metal> {
     static constexpr bool enabled = true;
     using Type = Metal;
 };
@@ -49,7 +49,7 @@ struct GetBackend<Device::Metal> {
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
 template<>
-struct GetBackend<Device::Vulkan> {
+struct GetBackend<DeviceType::Vulkan> {
     static constexpr bool enabled = true;
     using Type = Vulkan;
 };
@@ -57,7 +57,7 @@ struct GetBackend<Device::Vulkan> {
 
 #ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
 template<>
-struct GetBackend<Device::WebGPU> {
+struct GetBackend<DeviceType::WebGPU> {
     static constexpr bool enabled = true;
     using Type = WebGPU;
 };
@@ -65,7 +65,7 @@ struct GetBackend<Device::WebGPU> {
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 template<>
-struct GetBackend<Device::CPU> {
+struct GetBackend<DeviceType::CPU> {
     static constexpr bool enabled = true;
     using Type = CPU;
 };
@@ -73,7 +73,7 @@ struct GetBackend<Device::CPU> {
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 template<>
-struct GetBackend<Device::CUDA> {
+struct GetBackend<DeviceType::CUDA> {
     static constexpr bool enabled = true;
     using Type = CUDA;
 };
@@ -81,7 +81,7 @@ struct GetBackend<Device::CUDA> {
 
 class JETSTREAM_API Instance {
  public:
-    template<Device DeviceId>
+    template<DeviceType DeviceId>
     Result initialize(const Config& config) {
         using BackendType = typename GetBackend<DeviceId>::Type;
         std::lock_guard lock(mutex);
@@ -92,7 +92,7 @@ class JETSTREAM_API Instance {
         return Result::SUCCESS;
     }
 
-    Result destroy(const Device& id) {
+    Result destroy(const DeviceType& id) {
         std::lock_guard lock(mutex);
         if (backends.contains(id)) {
             JST_DEBUG("Destroying {} backend.", id);
@@ -101,7 +101,7 @@ class JETSTREAM_API Instance {
         return Result::SUCCESS;
     }
 
-    template<Device DeviceId>
+    template<DeviceType DeviceId>
     const auto& state() {
         using BackendType = typename GetBackend<DeviceId>::Type;
         if (!backends.contains(DeviceId)) {
@@ -114,7 +114,7 @@ class JETSTREAM_API Instance {
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
     }
 
-    bool initialized(const Device& id) {
+    bool initialized(const DeviceType& id) {
         return backends.contains(id);
     }
 
@@ -142,37 +142,37 @@ class JETSTREAM_API Instance {
 #endif
     > BackendHolder;
 
-    std::unordered_map<Device, BackendHolder> backends;
+    std::unordered_map<DeviceType, BackendHolder> backends;
     std::mutex mutex;
 };
 
 Instance& Get();
 
-template<Device D>
+template<DeviceType D>
 const auto& State() {
     return Get().state<D>();
 }
 
-template<Device D>
+template<DeviceType D>
 Result Initialize(const Config& config) {
     return Get().initialize<D>(config);
 }
 
-template<Device D>
+template<DeviceType D>
 Result Destroy() {
     return Get().destroy(D);
 }
 
-inline Result Destroy(const Device& id) {
+inline Result Destroy(const DeviceType& id) {
     return Get().destroy(id);
 }
 
-template<Device D>
+template<DeviceType D>
 bool Initialized() {
     return Get().initialized(D);
 }
 
-inline bool Initialized(const Device& id) {
+inline bool Initialized(const DeviceType& id) {
     return Get().initialized(id);
 }
 

@@ -123,6 +123,9 @@ Result Font::create(Window* window) {
             }
         }
 
+        int advanceWidth, leftSideBearing;
+        stbtt_GetCodepointHMetrics(&pimpl->font, ch, &advanceWidth, &leftSideBearing);
+
         glyphs[ch - 32] = {
             .x0 = x,
             .y0 = y,
@@ -130,7 +133,7 @@ Result Font::create(Window* window) {
             .y1 = y + height,
             .xOffset = static_cast<F32>(xoffset),
             .yOffset = static_cast<F32>(yoffset),
-            .xAdvance = static_cast<F32>(width)
+            .xAdvance = static_cast<F32>(advanceWidth * scale)
         };
 
         x += width + 1;

@@ -6,43 +6,44 @@
 
 namespace Jetstream::Render {
 
-using Implementation = ProgramImp<Device::Vulkan>;
+using Implementation = ProgramImp<DeviceType::Vulkan>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
     for (auto& draw : config.draws) {
         draws.push_back(
-            std::dynamic_pointer_cast<DrawImp<Device::Vulkan>>(draw)
+            std::dynamic_pointer_cast<DrawImp<DeviceType::Vulkan>>(draw)
         );
     }
 
     for (auto& texture : config.textures) {
         textures.push_back(
-            std::dynamic_pointer_cast<TextureImp<Device::Vulkan>>(texture)
+            std::dynamic_pointer_cast<TextureImp<DeviceType::Vulkan>>(texture)
         );
     }
 
     for (auto& [buffer, target] : config.buffers) {
         buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(buffer), target}
+            {std::dynamic_pointer_cast<BufferImp<DeviceType::Vulkan>>(buffer), target}
         );
     }
 }
 
 Result Implementation::create(VkRenderPass& renderPass,
-                              const std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer) {
+                              const Extent2D<U64>& framebufferSize,
+                              bool multisampled) {
     JST_DEBUG("[VULKAN] Creating program.");
 
-    auto& backend = Backend::State<Device::Vulkan>();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
     auto& device = backend->getDevice();
 
     // Load shaders from buffers.
 
-    if (config.shaders.contains(Device::Vulkan) == 0) {
+    if (config.shaders.contains(DeviceType::Vulkan) == 0) {
         JST_ERROR("[VULKAN] Module doesn't have necessary shader.");
         return Result::ERROR;
     }
 
-    const auto& shader = config.shaders[Device::Vulkan];
+    const auto& shader = config.shaders[DeviceType::Vulkan];
     VkShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
     VkShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
 
@@ -197,17 +198,17 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     VkViewport viewport{};
     viewport.x = 0.0f;
-    viewport.y = framebuffer->size().y;
-    viewport.width = framebuffer->size().x;
-    viewport.height = -static_cast<F32>(framebuffer->size().y);
+    viewport.y = framebufferSize.y;
+    viewport.width = framebufferSize.x;
+    viewport.height = -static_cast<F32>(framebufferSize.y);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 0.0f;
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = VkExtent2D{
-            static_cast<U32>(framebuffer->size().x),
-            static_cast<U32>(framebuffer->size().y)
+            static_cast<U32>(framebufferSize.x),
+            static_cast<U32>(framebufferSize.y)
         };
 
     VkPipelineViewportStateCreateInfo viewportState{};
@@ -230,8 +231,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    if (framebuffer->multisampled()) {
-        multisampling.rasterizationSamples = Backend::State<Device::Vulkan>()->getMultisampling();
+    if (multisampled) {
+        multisampling.rasterizationSamples = Backend::State<DeviceType::Vulkan>()->getMultisampling();
     } else {
         multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     }
@@ -282,6 +283,12 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = 1;
+    dynamicState.pDynamicStates = dynamicStates;
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
@@ -292,6 +299,7 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
     pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
@@ -314,8 +322,8 @@ Result Implementation::destroy() {
         JST_CHECK(draw->destroy());
     }
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& descriptorPool = Backend::State<Device::Vulkan>()->getDescriptorPool();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
     if (!bindings.empty()) {
         vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
@@ -339,6 +347,16 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, VkRenderPass&) {
     // Bind graphics pipeline.
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+    // Set scissor rect.
+    if (config.scissorRect) {
+        VkRect2D scissor{};
+        const auto& sr = *config.scissorRect;
+        scissor.offset = {static_cast<I32>(sr.x),
+                          static_cast<I32>(sr.y)};
+        scissor.extent = {sr.width, sr.height};
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    }
 
     // Attach frame encoder.
 

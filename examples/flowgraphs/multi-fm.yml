@@ -7,183 +7,302 @@ author: Luigi
 license: MIT
 description: 'Shows the reception of multiple FM broadcast stations simultaneously. The partitioning into individual stations is done via the Overlap-Add-Fold method presented in another example. This flowgraph abstracts this mechanism using the `Filter Engine` block.'
 graph:
+  not34:
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # 1. Multi-FM Example
+        This is a simplified flowgraph from what was presented in the `Overlap-Add-Fold` example. That entire mechanism was abstracted away with the `Filter Engine` block.
+        
+        Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the appropriate slice configuration in the `Slice` block.
+    meta:
+      node:
+        y: 637
+        x: 11
+        height: 332
+        width: 362
+  not44:
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Tip
+        You can also add more filters if you have more FM stations to filter. Simply increase the number of `Heads` and set the correct `Center` in the `Filter` block.
+    meta:
+      node:
+        y: 148
+        x: 366
+        height: 222
+        width: 212
   soapy:
     module: soapy
     device: cpu
-    dataType: CF32
+    runtime: native
+    provider: generic
+    outputDataType: CF32
     config:
-      frequency: 96900000
       bufferMultiplier: 1024
       sampleRate: 2000000
-      streamString: ''
-      hintString: ''
+      frequency: 9.69e+07
       numberOfTimeSamples: 8000
       numberOfBatches: 8
       automaticGain: true
       deviceString: 'driver=rtlsdr,serial=00000001'
-    interface:
-      previewEnabled: false
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [-2, 224.00002]
-      controlEnabled: false
-  flt:
-    module: 'filter-taps'
-    device: cpu
-    dataType: CF32
-    config:
-      taps: 51
-      sampleRate: 2000000
-      bandwidth: 200000
-      center: [0, 600000, ]
-    interface:
-      previewEnabled: false
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [-2, -16]
-      controlEnabled: false
-  fil_engine36:
-    module: 'filter-engine'
-    device: cpu
-    dataType: CF32
-    input:
-      filter: ${graph.flt.output.coeffs}
-      signal: ${graph.soapy.output.buffer}
-    interface:
-      previewEnabled: false
-      viewEnabled: false
-      nodeWidth: 235
-      nodePos: [367, 221]
-      controlEnabled: false
-  not34:
-    module: note
-    device: cpu
-    config:
-      note: |-
-        # 1. Multi-FM Example
-        This is a simplified flowgraph from what was presented in the `Overlap-Add-Fold` example. That entire mechanism was abstracted  away with the `Filter Engine` block.
-
-        Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the appropriate slice configuration in the `Slice` block.
-    interface:
-      previewEnabled: true
-      viewEnabled: false
-      nodeWidth: 475.11664
-      nodePos: [355.88336, -105.92911]
-      controlEnabled: false
+    meta:
+      node:
+        y: 94
+        x: 6
+        height: 391
+        width: 140
   spe33:
-    module: spectroscope
+    module: spectrum_engine
     device: cpu
+    runtime: native
+    provider: generic
     inputDataType: CF32
     outputDataType: F32
     config:
-      viewSize: [512, 512]
-      range: [-81, 1]
-      waterfall: true
-      lineplot: true
-      spectrogram: false
+      rangeMin: -81
+      enableAgc: false
+      rangeMax: 1
+      enableScale: true
+      axis: 1
     input:
-      buffer: ${graph.soapy.output.buffer}
-    interface:
-      previewEnabled: true
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [366, 345]
-      controlEnabled: false
-  not43:
-    module: note
+      buffer: '${graph.soapy.output.signal}'
+    meta:
+      node:
+        y: 371
+        x: 206
+        height: 228
+        width: 140
+  wtf_input:
+    module: waterfall
     device: cpu
+    runtime: native
+    provider: generic
+    dataType: F32
     config:
-      note: |+
-        # 2. Observe!
-        The Filter Engine block will also try to resample the signal after filtering to the input filter's bandwidth. In this case, two sets of 200 kHz bandwidth centered in 0.0 MHz and 0.6 MHz.
-
-        ## < On The Left
-        On the left, you can see the entire 2 MHz of the input signal.
-
-        ## On The Right >
-        On the right, you can see the filtered and resampled 200 kHz signal of a single FM station.
-
-    interface:
-      previewEnabled: true
-      viewEnabled: false
-      nodeWidth: 431
-      nodePos: [691.0375, 406.43774]
-      controlEnabled: false
-  not44:
-    module: note
+      interpolate: true
+      height: 512
+    input:
+      signal: '${graph.spe33.output.buffer}'
+    meta:
+      surface_default:
+        detachedWidth: 512
+        attachedWidth: 291
+        detached: false
+        attachedHeight: 147
+        detachedHeight: 512
+      node:
+        y: 706
+        x: 447
+        height: 262
+        width: 291
+  lineplot:
+    module: lineplot
     device: cpu
+    runtime: native
+    provider: generic
+    dataType: F32
     config:
-      note: |-
-        # Tip
-        You can also add more filters if you have
-        more FM stations to filter. Simply increase the number of `Heads` and set the correct `Center` in the `Filter` block.
-    interface:
-      previewEnabled: true
-      viewEnabled: false
-      nodeWidth: 308.96252
-      nodePos: [855.0375, -40.562256]
-      controlEnabled: false
+      thickness: 1
+      decimation: 1
+      numberOfHorizontalLines: 5
+      numberOfVerticalLines: 11
+      averaging: 18
+    input:
+      signal: '${graph.spe33.output.buffer}'
+    meta:
+      surface_default:
+        detachedWidth: 500
+        attachedWidth: 286
+        detached: false
+        attachedHeight: 162
+        detachedHeight: 454
+      node:
+        y: 400
+        x: 447
+        height: 277
+        width: 286
+  flt:
+    module: filter
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: CF32
+    config:
+      taps: 51
+      heads: 2
+      center: '[400000, -400000]'
+      bandwidth: 200000
+      sampleRate: 2000000
+    input:
+      signal: '${graph.soapy.output.signal}'
+    meta:
+      node:
+        y: 94
+        x: 602
+        height: 261
+        width: 140
+  slice:
+    module: slice
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: CF32
+    config:
+      contiguous: true
+      slice: '[:, 1, :]'
+    input:
+      buffer: '${graph.flt.output.buffer}'
+    meta:
+      node:
+        y: 546
+        x: 823
+        height: 129
+        width: 140
+  spectrum_engine:
+    module: spectrum_engine
+    device: cpu
+    runtime: native
+    provider: generic
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      rangeMin: -270
+      enableAgc: true
+      rangeMax: 1
+      enableScale: true
+      axis: 1
+    input:
+      buffer: '${graph.slice.output.buffer}'
+    meta:
+      node:
+        y: 554
+        x: 1021
+        height: 228
+        width: 140
+  waterfall:
+    module: waterfall
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: F32
+    config:
+      interpolate: true
+      height: 512
+    input:
+      signal: '${graph.spectrum_engine.output.buffer}'
+    meta:
+      surface_default:
+        detachedWidth: 512
+        attachedWidth: 196
+        detached: false
+        attachedHeight: 174
+        detachedHeight: 512
+      node:
+        y: 552
+        x: 1221
+        height: 289
+        width: 196
   sli23:
     module: slice
     device: cpu
+    runtime: native
+    provider: generic
     dataType: CF32
     config:
-      slice: "[:, 0, :]"
       contiguous: true
+      slice: '[:, 0, :]'
     input:
-      buffer: ${graph.fil_engine36.output.buffer}
-    interface:
-      previewEnabled: false
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [701.8888, 222.43848]
-      controlEnabled: false
+      buffer: '${graph.flt.output.buffer}'
+    meta:
+      node:
+        y: 117
+        x: 812
+        height: 129
+        width: 140
+  spe23:
+    module: spectrum_engine
+    device: cpu
+    runtime: native
+    provider: generic
+    inputDataType: CF32
+    outputDataType: F32
+    config:
+      rangeMin: -177.85715
+      enableAgc: true
+      rangeMax: 1
+      enableScale: true
+      axis: 1
+    input:
+      buffer: '${graph.sli23.output.buffer}'
+    meta:
+      node:
+        y: 253
+        x: 1021
+        height: 228
+        width: 140
   fm:
     module: fm
     device: cpu
+    runtime: native
+    provider: generic
     inputDataType: CF32
     outputDataType: F32
     config:
       sampleRate: 200000
     input:
-      buffer: ${graph.sli23.output.buffer}
-    interface:
-      previewEnabled: false
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [1184.5, 101.00002]
-      controlEnabled: false
-  spe23:
-    module: spectroscope
+      signal: '${graph.sli23.output.buffer}'
+    meta:
+      node:
+        y: 92
+        x: 1014
+        height: 96
+        width: 140
+  wtf_output:
+    module: waterfall
     device: cpu
-    inputDataType: CF32
-    outputDataType: F32
+    runtime: native
+    provider: generic
+    dataType: F32
     config:
-      viewSize: [512, 512]
-      range: [-57, 1]
-      waterfall: true
-      lineplot: true
-      spectrogram: false
+      interpolate: true
+      height: 512
     input:
-      buffer: ${graph.sli23.output.buffer}
-    interface:
-      previewEnabled: true
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [1144, 255]
-      controlEnabled: false
+      signal: '${graph.spe23.output.buffer}'
+    meta:
+      surface_default:
+        detachedWidth: 512
+        attachedWidth: 196
+        detached: false
+        attachedHeight: 140
+        detachedHeight: 512
+      node:
+        y: 253
+        x: 1219
+        height: 255
+        width: 196
   audio:
     module: audio
     device: cpu
+    runtime: native
+    provider: generic
     dataType: F32
     config:
       outSampleRate: 48000
       inSampleRate: 200000
+      deviceName: Default
     input:
-      buffer: ${graph.fm.output.buffer}
-    interface:
-      previewEnabled: false
-      viewEnabled: false
-      nodeWidth: 300
-      nodePos: [1543.4663, 107.91619]
-      controlEnabled: false
+      buffer: '${graph.fm.output.signal}'
+    meta:
+      node:
+        y: 86
+        x: 1213
+        height: 107
+        width: 205

@@ -5,10 +5,10 @@
 using namespace Jetstream;
 
 // Selects the compute backend to use.
-constexpr static Device ComputeDevice = Device::CPU;
+constexpr static DeviceType ComputeDevice = DeviceType::CPU;
 
 // Selects the graphical backend to use.
-constexpr static Device RenderDevice  = Device::Vulkan;
+constexpr static DeviceType RenderDevice  = DeviceType::Vulkan;
 
 // Selects the viewport platform to use.
 using ViewportPlatform = Viewport::GLFW<RenderDevice>;
@@ -69,8 +69,7 @@ class UI {
 
         config.thickness = 1.0f;
 
-        buffer = Tensor<Device::CPU, CF32>({8, bins});
-        buffer.set_locale({"main", "main", "main"});
+        JST_CHECK(buffer.create(DeviceType::CPU, TypeToDataType<CF32>(), {8, bins}));
 
         JST_CHECK(instance.addModule(
             win, "win", {
@@ -173,7 +172,7 @@ class UI {
     Instance& instance;
     bool closing;
 
-    Tensor<Device::CPU, CF32> buffer;
+    Tensor buffer;
 
     Lineplot<ComputeDevice>::Config config;
 
@@ -189,7 +188,7 @@ class UI {
         // Generate random data for buffer.
         for (U64 i = 0; i < buffer.shape(0); i++) {
             for (U64 j = 0; j < buffer.shape(1); j++) {
-                buffer[{i, j}] = std::rand() % 3;
+                buffer.at<CF32>(i, j) = std::rand() % 3;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

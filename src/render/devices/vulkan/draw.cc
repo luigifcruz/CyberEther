@@ -5,10 +5,10 @@
 
 namespace Jetstream::Render {
 
-using Implementation = DrawImp<Device::Vulkan>;
+using Implementation = DrawImp<DeviceType::Vulkan>;
 
 Implementation::DrawImp(const Config& config) : Draw(config) {
-    buffer = std::dynamic_pointer_cast<VertexImp<Device::Vulkan>>(config.buffer);
+    buffer = std::dynamic_pointer_cast<VertexImp<DeviceType::Vulkan>>(config.buffer);
 }
 
 Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bindingDescription,
@@ -66,7 +66,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
             cfg.size = indexedDrawCommands.size();
             cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indexedIndirectBuffer = std::make_shared<Render::BufferImp<Device::Vulkan>>(cfg);
+            indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Vulkan>>(cfg);
             indexedIndirectBuffer->create();
         }
 
@@ -89,7 +89,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
             cfg.size = drawCommands.size();
             cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indirectBuffer = std::make_shared<Render::BufferImp<Device::Vulkan>>(cfg);
+            indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Vulkan>>(cfg);
             indirectBuffer->create();
         }
 
@@ -126,6 +126,44 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
                           drawCommands.size(), sizeof(VkDrawIndirectCommand));
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::updateVertexCount(U64 vertexCount) {
+    // Check if draw was created
+    if (indexedDrawCommands.empty() && drawCommands.empty()) {
+        JST_ERROR("[VULKAN] Cannot update vertex count: draw not created yet");
+        return Result::ERROR;
+    }
+    
+    if (buffer->isBuffered()) {
+        // Check bounds for indexed drawing
+        const U64 maxIndexCount = buffer->getIndexCount();
+        if (vertexCount > maxIndexCount) {
+            JST_ERROR("[VULKAN] Requested index count ({}) exceeds buffer limit ({})", vertexCount, maxIndexCount);
+            return Result::ERROR;
+        }
+        
+        // Update indexed draw commands
+        for (auto& drawCommand : indexedDrawCommands) {
+            drawCommand.indexCount = vertexCount;
+        }
+        indexedIndirectBuffer->update();
+    } else {
+        // Check bounds for non-indexed drawing
+        const U64 maxVertexCount = buffer->getVertexCount();
+        if (vertexCount > maxVertexCount) {
+            JST_ERROR("[VULKAN] Requested vertex count ({}) exceeds buffer limit ({})", vertexCount, maxVertexCount);
+            return Result::ERROR;
+        }
+        
+        // Update non-indexed draw commands
+        for (auto& drawCommand : drawCommands) {
+            drawCommand.vertexCount = vertexCount;
+        }
+        indirectBuffer->update();
+    }
+    
     return Result::SUCCESS;
 }
 

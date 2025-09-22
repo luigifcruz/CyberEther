@@ -4,10 +4,10 @@
 
 namespace Jetstream::Render {
 
-using Implementation = DrawImp<Device::Metal>;
+using Implementation = DrawImp<DeviceType::Metal>;
 
 Implementation::DrawImp(const Config& config) : Draw(config) {
-    buffer = std::dynamic_pointer_cast<VertexImp<Device::Metal>>(config.buffer);
+    buffer = std::dynamic_pointer_cast<VertexImp<DeviceType::Metal>>(config.buffer);
 }
 
 Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset) {
@@ -39,7 +39,7 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
             cfg.size = indexedDrawCommands.size();
             cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indexedIndirectBuffer = std::make_shared<Render::BufferImp<Device::Metal>>(cfg);
+            indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Metal>>(cfg);
             indexedIndirectBuffer->create();
         }
 
@@ -62,7 +62,7 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
             cfg.size = drawCommands.size();
             cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indirectBuffer = std::make_shared<Render::BufferImp<Device::Metal>>(cfg);
+            indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Metal>>(cfg);
             indirectBuffer->create();
         }
 
@@ -126,6 +126,44 @@ Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
         }
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::updateVertexCount(U64 vertexCount) {
+    // Check if draw was created
+    if (indexedDrawCommands.empty() && drawCommands.empty()) {
+        JST_ERROR("[METAL] Cannot update vertex count: draw not created yet");
+        return Result::ERROR;
+    }
+    
+    if (buffer->isBuffered()) {
+        // Check bounds for indexed drawing
+        const U64 maxIndexCount = buffer->getIndexCount();
+        if (vertexCount > maxIndexCount) {
+            JST_ERROR("[METAL] Requested index count ({}) exceeds buffer limit ({})", vertexCount, maxIndexCount);
+            return Result::ERROR;
+        }
+        
+        // Update indexed draw commands
+        for (auto& drawCommand : indexedDrawCommands) {
+            drawCommand.indexCount = vertexCount;
+        }
+        indexedIndirectBuffer->update();
+    } else {
+        // Check bounds for non-indexed drawing
+        const U64 maxVertexCount = buffer->getVertexCount();
+        if (vertexCount > maxVertexCount) {
+            JST_ERROR("[METAL] Requested vertex count ({}) exceeds buffer limit ({})", vertexCount, maxVertexCount);
+            return Result::ERROR;
+        }
+        
+        // Update non-indexed draw commands
+        for (auto& drawCommand : drawCommands) {
+            drawCommand.vertexCount = vertexCount;
+        }
+        indirectBuffer->update();
+    }
+    
     return Result::SUCCESS;
 }
 

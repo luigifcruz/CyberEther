@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class DrawImp<Device::Metal> : public Draw {
+class DrawImp<DeviceType::Metal> : public Draw {
  public:
     explicit DrawImp(const Config& config);
 
@@ -15,17 +15,18 @@ class DrawImp<Device::Metal> : public Draw {
     Result create(MTL::VertexDescriptor* vertDesc, const U64& offset);
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode);
+    Result updateVertexCount(U64 vertexCount) override;
 
  private:
-    std::shared_ptr<VertexImp<Device::Metal>> buffer;
+    std::shared_ptr<VertexImp<DeviceType::Metal>> buffer;
 
-    std::shared_ptr<BufferImp<Device::Metal>> indexedIndirectBuffer;
-    std::shared_ptr<BufferImp<Device::Metal>> indirectBuffer;
+    std::shared_ptr<BufferImp<DeviceType::Metal>> indexedIndirectBuffer;
+    std::shared_ptr<BufferImp<DeviceType::Metal>> indirectBuffer;
 
     std::vector<MTL::DrawIndexedPrimitivesIndirectArguments> indexedDrawCommands;
     std::vector<MTL::DrawPrimitivesIndirectArguments> drawCommands;
 
-    friend class ProgramImp<Device::Metal>;
+    friend class ProgramImp<DeviceType::Metal>;
 };
 
 }  // namespace Jetstream::Render

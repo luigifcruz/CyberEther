@@ -24,7 +24,7 @@ cdata.set('HAVE_SYS_TIME_H', cc.has_header('sys/time.h'))
 cdata.set('HAVE_STRUCT_TIMESPEC', cc.has_header_symbol('time.h', 'struct timespec'))
 cdata.set('PRINTF_FORMAT(a, b)', '__attribute__ ((__format__ (__printf__, a, b)))')
 cdata.set('ENABLE_LOGGING', true)
-cdata.set('ENABLE_DEBUG_LOGGING', true)
+cdata.set('ENABLE_DEBUG_LOGGING', false)
 cdata.set('USE_SYSTEM_LOGGING_FACILITY', false)
 
 incdirs = include_directories(['.', 'libusb', 'libusb/os'])

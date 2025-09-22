@@ -1,32 +1,52 @@
 #ifndef JETSTREAM_MEMORY_TYPES_HH
 #define JETSTREAM_MEMORY_TYPES_HH
 
-#include <map>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
 #include <vector>
+#include <ostream>
+#include <cstdint>
 #include <complex>
 #include <unordered_map>
-#include <functional>
 
 #include "jetstream/logger.hh"
-#include "jetstream/macros.hh"
+#include "jetstream/memory/macros.hh"
 
 namespace Jetstream {
 
 //
-// Common Numeric Constants
+// Device
 //
 
-#ifndef JST_PI
-#define JST_PI 3.14159265358979323846
-#endif
+enum class JETSTREAM_API DeviceType : uint8_t {
+    None    = 1 << 0,
+    CPU     = 1 << 1,
+    CUDA    = 1 << 2,
+    Metal   = 1 << 3,
+    Vulkan  = 1 << 4,
+    WebGPU  = 1 << 5,
+};
 
-#ifndef JST_PI_2
-#define JST_PI_2 1.57079632679489661923
-#endif
+inline constexpr DeviceType operator|(DeviceType lhs, DeviceType rhs) {
+    return static_cast<DeviceType>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+}
 
-#ifndef JST_E
-#define JST_E 2.7182818284590452354
-#endif
+inline constexpr DeviceType operator&(DeviceType lhs, DeviceType rhs) {
+    return static_cast<DeviceType>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+}
+
+inline constexpr bool operator==(DeviceType lhs, DeviceType rhs) {
+    return (static_cast<uint8_t>(lhs) == static_cast<uint8_t>(rhs));
+}
+
+const char* GetDeviceName(const DeviceType& device);
+const char* GetDevicePrettyName(const DeviceType& device);
+DeviceType StringToDevice(const std::string& device);
+
+inline std::ostream& operator<<(std::ostream& os, const DeviceType& device) {
+    return os << GetDevicePrettyName(device);
+}
 
 //
 // Numeric Types
@@ -42,7 +62,6 @@ typedef uint8_t  U8;
 typedef uint16_t U16;
 typedef uint32_t U32;
 typedef uint64_t U64;
-typedef bool     BOOL;
 
 typedef std::complex<F32> CF32;
 typedef std::complex<F64> CF64;
@@ -54,12 +73,6 @@ typedef std::complex<U8>  CU8;
 typedef std::complex<U16> CU16;
 typedef std::complex<U32> CU32;
 typedef std::complex<U64> CU64;
-
-template <typename T>
-struct IsComplex : std::false_type {};
-
-template <typename T>
-struct IsComplex<std::complex<T>> : std::true_type {};
 
 template <typename T = void>
 struct JETSTREAM_API NumericTypeInfo;
@@ -142,14 +155,6 @@ struct JETSTREAM_API NumericTypeInfo<U64> {
     using subtype = U64;
     using surtype = CU64;
     inline static const char* name = "U64";
-};
-
-template<>
-struct JETSTREAM_API NumericTypeInfo<BOOL> {
-    using type = BOOL;
-    using subtype = BOOL;
-    using surtype = BOOL;
-    inline static const char* name = "BOOL";
 };
 
 template<>
@@ -241,184 +246,130 @@ struct JETSTREAM_API NumericTypeInfo<void> {
 };
 
 //
-// Device
+// Location
 //
 
-enum class JETSTREAM_API Device : uint8_t {
-    None    = 1 << 0,
-    CPU     = 1 << 1,
-    CUDA    = 1 << 2,
-    Metal   = 1 << 3,
-    Vulkan  = 1 << 4,
-    WebGPU  = 1 << 5,
+enum class Location : uint8_t {
+    None    = 0,
+    Host    = 1 << 0,
+    Device  = 1 << 1,
+    Unified = Host | Device,
 };
 
-inline constexpr Device operator|(Device lhs, Device rhs) {
-    return static_cast<Device>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+inline constexpr Location operator|(Location lhs, Location rhs) {
+    return static_cast<Location>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
 }
 
-inline constexpr Device operator&(Device lhs, Device rhs) {
-    return static_cast<Device>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+inline constexpr Location operator&(Location lhs, Location rhs) {
+    return static_cast<Location>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
 }
 
-inline constexpr bool operator==(Device lhs, Device rhs) {
-    return (static_cast<uint8_t>(lhs) == static_cast<uint8_t>(rhs));
-}
+std::string_view LocationName(const Location& loc);
 
-inline const char* GetDeviceName(const Device& device) {
-    static const std::unordered_map<Device, const char*> deviceNames = {
-        {Device::None,   "none"},
-        {Device::CPU,    "cpu"},
-        {Device::CUDA,   "cuda"},
-        {Device::Metal,  "metal"},
-        {Device::Vulkan, "vulkan"},
-        {Device::WebGPU, "webgpu"}
-    };
-    return deviceNames.at(device);
-}
-
-inline const char* GetDevicePrettyName(const Device& device) {
-    static const std::unordered_map<Device, const char*> deviceNames = {
-        {Device::None,   "None"},
-        {Device::CPU,    "CPU"},
-        {Device::CUDA,   "CUDA"},
-        {Device::Metal,  "Metal"},
-        {Device::Vulkan, "Vulkan"},
-        {Device::WebGPU, "WebGPU"}
-    };
-    return deviceNames.at(device);
-}
-
-inline Device StringToDevice(const std::string& device) {
-    std::string device_l = device;
-    std::transform(device_l.begin(), device_l.end(), device_l.begin(), ::tolower);
-    static const std::unordered_map<std::string, Device> deviceNames = {
-        {"none",   Device::None},
-        {"cpu",    Device::CPU},
-        {"cuda",   Device::CUDA},
-        {"metal",  Device::Metal},
-        {"vulkan", Device::Vulkan},
-        {"webgpu", Device::WebGPU}
-    };
-    if (deviceNames.find(device_l) == deviceNames.end()) {
-        JST_ERROR("Invalid device name: {}", device);
-        throw Device::None;
-    }
-    return deviceNames.at(device);
-}
-
-inline std::ostream& operator<<(std::ostream& os, const Device& device) {
-    return os << GetDevicePrettyName(device);
+inline std::ostream& operator<<(std::ostream& os, const Location& location) {
+    return os << LocationName(location);
 }
 
 //
-// Locale
+// Index Shape
 //
 
-struct Locale {
-    std::string blockId = "";
-    std::string moduleId = "";
-    std::string pinId = "";
+using Index = U64;
+using Shape = std::vector<Index>;
 
-    bool isBlock() const {
-        return !blockId.empty() && moduleId.empty() && pinId.empty();
-    }
+//
+// Data Type
+//
 
-    bool isModule() const {
-        return !blockId.empty() && !moduleId.empty() && pinId.empty();
-    }
-
-    bool isPin() const {
-        return !blockId.empty() && !moduleId.empty() && !pinId.empty();
-    }
-
-    Locale block() const {
-        return Locale{blockId};
-    }
-
-    Locale module() const {
-        return Locale{blockId, moduleId};
-    }
-
-    Locale pin() const {
-        return Locale{blockId, "", pinId};
-    }
-
-    bool empty() const {
-        return blockId.empty() && 
-               moduleId.empty() && 
-               pinId.empty();
-    }
-
-    bool operator==(const Locale& other) const {
-        return blockId  == other.blockId  &&
-               moduleId == other.moduleId &&
-               pinId    == other.pinId;
-    }
-
-    std::string shash() const {
-        return blockId + moduleId + pinId;
-    }
-
-    std::size_t hash() const {
-        return Hasher()(*this);
-    }
-
-    struct Hasher {
-        std::size_t operator()(const Locale& locale) const {
-            std::hash<std::string> string_hasher;
-            std::size_t h1 = string_hasher(locale.blockId);
-            std::size_t h2 = string_hasher(locale.moduleId);
-            std::size_t h3 = string_hasher(locale.pinId);
-            return h1 ^ (h2 << 1) ^ (h3 << 2);
-        }
-    };
-
-    friend inline std::ostream& operator<<(std::ostream& os, const Locale& locale) {
-        if (!locale.blockId.empty() && !locale.moduleId.empty()) {
-            os << jst::fmt::format("{}-", locale.blockId);
-        } else {
-            os << jst::fmt::format("{}", locale.blockId);
-        }
-        if (!locale.moduleId.empty()) {
-            os << jst::fmt::format("{}", locale.moduleId);
-        }
-        if (!locale.pinId.empty()) {
-            os << jst::fmt::format(".{}", locale.pinId);
-        }
-        return os;
-    }
+enum class DataType : uint8_t {
+    None = 0,
+    F32,
+    F64,
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
+    CF32,
+    CF64,
+    CI8,
+    CI16,
+    CI32,
+    CI64,
+    CU8,
+    CU16,
+    CU32,
+    CU64,
 };
 
-//
-// Range
-//
+std::size_t DataTypeSize(const DataType& type);
+bool IsDataTypeComplex(const DataType& type);
+std::string_view DataTypeToName(const DataType& type);
+DataType NameToDataType(const std::string_view& name);
+
+inline std::ostream& operator<<(std::ostream& os, const DataType& type) {
+    return os << DataTypeToName(type);
+}
 
 template<typename T>
-struct JETSTREAM_API Range {
-    T min;
-    T max;
+inline constexpr DataType TypeToDataType() {
+    return DataType::None; // Default case
+}
 
-    bool operator==(const Range<T>& a) const {
-        return (min == a.min && max == a.max);
-    }
+template<> inline constexpr DataType TypeToDataType<F32>() { return DataType::F32; }
+template<> inline constexpr DataType TypeToDataType<F64>() { return DataType::F64; }
+template<> inline constexpr DataType TypeToDataType<I8>() { return DataType::I8; }
+template<> inline constexpr DataType TypeToDataType<I16>() { return DataType::I16; }
+template<> inline constexpr DataType TypeToDataType<I32>() { return DataType::I32; }
+template<> inline constexpr DataType TypeToDataType<I64>() { return DataType::I64; }
+template<> inline constexpr DataType TypeToDataType<U8>() { return DataType::U8; }
+template<> inline constexpr DataType TypeToDataType<U16>() { return DataType::U16; }
+template<> inline constexpr DataType TypeToDataType<U32>() { return DataType::U32; }
+template<> inline constexpr DataType TypeToDataType<U64>() { return DataType::U64; }
+template<> inline constexpr DataType TypeToDataType<CF32>() { return DataType::CF32; }
+template<> inline constexpr DataType TypeToDataType<CF64>() { return DataType::CF64; }
+template<> inline constexpr DataType TypeToDataType<CI8>() { return DataType::CI8; }
+template<> inline constexpr DataType TypeToDataType<CI16>() { return DataType::CI16; }
+template<> inline constexpr DataType TypeToDataType<CI32>() { return DataType::CI32; }
+template<> inline constexpr DataType TypeToDataType<CI64>() { return DataType::CI64; }
+template<> inline constexpr DataType TypeToDataType<CU8>() { return DataType::CU8; }
+template<> inline constexpr DataType TypeToDataType<CU16>() { return DataType::CU16; }
+template<> inline constexpr DataType TypeToDataType<CU32>() { return DataType::CU32; }
+template<> inline constexpr DataType TypeToDataType<CU64>() { return DataType::CU64; }
 
-    bool operator!=(const Range<T>& a) const {
-        return (min != a.min || max != a.max);
-    }
-
-    bool operator<=(const Range<T>& a) const {
-        return (min <= a.min || max <= a.max);
-    }
-
-    friend inline std::ostream& operator<<(std::ostream& os, const Range<T>& range) {
-        return os << jst::fmt::format("[{}, {}]", range.min, range.max);
-    }
+template<DataType DT>
+struct DataTypeToType {
+    using type = void; // Default case
 };
+
+template<> struct DataTypeToType<DataType::F32> { using type = F32; };
+template<> struct DataTypeToType<DataType::F64> { using type = F64; };
+template<> struct DataTypeToType<DataType::I8> { using type = I8; };
+template<> struct DataTypeToType<DataType::I16> { using type = I16; };
+template<> struct DataTypeToType<DataType::I32> { using type = I32; };
+template<> struct DataTypeToType<DataType::I64> { using type = I64; };
+template<> struct DataTypeToType<DataType::U8> { using type = U8; };
+template<> struct DataTypeToType<DataType::U16> { using type = U16; };
+template<> struct DataTypeToType<DataType::U32> { using type = U32; };
+template<> struct DataTypeToType<DataType::U64> { using type = U64; };
+template<> struct DataTypeToType<DataType::CF32> { using type = CF32; };
+template<> struct DataTypeToType<DataType::CF64> { using type = CF64; };
+template<> struct DataTypeToType<DataType::CI8> { using type = CI8; };
+template<> struct DataTypeToType<DataType::CI16> { using type = CI16; };
+template<> struct DataTypeToType<DataType::CI32> { using type = CI32; };
+template<> struct DataTypeToType<DataType::CI64> { using type = CI64; };
+template<> struct DataTypeToType<DataType::CU8> { using type = CU8; };
+template<> struct DataTypeToType<DataType::CU16> { using type = CU16; };
+template<> struct DataTypeToType<DataType::CU32> { using type = CU32; };
+template<> struct DataTypeToType<DataType::CU64> { using type = CU64; };
 
 }  // namespace Jetstream
 
-template <> struct jst::fmt::formatter<Jetstream::Device> : ostream_formatter {};
-template <> struct jst::fmt::formatter<Jetstream::Locale> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::DeviceType> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Location> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::DataType> : ostream_formatter {};
 
-#endif
+#endif  // JETSTREAM_MEMORY_TYPES_HH

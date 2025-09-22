@@ -3,11 +3,9 @@
 
 #include "jetstream/viewport/types.hh"
 
-#ifdef JETSTREAM_VIEWPORT_HEADLESS_AVAILABLE
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
-#include "jetstream/viewport/platforms/headless/vulkan.hh"
-#endif
-#endif
+//
+// GLFW
+//
 
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
@@ -21,10 +19,23 @@
 #endif
 #endif
 
+//
+// iOS
+//
+
 #ifdef JETSTREAM_VIEWPORT_IOS_AVAILABLE
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/viewport/platforms/ios/metal.hh"
 #endif
+#endif
+
+//
+// Headless
+//
+
+#include "jetstream/viewport/platforms/headless/generic.hh"
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/viewport/platforms/headless/vulkan.hh"
 #endif
 
 #endif

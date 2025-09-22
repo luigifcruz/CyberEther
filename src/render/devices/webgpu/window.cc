@@ -7,21 +7,21 @@
 
 namespace Jetstream::Render {
 
-using Implementation = WindowImp<Device::WebGPU>;
+using Implementation = WindowImp<DeviceType::WebGPU>;
 
 Implementation::WindowImp(const Config& config,
-                          std::shared_ptr<Viewport::Adapter<Device::WebGPU>>& viewport)
+                          const std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>>& viewport)
          : Window(config), viewport(viewport) {
 }
 
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::WebGPU>>(surface);
     surfaces.push_back(_resource);
     return Result::SUCCESS;
 }
 
 Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::WebGPU>>(surface);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::WebGPU>>(surface);
     surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _resource), surfaces.end());
     return Result::SUCCESS;
 }
@@ -30,7 +30,7 @@ Result Implementation::underlyingCreate() {
     JST_DEBUG("[WebGPU] Creating window.");
 
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
 
     queue = wgpuDeviceGetQueue(device);
@@ -70,7 +70,7 @@ Result Implementation::createImgui() {
     this->scaleStyle(*viewport);
 
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
     ImGui_ImplWGPU_InitInfo info;
     info.Device = device;
@@ -140,8 +140,7 @@ Result Implementation::underlyingBegin() {
         return Result::ERROR;
     }
 
-
-    WGPUTextureView framebufferTexture = {};
+    framebufferTexture = {};
     JST_CHECK(viewport->commitDrawable(&framebufferTexture));
 
     colorAttachments = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
@@ -153,14 +152,12 @@ Result Implementation::underlyingBegin() {
     colorAttachments.clearValue.a = 1.0f;
     colorAttachments.view = framebufferTexture;
 
-
     renderPassDesc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
     renderPassDesc.colorAttachmentCount = 1;
     renderPassDesc.colorAttachments = &colorAttachments;
     renderPassDesc.depthStencilAttachment = nullptr;
 
-
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
     WGPUCommandEncoderDescriptor encDesc = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
     encoder = wgpuDeviceCreateCommandEncoder(device, &encDesc);
 
@@ -177,10 +174,12 @@ Result Implementation::underlyingBegin() {
 Result Implementation::underlyingEnd() {
     JST_CHECK(endImgui());
 
-
     WGPUCommandBufferDescriptor cmdBufferDesc = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
     WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
     wgpuQueueSubmit(queue, 1, &cmdBuffer);
+
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(encoder);
 
     return Result::SUCCESS;
 }
@@ -189,8 +188,9 @@ Result Implementation::underlyingSynchronize() {
     return Result::SUCCESS;
 }
 
-void Implementation::drawDebugMessage() const {
+std::string Implementation::info() const {
     // WebGPU doesn't expose any useful device information.
+    return "WebGPU Device";
 }
 
 const Window::Stats& Implementation::stats() const {

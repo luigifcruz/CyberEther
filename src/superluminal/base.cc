@@ -3,25 +3,21 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
-#include <fstream>
-
-#include <stb_image.h>
+#include <cstdint>
 
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
-#include "jetstream/store.hh"
-#include "jetstream/blocks/manifest.hh"
-#include "jetstream/memory/prototype.hh"
+#include "jetstream/module_surface.hh"
+#include "jetstream/render/tools/imgui_markdown.hh"
 
-#include "dmi_module.hh"
 #include "dmi_block.hh"
 
 namespace Jetstream {
 
 struct Superluminal::Impl {
     InstanceConfig config;
-    Instance instance;
-
+    std::shared_ptr<Instance> instance;
+    std::shared_ptr<Flowgraph> flowgraph;
     bool initialized;
     bool running;
 
@@ -41,18 +37,11 @@ struct Superluminal::Impl {
         std::shared_ptr<Jetstream::Block> block;
         std::function<void()> callback;
         bool active = false;
+        U64 surfaceWidth = 0;
+        U64 surfaceHeight = 0;
     };
 
     std::unordered_map<std::string, PlotState> plots;
-
-    // Image cache for loaded textures
-    struct ImageData {
-        std::shared_ptr<Render::Texture> texture;
-        int width;
-        int height;
-    };
-    std::unordered_map<std::string, ImageData> imageCache;
-    std::unordered_set<std::string> failedImagePaths;
 
     Result createGraph();
     Result destroyGraph();
@@ -66,8 +55,6 @@ struct Superluminal::Impl {
     Result buildLinePlotGraph(PlotState& state);
     Result buildWaterfallPlotGraph(PlotState& state);
 
-    Result loadImageFromFile(const std::string& filepath, ImageData& imageData);
-
     struct GraphNode {
         std::string module;
         std::string device;
@@ -80,6 +67,7 @@ struct Superluminal::Impl {
 
     static std::string ParseLinkDomain(const std::string& value, const std::string& domain);
     static std::vector<char> GraphToYaml(const Graph& graph, std::string domain = {});
+    static U64 BufferKey(const Tensor& buffer);
 };
 
 Superluminal::Superluminal() : impl(std::make_unique<Impl>()) {
@@ -105,45 +93,15 @@ Result Superluminal::initialize(const InstanceConfig& config) {
 
     impl->config = config;
 
-    // Initialize the backend, viewport, and render.
-
-    Backend::Config backendConfig {
-        .deviceId = impl->config.deviceId,
-        .remote = impl->config.remote,
-    };
-
-    Viewport::Config viewportConfig {
-        .title = impl->config.windowTitle,
-        .size = impl->config.interfaceSize,
-        .codec = Viewport::VideoCodec::H264,
-    };
-
-    Render::Window::Config renderConfig {
-        .scale =  impl->config.interfaceScale,
-    };
+    // Initialize the instance.
 
     Instance::Config instanceConfig = {
-        .preferredDevice = Device::None,
-        .renderCompositor = false,
-        .backendConfig = backendConfig,
-        .viewportConfig = viewportConfig,
-        .renderConfig = renderConfig,
+        .device = impl->config.preferredDevice,
+        .size = impl->config.interfaceSize,
     };
 
-    JST_CHECK(impl->instance.build(instanceConfig));
-
-    // Register custom blocks.
-
-    Store::LoadBlocks([](Block::ConstructorManifest& constructorManifest,
-                             Block::MetadataManifest& metadataManifest) {
-        JST_TRACE("[SUPERLUMINAL] Registering custom blocks.");
-
-        JST_BLOCKS_MANIFEST(
-            Jetstream::Blocks::DynamicMemoryImport,
-        )
-
-        return Result::SUCCESS;
-    });
+    impl->instance = std::make_shared<Instance>();
+    JST_CHECK(impl->instance->create(instanceConfig));
 
     // Update the state.
 
@@ -167,14 +125,10 @@ Result Superluminal::terminate() {
         JST_CHECK(stop());
     }
 
-    // Clear image cache and failed paths before destroying instance.
-
-    impl->imageCache.clear();
-    impl->failedImagePaths.clear();
-
     // Destroy instance.
 
-    impl->instance.destroy();
+    JST_CHECK(impl->instance->destroy());
+    impl->instance.reset();
 
     // Destroy backend.
 
@@ -208,22 +162,26 @@ Result Superluminal::start() {
 
     JST_CHECK(impl->createGraph());
 
-    // Build graph and start instance.
+    // Start instance.
 
-    JST_CHECK(impl->instance.start());
+    JST_CHECK(impl->instance->start());
 
     // Customize ImGui style.
 
-    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
+    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
     ImGui::GetStyle().WindowRounding = 0.0f;
 
     // Start the compute, present, and input threads.
 
     impl->computeThread = std::thread([&]{
-        while (impl->instance.computing()) {
+        while (impl->instance->computing()) {
             impl->computeSync.wait(true);
 
-            JST_CHECK_THROW(impl->instance.compute());
+            if (!impl->instance->computing()) {
+                break;
+            }
+
+            JST_CHECK_THROW(impl->instance->compute());
 
             impl->computeSync.test_and_set();
             impl->computeSync.notify_all();
@@ -233,12 +191,12 @@ Result Superluminal::start() {
     });
 
     impl->presentThread = std::thread([&]{
-        while (impl->instance.presenting()) {
-            if (impl->instance.begin() == Result::SKIP) {
-                continue;
-            }
+        while (impl->instance->presenting()) {
+            auto res = impl->instance->present([&]() -> Result {
+                if (!impl->running) {
+                    return Result::SUCCESS;
+                }
 
-            if (impl->running) {
                 for (auto& [_, plot] : impl->plots) {
                     static ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                                                     ImGuiWindowFlags_NoMove |
@@ -265,17 +223,86 @@ Result Superluminal::start() {
 
                     if (plot.config.type == Type::Interface) {
                         plot.callback();
-                    } else {
-                        plot.block->drawView();
+                    } else if (plot.block) {
+                        for (const auto& surface : plot.block->surfaces()) {
+                            for (const auto& manifest : surface->manifests()) {
+                                const auto availableRegion = ImGui::GetContentRegionAvail();
+                                const auto& io = ImGui::GetIO();
+
+                                const U64 expectedWidth = availableRegion.x * io.DisplayFramebufferScale.x;
+                                const U64 expectedHeight = availableRegion.y * io.DisplayFramebufferScale.y;
+
+                                if (plot.surfaceWidth != static_cast<U64>(availableRegion.x) ||
+                                    plot.surfaceHeight != static_cast<U64>(availableRegion.y) ||
+                                    manifest.size.x != expectedWidth ||
+                                    manifest.size.y != expectedHeight) {
+                                    plot.surfaceWidth = availableRegion.x;
+                                    plot.surfaceHeight = availableRegion.y;
+
+                                    SurfaceEvent event;
+                                    event.type = SurfaceEventType::Resize;
+                                    event.size = {expectedWidth, expectedHeight};
+                                    event.scale = 1.0f;
+                                    event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+                                    surface->pushSurfaceEvent(event);
+                                }
+
+                                const auto cursorPos = ImGui::GetCursorScreenPos();
+                                ImGui::Image(ImTextureRef(manifest.surface->raw()), availableRegion);
+
+                                ImGui::SetCursorScreenPos(cursorPos);
+                                ImGui::InvisibleButton("##surface", availableRegion);
+
+                                if (ImGui::IsItemHovered()) {
+                                    const auto mousePos = ImGui::GetMousePos();
+                                    const Extent2D<F32> normPos = {
+                                        (mousePos.x - cursorPos.x) / availableRegion.x,
+                                        (mousePos.y - cursorPos.y) / availableRegion.y
+                                    };
+
+                                    MouseEvent event;
+                                    event.position = normPos;
+                                    event.scroll = {0.0f, 0.0f};
+
+                                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                                        event.type = MouseEventType::Click;
+                                        event.button = MouseButton::Left;
+                                        surface->pushMouseEvent(event);
+                                    } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                                        event.type = MouseEventType::Click;
+                                        event.button = MouseButton::Right;
+                                        surface->pushMouseEvent(event);
+                                    } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                                        event.type = MouseEventType::Release;
+                                        event.button = MouseButton::Left;
+                                        surface->pushMouseEvent(event);
+                                    } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+                                        event.type = MouseEventType::Release;
+                                        event.button = MouseButton::Right;
+                                        surface->pushMouseEvent(event);
+                                    }
+
+                                    if (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) {
+                                        event.type = MouseEventType::Scroll;
+                                        event.scroll = {io.MouseWheelH, io.MouseWheel};
+                                        surface->pushMouseEvent(event);
+                                    }
+
+                                    event.type = MouseEventType::Move;
+                                    surface->pushMouseEvent(event);
+                                }
+                            }
+                        }
                     }
 
                     ImGui::End();
                 }
-            }
 
-            JST_CHECK_THROW(impl->instance.present());
-            if (impl->instance.end() == Result::SKIP) {
-                continue;
+                return Result::SUCCESS;
+            });
+
+            if (res != Result::SUCCESS) {
+                break;
             }
         }
 
@@ -311,8 +338,7 @@ Result Superluminal::stop() {
 
     // Request to end the instance.
 
-    impl->instance.reset();
-    impl->instance.stop();
+    impl->instance->stop();
 
     // Wait for the instance to end.
 
@@ -344,7 +370,7 @@ Result Superluminal::update(const std::string&) {
 }
 
 bool Superluminal::presenting() {
-    return impl->instance.running();
+    return impl->instance->polling();
 }
 
 Result Superluminal::block() {
@@ -360,10 +386,10 @@ Result Superluminal::block() {
         return Result::SUCCESS;
     }
 
-    // Block until the instance is done inputting.
+    // Block until the instance is done.
 
-    while (impl->instance.running()) {
-        impl->instance.viewport().waitEvents();
+    while (impl->instance->polling()) {
+        JST_CHECK(impl->instance->poll());
     }
 
     return Result::SUCCESS;
@@ -382,11 +408,7 @@ Result Superluminal::pollEvents(const bool& wait) {
 
     // Poll events.
 
-    if (wait) {
-        impl->instance.viewport().waitEvents();
-    } else {
-        impl->instance.viewport().pollEvents();
-    }
+    JST_CHECK(impl->instance->poll(wait));
 
     return Result::SUCCESS;
 }
@@ -560,34 +582,17 @@ std::vector<std::vector<U8>> Superluminal::MosaicLayout(U8 matrixHeight, U8 matr
     return layout;
 }
 
-struct VariantBufferTypeVisitor {
-    template<Device D, typename T>
-    auto& operator()(const Tensor<D, T>& buffer) {
-        return static_cast<const TensorPrototype&>(buffer);
-    }
-};
-
-template<typename TargetType>
-struct BufferTypeDetectorVisitor {
-    bool matches = false;
-
-    template<Device D, typename T>
-    void operator()(const Tensor<D, T>&) {
-        matches = std::is_same_v<T, TargetType>;
-    }
-};
-
 Result Superluminal::Impl::createGraph() {
     JST_DEBUG("[SUPERLUMINAL] Create graph.");
 
-    // Create empty flowgraph.
+    // Create flowgraph.
 
-    JST_CHECK(instance.flowgraph().create());
+    JST_CHECK(instance->flowgraphCreate("superluminal", {}, flowgraph));
 
     // Import memory buffers.
 
     struct InputMemoryRecipe {
-        VariantBufferType buffer;
+        Tensor buffer;
         Domain source;
         std::unordered_set<Domain> display;
     };
@@ -599,11 +604,10 @@ Result Superluminal::Impl::createGraph() {
             continue;
         }
 
-        auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
+        const auto& buf = state.config.buffer;
+        auto& recipe = buffer_map[BufferKey(buf)];
 
-        auto& recipe = buffer_map[prototype.hash()];
-
-        recipe.buffer = state.config.buffer;
+        recipe.buffer = buf;
         recipe.source = state.config.source;
         recipe.display.insert(state.config.display);
     }
@@ -612,56 +616,42 @@ Result Superluminal::Impl::createGraph() {
         auto sourceDomain = (recipe.source == Domain::Time) ? "time" : "freq";
         auto conversionDomain = (recipe.source != Domain::Time) ? "time" : "freq";
 
-        // Fulfills Time -> Time and Frequency -> Frequency conversions.
+        // Create DMI block for this buffer.
 
-        auto convert = [&]<Device D, typename T>() {
-            if (std::holds_alternative<Tensor<D, T>>(recipe.buffer)) {
-                std::shared_ptr<Blocks::DynamicMemoryImport<D, void, T>> import;
+        auto blockName = jst::fmt::format("data_{}_{}_{}", GetDeviceName(recipe.buffer.device()), sourceDomain, hash);
 
-                JST_CHECK(instance.addBlock(
-                    import, jst::fmt::format("data_{}_{}_{}", GetDeviceName(D), sourceDomain, hash), {
-                        .buffer = std::get<Tensor<D, T>>(recipe.buffer),
-                    }, {}, {}
-                ));
+        Blocks::DynamicTensorImport dtiConfig;
+        dtiConfig.buffer = recipe.buffer;
+        JST_CHECK(flowgraph->blockCreate(blockName, dtiConfig, {}, recipe.buffer.device()));
 
-                if (D != config.preferredDevice) {
-                    std::string deviceNameStr;
+        // Handle device transfer if needed.
 
-                    if ((D == Device::CUDA) and (config.preferredDevice == Device::CPU)) {
-                        deviceNameStr = "cuda";
-                    }
+        if (recipe.buffer.device() != config.preferredDevice) {
+            std::string deviceNameStr;
 
-                    if ((D == Device::CPU) and (config.preferredDevice == Device::CUDA)) {
-                        deviceNameStr = "cuda";
-                    }
-
-                    if (deviceNameStr.empty()) {
-                        JST_ERROR("[SUPERLUMINAL] Unsupported device conversion.");
-                        return Result::ERROR;
-                    }
-
-                    auto blob = GraphToYaml({
-                        {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), sourceDomain, hash),
-                            {"duplicate", deviceNameStr, {NumericTypeInfo<T>::name}, {
-                                {{"hostAccessible", "true"}}},
-                                {{"buffer", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(D), sourceDomain, hash)}}}},
-                    });
-
-                    instance.flowgraph().importFromBlob(blob);
-                }
+            if ((recipe.buffer.device() == DeviceType::CUDA) and (config.preferredDevice == DeviceType::CPU)) {
+                deviceNameStr = "cuda";
             }
-            return Result::SUCCESS;
-        };
 
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-        JST_CHECK(convert.operator()<Device::CPU, CF32>());
-        JST_CHECK(convert.operator()<Device::CPU, F32>());
-#endif
+            if ((recipe.buffer.device() == DeviceType::CPU) and (config.preferredDevice == DeviceType::CUDA)) {
+                deviceNameStr = "cuda";
+            }
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        JST_CHECK(convert.operator()<Device::CUDA, CF32>());
-        JST_CHECK(convert.operator()<Device::CUDA, F32>());
-#endif
+            if (deviceNameStr.empty()) {
+                JST_ERROR("[SUPERLUMINAL] Unsupported device conversion.");
+                return Result::ERROR;
+            }
+
+            auto dtypeName = DataTypeToName(recipe.buffer.dtype());
+            auto blob = GraphToYaml({
+                {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), sourceDomain, hash),
+                    {"duplicate", deviceNameStr, {std::string(dtypeName)}, {
+                        {{"hostAccessible", "true"}}},
+                        {{"buffer", jst::fmt::format("${{graph.{}.output.buffer}}", blockName)}}}},
+            });
+
+            JST_CHECK(flowgraph->importFromBlob(blob));
+        }
 
         // Check if a conversion is needed.
 
@@ -672,43 +662,42 @@ Result Superluminal::Impl::createGraph() {
 
         // Fulfills Time -> Frequency and Frequency -> Time conversions.
 
-        auto& prototype = std::visit(VariantBufferTypeVisitor{}, recipe.buffer);
         auto forward = (recipe.source == Domain::Time && recipe.display.contains(Domain::Frequency));
-
-        // Check if buffer is real (F32) or complex (CF32)
-        BufferTypeDetectorVisitor<CF32> detector;
-        std::visit(detector, recipe.buffer);
-        bool isComplexBuffer = detector.matches;
+        bool isComplexBuffer = (recipe.buffer.dtype() == DataType::CF32);
 
         if (isComplexBuffer) {
             // Complex signal path - needs windowing, inversion, and multiplication
-            if (config.preferredDevice == Device::CPU) {
+            if (config.preferredDevice == DeviceType::CPU) {
+                auto winName = jst::fmt::format("win_{}", hash);
+                auto invName = jst::fmt::format("inv_{}", hash);
+                auto mulName = jst::fmt::format("win_mul_{}", hash);
+
                 auto blob = GraphToYaml({
-                    {"win",
+                    {winName,
                         {"window", GetDeviceName(config.preferredDevice), {"CF32"},
-                            {{"size", jst::fmt::format("{}", prototype.size())}}, {}}},
-                    {"inv",
+                            {{"size", jst::fmt::format("{}", recipe.buffer.size())}}, {}}},
+                    {invName,
                         {"invert", GetDeviceName(config.preferredDevice), {"CF32"}, {},
-                            {{"buffer", "${graph.win.output.window}"}}}},
-                    {"win_mul",
+                            {{"signal", jst::fmt::format("${{graph.{}.output.window}}", winName)}}}},
+                    {mulName,
                         {"multiply", GetDeviceName(config.preferredDevice), {"CF32"}, {},
-                            {{"factorA", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)},
-                            {"factorB", "${graph.inv.output.buffer}"}}}},
+                            {{"a", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)},
+                            {"b", jst::fmt::format("${{graph.{}.output.signal}}", invName)}}}},
                     {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
                         {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
                             {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
-                            {{"buffer", "${graph.win_mul.output.product}"}}}},
+                            {{"signal", jst::fmt::format("${{graph.{}.output.product}}", mulName)}}}},
                 });
-                instance.flowgraph().importFromBlob(blob);
+                JST_CHECK(flowgraph->importFromBlob(blob));
             } else {
                 // TODO: The Multiply block doesn't support CUDA yet. This is a temporary bypass.
                 auto blob = GraphToYaml({
                     {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
                         {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
                             {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
-                            {{"buffer",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
+                            {{"signal",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
                 });
-                instance.flowgraph().importFromBlob(blob);
+                JST_CHECK(flowgraph->importFromBlob(blob));
             }
         } else {
             // Real signal path - direct FFT without windowing for domain conversion
@@ -716,9 +705,9 @@ Result Superluminal::Impl::createGraph() {
                 {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
                     {"fft", GetDeviceName(config.preferredDevice), {"F32", "F32"},
                         {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
-                        {{"buffer",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
+                        {{"signal",  jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)}}}},
             });
-            instance.flowgraph().importFromBlob(blob);
+            JST_CHECK(flowgraph->importFromBlob(blob));
         }
     }
 
@@ -727,10 +716,10 @@ Result Superluminal::Impl::createGraph() {
     for (auto& [name, state] : plots) {
         switch (state.config.type) {
             case Type::Line:
-                buildLinePlotGraph(state);
+                JST_CHECK(buildLinePlotGraph(state));
                 break;
             case Type::Waterfall:
-                buildWaterfallPlotGraph(state);
+                JST_CHECK(buildWaterfallPlotGraph(state));
                 break;
             case Type::Interface:
                 break;
@@ -755,7 +744,8 @@ Result Superluminal::Impl::destroyGraph() {
 
     // Destroy flowgraph.
 
-    JST_CHECK(instance.flowgraph().destroy());
+    JST_CHECK(instance->flowgraphDestroy("superluminal"));
+    flowgraph.reset();
 
     return Result::SUCCESS;
 }
@@ -765,7 +755,7 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     // Access buffer metadata.
 
-    auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
+    const auto& buf = state.config.buffer;
 
     // Poll options.
 
@@ -790,51 +780,49 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
     // TODO: Add Slice block in case of channel index.
 
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
-    auto hash = std::to_string(prototype.hash());
-    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), domain, hash);
+    auto hash = std::to_string(BufferKey(buf));
+    auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
+    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
 
-    // Check if the source buffer is real (F32) or complex (CF32)
-    BufferTypeDetectorVisitor<F32> realDetector;
-    std::visit(realDetector, state.config.buffer);
-    bool isRealBuffer = realDetector.matches;
+    bool isRealBuffer = (buf.dtype() == DataType::F32);
 
     // For real signals in time domain, we don't need amplitude conversion
     if (isRealBuffer && state.config.display == Domain::Time) {
         auto blob = GraphToYaml({
             {"scl",
-                {"scale", GetDeviceName(config.preferredDevice), {"F32"},
-                    {{"range", "[-1, 1]"}},  // Real signals typically have different scale range
-                    {{"buffer", port}}}},
+                {"range", GetDeviceName(config.preferredDevice), {"F32"},
+                    {{"min", "-1"}, {"max", "1"}},
+                    {{"signal", port}}}},
             {"lineplot",
                 {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
                     {{"averaging", averagingRate},
                      {"decimation", decimationRate}},
-                    {{"buffer", "${domain.scl.output.buffer}"}}}},
+                    {{"signal", "${domain.scl.output.signal}"}}}},
         }, state.name);
-        instance.flowgraph().importFromBlob(blob);
+        JST_CHECK(flowgraph->importFromBlob(blob));
     } else {
         std::string inputType = isRealBuffer ? "F32" : "CF32";
 
         auto blob = GraphToYaml({
             {"amp",
                 {"amplitude", GetDeviceName(config.preferredDevice), {inputType, "F32"}, {},
-                    {{"buffer", port}}}},
+                    {{"signal", port}}}},
             {"scl",
-                {"scale", GetDeviceName(config.preferredDevice), {"F32"},
-                    {{"range", "[-100, 0]"}},
-                    {{"buffer", "${domain.amp.output.buffer}"}}}},
+                {"range", GetDeviceName(config.preferredDevice), {"F32"},
+                    {{"min", "-100"}, {"max", "0"}},
+                    {{"signal", "${domain.amp.output.signal}"}}}},
             {"lineplot",
                 {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
                     {{"averaging", averagingRate},
                      {"decimation", decimationRate}},
-                    {{"buffer", "${domain.scl.output.buffer}"}}}},
+                    {{"signal", "${domain.scl.output.signal}"}}}},
         }, state.name);
-        instance.flowgraph().importFromBlob(blob);
+        JST_CHECK(flowgraph->importFromBlob(blob));
     }
 
     // Update plot state.
 
-    state.block = instance.flowgraph().nodes()[{state.name + "_lineplot"}]->block;
+    state.block = flowgraph->blockList().at(state.name + "_lineplot");
 
     return Result::SUCCESS;
 }
@@ -844,7 +832,7 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     // Access buffer metadata.
 
-    auto& prototype = std::visit(VariantBufferTypeVisitor{}, state.config.buffer);
+    const auto& buf = state.config.buffer;
 
     // Poll options.
 
@@ -859,9 +847,10 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
     // Build graph.
 
     auto graph = Graph{};
-    auto hash = std::to_string(prototype.hash());
+    auto hash = std::to_string(BufferKey(buf));
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
-    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), domain, hash);
+    auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
+    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
 
     if (state.config.channelAxis != -1 && state.config.channelIndex != -1) {
         U64 axis = state.config.channelAxis;
@@ -870,17 +859,17 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
         // Parse slice string.
 
         std::string slice;
-        for (U64 i = 0; i < prototype.rank(); i++) {
+        for (U64 i = 0; i < buf.rank(); i++) {
             if (i == axis) {
                 slice += jst::fmt::format("{}", index);
             } else {
                 slice += jst::fmt::format(":");
             }
-            if (i != prototype.rank() - 1) {
+            if (i != buf.rank() - 1) {
                 slice += ",";
             }
         }
-        slice = jst::fmt::format("'[{}]'", slice);
+        slice = jst::fmt::format("[{}]", slice);
 
         // Create slice module.
 
@@ -900,18 +889,15 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
         port = jst::fmt::format("${{domain.duplicate.output.buffer}}");
     }
 
-    // Check if the source buffer is real (F32) or complex (CF32)
-    BufferTypeDetectorVisitor<F32> realDetector;
-    std::visit(realDetector, state.config.buffer);
-    bool isRealBuffer = realDetector.matches;
+    bool isRealBuffer = (buf.dtype() == DataType::F32);
 
     // For real signals in time domain, skip amplitude conversion
     if (isRealBuffer && state.config.display == Domain::Time) {
         graph.push_back({
             "scl",
-            {"scale", GetDeviceName(config.preferredDevice), {"F32"},
-                {{"range", "[-1, 1]"}},  // Real signals typically have different scale range
-                {{"buffer", port}}},
+            {"range", GetDeviceName(config.preferredDevice), {"F32"},
+                {{"min", "-1"}, {"max", "1"}},
+                {{"signal", port}}},
         });
     } else {
         std::string inputType = isRealBuffer ? "F32" : "CF32";
@@ -919,14 +905,14 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
         graph.push_back({
             "amp",
             {"amplitude", GetDeviceName(config.preferredDevice), {inputType, "F32"}, {},
-                {{"buffer", port}}},
+                {{"signal", port}}},
         });
 
         graph.push_back({
             "scl",
-            {"scale", GetDeviceName(config.preferredDevice), {"F32"},
-                {{"range", "[-100, 0]"}},
-                {{"buffer", "${domain.amp.output.buffer}"}}},
+            {"range", GetDeviceName(config.preferredDevice), {"F32"},
+                {{"min", "-100"}, {"max", "0"}},
+                {{"signal", "${domain.amp.output.signal}"}}},
         });
     }
 
@@ -934,14 +920,14 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
         "waterfall",
         {"waterfall", GetDeviceName(config.preferredDevice), {"F32"},
             {{"height", height}},
-            {{"buffer", "${domain.scl.output.buffer}"}}},
+            {{"signal", "${domain.scl.output.signal}"}}},
     });
 
-    instance.flowgraph().importFromBlob(GraphToYaml(graph, state.name));
+    JST_CHECK(flowgraph->importFromBlob(GraphToYaml(graph, state.name)));
 
     // Update plot state.
 
-    state.block = instance.flowgraph().nodes()[{state.name + "_waterfall"}]->block;
+    state.block = flowgraph->blockList().at(state.name + "_waterfall");
 
     return Result::SUCCESS;
 }
@@ -953,6 +939,35 @@ std::string Superluminal::Impl::ParseLinkDomain(const std::string& value, const 
         return jst::fmt::format("${{graph.{}{}.{}.{}}}", domain, matches[1].str(), matches[2].str(), matches[3].str());
     }
     return value;
+}
+
+U64 Superluminal::Impl::BufferKey(const Tensor& buffer) {
+    auto hashCombine = [](U64& seed, const U64 value) {
+        seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+    };
+
+    U64 seed = 0;
+    try {
+        const auto ptr = static_cast<U64>(reinterpret_cast<std::uintptr_t>(buffer.data()));
+        hashCombine(seed, ptr);
+    } catch (...) {
+        // Some tensor backends may not expose host-readable pointers.
+        hashCombine(seed, static_cast<U64>(buffer.id()));
+    }
+
+    hashCombine(seed, static_cast<U64>(buffer.offset()));
+    hashCombine(seed, static_cast<U64>(buffer.device()));
+    hashCombine(seed, static_cast<U64>(buffer.dtype()));
+    hashCombine(seed, static_cast<U64>(buffer.rank()));
+    for (U64 i = 0; i < buffer.rank(); ++i) {
+        hashCombine(seed, buffer.shape(i));
+    }
+
+    if (seed == 0) {
+        return static_cast<U64>(buffer.id());
+    }
+
+    return seed;
 }
 
 // TODO: Upstream to `Flowgraph` class.
@@ -992,7 +1007,7 @@ std::vector<char> Superluminal::Impl::GraphToYaml(const Graph& graph, std::strin
         if (!value.config.empty()) {
             yaml += "  config:\n";
             for (const auto& [configKey, configValue] : value.config) {
-                yaml += jst::fmt::format("    {}: {}\n", configKey, ParseLinkDomain(configValue, domain));
+                yaml += jst::fmt::format("    {}: '{}'\n", configKey, ParseLinkDomain(configValue, domain));
             }
         }
 
@@ -1054,104 +1069,8 @@ Result Superluminal::slider(const std::string& label, F32 min, F32 max, F32& val
 }
 
 Result Superluminal::markdown(const std::string& content) {
-    ImGui::Markdown(content.c_str(), content.length(), impl->instance.compositor().markdownConfig());
-    return Result::SUCCESS;
-}
-
-Result Superluminal::Impl::loadImageFromFile(const std::string& filepath, ImageData& imageData) {
-    if (failedImagePaths.contains(filepath)) {
-        return Result::ERROR;
-    }
-
-    int width, height, channels;
-
-    // Read file into memory
-    std::ifstream file(filepath, std::ios::binary | std::ios::ate);
-    if (!file) {
-        JST_ERROR("[SUPERLUMINAL] Failed to open image file '{}'", filepath);
-        failedImagePaths.insert(filepath);
-        return Result::ERROR;
-    }
-
-    std::streamsize fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<unsigned char> buffer(fileSize);
-    if (!file.read(reinterpret_cast<char*>(buffer.data()), fileSize)) {
-        JST_ERROR("[SUPERLUMINAL] Failed to read image file '{}'", filepath);
-        failedImagePaths.insert(filepath);
-        return Result::ERROR;
-    }
-
-    unsigned char* data = stbi_load_from_memory(buffer.data(), static_cast<int>(fileSize), &width, &height, &channels, 4);
-    if (!data) {
-        const char* error = stbi_failure_reason();
-        JST_ERROR("[SUPERLUMINAL] Failed to load image '{}': {}", filepath, error ? error : "Unknown error");
-        failedImagePaths.insert(filepath);
-        return Result::ERROR;
-    }
-
-    Render::Texture::Config config;
-    config.size = {
-        static_cast<U64>(width),
-        static_cast<U64>(height)
-    };
-    config.buffer = static_cast<uint8_t*>(data);
-
-    JST_CHECK(instance.window().build(imageData.texture, config));
-    JST_CHECK(imageData.texture->create());
-
-    imageData.width = width;
-    imageData.height = height;
-
-    stbi_image_free(data);
-
-    JST_INFO("[SUPERLUMINAL] Successfully loaded image '{}' ({}x{})", filepath, width, height);
-    return Result::SUCCESS;
-}
-
-Result Superluminal::image(const std::string& filepath, F32 width, F32 height, bool fitToWindow) {
-    auto it = impl->imageCache.find(filepath);
-    if (it == impl->imageCache.end()) {
-        Impl::ImageData imageData;
-        JST_CHECK(impl->loadImageFromFile(filepath, imageData));
-        impl->imageCache[filepath] = imageData;
-        it = impl->imageCache.find(filepath);
-    }
-
-    const auto& imageData = it->second;
-
-    // Calculate display size
-    ImVec2 displaySize;
-
-    if (fitToWindow) {
-        // Fit to available content region while preserving aspect ratio
-        ImVec2 availableSize = ImGui::GetContentRegionAvail();
-        F32 imageAspectRatio = static_cast<F32>(imageData.width) / static_cast<F32>(imageData.height);
-        F32 windowAspectRatio = availableSize.x / availableSize.y;
-
-        if (imageAspectRatio > windowAspectRatio) {
-            displaySize = ImVec2(availableSize.x, availableSize.x / imageAspectRatio);
-        } else {
-            displaySize = ImVec2(availableSize.y * imageAspectRatio, availableSize.y);
-        }
-    } else if (width <= 0 && height <= 0) {
-        // Use original size
-        displaySize = ImVec2(static_cast<F32>(imageData.width), static_cast<F32>(imageData.height));
-    } else if (width <= 0) {
-        // Calculate width based on height and aspect ratio
-        F32 aspectRatio = static_cast<F32>(imageData.width) / static_cast<F32>(imageData.height);
-        displaySize = ImVec2(height * aspectRatio, height);
-    } else if (height <= 0) {
-        // Calculate height based on width and aspect ratio
-        F32 aspectRatio = static_cast<F32>(imageData.height) / static_cast<F32>(imageData.width);
-        displaySize = ImVec2(width, width * aspectRatio);
-    } else {
-        // Use specified dimensions
-        displaySize = ImVec2(width, height);
-    }
-
-    ImGui::Image(ImTextureRef(imageData.texture->raw()), displaySize);
+    ImGui::MarkdownConfig mdConfig;
+    ImGui::Markdown(content.c_str(), content.length(), mdConfig);
     return Result::SUCCESS;
 }
 

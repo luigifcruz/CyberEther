@@ -1,0 +1,181 @@
+---
+protocolVersion: 1.0.0
+cyberetherVersion: 1.0.0
+title: Signal Generator
+graph:
+  signal_generator:
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    outputDataType: CF32
+    config:
+      bufferSize: 8192
+      chirpEndFreq: 10000
+      chirpStartFreq: 1000
+      signalDataType: CF32
+      dcOffset: 0
+      noiseVariance: 1
+      frequency: 1e+08
+      sampleRate: 5e+08
+      phase: 0
+      amplitude: 1
+      chirpDuration: 1
+      signalType: cosine
+    meta:
+      node:
+        y: 35
+        x: 17
+        height: 338
+        width: 140
+  signal_generator_1:
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    outputDataType: CF32
+    config:
+      bufferSize: 8192
+      chirpEndFreq: 10000
+      chirpStartFreq: 1000
+      signalDataType: CF32
+      dcOffset: 0
+      noiseVariance: 1
+      frequency: 0
+      sampleRate: 5e+08
+      phase: 0
+      amplitude: 1
+      chirpDuration: 1
+      signalType: noise
+    meta:
+      node:
+        y: 362
+        x: 176
+        height: 338
+        width: 140
+  add:
+    module: add
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: CF32
+    input:
+      a: '${graph.signal_generator.output.signal}'
+      b: '${graph.signal_generator_1.output.signal}'
+    meta:
+      node:
+        y: 211
+        x: 363
+        height: 85
+        width: 140
+  invert:
+    module: invert
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: CF32
+    input:
+      signal: '${graph.add.output.sum}'
+    meta:
+      node:
+        y: 227
+        x: 542
+        height: 63
+        width: 140
+  fft:
+    module: fft
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: CF32
+    config:
+      forward: true
+    input:
+      signal: '${graph.invert.output.signal}'
+    meta:
+      node:
+        y: 237
+        x: 717
+        height: 96
+        width: 140
+  amplitude:
+    module: amplitude
+    device: cpu
+    runtime: native
+    provider: generic
+    inputDataType: CF32
+    outputDataType: F32
+    input:
+      signal: '${graph.fft.output.signal}'
+    meta:
+      node:
+        y: 243
+        x: 891
+        height: 63
+        width: 140
+  range:
+    module: range
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: F32
+    config:
+      max: 0
+      min: -90.71429
+    input:
+      signal: '${graph.amplitude.output.signal}'
+    meta:
+      node:
+        y: 236
+        x: 1064
+        height: 129
+        width: 140
+  waterfall:
+    module: waterfall
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: F32
+    config:
+      interpolate: true
+      height: 512
+    input:
+      signal: '${graph.range.output.signal}'
+    meta:
+      surface_default:
+        detachedWidth: 512
+        attachedWidth: 357
+        detached: false
+        attachedHeight: 187
+        detachedHeight: 512
+      node:
+        y: 455
+        x: 1267
+        height: 302
+        width: 357
+  lineplot:
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    dataType: F32
+    config:
+      thickness: 1
+      decimation: 1
+      numberOfHorizontalLines: 5
+      numberOfVerticalLines: 11
+      averaging: 1
+    input:
+      signal: '${graph.range.output.signal}'
+    meta:
+      surface_default:
+        detachedWidth: 910
+        attachedWidth: 354
+        detached: false
+        attachedHeight: 234
+        detachedHeight: 692
+      node:
+        y: 64
+        x: 1264
+        height: 349
+        width: 354

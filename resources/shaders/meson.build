@@ -5,9 +5,9 @@ shader_pkg_lst = []
 subdir('global')
 subdir('constellation')
 subdir('lineplot')
+subdir('map')
 subdir('spectrogram')
 subdir('waterfall')
-subdir('remote')
 
 foreach shader_pkg: shader_pkg_lst
     name = shader_pkg.get('name')

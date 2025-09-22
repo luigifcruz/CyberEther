@@ -9,16 +9,16 @@
 namespace Jetstream::Render {
 
 template<>
-class WindowImp<Device::Metal> : public Window {
+class WindowImp<DeviceType::Metal> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Adapter<Device::Metal>>& viewport);
+                       const std::shared_ptr<Viewport::Adapter<DeviceType::Metal>>& viewport);
 
     const Stats& stats() const override;
-    void drawDebugMessage() const override;
+    std::string info() const override;
 
-    constexpr Device device() const override {
-        return Device::Metal;
+    constexpr DeviceType device() const override {
+        return DeviceType::Metal;
     };
 
  protected:
@@ -44,8 +44,8 @@ class WindowImp<Device::Metal> : public Window {
     MTL::CommandQueue* commandQueue = nullptr;
     MTL::CommandBuffer* commandBuffer = nullptr;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
-    std::vector<std::shared_ptr<SurfaceImp<Device::Metal>>> surfaces;
-    std::shared_ptr<Viewport::Adapter<Device::Metal>> viewport;
+    std::vector<std::shared_ptr<SurfaceImp<DeviceType::Metal>>> surfaces;
+    std::shared_ptr<Viewport::Adapter<DeviceType::Metal>> viewport;
 
     Result createImgui();
     Result destroyImgui();

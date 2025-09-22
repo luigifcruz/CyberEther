@@ -3,156 +3,138 @@
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
-#include "jetstream/logger.hh"
-#include "jetstream/benchmark.hh"
-#include "jetstream/render/base.hh"
-#include "jetstream/memory/base.hh"
+#include "jetstream/parser.hh"
+#include "jetstream/runtime.hh"
+#include "jetstream/provider.hh"
+#include "jetstream/render/base/window.hh"
 
 namespace Jetstream {
 
 class JETSTREAM_API Module {
  public:
-    virtual ~Module() = default;
+    // Types & Nested Structs
 
-    virtual Result create() {
-        return Result::SUCCESS;
+    struct Impl;
+    struct Context;
+    struct Interface;
+    struct Surface;
+
+    struct Config {
+        virtual ~Config() = default;
+
+        virtual std::string type() const = 0;
+
+        virtual Result serialize(Parser::Map& data) const = 0;
+        virtual Result deserialize(const Parser::Map& data) = 0;
+        virtual std::size_t hash() const = 0;
+    };
+
+    enum class Taint : U64 {
+        CLEAN               = 0 << 0, ///< No taint set, data is in its original state.
+        IN_PLACE            = 1 << 0, ///< Module will overwrite input, modifying it directly.
+        DISCONTIGUOUS       = 1 << 1, ///< Accepts non-contiguous data buffers for input tensors.
+        SURFACE             = 1 << 2, ///< It renders a surface to be drawn on the screen.
+        BROWSER_MAIN_THREAD = 1 << 3, ///< Requires main thread for create and destroy when running in the browser.
+    };
+
+    // Constructor
+
+    Module(const DeviceType& device,
+           const RuntimeType& runtime,
+           const ProviderType& provider,
+           const std::shared_ptr<Module::Impl>& impl,
+           const std::shared_ptr<Module::Context>& context,
+           const std::shared_ptr<Module::Config>& stagedConfig,
+           const std::shared_ptr<Module::Config>& candidateConfig);
+
+    // Lifecycle
+
+    Result create(const std::string& name,
+                  const Module::Config& config,
+                  const TensorMap& inputs,
+                  const std::shared_ptr<Render::Window>& render = nullptr);
+    Result create(const std::string& name,
+                  const Parser::Map& config,
+                  const TensorMap& inputs,
+                  const std::shared_ptr<Render::Window>& render = nullptr);
+    Result destroy();
+
+    // Configuration
+
+    Result reconfigure(const Parser::Map& config, const bool& validateOnly = false);
+    Result config(Parser::Map& config) const;
+    const Module::Config& config() const;
+
+    // Identity
+
+    const std::string& name() const;
+    const DeviceType& device() const;
+    const RuntimeType& runtime() const;
+    const ProviderType& provider() const;
+    const Module::Taint& taint() const;
+
+    // I/O
+
+    const TensorMap& inputs() const;
+    const TensorMap& outputs() const;
+    const std::shared_ptr<Module::Interface>& interface() const;
+
+    // Components
+
+    const std::shared_ptr<Module::Context>& context();
+    const std::shared_ptr<Module::Surface>& surface();
+
+    // Implementation access
+
+    template<typename T>
+    T* getImpl() {
+        return dynamic_cast<T*>(impl.get());
     }
 
-    virtual Result destroy() {
-        return Result::SUCCESS;
-    }
-
-    virtual constexpr Taint taint() const {
-        return Taint::CLEAN;
-    }
-
-    virtual void info() const = 0;
-    virtual constexpr Device device() const = 0;
-
-    constexpr const Locale& locale() const {
-        return _locale;
-    }
-
- protected:
-    template<Device DeviceId, typename DataType>
-    static Result InitInput(Tensor<DeviceId, DataType>& buffer, const Taint& taint) {
-        JST_TRACE("[MODULE] Init input locale: '{}'", buffer.locale());
-
-        if (buffer.empty()) {
-            JST_ERROR("Input is empty during initialization.");
-            return Result::ERROR;
-        }
-
-        if (buffer.locale().empty()) {
-            JST_ERROR("Input locale is empty during initialization.");
-            return Result::ERROR;
-        }
-
-        if (!buffer.valid_shape()) {
-            JST_ERROR("Input has invalid shape during initialization: {}", buffer.shape());
-            return Result::ERROR;
-        }
-
-        if ((taint & Taint::DISCONTIGUOUS) != Taint::DISCONTIGUOUS && !buffer.contiguous()) {
-            JST_ERROR("Input is not contiguous during initialization.");
-            return Result::ERROR;
-        }
-
-        return Result::SUCCESS;
-    }
-
-    template<Device DeviceId, typename DataType>
-    static Result InitOutput(const std::string& name,
-                             Tensor<DeviceId, DataType>& buffer,
-                             const Locale& locale) {
-        JST_TRACE("[MODULE] Init output locale: '{}'", locale);
-
-        if (locale.empty()) {
-            JST_ERROR("Output locale is empty during initialization.");
-            return Result::ERROR;
-        }
-
-        buffer.set_locale({
-            locale.blockId,
-            locale.moduleId,
-            name
-        });
-
-        if (!buffer.empty()) {
-            JST_ERROR("The output buffer should be empty during initialization.");
-            return Result::ERROR;
-        }
-
-        return Result::SUCCESS;
-    }
-
-    void setLocale(const Locale& locale) {
-        _locale = locale;
+    template<typename T>
+    const T* getImpl() const {
+        return dynamic_cast<const T*>(impl.get());
     }
 
  private:
-    Locale _locale;
-
-    friend Instance;
+    std::shared_ptr<Impl> impl;
 };
 
-class CPU;
-class CUDA;
-class Metal;
+inline Module::Taint operator&(Module::Taint lhs, Module::Taint rhs) {
+    return static_cast<Module::Taint>(static_cast<U64>(lhs) & static_cast<U64>(rhs));
+}
 
-class JETSTREAM_API Compute {
- public:
-    virtual ~Compute() = default;
-
-    struct Context {
-#ifdef JETSTREAM_GRAPH_CPU_AVAILABLE
-        CPU* cpu;
-#endif
-#ifdef JETSTREAM_GRAPH_CUDA_AVAILABLE
-        CUDA* cuda;
-#endif
-#ifdef JETSTREAM_GRAPH_METAL_AVAILABLE
-        Metal* metal;
-#endif
-    };
-
-    virtual constexpr Result createCompute(const Context&) {
-        return Result::SUCCESS;
-    }
-    virtual constexpr Result compute(const Context&) {
-        return Result::SUCCESS;
-    }
-    virtual constexpr Result computeReady() {
-        return Result::SUCCESS;
-    }
-    virtual constexpr Result destroyCompute(const Context&) {
-        return Result::SUCCESS;
-    }
-
- protected:
-    friend Instance;
-};
-
-class JETSTREAM_API Present {
- public:
-    virtual ~Present() = default;
-
-    virtual constexpr Result createPresent() {
-        return Result::SUCCESS;
-    }
-    virtual constexpr Result present() {
-        return Result::SUCCESS;
-    }
-    virtual constexpr Result destroyPresent() {
-        return Result::SUCCESS;
-    }
-
- protected:
-    std::shared_ptr<Render::Window> window;
-
-    friend Instance;
-};
+inline Module::Taint operator|(Module::Taint lhs, Module::Taint rhs) {
+    return static_cast<Module::Taint>(static_cast<U64>(lhs) | static_cast<U64>(rhs));
+}
 
 }  // namespace Jetstream
 
-#endif
+#ifndef JST_MODULE_TYPE
+#define JST_MODULE_TYPE(TYPE) \
+    std::string type() const override { \
+        static const std::string type = #TYPE; \
+        return type; \
+    }
+#endif  // JST_MODULE_TYPE
+
+#ifndef JST_MODULE_PARAMS
+#define JST_MODULE_PARAMS(...) \
+    Result serialize(Parser::Map& data) const override { \
+        (void)data; \
+        FOR_EACH(JST_SERDES_SERIALIZE, __VA_ARGS__) \
+        return Result::SUCCESS; \
+    } \
+    Result deserialize(const Parser::Map& data) override { \
+        (void)data; \
+        FOR_EACH(JST_SERDES_DESERIALIZE, __VA_ARGS__) \
+        return Result::SUCCESS; \
+    } \
+    std::size_t hash() const override { \
+        std::size_t h = 0; \
+        FOR_EACH(JST_HASH_FIELD, __VA_ARGS__) \
+        return h; \
+    }
+#endif  // JST_MODULE_PARAMS
+
+#endif  // JETSTREAM_MODULE_HH

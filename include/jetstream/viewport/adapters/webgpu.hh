@@ -7,7 +7,7 @@
 namespace Jetstream::Viewport {
 
 template<>
-class Adapter<Device::WebGPU> : public Generic {
+class Adapter<DeviceType::WebGPU> : public Generic {
  public:
     using Generic::Generic;
 

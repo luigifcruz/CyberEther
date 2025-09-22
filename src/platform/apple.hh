@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <functional>
 
 #include "jetstream/platform.hh"
 #include "jetstream/macros.hh"
@@ -10,9 +11,13 @@
 namespace Jetstream::Platform {
 
 Result OpenUrl(const std::string& url);
-Result PickFile(std::string& path, const std::vector<std::string>& extensions);
-Result PickFolder(std::string& path);
-Result SaveFile(std::string& path);
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback);
+Result PickFolder(std::string& path,
+                  std::function<void(std::string)> callback);
+Result SaveFile(std::string& path,
+                std::function<void(std::string)> callback);
 
 }  // namespace Jetstream::Platform
 

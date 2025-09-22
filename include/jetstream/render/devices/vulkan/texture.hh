@@ -7,20 +7,20 @@
 namespace Jetstream::Render {
 
 template<>
-class TextureImp<Device::Vulkan> : public Texture {
+class TextureImp<DeviceType::Vulkan> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
 
     using Render::Texture::size;
-    bool size(const Extent2D<U64>& size);
+    bool size(const Extent2D<U64>& size) override;
 
-    Result fill();
-    Result fillRow(const U64& y, const U64& height);
+    Result fill() override;
+    Result fillRow(const U64& y, const U64& height) override;
 
-    uint64_t raw() {
+    uint64_t raw() const override {
         return (uint64_t)(void*)descriptorSet;
     }
 
@@ -59,8 +59,8 @@ class TextureImp<Device::Vulkan> : public Texture {
     VkDeviceMemory memory;
     VkExtent2D extent;
 
-    friend class SurfaceImp<Device::Vulkan>;
-    friend class ProgramImp<Device::Vulkan>;
+    friend class SurfaceImp<DeviceType::Vulkan>;
+    friend class ProgramImp<DeviceType::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

@@ -3,11 +3,12 @@
 
 class SurfaceTestUI : public TestUIBase<Render::Components::Text> {
  public:
-    SurfaceTestUI(Instance& instance) : TestUIBase(instance, "Surface Test") {}
+    SurfaceTestUI(const std::shared_ptr<Instance>& instance)
+        : TestUIBase(instance, "Surface Test") {}
 
  protected:
     Result setupComponent() override {
-        if (!instance.window().hasFont("default_mono")) {
+        if (!render->hasFont("default_mono")) {
             JST_ERROR("Font 'default_mono' not found.");
             return Result::ERROR;
         }
@@ -15,17 +16,17 @@ class SurfaceTestUI : public TestUIBase<Render::Components::Text> {
         Render::Components::Text::Config cfg;
         cfg.maxCharacters = 64;
         cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
-        cfg.font = instance.window().font("default_mono");
+        cfg.font = render->font("default_mono");
         cfg.elements = {
             {"hello", {2.5f, {0.0f, 0.0f}, {1, 1}, 0.0f, "Hello Surface!"}},
             {"info", {1.0f, {0.0f, -0.5f}, {1, 1}, 0.0f, "Text Component Test"}},
         };
-        JST_CHECK(instance.window().build(component, cfg));
-        return instance.window().bind(component);
+        JST_CHECK(render->build(component, cfg));
+        return render->bind(component);
     }
 
     Result setupFramebuffer() override {
-        return instance.window().build<Render::Texture>(framebufferTexture, Render::Texture::Config{
+        return render->build<Render::Texture>(framebufferTexture, Render::Texture::Config{
             .size = {800, 600}
         });
     }
@@ -37,8 +38,8 @@ class SurfaceTestUI : public TestUIBase<Render::Components::Text> {
         cfg.multisampled = false;
 
         JST_CHECK(component->surface(cfg));
-        JST_CHECK(instance.window().build(surface, cfg));
-        return instance.window().bind(surface);
+        JST_CHECK(render->build(surface, cfg));
+        return render->bind(surface);
     }
 
     void updatePixelSize(U64 width, U64 height) override {
@@ -59,7 +60,7 @@ class SurfaceTestUI : public TestUIBase<Render::Components::Text> {
 };
 
 int main() {
-    return runComponentTest("Surface Test", "Surface Test", {1200, 800}, [](Instance& instance) {
+    return runComponentTest("Surface Test", "Surface Test", {1200, 800}, [](const std::shared_ptr<Instance>& instance) {
         SurfaceTestUI(instance).run();
     });
 }

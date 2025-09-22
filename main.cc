@@ -1,6 +1,21 @@
 #include <thread>
+#include <iostream>
+#include <atomic>
+#include <set>
 
-#include "jetstream/base.hh"
+#include "jetstream/config.hh"
+#include "jetstream/instance.hh"
+#include "jetstream/instance_remote.hh"
+#include "jetstream/backend/base.hh"
+#include "jetstream/benchmark.hh"
+
+#include <qrencode.h>
+
+#ifdef JST_OS_BROWSER
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#include <emscripten/wasmfs.h>
+#endif
 
 using namespace Jetstream;
 
@@ -16,238 +31,332 @@ void cyberether_shutdown() {
 }
 #endif
 
-int main(int argc, char* argv[]) {
-    // Parse command line arguments.
+void PrintRemoteInfo(Instance::Remote* remote) {
+    QRcode* qr = QRcode_encodeString8bit(remote->inviteUrl().c_str(), 0, QR_ECLEVEL_L);
+    if (!qr) {
+        jst::fmt::print(stderr, "[QR encode error]\n");
+        return;
+    }
 
-    Backend::Config backendConfig;
-    Viewport::Config viewportConfig;
-    Render::Window::Config renderConfig;
+    const int qrWidth = qr->width;
+    const int border = 2;
+    const int totalWidth = qrWidth + border * 2;
+    const int boxInner = totalWidth + 4;
+
+    auto isBlack = [&](int x, int y) -> bool {
+        if (x < 0 || y < 0 || x >= qrWidth || y >= qrWidth) return false;
+        return (qr->data[y * qrWidth + x] & 1) != 0;
+    };
+
+    std::string hLine;
+    for (int i = 0; i < boxInner; ++i) hLine += "═";
+
+    auto printCentered = [&](const std::string& text) {
+        int totalPad = boxInner - static_cast<int>(text.length());
+        int left = totalPad / 2;
+        int right = totalPad - left;
+        jst::fmt::print("║{:>{}}{}{:>{}}\n", "", left, text, "║", right + 1);
+    };
+
+    jst::fmt::print("\n╔{}╗\n", hLine);
+    printCentered("CyberEther Remote");
+    printCentered("Scan QR code or open link to connect");
+    jst::fmt::print("╠{}╣\n", hLine);
+
+    for (int y = -border; y < qrWidth + border; y += 2) {
+        std::string row;
+        for (int x = -border; x < qrWidth + border; ++x) {
+            const bool upper = isBlack(x, y);
+            const bool lower = isBlack(x, y + 1);
+            if (upper && lower)      row += "█";
+            else if (upper)          row += "▀";
+            else if (lower)          row += "▄";
+            else                     row += " ";
+        }
+        jst::fmt::print("║  {}  ║\n", row);
+    }
+
+    jst::fmt::print("╚{}╝\n\n", hLine);
+
+    QRcode_free(qr);
+
+    jst::fmt::print("Room ID:      {}\n", remote->roomId());
+    jst::fmt::print("Join URL:     {}\n", remote->inviteUrl());
+    jst::fmt::print("Access Token: {}\n\n", remote->accessToken());
+}
+
+void PrintClientApproval(const std::string& code) {
+    const int boxInner = 38;
+
+    std::string hLine;
+    for (int i = 0; i < boxInner; ++i) hLine += "═";
+
+    auto printCentered = [&](const std::string& text) {
+        int totalPad = boxInner - static_cast<int>(text.length());
+        int left = totalPad / 2;
+        int right = totalPad - left;
+        jst::fmt::print("║{:>{}}{}{:>{}}\n", "", left, text, "║", right + 1);
+    };
+
+    jst::fmt::print("\n╔{}╗\n", hLine);
+    printCentered("New Connection Request");
+    printCentered("Verify client code before approving");
+    jst::fmt::print("╠{}╣\n", hLine);
+    printCentered(code);
+    jst::fmt::print("╚{}╝\n\n", hLine);
+
+    jst::fmt::print("Approve? [Y/n]: ");
+    std::fflush(stdout);
+}
+
+void RunSessionMonitor(Instance::Remote* remote, std::atomic<bool>& running, bool autoJoin) {
+    std::set<std::string> seenSessions;
+
+    while (running) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        if (!running) break;
+
+        const auto& waitlist = remote->waitlist();
+        if (waitlist.empty()) {
+            continue;
+        }
+
+        for (const auto& sessionId : waitlist) {
+            if (seenSessions.count(sessionId)) continue;
+            seenSessions.insert(sessionId);
+
+            std::string code = sessionId.substr(sessionId.length() - 6);
+            std::transform(code.begin(), code.end(), code.begin(), ::toupper);
+
+            if (autoJoin) {
+                remote->approveClient(code);
+            } else {
+                PrintClientApproval(code);
+
+                std::string input;
+                if (std::getline(std::cin, input)) {
+                    if (input.empty() || input == "y" || input == "Y") {
+                        remote->approveClient(code);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void printUsage(const char* program) {
+    jst::fmt::print("Usage: {} [command] [options] [flowgraph]\n\n", program);
+    jst::fmt::print("Commands:\n");
+    jst::fmt::print("  remote                       Run with remote streaming enabled\n");
+    jst::fmt::print("  benchmark [format]           Run benchmarks (markdown, json, csv)\n\n");
+    jst::fmt::print("Global Options:\n");
+    jst::fmt::print("  -d, --device <type>          Device type (metal, vulkan)\n");
+    jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
+    jst::fmt::print("  -h, --help                   Show this help\n");
+    jst::fmt::print("  -v, --version                Show version\n\n");
+    jst::fmt::print("Remote Options:\n");
+    jst::fmt::print("  --headless                   Run in headless mode (no window)\n");
+    jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
+    jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n");
+    jst::fmt::print("  --endpoint <url>             Broker URL (default: https://api.cyberether.org)\n");
+    jst::fmt::print("  --codec <codec>              Video codec: h264, vp8, vp9, av1 (default: h264)\n");
+    jst::fmt::print("  --acceleration               Enable hardware acceleration\n");
+    jst::fmt::print("  --auto-join                  Auto-join sessions\n");
+}
+
+int main(int argc, char* argv[]) {
+    Instance::Config config = {
+        .compositor = CompositorType::DEFAULT,
+    };
     std::string flowgraphPath;
-    Device prefferedBackend = Device::None;
+    bool enableRemote = false;
+    Instance::Remote::Config remoteConfig;
 
     for (int i = 1; i < argc; i++) {
-        const std::string arg = std::string(argv[i]);
+        const std::string arg = argv[i];
 
-        if (arg == "--remote") {
-            backendConfig.remote = true;
-
-            continue;
-        }
-
-        if (arg == "--broker") {
-            if (i + 1 < argc) {
-                viewportConfig.broker = argv[++i];
-            }
-
-            continue;
-        }
-
-        if (arg == "--backend") {
-            // TODO: Add check for valid backend.
-
-            if (i + 1 < argc) {
-                prefferedBackend = StringToDevice(argv[++i]);
-            }
-
-            continue;
-        }
-
-        if (arg == "--no-validation") {
-            backendConfig.validationEnabled = false;
-
-            continue;
-        }
-
-        if (arg == "--no-vsync") {
-            viewportConfig.vsync = false;
-
-            continue;
-        }
-
-        if (arg == "--no-hw-acceleration") {
-            viewportConfig.hardwareAcceleration = false;
-
-            continue;
-        }
-
-        if (arg == "--benchmark") {
-            // TODO: Add check for valid output type.
-
-            std::string outputType = "markdown";
-
-            if (i + 1 < argc) {
-                outputType = std::string(argv[++i]);
-            }
-
-            Benchmark::Run(outputType);
-
+        if (arg == "-h" || arg == "--help") {
+            printUsage(argv[0]);
             return 0;
         }
 
-        if (arg == "--framerate") {
-            if (i + 1 < argc) {
-                viewportConfig.framerate = std::stoul(argv[++i]);
-            }
-
-            continue;
+        if (arg == "-v" || arg == "--version") {
+            jst::fmt::print("CyberEther v{}-{}\n", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
+            return 0;
         }
 
-        if (arg == "--multisampling") {
+        if (arg == "-d" || arg == "--device") {
             if (i + 1 < argc) {
-                backendConfig.multisampling = std::stoul(argv[++i]);
+                config.device = StringToDevice(argv[++i]);
             }
-
-            continue;
-        }
-
-        if (arg == "--size") {
-            if (i + 2 < argc) {
-                viewportConfig.size.x = std::stoul(argv[++i]);
-                viewportConfig.size.y = std::stoul(argv[++i]);
-            }
-
-            continue;
-        }
-
-        if (arg == "--codec") {
-            // TODO: Add check for valid codec.
-
-            if (i + 1 < argc) {
-                viewportConfig.codec = Viewport::StringToVideoCodec(argv[++i]);
-            }
-
             continue;
         }
 
         if (arg == "--device-id") {
             if (i + 1 < argc) {
-                backendConfig.deviceId = std::stoul(argv[++i]);
+                ++i; // TODO: Implement device selection.
             }
-
             continue;
         }
 
-        if (arg == "--staging-buffer") {
+        if (arg == "benchmark") {
+            std::string format = "markdown";
             if (i + 1 < argc) {
-                backendConfig.stagingBufferSize = std::stoul(argv[++i])*1024*1024;
+                const std::string next = argv[i + 1];
+                if (next == "markdown" || next == "json" || next == "csv") {
+                    format = next;
+                    ++i;
+                }
             }
-
-            continue;
-        }
-
-        if (arg == "--scale") {
-            if (i + 1 < argc) {
-                renderConfig.scale = std::stof(argv[++i]);
-            }
-
-            continue;
-        }
-
-        if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: " << argv[0] << " [options] [flowgraph]" << std::endl;
-            std::cout << "Options:" << std::endl;
-            std::cout << "  --remote                Enable remote viewport mode." << std::endl;
-            std::cout << "  --broker [url]          Set the broker of the remote viewport. Default: `https://api.cyberether.org`" << std::endl;
-            std::cout << "  --backend [backend]     Set the preferred backend (`Metal`, `Vulkan`, or `WebGPU`)." << std::endl;
-            std::cout << "  --framerate [value]     Set the framerate of the te viewport (FPS). Default: `60`" << std::endl;
-            std::cout << "  --multisampling [value] Set the multisampling anti-aliasing factor (`1`, `4`, or `8`). Default: `4`" << std::endl;
-            std::cout << "  --codec [codec]         Set the video codec of the remote viewport. Default: `H264`" << std::endl;
-            std::cout << "  --size [width] [height] Set the initial size of the viewport. Default: `1920 1080`" << std::endl;
-            std::cout << "  --scale [scale]         Set the scale of the render window. Default: `1.0`" << std::endl;
-            std::cout << "  --benchmark [type]      Run the benchmark and output the results (`markdown`, `json`, or `csv`). Default: `markdown`" << std::endl;
-            std::cout << "  --no-hw-acceleration    Disable hardware acceleration. Enabled otherwise." << std::endl;
-            std::cout << "Other Options:" << std::endl;
-            std::cout << "  --staging-buffer [size] Set the staging buffer size (MB). Default: `64`" << std::endl;
-            std::cout << "  --device-id [id]        Set the physical device ID. Default: `0`" << std::endl;
-            std::cout << "  --no-validation         Disable Vulkan validation layers. Enabled otherwise." << std::endl;
-            std::cout << "  --no-vsync              Disable vsync. Enabled otherwise." << std::endl;
-            std::cout << "Other:" << std::endl;
-            std::cout << "  --help, -h              Print this help message." << std::endl;
-            std::cout << "  --version, -v           Print the version." << std::endl;
+            Benchmark::Run(format);
             return 0;
         }
 
-        if (arg == "--version" || arg == "-v") {
-            std::cout << "CyberEther v" << JETSTREAM_VERSION_STR << "-" << JETSTREAM_BUILD_TYPE << std::endl;
-            return 0;
+        if (arg == "remote") {
+            enableRemote = true;
+            continue;
         }
 
-        flowgraphPath = arg;
+        if (arg == "--headless") {
+            config.headless = true;
+            continue;
+        }
+
+        if (arg == "--size") {
+            if (i + 1 < argc) {
+                std::string sizeStr = argv[++i];
+                size_t xPos = sizeStr.find('x');
+                if (xPos != std::string::npos) {
+                    config.size.x = std::stoull(sizeStr.substr(0, xPos));
+                    config.size.y = std::stoull(sizeStr.substr(xPos + 1));
+                }
+            }
+            continue;
+        }
+
+        if (arg == "--framerate") {
+            if (i + 1 < argc) {
+                config.framerate = std::stoull(argv[++i]);
+            }
+            continue;
+        }
+
+        if (arg == "--endpoint") {
+            if (i + 1 < argc) {
+                remoteConfig.broker = argv[++i];
+            }
+            continue;
+        }
+
+        if (arg == "--codec") {
+            if (i + 1 < argc) {
+                const std::string codec = argv[++i];
+                if (codec == "h264") {
+                    remoteConfig.codec = Viewport::VideoCodec::H264;
+                } else if (codec == "vp8") {
+                    remoteConfig.codec = Viewport::VideoCodec::VP8;
+                } else if (codec == "vp9") {
+                    remoteConfig.codec = Viewport::VideoCodec::VP9;
+                } else if (codec == "av1") {
+                    remoteConfig.codec = Viewport::VideoCodec::AV1;
+                }
+            }
+            continue;
+        }
+
+        if (arg == "--acceleration") {
+            remoteConfig.hardwareAcceleration = true;
+            continue;
+        }
+
+        if (arg == "--auto-join") {
+            remoteConfig.autoJoinSessions = true;
+            continue;
+        }
+
+        if (arg[0] != '-') {
+            flowgraphPath = arg;
+        }
     }
 
-    // Instance creation.
 
-    Instance instance;
+#ifdef JST_OS_BROWSER
+    std::thread([] {
+        backend_t opfs = wasmfs_create_opfs_backend();
+        int ret = wasmfs_create_directory("/storage", 0777, opfs);
+        JST_DEBUG("OPFS mount on /storage: {}", ret == 0 ? "OK" : "FAILED");
+    }).detach();
+#endif
 
-    // Configure instance.
+    auto instance = std::make_shared<Instance>();
 
-    Instance::Config config = {
-        .preferredDevice = prefferedBackend,
-        .renderCompositor = true,
-        .backendConfig = backendConfig,
-        .viewportConfig = viewportConfig,
-        .renderConfig = renderConfig
-    };
-
-    JST_CHECK_THROW(instance.build(config));
-
-    // Load flowgraph if provided.
+    JST_CHECK_THROW(instance->create(config));
 
     if (!flowgraphPath.empty()) {
-        JST_CHECK_THROW(instance.flowgraph().create());
-        JST_CHECK_THROW(instance.flowgraph().importFromFile(flowgraphPath));
+        std::shared_ptr<Flowgraph> flowgraph;
+        JST_CHECK_THROW(instance->flowgraphCreate("main", {}, flowgraph));
+        JST_CHECK_THROW(flowgraph->importFromFile(flowgraphPath));
     }
 
-    // Start instance.
+    JST_CHECK_THROW(instance->start());
 
-    instance.start();
-
-    // Start compute thread.
+    if (enableRemote) {
+        JST_CHECK_THROW(instance->remote()->create(remoteConfig));
+    }
 
     auto computeThread = std::thread([&]{
-        while (instance.computing()) {
-            JST_CHECK_THROW(instance.compute());
+        while (instance->computing()) {
+            JST_CHECK_THROW(instance->compute());
         }
     });
-
-    // Start graphical thread.
 
     auto graphicalThreadLoop = [](void* arg) {
         Instance* instance = reinterpret_cast<Instance*>(arg);
-
-        if (instance->begin() == Result::SKIP) {
-            return;
-        }
         JST_CHECK_THROW(instance->present());
-        if (instance->end() == Result::SKIP) {
-            return;
-        }
     };
 
 #ifdef JST_OS_BROWSER
-    emscripten_set_main_loop_arg(graphicalThreadLoop, &instance, 0, 1);
+    emscripten_set_main_loop_arg(graphicalThreadLoop, instance.get(), 0, 1);
 #else
     auto graphicalThread = std::thread([&]{
-        while (instance.presenting()) {
-            graphicalThreadLoop(&instance);
+        while (instance->presenting()) {
+            graphicalThreadLoop(instance.get());
         }
     });
 #endif
-
-    // Start input polling.
 
 #ifdef JST_OS_BROWSER
     emscripten_runtime_keepalive_push();
 #else
-    while (instance.running()) {
-        instance.viewport().waitEvents();
+    std::atomic<bool> sessionMonitorRunning{false};
+    std::thread sessionMonitorThread;
+
+    if (enableRemote && instance->remote()) {
+        PrintRemoteInfo(instance->remote().get());
+
+        sessionMonitorRunning = true;
+        sessionMonitorThread = std::thread(RunSessionMonitor,
+            instance->remote().get(),
+            std::ref(sessionMonitorRunning),
+            remoteConfig.autoJoinSessions);
+    }
+
+    while (instance->polling()) {
+        instance->poll();
+    }
+
+    sessionMonitorRunning = false;
+    if (sessionMonitorThread.joinable()) {
+        sessionMonitorThread.join();
     }
 #endif
 
-    // Stop instance and wait for threads.
+    if (enableRemote && instance->remote()->started()) {
+        JST_CHECK_THROW(instance->remote()->destroy());
+    }
 
-    instance.reset();
-    instance.stop();
+    JST_CHECK_THROW(instance->stop());
 
     if (computeThread.joinable()) {
         computeThread.join();
@@ -261,13 +370,9 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
-    // Destroy instance.
+    JST_CHECK_THROW(instance->destroy());
 
-    instance.destroy();
-
-    // Destroy backend.
-
-    Backend::DestroyAll();
+    Jetstream::Backend::DestroyAll();
 
     return 0;
 }

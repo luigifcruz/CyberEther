@@ -15,7 +15,7 @@ static bool keepRunningFlag;
 
 namespace Jetstream::Viewport {
 
-using Implementation = GLFW<Device::Vulkan>;
+using Implementation = GLFW<DeviceType::Vulkan>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
     JST_DEBUG("[VULKAN] Creating GLFW viewport.");
@@ -38,7 +38,7 @@ Result Implementation::create() {
     });
 
     // Check if we are running in headless mode.
-    JST_ASSERT(!Backend::State<Device::Vulkan>()->headless(), "Headless mode is not supported.");
+    JST_ASSERT(!Backend::State<DeviceType::Vulkan>()->headless(), "Headless mode is not supported.");
 
     // Initialize and configure GLFW.
 
@@ -72,7 +72,7 @@ Result Implementation::create() {
 
     // Create surface.
 
-    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
+    auto& instance = Backend::State<DeviceType::Vulkan>()->getInstance();
     JST_VK_CHECK(glfwCreateWindowSurface(instance, window, nullptr, &surface), [&]{
         JST_ERROR("[VULKAN] GLFW failed to create window surface.");
     });
@@ -84,8 +84,8 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& instance = Backend::State<Device::Vulkan>()->getInstance();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& instance = Backend::State<DeviceType::Vulkan>()->getInstance();
 
     // Destroy swapchain.
 
@@ -107,8 +107,8 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::createSwapchain() {
-    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     // Save current swapchain.
 
@@ -138,7 +138,7 @@ Result Implementation::createSwapchain() {
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
     Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicFamily.value(), indices.presentFamily.value()};
@@ -223,18 +223,18 @@ Result Implementation::createImgui() {
 }
 
 F32 Implementation::scale(const F32& scale) const {
-    I32 w_width, w_height;
-    glfwGetWindowSize(window, &w_width, &w_height);
+    I32 wWidth, wHeight;
+    glfwGetWindowSize(window, &wWidth, &wHeight);
 
-    I32 f_width, f_height;
-    glfwGetFramebufferSize(window, &f_width, &f_height);
+    I32 fWidth, fHeight;
+    glfwGetFramebufferSize(window, &fWidth, &fHeight);
 
     F32 x, y;
     glfwGetWindowContentScale(window, &x, &y);
 
     // This is a X11/Windows fix. If the Framebuffer and Window sizes are the same
     // but the Scale is different than 1, it means HIDPI is necessary.
-    if ((w_width == f_width) and (x > 1.0)) {
+    if ((wWidth == fWidth) and (x > 1.0)) {
         return scale * x;
     } else {
         return scale;
@@ -250,18 +250,18 @@ Result Implementation::destroyImgui() {
 Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     // Check if framebuffer size is different from swapchain extent.
 
-    int fb_width, fb_height;
-    glfwGetFramebufferSize(window, &fb_width, &fb_height);
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
 
-    int sf_width = static_cast<int>(swapchainExtent.width);
-    int sf_height = static_cast<int>(swapchainExtent.height);
-    if (fb_width > 0 && fb_height > 0 && (fb_width != sf_width || fb_height != sf_height)) {
+    int sfWidth = static_cast<int>(swapchainExtent.width);
+    int sfHeight = static_cast<int>(swapchainExtent.height);
+    if (fbWidth > 0 && fbHeight > 0 && (fbWidth != sfWidth || fbHeight != sfHeight)) {
         return Result::RECREATE;
     }
 
     // Get next drawable.
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     const VkResult result = vkAcquireNextImageKHR(device,
                                                   swapchain,
@@ -299,7 +299,7 @@ Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
     presentInfo.pImageIndices = &_currentDrawableIndex;
 
     VkResult result = VK_SUCCESS;
-    auto& presentQueue = Backend::State<Device::Vulkan>()->getPresentQueue();
+    auto& presentQueue = Backend::State<DeviceType::Vulkan>()->getPresentQueue();
 
     {
         std::scoped_lock lock(frameScopeMutex);
@@ -406,12 +406,16 @@ VkImageView& Implementation::getSwapchainImageView(const U64& index) {
     return swapchainImageViews[index];
 }
 
+VkImage Implementation::getSwapchainImage(const U64& index) {
+    return swapchainImages[index];
+}
+
 U32 Implementation::getSwapchainImageViewsCount() const {
     return swapchainImageViews.size();
 }
 
-const VkExtent2D& Implementation::getSwapchainExtent() const {
-    return swapchainExtent;
+Extent2D<U64> Implementation::getSwapchainExtent() const {
+    return {swapchainExtent.width, swapchainExtent.height};
 }
 
 Result Implementation::waitEvents() {

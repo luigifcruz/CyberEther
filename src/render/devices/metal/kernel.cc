@@ -3,12 +3,12 @@
 
 namespace Jetstream::Render {
 
-using Implementation = KernelImp<Device::Metal>;
+using Implementation = KernelImp<DeviceType::Metal>;
 
 Implementation::KernelImp(const Config& config) : Kernel(config) {
     for (auto& [buffer, _] : config.buffers) {
         buffers.push_back(
-            std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer)
+            std::dynamic_pointer_cast<BufferImp<DeviceType::Metal>>(buffer)
         );
     }
 }
@@ -16,14 +16,14 @@ Implementation::KernelImp(const Config& config) : Kernel(config) {
 Result Implementation::create() {
     JST_DEBUG("[METAL] Creating kernel.");
 
-    if (config.kernels.contains(Device::Metal) == 0) {
+    if (config.kernels.contains(DeviceType::Metal) == 0) {
         JST_ERROR("[METAL] Module doesn't have necessary kernel.");
         return Result::ERROR;
     }
 
     NS::Error* err = nullptr;
-    const auto& kernels = config.kernels[Device::Metal];
-    auto device = Backend::State<Device::Metal>()->getDevice();
+    const auto& kernels = config.kernels[DeviceType::Metal];
+    auto device = Backend::State<DeviceType::Metal>()->getDevice();
 
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
     opts->setFastMathEnabled(true);

@@ -38,7 +38,9 @@ Result OpenUrl(const std::string& url) {
     return Result::SUCCESS;
 }
 
-Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
     __block Result result = Result::ERROR;
 
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
@@ -80,10 +82,15 @@ Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
 
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
 
+    if (result == Result::SUCCESS && callback) {
+        callback(path);
+    }
+
     return result;
 }
 
-Result PickFolder(std::string& path) {
+Result PickFolder(std::string& path,
+                  std::function<void(std::string)> callback) {
     __block Result result = Result::ERROR;
 
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
@@ -110,10 +117,15 @@ Result PickFolder(std::string& path) {
 
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
 
+    if (result == Result::SUCCESS && callback) {
+        callback(path);
+    }
+
     return result;
 }
 
-Result SaveFile(std::string& path) {
+Result SaveFile(std::string& path,
+                std::function<void(std::string)> callback) {
     __block Result result = Result::ERROR;
 
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
@@ -136,6 +148,10 @@ Result SaveFile(std::string& path) {
     });
 
     dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+    if (result == Result::SUCCESS && callback) {
+        callback(path);
+    }
 
     return result;
 }

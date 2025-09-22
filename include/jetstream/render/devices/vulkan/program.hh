@@ -7,13 +7,14 @@
 namespace Jetstream::Render {
 
 template<>
-class ProgramImp<Device::Vulkan> : public Program {
+class ProgramImp<DeviceType::Vulkan> : public Program {
  public:
     explicit ProgramImp(const Config& config);
 
  protected:
     Result create(VkRenderPass& renderPass,
-                  const std::shared_ptr<TextureImp<Device::Vulkan>>& framebuffer);
+                  const Extent2D<U64>& framebufferSize,
+                  bool multisampled);
     Result encode(VkCommandBuffer& commandBuffer, VkRenderPass& renderPass);
     Result destroy();
 
@@ -24,15 +25,15 @@ class ProgramImp<Device::Vulkan> : public Program {
     VkDescriptorSet descriptorSet;
     VkDescriptorSetLayout descriptorSetLayout;
 
-    std::vector<std::shared_ptr<DrawImp<Device::Vulkan>>> draws;
+    std::vector<std::shared_ptr<DrawImp<DeviceType::Vulkan>>> draws;
     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    std::vector<std::shared_ptr<TextureImp<Device::Vulkan>>> textures;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Vulkan>>, Program::Target>> buffers;
+    std::vector<std::shared_ptr<TextureImp<DeviceType::Vulkan>>> textures;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::Vulkan>>, Program::Target>> buffers;
 
     static VkShaderStageFlags TargetToShaderStage(const Program::Target& target);
     static VkDescriptorType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);
 
-    friend class SurfaceImp<Device::Vulkan>;
+    friend class SurfaceImp<DeviceType::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

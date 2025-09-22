@@ -3,7 +3,7 @@
 
 namespace Jetstream::Render {
 
-using Implementation = TextureImp<Device::WebGPU>;
+using Implementation = TextureImp<DeviceType::WebGPU>;
 
 Implementation::TextureImp(const Config& config) : Texture(config) {
 }
@@ -11,7 +11,7 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating texture.");
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
     textureFormat = ConvertPixelFormat(config.pfmt, config.ptype);
 
@@ -33,18 +33,25 @@ Result Implementation::create() {
     viewDescriptor.dimension = WGPUTextureViewDimension_2D;
     textureView = wgpuTextureCreateView(texture, &viewDescriptor);
 
-    // Using Nearest because 'float32-filterable' is not yet widely supported.
+    // Use linear filtering for formats that support it (R8Unorm, RGBA8Unorm).
+    // Use nearest filtering for float32 formats since 'float32-filterable' is not widely supported.
+
+    const bool supportsFiltering = (textureFormat == WGPUTextureFormat_R8Unorm ||
+                                    textureFormat == WGPUTextureFormat_RGBA8Unorm);
+
     WGPUSamplerDescriptor samplerDescriptor = WGPU_SAMPLER_DESCRIPTOR_INIT;
-    samplerDescriptor.magFilter = WGPUFilterMode_Nearest;
-    samplerDescriptor.minFilter = WGPUFilterMode_Nearest;
+    samplerDescriptor.magFilter = supportsFiltering ? WGPUFilterMode_Linear : WGPUFilterMode_Nearest;
+    samplerDescriptor.minFilter = supportsFiltering ? WGPUFilterMode_Linear : WGPUFilterMode_Nearest;
     sampler = wgpuDeviceCreateSampler(device, &samplerDescriptor);
 
     textureBindingLayout = WGPU_TEXTURE_BINDING_LAYOUT_INIT;
-    textureBindingLayout.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+    textureBindingLayout.sampleType = supportsFiltering ? WGPUTextureSampleType_Float
+                                                        : WGPUTextureSampleType_UnfilterableFloat;
     textureBindingLayout.viewDimension = WGPUTextureViewDimension_2D;
 
     samplerBindingLayout = WGPU_SAMPLER_BINDING_LAYOUT_INIT;
-    samplerBindingLayout.type = WGPUSamplerBindingType_NonFiltering;
+    samplerBindingLayout.type = supportsFiltering ? WGPUSamplerBindingType_Filtering
+                                                  : WGPUSamplerBindingType_NonFiltering;
 
     if (config.buffer) {
         JST_CHECK(fill());
@@ -56,6 +63,8 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying texture.");
 
+    wgpuSamplerRelease(sampler);
+    wgpuTextureViewRelease(textureView);
     wgpuTextureDestroy(texture);
 
     return Result::SUCCESS;
@@ -83,7 +92,7 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
         return Result::SUCCESS;
     }
 
-    WGPUDevice device = Backend::State<Device::WebGPU>()->getDevice();
+    WGPUDevice device = Backend::State<DeviceType::WebGPU>()->getDevice();
     WGPUQueue queue = wgpuDeviceGetQueue(device);
 
     WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;

@@ -6,27 +6,27 @@
 
 namespace Jetstream::Render {
 
-using Implementation = SurfaceImp<Device::Metal>;
+using Implementation = SurfaceImp<DeviceType::Metal>;
 
 Implementation::SurfaceImp(const Config& config) : Surface(config) {
     framebufferResolve = std::dynamic_pointer_cast<
-        TextureImp<Device::Metal>>(config.framebuffer);
+        TextureImp<DeviceType::Metal>>(config.framebuffer);
 
     if (config.multisampled) {
-        auto framebuffer_config = framebufferResolve->getConfig();
-        framebuffer_config.multisampled = true;
-        framebuffer = std::make_shared<TextureImp<Device::Metal>>(framebuffer_config);
+        auto framebufferConfig = framebufferResolve->getConfig();
+        framebufferConfig.multisampled = true;
+        framebuffer = std::make_shared<TextureImp<DeviceType::Metal>>(framebufferConfig);
     }
 
     for (auto& program : config.programs) {
         programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<Device::Metal>>(program)
+            std::dynamic_pointer_cast<ProgramImp<DeviceType::Metal>>(program)
         );
     }
 
     for (auto& kernel : config.kernels) {
         kernels.push_back(
-            std::dynamic_pointer_cast<KernelImp<Device::Metal>>(kernel)
+            std::dynamic_pointer_cast<KernelImp<DeviceType::Metal>>(kernel)
         );
     }
 }
@@ -39,8 +39,9 @@ Result Implementation::create() {
 
     JST_CHECK(createFramebuffer());
 
+    const auto& activeFramebuffer = (config.multisampled) ? framebuffer : framebufferResolve;
     for (auto& program : programs) {
-        JST_CHECK(program->create((config.multisampled) ? framebuffer : framebufferResolve));
+        JST_CHECK(program->create(activeFramebuffer->getPixelFormat(), config.multisampled));
     }
 
     for (auto& kernel : kernels) {
@@ -133,10 +134,22 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     }
     computeCmdEncoder->endEncoding();
 
+    // Update clear color.
+
+    const auto clearColor = MTL::ClearColor(config.clearColor.r,
+                                            config.clearColor.g,
+                                            config.clearColor.b,
+                                            config.clearColor.a);
+    renderPassDescriptor->colorAttachments()->object(0)->setClearColor(clearColor);
+
     // Encode programs.
 
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
+    const auto& sz = framebufferResolve->size();
+    MTL::ScissorRect fullScissor = {0, 0, static_cast<NS::UInteger>(sz.x),
+                                          static_cast<NS::UInteger>(sz.y)};
     for (auto& program : programs) {
+        renderCmdEncoder->setScissorRect(fullScissor);
         JST_CHECK(program->draw(renderCmdEncoder));
     }
     renderCmdEncoder->endEncoding();

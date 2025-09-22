@@ -22,7 +22,7 @@ static void PrintGLFWError(int, const char* description) {
 
 namespace Jetstream::Viewport {
 
-using Implementation = GLFW<Device::WebGPU>;
+using Implementation = GLFW<DeviceType::WebGPU>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
     JST_DEBUG("[WebGPU] Creating GLFW viewport.");
@@ -88,7 +88,7 @@ Result Implementation::destroy() {
 Result Implementation::createSwapchain() {
     glfwSetWindowSize(window, swapchainSize.x, swapchainSize.y);
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
     WGPUSurfaceConfiguration conf = WGPU_SURFACE_CONFIGURATION_INIT;
     conf.device = device;
@@ -103,11 +103,14 @@ Result Implementation::createSwapchain() {
 }
 
 Result Implementation::destroySwapchain() {
+    wgpuSurfaceUnconfigure(surface);
+
     return Result::SUCCESS;
 }
 
 Result Implementation::createImgui() {
     ImGui_ImplGlfw_InitForOther(window, true);
+    ImGui_ImplGlfw_InstallEmscriptenCallbacks(window, "#canvas");
 
     return Result::SUCCESS;
 }

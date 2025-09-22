@@ -6,21 +6,21 @@
 
 namespace Jetstream::Render {
 
-using Implementation = SurfaceImp<Device::WebGPU>;
+using Implementation = SurfaceImp<DeviceType::WebGPU>;
 
 Implementation::SurfaceImp(const Config& config) : Surface(config) {
     framebuffer = std::dynamic_pointer_cast<
-        TextureImp<Device::WebGPU>>(config.framebuffer);
+        TextureImp<DeviceType::WebGPU>>(config.framebuffer);
 
     for (auto& program : config.programs) {
         programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<Device::WebGPU>>(program)
+            std::dynamic_pointer_cast<ProgramImp<DeviceType::WebGPU>>(program)
         );
     }
 
     for (auto& kernel : config.kernels) {
         kernels.push_back(
-            std::dynamic_pointer_cast<KernelImp<Device::WebGPU>>(kernel)
+            std::dynamic_pointer_cast<KernelImp<DeviceType::WebGPU>>(kernel)
         );
     }
 }
@@ -109,7 +109,9 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
     WGPURenderPassEncoder renderPassEncoder =
         wgpuCommandEncoderBeginRenderPass(commandEncoder, &renderPass);
 
+    const auto& sz = framebuffer->size();
     for (auto& program : programs) {
+        wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, 0, 0, sz.x, sz.y);
         JST_CHECK(program->draw(renderPassEncoder));
     }
 

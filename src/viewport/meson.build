@@ -4,6 +4,7 @@ src_lst += files([
 
 sum_lst = {}
 
+subdir('capture')
 subdir('glfw')
 subdir('headless')
 subdir('ios')

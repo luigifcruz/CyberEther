@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class KernelImp<Device::WebGPU> : public Kernel {
+class KernelImp<DeviceType::WebGPU> : public Kernel {
  public:
     explicit KernelImp(const Config& config);
 
@@ -21,16 +21,17 @@ class KernelImp<Device::WebGPU> : public Kernel {
     WGPUPipelineLayout pipelineLayout;
     WGPUBindGroupLayout bindGroupLayout;
     WGPUBindGroup bindGroup;
+    WGPUShaderModule kernelModule;
 
     std::vector<WGPUBindGroupLayoutEntry> bindings;
     std::vector<WGPUBindGroupEntry> bindGroupEntries;
 
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, Kernel::AccessMode>> buffers;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::WebGPU>>, Kernel::AccessMode>> buffers;
 
     static WGPUBufferBindingType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer,
                                                       const Kernel::AccessMode& mode);
 
-    friend class SurfaceImp<Device::WebGPU>;
+    friend class SurfaceImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

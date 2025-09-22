@@ -9,16 +9,16 @@
 namespace Jetstream::Render {
 
 template<>
-class WindowImp<Device::Vulkan> : public Window {
+class WindowImp<DeviceType::Vulkan> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Adapter<Device::Vulkan>>& viewport);
+                       const std::shared_ptr<Viewport::Adapter<DeviceType::Vulkan>>& viewport);
 
     const Stats& stats() const override;
-    void drawDebugMessage() const override;
+    std::string info() const override;
 
-    constexpr Device device() const override {
-        return Device::Vulkan;
+    constexpr DeviceType device() const override {
+        return DeviceType::Vulkan;
     };
 
  protected:
@@ -40,16 +40,15 @@ class WindowImp<Device::Vulkan> : public Window {
     ImGuiStyle* style = nullptr;
     VkRenderPass renderPass;
     VkCommandPool commandPool;
-    VkCommandBuffer currentCommandBuffer;
     std::vector<VkFramebuffer> swapchainFramebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
-    std::vector<std::shared_ptr<SurfaceImp<Device::Vulkan>>> surfaces;
+    std::vector<std::shared_ptr<SurfaceImp<DeviceType::Vulkan>>> surfaces;
 
-    std::shared_ptr<Viewport::Adapter<Device::Vulkan>> viewport;
+    std::shared_ptr<Viewport::Adapter<DeviceType::Vulkan>> viewport;
 
     Result createImgui();
     Result destroyImgui();

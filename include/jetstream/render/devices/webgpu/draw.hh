@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class DrawImp<Device::WebGPU> : public Draw {
+class DrawImp<DeviceType::WebGPU> : public Draw {
  public:
     explicit DrawImp(const Config& config);
 
@@ -15,6 +15,7 @@ class DrawImp<Device::WebGPU> : public Draw {
     Result create(WGPURenderPipelineDescriptor& renderDescriptor);
     Result destroy();
     Result encode(WGPURenderPassEncoder& renderPassEncoder);
+    Result updateVertexCount(U64 vertexCount) override;
 
  private:
     struct IndexedDrawCommand {
@@ -32,10 +33,10 @@ class DrawImp<Device::WebGPU> : public Draw {
         U32 firstInstance;
     };
 
-    std::shared_ptr<VertexImp<Device::WebGPU>> buffer;
+    std::shared_ptr<VertexImp<DeviceType::WebGPU>> buffer;
 
-    std::shared_ptr<BufferImp<Device::WebGPU>> indexedIndirectBuffer;
-    std::shared_ptr<BufferImp<Device::WebGPU>> indirectBuffer;
+    std::shared_ptr<BufferImp<DeviceType::WebGPU>> indexedIndirectBuffer;
+    std::shared_ptr<BufferImp<DeviceType::WebGPU>> indirectBuffer;
 
     std::vector<std::vector<WGPUVertexAttribute>> attributeDescription;
     std::vector<WGPUVertexBufferLayout> vertexLayouts;
@@ -43,7 +44,7 @@ class DrawImp<Device::WebGPU> : public Draw {
     std::vector<IndexedDrawCommand> indexedDrawCommands;
     std::vector<DrawCommand> drawCommands;
 
-    friend class ProgramImp<Device::WebGPU>;
+    friend class ProgramImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

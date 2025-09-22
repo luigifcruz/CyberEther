@@ -14,6 +14,7 @@ Contributions are welcome! Pull requests are the best way to propose changes to 
     - New dependency: `[NEW DEPENDENCY HOOK]`.
     - New serialization: `[NEW SERIALIZATION HOOK]`.
     - New contributor (you): `[NEW CONTRIBUTOR HOOK]`.
+    - Version Update: `[VERSION HOOK]`
 - The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html).
 - The default line length is 88 but this can be overridden if necessary.
 - The default indentation size is 4 spaces. No exceptions.
