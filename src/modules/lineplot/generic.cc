@@ -366,7 +366,7 @@ Result Lineplot<D, T>::createPresent() {
         cfg.textures = {gimpl->lutTexture};
         cfg.buffers = {
             {gimpl->signalUniformBuffer, Render::Program::Target::VERTEX |
-                                  Render::Program::Target::FRAGMENT},
+                                         Render::Program::Target::FRAGMENT},
         };
         cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(gimpl->signalProgram, cfg));
