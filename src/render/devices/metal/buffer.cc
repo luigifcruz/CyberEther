@@ -50,7 +50,6 @@ Result Implementation::update(const U64& offset, const U64& size) {
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
 
-
     uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
     memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
 #if !defined(TARGET_OS_IOS)

@@ -14,7 +14,7 @@ using ViewportPlatform = Viewport::GLFW<RenderDevice>;
 
 class MagnifierGlass {
  public:
-    void render(ImTextureRef textureRef, const ImVec2& imagePos, const ImVec2& imageSize, 
+    void render(ImTextureRef textureRef, const ImVec2& imagePos, const ImVec2& imageSize,
                 const ImVec2& windowPos, const ImVec2& totalSize, float contentWidth) {
         if (!enabled) return;
 
@@ -136,7 +136,7 @@ class MagnifierGlass {
 template<typename ComponentType>
 class TestUIBase {
  public:
-    TestUIBase(Instance& instance, const std::string& testName) 
+    TestUIBase(Instance& instance, const std::string& testName)
         : instance(instance), testName(testName) {}
 
     virtual ~TestUIBase() = default;
@@ -218,7 +218,7 @@ class TestUIBase {
 
         // Render magnifier glass if enabled
         ImVec2 windowPos = ImGui::GetWindowPos();
-        magnifier.render(ImTextureRef(framebufferTexture->raw()), imagePos, imageSize, 
+        magnifier.render(ImTextureRef(framebufferTexture->raw()), imagePos, imageSize,
                         windowPos, totalSize, contentWidth);
 
         ImGui::EndChild();
@@ -279,7 +279,7 @@ class TestUIBase {
 };
 
 inline int runComponentTest(const std::string& appName, const std::string& windowTitle,
-                           const Extent2D<U64>& windowSize, 
+                           const Extent2D<U64>& windowSize,
                            std::function<void(Instance&)> testFunction) {
     std::cout << appName << " - CyberEther" << std::endl;
 
