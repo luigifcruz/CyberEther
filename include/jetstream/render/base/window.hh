@@ -138,9 +138,6 @@ class Window {
     void scaleStyle(const Viewport::Generic& viewport);
 
  private:
-    std::vector<std::shared_ptr<Buffer>> buffers;
-    std::vector<std::shared_ptr<Texture>> textures;
-
     std::vector<std::shared_ptr<Components::Generic>> components;
 
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
