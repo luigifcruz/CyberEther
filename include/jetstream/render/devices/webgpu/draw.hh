@@ -15,6 +15,7 @@ class DrawImp<Device::WebGPU> : public Draw {
     Result create(WGPURenderPipelineDescriptor& renderDescriptor);
     Result destroy();
     Result encode(WGPURenderPassEncoder& renderPassEncoder);
+    Result updateVertexCount(U64 vertexCount) override;
 
  private:
     struct IndexedDrawCommand {

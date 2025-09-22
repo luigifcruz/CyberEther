@@ -16,6 +16,7 @@ class DrawImp<Device::Vulkan> : public Draw {
                  std::vector<VkVertexInputAttributeDescription>& attributeDescription,
                  VkPipelineInputAssemblyStateCreateInfo& inputAssembly);
     Result encode(VkCommandBuffer& commandBuffer);
+    Result updateVertexCount(U64 vertexCount) override;
     Result destroy();
 
  private:

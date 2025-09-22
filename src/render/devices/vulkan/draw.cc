@@ -129,4 +129,42 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     return Result::SUCCESS;
 }
 
+Result Implementation::updateVertexCount(U64 vertexCount) {
+    // Check if draw was created
+    if (indexedDrawCommands.empty() && drawCommands.empty()) {
+        JST_ERROR("[VULKAN] Cannot update vertex count: draw not created yet");
+        return Result::ERROR;
+    }
+    
+    if (buffer->isBuffered()) {
+        // Check bounds for indexed drawing
+        const U64 maxIndexCount = buffer->getIndexCount();
+        if (vertexCount > maxIndexCount) {
+            JST_ERROR("[VULKAN] Requested index count ({}) exceeds buffer limit ({})", vertexCount, maxIndexCount);
+            return Result::ERROR;
+        }
+        
+        // Update indexed draw commands
+        for (auto& drawCommand : indexedDrawCommands) {
+            drawCommand.indexCount = vertexCount;
+        }
+        indexedIndirectBuffer->update();
+    } else {
+        // Check bounds for non-indexed drawing
+        const U64 maxVertexCount = buffer->getVertexCount();
+        if (vertexCount > maxVertexCount) {
+            JST_ERROR("[VULKAN] Requested vertex count ({}) exceeds buffer limit ({})", vertexCount, maxVertexCount);
+            return Result::ERROR;
+        }
+        
+        // Update non-indexed draw commands
+        for (auto& drawCommand : drawCommands) {
+            drawCommand.vertexCount = vertexCount;
+        }
+        indirectBuffer->update();
+    }
+    
+    return Result::SUCCESS;
+}
+
 }  // namespace Jetstream::Render

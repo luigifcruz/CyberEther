@@ -26,6 +26,7 @@ struct Text::Impl {
     };
 
     struct Element {
+        U64 characterCount = 0;
         const ElementConfig& config;
 
         Extent2D<I32> bounds;
@@ -39,6 +40,7 @@ struct Text::Impl {
     const Config& config;
     UniformBuffer uniforms;
     std::unordered_map<std::string, Element> elements;
+    U64 vertexCount = 0;
 
     // Render.
 
@@ -47,6 +49,7 @@ struct Text::Impl {
     bool updateFontFillVerticesBufferFlag = false;
     bool updateFontInstanceBufferFlag = false;
     bool updateFontIndicesBufferFlag = false;
+    bool updateVertexCountFlag = false;
 
     std::vector<glm::vec2> posVertices;
     std::vector<glm::vec2> fillVertices;
@@ -330,6 +333,14 @@ Result Text::Impl::updateVertices() {
     updateFontPosVerticesBufferFlag = true;
     updateFontFillVerticesBufferFlag = true;
 
+    // Calculate total vertex count across all elements
+    U64 totalCharacterCount = 0;
+    for (const auto& [_, element] : elements) {
+        totalCharacterCount += element.characterCount;
+    }
+    vertexCount = totalCharacterCount * 6;
+    updateVertexCountFlag = true;
+
     return Result::SUCCESS;
 }
 
@@ -420,6 +431,9 @@ Result Text::Impl::updateElementVertex(Element& element) {
     std::fill(element.posVertices.begin(), element.posVertices.end(), glm::vec2(0.0f));
     std::fill(element.fillVertices.begin(), element.fillVertices.end(), glm::vec2(0.0f));
 
+    // Reset character count.
+    element.characterCount = 0;
+
     // Recalculate vertex buffer.
 
     F32 x = 0.0f;
@@ -487,6 +501,9 @@ Result Text::Impl::updateElementVertex(Element& element) {
             // Save text height.
 
             element.bounds.y = std::max(element.bounds.y, static_cast<I32>(b.y1 - b.y0));
+
+            // Count actual rendered characters (non-space)
+            element.characterCount++;
         }
     }
 
@@ -519,6 +536,14 @@ Result Text::present() {
     if (pimpl->updateFontInstanceBufferFlag) {
         pimpl->fontInstanceBuffer->update();
         pimpl->updateFontInstanceBufferFlag = false;
+    }
+
+    if (pimpl->updateVertexCountFlag) {
+        const U64 maxIndices = config.maxCharacters * 6;
+        const U64 actualIndices = pimpl->vertexCount;
+        JST_DEBUG("[TEXT] Vertex optimization: {}/{}.", actualIndices, maxIndices);
+        JST_CHECK(pimpl->drawFont->updateVertexCount(pimpl->vertexCount));
+        pimpl->updateVertexCountFlag = false;
     }
 
     return Result::SUCCESS;
