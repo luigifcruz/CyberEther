@@ -54,8 +54,8 @@ struct Remote::Impl {
     std::string roomId;
     std::string consumerToken;
     std::string producerToken;
-    std::string clientUrl;
-    std::string webrtcUrl;
+    std::string clientDomain;
+    std::string signallerUrl;
     std::vector<std::string> waitlist;
     std::vector<std::string> sessions;
 
@@ -263,7 +263,7 @@ Result Remote::Impl::createBroker() {
         JST_LOG_COLOR(false);
         JST_LOG_SET_SINK(log_history.sink());
 
-        const std::string invite_url = jst::fmt::format("{}/remote#{}", clientUrl, consumerToken);
+        const std::string invite_url = jst::fmt::format("{}#{}", clientDomain, consumerToken);
 
         std::string clientAuthorizationCode;
         int logs_content_height = 0;
@@ -1063,7 +1063,8 @@ Result Remote::Impl::startStream() {
     GObject* signaller;
     g_object_get(elements["webrtc"], "signaller", &signaller, nullptr);
     if (signaller) {
-        g_object_set(signaller, "uri", webrtcUrl.c_str(), nullptr);
+        JST_DEBUG("[REMOTE] Setting signaller URI to {}", signallerUrl);
+        g_object_set(signaller, "uri", signallerUrl.c_str(), nullptr);
         g_signal_connect(G_OBJECT(signaller), "webrtcbin-ready", G_CALLBACK(rtcReadyCallback), this);
         g_object_unref(signaller);
     } else {
@@ -1223,9 +1224,9 @@ Result Remote::pushNewFrame(const void* data) {
 
 Result Remote::Impl::createRoom() {
     auto params = httplib::Params{};
-    auto res = brokerClient->Post("/v1/room/create", params);
+    auto res = brokerClient->Post("/v1/webrtc/room", params);
     if (!res || res->status != 201) {
-        JST_ERROR("[REMOTE] Failed to create room.");
+        JST_ERROR("[REMOTE] Failed to create room: [{}] /v1/webrtc/room.", res->status);
         return Result::ERROR;
     }
 
@@ -1247,11 +1248,21 @@ Result Remote::Impl::createRoom() {
             return Result::ERROR;
         }
 
+        if (!j.contains("signallerUrl")) {
+            JST_ERROR("[REMOTE] Missing field 'signallerUrl': {}", res->body);
+            return Result::ERROR;
+        }
+
+        if (!j.contains("clientDomain")) {
+            JST_ERROR("[REMOTE] Missing field 'clientDomain': {}", res->body);
+            return Result::ERROR;
+        }
+
         roomId = j["roomId"].get<std::string>();
         producerToken = j["producerToken"].get<std::string>();
         consumerToken = j["consumerToken"].get<std::string>();
-        webrtcUrl = j["webrtcUrl"].get<std::string>();
-        clientUrl = j["clientUrl"].get<std::string>();
+        signallerUrl = j["signallerUrl"].get<std::string>();
+        clientDomain = j["clientDomain"].get<std::string>();
     } catch (const std::exception& e) {
         JST_ERROR("[REMOTE] JSON parse error '{}': {}", e.what(), res->body);
         return Result::ERROR;
@@ -1262,9 +1273,9 @@ Result Remote::Impl::createRoom() {
 }
 
 Result Remote::Impl::updateWaitlist() {
-    auto res = brokerClient->Get("/v1/room/waitlist");
+    auto res = brokerClient->Get("/v1/webrtc/room/waitlist");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull waitlist.");
+        JST_ERROR("[REMOTE] Failed to pull waitlist: [{}] /v1/webrtc/room/waitlist.", res->status);
         return Result::ERROR;
     }
 
@@ -1287,9 +1298,9 @@ Result Remote::Impl::updateWaitlist() {
 }
 
 Result Remote::Impl::updateSessions() {
-    auto res = brokerClient->Get("/v1/room/sessions");
+    auto res = brokerClient->Get("/v1/webrtc/room/sessions");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull sessions.");
+        JST_ERROR("[REMOTE] Failed to pull sessions: [{}] /v1/webrtc/room/sessions.", res->status);
         return Result::ERROR;
     }
 
@@ -1315,9 +1326,9 @@ Result Remote::Impl::approveSession(const std::string& sessionId) {
     auto json = nlohmann::json{
         {"sessionId", sessionId}
     };
-    auto res = brokerClient->Post("/v1/room/approve", json.dump(), "application/json");
+    auto res = brokerClient->Post("/v1/webrtc/room/approval", json.dump(), "application/json");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to post approve.");
+        JST_ERROR("[REMOTE] Failed to post approval: [{}] /v1/webrtc/room/approval.", res->status);
         return Result::ERROR;
     }
 
