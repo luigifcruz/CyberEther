@@ -58,11 +58,6 @@
 #define JETSTREAM_BLOCK_OVERLAP_ADD_AVAILABLE
 #endif
 
-#if defined(JETSTREAM_MODULE_REMOTE_AVAILABLE)
-#include "jetstream/blocks/remote.hh"
-#define JETSTREAM_BLOCK_REMOTE_AVAILABLE
-#endif
-
 #if defined(JETSTREAM_MODULE_FILTER_TAPS_AVAILABLE)
 #include "jetstream/blocks/filter_taps.hh"
 #define JETSTREAM_BLOCK_FILTER_TAPS_AVAILABLE
