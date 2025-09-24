@@ -23,7 +23,7 @@ class AGC : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES(buffer);
     };
@@ -35,7 +35,7 @@ class AGC : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES(buffer);
     };
@@ -44,7 +44,7 @@ class AGC : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputBuffer() const {
+    constexpr const mem2::Tensor& getOutputBuffer() const {
         return this->output.buffer;
     }
 

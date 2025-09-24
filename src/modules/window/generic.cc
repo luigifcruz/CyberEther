@@ -23,7 +23,7 @@ Result Window<D, T>::create() {
     JST_INIT_IO();
 
     // Allocate output.
-    output.window = Tensor<D, T>({config.size});
+    JST_CHECK(output.window.create(D, mem2::TypeToDataType<T>(), {config.size}));
 
     // Configure initial state.
     impl->baked = false;
@@ -39,12 +39,12 @@ Result Window<D, T>::compute(const Context&) {
 
     // Generate FFT window.
 
-    auto& window = MapOn<Device::CPU>(output.window);
+    mem2::View<T> window(output.window);
 
     for (U64 i = 0; i < output.window.size(); i++) {
         F64 tap = 0.42 - 0.50 * std::cos(2.0 * JST_PI * i / (output.window.size() - 1)) + \
                   0.08 * std::cos(4.0 * JST_PI * i / (output.window.size() - 1));
-        window[i] = T(tap, 0.0);
+        window[{i}] = T(tap, 0.0);
     }
 
     impl->baked = true;

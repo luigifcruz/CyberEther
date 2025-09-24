@@ -2,8 +2,6 @@
 
 #include "../generic.cc"
 
-#include "jetstream/memory/devices/cuda/copy.hh"
-
 namespace Jetstream {
 
 template<Device D, typename T>
@@ -153,7 +151,7 @@ Result Duplicate<D, T>::createCompute(const Context& ctx) {
 template<Device D, typename T>
 Result Duplicate<D, T>::compute(const Context& ctx) {
     if (input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(output.buffer, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(output.buffer.copy_from(input.buffer));
     } else {
         JST_CHECK(ctx.cuda->launchKernel("duplicate", 
                                          pimpl->grid, 

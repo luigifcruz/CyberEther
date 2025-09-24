@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 #include <cufft.h>
 
 namespace Jetstream {
@@ -8,7 +10,7 @@ template<Device D, typename IT, typename OT>
 struct FFT<D, IT, OT>::Impl {
     cufftHandle plan;
 
-    Tensor<Device::CUDA, IT> input;
+    mem2::Tensor input;
 
     U64 numberOfOperations = 0;
     U64 numberOfElements = 0;
@@ -32,7 +34,7 @@ Result FFT<D, IT, OT>::createCompute(const Context& ctx) {
     // Initialize kernel input.
 
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        pimpl->input = Tensor<Device::CUDA, IT>(input.buffer.shape());
+        pimpl->input = mem2::Tensor(input.buffer.shape(), mem2::DataType::fromCppType<IT>(), Device::CUDA);
     } else {
         pimpl->input = input.buffer;
     }
@@ -108,7 +110,7 @@ Result FFT<D, IT, OT>::destroyCompute(const Context&) {
 template<>
 Result FFT<Device::CUDA, CF32, CF32>::compute(const Context& ctx) {
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(pimpl->input.copy_from(input.buffer));
     }
 
     const auto input = reinterpret_cast<cufftComplex*>(pimpl->input.data());

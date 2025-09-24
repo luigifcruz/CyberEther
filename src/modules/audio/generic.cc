@@ -211,7 +211,7 @@ Result Audio<D, T>::create() {
     // Allocate output.
 
     const U64 outputSize = input.buffer.size() * (config.outSampleRate / config.inSampleRate);
-    output.buffer = Tensor<D, T>({outputSize});
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), {outputSize}));
 
     // Initialize circular buffer.
 

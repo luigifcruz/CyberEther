@@ -6,7 +6,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/benchmark.hh"
 #include "jetstream/render/base.hh"
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 
 namespace Jetstream {
 
@@ -34,22 +34,16 @@ class JETSTREAM_API Module {
     }
 
  protected:
-    template<Device DeviceId, typename DataType>
-    static Result InitInput(Tensor<DeviceId, DataType>& buffer, const Taint& taint) {
-        JST_TRACE("[MODULE] Init input locale: '{}'", buffer.locale());
+    static Result InitInput(mem2::Tensor& buffer, const Taint& taint) {
+        JST_TRACE("[MODULE] Init input tensor");
 
         if (buffer.empty()) {
             JST_ERROR("Input is empty during initialization.");
             return Result::ERROR;
         }
 
-        if (buffer.locale().empty()) {
-            JST_ERROR("Input locale is empty during initialization.");
-            return Result::ERROR;
-        }
-
         if (!buffer.valid_shape()) {
-            JST_ERROR("Input has invalid shape during initialization: {}", buffer.shape());
+            JST_ERROR("Input has invalid shape during initialization: {}", buffer.shape().size());
             return Result::ERROR;
         }
 
@@ -61,22 +55,15 @@ class JETSTREAM_API Module {
         return Result::SUCCESS;
     }
 
-    template<Device DeviceId, typename DataType>
     static Result InitOutput(const std::string& name,
-                             Tensor<DeviceId, DataType>& buffer,
+                             mem2::Tensor& buffer,
                              const Locale& locale) {
-        JST_TRACE("[MODULE] Init output locale: '{}'", locale);
+        JST_TRACE("[MODULE] Init output tensor: '{}'", name);
 
         if (locale.empty()) {
             JST_ERROR("Output locale is empty during initialization.");
             return Result::ERROR;
         }
-
-        buffer.set_locale({
-            locale.blockId,
-            locale.moduleId,
-            name
-        });
 
         if (!buffer.empty()) {
             JST_ERROR("The output buffer should be empty during initialization.");

@@ -23,15 +23,15 @@ Result Unpad<D, T>::create() {
 
     // Calculate padded shape.
 
-    std::vector<U64> unpaddedShape = input.padded.shape();
+    mem2::Shape unpaddedShape = input.padded.shape();
     unpaddedShape[config.axis] -= config.size;
 
     // Allocate output.
 
-    output.unpadded = Tensor<D, T>(unpaddedShape);
+    JST_CHECK(output.unpadded.create(D, mem2::TypeToDataType<T>(), unpaddedShape));
 
     unpaddedShape[config.axis] = config.size;
-    output.pad = Tensor<D, T>(unpaddedShape);
+    JST_CHECK(output.pad.create(D, mem2::TypeToDataType<T>(), unpaddedShape));
 
     return Result::SUCCESS;
 }

@@ -1,14 +1,15 @@
 #include "../generic.cc"
 
 #include "jetstream/memory/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T>
 struct Multiply<D, T>::Impl {
-    Tensor<D, T> a;
-    Tensor<D, T> b;
-    Tensor<D, T> c;
+    mem2::Tensor a;
+    mem2::Tensor b;
+    mem2::Tensor c;
 };
 
 template<Device D, typename T>
@@ -29,7 +30,7 @@ Result Multiply<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result Multiply<D, T>::compute(const Context&) {
-    Memory::CPU::AutomaticIterator([](const auto& a, const auto& b, auto& c) {
+    mem2::AutomaticIterator([](const auto& a, const auto& b, auto& c) {
         if constexpr (std::is_same_v<T, CF32>) {
             c = std::complex<F32>(a.real() * b.real() - a.imag() * b.imag(),
                                   a.real() * b.imag() + a.imag() * b.real());

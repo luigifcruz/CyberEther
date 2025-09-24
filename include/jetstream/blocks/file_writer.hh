@@ -34,7 +34,7 @@ class FileWriter : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES(buffer);
     };

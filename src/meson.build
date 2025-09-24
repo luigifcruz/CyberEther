@@ -8,6 +8,7 @@ src_lst += files([
 subdir('store')
 subdir('backend')
 subdir('memory')
+subdir('memory2')
 subdir('viewport')
 subdir('render')
 subdir('modules')

@@ -167,13 +167,13 @@ Result FilterTaps<D, T>::create() {
 
     // Allocate internal data.
 
-    impl->sincCoeffs = Tensor<D, typename T::value_type>({config.taps});
-    impl->windowCoeffs = Tensor<D, typename T::value_type>({config.taps});
-    impl->upconvertCoeffs = Tensor<D, T>({config.center.size(), config.taps});
+    JST_CHECK(impl->sincCoeffs.create(D, mem2::TypeToDataType<typename T::value_type>(), {config.taps}));
+    JST_CHECK(impl->windowCoeffs.create(D, mem2::TypeToDataType<typename T::value_type>(), {config.taps}));
+    JST_CHECK(impl->upconvertCoeffs.create(D, mem2::TypeToDataType<T>(), {config.center.size(), config.taps}));
 
     // Allocate output.
 
-    output.coeffs = Tensor<D, T>({config.center.size(), config.taps});
+    JST_CHECK(output.coeffs.create(D, mem2::TypeToDataType<T>(), {config.center.size(), config.taps}));
 
     // Store parameters.
 

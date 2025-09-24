@@ -1,14 +1,14 @@
 #include "../generic.cc"
 
-#include "jetstream/memory/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T>
 struct Add<D, T>::Impl {
-    Tensor<D, T> a;
-    Tensor<D, T> b;
-    Tensor<D, T> c;
+    mem2::Tensor a;
+    mem2::Tensor b;
+    mem2::Tensor c;
 };
 
 template<Device D, typename T>
@@ -29,7 +29,7 @@ Result Add<D, T>::createCompute(const Context&) {
 
 template<Device D, typename T>
 Result Add<D, T>::compute(const Context&) {
-    Memory::CPU::AutomaticIterator([](const auto& a, const auto& b, auto& c) {
+    mem2::AutomaticIterator([](const auto& a, const auto& b, auto& c) {
         c = a + b;
     }, impl->a, impl->b, impl->c);
 

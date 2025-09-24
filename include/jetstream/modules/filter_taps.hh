@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 
 namespace Jetstream {
 
@@ -46,7 +46,7 @@ class FilterTaps : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> coeffs;
+        mem2::Tensor coeffs;
 
         JST_SERDES_OUTPUT(coeffs);
     };
@@ -55,7 +55,7 @@ class FilterTaps : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputCoeffs() const {
+    constexpr const mem2::Tensor& getOutputCoeffs() const {
         return output.coeffs;
     }
 

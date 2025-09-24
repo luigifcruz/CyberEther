@@ -1,6 +1,6 @@
 #include "../generic.cc"
 
-#include "jetstream/memory/devices/cuda/copy.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
@@ -11,7 +11,7 @@ struct Lineplot<D, T>::Impl {
 
     std::vector<void*> argumentsLineplot;
 
-    Tensor<Device::CUDA, T> input;
+    mem2::Tensor input;
 };
 
 template<Device D, typename T>
@@ -66,7 +66,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel input.
 
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        pimpl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
+        pimpl->input = mem2::Tensor(input.buffer.shape(), mem2::DataType::fromCppType<T>(), Device::CUDA);
     } else {
         pimpl->input = input.buffer;
     }
@@ -89,7 +89,7 @@ Result Lineplot<D, T>::createCompute(const Context& ctx) {
 template<Device D, typename T>
 Result Lineplot<D, T>::compute(const Context& ctx) {
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(pimpl->input.copy_from(input.buffer));
     }
 
     // TODO: Join kernels.

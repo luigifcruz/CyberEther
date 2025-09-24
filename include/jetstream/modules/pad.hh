@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -36,7 +36,7 @@ class Pad : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> unpadded;
+        mem2::Tensor unpadded;
 
         JST_SERDES_INPUT(unpadded);
     };
@@ -48,7 +48,7 @@ class Pad : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> padded;
+        mem2::Tensor padded;
 
         JST_SERDES_OUTPUT(padded);
     };
@@ -57,7 +57,7 @@ class Pad : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputPadded() const {
+    constexpr const mem2::Tensor& getOutputPadded() const {
         return this->output.padded;
     }
 

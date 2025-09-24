@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -42,7 +42,7 @@ class FFT : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, IT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES_INPUT(buffer);
     };
@@ -54,7 +54,7 @@ class FFT : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, OT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES_OUTPUT(buffer);
     };
@@ -63,7 +63,7 @@ class FFT : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, OT>& getOutputBuffer() const {
+    constexpr const mem2::Tensor& getOutputBuffer() const {
         return this->output.buffer;
     }
 

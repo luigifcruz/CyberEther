@@ -12,9 +12,9 @@ Result Duplicate<D, T>::create() {
     // Allocate output.
 
     if constexpr (D == Device::CUDA) {
-        output.buffer = Tensor<D, T>(input.buffer.shape(), config.hostAccessible);
+        JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), input.buffer.shape(), config.hostAccessible));
     } else {
-        output.buffer = Tensor<D, T>(input.buffer.shape());
+        JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), input.buffer.shape()));
     }
 
     return Result::SUCCESS;

@@ -17,12 +17,12 @@ Result Pad<D, T>::create() {
 
     // Calculate padded shape.
 
-    std::vector<U64> paddedShape = input.unpadded.shape();
+    mem2::Shape paddedShape = input.unpadded.shape();
     paddedShape[config.axis] += config.size;
 
     // Allocate output.
 
-    output.padded = Tensor<D, T>(paddedShape);
+    JST_CHECK(output.padded.create(D, mem2::TypeToDataType<T>(), paddedShape));
 
     return Result::SUCCESS;
 }

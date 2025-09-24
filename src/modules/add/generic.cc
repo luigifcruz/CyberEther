@@ -37,7 +37,7 @@ Result Add<D, T>::create() {
 
     // Allocate output.
 
-    std::vector<U64> output_shape(max_rank);
+    mem2::Shape output_shape(max_rank);
 
     for (U64 i = 0; i < max_rank; i++) {
         const U64 index_a = rank_a > i ? input.addendA.shape()[rank_a - 1 - i] : 1;
@@ -45,13 +45,13 @@ Result Add<D, T>::create() {
         output_shape[max_rank - 1 - i] = std::max(index_a, index_b);
     }
 
-    output.sum = Tensor<D, T>(output_shape);
+    JST_CHECK(output.sum.create(D, mem2::TypeToDataType<T>(), output_shape));
 
     // Broadcast input.
 
-    impl->a = input.addendA;
-    impl->b = input.addendB;
-    impl->c = output.sum;
+    JST_CHECK(impl->a.create(D, input.addendA));
+    JST_CHECK(impl->b.create(D, input.addendB));
+    JST_CHECK(impl->c.create(D, output.sum));
 
     JST_CHECK(impl->a.broadcast_to(impl->c.shape()));
     JST_CHECK(impl->b.broadcast_to(impl->c.shape()));

@@ -1,6 +1,7 @@
 #include "../generic.cc"
 
 #include "jetstream/memory/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
@@ -30,7 +31,7 @@ Result Duplicate<D, T>::compute(const Context&) {
     if (input.buffer.contiguous()) {
         Memory::Copy(output.buffer, input.buffer);
     } else {
-        Memory::CPU::AutomaticIterator([](const auto& in, auto& out) {
+        mem2::AutomaticIterator([](const auto& in, auto& out) {
             out = in;
         }, input.buffer, output.buffer);
     }

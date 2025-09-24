@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -36,8 +36,8 @@ class Multiply : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> factorA;
-        Tensor<D, T> factorB;
+        mem2::Tensor factorA;
+        mem2::Tensor factorB;
 
         JST_SERDES_INPUT(factorA, factorB);
     };
@@ -49,7 +49,7 @@ class Multiply : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> product;
+        mem2::Tensor product;
 
         JST_SERDES_OUTPUT(product);
     };
@@ -58,7 +58,7 @@ class Multiply : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputProduct() const {
+    constexpr const mem2::Tensor& getOutputProduct() const {
         return this->output.product;
     }
 

@@ -33,14 +33,14 @@ Result Arithmetic<D, T>::create() {
 
     // Calculate output shape.
 
-    std::vector<U64> output_shape(input.buffer.shape());
+    mem2::Shape output_shape(input.buffer.shape());
     output_shape[config.axis] = 1;
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(output_shape);
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), output_shape));
 
-    pimpl->broadcasted_output = output.buffer;
+    JST_CHECK(pimpl->broadcasted_output.create(D, output.buffer));
     JST_CHECK(pimpl->broadcasted_output.broadcast_to(input.buffer.shape()));
 
     // Apply squeeze if requested.

@@ -28,9 +28,9 @@ Result SignalGenerator<D, T>::create() {
 
     // Allocate output buffer
     if constexpr (D == Device::CUDA) {
-        output.buffer = Tensor<D, T>({config.bufferSize}, true);
+        JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), {config.bufferSize}, true));
     } else {
-        output.buffer = Tensor<D, T>({config.bufferSize});
+        JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), {config.bufferSize}));
     }
 
     return Result::SUCCESS;

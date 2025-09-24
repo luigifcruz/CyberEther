@@ -1,6 +1,6 @@
 #include "../generic.cc"
 
-#include "jetstream/memory/devices/cuda/copy.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
@@ -11,7 +11,7 @@ struct Amplitude<D, IT, OT>::Impl {
 
     std::vector<void*> arguments;
 
-    Tensor<Device::CUDA, IT> input;
+    mem2::Tensor input;
 
     F32 scalingCoeff = 0.0f;
     U64 numberOfElements = 0;
@@ -69,7 +69,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
     // Initialize kernel input.
 
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        pimpl->input = Tensor<Device::CUDA, IT>(input.buffer.shape());
+        pimpl->input = mem2::Tensor(input.buffer.shape(), mem2::DataType::fromCppType<IT>(), Device::CUDA);
     } else {
         pimpl->input = input.buffer;
     }
@@ -89,7 +89,7 @@ Result Amplitude<D, IT, OT>::createCompute(const Context& ctx) {
 template<Device D, typename IT, typename OT>
 Result Amplitude<D, IT, OT>::compute(const Context& ctx) {
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(pimpl->input.copy_from(input.buffer));
     }
 
     JST_CHECK(ctx.cuda->launchKernel("amplitude",

@@ -35,7 +35,7 @@ class Window : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> window;
+        mem2::Tensor window;
 
         JST_SERDES(window);
     };
@@ -44,7 +44,7 @@ class Window : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputWindow() const {
+    constexpr const mem2::Tensor& getOutputWindow() const {
         return this->output.window;
     }
 

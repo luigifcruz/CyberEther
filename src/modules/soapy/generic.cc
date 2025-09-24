@@ -177,11 +177,11 @@ Result Soapy<D, T>::create() {
 
     // Calculate shape.
 
-    std::vector<U64> outputShape = { config.numberOfBatches, config.numberOfTimeSamples };
+    mem2::Shape outputShape = { config.numberOfBatches, config.numberOfTimeSamples };
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(outputShape);
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), outputShape));
 
     // Allocate circular buffer.
 

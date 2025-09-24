@@ -23,7 +23,7 @@ class Amplitude : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES(buffer);
     };
@@ -35,7 +35,7 @@ class Amplitude : public Block {
     // Output
 
     struct Output {
-        Tensor<D, OT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES(buffer);
     };
@@ -44,7 +44,7 @@ class Amplitude : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, OT>& getOutputBuffer() const {
+    constexpr const mem2::Tensor& getOutputBuffer() const {
         return this->output.buffer;
     }
 

@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 namespace Jetstream {
 
 // TODO: Improve performance.
@@ -56,7 +58,7 @@ struct Lineplot<D, T>::Impl {
     };
 
     MTL::ComputePipelineState* lineplotState;
-    Tensor<Device::Metal, U8> constants;
+    mem2::Tensor constants;
 };
 
 template<Device D, typename T>

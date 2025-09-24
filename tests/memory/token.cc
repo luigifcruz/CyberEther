@@ -3,9 +3,10 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "jetstream/memory/token.hh"
+#include "jetstream/memory2/token.hh"
 
 using namespace Jetstream;
+using namespace mem2;
 
 TEST_CASE("Token Class Tests", "[Token]") {
     SECTION("Default Constructor") {

@@ -1,7 +1,7 @@
 #include "../generic.cc"
 
 #include "jetstream/macros.hh"
-#include "jetstream/memory/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 #include <random>
 #include <cmath>
 
@@ -50,7 +50,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
     switch (config.signalType) {
         case SignalType::Sine: {
             U64 idx = 0;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 t = (pimpl->sampleIndex + idx) * dt;
                 const F64 iValue = config.amplitude * std::sin(2.0 * M_PI * config.frequency * t + config.phase) + config.dcOffset;
 
@@ -66,7 +66,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
 
         case SignalType::Cosine: {
             U64 idx = 0;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 t = (pimpl->sampleIndex + idx) * dt;
                 const F64 iValue = config.amplitude * std::cos(2.0 * M_PI * config.frequency * t + config.phase) + config.dcOffset;
                 const F64 qValue = config.amplitude * std::sin(2.0 * M_PI * config.frequency * t + config.phase);
@@ -83,7 +83,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
 
         case SignalType::Square: {
             U64 idx = 0;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 t = (pimpl->sampleIndex + idx) * dt;
                 const F64 phase = std::fmod(2.0 * M_PI * config.frequency * t + config.phase, 2.0 * M_PI);
                 const F64 iValue = config.amplitude * ((phase < M_PI) ? 1.0 : -1.0) + config.dcOffset;
@@ -100,7 +100,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
 
         case SignalType::Sawtooth: {
             U64 idx = 0;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 t = (pimpl->sampleIndex + idx) * dt;
                 const F64 phase = std::fmod(config.frequency * t + config.phase / (2.0 * M_PI), 1.0);
                 const F64 iValue = config.amplitude * (2.0 * phase - 1.0) + config.dcOffset;
@@ -117,7 +117,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
 
         case SignalType::Triangle: {
             U64 idx = 0;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 t = (pimpl->sampleIndex + idx) * dt;
                 const F64 phase = std::fmod(config.frequency * t + config.phase / (2.0 * M_PI), 1.0);
                 const F64 iValue = config.amplitude * ((phase < 0.5) ? (4.0 * phase - 1.0) : (3.0 - 4.0 * phase)) + config.dcOffset;
@@ -133,7 +133,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
         }
 
         case SignalType::Noise: {
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 iValue = config.amplitude * pimpl->normalDist(pimpl->rng) + config.dcOffset;
 
                 if constexpr (std::is_same_v<T, CF32>) {
@@ -148,7 +148,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
 
         case SignalType::DC: {
             const F64 dcValue = config.amplitude + config.dcOffset;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 if constexpr (std::is_same_v<T, CF32>) {
                     out = CF32(static_cast<F32>(dcValue), 0.0f);
                 } else {
@@ -160,7 +160,7 @@ Result SignalGenerator<D, T>::compute(const Context&) {
 
         case SignalType::Chirp: {
             U64 idx = 0;
-            Memory::CPU::AutomaticIterator([&](auto& out) {
+            mem2::AutomaticIterator([&](auto& out) {
                 const F64 t = (pimpl->sampleIndex + idx) * dt;
                 const F64 chirpTime = std::fmod(t, config.chirpDuration);
                 const F64 chirpRate = (config.chirpEndFreq - config.chirpStartFreq) / config.chirpDuration;

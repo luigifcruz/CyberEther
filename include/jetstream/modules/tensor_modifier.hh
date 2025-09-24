@@ -4,7 +4,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -15,7 +15,7 @@ class TensorModifier : public Module, public Compute {
     // Configuration
 
     struct Config {
-        std::function<Result(Tensor<D, T>&)> callback;
+        std::function<Result(mem2::Tensor&)> callback;
 
         JST_SERDES();
     };
@@ -27,7 +27,7 @@ class TensorModifier : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES_INPUT(buffer);
     };
@@ -39,7 +39,7 @@ class TensorModifier : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES_OUTPUT(buffer);
     };
@@ -48,7 +48,7 @@ class TensorModifier : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputBuffer() const {
+    constexpr const mem2::Tensor& getOutputBuffer() const {
         return this->output.buffer;
     }
 

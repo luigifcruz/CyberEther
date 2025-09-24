@@ -120,11 +120,11 @@ Result PskDemod<D, T>::create() {
     }
 
     // Set up output buffer shape - same as input but potentially different size
-    std::vector<U64> output_shape = input.buffer.shape();
+    mem2::Shape output_shape = input.buffer.shape();
     output_shape[output_shape.size() - 1] = outputSymbols;  // Last dimension is the sample dimension
 
     // Allocate output buffer
-    output.buffer = Tensor<D, T>(output_shape);
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), output_shape));
 
     // Initialize PSK demod state
     pimpl->phaseAccumulator = 0.0;

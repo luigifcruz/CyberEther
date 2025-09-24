@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 namespace Jetstream {
 
 static const char shadersSrc[] = R"""(
@@ -40,7 +42,7 @@ struct MultiplyConstant<D, T>::Impl {
 
     struct {
         MTL::ComputePipelineState* state;
-        Tensor<Device::Metal, U8> constants;
+        mem2::Tensor constants;
     } metal;
 };
 

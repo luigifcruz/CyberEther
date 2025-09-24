@@ -25,7 +25,7 @@ class MultiplyConstant : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> factor;
+        mem2::Tensor factor;
 
         JST_SERDES(factor);
     };
@@ -37,7 +37,7 @@ class MultiplyConstant : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> product;
+        mem2::Tensor product;
 
         JST_SERDES(product);
     };
@@ -46,7 +46,7 @@ class MultiplyConstant : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputProduct() const {
+    constexpr const mem2::Tensor& getOutputProduct() const {
         return this->output.product;
     }
 

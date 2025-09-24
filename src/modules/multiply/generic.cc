@@ -39,7 +39,7 @@ Result Multiply<D, T>::create() {
 
     // Allocate output.
 
-    std::vector<U64> output_shape(max_rank);
+    mem2::Shape output_shape(max_rank);
 
     for (U64 i = 0; i < max_rank; i++) {
         const U64 index_a = rank_a > i ? input.factorA.shape()[rank_a - 1 - i] : 1;
@@ -47,13 +47,13 @@ Result Multiply<D, T>::create() {
         output_shape[max_rank - 1 - i] = std::max(index_a, index_b);
     }
 
-    output.product = Tensor<D, T>(output_shape);
+    JST_CHECK(output.product.create(D, mem2::TypeToDataType<T>(), output_shape));
 
     // Broadcast input.
 
-    impl->a = input.factorA;
-    impl->b = input.factorB;
-    impl->c = output.product;
+    JST_CHECK(impl->a.create(D, input.factorA));
+    JST_CHECK(impl->b.create(D, input.factorB));
+    JST_CHECK(impl->c.create(D, output.product));
 
     JST_CHECK(impl->a.broadcast_to(impl->c.shape()));
     JST_CHECK(impl->b.broadcast_to(impl->c.shape()));

@@ -29,8 +29,8 @@ class FilterEngine : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> signal;
-        Tensor<D, IT> filter;
+        mem2::Tensor signal;
+        mem2::Tensor filter;
 
         JST_SERDES(signal, filter);
     };
@@ -42,7 +42,7 @@ class FilterEngine : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES(buffer);
     };
@@ -51,7 +51,7 @@ class FilterEngine : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputBuffer() const {
+    constexpr const mem2::Tensor& getOutputBuffer() const {
         return this->output.buffer;
     }
 

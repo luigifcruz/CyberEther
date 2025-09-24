@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 #include "jetstream/compute/graph/base.hh"
 
 namespace Jetstream {
@@ -33,8 +33,8 @@ class Add : public Module, public Compute {
     // Input
 
     struct Input {
-        Tensor<D, T> addendA;
-        Tensor<D, T> addendB;
+        mem2::Tensor addendA;
+        mem2::Tensor addendB;
 
         JST_SERDES_INPUT(addendA, addendB);
     };
@@ -46,7 +46,7 @@ class Add : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> sum;
+        mem2::Tensor sum;
 
         JST_SERDES_OUTPUT(sum);
     };
@@ -55,7 +55,7 @@ class Add : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputSum() const {
+    constexpr const mem2::Tensor& getOutputSum() const {
         return this->output.sum;
     }
 

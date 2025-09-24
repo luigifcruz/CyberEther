@@ -31,13 +31,13 @@ Result OverlapAdd<D, T>::create() {
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(input.buffer.shape());
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), input.buffer.shape()));
 
-    auto previousOverlapShape = input.overlap.shape();
+    mem2::Shape previousOverlapShape = input.overlap.shape();
     if (input.buffer.rank() > 1) {
         previousOverlapShape[0] = 1;
     }
-    impl->previousOverlap = Tensor<D, T>(previousOverlapShape);
+    JST_CHECK(impl->previousOverlap.create(D, mem2::TypeToDataType<T>(), previousOverlapShape));
 
     return Result::SUCCESS;
 }

@@ -87,7 +87,7 @@ U64 FileReader<D, T>::getCurrentPosition() const {
 template<Device D, typename T>
 Result FileReader<D, T>::GImpl::startPlaying(FileReader<D, T>& m) {
     // Initialize output buffer
-    m.output.buffer = Tensor<D, T>(m.config.shape);
+    JST_CHECK(m.output.buffer.create(D, mem2::TypeToDataType<T>(), m.config.shape));
     if (m.output.buffer.size() == 0) {
         JST_ERROR("Buffer shape is zero.");
         return Result::ERROR;

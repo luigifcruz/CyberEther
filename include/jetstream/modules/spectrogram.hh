@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 #include "jetstream/render/base.hh"
 #include "jetstream/compute/graph/base.hh"
 
@@ -42,7 +42,7 @@ class Spectrogram : public Module, public Compute, public Present {
     // Input
 
     struct Input {
-        Tensor<D, T> buffer;
+        mem2::Tensor buffer;
 
         JST_SERDES_INPUT(buffer);
     };

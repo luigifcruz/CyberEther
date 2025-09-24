@@ -23,8 +23,8 @@ class Multiply : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> factorA;
-        Tensor<D, IT> factorB;
+        mem2::Tensor factorA;
+        mem2::Tensor factorB;
 
         JST_SERDES(factorA, factorB);
     };
@@ -36,7 +36,7 @@ class Multiply : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> product;
+        mem2::Tensor product;
 
         JST_SERDES(product);
     };
@@ -45,7 +45,7 @@ class Multiply : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputProduct() const {
+    constexpr const mem2::Tensor& getOutputProduct() const {
         return this->output.product;
     }
 

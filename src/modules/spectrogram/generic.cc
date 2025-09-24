@@ -64,7 +64,7 @@ Result Spectrogram<D, T>::create() {
 
     // Allocate internal buffers.
 
-    gimpl->frequencyBins = Tensor<D, F32>({gimpl->numberOfElements, config.height});
+    JST_CHECK(gimpl->frequencyBins.create(D, mem2::TypeToDataType<F32>(), {gimpl->numberOfElements, config.height}));
 
     return Result::SUCCESS;
 }

@@ -38,7 +38,7 @@ class FilterTaps : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> coeffs;
+        mem2::Tensor coeffs;
 
         JST_SERDES(coeffs);
     };
@@ -47,7 +47,7 @@ class FilterTaps : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputCoeffs() const {
+    constexpr const mem2::Tensor& getOutputCoeffs() const {
         return this->output.coeffs;
     }
 

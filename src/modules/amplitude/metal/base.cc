@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 namespace Jetstream {
 
 static const char shadersSrcComplex[] = R"""(
@@ -50,7 +52,7 @@ struct Amplitude<D, IT, OT>::Impl {
     };
 
     MTL::ComputePipelineState* state;
-    Tensor<Device::Metal, U8> constants;
+    mem2::Tensor constants;
 
     F32 scalingCoeff = 0.0f;
     U64 numberOfElements = 0;

@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 namespace Jetstream {
 
 static const char shadersSrc[] = R"""(
@@ -21,9 +23,9 @@ static const char shadersSrc[] = R"""(
 
 template<Device D, typename T>
 struct Multiply<D, T>::Impl {
-    Tensor<D, T> a;
-    Tensor<D, T> b;
-    Tensor<D, T> c;
+    mem2::Tensor a;
+    mem2::Tensor b;
+    mem2::Tensor c;
 
     MTL::ComputePipelineState* state;
 };

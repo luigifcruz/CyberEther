@@ -1,6 +1,5 @@
 #include "../generic.cc"
-
-#include "jetstream/memory/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 #include "jetstream/types.hh"
 
 namespace Jetstream {

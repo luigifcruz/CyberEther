@@ -111,10 +111,10 @@ Result RRCFilter<D, T>::setTaps(U64& taps) {
         config.taps = taps;
 
         // Reallocate coefficient buffer
-        impl->coeffs = Tensor<D, typename Impl::CoeffType>({config.taps});
+        JST_CHECK(impl->coeffs.create(D, mem2::TypeToDataType<typename Impl::CoeffType>(), {config.taps}));
 
         // Reallocate and reset history buffer
-        impl->history = Tensor<D, T>({config.taps});
+        JST_CHECK(impl->history.create(D, mem2::TypeToDataType<T>(), {config.taps}));
         impl->historyIndex = 0;
         for (U64 i = 0; i < config.taps; i++) {
             impl->history[i] = T{};
@@ -139,10 +139,10 @@ Result RRCFilter<D, T>::create() {
     JST_INIT_IO();
 
     // Allocate filter coefficients
-    impl->coeffs = Tensor<D, typename Impl::CoeffType>({config.taps});
+    JST_CHECK(impl->coeffs.create(D, mem2::TypeToDataType<typename Impl::CoeffType>(), {config.taps}));
 
     // Allocate history buffer (circular buffer for filter states)
-    impl->history = Tensor<D, T>({config.taps});
+    JST_CHECK(impl->history.create(D, mem2::TypeToDataType<T>(), {config.taps}));
     impl->historyIndex = 0;
 
     // Initialize history to zero
@@ -151,7 +151,7 @@ Result RRCFilter<D, T>::create() {
     }
 
     // Allocate output buffer to match input size
-    output.buffer = Tensor<D, T>({input.buffer.size()});
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), {input.buffer.size()}));
 
     // Validate parameters
     if (config.symbolRate <= 0) {

@@ -1,10 +1,12 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 namespace Jetstream {
 
 template<Device D, typename T>
 struct OverlapAdd<D, T>::Impl {
-    Tensor<D, T> previousOverlap;
+    mem2::Tensor previousOverlap;
 };
 
 template<Device D, typename T>

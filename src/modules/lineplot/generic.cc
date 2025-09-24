@@ -119,13 +119,13 @@ Result Lineplot<D, T>::create() {
 
     // Allocate internal buffers.
 
-    gimpl->signalPoints = Tensor<D, F32>({gimpl->numberOfElements, 2});
-    gimpl->signalVertices = Tensor<D, F32>({gimpl->numberOfElements - 1, 4, 4});
+    JST_CHECK(gimpl->signalPoints.create(D, mem2::TypeToDataType<F32>(), {gimpl->numberOfElements, 2}));
+    JST_CHECK(gimpl->signalVertices.create(D, mem2::TypeToDataType<F32>(), {gimpl->numberOfElements - 1, 4, 4}));
 
-    gimpl->gridPoints = Tensor<Device::CPU, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 2, 2});
-    gimpl->gridVertices = Tensor<D, F32>({config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4});
+    JST_CHECK(gimpl->gridPoints.create(Device::CPU, mem2::TypeToDataType<F32>(), {config.numberOfVerticalLines + config.numberOfHorizontalLines, 2, 2}));
+    JST_CHECK(gimpl->gridVertices.create(D, mem2::TypeToDataType<F32>(), {config.numberOfVerticalLines + config.numberOfHorizontalLines, 6, 4}));
 
-    gimpl->cursorSignalPoint = Tensor<Device::CPU, F32>({2});
+    JST_CHECK(gimpl->cursorSignalPoint.create(Device::CPU, mem2::TypeToDataType<F32>(), {2}));
 
     return Result::SUCCESS;
 }

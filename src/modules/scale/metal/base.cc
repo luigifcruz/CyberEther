@@ -1,5 +1,7 @@
 #include "../generic.cc"
 
+#include "jetstream/memory2/helpers.hh"
+
 namespace Jetstream {
 
 static const char shadersSrc[] = R"""(
@@ -29,7 +31,7 @@ struct Scale<D, T>::Impl {
     };
 
     MTL::ComputePipelineState* state;
-    Tensor<Device::Metal, U8> constants;
+    mem2::Tensor constants;
 
     F32 scalingCoeff;
     F32 offsetCoeff;

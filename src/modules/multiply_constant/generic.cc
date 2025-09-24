@@ -11,7 +11,7 @@ Result MultiplyConstant<D, T>::create() {
 
     // Allocate output.
 
-    output.product = Tensor<D, T>(input.factor.shape());
+    JST_CHECK(output.product.create(D, mem2::TypeToDataType<T>(), input.factor.shape()));
 
     return Result::SUCCESS;
 }

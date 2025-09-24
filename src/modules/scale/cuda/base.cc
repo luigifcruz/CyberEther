@@ -1,6 +1,6 @@
 #include "../generic.cc"
 
-#include "jetstream/memory/devices/cuda/copy.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
@@ -11,7 +11,7 @@ struct Scale<D, T>::Impl {
 
     std::vector<void*> arguments;
 
-    Tensor<Device::CUDA, T> input;
+    mem2::Tensor input;
 
     F32 scalingCoeff;
     F32 offsetCoeff;
@@ -54,7 +54,7 @@ Result Scale<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel input.
 
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        impl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
+        impl->input = mem2::Tensor(input.buffer.shape(), mem2::DataType::fromCppType<T>(), Device::CUDA);
     } else {
         impl->input = input.buffer;
     }
@@ -75,7 +75,7 @@ Result Scale<D, T>::createCompute(const Context& ctx) {
 template<Device D, typename T>
 Result Scale<D, T>::compute(const Context& ctx) {
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(impl->input, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(impl->input.copy_from(input.buffer));
     }
 
     JST_CHECK(ctx.cuda->launchKernel("scale",

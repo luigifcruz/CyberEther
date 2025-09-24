@@ -24,7 +24,7 @@ Result Cast<D, IT, OT>::create() {
 
     // Allocate output.
 
-    output.buffer = Tensor<D, OT>(input.buffer.shape());
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<OT>(), input.buffer.shape()));
 
     return Result::SUCCESS;
 }

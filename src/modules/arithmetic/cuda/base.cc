@@ -2,7 +2,7 @@
 
 #include "../generic.cc"
 
-#include "jetstream/memory/devices/cuda/copy.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
@@ -24,9 +24,9 @@ struct Arithmetic<D, T>::Impl {
 
     std::vector<void*> arguments;
 
-    Tensor<Device::CUDA, T> input;
+    mem2::Tensor input;
 
-    Tensor<D, T> broadcasted_output;
+    mem2::Tensor broadcasted_output;
 };
 
 template<Device D, typename T>
@@ -132,7 +132,7 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
     // Initialize kernel input.
 
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        pimpl->input = Tensor<Device::CUDA, T>(input.buffer.shape());
+        pimpl->input = mem2::Tensor(input.buffer.shape(), mem2::DataType::fromCppType<T>(), Device::CUDA);
     } else {
         pimpl->input = input.buffer;
     }
@@ -177,7 +177,7 @@ Result Arithmetic<D, T>::createCompute(const Context& ctx) {
 template<Device D, typename T>
 Result Arithmetic<D, T>::compute(const Context& ctx) {
     if (!input.buffer.device_native() && input.buffer.contiguous()) {
-        JST_CHECK(Memory::Copy(pimpl->input, input.buffer, ctx.cuda->stream()));
+        JST_CHECK(pimpl->input.copy_from(input.buffer));
     }
 
     JST_CUDA_CHECK(cudaMemsetAsync(output.buffer.data(), 0, output.buffer.size_bytes(), ctx.cuda->stream()), [&]{

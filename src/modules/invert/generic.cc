@@ -11,7 +11,7 @@ Result Invert<D, T>::create() {
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(input.buffer.shape());
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), input.buffer.shape()));
 
     return Result::SUCCESS;
 }

@@ -28,14 +28,14 @@ Result Fold<D, T>::create() {
 
     // Calculate parameters.
 
-    auto output_shape = input.buffer.shape();
+    mem2::Shape output_shape = input.buffer.shape();
     output_shape[config.axis] = config.size;
 
     impl->decimationFactor = input.buffer.shape()[config.axis] / config.size;
 
     // Allocate output.
 
-    output.buffer = Tensor<D, T>(output_shape);
+    JST_CHECK(output.buffer.create(D, mem2::TypeToDataType<T>(), output_shape));
 
     return Result::SUCCESS;
 }

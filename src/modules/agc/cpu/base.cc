@@ -1,6 +1,7 @@
 #include "../generic.cc"
 
 #include "jetstream/backend/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
@@ -23,16 +24,19 @@ Result AGC<D, T>::compute(const Context&) {
 
     // TODO: This is a dog shit implementation. Improve.
 
+    mem2::View<const T> inputView(input.buffer);
+    mem2::View<T> outputView(output.buffer);
+
     F32 currentMax = 0.0f;
-    for (U64 i = 0; i < input.buffer.size(); i++) {
-        currentMax = std::max(currentMax, std::abs(input.buffer[i]));
-    }
+    mem2::AutomaticIterator([&currentMax](const auto& val) {
+        currentMax = std::max(currentMax, std::abs(val));
+    }, input.buffer);
 
     const F32 gain = (currentMax != 0) ? (desiredLevel / currentMax) : 1.0f;
 
-    for (U64 i = 0; i < output.buffer.size(); i++) {
-        output.buffer[i] = input.buffer[i] * gain;
-    }
+    mem2::AutomaticIterator([gain](const auto& in_val, auto& out_val) {
+        out_val = in_val * gain;
+    }, input.buffer, output.buffer);
 
     return Result::SUCCESS;
 }

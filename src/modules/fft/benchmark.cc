@@ -5,15 +5,15 @@ namespace Jetstream {
 template<template<Device, typename...> class Module, Device D, typename IT, typename OT>
 void benchmark(ankerl::nanobench::Bench& bench, std::string name) {
     JST_BENCHMARK_RUN("128x8000 Forward", {
-        .forward = true COMMA
+        .forward = true,
     }, {
-        .buffer = Tensor<D COMMA IT>({128 COMMA 8000}) COMMA
+        .buffer = mem2::Tensor(D, mem2::TypeToDataType<IT>(), {128, 8000}),
     }, IT, OT);
 
     JST_BENCHMARK_RUN("128x8000 Backward", {
-        .forward = false COMMA
+        .forward = false,
     }, {
-        .buffer = Tensor<D COMMA IT>({128 COMMA 8000}) COMMA
+        .buffer = mem2::Tensor(D, mem2::TypeToDataType<IT>(), {128, 8000}),
     }, IT, OT);
 }
 

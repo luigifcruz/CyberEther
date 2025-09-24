@@ -1,12 +1,11 @@
 #include "../generic.cc"
-
-#include "jetstream/memory/devices/cpu/helpers.hh"
+#include "jetstream/memory2/helpers.hh"
 
 namespace Jetstream {
 
 template<Device D, typename T>
 struct Arithmetic<D, T>::Impl {
-    Tensor<D, T> broadcasted_output;
+    mem2::Tensor broadcasted_output;
 };
 
 template<Device D, typename T>
@@ -34,22 +33,22 @@ Result Arithmetic<D, T>::compute(const Context&) {
 
     switch (config.operation) {
         case ArithmeticOp::Add:
-            Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
+            mem2::AutomaticIterator([](auto& a, const auto& b) {
                 a += b;
             }, pimpl->broadcasted_output, input.buffer);
             break;
         case ArithmeticOp::Sub:
-            Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
+            mem2::AutomaticIterator([](auto& a, const auto& b) {
                 a -= b;
             }, pimpl->broadcasted_output, input.buffer);
             break;
         case ArithmeticOp::Mul:
-            Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
+            mem2::AutomaticIterator([](auto& a, const auto& b) {
                 a *= b;
             }, pimpl->broadcasted_output, input.buffer);
             break;
         case ArithmeticOp::Div:
-            Memory::CPU::AutomaticIterator([](auto& a, const auto& b) {
+            mem2::AutomaticIterator([](auto& a, const auto& b) {
                 a /= b;
             }, pimpl->broadcasted_output, input.buffer);
             break;

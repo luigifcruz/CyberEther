@@ -23,8 +23,8 @@ class Add : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> addendA;
-        Tensor<D, IT> addendB;
+        mem2::Tensor addendA;
+        mem2::Tensor addendB;
 
         JST_SERDES(addendA, addendB);
     };
@@ -36,7 +36,7 @@ class Add : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> sum;
+        mem2::Tensor sum;
 
         JST_SERDES(sum);
     };
@@ -45,7 +45,7 @@ class Add : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputSum() const {
+    constexpr const mem2::Tensor& getOutputSum() const {
         return this->output.sum;
     }
 

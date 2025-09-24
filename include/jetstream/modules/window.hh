@@ -5,7 +5,7 @@
 #include "jetstream/module.hh"
 #include "jetstream/types.hh"
 
-#include "jetstream/memory/base.hh"
+#include "jetstream/memory2/tensor.hh"
 
 namespace Jetstream {
 
@@ -43,7 +43,7 @@ class Window : public Module, public Compute {
     // Output
 
     struct Output {
-        Tensor<D, T> window;
+        mem2::Tensor window;
 
         JST_SERDES_OUTPUT(window);
     };
@@ -52,7 +52,7 @@ class Window : public Module, public Compute {
         return output;
     }
 
-    constexpr const Tensor<D, T>& getOutputWindow() const {
+    constexpr const mem2::Tensor& getOutputWindow() const {
         return this->output.window;
     }
 

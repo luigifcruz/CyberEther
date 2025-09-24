@@ -26,7 +26,7 @@ class Pad : public Block {
     // Input
 
     struct Input {
-        Tensor<D, IT> unpadded;
+        mem2::Tensor unpadded;
 
         JST_SERDES(unpadded);
     };
@@ -38,7 +38,7 @@ class Pad : public Block {
     // Output
 
     struct Output {
-        Tensor<D, IT> padded;
+        mem2::Tensor padded;
 
         JST_SERDES(padded);
     };
@@ -47,7 +47,7 @@ class Pad : public Block {
         return output;
     }
 
-    constexpr const Tensor<D, IT>& getOutputPadded() const {
+    constexpr const mem2::Tensor& getOutputPadded() const {
         return this->output.padded;
     }
 
