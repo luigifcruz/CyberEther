@@ -9,7 +9,12 @@
 using namespace Jetstream;
 
 constexpr static Device ComputeDevice = Device::CPU;
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+constexpr static Device RenderDevice  = Device::Vulkan;
+#endif
+#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 constexpr static Device RenderDevice  = Device::Metal;
+#endif
 using ViewportPlatform = Viewport::GLFW<RenderDevice>;
 
 class MagnifierGlass {

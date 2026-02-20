@@ -35,10 +35,10 @@ void benchmark(ankerl::nanobench::Bench& bench, std::string name) {
     JST_BENCHMARK_RUN("Chirp 8192", {
         .signalType = SignalType::Chirp COMMA
         .sampleRate = 1000000.0 COMMA
+        .amplitude = 1.0 COMMA
         .chirpStartFreq = 1000.0 COMMA
         .chirpEndFreq = 10000.0 COMMA
         .chirpDuration = 1.0 COMMA
-        .amplitude = 1.0 COMMA
         .bufferSize = 8192
     }, {}, IT);
 
