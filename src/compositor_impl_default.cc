@@ -1923,7 +1923,13 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             ImNodes::SetNodeVerticalResizeEnabled(nodeId, hasSurfaces && !isDetached);
-            if (!hasSurfaces || isDetached) {
+
+            const Block::State blockState = blockPtr->state();
+            const bool isReloading = blockState == Block::State::Creating ||
+                                     blockState == Block::State::Incomplete;
+            const bool shouldResetNodeHeight = (!hasSurfaces || isDetached) && !isReloading;
+
+            if (shouldResetNodeHeight) {
                 nodeSizes[nodeId].y = 0.0f;
             }
             ImNodes::SetNodeDimensions(nodeId, nodeSizes[nodeId]);
