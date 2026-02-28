@@ -9,9 +9,10 @@ struct Audio : public Block::Config {
     std::string deviceName = "Default";
     F32 inSampleRate = 48e3;
     F32 outSampleRate = 48e3;
+    F32 volume = 1.0f;
 
     JST_BLOCK_TYPE(audio);
-    JST_BLOCK_PARAMS(deviceName, inSampleRate, outSampleRate);
+    JST_BLOCK_PARAMS(deviceName, inSampleRate, outSampleRate, volume);
     JST_BLOCK_DESCRIPTION(
         "Audio",
         "Audio playback device interface.",
@@ -23,7 +24,8 @@ struct Audio : public Block::Config {
         "## Arguments\n"
         "- **Device**: Name of the audio playback device to use.\n"
         "- **Sample Rate**: Sample rate of the input signal in kHz.\n"
-        "- **Output Sample Rate**: Sample rate for the audio device in kHz.\n\n"
+        "- **Output Sample Rate**: Sample rate for the audio device in kHz.\n"
+        "- **Volume**: Volume multiplier (0.0 to 5.0). Values above 1.0 amplify the audio.\n\n"
 
         "## Useful For\n"
         "- Playing demodulated audio from radio signals.\n"

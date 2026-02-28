@@ -10,9 +10,10 @@ struct Audio : public Module::Config {
     std::string deviceName = "Default";
     F32 inSampleRate = 48e3;
     F32 outSampleRate = 48e3;
+    F32 volume = 1.0f;
 
     JST_MODULE_TYPE(audio);
-    JST_MODULE_PARAMS(deviceName, inSampleRate, outSampleRate);
+    JST_MODULE_PARAMS(deviceName, inSampleRate, outSampleRate, volume);
 };
 
 }  // namespace Jetstream::Modules

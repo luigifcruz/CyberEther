@@ -52,6 +52,7 @@ Result AudioImpl::configure() {
     moduleConfig->deviceName = deviceName;
     moduleConfig->inSampleRate = inSampleRate;
     moduleConfig->outSampleRate = outSampleRate;
+    moduleConfig->volume = volume;
 
     return Result::SUCCESS;
 }
@@ -61,11 +62,13 @@ Result AudioImpl::define() {
                                    "Input",
                                    "The input buffer containing audio samples to play."));
 
-    std::vector<std::string> deviceOptions;
-    for (const auto& device : ListAvailableDevices()) {
-        deviceOptions.push_back(jst::fmt::format("{}({})", device, device));
+    if (deviceDropdown.empty()) {
+        std::vector<std::string> deviceOptions;
+        for (const auto& device : ListAvailableDevices()) {
+            deviceOptions.push_back(jst::fmt::format("{}({})", device, device));
+        }
+        deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
     }
-    deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
 
     JST_CHECK(defineInterfaceConfig("deviceName",
                                     "Device",
@@ -76,6 +79,11 @@ Result AudioImpl::define() {
                                     "Sample Rate",
                                     "Sample rate of the input signal.",
                                     "float:kHz:1"));
+
+    JST_CHECK(defineInterfaceConfig("volume",
+                                    "Volume",
+                                    "Volume multiplier (0.0 to 5.0). Values above 1.0 amplify.",
+                                    "range:0:5::float"));
 
     return Result::SUCCESS;
 }

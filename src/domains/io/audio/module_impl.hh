@@ -22,6 +22,7 @@ struct AudioImpl : public Module::Impl, public DynamicConfig<Audio> {
     Result define() override;
     Result create() override;
     Result destroy() override;
+    Result reconfigure() override;
 
     static DeviceList ListAvailableDevices();
 

@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <cmath>
+
 #include "miniaudio.h"
 
 #ifdef JST_OS_BROWSER
@@ -230,6 +232,9 @@ Result AudioImpl::create() {
         return Result::ERROR;
     }
 
+    // Set initial volume.
+    ma_device_set_master_volume(&pimpl->deviceCtx, volume);
+
     // Allocate resampler scratch buffer.
 
     const U64 outputSize = static_cast<U64>(inputBuffer.size() * (outSampleRate / inSampleRate));
@@ -247,6 +252,26 @@ Result AudioImpl::destroy() {
         ma_device_uninit(&pimpl->deviceCtx);
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
         pimpl.reset();
+    }
+
+    return Result::SUCCESS;
+}
+
+Result AudioImpl::reconfigure() {
+    const auto& config = *candidate();
+    constexpr F32 EPSILON = 1e-6f;
+
+    if (config.deviceName != deviceName ||
+        std::abs(config.inSampleRate - inSampleRate) > EPSILON ||
+        std::abs(config.outSampleRate - outSampleRate) > EPSILON) {
+        return Result::RECREATE;
+    }
+
+    if (std::abs(config.volume - volume) > EPSILON) {
+        volume = config.volume;
+        if (pimpl) {
+            ma_device_set_master_volume(&pimpl->deviceCtx, volume);
+        }
     }
 
     return Result::SUCCESS;
