@@ -11,7 +11,7 @@
 
 <br>
 <p align="center">
-<img src="docs/cyberether-banner.png" />
+<img src="docs/assets/images/cyberether-banner.png" />
 </p>
 
 > [!WARNING]
@@ -257,12 +257,12 @@ Other:
 ### Graphical Interface
 The graphical interface is where the fun is! It is a fully-featured application that can be used to build and run flowgraphs. Building a flowgraph is very familiar to anyone who has used GNU Radio Companion. Just drag the block icon from the right panel and drop it in the canvas. The color of the block icon indicates which backend to pick. For example, the Yellow block will run on the CPU, Purple on Metal, etc. Each block can be connected by dragging edges from the output of one block to the input of another. There is no start or stop button, blocks will start running as soon as they are connected. Flowgraphs can be exported and imported as readable YAML files. Example flowgraphs with helpful notes can be found pre-loaded in the application.
 
-![Flowgraph](docs/cyberether-flowgraph.png)
+![Flowgraph](docs/assets/images/cyberether-flowgraph.png)
 
 ### Remote Interface
 CyberEther can be used as a remote interface for headless servers and edge devices. The remote interface is a low-latency interface that allows the user to control the flowgraph remotely. The remote interface is built on top of [gstreamer](https://gstreamer.freedesktop.org) and uses UDP and TCP for communication. Other than video, the remote interface also sends keyboard and mouse events to the server. The example flowgraph `Remote Instance` (see image below) is available by default in the graphical interface and is a good example of how to use the remote interface.
 
-![Remote Instance](docs/remote-instance.png)
+![Remote Instance](docs/assets/images/remote-instance.png)
 
 At this time, software video encoding will be used on most platforms. Work is being done to enable hardware encoding in more devices, but this requires a lot of experimentation. Exceptions to this are NVIDIA GPUs, which will use the NVENC hardware encoder with a zero-copy framebuffer encoding, making it very nice and efficient. The Raspberry Pi will also use hardware encoding by default.
 
@@ -278,7 +278,7 @@ Note: This block will use two ports, the first one is shown in the block below (
 ### Benchmark Tool
 CyberEther comes with a neat runtime benchmark tool that can be used to compare the performance of different backends and modules. There are two ways to use it, either through the graphical interface or by running the command line tool. The graphical interface is the easiest way to use it. To access it, click on the `Developer` menu and then click on `Open Benchmarking Tool`. A new window will open (see image below) and the benchmark can be started by clicking on the `Run Benchmark` button. The results will be displayed in a table.
 
-![Benchmark Tool](docs/benchmarking-tool.png)
+![Benchmark Tool](docs/assets/images/benchmarking-tool.png)
 
 The benchmarking tool can also be run from the command line in headless mode. To do this, run the command below. The results will be printed in the terminal. The format of the results can be changed by specifying `csv`, `json`, or `markdown` after the `--benchmark` option. For example, `--benchmark csv`.
 
