@@ -205,16 +205,12 @@ $ meson setup --cross-file meson/crosscompile/emscripten.ini -Dbuildtype=debugop
 $ ninja
 ```
 
-Copy dependencies to the build directory.
+Copy any runtime assets your web entry page needs (for example, the logo).
 ```bash
-$ cp ../resources/web/cyberether.html .
 $ cp ../docs/assets/images/cyberether.png .
 ```
 
-Start the web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
-```bash
-$ python ../resources/web/local_server.py
-```
+Serve the build directory with your preferred static server and open your web entry page.
 
 #### iOS (iPhone & iPad)
 
@@ -273,7 +269,7 @@ To initialize a remote instance of CyberEther, run the command below on the serv
 $ ./cyberether --headless --endpoint 0.0.0.0:5002 --codec h264
 ```
 
-Note: This block will use two ports, the first one is shown in the block below (TCP:5002) for telemetry, and control and the second one (UDP:5003) for data streaming. Fun fact, you can use gstreamer to receive the video stream. Detailed instructions on how to do this can be found [here](./docs/remote-headless-mode.md).
+Note: This block will use two ports, the first one is shown in the block below (TCP:5002) for telemetry and control, and the second one (UDP:5003) for data streaming. You can use gstreamer to receive the video stream.
 
 ### Benchmark Tool
 CyberEther comes with a neat runtime benchmark tool that can be used to compare the performance of different backends and modules. There are two ways to use it, either through the graphical interface or by running the command line tool. The graphical interface is the easiest way to use it. To access it, click on the `Developer` menu and then click on `Open Benchmarking Tool`. A new window will open (see image below) and the benchmark can be started by clicking on the `Run Benchmark` button. The results will be displayed in a table.
@@ -322,6 +318,6 @@ CyberEther was created in 2021 by [Luigi Cruz](https://luigi.ltd) as a personal 
 Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository. The library follows the [Google C++ Code Style Guide](https://google.github.io/styleguide/cppguide.html). The default line length is 88. This can be overridden if necessary. Please, be sensible. Also keep in mind that since this project is still in its early stages, the API is not stable and it is subject to change. More details on how to contribute can be found [here](./CONTRIBUTING.md).
 
 ## License
-CyberEther is distributed under the [MIT license](./LICENSE). See [LICENSE](./LICENSE) for details. All contributions to the project are considered to be licensed under the same terms. The list of acknowledgements and third-party software used in this project can be found [here](./ACKNOWLEDGEMENTS.md).
+CyberEther is distributed under the [MIT license](./LICENSE). See [LICENSE](./LICENSE) for details. All contributions to the project are considered to be licensed under the same terms. The list of acknowledgments and third-party software used in this project can be found [here](./ACKNOWLEDGMENTS.md).
 
 If your company is utilizing CyberEther in its software solutions, we encourage you to consider contributing to the CyberEther project. Your support and contributions not only help in the continuous improvement and sustainability of the project but also ensure that CyberEther remains a robust and cutting-edge tool for the community. For more details on how your company can contribute, please [contact me](https://luigi.ltd/contact).
