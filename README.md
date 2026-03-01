@@ -208,7 +208,7 @@ $ ninja
 Copy dependencies to the build directory.
 ```bash
 $ cp ../resources/web/cyberether.html .
-$ cp ../resources/images/cyberether.png .
+$ cp ../docs/assets/images/cyberether.png .
 ```
 
 Start the web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
