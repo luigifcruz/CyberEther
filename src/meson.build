@@ -1,18 +1,35 @@
 src_lst += files([
-   'parser.cc',
-   'instance.cc',
-   'logger.cc',
-   'benchmark.cc',
+    'parser.cc',
+    'instance.cc',
+    'logger.cc',
+    'module.cc',
+    'module_impl.cc',
+    'module_context.cc',
+    'module_interface.cc',
+    'module_surface.cc',
+    'block.cc',
+    'block_impl.cc',
+    'block_interface.cc',
+    'registry.cc',
+    'benchmark.cc',
+    'testing.cc',
+    'compositor.cc',
+    'compositor_impl.cc',
+    'compositor_impl_default.cc',
+    'runtime.cc',
+    'runtime_impl_native_cpu.cc',
+    'runtime_context_native_cpu.cc',
+    'scheduler.cc',
+    'scheduler_context.cc',
+    'scheduler_synchronous.cc',
 ])
 
-subdir('store')
 subdir('backend')
 subdir('memory')
+subdir('tools')
 subdir('viewport')
 subdir('render')
-subdir('modules')
-subdir('compute')
 subdir('flowgraph')
+subdir('domains')
 subdir('platform')
-subdir('compositor')
 subdir('superluminal')

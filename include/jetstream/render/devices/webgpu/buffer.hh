@@ -7,18 +7,18 @@
 namespace Jetstream::Render {
 
 template<>
-class BufferImp<Device::WebGPU> : public Buffer {
+class BufferImp<DeviceType::WebGPU> : public Buffer {
  public:
     explicit BufferImp(const Config& config);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
 
     using Render::Buffer::size;
     using Render::Buffer::byteSize;
 
-    Result update();
-    Result update(const U64& offset, const U64& size);
+    Result update() override;
+    Result update(const U64& offset, const U64& size) override;
 
  protected:
     constexpr WGPUBuffer getHandle() const {
@@ -28,12 +28,12 @@ class BufferImp<Device::WebGPU> : public Buffer {
  private:
     WGPUBuffer buffer;
 
-    friend class SurfaceImp<Device::WebGPU>;
-    friend class ProgramImp<Device::WebGPU>;
-    friend class KernelImp<Device::WebGPU>;
-    friend class VertexImp<Device::WebGPU>;
-    friend class TextureImp<Device::WebGPU>;
-    friend class DrawImp<Device::WebGPU>;
+    friend class SurfaceImp<DeviceType::WebGPU>;
+    friend class ProgramImp<DeviceType::WebGPU>;
+    friend class KernelImp<DeviceType::WebGPU>;
+    friend class VertexImp<DeviceType::WebGPU>;
+    friend class TextureImp<DeviceType::WebGPU>;
+    friend class DrawImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

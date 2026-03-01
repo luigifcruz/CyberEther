@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class KernelImp<Device::Metal> : public Kernel {
+class KernelImp<DeviceType::Metal> : public Kernel {
  public:
     explicit KernelImp(const Config& config);
 
@@ -19,9 +19,9 @@ class KernelImp<Device::Metal> : public Kernel {
  private:
     MTL::ComputePipelineState* pipelineState = nullptr;
 
-    std::vector<std::shared_ptr<BufferImp<Device::Metal>>> buffers;
+    std::vector<std::shared_ptr<BufferImp<DeviceType::Metal>>> buffers;
 
-    friend class SurfaceImp<Device::Metal>; 
+    friend class SurfaceImp<DeviceType::Metal>; 
 };
 
 }  // namespace Jetstream::Render

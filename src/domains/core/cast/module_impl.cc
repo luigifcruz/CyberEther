@@ -1,0 +1,65 @@
+#include "module_impl.hh"
+
+namespace Jetstream::Modules {
+
+Result CastImpl::validate() {
+    const auto& config = *candidate();
+
+    const DataType outDtype = NameToDataType(config.outputType);
+    if (outDtype == DataType::None) {
+        JST_ERROR("[MODULE_CAST] Invalid output type '{}'.", config.outputType);
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result CastImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+
+    JST_CHECK(defineInterfaceInput("buffer"));
+    JST_CHECK(defineInterfaceOutput("buffer"));
+
+    return Result::SUCCESS;
+}
+
+Result CastImpl::create() {
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    input = inputTensor;
+
+    outputDtype = NameToDataType(outputType);
+
+    // Configure default scaler based on input type.
+
+    if (scaler == 0.0f) {
+        switch (input.dtype()) {
+            case DataType::CI8:
+            case DataType::CU8:
+                scaler = 128.0f;
+                break;
+            case DataType::CI16:
+            case DataType::CU16:
+                scaler = 32768.0f;
+                break;
+            case DataType::CI32:
+            case DataType::CU32:
+                scaler = 2147483648.0f;
+                break;
+            default:
+                JST_ERROR("[MODULE_CAST] No default scaler for input type '{}'.",
+                          input.dtype());
+                return Result::ERROR;
+        }
+    }
+
+    // Allocate output with configured type and same shape.
+
+    JST_CHECK(output.create(input.device(), outputDtype, input.shape()));
+    JST_CHECK(output.propagateAttributes(input));
+
+    outputs()["buffer"] = {name(), "buffer", output};
+
+    return Result::SUCCESS;
+}
+
+}  // namespace Jetstream::Modules

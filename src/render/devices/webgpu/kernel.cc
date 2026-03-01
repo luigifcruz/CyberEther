@@ -4,12 +4,12 @@
 
 namespace Jetstream::Render {
 
-using Implementation = KernelImp<Device::WebGPU>;
+using Implementation = KernelImp<DeviceType::WebGPU>;
 
 Implementation::KernelImp(const Config& config) : Kernel(config) {
     for (auto& [buffer, mode] : config.buffers) {
         buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(buffer), mode}
+            {std::dynamic_pointer_cast<BufferImp<DeviceType::WebGPU>>(buffer), mode}
         );
     }
 }
@@ -19,15 +19,15 @@ Result Implementation::create() {
 
     // Load kernel from memory.
 
-    if (config.kernels.contains(Device::WebGPU) == 0) {
+    if (config.kernels.contains(DeviceType::WebGPU) == 0) {
         JST_ERROR("[WebGPU] Module doesn't have necessary kernel.");
         return Result::ERROR;
     }
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
-    const auto& kernels = config.kernels[Device::WebGPU];
-    WGPUShaderModule kernelModule = Backend::LoadShader(kernels[0], device);
+    const auto& kernels = config.kernels[DeviceType::WebGPU];
+    kernelModule = Backend::LoadShader(kernels[0], device);
 
     // Create bind group layout.
 
@@ -94,6 +94,12 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
+    wgpuBindGroupRelease(bindGroup);
+    wgpuBindGroupLayoutRelease(bindGroupLayout);
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuComputePipelineRelease(pipeline);
+    wgpuShaderModuleRelease(kernelModule);
+
     bindings.clear();
     bindGroupEntries.clear();
 

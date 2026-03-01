@@ -15,8 +15,8 @@ subdir('fmt')
 subdir('stb')
 subdir('cpphttplib')
 subdir('json')
-subdir('ftxui')
 subdir('qrencode')
+subdir('libmodes')
 # [NEW DEPENDENCY HOOK]
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

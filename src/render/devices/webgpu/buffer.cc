@@ -2,7 +2,7 @@
 
 namespace Jetstream::Render {
 
-using Implementation = BufferImp<Device::WebGPU>;
+using Implementation = BufferImp<DeviceType::WebGPU>;
 
 Implementation::BufferImp(const Config& config) : Buffer(config) {
 }
@@ -10,7 +10,7 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating buffer.");
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
     WGPUBufferUsage bufferUsageFlag = 0;
@@ -75,7 +75,7 @@ Result Implementation::update(const U64& offset, const U64& size) {
         return Result::SUCCESS;
     }
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;

@@ -7,23 +7,23 @@
 namespace Jetstream::Render {
 
 template<>
-class ProgramImp<Device::Metal> : public Program {
+class ProgramImp<DeviceType::Metal> : public Program {
  public:
     explicit ProgramImp(const Config& config);
 
  protected:
-    Result create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer);
+    Result create(const MTL::PixelFormat& pixelFormat, bool multisampled);
     Result destroy();
     Result draw(MTL::RenderCommandEncoder* renderCmdEncoder);
 
  private:
     MTL::RenderPipelineState* renderPipelineState = nullptr;
 
-    std::vector<std::shared_ptr<DrawImp<Device::Metal>>> draws;
-    std::vector<std::shared_ptr<TextureImp<Device::Metal>>> textures;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::Metal>>, Program::Target>> buffers;
+    std::vector<std::shared_ptr<DrawImp<DeviceType::Metal>>> draws;
+    std::vector<std::shared_ptr<TextureImp<DeviceType::Metal>>> textures;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::Metal>>, Program::Target>> buffers;
 
-    friend class SurfaceImp<Device::Metal>; 
+    friend class SurfaceImp<DeviceType::Metal>; 
 };
 
 }  // namespace Jetstream::Render

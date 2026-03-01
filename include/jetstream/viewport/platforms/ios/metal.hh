@@ -9,7 +9,7 @@
 namespace Jetstream::Viewport {
 
 template<>
-class iOS<Device::Metal> : public Adapter<Device::Metal> {
+class iOS<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
  public:
     explicit iOS(const Config& config, CA::MetalLayer* layer);
     virtual ~iOS();
@@ -22,8 +22,8 @@ class iOS<Device::Metal> : public Adapter<Device::Metal> {
         return "iOS (Native)";
     }
 
-    constexpr Device device() const {
-        return Device::Metal;
+    constexpr DeviceType device() const {
+        return DeviceType::Metal;
     };
 
     Result create();

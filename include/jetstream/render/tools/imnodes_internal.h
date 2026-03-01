@@ -55,6 +55,8 @@ enum ImNodesClickInteractionType_
     ImNodesClickInteractionType_Node,
     ImNodesClickInteractionType_Link,
     ImNodesClickInteractionType_LinkCreation,
+    ImNodesClickInteractionType_NodeResize,
+    ImNodesClickInteractionType_NodeResizeVertical,
     ImNodesClickInteractionType_Panning,
     ImNodesClickInteractionType_BoxSelection,
     ImNodesClickInteractionType_ImGuiItem,
@@ -148,13 +150,17 @@ struct ImNodeData
         float  BorderThickness;
     } LayoutStyle;
 
+    ImVec2 ContentSize;
+    ImVec2* ContentSizeRef;
     ImVector<int> PinIndices;
     bool          Draggable;
+    bool          VerticalResizeEnabled;
 
     ImNodeData(const int node_id)
         : Id(node_id), Origin(0.0f, 0.0f), TitleBarContentRect(),
-          Rect(ImVec2(0.0f, 0.0f), ImVec2(0.0f, 0.0f)), ColorStyle(), LayoutStyle(), PinIndices(),
-          Draggable(true)
+          Rect(ImVec2(0.0f, 0.0f), ImVec2(0.0f, 0.0f)), ColorStyle(), LayoutStyle(),
+          ContentSize(0.0f, 0.0f), ContentSizeRef(nullptr), PinIndices(), Draggable(true),
+          VerticalResizeEnabled(false)
     {
     }
 
@@ -332,6 +338,8 @@ struct ImNodesContext
     ImOptionalIndex HoveredNodeIdx;
     ImOptionalIndex HoveredLinkIdx;
     ImOptionalIndex HoveredPinIdx;
+    ImOptionalIndex HoveredNodeResizeIdx;
+    ImOptionalIndex HoveredNodeResizeVerticalIdx;
 
     ImOptionalIndex DeletedLinkIdx;
     ImOptionalIndex SnapLinkIdx;
@@ -344,6 +352,17 @@ struct ImNodesContext
     int  ActiveAttributeId;
     bool ActiveAttribute;
 
+    ImOptionalIndex NodeResizeIdx;
+    ImVec2          NodeResizeStartMousePos;
+    float           NodeResizeStartContentWidth;
+
+    ImOptionalIndex NodeResizeVerticalIdx;
+    float           NodeResizeStartContentHeight;
+
+    bool  NodeContentRectOverridden;
+    ImVec2 CachedContentRegionRectMax;
+    ImVec2 CachedWorkRectMax;
+
     // ImGui::IO cache
 
     ImVec2 MousePos;
@@ -354,6 +373,7 @@ struct ImNodesContext
     bool  LeftMouseDragging;
     bool  AltMouseDragging;
     float AltMouseScrollDelta;
+    float AltMouseScrollDeltaH;
     bool  MultipleSelectModifier;
 };
 

@@ -9,16 +9,16 @@
 namespace Jetstream::Render {
 
 template<>
-class WindowImp<Device::WebGPU> : public Window {
+class WindowImp<DeviceType::WebGPU> : public Window {
  public:
     explicit WindowImp(const Config& config,
-                       std::shared_ptr<Viewport::Adapter<Device::WebGPU>>& viewport);
+                       const std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>>& viewport);
 
     const Stats& stats() const override;
-    void drawDebugMessage() const override;
+    std::string info() const override;
 
-    constexpr Device device() const override {
-        return Device::WebGPU;
+    constexpr DeviceType device() const override {
+        return DeviceType::WebGPU;
     };
 
  protected:
@@ -41,9 +41,11 @@ class WindowImp<Device::WebGPU> : public Window {
     WGPURenderPassColorAttachment colorAttachments;
     WGPURenderPassDescriptor renderPassDesc;
     WGPUQueue queue;
-    std::vector<std::shared_ptr<SurfaceImp<Device::WebGPU>>> surfaces;
+    WGPUTextureView framebufferTexture;
+    WGPUTextureView previousFramebufferTexture;
+    std::vector<std::shared_ptr<SurfaceImp<DeviceType::WebGPU>>> surfaces;
 
-    std::shared_ptr<Viewport::Adapter<Device::WebGPU>> viewport;
+    std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>> viewport;
 
     Result recreate();
     Result createImgui();

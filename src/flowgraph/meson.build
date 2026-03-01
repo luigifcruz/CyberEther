@@ -1,5 +1,4 @@
 src_lst += files([
-    'base.cc',
-    'yaml.cc',
+    'flowgraph.cc',
     'rapidyaml.cc',
 ])

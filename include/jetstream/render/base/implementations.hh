@@ -5,14 +5,14 @@
 
 namespace Jetstream::Render {
 
-template<Device D> class BufferImp;
-template<Device D> class ProgramImp;
-template<Device D> class KernelImp;
-template<Device D> class DrawImp;
-template<Device D> class SurfaceImp;
-template<Device D> class TextureImp;
-template<Device D> class VertexImp;
-template<Device D> class WindowImp;
+template<DeviceType D> class BufferImp;
+template<DeviceType D> class ProgramImp;
+template<DeviceType D> class KernelImp;
+template<DeviceType D> class DrawImp;
+template<DeviceType D> class SurfaceImp;
+template<DeviceType D> class TextureImp;
+template<DeviceType D> class VertexImp;
+template<DeviceType D> class WindowImp;
 
 }  // namespace Jetstream::Render
 

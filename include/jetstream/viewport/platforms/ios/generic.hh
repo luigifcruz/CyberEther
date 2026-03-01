@@ -6,7 +6,7 @@
 
 namespace Jetstream::Viewport {
 
-template<Device DeviceId>
+template<DeviceType DeviceId>
 class iOS : Adapter<DeviceId> {};
 
 }  // namespace Jetstream::Viewport

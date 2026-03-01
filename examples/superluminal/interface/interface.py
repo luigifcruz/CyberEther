@@ -1,10 +1,13 @@
-from dataclasses import dataclass
-import superluminal as lm
-import numpy as np
-import time
 import math
+import time
+from dataclasses import dataclass
+
+import numpy as np
+
+import superluminal as lm
 
 print("Initializing Superluminal Interface...")
+
 
 # Create a data class to hold interactive state
 @dataclass
@@ -12,6 +15,7 @@ class SignalState:
     frequency = [1000.0]
     amplitude = [1.0]
     noise_level = [0.1]
+
 
 def generate_test_signal(data, frequency=1000.0, amplitude=1.0, noise_level=0.1):
     """
@@ -32,6 +36,7 @@ def generate_test_signal(data, frequency=1000.0, amplitude=1.0, noise_level=0.1)
         # Store as complex number (real part only for simplicity)
         data[0, j] = complex(signal + noise, 0.0)
 
+
 # Initialize state
 state = SignalState()
 
@@ -42,29 +47,40 @@ data = np.zeros((1, 8192), dtype=np.complex64)
 generate_test_signal(data)
 
 # Interactive controls section
-lm.box("Controls", [[1, 0, 0], [1, 0, 0]], lambda: [
-    # Markdown documentation example
-    lm.markdown(
-        "# Key Features\n"
-        "- **Signal Generation**: Synthetic sine waves with noise.\n"
-        "- **Interactive Controls**: Real-time parameter adjustment.\n"
-        "- **Visualization**: Time to frequency domain transforms.\n"
-    ),
-
-    # Interactive sliders for signal parameters
-    lm.markdown("# Signal Parameters"),
-    lm.slider("Frequency (Hz)", 100.0, 5000.0, state.frequency),
-    lm.slider("Amplitude", 0.1, 2.0, state.amplitude),
-    lm.slider("Noise Level", 0.0, 0.5, state.noise_level),
-
-    # Example image.
-    lm.markdown("# Example Image"),
-    lm.markdown("Add a simple image from a local path or URL."),
-    lm.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/Fourier2.jpg/500px-Fourier2.jpg", fit_to_window=True)
-])
+lm.box(
+    "Controls",
+    [[1, 0, 0], [1, 0, 0]],
+    lambda: [
+        # Markdown documentation example
+        lm.markdown(
+            "# Key Features\n"
+            "- **Signal Generation**: Synthetic sine waves with noise.\n"
+            "- **Interactive Controls**: Real-time parameter adjustment.\n"
+            "- **Visualization**: Time to frequency domain transforms.\n"
+        ),
+        # Interactive sliders for signal parameters
+        lm.markdown("# Signal Parameters"),
+        lm.slider("Frequency (Hz)", 100.0, 5000.0, state.frequency),
+        lm.slider("Amplitude", 0.1, 2.0, state.amplitude),
+        lm.slider("Noise Level", 0.0, 0.5, state.noise_level),
+        # Example image.
+        lm.markdown("# Example Image"),
+        lm.markdown("Image rendering is temporarily unavailable in this build."),
+        lm.markdown(
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/Fourier2.jpg/500px-Fourier2.jpg"
+        ),
+    ],
+)
 
 # Signal visualization
-lm.plot(data, lm.line, mosaic=[[0, 1, 1], [0, 1, 1]], label="Sine", domain=(lm.time, lm.frequency))
+lm.plot(
+    data,
+    lm.line,
+    mosaic=[[0, 1, 1], [0, 1, 1]],
+    label="Sine",
+    domain=(lm.time, lm.frequency),
+)
+
 
 def realtime_callback():
     """
@@ -82,7 +98,7 @@ def realtime_callback():
             data,
             frequency=state.frequency[0],
             amplitude=state.amplitude[0],
-            noise_level=state.noise_level[0]
+            noise_level=state.noise_level[0],
         )
 
         # Update the interface
@@ -90,6 +106,7 @@ def realtime_callback():
 
         # Sleep for 10 ms to maintain smooth updates
         time.sleep(0.01)
+
 
 # Run the realtime loop
 lm.realtime(realtime_callback)

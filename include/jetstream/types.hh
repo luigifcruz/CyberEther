@@ -11,6 +11,10 @@
 
 namespace Jetstream {
 
+//
+// Result
+//
+
 enum class Result : uint16_t {
     SUCCESS     = 0,
     ERROR       = 1,
@@ -21,21 +25,74 @@ enum class Result : uint16_t {
     RELOAD      = 6,
     RECREATE    = 7,
     TIMEOUT     = 8,
+    INCOMPLETE  = 9,
 };
 
-//
-// Taint
-//
-
-enum class Taint : uint64_t {
-    CLEAN               = 0 << 0, ///< No taint set, data is in its original state.
-    IN_PLACE            = 1 << 0, ///< Module will overwrite input, modifying it directly.
-    DISCONTIGUOUS       = 1 << 1, ///< Accepts non-contiguous data buffers for input tensors.
-};
-
-inline Taint operator&(const Taint& lhs, const Taint& rhs) {
-    return static_cast<Taint>(reinterpret_cast<const uint64_t&>(lhs) & reinterpret_cast<const uint64_t&>(rhs));
+inline std::ostream& operator<<(std::ostream& os, const Result& result) {
+    switch (result) {
+        case Result::SUCCESS:    return os << "SUCCESS";
+        case Result::ERROR:      return os << "ERROR";
+        case Result::WARNING:    return os << "WARNING";
+        case Result::FATAL:      return os << "FATAL";
+        case Result::SKIP:       return os << "SKIP";
+        case Result::YIELD:      return os << "YIELD";
+        case Result::RELOAD:     return os << "RELOAD";
+        case Result::RECREATE:   return os << "RECREATE";
+        case Result::TIMEOUT:    return os << "TIMEOUT";
+        case Result::INCOMPLETE: return os << "INCOMPLETE";
+        default:                 return os << "UNKNOWN";
+    }
 }
+
+//
+// Common Numeric Constants
+//
+
+#ifndef JST_PI
+#define JST_PI 3.14159265358979323846
+#endif
+
+#ifndef JST_PI_2
+#define JST_PI_2 1.57079632679489661923
+#endif
+
+#ifndef JST_E
+#define JST_E 2.7182818284590452354
+#endif
+
+#ifndef JST_MB
+#define JST_MB (1024*1024)
+#endif
+
+#ifndef JST_MHZ
+#define JST_MHZ (1000*1000)
+#endif
+
+//
+// Range
+//
+
+template<typename T>
+struct JETSTREAM_API Range {
+    T min;
+    T max;
+
+    bool operator==(const Range<T>& a) const {
+        return (min == a.min && max == a.max);
+    }
+
+    bool operator!=(const Range<T>& a) const {
+        return (min != a.min || max != a.max);
+    }
+
+    bool operator<=(const Range<T>& a) const {
+        return (min <= a.min || max <= a.max);
+    }
+
+    friend inline std::ostream& operator<<(std::ostream& os, const Range<T>& range) {
+        return os << jst::fmt::format("[{}, {}]", range.min, range.max);
+    }
+};
 
 //
 // ColorRGBA
@@ -175,5 +232,7 @@ Extent4D<T> operator/(const Extent4D<T>& a, const F32& b) {
 inline Extent4D<U64> NullSize4D = {0, 0, 0, 0};
 
 }  // namespace Jetstream
+
+template <> struct jst::fmt::formatter<Jetstream::Result> : ostream_formatter {};
 
 #endif

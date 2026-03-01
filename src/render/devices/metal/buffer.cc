@@ -2,7 +2,7 @@
 
 namespace Jetstream::Render {
 
-using Implementation = BufferImp<Device::Metal>;
+using Implementation = BufferImp<DeviceType::Metal>;
 
 Implementation::BufferImp(const Config& config) : Buffer(config) {
 }
@@ -11,7 +11,7 @@ Result Implementation::create() {
     JST_DEBUG("[METAL] Creating buffer.");
 
     // TODO: Add usage hints.
-    auto device = Backend::State<Device::Metal>()->getDevice();
+    auto device = Backend::State<DeviceType::Metal>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
     if (config.enableZeroCopy) {
@@ -49,7 +49,6 @@ Result Implementation::update(const U64& offset, const U64& size) {
 
     const auto& byteOffset = offset * config.elementByteSize;
     const auto& byteSize = size * config.elementByteSize;
-
 
     uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
     memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);

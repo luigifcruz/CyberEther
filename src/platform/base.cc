@@ -5,19 +5,52 @@
 #endif
 
 #if defined(JST_OS_BROWSER)
+
 #include "emscripten.h"
+#include <functional>
+#include <string>
 
-EM_JS(const char*, jst_file_error_string, (), {
-    return stringToNewUTF8(window.jst.error_string);
+static bool _filePicking = false;
+static std::function<void(std::string)> _fileCallback;
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE
+void jst_on_file_picked(const char* path, int status) {
+    _filePicking = false;
+    if (status == 1 && path && _fileCallback) {
+        auto cb = std::move(_fileCallback);
+        cb("/storage/" + std::string(path));
+    } else {
+        _fileCallback = nullptr;
+    }
+}
+}
+
+// clang-format off
+
+EM_JS(void, _jst_start_pick_file, (const char* ext_json), {
+    const channel = new BroadcastChannel('jst_file_picker');
+    channel.postMessage({
+        type: 'pickFile',
+        extensions: UTF8ToString(ext_json),
+    });
+    channel.close();
 });
 
-EM_JS(int, jst_file_error, (), {
-    return window.jst.error;
+EM_JS(void, _jst_start_save_file, (), {
+    const channel = new BroadcastChannel('jst_file_picker');
+    channel.postMessage({ type: 'saveFile' });
+    channel.close();
 });
 
-EM_JS(const char*, jst_file_path, (), {
-    return stringToNewUTF8(window.jst.path);
+EM_JS(void, _jst_start_pick_folder, (), {
+    const channel = new BroadcastChannel('jst_file_picker');
+    channel.postMessage({ type: 'pickFolder' });
+    channel.close();
 });
+
+// clang-format on
+
 #endif
 
 #if defined(JST_OS_WINDOWS)
@@ -90,88 +123,31 @@ Result OpenUrl(const std::string& url) {
 
 #elif defined(JST_OS_BROWSER)
 
-EM_ASYNC_JS(void, jst_pick_file, (const char* extensions_json), {
-    if (typeof window === 'undefined') {
-        console.error("File Picker: window is not defined.");
-        return;
-    }
-
-    if (!window.showOpenFilePicker) {
-        window.jst.error = 1;
-        window.jst.error_string = "File picker is not supported in this browser.";
-        return;
-    }
-
-    return new Promise((resolve) => {
-        const extensionsStr = UTF8ToString(extensions_json);
-        let extensions = [];
-        if (extensionsStr && extensionsStr.length > 0) {
-            extensions = JSON.parse(extensionsStr);
-        }
-
-        let options = {
-            multiple: false,
-        };
-
-        if (extensions.length > 0) {
-            options.types = [
-                {
-                    description: 'Selected Files',
-                    accept: {
-                        'text/plain': extensions.map(ext => ext.startsWith('.') ? ext : '.' + ext),
-                    },
-                },
-            ];
-        }
-
-        window
-            .showOpenFilePicker(options)
-            .then(async ([handle]) => {
-                FS.createPath("/", "vfs");
-
-                const filepath = "/vfs/" + handle.name;
-                if (FS.analyzePath(filepath).exists) {
-                    FS.unlink(filepath);
-                }
-
-                const file = await handle.getFile();
-                const arrayBuffer = await file.arrayBuffer();
-                FS.createDataFile("/vfs/", handle.name, new Uint8Array(arrayBuffer), true, true);
-
-                window.jst.fsHandle = handle;
-                window.jst.error = 0;
-                window.jst.path = filepath;
-                resolve();
-            })
-            .catch(err => {
-                console.log(err);
-                window.jst.error = 1;
-                window.jst.error_string = "User cancelled file picker.";
-                resolve();
-            });
-    });
-});
-
-Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
-    std::string extensions_json = "[";
-    for (size_t i = 0; i < extensions.size(); ++i) {
-        if (i > 0) extensions_json += ",";
-        extensions_json += "\"" + extensions[i] + "\"";
-    }
-    extensions_json += "]";
-
-    jst_pick_file(extensions_json.c_str());
-    if (jst_file_error()) {
-        JST_ERROR("{}", jst_file_error_string());
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
+    if (_filePicking) {
         return Result::ERROR;
     }
-    path = std::string(jst_file_path());
-    return Result::SUCCESS;
+
+    std::string ext_json = "[";
+    for (size_t i = 0; i < extensions.size(); ++i) {
+        if (i > 0) ext_json += ",";
+        ext_json += "\"" + extensions[i] + "\"";
+    }
+    ext_json += "]";
+
+    _filePicking = true;
+    _fileCallback = std::move(callback);
+    _jst_start_pick_file(ext_json.c_str());
+    return Result::ERROR;
 }
 
 #elif defined(JST_OS_LINUX)
 
-Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
     std::array<char, 1024> buffer;
     std::string command = "zenity --file-selection ";
 
@@ -185,8 +161,8 @@ Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
     }
     command += "2>/dev/null";
 
-    auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
-    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
+    auto pipeDeleter = [](FILE* file) { if (file) pclose(file); };
+    std::unique_ptr<FILE, decltype(pipeDeleter)> pipe(popen(command.c_str(), "r"), pipeDeleter);
 
     if (!pipe) {
         JST_ERROR("Failed to open file selection dialog.");
@@ -215,12 +191,18 @@ Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
         path.pop_back();
     }
 
+    if (callback) {
+        callback(path);
+    }
+
     return Result::SUCCESS;
 }
 
 #elif defined(JST_OS_WINDOWS)
 
-Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
     // File path buffer
     char buf[256] = {'\0'};
     memcpy_s(buf, 256, path.c_str(), path.length());
@@ -270,12 +252,18 @@ Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
         path.pop_back();
     }
 
+    if (callback) {
+        callback(path);
+    }
+
     return Result::SUCCESS;
 }
 
 #else
 
-Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)>) {
     JST_ERROR("Picking files is not supported in this platform.");
     return Result::ERROR;
 }
@@ -292,17 +280,29 @@ Result PickFile(std::string& path, const std::vector<std::string>& extensions) {
 
 // Defined on apple.mm.
 
-// TODO: Implement folder picker for browsers.
-// #elif defined(JST_OS_BROWSER)
+#elif defined(JST_OS_BROWSER)
+
+Result PickFolder(std::string& path,
+                  std::function<void(std::string)> callback) {
+    if (_filePicking) {
+        return Result::ERROR;
+    }
+
+    _filePicking = true;
+    _fileCallback = std::move(callback);
+    _jst_start_pick_folder();
+    return Result::ERROR;
+}
 
 #elif defined(JST_OS_LINUX)
 
-Result PickFolder(std::string& path) {
+Result PickFolder(std::string& path,
+                  std::function<void(std::string)> callback) {
     std::array<char, 1024> buffer;
     std::string command = "zenity --file-selection --directory 2>/dev/null";
 
-    auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
-    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
+    auto pipeDeleter = [](FILE* file) { if (file) pclose(file); };
+    std::unique_ptr<FILE, decltype(pipeDeleter)> pipe(popen(command.c_str(), "r"), pipeDeleter);
 
     if (!pipe) {
         JST_ERROR("Failed to open folder selection dialog.");
@@ -323,6 +323,10 @@ Result PickFolder(std::string& path) {
 
     path = buffer.data();
 
+    if (callback) {
+        callback(path);
+    }
+
     return Result::SUCCESS;
 }
 
@@ -331,7 +335,8 @@ Result PickFolder(std::string& path) {
 
 #else
 
-Result PickFolder(std::string& path) {
+Result PickFolder(std::string& path,
+                  std::function<void(std::string)>) {
     JST_ERROR("Picking files is not supported in this platform.");
     return Result::ERROR;
 }
@@ -350,73 +355,27 @@ Result PickFolder(std::string& path) {
 
 #elif defined(JST_OS_BROWSER)
 
-EM_ASYNC_JS(void, jst_save_file, (), {
-    if (typeof window === 'undefined') {
-        console.error("Save File Picker: window is not defined.");
-        return;
-    }
-
-    if (!window.showSaveFilePicker) {
-        window.jst.error = 1;
-        window.jst.error_string = "Save file picker is not supported in this browser.";
-        return;
-    }
-
-    return new Promise((resolve) => {
-        const options = {
-            types: [
-                {
-                    description: 'Flowgraph Files',
-                    accept: {
-                        'text/plain': ['.yml', '.yaml'],
-                    },
-                },
-            ],
-        };
-
-        window
-            .showSaveFilePicker(options)
-            .then(async (handle) => {
-                FS.createPath("/", "vfs");
-
-                const filepath = "/vfs/" + handle.name;
-                if (FS.analyzePath(filepath).exists) {
-                    FS.unlink(filepath);
-                }
-
-                FS.createDataFile("/vfs/", handle.name, new Uint8Array(), true, true);
-
-                window.jst.fsHandle = handle;
-                window.jst.error = 0;
-                window.jst.path = filepath;
-                resolve();
-            })
-            .catch(err => {
-                window.jst.error = 1;
-                window.jst.error_string = "User cancelled save file picker.";
-                resolve();
-            });
-    });
-});
-
-Result SaveFile(std::string& path) {
-    jst_save_file();
-    if (jst_file_error()) {
-        JST_ERROR("{}", jst_file_error_string());
+Result SaveFile(std::string& path,
+                std::function<void(std::string)> callback) {
+    if (_filePicking) {
         return Result::ERROR;
     }
-    path = std::string(jst_file_path());
-    return Result::SUCCESS;
+
+    _filePicking = true;
+    _fileCallback = std::move(callback);
+    _jst_start_save_file();
+    return Result::ERROR;
 }
 
 #elif defined(JST_OS_LINUX)
 
-Result SaveFile(std::string& path) {
+Result SaveFile(std::string& path,
+                std::function<void(std::string)> callback) {
     std::array<char, 1024> buffer;
     std::string command = "zenity --file-selection --save --confirm-overwrite --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
 
-    auto pipe_deleter = [](FILE* file) { if (file) pclose(file); };
-    std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(command.c_str(), "r"), pipe_deleter);
+    auto pipeDeleter = [](FILE* file) { if (file) pclose(file); };
+    std::unique_ptr<FILE, decltype(pipeDeleter)> pipe(popen(command.c_str(), "r"), pipeDeleter);
 
     if (!pipe) {
         JST_ERROR("Failed to open save file dialog.");
@@ -445,12 +404,17 @@ Result SaveFile(std::string& path) {
         path.pop_back();
     }
 
+    if (callback) {
+        callback(path);
+    }
+
     return Result::SUCCESS;
 }
 
 #elif defined(JST_OS_WINDOWS)
 
-Result SaveFile(std::string& path) {
+Result SaveFile(std::string& path,
+                std::function<void(std::string)> callback) {
     /* File path buffer */
     char buf[256] = {'\0'};
     memcpy_s(buf,256,path.c_str(),path.length());
@@ -484,15 +448,36 @@ Result SaveFile(std::string& path) {
         path.pop_back();
     }
 
+    if (callback) {
+        callback(path);
+    }
+
     return Result::SUCCESS;
 }
 
 #else
 
-Result SaveFile(std::string& path) {
+Result SaveFile(std::string& path,
+                std::function<void(std::string)>) {
     JST_ERROR("Saving files is not supported in this platform.");
     return Result::ERROR;
 }
+
+#endif
+
+//
+// File Pending
+//
+
+#if defined(JST_OS_BROWSER)
+
+bool IsFilePending() {
+    return _filePicking;
+}
+
+#else
+
+bool IsFilePending() { return false; }
 
 #endif
 

@@ -9,7 +9,7 @@ struct GLFWwindow;
 namespace Jetstream::Viewport {
 
 template<>
-class GLFW<Device::Metal> : public Adapter<Device::Metal> {
+class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
  public:
     explicit GLFW(const Config& config);
     virtual ~GLFW();
@@ -22,8 +22,8 @@ class GLFW<Device::Metal> : public Adapter<Device::Metal> {
         return "GLFW (Metal)";
     }
 
-    constexpr Device device() const {
-        return Device::Metal;
+    constexpr DeviceType device() const {
+        return DeviceType::Metal;
     };
 
     Result create();

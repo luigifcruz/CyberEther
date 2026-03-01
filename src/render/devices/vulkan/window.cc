@@ -10,21 +10,21 @@ const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace Jetstream::Render {
 
-using Implementation = WindowImp<Device::Vulkan>;
+using Implementation = WindowImp<DeviceType::Vulkan>;
 
 Implementation::WindowImp(const Config& config,
-                          std::shared_ptr<Viewport::Adapter<Device::Vulkan>>& viewport)
+                          const std::shared_ptr<Viewport::Adapter<DeviceType::Vulkan>>& viewport)
          : Window(config), viewport(viewport) {
 }
 
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::Vulkan>>(surface);
     surfaces.push_back(_resource);
     return Result::SUCCESS;
 }
 
 Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Vulkan>>(surface);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::Vulkan>>(surface);
     surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _resource), surfaces.end());
     return Result::SUCCESS;
 }
@@ -32,9 +32,9 @@ Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
 Result Implementation::underlyingCreate() {
     JST_DEBUG("[VULKAN] Creating window.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& headless = Backend::State<Device::Vulkan>()->headless();
-    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& headless = Backend::State<DeviceType::Vulkan>()->headless();
+    auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
 
     // Reseting internal variables.
 
@@ -131,7 +131,7 @@ Result Implementation::underlyingDestroy() {
     JST_CHECK(destroyFramebuffer());
     JST_CHECK(destroyImgui());
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
     vkDestroyCommandPool(device, commandPool, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
@@ -153,9 +153,9 @@ Result Implementation::recreate() {
 }
 
 Result Implementation::createFramebuffer() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
-    const auto& swapchainExtent = viewport->getSwapchainExtent();
+    const auto swapchainExtent = viewport->getSwapchainExtent();
 
     swapchainFramebuffers.resize(viewport->getSwapchainImageViewsCount());
 
@@ -167,8 +167,8 @@ Result Implementation::createFramebuffer() {
         framebufferInfo.renderPass = renderPass;
         framebufferInfo.attachmentCount = 1;
         framebufferInfo.pAttachments = attachments;
-        framebufferInfo.width = swapchainExtent.width;
-        framebufferInfo.height = swapchainExtent.height;
+        framebufferInfo.width = swapchainExtent.x;
+        framebufferInfo.height = swapchainExtent.y;
         framebufferInfo.layers = 1;
 
         JST_VK_CHECK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapchainFramebuffers[i]), [&]{
@@ -180,7 +180,7 @@ Result Implementation::createFramebuffer() {
 }
 
 Result Implementation::destroyFramebuffer() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     JST_CHECK(underlyingSynchronize());
     for (auto framebuffer : swapchainFramebuffers) {
@@ -205,23 +205,19 @@ Result Implementation::createImgui() {
 
     this->scaleStyle(*viewport);
 
-    auto& backend = Backend::State<Device::Vulkan>();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
 
-    ImGui_ImplVulkan_InitInfo init_info = {
-        .Instance = backend->getInstance(),
-        .PhysicalDevice = backend->getPhysicalDevice(),
-        .Device = backend->getDevice(),
-        .QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value(),
-        .Queue = backend->getGraphicsQueue(),
-        .DescriptorPool = backend->getDescriptorPool(),
-        .RenderPass = renderPass,
-        .MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
-        .ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount()),
-        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
-        .UseDynamicRendering = false,
-        .CheckVkResultFn = nullptr,
-        .MinAllocationSize = 0,
-    };
+    ImGui_ImplVulkan_InitInfo init_info{};
+    init_info.Instance = backend->getInstance();
+    init_info.PhysicalDevice = backend->getPhysicalDevice();
+    init_info.Device = backend->getDevice();
+    init_info.QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value();
+    init_info.Queue = backend->getGraphicsQueue();
+    init_info.DescriptorPool = backend->getDescriptorPool();
+    init_info.RenderPass = renderPass;
+    init_info.MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
+    init_info.ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     ImGui_ImplVulkan_Init(&init_info);
 
     return Result::SUCCESS;
@@ -255,7 +251,7 @@ Result Implementation::endImgui() {
 }
 
 Result Implementation::underlyingBegin() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     // Wait for a frame to be available.
 
@@ -303,7 +299,8 @@ Result Implementation::underlyingBegin() {
     renderPassBeginInfo.renderPass = renderPass;
     renderPassBeginInfo.framebuffer = swapchainFramebuffers[viewport->currentDrawableIndex()];
     renderPassBeginInfo.renderArea.offset = {0, 0};
-    renderPassBeginInfo.renderArea.extent = viewport->getSwapchainExtent();
+    const auto extent = viewport->getSwapchainExtent();
+    renderPassBeginInfo.renderArea.extent = {static_cast<U32>(extent.x), static_cast<U32>(extent.y)};
 
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
     renderPassBeginInfo.clearValueCount = 1;
@@ -353,7 +350,7 @@ Result Implementation::underlyingEnd() {
     submitInfo.pSignalSemaphores = signalSemaphores.data();
     submitInfo.signalSemaphoreCount = signalSemaphores.size();
 
-    auto& graphicsQueue = Backend::State<Device::Vulkan>()->getGraphicsQueue();
+    auto& graphicsQueue = Backend::State<DeviceType::Vulkan>()->getGraphicsQueue();
     if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Failed to submit draw command buffer.");
         return Result::ERROR;
@@ -381,7 +378,7 @@ Result Implementation::underlyingEnd() {
 }
 
 Result Implementation::underlyingSynchronize() {
-    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
         JST_ERROR("[VULKAN] Can't synchronize graphics queue.");
     });
 
@@ -389,7 +386,7 @@ Result Implementation::underlyingSynchronize() {
 }
 
 Result Implementation::createSynchronizationObjects() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     currentFrame = 0;
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -416,7 +413,7 @@ Result Implementation::createSynchronizationObjects() {
 }
 
 Result Implementation::destroySynchronizationObjects() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -427,11 +424,10 @@ Result Implementation::destroySynchronizationObjects() {
     return Result::SUCCESS;
 }
 
-void Implementation::drawDebugMessage() const {
-    auto& backend = Backend::State<Device::Vulkan>();
-
-    ImGui::TextFormatted("{} ({:.0f} GB)", backend->getDeviceName(),
-                                           (float)backend->getPhysicalMemory() / (1024*1024*1024));
+std::string Implementation::info() const {
+    auto& backend = Backend::State<DeviceType::Vulkan>();
+    return jst::fmt::format("{} ({:.0f} GB)", backend->getDeviceName(),
+                                              (float)backend->getPhysicalMemory() / (1024*1024*1024));
 }
 
 const Window::Stats& Implementation::stats() const {

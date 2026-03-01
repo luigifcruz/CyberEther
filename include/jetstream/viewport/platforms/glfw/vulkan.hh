@@ -9,7 +9,7 @@ struct GLFWwindow;
 namespace Jetstream::Viewport {
 
 template<>
-class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
+class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
  public:
     explicit GLFW(const Config& config);
     virtual ~GLFW();
@@ -22,8 +22,8 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
         return "GLFW (Vulkan)";
     }
 
-    constexpr Device device() const {
-        return Device::Vulkan;
+    constexpr DeviceType device() const {
+        return DeviceType::Vulkan;
     };
 
     constexpr const U32& currentDrawableIndex() const {
@@ -48,8 +48,9 @@ class GLFW<Device::Vulkan> : public Adapter<Device::Vulkan> {
 
     const VkFormat& getSwapchainImageFormat() const;
     VkImageView& getSwapchainImageView(const U64& index);
+    VkImage getSwapchainImage(const U64& index);
     U32 getSwapchainImageViewsCount() const;
-    const VkExtent2D& getSwapchainExtent() const;
+    Extent2D<U64> getSwapchainExtent() const;
 
  private:
     struct SwapChainSupportDetails {

@@ -5,13 +5,20 @@
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include <vector>
+#include <functional>
 
 namespace Jetstream::Platform {
 
 Result OpenUrl(const std::string& url);
-Result PickFile(std::string& path, const std::vector<std::string>& extensions = {});
-Result PickFolder(std::string& path);
-Result SaveFile(std::string& path);
+Result PickFile(std::string& path,
+                const std::vector<std::string>& extensions = {},
+                std::function<void(std::string)> callback = nullptr);
+Result PickFolder(std::string& path,
+                  std::function<void(std::string)> callback = nullptr);
+Result SaveFile(std::string& path,
+                std::function<void(std::string)> callback = nullptr);
+
+bool IsFilePending();
 
 }  // namespace Jetstream::Platform
 

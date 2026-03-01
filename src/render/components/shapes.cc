@@ -74,15 +74,20 @@ struct Shapes::Impl {
 
     bool computeInstanceBufferFlag = false;
 
-    Tensor<Device::CPU, glm::vec2> vertices;
-    Tensor<Device::CPU, InstanceData> instances;
-    Tensor<Device::CPU, U32> indices;
-    Tensor<Device::CPU, ShapeProperties> properties;
+    TypedTensor<glm::vec2> vertices;
+    TypedTensor<InstanceData> instances;
+    TypedTensor<U32> indices;
+    TypedTensor<ShapeProperties> properties;
 
-    Tensor<Device::CPU, ColorRGBA<F32>> instanceColors;
-    Tensor<Device::CPU, F32> instanceRotations;
-    Tensor<Device::CPU, Extent2D<F32>> instancePositions;
-    Tensor<Device::CPU, Extent2D<F32>> instanceSizes;
+    TypedTensor<ColorRGBA<F32>> instanceColors;
+    TypedTensor<F32> instanceRotations;
+    TypedTensor<Extent2D<F32>> instancePositions;
+    TypedTensor<Extent2D<F32>> instanceSizes;
+
+    Tensor optimalInstanceColors;
+    Tensor optimalInstanceRotations;
+    Tensor optimalInstancePositions;
+    Tensor optimalInstanceSizes;
 
     std::shared_ptr<Render::Buffer> uniformBuffer;
     std::shared_ptr<Render::Buffer> verticesBuffer;
@@ -131,15 +136,15 @@ Result Shapes::create(Window* window) {
 
     // Reserve memory.
 
-    pimpl->vertices = Tensor<Device::CPU, glm::vec2>({pimpl->totalNumberOfVertices});
-    pimpl->indices = Tensor<Device::CPU, U32>({pimpl->totalNumberOfIndices});
-    pimpl->instances = Tensor<Device::CPU, Impl::InstanceData>({pimpl->totalNumberOfInstances});
-    pimpl->properties = Tensor<Device::CPU, Impl::ShapeProperties>({pimpl->totalNumberOfInstances});
+    JST_CHECK(pimpl->vertices.create(DeviceType::CPU, {pimpl->totalNumberOfVertices}));
+    JST_CHECK(pimpl->indices.create(DeviceType::CPU, {pimpl->totalNumberOfIndices}));
+    JST_CHECK(pimpl->instances.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
+    JST_CHECK(pimpl->properties.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
 
-    pimpl->instanceColors = Tensor<Device::CPU, ColorRGBA<F32>>({pimpl->totalNumberOfInstances});
-    pimpl->instanceRotations = Tensor<Device::CPU, F32>({pimpl->totalNumberOfInstances});
-    pimpl->instancePositions = Tensor<Device::CPU, Extent2D<F32>>({pimpl->totalNumberOfInstances});
-    pimpl->instanceSizes = Tensor<Device::CPU, Extent2D<F32>>({pimpl->totalNumberOfInstances});
+    JST_CHECK(pimpl->instanceColors.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
+    JST_CHECK(pimpl->instanceRotations.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
+    JST_CHECK(pimpl->instancePositions.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
+    JST_CHECK(pimpl->instanceSizes.create(DeviceType::CPU, {pimpl->totalNumberOfInstances}));
 
     // Debug information.
 
@@ -202,52 +207,60 @@ Result Shapes::create(Window* window) {
     }
 
     {
-        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, pimpl->instanceColors);
+        JST_CHECK(ConvertToOptimalStorage(window,
+                                          pimpl->instanceColors,
+                                          pimpl->optimalInstanceColors));
 
         Render::Buffer::Config cfg;
-        cfg.buffer = buffer;
+        cfg.buffer = pimpl->optimalInstanceColors.data();
         cfg.elementByteSize = sizeof(glm::vec4);
         cfg.size = pimpl->instanceColors.size();
-        cfg.enableZeroCopy = enableZeroCopy;
+        cfg.enableZeroCopy = pimpl->optimalInstanceColors.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->colorsBuffer, cfg));
         JST_CHECK(window->bind(pimpl->colorsBuffer));
     }
 
     {
-        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, pimpl->instanceRotations);
+        JST_CHECK(ConvertToOptimalStorage(window,
+                                          pimpl->instanceRotations,
+                                          pimpl->optimalInstanceRotations));
 
         Render::Buffer::Config cfg;
-        cfg.buffer = buffer;
+        cfg.buffer = pimpl->optimalInstanceRotations.data();
         cfg.elementByteSize = sizeof(F32);
         cfg.size = pimpl->instanceRotations.size();
-        cfg.enableZeroCopy = enableZeroCopy;
+        cfg.enableZeroCopy = pimpl->optimalInstanceRotations.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->rotationsBuffer, cfg));
         JST_CHECK(window->bind(pimpl->rotationsBuffer));
     }
 
     {
-        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, pimpl->instanceSizes);
+        JST_CHECK(ConvertToOptimalStorage(window,
+                                          pimpl->instanceSizes,
+                                          pimpl->optimalInstanceSizes));
 
         Render::Buffer::Config cfg;
-        cfg.buffer = buffer;
+        cfg.buffer = pimpl->optimalInstanceSizes.data();
         cfg.elementByteSize = sizeof(glm::vec2);
         cfg.size = pimpl->instanceSizes.size();
-        cfg.enableZeroCopy = enableZeroCopy;
+        cfg.enableZeroCopy = pimpl->optimalInstanceSizes.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->sizesBuffer, cfg));
         JST_CHECK(window->bind(pimpl->sizesBuffer));
     }
 
     {
-        auto [buffer, enableZeroCopy] = ConvertToOptimalStorage(window, pimpl->instancePositions);
+        JST_CHECK(ConvertToOptimalStorage(window,
+                                          pimpl->instancePositions,
+                                          pimpl->optimalInstancePositions));
 
         Render::Buffer::Config cfg;
-        cfg.buffer = buffer;
+        cfg.buffer = pimpl->optimalInstancePositions.data();
         cfg.elementByteSize = sizeof(glm::vec2);
         cfg.size = pimpl->instancePositions.size();
-        cfg.enableZeroCopy = enableZeroCopy;
+        cfg.enableZeroCopy = pimpl->optimalInstancePositions.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->positionsBuffer, cfg));
         JST_CHECK(window->bind(pimpl->positionsBuffer));
@@ -313,10 +326,10 @@ Result Shapes::create(Window* window) {
 
         const auto& element = Impl::Element{
             .config = elementConfig,
-            .instanceColorsBuffer = std::span<ColorRGBA<F32>>({pimpl->instanceColors.data(), pimpl->instanceColors.size()}).subspan(currentInstanceOffset, instanceCount),
-            .instanceRotationsBuffer = std::span<F32>({pimpl->instanceRotations.data(), pimpl->instanceRotations.size()}).subspan(currentInstanceOffset, instanceCount),
-            .instancePositionsBuffer = std::span<Extent2D<F32>>({pimpl->instancePositions.data(), pimpl->instancePositions.size()}).subspan(currentInstanceOffset, instanceCount),
-            .instanceSizesBuffer = std::span<Extent2D<F32>>({pimpl->instanceSizes.data(), pimpl->instanceSizes.size()}).subspan(currentInstanceOffset, instanceCount),
+            .instanceColorsBuffer = std::span<ColorRGBA<F32>>(pimpl->instanceColors.data(), static_cast<std::size_t>(pimpl->instanceColors.size())).subspan(currentInstanceOffset, instanceCount),
+            .instanceRotationsBuffer = std::span<F32>(pimpl->instanceRotations.data(), static_cast<std::size_t>(pimpl->instanceRotations.size())).subspan(currentInstanceOffset, instanceCount),
+            .instancePositionsBuffer = std::span<Extent2D<F32>>(pimpl->instancePositions.data(), static_cast<std::size_t>(pimpl->instancePositions.size())).subspan(currentInstanceOffset, instanceCount),
+            .instanceSizesBuffer = std::span<Extent2D<F32>>(pimpl->instanceSizes.data(), static_cast<std::size_t>(pimpl->instanceSizes.size())).subspan(currentInstanceOffset, instanceCount),
         };
 
         for (U64 i = 0; i < instanceCount; ++i) {
@@ -391,7 +404,7 @@ Result Shapes::Impl::generateElementsProperties() {
     for (auto& element : elements) {
         // Fill properties for all instances of this element
         for (U64 i = 0; i < element.config.numberOfInstances; ++i) {
-            auto& prop = properties[currentInstanceOffset + i];
+            auto& prop = properties.at(currentInstanceOffset + i);
 
             prop.borderColor = glm::vec4(element.config.borderColor.r,
                                          element.config.borderColor.g,

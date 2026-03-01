@@ -4,10 +4,10 @@
 
 namespace Jetstream::Render {
 
-using Implementation = DrawImp<Device::WebGPU>;
+using Implementation = DrawImp<DeviceType::WebGPU>;
 
 Implementation::DrawImp(const Config& config) : Draw(config) {
-    buffer = std::dynamic_pointer_cast<VertexImp<Device::WebGPU>>(config.buffer);
+    buffer = std::dynamic_pointer_cast<VertexImp<DeviceType::WebGPU>>(config.buffer);
 }
 
 Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
@@ -67,7 +67,7 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
             cfg.size = indexedDrawCommands.size();
             cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indexedIndirectBuffer = std::make_shared<Render::BufferImp<Device::WebGPU>>(cfg);
+            indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::WebGPU>>(cfg);
             indexedIndirectBuffer->create();
         }
 
@@ -90,7 +90,7 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
             cfg.size = drawCommands.size();
             cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indirectBuffer = std::make_shared<Render::BufferImp<Device::WebGPU>>(cfg);
+            indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::WebGPU>>(cfg);
             indirectBuffer->create();
         }
 
@@ -119,13 +119,64 @@ Result Implementation::destroy() {
 Result Implementation::encode(WGPURenderPassEncoder& renderPassEncoder) {
     JST_CHECK(buffer->encode(renderPassEncoder));
 
-    // WebGPU doesn't support multi-draw. So we need to call multiple times.
+    // WebGPU doesn't support multi-draw and 'indirect-first-instance' feature
+    // may not be available. Use direct draw calls instead of indirect.
+
     for (U64 i = 0; i < config.numberOfDraws; i++) {
         if (buffer->isBuffered()) {
-            wgpuRenderPassEncoderDrawIndexedIndirect(renderPassEncoder, indexedIndirectBuffer->getHandle(), i * sizeof(IndexedDrawCommand));
+            const auto& cmd = indexedDrawCommands[i];
+            wgpuRenderPassEncoderDrawIndexed(renderPassEncoder,
+                                             cmd.indexCount,
+                                             cmd.instanceCount,
+                                             cmd.firstIndex,
+                                             cmd.baseVertex,
+                                             cmd.firstInstance);
         } else {
-            wgpuRenderPassEncoderDrawIndirect(renderPassEncoder, indirectBuffer->getHandle(), i * sizeof(DrawCommand));
+            const auto& cmd = drawCommands[i];
+            wgpuRenderPassEncoderDraw(renderPassEncoder,
+                                      cmd.vertexCount,
+                                      cmd.instanceCount,
+                                      cmd.firstVertex,
+                                      cmd.firstInstance);
         }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::updateVertexCount(U64 vertexCount) {
+    // Check if draw was created
+    if (indexedDrawCommands.empty() && drawCommands.empty()) {
+        JST_ERROR("[WebGPU] Cannot update vertex count: draw not created yet");
+        return Result::ERROR;
+    }
+
+    if (buffer->isBuffered()) {
+        // Check bounds for indexed drawing
+        const U64 maxIndexCount = buffer->getIndexCount();
+        if (vertexCount > maxIndexCount) {
+            JST_ERROR("[WebGPU] Requested index count ({}) exceeds buffer limit ({})", vertexCount, maxIndexCount);
+            return Result::ERROR;
+        }
+
+        // Update indexed draw commands
+        for (auto& drawCommand : indexedDrawCommands) {
+            drawCommand.indexCount = vertexCount;
+        }
+        indexedIndirectBuffer->update();
+    } else {
+        // Check bounds for non-indexed drawing
+        const U64 maxVertexCount = buffer->getVertexCount();
+        if (vertexCount > maxVertexCount) {
+            JST_ERROR("[WebGPU] Requested vertex count ({}) exceeds buffer limit ({})", vertexCount, maxVertexCount);
+            return Result::ERROR;
+        }
+
+        // Update non-indexed draw commands
+        for (auto& drawCommand : drawCommands) {
+            drawCommand.vertexCount = vertexCount;
+        }
+        indirectBuffer->update();
     }
 
     return Result::SUCCESS;

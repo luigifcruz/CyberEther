@@ -3,11 +3,10 @@
 
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/adapters/generic.hh"
-#include "jetstream/viewport/platforms/headless/remote.hh"
 
 namespace Jetstream::Viewport {
 
-template<Device DeviceId>
+template<DeviceType DeviceId>
 class Headless : Adapter<DeviceId> {};
 
 }  // namespace Jetstream::Viewport

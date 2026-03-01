@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class DrawImp<Device::Vulkan> : public Draw {
+class DrawImp<DeviceType::Vulkan> : public Draw {
  public:
     explicit DrawImp(const Config& config);
 
@@ -16,18 +16,19 @@ class DrawImp<Device::Vulkan> : public Draw {
                  std::vector<VkVertexInputAttributeDescription>& attributeDescription,
                  VkPipelineInputAssemblyStateCreateInfo& inputAssembly);
     Result encode(VkCommandBuffer& commandBuffer);
+    Result updateVertexCount(U64 vertexCount) override;
     Result destroy();
 
  private:
-    std::shared_ptr<VertexImp<Device::Vulkan>> buffer;
+    std::shared_ptr<VertexImp<DeviceType::Vulkan>> buffer;
 
-    std::shared_ptr<BufferImp<Device::Vulkan>> indirectBuffer;
-    std::shared_ptr<BufferImp<Device::Vulkan>> indexedIndirectBuffer;
+    std::shared_ptr<BufferImp<DeviceType::Vulkan>> indirectBuffer;
+    std::shared_ptr<BufferImp<DeviceType::Vulkan>> indexedIndirectBuffer;
 
     std::vector<VkDrawIndirectCommand> drawCommands;
     std::vector<VkDrawIndexedIndirectCommand> indexedDrawCommands;
 
-    friend class ProgramImp<Device::Vulkan>;
+    friend class ProgramImp<DeviceType::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

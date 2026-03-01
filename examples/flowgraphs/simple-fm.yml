@@ -6,36 +6,55 @@ summary: Radio receiver with RTLSDR.
 author: Luigi
 license: MIT
 description: Shows the simplest way to demodulate an FM station using a RTL-SDR.
-
-computeDevice: cpu
-
 graph:
   soapy:
     module: soapy
-    device: ${computeDevice}
-    dataType: CF32
+    device: cpu
+    runtime: native
+    provider: generic
+    outputDataType: CF32
     config:
-      deviceString: driver=rtlsdr,serial=00000001
-      frequency: 96.9e6
-      sampleRate: 240e3
+      bufferMultiplier: 512
+      sampleRate: 240000
+      frequency: 88.9e+06
       numberOfTimeSamples: 2048
       numberOfBatches: 8
-      bufferMultiplier: 512
-
+      automaticGain: true
+    meta:
+      node:
+        y: 50
+        x: 50
+        height: 309
+        width: 233
   fm:
     module: fm
-    device: ${computeDevice}
+    device: cpu
+    runtime: native
+    provider: generic
     inputDataType: CF32
     outputDataType: F32
     input:
-      buffer: ${graph.soapy.output.buffer}
-
+      signal: '${graph.soapy.output.signal}'
+    meta:
+      node:
+        y: 50
+        x: 320
+        height: 100
+        width: 140
   audio:
     module: audio
     device: cpu
+    runtime: native
+    provider: generic
     dataType: F32
     config:
-      inSampleRate: 240e3
-      outSampleRate: 48e3
+      inSampleRate: 240000
+      outSampleRate: 48000
     input:
-      buffer: ${graph.fm.output.buffer}
+      buffer: '${graph.fm.output.signal}'
+    meta:
+      node:
+        y: 50
+        x: 500
+        height: 150
+        width: 200

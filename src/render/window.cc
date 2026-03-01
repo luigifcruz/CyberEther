@@ -164,6 +164,12 @@ Result Window::bind(const std::shared_ptr<WindowAttachment>& attachment) {
 }
 
 Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
+    // Skip if attachment is not bound.
+    if (std::find(attachments.begin(), attachments.end(), attachment) == attachments.end()) {
+        JST_WARN("[WINDOW] Trying to unbind an attachment that is not bound.");
+        return Result::SUCCESS;
+    }
+
     // Add attachment to unbind queue.
     unbindQueue.push(attachment);
 
@@ -263,6 +269,12 @@ Result Window::bind(const std::shared_ptr<Components::Generic>& component) {
 }
 
 Result Window::unbind(const std::shared_ptr<Components::Generic>& component) {
+    // Skip if component is not bound.
+    if (std::find(components.begin(), components.end(), component) == components.end()) {
+        JST_WARN("[WINDOW] Trying to unbind a component that is not bound.");
+        return Result::SUCCESS;
+    }
+
     // Call destroy on the component.
     JST_CHECK(component->destroy(this));
 

@@ -295,6 +295,9 @@ void PopStyleVar(int count = 1);
 void BeginNode(int id);
 void EndNode();
 
+void SetNodeDimensions(int id, const ImVec2& dimensions);
+void SetNodeDimensions(int id, ImVec2& dimensions);
+
 ImVec2 GetNodeDimensions(int id);
 
 // Place your node title bar content (such as the node title, using ImGui::Text) between the
@@ -335,6 +338,9 @@ void Link(int id, int start_attribute_id, int end_attribute_id);
 
 // Enable or disable the ability to click and drag a specific node.
 void SetNodeDraggable(int node_id, const bool draggable);
+
+// Enable or disable vertical resize handle on the bottom edge of a node.
+void SetNodeVerticalResizeEnabled(int node_id, const bool enabled);
 
 // The node's position can be expressed in three coordinate systems:
 // * screen space coordinates, -- the origin is the upper left corner of the window.

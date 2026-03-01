@@ -11,21 +11,21 @@ namespace nb = nanobind;
 using namespace nb::literals;
 using namespace Jetstream;
 
-template <Device D>
+template <DeviceType D>
 struct ToNanobind;
 
 template <>
-struct ToNanobind<Device::CPU> {
+struct ToNanobind<DeviceType::CPU> {
     using value_type = nb::device::cpu;
 };
 
 template <>
-struct ToNanobind<Device::CUDA> {
+struct ToNanobind<DeviceType::CUDA> {
     using value_type = nb::device::cuda;
 };
 
-template<Device D, typename T>
-Tensor<D, T> numpy_to_tensor(nb::handle handle) {
+template<DeviceType D, typename T>
+Tensor numpy_to_tensor(nb::handle handle) {
     // Cast to array.
 
     using Type = nb::ndarray<nb::numpy, T, nb::c_contig, typename ToNanobind<D>::value_type>;
@@ -38,14 +38,11 @@ Tensor<D, T> numpy_to_tensor(nb::handle handle) {
         shape.push_back(static_cast<U64>(array.shape(i)));
     }
 
-    // Create zero-copy tensor.
+    if constexpr (D == DeviceType::CUDA) {
+        throw std::invalid_argument("CUDA ndarray buffers are not supported by this binding yet");
+    }
 
-    auto pointer = static_cast<T*>(array.data());
-    auto tensor = Tensor<D, T>(pointer, shape);
-
-    // Set tensor hash.
-
-    tensor.set_hash(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pointer)));
+    Tensor tensor(static_cast<void*>(array.data()), D, TypeToDataType<T>(), shape);
 
     return tensor;
 }
@@ -69,13 +66,13 @@ NB_MODULE(_impl, m) {
         .value("amplitude", Superluminal::Operation::Amplitude)
         .value("phase", Superluminal::Operation::Phase);
 
-    nb::enum_<Device>(m, "device")
-        .value("none", Device::None)
-        .value("cpu", Device::CPU)
-        .value("cuda", Device::CUDA)
-        .value("metal", Device::Metal)
-        .value("vulkan", Device::Vulkan)
-        .value("webgpu", Device::WebGPU);
+    nb::enum_<DeviceType>(m, "device")
+        .value("none", DeviceType::None)
+        .value("cpu", DeviceType::CPU)
+        .value("cuda", DeviceType::CUDA)
+        .value("metal", DeviceType::Metal)
+        .value("vulkan", DeviceType::Vulkan)
+        .value("webgpu", DeviceType::WebGPU);
 
     nb::enum_<Result>(m, "result")
         .value("success", Result::SUCCESS)
@@ -90,19 +87,19 @@ NB_MODULE(_impl, m) {
             [](Superluminal::PlotConfig &self, nb::handle input) {
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
                 if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cpu>>(input)) {
-                    self.buffer = numpy_to_tensor<Device::CPU, CF32>(input);
+                    self.buffer = numpy_to_tensor<DeviceType::CPU, CF32>(input);
                     return;
                 } else if (nb::isinstance<nb::ndarray<nb::numpy, F32, nb::c_contig, nb::device::cpu>>(input)) {
-                    self.buffer = numpy_to_tensor<Device::CPU, F32>(input);
+                    self.buffer = numpy_to_tensor<DeviceType::CPU, F32>(input);
                     return;
                 }
 #endif
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
                 if (nb::isinstance<nb::ndarray<nb::numpy, CF32, nb::c_contig, nb::device::cuda>>(input)) {
-                    self.buffer = numpy_to_tensor<Device::CUDA, CF32>(input);
+                    self.buffer = numpy_to_tensor<DeviceType::CUDA, CF32>(input);
                     return;
                 } else if (nb::isinstance<nb::ndarray<nb::numpy, F32, nb::c_contig, nb::device::cuda>>(input)) {
-                    self.buffer = numpy_to_tensor<Device::CUDA, F32>(input);
+                    self.buffer = numpy_to_tensor<DeviceType::CUDA, F32>(input);
                     return;
                 }
 #endif
@@ -132,6 +129,7 @@ NB_MODULE(_impl, m) {
     m.def("stop", &Superluminal::Stop);
     m.def("presenting", &Superluminal::Presenting);
     m.def("update", &Superluminal::Update, nb::arg("name") = std::string());
+    m.def("show", &Superluminal::Show);
     m.def("poll_events", &Superluminal::PollEvents, nb::arg("wait") = true);
     m.def("plot", &Superluminal::Plot);
 
@@ -167,8 +165,6 @@ NB_MODULE(_impl, m) {
     }, nb::arg("label"), nb::arg("min"), nb::arg("max"), nb::arg("value"));
 
     m.def("markdown", &Superluminal::Markdown, nb::arg("content"));
-
-    m.def("image", &Superluminal::Image, nb::arg("filepath"), nb::arg("width") = -1.0f, nb::arg("height") = -1.0f, nb::arg("fit_to_window") = false);
 
     m.def("mosaic_layout", &Superluminal::MosaicLayout);
 }

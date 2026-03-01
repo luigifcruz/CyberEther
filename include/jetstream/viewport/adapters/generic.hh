@@ -35,8 +35,6 @@ struct Config {
 
     /// @brief Whether hardware acceleration is enabled.
     bool hardwareAcceleration = true;
-
-    JST_SERDES(vsync, title, size, framerate, broker, codec, autoJoin, hardwareAcceleration);
 };
 
 class Generic {
@@ -46,7 +44,7 @@ class Generic {
 
     virtual std::string id() const = 0;
     virtual std::string name() const = 0;
-    virtual Device device() const = 0;
+    virtual DeviceType device() const = 0;
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
@@ -67,7 +65,7 @@ class Generic {
     Config config;
 };
 
-template<Device DeviceId>
+template<DeviceType DeviceId>
 class Adapter : public Generic {};
 
 }  // namespace Jetstream::Viewport

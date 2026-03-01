@@ -21,6 +21,13 @@ enum class PixelType : uint32_t {
     F32,
 };
 
+struct ScissorRect {
+    U32 x = 0;
+    U32 y = 0;
+    U32 width = 0;
+    U32 height = 0;
+};
+
 }  // namespace Jetstream::Render
 
 #endif

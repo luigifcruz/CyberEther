@@ -7,12 +7,14 @@ __pycache__
 .vscode
 .idea
 .ropeproject
+.zed
 builddir
 imgui.ini
 
 *.zip
 subprojects/*
 !subprojects/*.wrap
+!subprojects/libmodes
 !subprojects/libusb
 !subprojects/nanobind
 !subprojects/nanobench
@@ -42,3 +44,12 @@ build-*
 *.rar
 hs_err_pid*
 replay_pid*
+
+# Slop
+
+AI.md
+CLAUDE.md
+.audit-commits
+.agents
+.ruff_cache
+.claude

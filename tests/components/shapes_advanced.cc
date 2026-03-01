@@ -6,7 +6,8 @@
 
 class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
  public:
-    ShapesTestUI(Instance& instance) : TestUIBase(instance, "Shapes Test Grid") {}
+    ShapesTestUI(const std::shared_ptr<Instance>& instance)
+        : TestUIBase(instance, "Shapes Test Grid") {}
 
  protected:
     Result setupComponent() override {
@@ -44,14 +45,14 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
             {"circle_l",   {.type = Render::Components::Shapes::Type::CIRCLE,   .numberOfInstances = 1}},
         };
 
-        JST_CHECK(instance.window().build(component, cfg));
-        JST_CHECK(instance.window().bind(component));
+        JST_CHECK(render->build(component, cfg));
+        JST_CHECK(render->bind(component));
         setupShapeGrid();
         return Result::SUCCESS;
     }
 
     Result setupFramebuffer() override {
-        return instance.window().build<Render::Texture>(framebufferTexture, Render::Texture::Config{
+        return render->build<Render::Texture>(framebufferTexture, Render::Texture::Config{
             .size = {1400, 900}
         });
     }
@@ -63,8 +64,8 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
         cfg.multisampled = false;
 
         JST_CHECK(component->surface(cfg));
-        JST_CHECK(instance.window().build(surface, cfg));
-        return instance.window().bind(surface);
+        JST_CHECK(render->build(surface, cfg));
+        return render->bind(surface);
     }
 
     void updatePixelSize(U64 width, U64 height) override {
@@ -195,7 +196,7 @@ class ShapesTestUI : public TestUIBase<Render::Components::Shapes> {
 };
 
 int main() {
-    return runComponentTest("Shapes Test Grid", "Shapes Test Grid", {1400, 900}, [](Instance& instance) {
+    return runComponentTest("Shapes Test Grid", "Shapes Test Grid", {1400, 900}, [](const std::shared_ptr<Instance>& instance) {
         ShapesTestUI(instance).run();
     });
 }

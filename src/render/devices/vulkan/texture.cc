@@ -3,7 +3,7 @@
 
 namespace Jetstream::Render {
 
-using Implementation = TextureImp<Device::Vulkan>;
+using Implementation = TextureImp<DeviceType::Vulkan>;
 
 Implementation::TextureImp(const Config& config) : Texture(config) {
     pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype); 
@@ -12,8 +12,8 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating texture.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
 
     // Create extent.
 
@@ -43,7 +43,7 @@ Result Implementation::create() {
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     if (config.multisampled) {
-        imageCreateInfo.samples = Backend::State<Device::Vulkan>()->getMultisampling();
+        imageCreateInfo.samples = Backend::State<DeviceType::Vulkan>()->getMultisampling();
     } else {
         imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     }
@@ -134,7 +134,7 @@ Result Implementation::create() {
 
     // Register descriptor for ImGui attachment.
 
-    auto& backend = Backend::State<Device::Vulkan>();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
 
     VkDescriptorSetLayoutBinding binding{};
     binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -187,8 +187,8 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying texture.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& descriptorPool = Backend::State<Device::Vulkan>()->getDescriptorPool();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
     vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
@@ -224,7 +224,7 @@ Result Implementation::fillRow(const U64& y, const U64& height) {
 
     // TODO: Implement zero-copy option.
 
-    auto& backend = Backend::State<Device::Vulkan>();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
 
     uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
     const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);

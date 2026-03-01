@@ -2,7 +2,7 @@
 
 namespace Jetstream::Viewport {
     
-using Implementation = iOS<Device::Metal>;
+using Implementation = iOS<DeviceType::Metal>;
 
 Implementation::iOS(const Config& config, CA::MetalLayer* layer) : Adapter(config) {
     JST_DEBUG("Creating iOS viewport.");
@@ -14,7 +14,7 @@ Implementation::~iOS() {
 }
 
 Result Implementation::create() {
-    auto* device = Backend::State<Device::Metal>()->getDevice();
+    auto* device = Backend::State<DeviceType::Metal>()->getDevice();
     
     swapchain->setDevice(device);
     swapchain->setPixelFormat(MTL::PixelFormatBGRA8Unorm);

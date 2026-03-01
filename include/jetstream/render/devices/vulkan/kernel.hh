@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class KernelImp<Device::Vulkan> : public Kernel {
+class KernelImp<DeviceType::Vulkan> : public Kernel {
  public:
     explicit KernelImp(const Config& config);
 
@@ -24,11 +24,11 @@ class KernelImp<Device::Vulkan> : public Kernel {
 
     std::vector<VkDescriptorSetLayoutBinding> bindings;
 
-    std::vector<std::shared_ptr<BufferImp<Device::Vulkan>>> buffers;
+    std::vector<std::shared_ptr<BufferImp<DeviceType::Vulkan>>> buffers;
 
     static VkDescriptorType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);
 
-    friend class SurfaceImp<Device::Vulkan>; 
+    friend class SurfaceImp<DeviceType::Vulkan>; 
 };
 
 }  // namespace Jetstream::Render

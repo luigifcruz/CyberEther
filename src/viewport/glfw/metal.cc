@@ -17,7 +17,7 @@ static void PrintGLFWError(int, const char* description) {
 
 static bool keepRunningFlag;
 
-using Implementation = GLFW<Device::Metal>;
+using Implementation = GLFW<DeviceType::Metal>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
     JST_DEBUG("[METAL] Creating GLFW viewport.");
@@ -61,7 +61,7 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    auto* device = Backend::State<Device::Metal>()->getDevice();
+    auto* device = Backend::State<DeviceType::Metal>()->getDevice();
 
     swapchain = CA::MetalLayer::layer()->retain();
     swapchain->setDevice(device);

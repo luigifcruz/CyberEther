@@ -5,39 +5,39 @@
 
 namespace Jetstream::Render {
 
-using Implementation = ProgramImp<Device::Metal>;
+using Implementation = ProgramImp<DeviceType::Metal>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
     for (auto& draw : config.draws) {
         draws.push_back(
-            std::dynamic_pointer_cast<DrawImp<Device::Metal>>(draw)
+            std::dynamic_pointer_cast<DrawImp<DeviceType::Metal>>(draw)
         );
     }
 
     for (auto& texture : config.textures) {
         textures.push_back(
-            std::dynamic_pointer_cast<TextureImp<Device::Metal>>(texture)
+            std::dynamic_pointer_cast<TextureImp<DeviceType::Metal>>(texture)
         );
     }
 
     for (auto& [buffer, target] : config.buffers) {
         buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Metal>>(buffer), target}
+            {std::dynamic_pointer_cast<BufferImp<DeviceType::Metal>>(buffer), target}
         );
     }
 }
 
-Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& framebuffer) {
+Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisampled) {
     JST_DEBUG("[METAL] Creating program.");
 
-    if (config.shaders.contains(Device::Metal) == 0) {
+    if (config.shaders.contains(DeviceType::Metal) == 0) {
         JST_ERROR("[METAL] Module doesn't have necessary shader.");
         return Result::ERROR;
     }
 
     NS::Error* err = nullptr;
-    const auto& shaders = config.shaders[Device::Metal];
-    auto device = Backend::State<Device::Metal>()->getDevice();
+    const auto& shaders = config.shaders[DeviceType::Metal];
+    auto device = Backend::State<DeviceType::Metal>()->getDevice();
 
     MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
     opts->setFastMathEnabled(true);
@@ -83,12 +83,12 @@ Result Implementation::create(const std::shared_ptr<TextureImp<Device::Metal>>& 
     renderPipelineDescriptor->setVertexDescriptor(vertDesc);
     renderPipelineDescriptor->setVertexFunction(vertFunc);
     renderPipelineDescriptor->setFragmentFunction(fragFunc);
-    if (framebuffer->multisampled()) {
-        renderPipelineDescriptor->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
+    if (multisampled) {
+        renderPipelineDescriptor->setSampleCount(Backend::State<DeviceType::Metal>()->getMultisampling());
     }
 
     const auto& colorAttachment = renderPipelineDescriptor->colorAttachments()->object(0)->init();
-    colorAttachment->setPixelFormat(framebuffer->getPixelFormat());
+    colorAttachment->setPixelFormat(pixelFormat);
 
     if (config.enableAlphaBlending) {
         colorAttachment->setBlendingEnabled(true);
@@ -123,6 +123,13 @@ Result Implementation::destroy() {
 
 Result Implementation::draw(MTL::RenderCommandEncoder* renderCmdEncoder) {
     renderCmdEncoder->setRenderPipelineState(renderPipelineState);
+
+    // Set scissor rect.
+    if (config.scissorRect) {
+        const auto& sr = *config.scissorRect;
+        MTL::ScissorRect rect = {sr.x, sr.y, sr.width, sr.height};
+        renderCmdEncoder->setScissorRect(rect);
+    }
 
     // Attach frame fragment-shader buffers.
     for (U64 i = 0; i < buffers.size(); i++) {

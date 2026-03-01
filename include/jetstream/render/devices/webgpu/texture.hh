@@ -7,20 +7,20 @@
 namespace Jetstream::Render {
 
 template<>
-class TextureImp<Device::WebGPU> : public Texture {
+class TextureImp<DeviceType::WebGPU> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
 
     using Render::Texture::size;
-    bool size(const Extent2D<U64>& size);
+    bool size(const Extent2D<U64>& size) override;
 
-    Result fill();
-    Result fillRow(const U64& y, const U64& height);
+    Result fill() override;
+    Result fillRow(const U64& y, const U64& height) override;
 
-    uint64_t raw() {
+    uint64_t raw() const override {
         return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(textureView));
     }
 
@@ -61,8 +61,8 @@ class TextureImp<Device::WebGPU> : public Texture {
     WGPUSamplerBindingLayout samplerBindingLayout;
     WGPUTextureBindingLayout textureBindingLayout;
 
-    friend class SurfaceImp<Device::WebGPU>;
-    friend class ProgramImp<Device::WebGPU>;
+    friend class SurfaceImp<DeviceType::WebGPU>;
+    friend class ProgramImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

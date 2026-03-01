@@ -1,266 +1,153 @@
 #ifndef JETSTREAM_BLOCK_HH
 #define JETSTREAM_BLOCK_HH
 
-#include <map>
 #include <string>
-#include <vector>
 #include <memory>
-#include <functional>
-#include <algorithm>
-#include <numeric>
-#include <iterator>
-#include <sstream>
-#include <iostream>
-#include <unordered_map>
-#include <unordered_set>
 
+#include "jetstream/runtime.hh"
+#include "jetstream/scheduler.hh"
 #include "jetstream/types.hh"
-#include "jetstream/macros.hh"
-#include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/module.hh"
 #include "jetstream/render/base.hh"
-
 
 namespace Jetstream {
 
+class Instance;
+class Compositor;
+class Flowgraph;
+class Scheduler;
+
 class JETSTREAM_API Block {
  public:
-    virtual ~Block() = default;
+    // Types & Nested Structs
 
-    // Configuration.
+    struct Impl;
+    struct Interface;
 
-    struct State {
-        F32 nodeWidth = 0.0f;
-        bool viewEnabled = false;
-        bool previewEnabled = false;
-        bool controlEnabled = false;
-        bool fullscreenEnabled = false;
-        Extent2D<F32> nodePos = {0.0f, 0.0f};
+    struct Config {
+        virtual ~Config() = default;
 
-        JST_SERDES(nodeWidth, viewEnabled, previewEnabled, controlEnabled, fullscreenEnabled, nodePos);
+        virtual std::string type() const = 0;
+        virtual std::string title() const = 0;
+        virtual std::string summary() const = 0;
+        virtual std::string description() const = 0;
+
+        virtual Result serialize(Parser::Map& data) const = 0;
+        virtual Result deserialize(const Parser::Map& data) = 0;
+        virtual std::size_t hash() const = 0;
     };
 
-    constexpr const State& getState() const {
-        return state;
-    }
-
-    // Fingerprint, manifest, and metadata.
-
-    struct Fingerprint {
-        std::string id;
-        std::string device;
-        std::string inputDataType;
-        std::string outputDataType;
-
-        struct Hash {
-            U64 operator()(const Fingerprint& m) const {
-                U64 h1 = std::hash<std::string>()(m.id);
-                U64 h2 = std::hash<std::string>()(m.device);
-                U64 h3 = std::hash<std::string>()(m.inputDataType);
-                U64 h4 = std::hash<std::string>()(m.outputDataType);
-                return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
-            }
-        };
-
-        struct Equal {
-            bool operator()(const Fingerprint& m1, const Fingerprint& m2) const {
-                return m1.id == m2.id
-                    && m1.device == m2.device
-                    && m1.inputDataType == m2.inputDataType
-                    && m1.outputDataType == m2.outputDataType;
-            }
-        };
-
-        friend std::ostream& operator<<(std::ostream& os, const Fingerprint& m) {
-            os << jst::fmt::format("{{device: '{}', id: '{}', inputDataType: '{}', outputDataType: '{}'}}", 
-                                   m.device, m.id, m.inputDataType, m.outputDataType);
-            return os;
-        }
+    enum class State : U8 {
+        None = 0,
+        Creating,
+        Created,
+        Incomplete,
+        Errored,
+        Destroying,
+        Destroyed,
     };
 
-    typedef std::function<Result(Instance&,
-                                 const std::string& id,
-                                 Parser::RecordMap& inputMap,
-                                 Parser::RecordMap& configMap,
-                                 Parser::RecordMap& stateMap)> Constructor;
+    // Constructor
 
-    typedef std::unordered_map<Fingerprint,
-                               Constructor,
-                               Fingerprint::Hash,
-                               Fingerprint::Equal> ConstructorManifest;
+    Block(const std::shared_ptr<Block::Impl>& impl,
+          const std::shared_ptr<Block::Config>& stagedConfig,
+          const std::shared_ptr<Block::Config>& candidateConfig);
 
-    struct Metadata {
-        std::string title;
-        std::string summary;
-        std::string description;
-        std::map<Device, std::vector<std::tuple<std::string, std::string>>> options;
-    };
+    // Lifecycle
 
-    typedef std::map<std::string, Metadata> MetadataManifest;
+    Result create(const std::string& name,
+                  const DeviceType& device,
+                  const RuntimeType& runtime,
+                  const ProviderType& provider,
+                  const Parser::Map& config,
+                  const TensorMap& inputs,
+                  const std::shared_ptr<Instance>& instance,
+                  const std::shared_ptr<Render::Window>& render,
+                  const std::shared_ptr<Scheduler>& scheduler);
+    Result destroy();
 
-    // Construction methods.
+    // Configuration
 
-    virtual Result create() = 0;
-    virtual Result destroy() = 0;
+    Result reconfigure(const Parser::Map& config);
+    Result config(Parser::Map& config) const;
+    const Block::Config& config() const;
 
-    // Metadata methods.
+    // Identity
 
-    virtual std::string id() const = 0;
-    virtual std::string name() const = 0;
-    virtual constexpr Device device() const = 0;
+    const std::string& name() const;
+    const DeviceType& device() const;
+    const RuntimeType& runtime() const;
+    const ProviderType& provider() const;
+    const State& state() const;
+    const std::string& diagnostic() const;
 
-    virtual std::string summary() const {
-        return "Summary not available.";
-    }
+    // I/O
 
-    virtual std::string description() const {
-        return "Description not available.";
-    }
+    const TensorMap& inputs() const;
+    const TensorMap& outputs() const;
+    const std::shared_ptr<Block::Interface>& interface() const;
 
-    virtual std::string warning() const {
-        return "";
-    }
+    // Components
 
-    constexpr const bool& complete() const {
-        return _complete;
-    }
-
-    constexpr const std::string& error() const {
-        return _error;
-    }
-
-    constexpr const Locale& locale() const {
-        return _locale;
-    }
-
-    // Graphical Methods
-
-    virtual void drawPreview(const F32&) {}
-    virtual constexpr bool shouldDrawPreview() const {
-        return false;
-    }
-
-    virtual void drawView() {}
-    virtual constexpr bool shouldDrawView() const {
-        return false;
-    }
-    virtual constexpr bool shouldDrawFullscreen() const {
-        return false;
-    }
-
-    virtual void drawControl() {}
-    virtual constexpr bool shouldDrawControl() const {
-        return false;
-    }
-
-    virtual void drawInfo() {}
-    virtual constexpr bool shouldDrawInfo() const {
-        return false;
-    }
-
-    // Helpers
-
-    static Extent2D<U64> GetContentRegion() {
-        auto [x, y] = ImGui::GetContentRegionAvail();
-        return {
-            static_cast<U64>(x),
-            static_cast<U64>(y)
-        };
-    }
-
-    static Extent2D<F32> GetRelativeMousePos(const Extent2D<U64>& dim, const F32& translation = 0.0f, const F32& zoom = 1.0f) {
-        const auto& [x, y] = dim;
-
-        ImVec2 mousePositionAbsolute = ImGui::GetMousePos();
-        ImVec2 screenPositionAbsolute = ImGui::GetItemRectMin();
-
-        const auto relativeX = (((mousePositionAbsolute.x - screenPositionAbsolute.x) / x) * 2.0f) - 1.0f;
-        const auto relativeY = (((mousePositionAbsolute.y - screenPositionAbsolute.y) / y) * 2.0f) - 1.0f;
-
-        const auto zoomAdjustedX = relativeX / zoom;
-        const auto zoomAdjustedY = relativeY;
-
-        const auto translationAdjustedX = zoomAdjustedX - translation;
-        const auto translationAdjustedY = zoomAdjustedY;
-
-        return {
-            translationAdjustedX,
-            translationAdjustedY
-        };
-    }
-
-    static Extent2D<F32> GetRelativeMouseTranslation(const Extent2D<U64>& dim, const F32& zoom = 1.0f) {
-        const auto& [dx, dy] = ImGui::GetMouseDragDelta(0);
-        const auto& [x, y] = dim;
-
-        const auto relativeX = (dx / x) * 2.0f;
-        const auto relativeY = (dy / y) * 2.0f;
-
-        const auto zoomAdjustedX = relativeX / zoom;
-        const auto zoomAdjustedY = relativeY;
-
-        return {
-            zoomAdjustedX,
-            zoomAdjustedY
-        };
-    }
-
- protected:
-    constexpr Instance& instance() {
-        return *_instance;
-    }
-
-    void setComplete(const bool& complete) {
-        _complete = complete;
-    }
-
-    void setInstance(Instance* instance) {
-        _instance = instance;
-    }
-
-    void setLocale(const Locale& locale) {
-        _locale = locale;
-    }
-
-    void pushError(const std::string& error) {
-        _error += ((!_error.empty()) ? "\n" : "") + error;
-    }
-
-    template<Device DeviceId, typename Type>
-    static Result LinkOutput(const std::string& name,
-                             Tensor<DeviceId, Type>& dst,
-                             const Tensor<DeviceId, Type>& src) {
-        dst.set_locale({
-            src.locale().blockId, 
-            src.locale().moduleId, 
-            name
-        });
-
-        if (!dst.empty()) {
-            JST_ERROR("The destination buffer should be empty during initialization.");
-            return Result::ERROR;
-        }
-
-        dst = src;
-
-        return Result::SUCCESS;
-    }
-
-    friend class Compositor;
-    friend class Instance;
+    const std::vector<std::shared_ptr<Module::Surface>>& surfaces() const;
 
  private:
-    State state;
-
-    Locale _locale;
-    bool _complete;
-    std::string _error;
-
-    Instance* _instance;
+    std::shared_ptr<Impl> impl;
 };
+
+JETSTREAM_API const char* GetBlockStateName(const Block::State& state);
+JETSTREAM_API const char* GetBlockStatePrettyName(const Block::State& state);
+
+inline std::ostream& operator<<(std::ostream& os, const Block::State& state) {
+    return os << GetBlockStatePrettyName(state);
+}
 
 }  // namespace Jetstream
 
-template <> struct jst::fmt::formatter<Jetstream::Block::Fingerprint> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Block::State> : jst::fmt::ostream_formatter {};
 
-#endif
+#ifndef JST_BLOCK_TYPE
+#define JST_BLOCK_TYPE(TYPE) \
+    std::string type() const override { \
+        static const std::string type = #TYPE; \
+        return type; \
+    }
+#endif  // JST_BLOCK_TYPE
+
+#ifndef JST_BLOCK_PARAMS
+#define JST_BLOCK_PARAMS(...) \
+    Result serialize(Parser::Map& data) const override { \
+        (void)data; \
+        FOR_EACH(JST_SERDES_SERIALIZE, __VA_ARGS__) \
+        return Result::SUCCESS; \
+    } \
+    Result deserialize(const Parser::Map& data) override { \
+        (void)data; \
+        FOR_EACH(JST_SERDES_DESERIALIZE, __VA_ARGS__) \
+        return Result::SUCCESS; \
+    } \
+    std::size_t hash() const override { \
+        std::size_t h = 0; \
+        FOR_EACH(JST_HASH_FIELD, __VA_ARGS__) \
+        return h; \
+    }
+#endif  // JST_BLOCK_PARAMS
+
+#ifndef JST_BLOCK_DESCRIPTION
+#define JST_BLOCK_DESCRIPTION(TITLE, SUMMARY, DESCRIPTION) \
+    std::string title() const override { \
+        static const std::string title = TITLE; \
+        return title; \
+    } \
+    std::string summary() const override { \
+        static const std::string summary = SUMMARY; \
+        return summary; \
+    } \
+    std::string description() const override { \
+        static const std::string description = DESCRIPTION; \
+        return description; \
+    }
+#endif  // JST_BLOCK_DESCRIPTION
+
+#endif  // JETSTREAM_BLOCK_HH

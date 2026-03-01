@@ -7,29 +7,29 @@
 namespace Jetstream::Render {
 
 template<>
-class SurfaceImp<Device::WebGPU> : public Surface {
+class SurfaceImp<DeviceType::WebGPU> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
 
-    const Extent2D<U64>& size(const Extent2D<U64>& size);
+    const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
     Result draw(WGPUCommandEncoder& commandEncoder);
 
  private:
-    std::shared_ptr<TextureImp<Device::WebGPU>> framebuffer;
-    std::vector<std::shared_ptr<ProgramImp<Device::WebGPU>>> programs;
-    std::vector<std::shared_ptr<KernelImp<Device::WebGPU>>> kernels;
-    std::vector<std::shared_ptr<BufferImp<Device::WebGPU>>> buffers;
+    std::shared_ptr<TextureImp<DeviceType::WebGPU>> framebuffer;
+    std::vector<std::shared_ptr<ProgramImp<DeviceType::WebGPU>>> programs;
+    std::vector<std::shared_ptr<KernelImp<DeviceType::WebGPU>>> kernels;
+    std::vector<std::shared_ptr<BufferImp<DeviceType::WebGPU>>> buffers;
     Extent2D<U64> requestedSize;
 
     Result createFramebuffer();
     Result destroyFramebuffer();
 
-    friend class WindowImp<Device::WebGPU>;
+    friend class WindowImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

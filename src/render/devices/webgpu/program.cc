@@ -6,24 +6,24 @@
 
 namespace Jetstream::Render {
 
-using Implementation = ProgramImp<Device::WebGPU>;
+using Implementation = ProgramImp<DeviceType::WebGPU>;
 
 Implementation::ProgramImp(const Config& config) : Program(config) {
     for (auto& draw : config.draws) {
         draws.push_back(
-            std::dynamic_pointer_cast<DrawImp<Device::WebGPU>>(draw)
+            std::dynamic_pointer_cast<DrawImp<DeviceType::WebGPU>>(draw)
         );
     }
 
     for (auto& texture : config.textures) {
         textures.push_back(
-            std::dynamic_pointer_cast<TextureImp<Device::WebGPU>>(texture)
+            std::dynamic_pointer_cast<TextureImp<DeviceType::WebGPU>>(texture)
         );
     }
 
     for (auto& [buffer, target] : config.buffers) {
         buffers.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::WebGPU>>(buffer), target}
+            {std::dynamic_pointer_cast<BufferImp<DeviceType::WebGPU>>(buffer), target}
         );
     }
 }
@@ -33,16 +33,16 @@ Result Implementation::create(const WGPUTextureFormat& pixelFormat) {
 
     // Load shaders from memory.
 
-    if (config.shaders.contains(Device::WebGPU) == 0) {
+    if (config.shaders.contains(DeviceType::WebGPU) == 0) {
         JST_ERROR("[WebGPU] Module doesn't have necessary shader.");
         return Result::ERROR;
     }
 
-    auto device = Backend::State<Device::WebGPU>()->getDevice();
+    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
-    const auto& shader = config.shaders[Device::WebGPU];
-    WGPUShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
-    WGPUShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
+    const auto& shader = config.shaders[DeviceType::WebGPU];
+    vertShaderModule = Backend::LoadShader(shader[0], device);
+    fragShaderModule = Backend::LoadShader(shader[1], device);
 
     // Enumerate the bindings of program targers.
 
@@ -184,6 +184,15 @@ Result Implementation::destroy() {
         JST_CHECK(draw->destroy());
     }
 
+    if (!bindings.empty()) {
+        wgpuBindGroupRelease(bindGroup);
+        wgpuBindGroupLayoutRelease(bindGroupLayout);
+        wgpuPipelineLayoutRelease(pipelineLayout);
+    }
+    wgpuRenderPipelineRelease(pipeline);
+    wgpuShaderModuleRelease(fragShaderModule);
+    wgpuShaderModuleRelease(vertShaderModule);
+
     bindings.clear();
     bindGroupEntries.clear();
 
@@ -192,6 +201,12 @@ Result Implementation::destroy() {
 
 Result Implementation::draw(WGPURenderPassEncoder& renderPassEncoder) {
     wgpuRenderPassEncoderSetPipeline(renderPassEncoder, pipeline);
+
+    // Set scissor rect.
+    if (config.scissorRect) {
+        const auto& sr = *config.scissorRect;
+        wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, sr.x, sr.y, sr.width, sr.height);
+    }
 
     if (!bindings.empty()) {
         wgpuRenderPassEncoderSetBindGroup(renderPassEncoder, 0, bindGroup, 0, nullptr);

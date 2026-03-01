@@ -26,12 +26,11 @@ all_deps_found = true
 if jst_is_browser
     deps += [
         dependency('soapysdr', 'SoapySDR', required: true),
+    ]
+    whole_dep_lst += [
         dependency('soapyairspy', required: true).as_link_whole(),
         dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
-
-    # TODO: Fix libusb build on Emscripten.
-    all_deps_found = true
 endif
 
 if jst_is_android

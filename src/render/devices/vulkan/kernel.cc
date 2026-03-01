@@ -4,12 +4,12 @@
 
 namespace Jetstream::Render {
 
-using Implementation = KernelImp<Device::Vulkan>;
+using Implementation = KernelImp<DeviceType::Vulkan>;
 
 Implementation::KernelImp(const Config& config) : Kernel(config) {
     for (auto& [buffer, _] : config.buffers) {
         buffers.push_back(
-            std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(buffer)
+            std::dynamic_pointer_cast<BufferImp<DeviceType::Vulkan>>(buffer)
         );
     }
 }
@@ -17,17 +17,17 @@ Implementation::KernelImp(const Config& config) : Kernel(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating kernel.");
 
-    auto& backend = Backend::State<Device::Vulkan>();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
     auto device = backend->getDevice();
 
     // Load kernel from buffers. 
 
-    if (config.kernels.contains(Device::Vulkan) == 0) {
+    if (config.kernels.contains(DeviceType::Vulkan) == 0) {
         JST_ERROR("[VULKAN] Module doesn't have necessary kernel.");       
         return Result::ERROR;
     }
 
-    const auto& kernels = config.kernels[Device::Vulkan];
+    const auto& kernels = config.kernels[DeviceType::Vulkan];
     VkShaderModule kernelModule = Backend::LoadShader(kernels[0], device);
 
     VkPipelineShaderStageCreateInfo kernelStageInfo{};
@@ -131,8 +131,8 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& descriptorPool = Backend::State<Device::Vulkan>()->getDescriptorPool();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
     if (!bindings.empty()) {
         vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);

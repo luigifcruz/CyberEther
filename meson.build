@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.0.0-beta1',
+    version: '1.0.0',  # [VERSION HOOK]
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
@@ -38,21 +38,32 @@ if not jst_is_linux   and \
 endif
 
 #
-# Handle Options
+# Quirks
 #
+
+if jst_is_browser
+    threads_dep = declare_dependency(compile_args: ['-pthread'], link_args: ['-pthread'])
+    meson.override_dependency('threads', threads_dep)
+endif
 
 if get_option('native')
     add_project_arguments('-march=native', language: 'cpp')
 endif
 
+#
+# Handle Options
+#
+
 cfg_lst = configuration_data()
 src_lst = []
+module_test_lst = []
 dep_lst = [
     dependency('threads'),
 ]
+whole_dep_lst = []
 inc_lst = [
     include_directories('include'),
-    include_directories('.'),
+    include_directories('src'),
     include_directories('include/jetstream/backend/devices/metal'),
     include_directories('include/jetstream/render/tools'),
 ]
@@ -89,22 +100,38 @@ subdir('resources')
 subdir('src')
 
 #
-# Declare Library
+# Library
 #
 
-libjetstream = library(
-    'jetstream',
-    src_lst,
-    include_directories: inc_lst,
-    dependencies: dep_lst,
-    install: true
-)
+if jst_is_browser
+    libjetstream = static_library(
+        'jetstream',
+        src_lst,
+        include_directories: inc_lst,
+        dependencies: dep_lst + whole_dep_lst,
+        install: true
+    )
 
-libjetstream_dep = declare_dependency(
-    include_directories: inc_lst,
-    dependencies: dep_lst,
-    link_with: libjetstream
-)
+    libjetstream_dep = declare_dependency(
+        include_directories: inc_lst,
+        dependencies: dep_lst,
+        link_whole: libjetstream
+    )
+else
+    libjetstream = library(
+        'jetstream',
+        src_lst,
+        include_directories: inc_lst,
+        dependencies: dep_lst,
+        install: true
+    )
+
+    libjetstream_dep = declare_dependency(
+        include_directories: inc_lst,
+        dependencies: dep_lst,
+        link_with: libjetstream
+    )
+endif
 
 #
 # Python Bindings
@@ -129,25 +156,39 @@ if not jst_is_static
 endif
 
 #
-# Optionals
+# Executable
 #
 
-subdir('examples')
-
-if not jst_is_browser and \
-   not jst_is_android and \
-   not jst_is_ios
-    subdir('tests')
-endif
-
-if not jst_is_ios and \
-   not jst_is_android
-    executable(
+if jst_is_browser
+    cyberether_exe = executable(
         'cyberether',
         'main.cc',
+        include_directories: inc_lst,
         dependencies: libjetstream_dep,
         install: true,
     )
+elif not jst_is_ios and \
+     not jst_is_android
+    cyberether_exe = executable(
+        'cyberether',
+        'main.cc',
+        include_directories: inc_lst,
+        dependencies: dep_lst,
+        link_with: libjetstream,
+        install: true,
+    )
+endif
+
+#
+# Optional
+#
+
+if get_option('tests') and not jst_is_browser
+    subdir('tests')
+endif
+
+if get_option('examples') and not jst_is_browser
+    subdir('examples')
 endif
 
 #

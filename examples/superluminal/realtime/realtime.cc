@@ -5,11 +5,12 @@ using namespace Jetstream;
 int main() {
     std::cout << "Welcome to Superluminal!" << std::endl;
 
-    auto data = Tensor<Device::CPU, CF32>({1, 8192});
+    Tensor data(DeviceType::CPU, TypeToDataType<F32>(), {1, 8192});
 
     Superluminal::Plot("Sine", {{1}}, {
         .buffer = data,
         .type = Superluminal::Type::Line,
+        .options = {},
     });
 
     Superluminal::RealtimeLoop([&](const bool& running){
@@ -20,7 +21,7 @@ int main() {
 
             for (U64 i = 0; i < data.shape(0); i++) {
                 for (U64 j = 0; j < data.shape(1); j++) {
-                    data[{i, j}] = std::sin(j * 0.01 + phase) * 20.0 + 30.0;
+                    data.at<F32>(i, j) = std::sin(j * 0.01f + phase) * 0.25f;
                 }
             }
 

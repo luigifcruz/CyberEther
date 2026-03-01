@@ -7,14 +7,14 @@
 namespace Jetstream::Render {
 
 template<>
-class SurfaceImp<Device::Metal> : public Surface {
+class SurfaceImp<DeviceType::Metal> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 
-    Result create();
-    Result destroy();
+    Result create() override;
+    Result destroy() override;
 
-    const Extent2D<U64>& size(const Extent2D<U64>& size);
+    const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
     Result draw(MTL::CommandBuffer* commandBuffer);
@@ -22,16 +22,16 @@ class SurfaceImp<Device::Metal> : public Surface {
  private:
     Extent2D<U64> requestedSize;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
-    std::shared_ptr<TextureImp<Device::Metal>> framebuffer;
-    std::shared_ptr<TextureImp<Device::Metal>> framebufferResolve;
-    std::vector<std::shared_ptr<ProgramImp<Device::Metal>>> programs;
-    std::vector<std::shared_ptr<KernelImp<Device::Metal>>> kernels;
-    std::vector<std::shared_ptr<BufferImp<Device::Metal>>> buffers;
+    std::shared_ptr<TextureImp<DeviceType::Metal>> framebuffer;
+    std::shared_ptr<TextureImp<DeviceType::Metal>> framebufferResolve;
+    std::vector<std::shared_ptr<ProgramImp<DeviceType::Metal>>> programs;
+    std::vector<std::shared_ptr<KernelImp<DeviceType::Metal>>> kernels;
+    std::vector<std::shared_ptr<BufferImp<DeviceType::Metal>>> buffers;
 
     Result createFramebuffer();
     Result destroyFramebuffer();
 
-    friend class WindowImp<Device::Metal>;
+    friend class WindowImp<DeviceType::Metal>;
 };
 
 }  // namespace Jetstream::Render

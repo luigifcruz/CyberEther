@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class VertexImp<Device::WebGPU> : public Vertex {
+class VertexImp<DeviceType::WebGPU> : public Vertex {
  public:
     explicit VertexImp(const Config& config);
 
@@ -35,11 +35,11 @@ class VertexImp<Device::WebGPU> : public Vertex {
     U32 vertexCount;
     U32 indexCount;
 
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, U32>> vertices;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, U32>> instances;
-    std::shared_ptr<BufferImp<Device::WebGPU>> indices;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::WebGPU>>, U32>> vertices;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::WebGPU>>, U32>> instances;
+    std::shared_ptr<BufferImp<DeviceType::WebGPU>> indices;
 
-    friend class DrawImp<Device::WebGPU>;
+    friend class DrawImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

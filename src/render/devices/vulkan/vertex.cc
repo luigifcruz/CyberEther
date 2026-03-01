@@ -4,23 +4,23 @@
 
 namespace Jetstream::Render {
 
-using Implementation = VertexImp<Device::Vulkan>;
+using Implementation = VertexImp<DeviceType::Vulkan>;
 
 Implementation::VertexImp(const Config& config) : Vertex(config) {
     for (const auto& [vertex, stride] : config.vertices) {
         vertices.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(vertex), stride}
+            {std::dynamic_pointer_cast<BufferImp<DeviceType::Vulkan>>(vertex), stride}
         );
     }
 
     for (const auto& [instance, stride] : config.instances) {
         instances.push_back(
-            {std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(instance), stride}
+            {std::dynamic_pointer_cast<BufferImp<DeviceType::Vulkan>>(instance), stride}
         );
     }
 
     if (config.indices) {
-        indices = std::dynamic_pointer_cast<BufferImp<Device::Vulkan>>(config.indices);
+        indices = std::dynamic_pointer_cast<BufferImp<DeviceType::Vulkan>>(config.indices);
     }
 }
 

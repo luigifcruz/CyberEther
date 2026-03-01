@@ -7,7 +7,7 @@
 namespace Jetstream::Viewport {
 
 template<>
-class Adapter<Device::Vulkan> : public Generic {
+class Adapter<DeviceType::Vulkan> : public Generic {
  public:
     using Generic::Generic;
 
@@ -20,8 +20,9 @@ class Adapter<Device::Vulkan> : public Generic {
 
     virtual const VkFormat& getSwapchainImageFormat() const = 0;
     virtual VkImageView& getSwapchainImageView(const U64& index) = 0;
+    virtual VkImage getSwapchainImage(const U64& index) = 0;
     virtual U32 getSwapchainImageViewsCount() const = 0;
-    virtual const VkExtent2D& getSwapchainExtent() const = 0;
+    virtual Extent2D<U64> getSwapchainExtent() const = 0;
 };
 
 }  // namespace Jetstream::Viewport

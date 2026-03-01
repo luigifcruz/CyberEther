@@ -3,7 +3,7 @@
 
 namespace Jetstream::Render {
 
-using Implementation = BufferImp<Device::Vulkan>;
+using Implementation = BufferImp<DeviceType::Vulkan>;
 
 Implementation::BufferImp(const Config& config) : Buffer(config) {
 }
@@ -11,8 +11,8 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating buffer.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
-    auto& physicalDevice = Backend::State<Device::Vulkan>()->getPhysicalDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
 
     if (config.enableZeroCopy) {
         buffer = reinterpret_cast<VkBuffer>(config.buffer);
@@ -97,9 +97,11 @@ Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying buffer.");
 
     if (!config.enableZeroCopy) {
-        auto& device = Backend::State<Device::Vulkan>()->getDevice();
+        auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
         vkDestroyBuffer(device, buffer, nullptr);
         vkFreeMemory(device, memory, nullptr);
+        buffer = VK_NULL_HANDLE;
+        memory = VK_NULL_HANDLE;
     }
 
     return Result::SUCCESS;
@@ -114,7 +116,7 @@ Result Implementation::update(const U64& offset, const U64& size) {
         return Result::SUCCESS;
     }
 
-    auto& backend = Backend::State<Device::Vulkan>();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
 
     uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
     const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);

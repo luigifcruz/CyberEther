@@ -3,6 +3,7 @@ shader_pkg_lst += [{
     'shaders': [
         files(['text.vert.glsl', 'text.frag.glsl']),
         files(['shapes.vert.glsl', 'shapes.frag.glsl']),
+        files(['grid.vert.glsl', 'grid.frag.glsl']),
     ],
     'kernels': [
         files(['thicklinestrip.comp']),

@@ -6,4 +6,5 @@ src_lst += files([
   'imgui_demo.cpp',
   'imgui_stdlib.cpp',
   'imnodes.cpp',
+  'stb_image.cc',
 ])

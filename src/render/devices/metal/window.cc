@@ -7,21 +7,21 @@
 
 namespace Jetstream::Render {
 
-using Implementation = WindowImp<Device::Metal>;
+using Implementation = WindowImp<DeviceType::Metal>;
 
 Implementation::WindowImp(const Config& config,
-                          std::shared_ptr<Viewport::Adapter<Device::Metal>>& viewport)
+                          const std::shared_ptr<Viewport::Adapter<DeviceType::Metal>>& viewport)
          : Window(config), viewport(viewport) {
 }
 
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
-    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::Metal>>(surface);
     surfaces.push_back(_resource);
     return Result::SUCCESS;
 }
 
 Result Implementation::unbindSurface(const std::shared_ptr<Surface>& surface) {
-    auto _resource = std::dynamic_pointer_cast<SurfaceImp<Device::Metal>>(surface);
+    auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::Metal>>(surface);
     surfaces.erase(std::remove(surfaces.begin(), surfaces.end(), _resource), surfaces.end());
     return Result::SUCCESS;
 }
@@ -31,7 +31,7 @@ Result Implementation::underlyingCreate() {
 
     outerPool = NS::AutoreleasePool::alloc()->init();
 
-    dev = Backend::State<Device::Metal>()->getDevice();
+    dev = Backend::State<DeviceType::Metal>()->getDevice();
 
     commandQueue = dev->newCommandQueue();
     JST_ASSERT(commandQueue, "Failed to create command queue.");
@@ -160,11 +160,11 @@ Result Implementation::underlyingSynchronize() {
     return Result::SUCCESS;
 }
 
-void Implementation::drawDebugMessage() const {
-    auto& backend = Backend::State<Device::Metal>();
+std::string Implementation::info() const {
+    auto& backend = Backend::State<DeviceType::Metal>();
 
-    ImGui::TextFormatted("{} ({:.0f} GB)", backend->getDeviceName(),
-                                           (float)backend->getPhysicalMemory() / (1024*1024*1024));
+    return jst::fmt::format("{} ({:.0f} GB)", backend->getDeviceName(),
+                                              (float)backend->getPhysicalMemory() / (1024*1024*1024));
 }
 
 const Window::Stats& Implementation::stats() const {

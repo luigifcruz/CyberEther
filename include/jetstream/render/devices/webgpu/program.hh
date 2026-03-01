@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class ProgramImp<Device::WebGPU> : public Program {
+class ProgramImp<DeviceType::WebGPU> : public Program {
  public:
     explicit ProgramImp(const Config& config);
 
@@ -21,18 +21,20 @@ class ProgramImp<Device::WebGPU> : public Program {
     WGPUPipelineLayout pipelineLayout;
     WGPUBindGroupLayout bindGroupLayout;
     WGPUBindGroup bindGroup;
+    WGPUShaderModule vertShaderModule;
+    WGPUShaderModule fragShaderModule;
 
     std::vector<WGPUBindGroupLayoutEntry> bindings;
     std::vector<WGPUBindGroupEntry> bindGroupEntries;
 
-    std::vector<std::shared_ptr<DrawImp<Device::WebGPU>>> draws;
-    std::vector<std::shared_ptr<TextureImp<Device::WebGPU>>> textures;
-    std::vector<std::pair<std::shared_ptr<BufferImp<Device::WebGPU>>, Program::Target>> buffers;
+    std::vector<std::shared_ptr<DrawImp<DeviceType::WebGPU>>> draws;
+    std::vector<std::shared_ptr<TextureImp<DeviceType::WebGPU>>> textures;
+    std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::WebGPU>>, Program::Target>> buffers;
 
     static WGPUShaderStage TargetToShaderStage(const Program::Target& target);
     static WGPUBufferBindingType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);
 
-    friend class SurfaceImp<Device::WebGPU>;
+    friend class SurfaceImp<DeviceType::WebGPU>;
 };
 
 }  // namespace Jetstream::Render

@@ -1,12 +1,8 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 
+#include <atomic>
 #include <chrono>
-#include <queue>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <optional>
 
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"
@@ -14,7 +10,7 @@
 namespace Jetstream::Viewport {
 
 template<>
-class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
+class Headless<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
  public:
     explicit Headless(const Config& config);
     virtual ~Headless();
@@ -27,9 +23,9 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
         return "Headless (Vulkan)";
     }
 
-    constexpr Device device() const {
-        return Device::Vulkan;
-    }
+    constexpr DeviceType device() const {
+        return DeviceType::Vulkan;
+    };
 
     constexpr const U32& currentDrawableIndex() const {
         return _currentDrawableIndex;
@@ -53,36 +49,23 @@ class Headless<Device::Vulkan> : public Adapter<Device::Vulkan> {
 
     const VkFormat& getSwapchainImageFormat() const;
     VkImageView& getSwapchainImageView(const U64& index);
+    VkImage getSwapchainImage(const U64& index);
     U32 getSwapchainImageViewsCount() const;
-    const VkExtent2D& getSwapchainExtent() const;
+    Extent2D<U64> getSwapchainExtent() const;
 
  private:
-    const static U32 MAX_FRAMES_IN_FLIGHT = 2;
+    static constexpr U32 kImageCount = 2;
 
-    std::array<Tensor<Device::Vulkan, U8>, MAX_FRAMES_IN_FLIGHT> stagingBuffers;
+    U32 _currentDrawableIndex = 0;
+    VkFormat imageFormat;
+    VkExtent2D extent;
 
+    std::array<VkImage, kImageCount> images;
+    std::array<VkDeviceMemory, kImageCount> imageMemory;
+    std::array<VkImageView, kImageCount> imageViews;
+
+    std::atomic<bool> running{true};
     std::chrono::steady_clock::time_point lastTime;
-    std::array<VkImage, MAX_FRAMES_IN_FLIGHT> swapchainImages;
-    std::array<VkImageView, MAX_FRAMES_IN_FLIGHT> swapchainImageViews;
-    std::array<VkDeviceMemory, MAX_FRAMES_IN_FLIGHT> swapchainMemory;
-    std::array<void*, MAX_FRAMES_IN_FLIGHT> swapchainMemoryMapped;
-    std::array<std::atomic_flag, MAX_FRAMES_IN_FLIGHT> swapchainEvents;
-    std::array<VkFence, MAX_FRAMES_IN_FLIGHT> swapchainFences;
-    VkCommandPool swapchainCommandPool;
-    std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> swapchainCommandBuffers;
-    VkFormat swapchainImageFormat;
-    VkExtent2D swapchainExtent;
-    U32 _currentDrawableIndex;
-
-    Remote remote;
-    std::queue<U64> endpointFrameSubmissionQueue;
-    std::mutex endpointFrameSubmissionMutex;
-    std::condition_variable endpointFrameSubmissionCondition;
-    std::thread endpointFrameSubmissionThread;
-    bool endpointFrameSubmissionRunning;
-    std::optional<Result> endpointFrameSubmissionResult;
-
-    void endpointFrameSubmissionLoop();
 };
 
 }  // namespace Jetstream::Viewport

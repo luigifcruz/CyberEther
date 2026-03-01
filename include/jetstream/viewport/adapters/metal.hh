@@ -7,7 +7,7 @@
 namespace Jetstream::Viewport {
 
 template<>
-class Adapter<Device::Metal> : public Generic {
+class Adapter<DeviceType::Metal> : public Generic {
  public:
     using Generic::Generic;
     

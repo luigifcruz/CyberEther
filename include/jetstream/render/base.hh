@@ -5,7 +5,6 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 
-#include "jetstream/render/macros.hh"
 #include "jetstream/render/types.hh"
 
 #include "jetstream/render/base/buffer.hh"

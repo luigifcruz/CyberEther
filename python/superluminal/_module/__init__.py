@@ -1,9 +1,6 @@
 import time
 import threading
 import numpy as np
-import os
-import tempfile
-import urllib.request
 
 import superluminal._internal as lm
 
@@ -12,18 +9,19 @@ try:
 except:
     cp = None
 
-_url_cache = {}
 
-def plot(data: np.ndarray,
-         type: lm.constant,
-         label: str = "",
-         mosaic: list[list[int]] = [[1]],
-         domain: tuple[lm.constant, lm.constant] = (lm.time, lm.time),
-         operation: lm.constant = lm.amplitude,
-         batch_axis: int = -1,
-         channel_axis: int = -1,
-         channel_index: int = -1,
-         options: dict[str, any] = {}):
+def plot(
+    data: np.ndarray,
+    type: lm.constant,
+    label: str = "",
+    mosaic: list[list[int]] = [[1]],
+    domain: tuple[lm.constant, lm.constant] = (lm.time, lm.time),
+    operation: lm.constant = lm.amplitude,
+    batch_axis: int = -1,
+    channel_axis: int = -1,
+    channel_index: int = -1,
+    options: dict[str, any] = {},
+):
     #
     # Check classes.
     #
@@ -133,28 +131,26 @@ def plot(data: np.ndarray,
 
     lm.plot(label, mosaic, cfg)
 
-def configure(preferred_device: lm.constant = lm.cpu,
-              device_id: int = 0,
-              window_title: str = "Superluminal"):
+
+def configure(
+    preferred_device: lm.constant = lm.cpu,
+    device_id: int = 0,
+    window_title: str = "Superluminal",
+):
     cfg = lm.instance_config()
     cfg.device_id = device_id
     cfg.preferred_device = preferred_device.value
     cfg.window_title = window_title
     lm.initialize(cfg)
 
+
 def show():
-    lm.start()
-    lm.update()
+    lm.show()
 
-    while lm.presenting():
-        lm.poll_events(False)
-        time.sleep(0.01)
-
-    lm.stop()
-    lm.terminate()
 
 def running():
     return lm.presenting()
+
 
 def realtime(callback):
     lm.start()
@@ -171,12 +167,12 @@ def realtime(callback):
     lm.stop()
     lm.terminate()
 
-def layout(matrix_height, matrix_width,
-           panel_height, panel_width,
-           offset_x, offset_y):
-    return lm.mosaic_layout(matrix_height, matrix_width,
-                            panel_height, panel_width,
-                            offset_x, offset_y)
+
+def layout(matrix_height, matrix_width, panel_height, panel_width, offset_x, offset_y):
+    return lm.mosaic_layout(
+        matrix_height, matrix_width, panel_height, panel_width, offset_x, offset_y
+    )
+
 
 def box(title: str, mosaic: list[list[int]], callback):
     """
@@ -198,6 +194,7 @@ def box(title: str, mosaic: list[list[int]], callback):
 
     lm.box(title, mosaic, callback)
 
+
 def text(format_string: str, *args):
     """
     Display formatted text.
@@ -211,6 +208,7 @@ def text(format_string: str, *args):
     else:
         content = format_string
     lm.text(content)
+
 
 def slider(label: str, min_val: float, max_val: float, value: list):
     """
@@ -227,6 +225,7 @@ def slider(label: str, min_val: float, max_val: float, value: list):
 
     lm.slider(label, min_val, max_val, value)
 
+
 def markdown(content: str):
     """
     Display markdown formatted text.
@@ -238,32 +237,3 @@ def markdown(content: str):
         raise TypeError("Content must be a string.")
 
     lm.markdown(content)
-
-def image(filepath: str, width: float = -1.0, height: float = -1.0, fit_to_window: bool = False):
-    """
-    Display an image from a file or URL.
-
-    Args:
-        filepath: Path to the local image file or a URL.
-        width: Display width in pixels. If -1, auto-calculate from height or use original.
-        height: Display height in pixels. If -1, auto-calculate from width or use original.
-        fit_to_window: If True, scale image to fit available window space while preserving aspect ratio.
-    """
-
-    # Handle URL
-    if filepath.startswith(('http://', 'https://')):
-        if filepath in _url_cache and os.path.exists(_url_cache[filepath]):
-            filepath = _url_cache[filepath]
-        else:
-            request = urllib.request.Request(filepath, headers={'User-Agent': 'Superluminal/1.0'})
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filepath)[1]) as tmp:
-                with urllib.request.urlopen(request) as response:
-                    tmp.write(response.read())
-                _url_cache[filepath] = tmp.name
-                filepath = tmp.name
-
-    # Handle relative path
-    elif not os.path.isabs(filepath):
-        filepath = os.path.join(os.environ.get("PWD", os.getcwd()), filepath)
-
-    lm.image(filepath, float(width), float(height), fit_to_window)

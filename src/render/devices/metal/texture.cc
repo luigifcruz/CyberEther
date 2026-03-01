@@ -2,7 +2,7 @@
 
 namespace Jetstream::Render {
 
-using Implementation = TextureImp<Device::Metal>;
+using Implementation = TextureImp<DeviceType::Metal>;
 
 Implementation::TextureImp(const Config& config) : Texture(config) {
 }
@@ -17,7 +17,7 @@ Result Implementation::create() {
     JST_ASSERT(textureDesc, "Failed to create texture descriptor.");
 
     if (config.multisampled) {
-        textureDesc->setSampleCount(Backend::State<Device::Metal>()->getMultisampling());
+        textureDesc->setSampleCount(Backend::State<DeviceType::Metal>()->getMultisampling());
         textureDesc->setTextureType(MTL::TextureType2DMultisample);
     }
 
@@ -26,7 +26,7 @@ Result Implementation::create() {
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView |
                           MTL::TextureUsageRenderTarget |
                           MTL::TextureUsageShaderRead);
-    auto device = Backend::State<Device::Metal>()->getDevice();
+    auto device = Backend::State<DeviceType::Metal>()->getDevice();
     texture = device->newTexture(textureDesc);
     JST_ASSERT(texture, "Failed to create texture.");
 

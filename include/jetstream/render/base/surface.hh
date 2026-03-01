@@ -40,6 +40,10 @@ class Surface : public WindowAttachment {
         return config.multisampled;
     }
 
+    void clearColor(const ColorRGBA<F32>& color) {
+        config.clearColor = color;
+    }
+
     const Extent2D<U64>& size() const {
         if (config.framebuffer) {
             return config.framebuffer->size();
@@ -48,7 +52,7 @@ class Surface : public WindowAttachment {
     }
     virtual const Extent2D<U64>& size(const Extent2D<U64>& size) = 0;
 
-    template<Device D>
+    template<DeviceType D>
     static std::shared_ptr<Surface> Factory(const Config& config) {
         return std::make_shared<SurfaceImp<D>>(config);
     }

@@ -7,27 +7,27 @@
 
 namespace Jetstream::Render {
 
-using Implementation = SurfaceImp<Device::Vulkan>;
+using Implementation = SurfaceImp<DeviceType::Vulkan>;
 
 Implementation::SurfaceImp(const Config& config) : Surface(config) {
     framebufferResolve = std::dynamic_pointer_cast<
-        TextureImp<Device::Vulkan>>(config.framebuffer);
+        TextureImp<DeviceType::Vulkan>>(config.framebuffer);
 
     if (config.multisampled) {
-        auto framebuffer_config = framebufferResolve->getConfig();
-        framebuffer_config.multisampled = true;
-        framebuffer = std::make_shared<TextureImp<Device::Vulkan>>(framebuffer_config);
+        auto framebufferConfig = framebufferResolve->getConfig();
+        framebufferConfig.multisampled = true;
+        framebuffer = std::make_shared<TextureImp<DeviceType::Vulkan>>(framebufferConfig);
     }
 
     for (auto& program : config.programs) {
         programs.push_back(
-            std::dynamic_pointer_cast<ProgramImp<Device::Vulkan>>(program)
+            std::dynamic_pointer_cast<ProgramImp<DeviceType::Vulkan>>(program)
         );
     }
 
     for (auto& kernel : config.kernels) {
         kernels.push_back(
-            std::dynamic_pointer_cast<KernelImp<Device::Vulkan>>(kernel)
+            std::dynamic_pointer_cast<KernelImp<DeviceType::Vulkan>>(kernel)
         );
     }
 }
@@ -35,13 +35,13 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating surface.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     // Create Render Pass.
 
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = framebufferResolve->getPixelFormat();
-    colorAttachment.samples = Backend::State<Device::Vulkan>()->getMultisampling();
+    colorAttachment.samples = Backend::State<DeviceType::Vulkan>()->getMultisampling();
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -105,8 +105,9 @@ Result Implementation::create() {
         JST_CHECK(framebuffer->create());
     }
 
+    const auto& activeFramebuffer = (config.multisampled) ? framebuffer : framebufferResolve;
     for (auto& program : programs) {
-        JST_CHECK(program->create(renderPass, (config.multisampled) ? framebuffer : framebufferResolve));
+        JST_CHECK(program->create(renderPass, activeFramebuffer->size(), config.multisampled));
     }
 
     for (auto& kernel : kernels) {
@@ -140,7 +141,7 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying surface.");
 
-    auto& device = Backend::State<Device::Vulkan>()->getDevice();
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
     vkDestroyFramebuffer(device, framebufferObject, nullptr);
 
@@ -164,7 +165,7 @@ Result Implementation::destroy() {
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     if (framebufferResolve->size(requestedSize)) {
-        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<Device::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
             JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
         });
 
@@ -195,6 +196,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
                                       VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
         vkCmdPipelineBarrier(commandBuffer,
                              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
                              VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
                              VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
@@ -229,7 +231,12 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
 
     // Encode programs.
 
+    VkRect2D fullScissor{};
+    fullScissor.offset = {0, 0};
+    fullScissor.extent = {static_cast<U32>(framebufferResolve->size().x),
+                          static_cast<U32>(framebufferResolve->size().y)};
     for (auto& program : programs) {
+        vkCmdSetScissor(commandBuffer, 0, 1, &fullScissor);
         JST_CHECK(program->encode(commandBuffer, renderPass));
     }
 
