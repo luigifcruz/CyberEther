@@ -44,6 +44,7 @@ CyberEther uses the following open-source libraries.
 | [GLM](https://github.com/g-truc/glm) | Vector and matrix math. | MIT |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST API. | MIT |
 | [nlohmann/json](https://github.com/nlohmann/json) | JSON file parser. | MIT |
+| [Natural Earth](https://www.naturalearthdata.com/) | Map datasets used for geodata layers. | Public Domain |
 
 ### Miniaudio
 Single-file, cross-platform audio playback and capture library. Used for audio in the CyberEther GUI. Licensed under MIT. [Website](https://miniaud.io/) [GitHub](https://github.com/mackron/miniaudio)
@@ -3164,5 +3165,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+</details>
+
+### Natural Earth
+Natural Earth is a public domain map dataset. CyberEther uses Natural Earth vector data for built-in map geodata layers. [Website](https://www.naturalearthdata.com/)
+
+<details>
+  <summary>View Terms</summary>
+
+```
+Natural Earth data is in the public domain.
+
+No permission is needed to use Natural Earth. Giving credit is appreciated.
 ```
 </details>

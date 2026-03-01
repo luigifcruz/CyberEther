@@ -4060,7 +4060,7 @@ Result DefaultCompositor::renderGlobalModal() {
             ImGui::Spacing();
 
             if (ImGui::Button("View Third-Party Licenses", ImVec2(-1, 0))) {
-                Platform::OpenUrl("https://github.com/luigifcruz/CyberEther/blob/main/ACKNOWLEDGMENTS.md");
+                Platform::OpenUrl("https://cyberether.org/docs/acknowledgments");
             }
 
             ImGui::Spacing();
@@ -4102,13 +4102,14 @@ Result DefaultCompositor::renderGlobalModal() {
                 ImGui::BulletText("naga - Apache License 2.0");
                 ImGui::BulletText("gstreamer - LGPL-2.1 License");
                 ImGui::BulletText("libusb - LGPL-2.1 License");
-                ImGui::BulletText("nanobench - MIT License");
+                ImGui::BulletText("Nanobench - MIT License");
                 ImGui::BulletText("Catch2 - Boost Software License");
                 ImGui::BulletText("JetBrains Mono - SIL Open Font License 1.1");
                 ImGui::BulletText("imgui_markdown - Zlib License");
                 ImGui::BulletText("GLM - Happy Bunny License");
                 ImGui::BulletText("cpp-httplib - MIT License");
                 ImGui::BulletText("nlohmann/json - MIT License");
+                ImGui::BulletText("Natural Earth - Public Domain");
                 // [NEW DEPENDENCY HOOK]
             }
             ImGui::EndChild();
@@ -4118,7 +4119,7 @@ Result DefaultCompositor::renderGlobalModal() {
             ImGui::Spacing();
 
             if (ImGui::Button("View Third-Party Licenses", ImVec2(-1, 0))) {
-                Platform::OpenUrl("https://github.com/luigifcruz/CyberEther/blob/main/ACKNOWLEDGMENTS.md");
+                Platform::OpenUrl("https://cyberether.org/docs/acknowledgments");
             }
 
             ImGui::Spacing();
