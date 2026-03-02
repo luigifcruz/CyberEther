@@ -1,0 +1,12 @@
+diff --git a/include/mode-s.h b/include/mode-s.h
+index 1c4d326..f8dd2bf 100644
+--- a/include/mode-s.h
++++ b/include/mode-s.h
+@@ -7,6 +7,7 @@
+ #include <unistd.h>
+ #include <math.h>
+ #include <sys/time.h>
++#include <time.h>
+ 
+ #define MODE_S_ICAO_CACHE_LEN 1024 // Power of two required
+ #define MODE_S_LONG_MSG_BYTES (112/8)
