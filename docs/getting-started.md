@@ -85,7 +85,7 @@ Two signal generators each produce a cosine tone at different frequencies. We co
 
 Press `Ctrl+N` or click **New Flowgraph** from the welcome screen.
 
-### Step 2 — Add the First Signal Generator (100 kHz)
+### Step 2 — Add the First Signal Generator 
 
 **Double-click** on the empty canvas to open the block picker. Type `signal generator` and press **Enter** to place a **Signal Generator** block. Set its config:
 
@@ -97,14 +97,14 @@ Press `Ctrl+N` or click **New Flowgraph** from the welcome screen.
 | Buffer Size | `8192` |
 | Output Data Type | `CF32` |
 
-### Step 3 — Add the Second Signal Generator (200 kHz)
+### Step 3 — Add the Second Signal Generator
 
 **Double-click** again and add a second **Signal Generator** with:
 
 | Parameter | Value |
 |---|---|
 | Signal Type | `cosine` |
-| Frequency | `.25` (200 kHz) |
+| Frequency | `.25` (0.25*Fs) |
 | Sample Rate | `1` |
 | Buffer Size | `8192` |
 | Output Data Type | `CF32` |
@@ -119,7 +119,7 @@ Press `Ctrl+N` or click **New Flowgraph** from the welcome screen.
 
 **Double-click** and add a **Filter** block. Connect the **Add** block's **Output** → **Filter**'s **Signal** input.
 
-The `filter` block is an all-in-one FIR bandpass filter — it generates and applies its own coefficients. Configure it to isolate the 100 kHz tone and reject the 200 kHz tone:
+The `filter` block is an all-in-one FIR bandpass filter — it generates and applies its own coefficients. Configure it to isolate the 0.1*Fs tone and reject the 0.25*Fs tone:
 
 | Parameter | Value | Notes |
 |---|---|---|
