@@ -10,6 +10,3 @@
 [submodule "subprojects/json"]
 	path = subprojects/json
 	url = https://github.com/nlohmann/json.git
-[submodule "subprojects/libmodes"]
-	path = subprojects/libmodes
-	url = https://github.com/watson/libmodes.git
