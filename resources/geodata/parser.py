@@ -35,7 +35,7 @@ def triangulate_polygon(rings_coords):
 
 
 def process_geojson_triangulated(filepath):
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     all_vertices = []
