@@ -1,5 +1,11 @@
-# Acknowledgments
-This is a list of people and organizations that have contributed to CyberEther.
+---
+title: Acknowledgments
+description: Contributors and third-party software used by CyberEther.
+order: 11
+category: Resources
+---
+
+CyberEther would not be possible without the contributions and support of many individuals and open source projects.
 
 ## Contributors
 
@@ -7,16 +13,41 @@ This is a list of people and organizations that have contributed to CyberEther.
 - **Paulo Dutra** ([@DutraCGI](https://twitter.com/DutraCGI)) - Feedback and Windows testing.
 - **Richard Elkins** ([@texadactyl](https://github.com/texadactyl)) - Curated issues.
 
-[//]: <> ([NEW CONTRIBUTOR HOOK])
+<!-- [NEW CONTRIBUTOR HOOK] -->
 
 ## Third-Party Software
-CyberEther utilizes the following open-source third-party software, and we extend our gratitude to the creators of these libraries for their valuable contributions to the open-source community.
+
+CyberEther uses the following open-source libraries.
+
+| Library | Purpose | License |
+|---------|---------|---------|
+| [Miniaudio](https://miniaud.io/) | Audio playback and capture. | MIT |
+| [Dear ImGui](https://github.com/ocornut/imgui) | Immediate mode graphical interface. | MIT |
+| [ImNodes](https://github.com/Nelarius/imnodes) | Node editor for flowgraphs. | MIT |
+| [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | Fast Fourier Transform on CPU. | BSD-3-Clause |
+| [RapidYAML](https://github.com/biojppm/rapidyaml) | YAML file parser. | MIT |
+| [vkFFT](https://github.com/DTolm/VkFFT) | Fast Fourier Transform on GPU. | MIT |
+| [stb](https://github.com/nothings/stb) | An image file loader. | MIT |
+| [fmtlib](https://github.com/fmtlib/fmt) | Text formatting and logging. | MIT |
+| [SoapySDR](https://github.com/pothosware/SoapySDR) | Software-defined radio support. | Boost |
+| [GLFW](https://www.glfw.org/) | Window and input handling. | zlib/libpng |
+| [imgui-notify](https://github.com/patrickcjk/imgui-notify) | Toast notification system. | MIT |
+| [spirv-cross](https://github.com/KhronosGroup/SPIRV-Cross) | Shader conversion to Metal. | Apache-2.0 |
+| [Nanobench](https://nanobench.ankerl.com/) | Performance benchmarking tools. | MIT |
+| [glslang](https://github.com/KhronosGroup/glslang) | Shader compilation to SPIR-V. | BSD-3-Clause |
+| [naga](https://github.com/gfx-rs/naga) | Shader conversion to WGSL. | Apache-2.0 |
+| [gstreamer](https://gstreamer.freedesktop.org/) | Multimedia processing framework. | LGPL-2.1 |
+| [libusb](https://libusb.info/) | Communication with USB devices. | LGPL-2.1 |
+| [Catch2](https://github.com/catchorg/Catch2) | Unit testing framework. | Boost |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the GUI. | OFL-1.1 |
+| [imgui_markdown](https://github.com/juliettef/imgui_markdown) | Markdown rendering for help. | Zlib |
+| [GLM](https://github.com/g-truc/glm) | Vector and matrix math. | MIT |
+| [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST API. | MIT |
+| [nlohmann/json](https://github.com/nlohmann/json) | JSON file parser. | MIT |
+| [Natural Earth](https://www.naturalearthdata.com/) | Map datasets used for geodata layers. | Public Domain |
 
 ### Miniaudio
-Super cool, single-file, cross-platform audio playback and capture library. It's used for audio playback and capture in the CyberEther GUI. It's licensed under the MIT license.
-
-- [Miniaudio](https://miniaud.io/)
-- [Miniaudio GitHub](https://github.com/mackron/miniaudio)
+Single-file, cross-platform audio playback and capture library. Used for audio in the CyberEther GUI. Licensed under MIT. [Website](https://miniaud.io/) [GitHub](https://github.com/mackron/miniaudio)
 
 <details>
   <summary>View License</summary>
@@ -42,9 +73,7 @@ SOFTWARE.
 </details>
 
 ### Dear ImGui
-Absolutely fenomenal immediate mode GUI library made by Omar Cornut. This is what makes the CyberEther GUI possible. It's licensed under the MIT license.
-
-- [Dear ImGui](https://github.com/ocornut/imgui)
+Immediate mode GUI library by Omar Cornut. Used for the CyberEther GUI. Licensed under MIT. [GitHub](https://github.com/ocornut/imgui)
 
 <details>
   <summary>View License</summary>
@@ -75,9 +104,7 @@ SOFTWARE.
 </details>
 
 ### ImNodes
-Simple and hackable node editor. It's used for the flowgraph editor in the CyberEther GUI. It's licensed under the MIT license.
-
-- [ImNodes](https://github.com/Nelarius/imnodes)
+Node editor for Dear ImGui. Used for the flowgraph editor. Licensed under MIT. [GitHub](https://github.com/Nelarius/imnodes)
 
 <details>
   <summary>View License</summary>
@@ -96,9 +123,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </details>
 
 ### PocketFFT
-Powerful library for fast Fourier transforms. It's used by the FFT block in CyberEther. It's licensed under the BSD-3-Clause license.
-
-- [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft)
+Fast Fourier transform library. Used by the FFT block. Licensed under BSD-3-Clause. [GitLab](https://gitlab.mpcdf.mpg.de/mtr/pocketfft)
 
 <details>
   <summary>View License</summary>
@@ -141,9 +166,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### RapidYAML
-Fast and easy to use YAML parser. It's used for parsing YAML flowgraphs in CyberEther. It's licensed under the MIT license.
-
-- [RapidYAML](https://github.com/biojppm/rapidyaml)
+Fast YAML parser. Used for parsing flowgraph files. Licensed under MIT. [GitHub](https://github.com/biojppm/rapidyaml)
 
 <details>
   <summary>View License</summary>
@@ -172,9 +195,7 @@ DEALINGS IN THE SOFTWARE.
 </details>
 
 ### vkFFT
-Awesome FFT library for GPU. It's used by the FFT block in Metal and Vulkan modes in CyberEther. It's licensed under the MIT license.
-
-- [vkFFT](https://github.com/DTolm/VkFFT)
+A GPU FFT library. Used by the FFT block in Metal and Vulkan modes. Licensed under MIT. [GitHub](https://github.com/DTolm/VkFFT)
 
 <details>
   <summary>View License</summary>
@@ -205,9 +226,7 @@ SOFTWARE.
 </details>
 
 ### stb
-Single-file public domain libraries for C/C++. It's used for image loading in CyberEther. It's licensed under the MIT license.
-
-- [stb](https://github.com/nothings/stb)
+Single-file public domain libraries for C/C++. Used for image loading. Licensed under MIT. [GitHub](https://github.com/nothings/stb)
 
 <details>
   <summary>View License</summary>
@@ -233,9 +252,7 @@ SOFTWARE.
 </details>
 
 ### fmtlib
-Modern formatting library. It's used for logging in CyberEther.
-
-- [fmtlib](https://github.com/fmtlib/fmt)
+Modern formatting library. Used for logging. Licensed under MIT. [GitHub](https://github.com/fmtlib/fmt)
 
 <details>
   <summary>View License</summary>
@@ -272,9 +289,7 @@ without including the above copyright and permission notices.
 </details>
 
 ### SoapySDR
-Vendor and platform neutral SDR support library. It's used for SDR support in CyberEther. It's licensed under the Boost Software License.
-
-- [SoapySDR](https://github.com/pothosware/SoapySDR)
+Vendor and platform neutral SDR support library. Used for SDR support. Licensed under Boost Software License. [GitHub](https://github.com/pothosware/SoapySDR)
 
 <details>
   <summary>View License</summary>
@@ -307,9 +322,7 @@ DEALINGS IN THE SOFTWARE.
 </details>
 
 ### GLFW
-Multi-platform library for window and input. It's used for windowing in CyberEther. It's licensed under the zlib/libpng license.
-
-- [GLFW](https://www.glfw.org/)
+Multi-platform library for window and input. Used for windowing. Licensed under zlib/libpng. [Website](https://www.glfw.org/)
 
 <details>
   <summary>View License</summary>
@@ -332,9 +345,7 @@ This notice may not be removed or altered from any source distribution.
 </details>
 
 ### imgui-notify
-Notification system for Dear ImGui. It's used for notifications in CyberEther. It's licensed under the MIT license.
-
-- [imgui-notify](https://github.com/patrickcjk/imgui-notify)
+Notification system for Dear ImGui. Used for notifications. Licensed under MIT. [GitHub](https://github.com/patrickcjk/imgui-notify)
 
 
 <details>
@@ -366,9 +377,7 @@ SOFTWARE.
 </details>
 
 ### spirv-cross
-It's used to convert SPIR-V to MSL in CyberEther. It's licensed under the MIT license.
-
-- [spirv-cross](https://github.com/KhronosGroup/SPIRV-Cross)
+A SPIR-V to MSL converter. Used for Metal shader compilation. Licensed under Apache-2.0. [GitHub](https://github.com/KhronosGroup/SPIRV-Cross)
 
 <details>
   <summary>View License</summary>
@@ -579,9 +588,7 @@ Apache License
 </details>
 
 ### Nanobench
-Tiny C++ benchmarking library. It's used for benchmarking in CyberEther. It's licensed under the MIT license.
-
-- [Nanobench](https://nanobench.ankerl.com/)
+Tiny C++ benchmarking library. Used for benchmarking. Licensed under MIT. [Website](https://nanobench.ankerl.com/)
 
 <details>
   <summary>View License</summary>
@@ -612,9 +619,7 @@ SOFTWARE.
 </details>
 
 ### glslang
-It's used to convert GLSL to SPIR-V in CyberEther. It's licensed under the BSD-3-Clause license.
-
-- [glsl-validator](https://github.com/KhronosGroup/glslang)
+A GLSL to SPIR-V compiler. Used for Vulkan shader compilation. Licensed under BSD-3-Clause. [GitHub](https://github.com/KhronosGroup/glslang)
 
 <details>
   <summary>View License</summary>
@@ -1640,9 +1645,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </details>
 
 ### naga
-It's used to convert SPIR-V to WGSL in CyberEther. It's licensed under the Apache License 2.0.
-
-- [naga](https://github.com/gfx-rs/naga?tab=License-1-ov-file#readme)
+A SPIR-V to WGSL converter. Used for WebGPU shader compilation. Licensed under Apache-2.0. [GitHub](https://github.com/gfx-rs/naga)
 
 <details>
   <summary>View License</summary>
@@ -1853,9 +1856,7 @@ It's used to convert SPIR-V to WGSL in CyberEther. It's licensed under the Apach
 </details>
 
 ### gstreamer
-Open source multimedia framework. It's used for audio playback and capture in CyberEther. It's licensed under the LGPL-2.1 license.
-
-- [gstreamer](https://gstreamer.freedesktop.org/)
+Open source multimedia framework. Used for audio playback and capture. Licensed under LGPL-2.1. [Website](https://gstreamer.freedesktop.org/)
 
 <details>
   <summary>View License</summary>
@@ -2367,9 +2368,7 @@ That's all there is to it!
 </details>
 
 ### libusb
-Cross-platform library for USB devices. It's used for USB communication in CyberEther. It's licensed under the LGPL-2.1 license.
-
-- [libusb](https://libusb.info/)
+Cross-platform library for USB devices. Used for USB communication. Licensed under LGPL-2.1. [Website](https://libusb.info/)
 
 <details>
   <summary>View License</summary>
@@ -2881,9 +2880,7 @@ That's all there is to it!
 </details>
 
 ### Catch2
-Modern test library. It's used for testing in CyberEther.
-
-- [Catch2](https://github.com/catchorg/Catch2)
+Modern C++ test framework. Used for unit testing. Licensed under Boost Software License. [GitHub](https://github.com/catchorg/Catch2)
 
 <details>
   <summary>View License</summary>
@@ -2916,9 +2913,7 @@ DEALINGS IN THE SOFTWARE.
 </details>
 
 ### JetBrains Mono Font
-Font used in CyberEther. It's licensed under the SIL Open Font License 1.1.
-
-- [JetBrainsMono](https://github.com/JetBrains/JetBrainsMono)
+Monospace font used in the GUI. Licensed under SIL Open Font License 1.1. [GitHub](https://github.com/JetBrains/JetBrainsMono)
 
 <details>
   <summary>View License</summary>
@@ -3021,9 +3016,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 </details>
 
 ### imgui_markdown
-Markdown for Dear ImGui. It's used for the help window in CyberEther. It's licensed under the Zlib license.
-
-- [imgui_markdown](https://github.com/juliettef/imgui_markdown)
+Markdown renderer for Dear ImGui. Used for the help window. Licensed under Zlib. [GitHub](https://github.com/juliettef/imgui_markdown)
 
 <details>
   <summary>View License</summary>
@@ -3050,9 +3043,7 @@ freely, subject to the following restrictions:
 </details>
 
 ### GLM
-OpenGL Mathematics (GLM) is a header only C++ mathematics library for graphics software based on the OpenGL Shading Language (GLSL) specifications. It's used for transformations in CyberEther. It's licensed under the Happy Bunny License.
-
-- [GLM](https://github.com/g-truc/glm)
+OpenGL Mathematics library. Used for matrix and vector operations. Licensed under MIT/Happy Bunny License. [GitHub](https://github.com/g-truc/glm)
 
 <details>
   <summary>View License</summary>
@@ -3116,9 +3107,7 @@ THE SOFTWARE.
 </details>
 
 ### cpp-httplib
-HTTP REST API
-
-- [cpp-httplib](https://github.com/yhirose/cpp-httplib)
+Header-only HTTP/HTTPS library. Used for REST API. Licensed under MIT. [GitHub](https://github.com/yhirose/cpp-httplib)
 
 <details>
   <summary>View License</summary>
@@ -3149,9 +3138,7 @@ SOFTWARE.
 </details>
 
 ### nlohmann/json
-JSON parse
-
-- [nlohmann/json](https://github.com/nlohmann/json)
+A JSON library for C++. Used for JSON parsing. Licensed under MIT. [GitHub](https://github.com/nlohmann/json)
 
 <details>
   <summary>View License</summary>
@@ -3181,37 +3168,15 @@ SOFTWARE.
 ```
 </details>
 
-### FTXUI
-Terminal UI for the Remote feature.
-
-- [FTXUI](https://github.com/ArthurSonzogni/FTXUI)
+### Natural Earth
+Natural Earth is a public domain map dataset. CyberEther uses Natural Earth vector data for built-in map geodata layers. [Website](https://www.naturalearthdata.com/)
 
 <details>
-  <summary>View License</summary>
+  <summary>View Terms</summary>
 
 ```
-The MIT License
+Natural Earth data is in the public domain.
 
-Copyright (c) 2019 Arthur Sonzogni.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
+No permission is needed to use Natural Earth. Giving credit is appreciated.
 ```
 </details>
-
-[//]: <> ([NEW DEPENDENCY HOOK])

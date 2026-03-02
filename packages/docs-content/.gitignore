@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.tsbuildinfo
+src/generated/docs-data.ts
+.DS_Store
+*.log

@@ -1,0 +1,29 @@
+{
+  "name": "@cyberether/docs-content",
+  "version": "0.0.0",
+  "description": "Docs content and metadata for CyberEther docs consumers",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "generate:docs": "bun run scripts/generate-docs-data.ts",
+    "build": "bun run generate:docs && tsc -p tsconfig.json",
+    "check": "bun run generate:docs && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}
