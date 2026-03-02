@@ -4095,6 +4095,7 @@ Result DefaultCompositor::renderGlobalModal() {
                 ImGui::BulletText("stb - MIT License");
                 ImGui::BulletText("fmtlib - MIT License");
                 ImGui::BulletText("SoapySDR - Boost Software License");
+                ImGui::BulletText("libmodes - BSD-2-Clause License");
                 ImGui::BulletText("GLFW - zlib/libpng License");
                 ImGui::BulletText("imgui-notify - MIT License");
                 ImGui::BulletText("spirv-cross - MIT License");
