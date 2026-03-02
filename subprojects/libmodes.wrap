@@ -1,0 +1,9 @@
+[wrap-git]
+directory = libmodes
+url = https://github.com/watson/libmodes.git
+revision = e82c6faedd21ced7fd1c2808c0d9e9ffbb8c0ed6
+patch_directory = libmodes
+diff_files = libmodes/mode-s-timeh.diff
+
+[provide]
+libmodes = libmodes_dep
