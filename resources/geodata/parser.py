@@ -11,6 +11,14 @@ import mapbox_earcut
 import numpy as np
 
 
+def format_hex_array(data, bytes_per_line=16):
+    lines = []
+    for i in range(0, len(data), bytes_per_line):
+        chunk = data[i : i + bytes_per_line]
+        lines.append(", ".join("0x{:02x}".format(byte) for byte in chunk))
+    return ",\n    ".join(lines)
+
+
 def triangulate_polygon(rings_coords):
     flat_coords = []
     ring_end_indices = []
@@ -35,7 +43,7 @@ def triangulate_polygon(rings_coords):
 
 
 def process_geojson_triangulated(filepath):
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     all_vertices = []
@@ -94,9 +102,9 @@ def emit_triangulated(fh, filename, filepath):
     size = len(compressed)
     raw_size = len(binary)
 
-    hex_data = ", ".join("0x{:02x}".format(byte) for byte in compressed)
+    hex_data = format_hex_array(compressed)
 
-    fh.write(f"static const uint8_t {filename}_tri_gz[] = {{{hex_data}}};\n")
+    fh.write(f"static const uint8_t {filename}_tri_gz[] = {{\n    {hex_data}\n}};\n")
     fh.write(f"static const uint32_t {filename}_tri_gz_len = {size};\n")
     fh.write(f"static const uint32_t {filename}_tri_raw_len = {raw_size};\n\n")
 
@@ -109,9 +117,9 @@ def emit_compressed(fh, filename, filepath):
     size = len(compressed)
     raw_size = len(raw)
 
-    hex_data = ", ".join("0x{:02x}".format(byte) for byte in compressed)
+    hex_data = format_hex_array(compressed)
 
-    fh.write(f"static const uint8_t {filename}_gz[] = {{{hex_data}}};\n")
+    fh.write(f"static const uint8_t {filename}_gz[] = {{\n    {hex_data}\n}};\n")
     fh.write(f"static const uint32_t {filename}_gz_len = {size};\n")
     fh.write(f"static const uint32_t {filename}_raw_len = {raw_size};\n\n")
 
