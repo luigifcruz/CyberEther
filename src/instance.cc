@@ -105,7 +105,7 @@ Result Instance::create(const Config& config) {
 
         for (const auto& device : priority) {
             if (config.headless) {
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
                 if (device == DeviceType::Vulkan) {
                     result = buildHeadless.template operator()<DeviceType::Vulkan>();
                     break;
@@ -113,19 +113,19 @@ Result Instance::create(const Config& config) {
 #endif
             } else {
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
-#ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
                 if (device == DeviceType::Metal) {
                     result = buildGlfw.template operator()<DeviceType::Metal>();
                     break;
                 }
 #endif
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
                 if (device == DeviceType::Vulkan) {
                     result = buildGlfw.template operator()<DeviceType::Vulkan>();
                     break;
                 }
 #endif
-#ifdef JETSTREAM_BACKEND_WEBGPU_AVAILABLE
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
                 if (device == DeviceType::WebGPU) {
                     result = buildGlfw.template operator()<DeviceType::WebGPU>();
                     break;
