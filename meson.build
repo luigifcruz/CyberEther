@@ -103,7 +103,7 @@ subdir('src')
 # Library
 #
 
-if jst_is_browser
+if jst_is_browser or jst_is_static
     libjetstream = static_library(
         'jetstream',
         src_lst,
@@ -159,7 +159,7 @@ endif
 # Executable
 #
 
-if jst_is_browser
+if jst_is_browser or jst_is_static
     cyberether_exe = executable(
         'cyberether',
         'main.cc',
