@@ -27,6 +27,7 @@ jst_is_ios     = target_machine.system().startswith('ios')
 jst_is_android = target_machine.system().startswith('android')
 jst_is_browser = target_machine.system().startswith('emscripten')
 jst_is_windows = target_machine.system().startswith('windows')
+jst_is_wheel   = get_option('wheel')
 
 if not jst_is_linux   and \
    not jst_is_macos   and \
@@ -159,24 +160,27 @@ endif
 # Executable
 #
 
-if jst_is_browser or jst_is_static
-    cyberether_exe = executable(
-        'cyberether',
-        'main.cc',
-        include_directories: inc_lst,
-        dependencies: libjetstream_dep,
-        install: true,
-    )
-elif not jst_is_ios and \
-     not jst_is_android
-    cyberether_exe = executable(
-        'cyberether',
-        'main.cc',
-        include_directories: inc_lst,
-        dependencies: dep_lst,
-        link_with: libjetstream,
-        install: true,
-    )
+if not jst_is_wheel and \
+   not jst_is_ios and \
+   not jst_is_android
+    if jst_is_browser or jst_is_static
+        cyberether_exe = executable(
+            'cyberether',
+            'main.cc',
+            include_directories: inc_lst,
+            dependencies: libjetstream_dep,
+            install: true,
+        )
+    else
+        cyberether_exe = executable(
+            'cyberether',
+            'main.cc',
+            include_directories: inc_lst,
+            dependencies: dep_lst,
+            link_with: libjetstream,
+            install: true,
+        )
+    endif
 endif
 
 #

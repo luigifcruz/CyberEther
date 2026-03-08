@@ -35,4 +35,3 @@ classifiers = [
 
 [tool.meson-python.args]
 install = ["--skip-subprojects"]
-setup = ["--default-library=static"]

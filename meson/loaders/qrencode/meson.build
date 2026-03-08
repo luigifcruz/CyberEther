@@ -1,5 +1,12 @@
 deps = [
-    dependency('libqrencode', required: true)
+    dependency(
+        'libqrencode',
+        required: true,
+        fallback: 'qrencode',
+        default_options: [
+            'default_library=static',
+        ],
+    )
 ]
 
 all_deps_found = true
