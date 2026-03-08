@@ -24,7 +24,7 @@ struct Config {
     U64 framerate = 60;
 
     /// @brief The broker address server of the remote viewport.
-    std::string broker = "https://api.cyberether.org";
+    std::string broker = "https://cyberether.org";
 
     /// @brief The video codec of the remote viewport.
     Viewport::VideoCodec codec = Viewport::VideoCodec::H264;

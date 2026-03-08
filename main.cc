@@ -41,7 +41,7 @@ void printUsage(const char* program) {
     jst::fmt::print("  --headless                   Run in headless mode (no window)\n");
     jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
     jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n");
-    jst::fmt::print("  --endpoint <url>             Broker URL (default: https://api.cyberether.org)\n");
+    jst::fmt::print("  --endpoint <url>             Broker URL (default: https://cyberether.org)\n");
     jst::fmt::print("  --codec <codec>              Video codec: h264, vp8, vp9, av1 (default: h264)\n");
     jst::fmt::print("  --acceleration               Enable hardware acceleration\n");
     jst::fmt::print("  --auto-join                  Auto-join sessions\n");

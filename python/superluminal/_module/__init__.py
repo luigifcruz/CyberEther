@@ -138,7 +138,7 @@ def configure(
     device_id: int = 0,
     window_title: str = "Superluminal",
     remote: bool = False,
-    remote_broker: str = "https://api.cyberether.org",
+    remote_broker: str = "https://cyberether.org",
     remote_auto_join: bool = False,
     on_remote_ready=None,
 ):

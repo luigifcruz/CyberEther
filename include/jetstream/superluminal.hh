@@ -56,7 +56,7 @@ class Superluminal {
         std::string windowTitle = "Superluminal";
         DeviceType device = DeviceType::None;
         bool remote = false;
-        std::string remoteBroker = "https://api.cyberether.org";
+        std::string remoteBroker = "https://cyberether.org";
         bool remoteAutoJoin = false;
         DeviceType preferredDevice = DeviceType::CPU;
     };

@@ -1267,7 +1267,7 @@ class DefaultCompositor : public Compositor::Impl {
     int cachedQrWidth = 0;
 
     // Remote streaming configuration state
-    std::string remoteBrokerUrl = "https://api.cyberether.org";
+    std::string remoteBrokerUrl = "https://cyberether.org";
     int remoteCodecIndex = 0;  // H264
     bool remoteHardwareAcceleration = true;
     bool remoteAutoJoinSessions = false;
