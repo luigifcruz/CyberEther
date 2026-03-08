@@ -11,7 +11,16 @@ if target_machine.system() == 'emscripten'
   ]
 else
   dep_lst = [
-    dependency('libusb', 'libusb-1.0', required: true),
+    dependency(
+      'libusb', 'libusb-1.0',
+      required: true,
+      fallback: 'libusb',
+      default_options: [
+        'default_library=static',
+        'examples=false',
+        'tests=false',
+      ],
+    ),
   ]
 endif
 
