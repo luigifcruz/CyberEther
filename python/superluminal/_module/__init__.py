@@ -133,15 +133,50 @@ def plot(
 
 
 def configure(
+    device: lm.constant = lm.none,
     preferred_device: lm.constant = lm.cpu,
     device_id: int = 0,
     window_title: str = "Superluminal",
+    remote: bool = False,
+    remote_broker: str = "https://api.cyberether.org",
+    remote_auto_join: bool = False,
+    on_remote_ready=None,
 ):
+    if not isinstance(device, lm.constant):
+        raise TypeError("Device must be a constant.")
+
+    if not isinstance(preferred_device, lm.constant):
+        raise TypeError("Preferred device must be a constant.")
+
+    if not isinstance(remote_broker, str):
+        raise TypeError("Remote broker must be a string.")
+
+    if not isinstance(remote_auto_join, bool):
+        raise TypeError("Remote auto join must be a bool.")
+
+    if remote and device.value == lm.none.value:
+        device = lm.vulkan
+
     cfg = lm.instance_config()
     cfg.device_id = device_id
+    cfg.device = device.value
     cfg.preferred_device = preferred_device.value
     cfg.window_title = window_title
-    lm.initialize(cfg)
+    cfg.remote = remote
+    cfg.remote_broker = remote_broker
+    cfg.remote_auto_join = remote_auto_join
+    result = lm.initialize(cfg)
+
+    if result != lm.result.success:
+        raise RuntimeError(f"Failed to initialize Superluminal: {result}")
+
+    if remote and callable(on_remote_ready):
+        on_remote_ready(
+            print_remote_info,
+            remote_room_id(),
+            remote_invite_url(),
+            remote_access_token(),
+        )
 
 
 def show():
@@ -237,3 +272,19 @@ def markdown(content: str):
         raise TypeError("Content must be a string.")
 
     lm.markdown(content)
+
+
+def remote_room_id() -> str:
+    return lm.remote_room_id()
+
+
+def remote_invite_url() -> str:
+    return lm.remote_invite_url()
+
+
+def remote_access_token() -> str:
+    return lm.remote_access_token()
+
+
+def print_remote_info():
+    return lm.print_remote_info()
