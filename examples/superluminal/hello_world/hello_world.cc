@@ -3,7 +3,7 @@
 
 using namespace Jetstream;
 
-int main() {
+static Result App() {
     std::cout << "Welcome to Superluminal!" << std::endl;
 
     Tensor data(DeviceType::CPU, TypeToDataType<F32>(), {1, 8192});
@@ -14,17 +14,21 @@ int main() {
         data.at<F32>(0, j) = dist(rng);
     }
 
-    Superluminal::Plot("Random", {{1}}, {
+    JST_CHECK(Superluminal::Plot("Random", {{1}}, {
         .buffer = data,
         .type = Superluminal::Type::Line,
         .source = Superluminal::Domain::Time,
         .display = Superluminal::Domain::Frequency,
         .options = {},
-    });
+    }));
 
-    Superluminal::Show();
+    JST_CHECK(Superluminal::Show());
 
     std::cout << "Goodbye from Superluminal!" << std::endl;
 
-    return 0;
+    return Result::SUCCESS;
+}
+
+int main() {
+    return App() == Result::SUCCESS ? 0 : 1;
 }
