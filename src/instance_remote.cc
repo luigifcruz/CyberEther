@@ -254,9 +254,9 @@ Result Instance::Remote::updateWaitlist() {
         return Result::SUCCESS;
     }
 
-    auto res = impl->brokerClient->Get("/v1/webrtc/room/waitlist");
+    auto res = impl->brokerClient->Get("/api/v1/remote/room/waitlist");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull waitlist: [{}] /v1/webrtc/room/waitlist.", res ? res->status : 0);
+        JST_ERROR("[REMOTE] Failed to pull waitlist: [{}] /api/v1/remote/room/waitlist.", res ? res->status : 0);
         return Result::ERROR;
     }
 
@@ -282,9 +282,9 @@ Result Instance::Remote::updateSessions() {
         return Result::SUCCESS;
     }
 
-    auto res = impl->brokerClient->Get("/v1/webrtc/room/active");
+    auto res = impl->brokerClient->Get("/api/v1/remote/room/active");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull sessions: [{}] /v1/webrtc/room/active.", res ? res->status : 0);
+        JST_ERROR("[REMOTE] Failed to pull sessions: [{}] /api/v1/remote/room/active.", res ? res->status : 0);
         return Result::ERROR;
     }
 
@@ -331,9 +331,9 @@ Result Instance::Remote::approveClient(const std::string& code) {
             JST_INFO("[REMOTE] Client authorization code '{}' approved.", code);
 
             auto json = nlohmann::json{{"sessionId", sessionId}};
-            auto res = impl->brokerClient->Post("/v1/webrtc/room/approval", json.dump(), "application/json");
+            auto res = impl->brokerClient->Post("/api/v1/remote/room/approval", json.dump(), "application/json");
             if (!res || res->status != 200) {
-                JST_ERROR("[REMOTE] Failed to post approval: [{}] /v1/webrtc/room/approval.", res ? res->status : 0);
+                JST_ERROR("[REMOTE] Failed to post approval: [{}] /api/v1/remote/room/approval.", res ? res->status : 0);
                 return Result::ERROR;
             }
 
@@ -355,8 +355,8 @@ Result Instance::Remote::Impl::createBroker() {
     brokerClient = std::make_unique<httplib::Client>(config.broker);
 
     {
-        auto res = brokerClient->Get("/health");
-        if (!res || res->status != 200 || res->body != "ok") {
+        auto res = brokerClient->Get("/api/v1");
+        if (!res || res->status != 200) {
             JST_ERROR("[REMOTE] Failed to connect to server.");
             return Result::ERROR;
         }
@@ -382,9 +382,9 @@ Result Instance::Remote::Impl::destroyBroker() {
 
 Result Instance::Remote::Impl::createRoom() {
     auto params = httplib::Params{};
-    auto res = brokerClient->Post("/v1/webrtc/room", params);
+    auto res = brokerClient->Post("/api/v1/remote/room", params);
     if (!res || res->status != 201) {
-        JST_ERROR("[REMOTE] Failed to create room: [{}] /v1/webrtc/room.", res ? res->status : 0);
+        JST_ERROR("[REMOTE] Failed to create room: [{}] /api/v1/remote/room.", res ? res->status : 0);
         return Result::ERROR;
     }
 
