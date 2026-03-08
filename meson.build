@@ -162,7 +162,7 @@ endif
 if jst_is_browser
     cyberether_exe = executable(
         'cyberether',
-        ['main.cc', 'src/instance_remote_ui.cc'],
+        'main.cc',
         include_directories: inc_lst,
         dependencies: libjetstream_dep,
         install: true,
@@ -171,7 +171,7 @@ elif not jst_is_ios and \
      not jst_is_android
     cyberether_exe = executable(
         'cyberether',
-        ['main.cc', 'src/instance_remote_ui.cc'],
+        'main.cc',
         include_directories: inc_lst,
         dependencies: dep_lst,
         link_with: libjetstream,
