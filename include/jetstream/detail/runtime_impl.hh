@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_RUNTIME_IMPL_HH
 #define JETSTREAM_RUNTIME_IMPL_HH
 
+#include <string>
+
 #include "jetstream/runtime.hh"
 
 #include <atomic>

@@ -1,6 +1,11 @@
 #ifndef JETSTREAM_VIEWPORT_TYPES_HH
 #define JETSTREAM_VIEWPORT_TYPES_HH
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <string>
+
 #include "jetstream/types.hh"
 
 namespace Jetstream::Viewport {

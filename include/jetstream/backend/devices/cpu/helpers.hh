@@ -1,8 +1,11 @@
 #ifndef JETSTREAM_BACKEND_DEVICE_CPU_HELPERS_HH
 #define JETSTREAM_BACKEND_DEVICE_CPU_HELPERS_HH
 
+#include <fstream>
 #include <math.h>
+#include <string>
 
+#include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 

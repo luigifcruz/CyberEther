@@ -6,6 +6,8 @@
 #include <nvrtc.h>
 #include <cufft.h>
 
+#include "jetstream/types.hh"
+
 #ifndef JST_CUDA_CHECK
 #define JST_CUDA_CHECK(x, callback) { \
     CUresult val = static_cast<CUresult>((x)); \

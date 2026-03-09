@@ -4,6 +4,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/viewport/types.hh"
 
+#include <memory>
 #include <string>
 #include <vector>
 

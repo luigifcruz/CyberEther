@@ -1,8 +1,12 @@
 #ifndef JETSTREAM_COMPOSITOR_HH
 #define JETSTREAM_COMPOSITOR_HH
 
+#include <memory>
+
 #include "jetstream/types.hh"
 #include "jetstream/block.hh"
+#include "jetstream/render/base/window.hh"
+#include "jetstream/viewport/base.hh"
 
 namespace Jetstream {
 

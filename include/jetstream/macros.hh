@@ -1,8 +1,11 @@
 #ifndef JETSTREAM_MACROS_HH
 #define JETSTREAM_MACROS_HH
 
-#include "jetstream/memory/macros.hh"
+#include <cstdio>
+#include <exception>
+#include <thread>
 
+#include "jetstream/memory/macros.hh"
 #include "jetstream/config.hh"
 
 //

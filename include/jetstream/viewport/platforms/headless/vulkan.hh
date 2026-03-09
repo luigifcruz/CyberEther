@@ -1,8 +1,10 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_HEADLESS_VULKAN_HH
 
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <vector>
 
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/headless/generic.hh"

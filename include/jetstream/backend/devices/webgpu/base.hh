@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
 
 #include <emscripten.h>
 #include <webgpu/webgpu.h>

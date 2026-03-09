@@ -1,7 +1,11 @@
 #ifndef JETSTREAM_INSTANCE_HH
 #define JETSTREAM_INSTANCE_HH
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
 
 #include "jetstream/types.hh"
 #include "jetstream/compositor.hh"

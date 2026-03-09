@@ -4,6 +4,7 @@
 #include <optional>
 #include <utility>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "jetstream/types.hh"

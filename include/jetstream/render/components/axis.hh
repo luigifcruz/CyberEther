@@ -1,12 +1,14 @@
 #ifndef JETSTREAM_RENDER_COMPONENTS_AXIS_HH
 #define JETSTREAM_RENDER_COMPONENTS_AXIS_HH
 
+#include <memory>
 #include <vector>
 #include <string>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 
+#include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/generic.hh"
 #include "jetstream/render/components/font.hh"
 

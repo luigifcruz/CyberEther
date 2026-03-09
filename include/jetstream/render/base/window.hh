@@ -2,9 +2,14 @@
 #define JETSTREAM_RENDER_BASE_WINDOW_HH
 
 #include <queue>
+#include <cstdint>
+#include <functional>
 #include <memory>
-#include <thread>
 #include <mutex>
+#include <thread>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
 
 #include "jetstream/render/base/window_attachment.hh"
 #include "jetstream/types.hh"

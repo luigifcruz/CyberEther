@@ -1,6 +1,9 @@
 #ifndef JETSTREAM_RUNTIME_HH
 #define JETSTREAM_RUNTIME_HH
 
+#include <memory>
+#include <string>
+
 #include "jetstream/types.hh"
 
 namespace Jetstream {
