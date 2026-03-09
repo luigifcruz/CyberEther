@@ -5,6 +5,8 @@
 
 using namespace Jetstream;
 
+static constexpr float kPi = JST_PI;
+
 /**
  * Generates a test signal combining a sine wave with noise
  * This demonstrates typical signal processing scenarios
@@ -16,7 +18,7 @@ void GenerateTestSignal(Tensor& data, float frequency = 1000.0f, float amplitude
         float t = j / sample_rate;
 
         // Generate sine wave
-        float signal = amplitude * std::cos(2.0f * M_PI * frequency * t);
+        float signal = amplitude * std::cos(2.0f * kPi * frequency * t);
 
         // Add noise
         float noise = (std::rand() / float(RAND_MAX) - 0.5f) * noise_level;

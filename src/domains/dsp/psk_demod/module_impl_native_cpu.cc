@@ -12,6 +12,8 @@
 
 namespace Jetstream::Modules {
 
+static constexpr F64 kPi = JST_PI;
+
 struct PskDemodImplNativeCpu : public PskDemodImpl,
                                public Runtime::Context,
                                public Scheduler::Context {
@@ -102,9 +104,9 @@ Result PskDemodImplNativeCpu::computeSubmit() {
 
         F64 freqErrSample = costasLoopError(corrected);
         freqAcc += freqAlpha * freqErrSample;
-        freqAcc = std::clamp(freqAcc, -M_PI, M_PI);
+        freqAcc = std::clamp(freqAcc, -kPi, kPi);
         phase += freqAcc + freqBeta * freqErrSample;
-        phase = std::remainder(phase, 2.0 * M_PI);
+        phase = std::remainder(phase, 2.0 * kPi);
 
         outputData[outputIndex++] = corrected;
 
