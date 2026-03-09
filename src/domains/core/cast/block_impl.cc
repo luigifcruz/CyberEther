@@ -31,7 +31,7 @@ Result CastImpl::define() {
     JST_CHECK(defineInterfaceConfig("outputType",
                                     "Output Type",
                                     "The desired output data type.",
-                                    "dropdown:CF32(CF32)"));
+                                    "dropdown:CF32(CF32),F32(F32)"));
 
     return Result::SUCCESS;
 }

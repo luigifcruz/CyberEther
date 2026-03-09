@@ -33,15 +33,24 @@ Result CastImpl::create() {
 
     if (scaler == 0.0f) {
         switch (input.dtype()) {
+            case DataType::F32:
+                scaler = 1.0f;
+                break;
+            case DataType::I8:
             case DataType::CI8:
+            case DataType::U8:
             case DataType::CU8:
                 scaler = 128.0f;
                 break;
+            case DataType::I16:
             case DataType::CI16:
+            case DataType::U16:
             case DataType::CU16:
                 scaler = 32768.0f;
                 break;
+            case DataType::I32:
             case DataType::CI32:
+            case DataType::U32:
             case DataType::CU32:
                 scaler = 2147483648.0f;
                 break;
