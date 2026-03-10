@@ -45,7 +45,7 @@ Result FileReaderImpl::define() {
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
                                     "The data type of samples in the file.",
-                                    "dropdown:CF32(CF32),F32(F32),I16(I16),I8(I8),U8(U8)"));
+                                    "dropdown:CF32(CF32),F32(F32),CI8(CI8),I8(I8),CU8(CU8),U8(U8),CI16(CI16),I16(I16),CU16(CU16),U16(U16)"));
 
     JST_CHECK(defineInterfaceConfig("batchSize",
                                     "Batch Size",

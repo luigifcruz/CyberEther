@@ -34,7 +34,10 @@ struct FileWriter : public Block::Config {
         "## Examples\n"
         "- Record IQ samples to file:\n"
         "  Config: File Path='capture.raw', Overwrite=true, Recording=true\n"
-        "  Input: CF32[8192] -> Written to file each cycle.\n\n"
+        "  Input: CF32[8192] -> Written to file each cycle.\n"
+        "- Record U16 samples to file:\n"
+        "  Config: File Path='capture_u16.raw', Overwrite=true, Recording=true\n"
+        "  Input: U16[8192] -> Written to file each cycle.\n\n"
 
         "## Implementation\n"
         "Input Buffer -> FileWriter Module\n"

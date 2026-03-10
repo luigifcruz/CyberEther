@@ -41,7 +41,7 @@ Result WebsocketImpl::define() {
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
                                     "Sample format of incoming data.",
-                                    "dropdown:CF32(CF32),CU8(CU8),CS8(CS8),CI16(CI16),CU16(CU16)"));
+                                    "dropdown:CF32(CF32),F32(F32),CI8(CI8),I8(I8),CU8(CU8),U8(U8),CI16(CI16),I16(I16),CU16(CU16),U16(U16)"));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",

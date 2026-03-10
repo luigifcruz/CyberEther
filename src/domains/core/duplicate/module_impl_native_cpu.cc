@@ -16,9 +16,9 @@ struct DuplicateImplNativeCpu : public DuplicateImpl,
 
     Result computeSubmit() override;
 
- private:
-    Result kernelCF32();
-    Result kernelF32();
+  private:
+    template<typename T>
+    Result kernelCopy();
 
     std::function<Result()> kernel;
 };
@@ -26,43 +26,49 @@ struct DuplicateImplNativeCpu : public DuplicateImpl,
 Result DuplicateImplNativeCpu::create() {
     JST_CHECK(DuplicateImpl::create());
 
-    if (input.dtype() == DataType::CF32) {
-        kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
+    switch (input.dtype()) {
+        case DataType::F32:  kernel = [this]() { return kernelCopy<F32>();  }; break;
+        case DataType::F64:  kernel = [this]() { return kernelCopy<F64>();  }; break;
+        case DataType::I8:   kernel = [this]() { return kernelCopy<I8>();   }; break;
+        case DataType::I16:  kernel = [this]() { return kernelCopy<I16>();  }; break;
+        case DataType::I32:  kernel = [this]() { return kernelCopy<I32>();  }; break;
+        case DataType::I64:  kernel = [this]() { return kernelCopy<I64>();  }; break;
+        case DataType::U8:   kernel = [this]() { return kernelCopy<U8>();   }; break;
+        case DataType::U16:  kernel = [this]() { return kernelCopy<U16>();  }; break;
+        case DataType::U32:  kernel = [this]() { return kernelCopy<U32>();  }; break;
+        case DataType::U64:  kernel = [this]() { return kernelCopy<U64>();  }; break;
+        case DataType::CF32: kernel = [this]() { return kernelCopy<CF32>(); }; break;
+        case DataType::CF64: kernel = [this]() { return kernelCopy<CF64>(); }; break;
+        case DataType::CI8:  kernel = [this]() { return kernelCopy<CI8>();  }; break;
+        case DataType::CI16: kernel = [this]() { return kernelCopy<CI16>(); }; break;
+        case DataType::CI32: kernel = [this]() { return kernelCopy<CI32>(); }; break;
+        case DataType::CI64: kernel = [this]() { return kernelCopy<CI64>(); }; break;
+        case DataType::CU8:  kernel = [this]() { return kernelCopy<CU8>();  }; break;
+        case DataType::CU16: kernel = [this]() { return kernelCopy<CU16>(); }; break;
+        case DataType::CU32: kernel = [this]() { return kernelCopy<CU32>(); }; break;
+        case DataType::CU64: kernel = [this]() { return kernelCopy<CU64>(); }; break;
+        case DataType::None:
+            break;
     }
 
-    if (input.dtype() == DataType::F32) {
-        kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
+    if (!kernel) {
+        JST_ERROR("[MODULE_DUPLICATE_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
+        return Result::ERROR;
     }
 
-    JST_ERROR("[MODULE_DUPLICATE_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result DuplicateImplNativeCpu::computeSubmit() {
     return kernel();
 }
 
-Result DuplicateImplNativeCpu::kernelCF32() {
+template<typename T>
+Result DuplicateImplNativeCpu::kernelCopy() {
     if (input.contiguous() && input.sizeBytes() == input.buffer().sizeBytes()) {
         JST_CHECK(output.copyFrom(input));
     } else {
-        JST_CHECK(AutomaticIterator<const CF32, CF32>(
-            [](const auto& in, auto& out) {
-                out = in;
-            },
-        input, output));
-    }
-
-    return Result::SUCCESS;
-}
-
-Result DuplicateImplNativeCpu::kernelF32() {
-    if (input.contiguous() && input.sizeBytes() == input.buffer().sizeBytes()) {
-        JST_CHECK(output.copyFrom(input));
-    } else {
-        JST_CHECK(AutomaticIterator<const F32, F32>(
+        JST_CHECK(AutomaticIterator<const T, T>(
             [](const auto& in, auto& out) {
                 out = in;
             },
