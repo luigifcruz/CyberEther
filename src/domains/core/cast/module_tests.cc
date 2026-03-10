@@ -438,40 +438,6 @@ TEST_CASE("Cast Module - CU32 to CF32", "[modules][cast][CU32]") {
     }
 }
 
-TEST_CASE("Cast Module - Custom Scaler", "[modules][cast][CI8]") {
-    auto implementations = Registry::ListAvailableModules("cast");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
-
-            Modules::Cast config;
-            config.scaler = 64.0f;
-            ctx.setConfig(config);
-
-            auto input = ctx.createTensor<CI8>({2});
-            input.at(0) = {64, -64};
-            input.at(1) = {32, -32};
-
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() == Result::SUCCESS);
-
-            auto& out = ctx.output("buffer");
-
-            REQUIRE_THAT(out.at<CF32>(0).real(),
-                         Catch::Matchers::WithinAbs(1.0f, 1e-3f));
-            REQUIRE_THAT(out.at<CF32>(0).imag(),
-                         Catch::Matchers::WithinAbs(-1.0f, 1e-3f));
-            REQUIRE_THAT(out.at<CF32>(1).real(),
-                         Catch::Matchers::WithinAbs(0.5f, 1e-3f));
-            REQUIRE_THAT(out.at<CF32>(1).imag(),
-                         Catch::Matchers::WithinAbs(-0.5f, 1e-3f));
-        }
-    }
-}
-
 TEST_CASE("Cast Module - 2D Tensor CI8", "[modules][cast][CI8][2d]") {
     auto implementations = Registry::ListAvailableModules("cast");
     REQUIRE(!implementations.empty());

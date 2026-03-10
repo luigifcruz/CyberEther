@@ -17,7 +17,6 @@ struct CastImpl : public Block::Impl, public DynamicConfig<Blocks::Cast> {
 
 Result CastImpl::configure() {
     moduleConfig->outputType = outputType;
-    moduleConfig->scaler = scaler;
 
     return Result::SUCCESS;
 }
