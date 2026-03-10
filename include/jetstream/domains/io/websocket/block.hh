@@ -17,9 +17,9 @@ struct Websocket : public Block::Config {
                      bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "WebSocket",
-        "Receives IQ samples over WebSocket.",
+        "Receives data streams over WebSocket.",
         "# WebSocket Client\n"
-        "The WebSocket block receives raw IQ samples from a WebSocket server, "
+        "The WebSocket block receives data streams from a WebSocket server, "
         "enabling browser-based signal processing pipelines fed by external "
         "data sources.\n\n"
 
@@ -31,14 +31,17 @@ struct Websocket : public Block::Config {
         "- **Buffer Multiplier**: Internal buffer size multiplier.\n\n"
 
         "## Useful For\n"
-        "- Receiving RF samples in the browser from a remote source.\n"
+        "- Receiving real or complex RF samples in the browser from a remote source.\n"
         "- Browser-based spectrum analysis with external data feeds.\n"
         "- Connecting browser pipelines to server-side SDR devices.\n\n"
 
         "## Examples\n"
         "- Receive IQ samples from local server:\n"
         "  Config: URL=ws://localhost:8765, Data Type=CF32, Batches=8, Samples=8192\n"
-        "  Output: CF32[8, 8192]\n\n"
+        "  Output: CF32[8, 8192]\n"
+        "- Receive U16 sample batches from local server:\n"
+        "  Config: URL=ws://localhost:8765, Data Type=U16, Batches=4, Samples=4096\n"
+        "  Output: U16[4, 4096]\n\n"
 
         "## Implementation\n"
         "WebSocket Module -> Output Buffer\n"

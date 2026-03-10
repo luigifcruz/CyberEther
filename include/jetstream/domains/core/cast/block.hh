@@ -15,37 +15,40 @@ struct Cast : public Block::Config {
         "Cast",
         "Casts the input to a type.",
         "# Cast\n"
-        "The Cast block converts input tensors from one numeric type to another, "
-        "enabling seamless data type transformations within the processing "
-        "pipeline. It normalizes integer-based complex data to floating-point "
-        "range using a configurable scaling factor.\n\n"
+        "The Cast block converts supported input tensors into floating-point "
+        "representations for downstream processing. It can normalize real-valued "
+        "inputs to F32 and complex integer inputs to CF32 using a configurable "
+        "scaling factor.\n\n"
 
         "## Arguments\n"
         "- **Output Type**: The desired output data type (e.g., CF32, F32).\n"
         "- **Scaler**: Scaling factor applied during conversion. When set to 0, "
         "an appropriate default is chosen based on the input type (e.g., 128.0 "
-        "for CI8, 32768.0 for CI16). The input values are divided by this "
-        "factor to produce normalized floating-point output.\n\n"
+        "for I8 and CI8, 32768.0 for I16 and CI16). Integer input values are "
+        "divided by this factor to produce normalized floating-point output.\n\n"
 
         "## Useful For\n"
-        "- Normalizing integer-based complex data to floating-point for further "
-        "processing.\n"
+        "- Normalizing integer-based real or complex data to floating-point for "
+        "further processing.\n"
         "- Adapting data types between different processing stages in the "
         "flowgraph.\n"
-        "- Preparing SDR samples for signal processing modules that expect "
-        "CF32 input.\n\n"
+        "- Preparing SDR samples for modules that expect F32 or CF32 input.\n\n"
 
         "## Examples\n"
+        "- I16 normalization:\n"
+        "  Config: OutputType=F32, Scaler=32768.0\n"
+        "  Input: I16[4096] -> Output: F32[4096]\n"
         "- CI8 normalization:\n"
         "  Config: OutputType=CF32, Scaler=128.0\n"
         "  Input: CI8[4096] -> Output: CF32[4096]\n"
-        "- CI16 normalization:\n"
-        "  Config: OutputType=CF32, Scaler=32768.0\n"
-        "  Input: CI16[4096] -> Output: CF32[4096]\n\n"
+        "- F32 passthrough cast:\n"
+        "  Config: OutputType=F32, Scaler=0.0\n"
+        "  Input: F32[4096] -> Output: F32[4096]\n\n"
 
         "## Implementation\n"
-        "For each element, the input components are converted to the output "
-        "type and divided by the scaler for normalization.";
+        "For each element, the input value or components are converted to the "
+        "selected floating-point output type. Integer inputs are normalized by "
+        "the scaler, while F32 input is forwarded directly when casting to F32.";
     );
 };
 
