@@ -1,4 +1,4 @@
-project('libusb', ['c', 'cpp'], version: '1.0.26', meson_version: '>=0.49.0')
+project('libusb', ['c', 'cpp'], version: 'git-7ff29f2c', meson_version: '>=0.49.0')
 
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 add_project_arguments('--std=c++20', language: 'cpp')
