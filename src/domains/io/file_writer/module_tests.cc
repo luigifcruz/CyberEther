@@ -27,96 +27,90 @@ void cleanupTestDirectory(const std::filesystem::path& path) {
     }
 }
 
-}  // namespace
-
-TEST_CASE("FileWriter Module - F32", "[modules][file_writer][F32]") {
+template<typename T>
+void expectFileWriterSuccess(const std::string& suffix,
+                             const std::vector<T>& expectedData) {
     auto implementations = Registry::ListAvailableModules("file_writer");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device
                         << " Runtime: " << impl.runtime) {
-            auto testPath = getTestFilePath("f32");
+            const auto testPath = getTestFilePath(suffix);
             cleanupTestFile(testPath);
 
             TestContext ctx("file_writer", impl.device,
-                           impl.runtime, impl.provider);
+                            impl.runtime, impl.provider);
 
             Modules::FileWriter config;
             config.filepath = testPath.string();
-
             config.overwrite = true;
             config.recording = true;
             ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({4});
-            input.at(0) = 1.0f;
-            input.at(1) = 2.0f;
-            input.at(2) = 3.0f;
-            input.at(3) = 4.0f;
+            auto input = ctx.createTensor<T>({expectedData.size()});
+            for (U64 i = 0; i < expectedData.size(); ++i) {
+                input.at(i) = expectedData[i];
+            }
 
             ctx.setInput("buffer", input);
 
             REQUIRE(ctx.run() == Result::SUCCESS);
             REQUIRE(std::filesystem::exists(testPath));
             REQUIRE(std::filesystem::file_size(testPath) ==
-                    4 * sizeof(F32));
+                    expectedData.size() * sizeof(T));
 
             std::ifstream verify(testPath, std::ios::binary);
-            F32 values[4];
-            verify.read(reinterpret_cast<char*>(values), sizeof(values));
-            REQUIRE(values[0] == 1.0f);
-            REQUIRE(values[1] == 2.0f);
-            REQUIRE(values[2] == 3.0f);
-            REQUIRE(values[3] == 4.0f);
+            std::vector<T> values(expectedData.size());
+            verify.read(reinterpret_cast<char*>(values.data()),
+                        static_cast<std::streamsize>(values.size() * sizeof(T)));
+            REQUIRE(values == expectedData);
 
             cleanupTestFile(testPath);
         }
     }
 }
 
+}  // namespace
+
+TEST_CASE("FileWriter Module - F32", "[modules][file_writer][F32]") {
+    expectFileWriterSuccess<F32>("f32", {1.0f, 2.0f, 3.0f, 4.0f});
+}
+
 TEST_CASE("FileWriter Module - CF32", "[modules][file_writer][CF32]") {
-    auto implementations = Registry::ListAvailableModules("file_writer");
-    REQUIRE(!implementations.empty());
+    expectFileWriterSuccess<CF32>("cf32", {{1.0f, 2.0f}, {3.0f, 4.0f}});
+}
 
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            auto testPath = getTestFilePath("cf32");
-            cleanupTestFile(testPath);
+TEST_CASE("FileWriter Module - CI8", "[modules][file_writer][CI8]") {
+    expectFileWriterSuccess<CI8>("ci8", {{1, -2}, {3, 4}, {-5, 6}});
+}
 
-            TestContext ctx("file_writer", impl.device,
-                           impl.runtime, impl.provider);
+TEST_CASE("FileWriter Module - I8", "[modules][file_writer][I8]") {
+    expectFileWriterSuccess<I8>("i8", {1, -2, 3, 4});
+}
 
-            Modules::FileWriter config;
-            config.filepath = testPath.string();
+TEST_CASE("FileWriter Module - CU8", "[modules][file_writer][CU8]") {
+    expectFileWriterSuccess<CU8>("cu8", {{1, 2}, {3, 4}, {5, 6}});
+}
 
-            config.overwrite = true;
-            config.recording = true;
-            ctx.setConfig(config);
+TEST_CASE("FileWriter Module - U8", "[modules][file_writer][U8]") {
+    expectFileWriterSuccess<U8>("u8", {1, 2, 3, 4});
+}
 
-            auto input = ctx.createTensor<CF32>({2});
-            input.at(0) = {1.0f, 2.0f};
-            input.at(1) = {3.0f, 4.0f};
+TEST_CASE("FileWriter Module - CI16", "[modules][file_writer][CI16]") {
+    expectFileWriterSuccess<CI16>("ci16", {{1024, -2048}, {4096, 8192}});
+}
 
-            ctx.setInput("buffer", input);
+TEST_CASE("FileWriter Module - I16", "[modules][file_writer][I16]") {
+    expectFileWriterSuccess<I16>("i16", {1024, -2048, 4096, 8192});
+}
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(std::filesystem::exists(testPath));
-            REQUIRE(std::filesystem::file_size(testPath) ==
-                    2 * sizeof(CF32));
+TEST_CASE("FileWriter Module - CU16", "[modules][file_writer][CU16]") {
+    expectFileWriterSuccess<CU16>("cu16", {{1024, 2048}, {4096, 8192}});
+}
 
-            std::ifstream verify(testPath, std::ios::binary);
-            CF32 values[2];
-            verify.read(reinterpret_cast<char*>(values), sizeof(values));
-            REQUIRE(values[0].real() == 1.0f);
-            REQUIRE(values[0].imag() == 2.0f);
-            REQUIRE(values[1].real() == 3.0f);
-            REQUIRE(values[1].imag() == 4.0f);
-
-            cleanupTestFile(testPath);
-        }
-    }
+TEST_CASE("FileWriter Module - U16", "[modules][file_writer][U16]") {
+    expectFileWriterSuccess<U16>("u16", {1024, 2048, 4096, 8192});
 }
 
 TEST_CASE("FileWriter Module - No overwrite protection",
