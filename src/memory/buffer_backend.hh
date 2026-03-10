@@ -30,6 +30,9 @@ struct Backend {
 };
 
 std::unique_ptr<Backend> CreateCpuBackend();
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+std::unique_ptr<Backend> CreateCudaBackend();
+#endif
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 std::unique_ptr<Backend> CreateMetalBackend();
 #endif
