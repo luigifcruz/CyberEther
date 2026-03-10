@@ -15,6 +15,10 @@
 #include "jetstream/backend/devices/metal/base.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/backend/devices/cuda/base.hh"
+#endif
+
 using namespace Jetstream;
 
 namespace {
@@ -740,6 +744,40 @@ TEST_CASE("Tensor Device Management", "[tensor][device]") {
         REQUIRE(t.hasDevice(DeviceType::Metal));
         REQUIRE(t.hasDevice(DeviceType::CPU));  // Should support unified
         REQUIRE(!t.hasDevice(DeviceType::None));
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    SECTION("Has Device - CUDA Tensor") {
+        Tensor t(DeviceType::CUDA, DataType::F32, TEST_SHAPE_2D);
+        REQUIRE(t.hasDevice(DeviceType::CUDA));
+        REQUIRE(t.device() == DeviceType::CUDA);
+        REQUIRE(t.nativeDevice() == DeviceType::CUDA);
+    }
+
+    SECTION("CPU to CUDA Mirror") {
+        Tensor src(DeviceType::CPU, DataType::F32, TEST_SHAPE_2D);
+        Write2DTestPattern<F32>(src, 12.0f);
+
+        Tensor cuda_mirror;
+        REQUIRE(cuda_mirror.create(DeviceType::CUDA, src) == Result::SUCCESS);
+        REQUIRE(cuda_mirror.validShape());
+        REQUIRE(cuda_mirror.device() == DeviceType::CUDA);
+        REQUIRE(cuda_mirror.nativeDevice() == DeviceType::CPU);
+        REQUIRE(cuda_mirror.buffer().isBorrowed());
+
+        Tensor cpu_mirror;
+        REQUIRE(cpu_mirror.create(DeviceType::CPU, cuda_mirror) == Result::SUCCESS);
+        REQUIRE(cpu_mirror.device() == DeviceType::CPU);
+        REQUIRE(cpu_mirror.buffer().isBorrowed());
+        REQUIRE(Verify2DTestPattern<F32>(cpu_mirror, 12.0f));
+    }
+
+    SECTION("CUDA to CPU Mirror") {
+        Tensor src(DeviceType::CUDA, DataType::F32, TEST_SHAPE_2D);
+
+        Tensor cpu_mirror;
+        REQUIRE(cpu_mirror.create(DeviceType::CPU, src) == Result::ERROR);
     }
 #endif
 }

@@ -102,18 +102,24 @@ inline const char* cufftGetErrorString(cufftResult error) {
             return "CUFFT_INVALID_SIZE: User specified an invalid transform size.";
         case CUFFT_UNALIGNED_DATA:
             return "CUFFT_UNALIGNED_DATA: No longer used.";
+#ifdef CUFFT_INCOMPLETE_PARAMETER_LIST
         case CUFFT_INCOMPLETE_PARAMETER_LIST:
             return "CUFFT_INCOMPLETE_PARAMETER_LIST: Missing parameters in call.";
+#endif
         case CUFFT_INVALID_DEVICE:
             return "CUFFT_INVALID_DEVICE: Execution of a plan was on different GPU than plan creation.";
+#ifdef CUFFT_PARSE_ERROR
         case CUFFT_PARSE_ERROR:
             return "CUFFT_PARSE_ERROR: Internal plan database error.";
+#endif
         case CUFFT_NO_WORKSPACE:
             return "CUFFT_NO_WORKSPACE: No workspace has been provided prior to plan execution.";
         case CUFFT_NOT_IMPLEMENTED:
             return "CUFFT_NOT_IMPLEMENTED: Function does not implement functionality for parameters given.";
+#ifdef CUFFT_LICENSE_ERROR
         case CUFFT_LICENSE_ERROR:
             return "CUFFT_LICENSE_ERROR: Used in previous versions.";
+#endif
         case CUFFT_NOT_SUPPORTED:
             return "CUFFT_NOT_SUPPORTED: Operation is not supported for parameters given.";
         default:
