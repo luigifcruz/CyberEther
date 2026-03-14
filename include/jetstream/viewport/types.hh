@@ -10,7 +10,6 @@ enum class VideoCodec : uint32_t {
     AV1,
     VP8,
     VP9,
-    FFV1,
 };
 
 inline std::string VideoCodecToString(const VideoCodec& codec) {
@@ -23,8 +22,6 @@ inline std::string VideoCodecToString(const VideoCodec& codec) {
             return "vp9";
         case VideoCodec::H264:
             return "h264";
-        case VideoCodec::FFV1:
-            return "ffv1";
         default:
             JST_ERROR("Unknown video codec.");
             throw Result::ERROR;
@@ -43,8 +40,6 @@ inline VideoCodec StringToVideoCodec(const std::string& codec) {
         return VideoCodec::VP9;
     } else if (sanitizedCodec == "h264") {
         return VideoCodec::H264;
-    } else if (sanitizedCodec == "ffv1") {
-        return VideoCodec::FFV1;
     }
 
     JST_ERROR("Unknown video codec: {}", codec);

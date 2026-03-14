@@ -4306,7 +4306,7 @@ Result DefaultCompositor::renderGlobalModal() {
                 }
                 ImGui::Spacing();
 
-                const char* codecOptions[] = { "H264", "AV1", "VP8", "VP9", "FFV1" };
+                const char* codecOptions[] = { "H264", "AV1", "VP8", "VP9" };
                 const char* framerateOptions[] = { "15 FPS", "30 FPS", "60 FPS", "120 FPS" };
                 int remoteFramerateIndex = 1;
 
