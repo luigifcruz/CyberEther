@@ -8,12 +8,13 @@
 #include "jetstream/viewport/capture/vulkan.hh"
 #endif
 
-#include <memory>
-#include <mutex>
+#include <algorithm>
 #include <condition_variable>
 #include <chrono>
-#include <thread>
 #include <atomic>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 #define GST_USE_UNSTABLE_API
 #include <gst/webrtc/webrtc.h>
@@ -27,7 +28,7 @@
 namespace Jetstream {
 
 struct Instance::Remote::Impl {
-    enum class Strategy {
+    enum class EncodingStrategyType {
         None,
         Software,
         HardwareNVENC,
@@ -39,12 +40,10 @@ struct Instance::Remote::Impl {
     Viewport::Generic* viewport = nullptr;
 
     DeviceType inputMemoryDevice_ = DeviceType::None;
-    Strategy encodingStrategy = Strategy::None;
+    EncodingStrategyType encodingStrategy = EncodingStrategyType::None;
     DeviceType viewportDevice = DeviceType::None;
 
     bool started_ = false;
-
-    static std::string StrategyToString(const Strategy& strategy);
 
     // Broker state
     std::string roomId_;
@@ -77,6 +76,7 @@ struct Instance::Remote::Impl {
 
     Result checkGstreamerPlugins(const std::vector<std::string>& plugins,
                                  const bool& silent = false);
+    static const char* GetEncodingStrategyPrettyName(const EncodingStrategyType& strategy);
     void handleInput(const std::string& kind, const nlohmann::json& j);
     static void onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data);
     static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
@@ -453,12 +453,12 @@ Result Instance::Remote::Impl::createStream() {
 
     JST_CHECK(checkGstreamerPlugins(plugins));
 
-    std::vector<std::tuple<DeviceType, Strategy, std::vector<std::string>>> combinations;
+    std::vector<std::tuple<DeviceType, EncodingStrategyType, std::vector<std::string>>> combinations;
 
-    if (config.codec == Viewport::VideoCodec::H264) {
+    if (config.codec == Instance::Remote::CodecType::H264) {
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
         if (viewportDevice == DeviceType::Vulkan && Backend::State<DeviceType::CUDA>()->isAvailable()) {
-            combinations.push_back({DeviceType::CUDA, Strategy::HardwareNVENC, {"nvcodec"}});
+            combinations.push_back({DeviceType::CUDA, EncodingStrategyType::HardwareNVENC, {"nvcodec"}});
             GST_DEBUG("[REMOTE] Checking for NVENC strategy support for h264.");
         }
 #endif
@@ -466,41 +466,77 @@ Result Instance::Remote::Impl::createStream() {
         if (checkGstreamerPlugins({"video4linux2"}, true) == Result::SUCCESS) {
             GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
             if (factory) {
-                combinations.push_back({DeviceType::CPU, Strategy::HardwareV4L2, {"video4linux2"}});
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareV4L2, {"video4linux2"}});
                 gst_object_unref(GST_OBJECT(factory));
                 GST_DEBUG("[REMOTE] Checking for V4L2 strategy support for h264.");
             }
         }
 
-        combinations.push_back({DeviceType::CPU, Strategy::Software, {"x264"}});
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"x264"}});
     }
 
-    if (config.codec == Viewport::VideoCodec::VP8) {
-        combinations.push_back({DeviceType::CPU, Strategy::Software, {"vpx"}});
+    if (config.codec == Instance::Remote::CodecType::VP8) {
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vpx"}});
     }
 
-    if (config.codec == Viewport::VideoCodec::VP9) {
-        combinations.push_back({DeviceType::CPU, Strategy::Software, {"vpx"}});
+    if (config.codec == Instance::Remote::CodecType::VP9) {
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vpx"}});
     }
 
-    if (config.codec == Viewport::VideoCodec::AV1) {
-        combinations.push_back({DeviceType::CPU, Strategy::Software, {"rav1e"}});
+    if (config.codec == Instance::Remote::CodecType::AV1) {
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"rav1e"}});
     }
+
+    bool requestedEncoderFound = false;
 
     for (const auto& [device, strategy, pluginList] : combinations) {
-        if ((strategy != Strategy::Software) && !config.hardwareAcceleration) {
-            continue;
+        if (config.encoder != Instance::Remote::EncoderType::Auto) {
+            bool match = false;
+            switch (config.encoder) {
+                case Instance::Remote::EncoderType::Software:
+                    match = (strategy == EncodingStrategyType::Software);
+                    break;
+                case Instance::Remote::EncoderType::NVENC:
+                    match = (strategy == EncodingStrategyType::HardwareNVENC);
+                    break;
+                case Instance::Remote::EncoderType::V4L2:
+                    match = (strategy == EncodingStrategyType::HardwareV4L2);
+                    break;
+                default:
+                    break;
+            }
+            if (!match) {
+                continue;
+            }
+
+            requestedEncoderFound = true;
         }
+
         if (checkGstreamerPlugins(pluginList, true) == Result::SUCCESS) {
             inputMemoryDevice_ = device;
             encodingStrategy = strategy;
 
-            JST_INFO("[REMOTE] Using {} encoding with {} memory.", StrategyToString(strategy),
+            JST_INFO("[REMOTE] Using {} encoding with {} memory.", GetEncodingStrategyPrettyName(strategy),
                                                                    GetDevicePrettyName(device));
 
             return Result::SUCCESS;
         }
         JST_DEBUG("[REMOTE] Failed to find plugins: {}", pluginList);
+    }
+
+    if (config.encoder != Instance::Remote::EncoderType::Auto) {
+        const std::string encoderName = Jetstream::GetRemoteEncoderPrettyName(config.encoder);
+        const std::string codecName = RemoteCodecToString(config.codec);
+
+        if (!requestedEncoderFound) {
+            JST_ERROR("[REMOTE] Requested encoder '{}' is not available for codec '{}' on this system.",
+                      encoderName,
+                      codecName);
+        } else {
+            JST_ERROR("[REMOTE] Requested encoder '{}' for codec '{}' matched a supported path, but the required GStreamer plugins were not available.",
+                      encoderName,
+                      codecName);
+        }
     }
 
     JST_ERROR("[REMOTE] No encoding combination is available.");
@@ -511,7 +547,7 @@ Result Instance::Remote::Impl::createStream() {
 Result Instance::Remote::Impl::destroyStream() {
     JST_DEBUG("[REMOTE] Destroying stream.");
 
-    encodingStrategy = Strategy::None;
+    encodingStrategy = EncodingStrategyType::None;
     inputMemoryDevice_ = DeviceType::None;
 
     return Result::SUCCESS;
@@ -817,12 +853,12 @@ Result Instance::Remote::Impl::startStream() {
 
     // 03. Setup strategy-specific elements.
 
-    if (encodingStrategy == Strategy::None) {
+    if (encodingStrategy == EncodingStrategyType::None) {
         JST_ERROR("[REMOTE] No encoding strategy selected.");
         return Result::ERROR;
     }
 
-    if (encodingStrategy == Strategy::Software) {
+    if (encodingStrategy == EncodingStrategyType::Software) {
         elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
         elementOrder.push_back("rawparser");
 
@@ -835,7 +871,7 @@ Result Instance::Remote::Impl::startStream() {
         elementOrder.push_back("convert");
 
         switch(config.codec) {
-            case Viewport::VideoCodec::H264: {
+            case Instance::Remote::CodecType::H264: {
                 elements["encoder"] = encoder = gst_element_factory_make("x264enc", "encoder");
                 elementOrder.push_back("encoder");
 
@@ -858,19 +894,19 @@ Result Instance::Remote::Impl::startStream() {
                 g_object_set(elements["parser"], "config-interval", 1, nullptr);
                 break;
             }
-            case Viewport::VideoCodec::VP8:
+            case Instance::Remote::CodecType::VP8:
                 elements["encoder"] = encoder = gst_element_factory_make("vp8enc", "encoder");
                 elementOrder.push_back("encoder");
 
                 g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
                 break;
-            case Viewport::VideoCodec::VP9:
+            case Instance::Remote::CodecType::VP9:
                 elements["encoder"] = encoder = gst_element_factory_make("vp9enc", "encoder");
                 elementOrder.push_back("encoder");
 
                 g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
                 break;
-            case Viewport::VideoCodec::AV1:
+            case Instance::Remote::CodecType::AV1:
                 elements["encoder"] = encoder = gst_element_factory_make("rav1enc", "encoder");
                 elementOrder.push_back("encoder");
 
@@ -884,9 +920,9 @@ Result Instance::Remote::Impl::startStream() {
         }
     }
 
-    if (encodingStrategy == Strategy::HardwareNVENC) {
+    if (encodingStrategy == EncodingStrategyType::HardwareNVENC) {
         switch(config.codec) {
-            case Viewport::VideoCodec::H264:
+            case Instance::Remote::CodecType::H264:
                 elements["encoder"] = encoder = gst_element_factory_make("nvh264enc", "encoder");
                 elementOrder.push_back("encoder");
 
@@ -907,7 +943,7 @@ Result Instance::Remote::Impl::startStream() {
         }
     }
 
-    if (encodingStrategy == Strategy::HardwareV4L2) {
+    if (encodingStrategy == EncodingStrategyType::HardwareV4L2) {
         elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
         elementOrder.push_back("rawparser");
 
@@ -920,7 +956,7 @@ Result Instance::Remote::Impl::startStream() {
         elementOrder.push_back("convert");
 
         switch(config.codec) {
-            case Viewport::VideoCodec::H264: {
+            case Instance::Remote::CodecType::H264: {
                 elements["encoder"] = encoder = gst_element_factory_make("v4l2h264enc", "encoder");
                 elementOrder.push_back("encoder");
 
@@ -1097,16 +1133,114 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
 // Helpers
 //
 
-std::string Instance::Remote::Impl::StrategyToString(const Strategy& strategy) {
+const char* Instance::Remote::Impl::GetEncodingStrategyPrettyName(const EncodingStrategyType& strategy) {
     switch (strategy) {
-        case Strategy::None:
+        case EncodingStrategyType::None:
             return "None";
-        case Strategy::Software:
+        case EncodingStrategyType::Software:
             return "Software";
-        case Strategy::HardwareNVENC:
+        case EncodingStrategyType::HardwareNVENC:
             return "Hardware NVIDIA (NVENC)";
-        case Strategy::HardwareV4L2:
+        case EncodingStrategyType::HardwareV4L2:
             return "Hardware Linux (V4L2)";
+        default:
+            return "Unknown";
+    }
+}
+
+std::string RemoteCodecToString(const Instance::Remote::CodecType& codec) {
+    switch (codec) {
+        case Instance::Remote::CodecType::AV1:
+            return "av1";
+        case Instance::Remote::CodecType::VP8:
+            return "vp8";
+        case Instance::Remote::CodecType::VP9:
+            return "vp9";
+        case Instance::Remote::CodecType::H264:
+            return "h264";
+        default:
+            JST_ERROR("Unknown remote codec.");
+            throw Result::ERROR;
+    }
+}
+
+Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec) {
+    std::string sanitizedCodec = codec;
+    std::transform(sanitizedCodec.begin(), sanitizedCodec.end(), sanitizedCodec.begin(), ::tolower);
+
+    if (sanitizedCodec == "av1") {
+        return Instance::Remote::CodecType::AV1;
+    } else if (sanitizedCodec == "vp8") {
+        return Instance::Remote::CodecType::VP8;
+    } else if (sanitizedCodec == "vp9") {
+        return Instance::Remote::CodecType::VP9;
+    } else if (sanitizedCodec == "h264") {
+        return Instance::Remote::CodecType::H264;
+    }
+
+    JST_ERROR("Unknown remote codec: {}", codec);
+    throw Result::ERROR;
+}
+
+const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec) {
+    switch (codec) {
+        case Instance::Remote::CodecType::AV1:
+            return "AV1";
+        case Instance::Remote::CodecType::VP8:
+            return "VP8";
+        case Instance::Remote::CodecType::VP9:
+            return "VP9";
+        case Instance::Remote::CodecType::H264:
+            return "H264";
+        default:
+            return "Unknown";
+    }
+}
+
+std::string RemoteEncoderToString(const Instance::Remote::EncoderType& encoder) {
+    switch (encoder) {
+        case Instance::Remote::EncoderType::Auto:
+            return "auto";
+        case Instance::Remote::EncoderType::Software:
+            return "software";
+        case Instance::Remote::EncoderType::NVENC:
+            return "nvenc";
+        case Instance::Remote::EncoderType::V4L2:
+            return "v4l2";
+        default:
+            JST_ERROR("Unknown remote encoder.");
+            throw Result::ERROR;
+    }
+}
+
+Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder) {
+    std::string sanitizedEncoder = encoder;
+    std::transform(sanitizedEncoder.begin(), sanitizedEncoder.end(), sanitizedEncoder.begin(), ::tolower);
+
+    if (sanitizedEncoder == "auto") {
+        return Instance::Remote::EncoderType::Auto;
+    } else if (sanitizedEncoder == "software") {
+        return Instance::Remote::EncoderType::Software;
+    } else if (sanitizedEncoder == "nvenc") {
+        return Instance::Remote::EncoderType::NVENC;
+    } else if (sanitizedEncoder == "v4l2") {
+        return Instance::Remote::EncoderType::V4L2;
+    }
+
+    JST_ERROR("Unknown remote encoder: {}", encoder);
+    throw Result::ERROR;
+}
+
+const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& encoder) {
+    switch (encoder) {
+        case Instance::Remote::EncoderType::Auto:
+            return "Auto";
+        case Instance::Remote::EncoderType::Software:
+            return "Software";
+        case Instance::Remote::EncoderType::NVENC:
+            return "NVENC";
+        case Instance::Remote::EncoderType::V4L2:
+            return "V4L2";
         default:
             return "Unknown";
     }

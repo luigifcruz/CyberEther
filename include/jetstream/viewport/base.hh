@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_VIEWPORT_BASE_HH
 #define JETSTREAM_VIEWPORT_BASE_HH
 
-#include "jetstream/viewport/types.hh"
-
 //
 // GLFW
 //

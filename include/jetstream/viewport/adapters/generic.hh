@@ -5,7 +5,6 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/viewport/types.hh"
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Viewport {
@@ -25,9 +24,6 @@ struct Config {
 
     /// @brief The broker address server of the remote viewport.
     std::string broker = "https://cyberether.org";
-
-    /// @brief The video codec of the remote viewport.
-    Viewport::VideoCodec codec = Viewport::VideoCodec::H264;
 
     /// @brief Enable auto-join in the remote viewport (insecure).
     // TODO: [beta1] Implement auto-join functionality.

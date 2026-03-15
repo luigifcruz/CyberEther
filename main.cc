@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <thread>
 
 #include "jetstream/config.hh"
@@ -15,6 +16,38 @@
 
 using namespace Jetstream;
 
+namespace {
+
+std::string RemoteCodecOptionsString() {
+    std::string options;
+
+    for (const auto codec : Jetstream::RemoteCodecTypes) {
+        if (!options.empty()) {
+            options += ", ";
+        }
+
+        options += RemoteCodecToString(codec);
+    }
+
+    return options;
+}
+
+std::string RemoteEncoderOptionsString() {
+    std::string options;
+
+    for (const auto encoder : Jetstream::RemoteEncoderTypes) {
+        if (!options.empty()) {
+            options += ", ";
+        }
+
+        options += RemoteEncoderToString(encoder);
+    }
+
+    return options;
+}
+
+}  // namespace
+
 #ifdef JST_OS_BROWSER
 extern "C" {
 EMSCRIPTEN_KEEPALIVE
@@ -28,6 +61,9 @@ void cyberether_shutdown() {
 #endif
 
 void printUsage(const char* program) {
+    const std::string codecOptions = RemoteCodecOptionsString();
+    const std::string encoderOptions = RemoteEncoderOptionsString();
+
     jst::fmt::print("Usage: {} [command] [options] [flowgraph]\n\n", program);
     jst::fmt::print("Commands:\n");
     jst::fmt::print("  remote                       Run with remote streaming enabled\n");
@@ -42,9 +78,13 @@ void printUsage(const char* program) {
     jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
     jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n");
     jst::fmt::print("  --endpoint <url>             Broker URL (default: https://cyberether.org)\n");
-    jst::fmt::print("  --codec <codec>              Video codec: h264, vp8, vp9, av1 (default: h264)\n");
-    jst::fmt::print("  --software-encode            Force software video encoding\n");
     jst::fmt::print("  --auto-join                  Auto-join sessions\n");
+    jst::fmt::print("  --codec <codec>              Codec: {} (default: {})\n",
+                    codecOptions,
+                    RemoteCodecToString(Instance::Remote::CodecType::H264));
+    jst::fmt::print("  --encoder <type>             Encoder: {} (default: {})\n",
+                    encoderOptions,
+                    RemoteEncoderToString(Instance::Remote::EncoderType::Auto));
 }
 
 int main(int argc, char* argv[]) {
@@ -134,21 +174,46 @@ int main(int argc, char* argv[]) {
         if (arg == "--codec") {
             if (i + 1 < argc) {
                 const std::string codec = argv[++i];
-                if (codec == "h264") {
-                    remoteConfig.codec = Viewport::VideoCodec::H264;
-                } else if (codec == "vp8") {
-                    remoteConfig.codec = Viewport::VideoCodec::VP8;
-                } else if (codec == "vp9") {
-                    remoteConfig.codec = Viewport::VideoCodec::VP9;
-                } else if (codec == "av1") {
-                    remoteConfig.codec = Viewport::VideoCodec::AV1;
+                try {
+                    remoteConfig.codec = Jetstream::StringToRemoteCodec(codec);
+                } catch (const Result&) {
+                    jst::fmt::print(stderr,
+                                    "Invalid value for --codec: '{}'. Expected one of: {}.\n\n",
+                                    codec,
+                                    RemoteCodecOptionsString());
+                    printUsage(argv[0]);
+                    return 1;
                 }
+            } else {
+                jst::fmt::print(stderr,
+                                "Missing value for --codec. Expected one of: {}.\n\n",
+                                RemoteCodecOptionsString());
+                printUsage(argv[0]);
+                return 1;
             }
             continue;
         }
 
-        if (arg == "--software-encode") {
-            remoteConfig.hardwareAcceleration = false;
+        if (arg == "--encoder") {
+            if (i + 1 < argc) {
+                const std::string enc = argv[++i];
+                try {
+                    remoteConfig.encoder = Jetstream::StringToRemoteEncoder(enc);
+                } catch (const Result&) {
+                    jst::fmt::print(stderr,
+                                    "Invalid value for --encoder: '{}'. Expected one of: {}.\n\n",
+                                    enc,
+                                    RemoteEncoderOptionsString());
+                    printUsage(argv[0]);
+                    return 1;
+                }
+            } else {
+                jst::fmt::print(stderr,
+                                "Missing value for --encoder. Expected one of: {}.\n\n",
+                                RemoteEncoderOptionsString());
+                printUsage(argv[0]);
+                return 1;
+            }
             continue;
         }
 
