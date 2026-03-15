@@ -43,7 +43,7 @@ void printUsage(const char* program) {
     jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n");
     jst::fmt::print("  --endpoint <url>             Broker URL (default: https://cyberether.org)\n");
     jst::fmt::print("  --codec <codec>              Video codec: h264, vp8, vp9, av1 (default: h264)\n");
-    jst::fmt::print("  --acceleration               Enable hardware acceleration\n");
+    jst::fmt::print("  --software-encode            Force software video encoding\n");
     jst::fmt::print("  --auto-join                  Auto-join sessions\n");
 }
 
@@ -147,8 +147,8 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        if (arg == "--acceleration") {
-            remoteConfig.hardwareAcceleration = true;
+        if (arg == "--software-encode") {
+            remoteConfig.hardwareAcceleration = false;
             continue;
         }
 
