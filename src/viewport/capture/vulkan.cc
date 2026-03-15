@@ -159,6 +159,7 @@ Result FrameCaptureVulkan::captureFrame() {
     pimpl->frameEvents[pimpl->currentCaptureIndex].test_and_set();
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+    const bool headless = Backend::State<DeviceType::Vulkan>()->headless();
     const U32 drawableIndex = pimpl->vulkanViewport->currentDrawableIndex();
 
     vkResetCommandBuffer(pimpl->commandBuffers[pimpl->currentCaptureIndex], 0);
@@ -171,31 +172,33 @@ Result FrameCaptureVulkan::captureFrame() {
         JST_ERROR("[CAPTURE] Failed to begin command buffer.");
     });
 
-    VkImageMemoryBarrier toTransferBarrier = {};
-    toTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toTransferBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    toTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    toTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    toTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    toTransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toTransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toTransferBarrier.image = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
-    toTransferBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    toTransferBarrier.subresourceRange.baseMipLevel = 0;
-    toTransferBarrier.subresourceRange.levelCount = 1;
-    toTransferBarrier.subresourceRange.baseArrayLayer = 0;
-    toTransferBarrier.subresourceRange.layerCount = 1;
+    if (!headless) {
+        VkImageMemoryBarrier toTransferBarrier = {};
+        toTransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toTransferBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        toTransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toTransferBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toTransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toTransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransferBarrier.image = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
+        toTransferBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        toTransferBarrier.subresourceRange.baseMipLevel = 0;
+        toTransferBarrier.subresourceRange.levelCount = 1;
+        toTransferBarrier.subresourceRange.baseArrayLayer = 0;
+        toTransferBarrier.subresourceRange.layerCount = 1;
 
-    vkCmdPipelineBarrier(pimpl->commandBuffers[pimpl->currentCaptureIndex],
-                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0,
-                         0,
-                         nullptr,
-                         0,
-                         nullptr,
-                         1,
-                         &toTransferBarrier);
+        vkCmdPipelineBarrier(pimpl->commandBuffers[pimpl->currentCaptureIndex],
+                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0,
+                             0,
+                             nullptr,
+                             0,
+                             nullptr,
+                             1,
+                             &toTransferBarrier);
+    }
 
     VkBufferImageCopy region = {};
     region.bufferOffset = 0;
@@ -220,31 +223,33 @@ Result FrameCaptureVulkan::captureFrame() {
                            1,
                            &region);
 
-    VkImageMemoryBarrier toPresentBarrier = {};
-    toPresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    toPresentBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    toPresentBarrier.dstAccessMask = 0;
-    toPresentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    toPresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    toPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toPresentBarrier.image = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
-    toPresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    toPresentBarrier.subresourceRange.baseMipLevel = 0;
-    toPresentBarrier.subresourceRange.levelCount = 1;
-    toPresentBarrier.subresourceRange.baseArrayLayer = 0;
-    toPresentBarrier.subresourceRange.layerCount = 1;
+    if (!headless) {
+        VkImageMemoryBarrier toPresentBarrier = {};
+        toPresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toPresentBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toPresentBarrier.dstAccessMask = 0;
+        toPresentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toPresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toPresentBarrier.image = pimpl->vulkanViewport->getSwapchainImage(drawableIndex);
+        toPresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        toPresentBarrier.subresourceRange.baseMipLevel = 0;
+        toPresentBarrier.subresourceRange.levelCount = 1;
+        toPresentBarrier.subresourceRange.baseArrayLayer = 0;
+        toPresentBarrier.subresourceRange.layerCount = 1;
 
-    vkCmdPipelineBarrier(pimpl->commandBuffers[pimpl->currentCaptureIndex],
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                         0,
-                         0,
-                         nullptr,
-                         0,
-                         nullptr,
-                         1,
-                         &toPresentBarrier);
+        vkCmdPipelineBarrier(pimpl->commandBuffers[pimpl->currentCaptureIndex],
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                             0,
+                             0,
+                             nullptr,
+                             0,
+                             nullptr,
+                             1,
+                             &toPresentBarrier);
+    }
 
     JST_VK_CHECK(vkEndCommandBuffer(pimpl->commandBuffers[pimpl->currentCaptureIndex]), [&]{
         JST_ERROR("[CAPTURE] Failed to end command buffer.");
