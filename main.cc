@@ -67,12 +67,14 @@ void printUsage(const char* program) {
     jst::fmt::print("Usage: {} [command] [options] [flowgraph]\n\n", program);
     jst::fmt::print("Commands:\n");
     jst::fmt::print("  remote                       Run with remote streaming enabled\n");
-    jst::fmt::print("  benchmark [format]           Run benchmarks (markdown, json, csv)\n\n");
+    jst::fmt::print("  benchmark                    Run benchmarks\n\n");
     jst::fmt::print("Global Options:\n");
     jst::fmt::print("  -d, --device <type>          Device type (metal, vulkan)\n");
     jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
     jst::fmt::print("  -h, --help                   Show this help\n");
     jst::fmt::print("  -v, --version                Show version\n\n");
+    jst::fmt::print("Benchmark Options:\n");
+    jst::fmt::print("  --format <type>             Output format: markdown, json, csv (default: markdown)\n\n");
     jst::fmt::print("Remote Options:\n");
     jst::fmt::print("  --headless                   Run in headless mode (no window)\n");
     jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
@@ -126,9 +128,33 @@ int main(int argc, char* argv[]) {
             std::string format = "markdown";
             if (i + 1 < argc) {
                 const std::string next = argv[i + 1];
-                if (next == "markdown" || next == "json" || next == "csv") {
-                    format = next;
-                    ++i;
+                if (next == "--format") {
+                    if (i + 2 >= argc) {
+                        jst::fmt::print(stderr,
+                                        "Missing value for --format. Expected one of: markdown, json, csv.\n\n");
+                        printUsage(argv[0]);
+                        return 1;
+                    }
+
+                    format = argv[i + 2];
+                    if (format != "markdown" && format != "json" && format != "csv") {
+                        jst::fmt::print(stderr,
+                                        "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
+                                        format);
+                        printUsage(argv[0]);
+                        return 1;
+                    }
+
+                    i += 2;
+                } else if (next == "--help") {
+                    printUsage(argv[0]);
+                    return 0;
+                } else if (!next.empty() && next[0] == '-') {
+                    jst::fmt::print(stderr,
+                                    "Invalid benchmark option: '{}'. Expected: --format <markdown|json|csv>.\n\n",
+                                    next);
+                    printUsage(argv[0]);
+                    return 1;
                 }
             }
             Benchmark::Run(format);
