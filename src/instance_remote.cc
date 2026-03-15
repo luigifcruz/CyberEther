@@ -841,7 +841,7 @@ Result Instance::Remote::Impl::startStream() {
 
                 g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
                 g_object_set(elements["encoder"], "tune", 4, nullptr);
-                g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
+                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
 
                 elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
                 elementOrder.push_back("hwcaps");
