@@ -365,6 +365,8 @@ Result Instance::Remote::Impl::createBroker() {
 
     JST_CHECK(createRoom());
 
+    JST_INFO("[REMOTE] Signaller URL: '{}'.", signallerUrl);
+
     brokerClient->set_bearer_token_auth(producerToken);
 
     inviteUrl_ = jst::fmt::format("{}#{}", clientDomain, consumerToken);
