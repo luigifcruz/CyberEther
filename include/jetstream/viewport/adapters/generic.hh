@@ -21,16 +21,6 @@ struct Config {
 
     /// @brief The framerate of the remote viewport.
     U64 framerate = 60;
-
-    /// @brief The broker address server of the remote viewport.
-    std::string broker = "https://cyberether.org";
-
-    /// @brief Enable auto-join in the remote viewport (insecure).
-    // TODO: [beta1] Implement auto-join functionality.
-    bool autoJoin = false;
-
-    /// @brief Whether hardware acceleration is enabled.
-    bool hardwareAcceleration = true;
 };
 
 class Generic {
