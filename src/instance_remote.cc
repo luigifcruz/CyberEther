@@ -957,7 +957,7 @@ Result Instance::Remote::Impl::startStream() {
     g_object_get(elements["webrtc"], "signaller", &signaller, nullptr);
     if (signaller) {
         JST_DEBUG("[REMOTE] Setting signaller URI to {}", signallerUrl);
-        g_object_set(signaller, "uri", "ws://localhost:8080/api/v1/remote/signaller", nullptr);
+        g_object_set(signaller, "uri", signallerUrl.c_str(), nullptr);
         g_signal_connect(G_OBJECT(signaller), "webrtcbin-ready", G_CALLBACK(rtcReadyCallback), this);
         g_object_unref(signaller);
     } else {
