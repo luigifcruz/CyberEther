@@ -12,7 +12,7 @@ namespace Jetstream {
 struct Instance::Remote {
  public:
     struct Config {
-        std::string broker = "127.0.0.1:8080";
+        std::string broker = "https://cyberether.org";
         Viewport::VideoCodec codec = Viewport::VideoCodec::H264;
         bool autoJoinSessions = false;
         bool hardwareAcceleration = true;

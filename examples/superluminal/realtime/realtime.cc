@@ -2,18 +2,18 @@
 
 using namespace Jetstream;
 
-int main() {
+static Result App() {
     std::cout << "Welcome to Superluminal!" << std::endl;
 
     Tensor data(DeviceType::CPU, TypeToDataType<F32>(), {1, 8192});
 
-    Superluminal::Plot("Sine", {{1}}, {
+    JST_CHECK(Superluminal::Plot("Sine", {{1}}, {
         .buffer = data,
         .type = Superluminal::Type::Line,
         .options = {},
-    });
+    }));
 
-    Superluminal::RealtimeLoop([&](const bool& running){
+    JST_CHECK(Superluminal::RealtimeLoop([&](const bool& running){
         F32 phase = 0.0f;
 
         while (running) {
@@ -30,9 +30,13 @@ int main() {
             Superluminal::Update();
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-    });
+    }));
 
     std::cout << "Goodbye from Superluminal!" << std::endl;
 
-    return 0;
+    return Result::SUCCESS;
+}
+
+int main() {
+    return App() == Result::SUCCESS ? 0 : 1;
 }

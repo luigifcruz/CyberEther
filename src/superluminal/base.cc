@@ -8,6 +8,7 @@
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
+#include "jetstream/instance_remote_ui.hh"
 #include "jetstream/render/tools/imgui_markdown.hh"
 
 #include "dmi_block.hh"
@@ -89,6 +90,15 @@ Superluminal* Superluminal::GetInstance() {
 Result Superluminal::initialize(const InstanceConfig& config) {
     JST_DEBUG("[SUPERLUMINAL] Initializing.");
 
+    if (impl->initialized) {
+        JST_CHECK(terminate());
+    }
+
+    if (config.remote && config.device != DeviceType::None && config.device != DeviceType::Vulkan) {
+        JST_ERROR("[SUPERLUMINAL] Remote requires the Vulkan backend.");
+        return Result::ERROR;
+    }
+
     // Copy configuration to memory.
 
     impl->config = config;
@@ -96,12 +106,33 @@ Result Superluminal::initialize(const InstanceConfig& config) {
     // Initialize the instance.
 
     Instance::Config instanceConfig = {
-        .device = impl->config.preferredDevice,
         .size = impl->config.interfaceSize,
     };
 
+    if (impl->config.remote && impl->config.device == DeviceType::None) {
+        instanceConfig.device = DeviceType::Vulkan;
+    } else if (impl->config.device != DeviceType::None) {
+        instanceConfig.device = impl->config.device;
+    }
+
     impl->instance = std::make_shared<Instance>();
-    JST_CHECK(impl->instance->create(instanceConfig));
+    auto result = impl->instance->create(instanceConfig);
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        impl->instance.reset();
+        return result;
+    }
+
+    if (impl->config.remote) {
+        Instance::Remote::Config remoteConfig;
+        remoteConfig.broker = impl->config.remoteBroker;
+        remoteConfig.autoJoinSessions = impl->config.remoteAutoJoin;
+        result = impl->instance->remote()->create(remoteConfig);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            JST_CHECK(impl->instance->destroy());
+            impl->instance.reset();
+            return result;
+        }
+    }
 
     // Update the state.
 
@@ -123,6 +154,10 @@ Result Superluminal::terminate() {
 
     if (impl->running) {
         JST_CHECK(stop());
+    }
+
+    if (impl->config.remote && impl->instance->remote()->started()) {
+        JST_CHECK(impl->instance->remote()->destroy());
     }
 
     // Destroy instance.
@@ -410,6 +445,65 @@ Result Superluminal::pollEvents(const bool& wait) {
 
     JST_CHECK(impl->instance->poll(wait));
 
+    return Result::SUCCESS;
+}
+
+std::string Superluminal::RemoteRoomId() {
+    auto* instance = GetInstance();
+    if (!instance->impl->initialized || !instance->impl->config.remote) {
+        return {};
+    }
+
+    const auto& remote = instance->impl->instance->remote();
+    if (!remote || !remote->started()) {
+        return {};
+    }
+
+    return remote->roomId();
+}
+
+std::string Superluminal::RemoteInviteUrl() {
+    auto* instance = GetInstance();
+    if (!instance->impl->initialized || !instance->impl->config.remote) {
+        return {};
+    }
+
+    const auto& remote = instance->impl->instance->remote();
+    if (!remote || !remote->started()) {
+        return {};
+    }
+
+    return remote->inviteUrl();
+}
+
+std::string Superluminal::RemoteAccessToken() {
+    auto* instance = GetInstance();
+    if (!instance->impl->initialized || !instance->impl->config.remote) {
+        return {};
+    }
+
+    const auto& remote = instance->impl->instance->remote();
+    if (!remote || !remote->started()) {
+        return {};
+    }
+
+    return remote->accessToken();
+}
+
+Result Superluminal::PrintRemoteInfo() {
+    auto* instance = GetInstance();
+    if (!instance->impl->initialized || !instance->impl->config.remote) {
+        JST_WARN("[SUPERLUMINAL] Remote is not enabled.");
+        return Result::SUCCESS;
+    }
+
+    const auto& remote = instance->impl->instance->remote();
+    if (!remote || !remote->started()) {
+        JST_WARN("[SUPERLUMINAL] Remote session is not started.");
+        return Result::SUCCESS;
+    }
+
+    ::PrintRemoteInfo(remote.get());
     return Result::SUCCESS;
 }
 

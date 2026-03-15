@@ -198,7 +198,28 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     return Result::SUCCESS;
 }
 
-Result Implementation::commitDrawable(std::vector<VkSemaphore>&) {
+Result Implementation::commitDrawable(std::vector<VkSemaphore>& semaphores) {
+    if (semaphores.empty()) {
+        return Result::SUCCESS;
+    }
+
+    std::vector<VkPipelineStageFlags> waitStages(semaphores.size(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = static_cast<U32>(semaphores.size());
+    submitInfo.pWaitSemaphores = semaphores.data();
+    submitInfo.pWaitDstStageMask = waitStages.data();
+    submitInfo.commandBufferCount = 0;
+    submitInfo.pCommandBuffers = nullptr;
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = nullptr;
+
+    auto& graphicsQueue = Backend::State<DeviceType::Vulkan>()->getGraphicsQueue();
+    JST_VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, nullptr), [&]{
+        JST_ERROR("[HEADLESS-VULKAN] Failed to consume render completion semaphores.");
+    });
+
     return Result::SUCCESS;
 }
 

@@ -1,10 +1,11 @@
 #include <jetstream/superluminal.hh>
+
 #include <random>
 
 using namespace Jetstream;
 
 static Result App() {
-    std::cout << "Welcome to Superluminal!" << std::endl;
+    std::cout << "Welcome to Superluminal Remote!" << std::endl;
 
     Tensor data(DeviceType::CPU, TypeToDataType<F32>(), {1, 8192});
     std::mt19937 rng(std::random_device{}());
@@ -14,7 +15,12 @@ static Result App() {
         data.at<F32>(0, j) = dist(rng);
     }
 
-    JST_CHECK(Superluminal::Plot("Random", {{1}}, {
+    Superluminal::InstanceConfig config;
+    config.remote = true;
+    JST_CHECK(Superluminal::Initialize(config));
+    JST_CHECK(Superluminal::PrintRemoteInfo());
+
+    JST_CHECK(Superluminal::Plot("Remote Demo", {{1}}, {
         .buffer = data,
         .type = Superluminal::Type::Line,
         .source = Superluminal::Domain::Time,
@@ -24,7 +30,7 @@ static Result App() {
 
     JST_CHECK(Superluminal::Show());
 
-    std::cout << "Goodbye from Superluminal!" << std::endl;
+    std::cout << "Goodbye from Superluminal Remote!" << std::endl;
 
     return Result::SUCCESS;
 }

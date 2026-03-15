@@ -254,9 +254,9 @@ Result Instance::Remote::updateWaitlist() {
         return Result::SUCCESS;
     }
 
-    auto res = impl->brokerClient->Get("/v1/webrtc/room/waitlist");
+    auto res = impl->brokerClient->Get("/api/v1/remote/room/waitlist");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull waitlist: [{}] /v1/webrtc/room/waitlist.", res ? res->status : 0);
+        JST_ERROR("[REMOTE] Failed to pull waitlist: [{}] /api/v1/remote/room/waitlist.", res ? res->status : 0);
         return Result::ERROR;
     }
 
@@ -282,9 +282,9 @@ Result Instance::Remote::updateSessions() {
         return Result::SUCCESS;
     }
 
-    auto res = impl->brokerClient->Get("/v1/webrtc/room/active");
+    auto res = impl->brokerClient->Get("/api/v1/remote/room/active");
     if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull sessions: [{}] /v1/webrtc/room/active.", res ? res->status : 0);
+        JST_ERROR("[REMOTE] Failed to pull sessions: [{}] /api/v1/remote/room/active.", res ? res->status : 0);
         return Result::ERROR;
     }
 
@@ -331,9 +331,9 @@ Result Instance::Remote::approveClient(const std::string& code) {
             JST_INFO("[REMOTE] Client authorization code '{}' approved.", code);
 
             auto json = nlohmann::json{{"sessionId", sessionId}};
-            auto res = impl->brokerClient->Post("/v1/webrtc/room/approval", json.dump(), "application/json");
+            auto res = impl->brokerClient->Post("/api/v1/remote/room/approval", json.dump(), "application/json");
             if (!res || res->status != 200) {
-                JST_ERROR("[REMOTE] Failed to post approval: [{}] /v1/webrtc/room/approval.", res ? res->status : 0);
+                JST_ERROR("[REMOTE] Failed to post approval: [{}] /api/v1/remote/room/approval.", res ? res->status : 0);
                 return Result::ERROR;
             }
 
@@ -355,8 +355,8 @@ Result Instance::Remote::Impl::createBroker() {
     brokerClient = std::make_unique<httplib::Client>(config.broker);
 
     {
-        auto res = brokerClient->Get("/health");
-        if (!res || res->status != 200 || res->body != "ok") {
+        auto res = brokerClient->Get("/api/v1");
+        if (!res || res->status != 200) {
             JST_ERROR("[REMOTE] Failed to connect to server.");
             return Result::ERROR;
         }
@@ -364,6 +364,8 @@ Result Instance::Remote::Impl::createBroker() {
     }
 
     JST_CHECK(createRoom());
+
+    JST_INFO("[REMOTE] Signaller URL: '{}'.", signallerUrl);
 
     brokerClient->set_bearer_token_auth(producerToken);
 
@@ -382,9 +384,9 @@ Result Instance::Remote::Impl::destroyBroker() {
 
 Result Instance::Remote::Impl::createRoom() {
     auto params = httplib::Params{};
-    auto res = brokerClient->Post("/v1/webrtc/room", params);
+    auto res = brokerClient->Post("/api/v1/remote/room", params);
     if (!res || res->status != 201) {
-        JST_ERROR("[REMOTE] Failed to create room: [{}] /v1/webrtc/room.", res ? res->status : 0);
+        JST_ERROR("[REMOTE] Failed to create room: [{}] /api/v1/remote/room.", res ? res->status : 0);
         return Result::ERROR;
     }
 
@@ -771,74 +773,21 @@ Result Instance::Remote::Impl::startStream() {
     std::map<std::string, GstElement*> elements;
     std::vector<std::string> elementOrder;
 
+    // 01. Setup Source element.
+
     elements["source"] = source = gst_element_factory_make("appsrc", "source");
     elementOrder.push_back("source");
-
-    elements["caps"] = gst_element_factory_make("capsfilter", "caps");
-    elementOrder.push_back("caps");
-
-    if (encodingStrategy == Strategy::Software || encodingStrategy == Strategy::HardwareV4L2) {
-        elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
-        elementOrder.push_back("rawparser");
-
-        elements["convert"] = gst_element_factory_make("videoconvert", "convert");
-        elementOrder.push_back("convert");
-    }
-
-    if (config.codec == Viewport::VideoCodec::H264) {
-        if (encodingStrategy == Strategy::HardwareNVENC) {
-            elements["encoder"] = encoder = gst_element_factory_make("nvh264enc", "encoder");
-            elementOrder.push_back("encoder");
-        }
-
-        if (encodingStrategy == Strategy::HardwareV4L2) {
-            elements["encoder"] = encoder = gst_element_factory_make("v4l2h264enc", "encoder");
-            elementOrder.push_back("encoder");
-        }
-
-        if (encodingStrategy == Strategy::Software) {
-            elements["encoder"] = encoder = gst_element_factory_make("x264enc", "encoder");
-            elementOrder.push_back("encoder");
-        }
-
-        elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
-        elementOrder.push_back("hwcaps");
-
-        elements["parser"] = gst_element_factory_make("h264parse", "parser");
-        elementOrder.push_back("parser");
-    }
-
-    if (config.codec == Viewport::VideoCodec::VP8) {
-        elements["encoder"] = encoder = gst_element_factory_make("vp8enc", "encoder");
-        elementOrder.push_back("encoder");
-    }
-
-    if (config.codec == Viewport::VideoCodec::VP9) {
-        elements["encoder"] = encoder = gst_element_factory_make("vp9enc", "encoder");
-        elementOrder.push_back("encoder");
-    }
-
-    if (config.codec == Viewport::VideoCodec::AV1) {
-        elements["encoder"] = encoder = gst_element_factory_make("rav1enc", "encoder");
-        elementOrder.push_back("encoder");
-    }
-
-    elements["webrtc"] = gst_element_factory_make("webrtcsink", "webrtc");
-    elementOrder.push_back("webrtc");
-
-    for (const auto& [name, element] : elements) {
-        if (!element) {
-            JST_ERROR("[REMOTE] Failed to create gstreamer element '{}'.", name);
-            gst_object_unref(pipeline);
-            return Result::ERROR;
-        }
-    }
 
     g_object_set(elements["source"], "block", true, nullptr);
     g_object_set(elements["source"], "format", 3, nullptr);
     g_object_set(elements["source"], "leaky-type", 2, nullptr);
     g_object_set(elements["source"], "is-live", true, nullptr);
     g_object_set(elements["source"], "max-bytes", 2*size.x*size.y*4, nullptr);
+
+    // 02. Setup Caps element.
+
+    elements["caps"] = gst_element_factory_make("capsfilter", "caps");
+    elementOrder.push_back("caps");
 
     GstCaps* caps = gst_caps_new_simple("video/x-raw",
                                         "format", G_TYPE_STRING, "BGRA",
@@ -849,52 +798,157 @@ Result Instance::Remote::Impl::startStream() {
                                         "colorimetry", G_TYPE_STRING, "bt709",
                                         nullptr);
 
-    if (encodingStrategy == Strategy::HardwareNVENC && inputMemoryDevice_ == DeviceType::CUDA) {
-        GstCapsFeatures *features = gst_caps_features_new("memory:CUDAMemory", nullptr);
-        gst_caps_set_features(caps, 0, features);
+    switch (inputMemoryDevice_) {
+        case DeviceType::CPU:
+            break;
+        case DeviceType::CUDA: {
+            GstCapsFeatures* features = gst_caps_features_new("memory:CUDAMemory", nullptr);
+            gst_caps_set_features(caps, 0, features);
+            break;
+        }
+        default:
+            JST_ERROR("[REMOTE] Unsupported input memory device '{}'.", inputMemoryDevice_);
+            gst_caps_unref(caps);
+            return Result::ERROR;
     }
 
     g_object_set(elements["caps"], "caps", caps, nullptr);
     gst_caps_unref(caps);
 
-    if (encodingStrategy == Strategy::Software || encodingStrategy == Strategy::HardwareV4L2) {
+    // 03. Setup strategy-specific elements.
+
+    if (encodingStrategy == Strategy::None) {
+        JST_ERROR("[REMOTE] No encoding strategy selected.");
+        return Result::ERROR;
+    }
+
+    if (encodingStrategy == Strategy::Software) {
+        elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
+        elementOrder.push_back("rawparser");
+
         g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
         g_object_set(elements["rawparser"], "format", 12, nullptr);
         g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
         g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
-    }
 
-    if (config.codec == Viewport::VideoCodec::H264) {
-        if (encodingStrategy == Strategy::HardwareNVENC) {
-            g_object_set(elements["encoder"], "zerolatency", true, nullptr);
-            g_object_set(elements["encoder"], "preset", 5, nullptr);
+        elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+        elementOrder.push_back("convert");
+
+        switch(config.codec) {
+            case Viewport::VideoCodec::H264: {
+                elements["encoder"] = encoder = gst_element_factory_make("x264enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
+                g_object_set(elements["encoder"], "tune", 4, nullptr);
+                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+
+                elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
+                elementOrder.push_back("hwcaps");
+
+                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
+                                                      "profile", G_TYPE_STRING, "high",
+                                                      nullptr);
+                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
+                gst_caps_unref(hwcaps);
+
+                elements["parser"] = gst_element_factory_make("h264parse", "parser");
+                elementOrder.push_back("parser");
+
+                g_object_set(elements["parser"], "config-interval", 1, nullptr);
+                break;
+            }
+            case Viewport::VideoCodec::VP8:
+                elements["encoder"] = encoder = gst_element_factory_make("vp8enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
+                break;
+            case Viewport::VideoCodec::VP9:
+                elements["encoder"] = encoder = gst_element_factory_make("vp9enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
+                break;
+            case Viewport::VideoCodec::AV1:
+                elements["encoder"] = encoder = gst_element_factory_make("rav1enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                g_object_set(elements["encoder"], "low-latency", true, nullptr);
+                g_object_set(elements["encoder"], "speed-preset", 10, nullptr);
+                g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
+                break;
+            default:
+                JST_ERROR("[REMOTE] Unsupported codec for software encoding.");
+                return Result::ERROR;
         }
+    }
 
-        if (encodingStrategy == Strategy::Software) {
-            g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
-            g_object_set(elements["encoder"], "tune", 4, nullptr);
-            g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+    if (encodingStrategy == Strategy::HardwareNVENC) {
+        switch(config.codec) {
+            case Viewport::VideoCodec::H264:
+                elements["encoder"] = encoder = gst_element_factory_make("nvh264enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                g_object_set(elements["encoder"], "zerolatency", true, nullptr);
+                g_object_set(elements["encoder"], "preset", 5, nullptr);
+
+                elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
+                elementOrder.push_back("hwcaps");
+
+                elements["parser"] = gst_element_factory_make("h264parse", "parser");
+                elementOrder.push_back("parser");
+
+                g_object_set(elements["parser"], "config-interval", 1, nullptr);
+                break;
+            default:
+                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
+                return Result::ERROR;
         }
-
-        GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                              "profile", G_TYPE_STRING, "high",
-                                              nullptr);
-        g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
-        gst_caps_unref(hwcaps);
-
-        g_object_set(elements["parser"], "config-interval", 1, nullptr);
     }
 
-    if (config.codec == Viewport::VideoCodec::AV1) {
-        g_object_set(elements["encoder"], "low-latency", true, nullptr);
-        g_object_set(elements["encoder"], "speed-preset", 10, nullptr);
-        g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
+    if (encodingStrategy == Strategy::HardwareV4L2) {
+        elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
+        elementOrder.push_back("rawparser");
+
+        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
+        g_object_set(elements["rawparser"], "format", 12, nullptr);
+        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
+        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+
+        elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+        elementOrder.push_back("convert");
+
+        switch(config.codec) {
+            case Viewport::VideoCodec::H264: {
+                elements["encoder"] = encoder = gst_element_factory_make("v4l2h264enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
+                elementOrder.push_back("hwcaps");
+
+                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
+                                                      "profile", G_TYPE_STRING, "high",
+                                                      nullptr);
+                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
+                gst_caps_unref(hwcaps);
+
+                elements["parser"] = gst_element_factory_make("h264parse", "parser");
+                elementOrder.push_back("parser");
+
+                g_object_set(elements["parser"], "config-interval", 1, nullptr);
+                break;
+            }
+            default:
+                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
+                return Result::ERROR;
+        }
     }
 
-    if (config.codec == Viewport::VideoCodec::VP8 ||
-        config.codec == Viewport::VideoCodec::VP9) {
-        g_object_set(elements["encoder"], "target-bitrate", 25*1024*1024, nullptr);
-    }
+    // 04. Setup WebRTC element.
+
+    elements["webrtc"] = gst_element_factory_make("webrtcsink", "webrtc");
+    elementOrder.push_back("webrtc");
 
     GstStructure *s = gst_structure_new_empty("meta");
     gst_structure_set(s, "token", G_TYPE_STRING, producerToken.c_str(), nullptr);
@@ -910,7 +964,10 @@ Result Instance::Remote::Impl::startStream() {
         g_object_unref(signaller);
     } else {
         JST_ERROR("[REMOTE] Failed to get signaller object from WebRTC element.");
+        return Result::ERROR;
     }
+
+    // Add elements to the pipeline.
 
     for (const auto& [name, element] : elements) {
         if (!gst_bin_add(GST_BIN(pipeline), element)) {
@@ -919,6 +976,8 @@ Result Instance::Remote::Impl::startStream() {
             return Result::ERROR;
         }
     }
+
+    // Link elements in the pipeline.
 
     std::string lastElement = "source";
     for (const auto& name : elementOrder) {
@@ -934,6 +993,8 @@ Result Instance::Remote::Impl::startStream() {
 
         lastElement = name;
     }
+
+    // Set pipeline state to playing.
 
     if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
         JST_ERROR("[REMOTE] Failed to start gstreamer pipeline.");

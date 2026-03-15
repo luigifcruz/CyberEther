@@ -64,7 +64,9 @@ Result Instance::create(const Config& config) {
     // Initialize viewport, renderer and compositor.
 
     {
-        auto backendConfig = Backend::Config {};
+        auto backendConfig = Backend::Config {
+            .headless = config.headless,
+        };
         auto viewportConfig = Viewport::Config {
             .size = config.size,
             .framerate = config.framerate,

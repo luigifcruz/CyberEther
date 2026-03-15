@@ -56,7 +56,7 @@ class Vulkan {
     }
 
     constexpr const bool& headless() const {
-        return config.remote;
+        return config.headless;
     }
 
     constexpr VkDevice& getDevice() {
