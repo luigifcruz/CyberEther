@@ -5,7 +5,6 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/viewport/types.hh"
 #include "jetstream/render/tools/imgui.h"
 
 namespace Jetstream::Viewport {
@@ -22,19 +21,6 @@ struct Config {
 
     /// @brief The framerate of the remote viewport.
     U64 framerate = 60;
-
-    /// @brief The broker address server of the remote viewport.
-    std::string broker = "https://api.cyberether.org";
-
-    /// @brief The video codec of the remote viewport.
-    Viewport::VideoCodec codec = Viewport::VideoCodec::H264;
-
-    /// @brief Enable auto-join in the remote viewport (insecure).
-    // TODO: [beta1] Implement auto-join functionality.
-    bool autoJoin = false;
-
-    /// @brief Whether hardware acceleration is enabled.
-    bool hardwareAcceleration = true;
 };
 
 class Generic {

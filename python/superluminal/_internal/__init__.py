@@ -4,13 +4,14 @@ from superluminal._impl import *
 # Constants
 #
 
+
 class constant:
     def __init__(self, key, value):
         self._key = key
         self._value = value
 
     def __repr__(self):
-        return f'Constant(value={self._key})'
+        return f"Constant(value={self._key})"
 
     @property
     def key(self):
@@ -20,32 +21,38 @@ class constant:
     def value(self):
         return self._value
 
+
 def _create_constants(names_list):
     for k, v in names_list.items():
         globals()[k] = constant(k, v)
 
+
 _operations_lst = {
-    'real': operation.real,
-    'imag': operation.imaginary,
-    'amplitude': operation.amplitude,
-    'phase': operation.phase,
+    "real": operation.real,
+    "imag": operation.imaginary,
+    "amplitude": operation.amplitude,
+    "phase": operation.phase,
 }
 
 _domains_lst = {
-    'time': domain.time,
-    'frequency': domain.frequency,
+    "time": domain.time,
+    "frequency": domain.frequency,
 }
 
 _types_lst = {
-    'line': type.line,
-    'heat': type.heat,
-    'scatter': type.scatter,
-    'waterfall': type.waterfall,
+    "line": type.line,
+    "heat": type.heat,
+    "scatter": type.scatter,
+    "waterfall": type.waterfall,
 }
 
 _device_lst = {
-    'cpu': device.cpu,
-    'cuda': device.cuda,
+    "none": device.none,
+    "cpu": device.cpu,
+    "cuda": device.cuda,
+    "metal": device.metal,
+    "vulkan": device.vulkan,
+    "webgpu": device.webgpu,
 }
 
 _create_constants(_operations_lst)

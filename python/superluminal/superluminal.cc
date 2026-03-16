@@ -121,7 +121,13 @@ NB_MODULE(_impl, m) {
         .def_rw("interface_scale", &Superluminal::InstanceConfig::interfaceScale)
         .def_rw("interface_size", &Superluminal::InstanceConfig::interfaceSize)
         .def_rw("window_title", &Superluminal::InstanceConfig::windowTitle)
+        .def_rw("device", &Superluminal::InstanceConfig::device)
         .def_rw("remote", &Superluminal::InstanceConfig::remote)
+        .def_rw("remote_broker", &Superluminal::InstanceConfig::remoteBroker)
+        .def_rw("remote_codec", &Superluminal::InstanceConfig::remoteCodec)
+        .def_rw("remote_encoder", &Superluminal::InstanceConfig::remoteEncoder)
+        .def_rw("remote_auto_join", &Superluminal::InstanceConfig::remoteAutoJoin)
+        .def_rw("remote_framerate", &Superluminal::InstanceConfig::remoteFramerate)
         .def_rw("preferred_device", &Superluminal::InstanceConfig::preferredDevice);
 
     m.def("initialize", &Superluminal::Initialize, nb::arg("config") = Superluminal::InstanceConfig());
@@ -132,6 +138,10 @@ NB_MODULE(_impl, m) {
     m.def("show", &Superluminal::Show);
     m.def("poll_events", &Superluminal::PollEvents, nb::arg("wait") = true);
     m.def("plot", &Superluminal::Plot);
+    m.def("remote_room_id", &Superluminal::RemoteRoomId);
+    m.def("remote_invite_url", &Superluminal::RemoteInviteUrl);
+    m.def("remote_access_token", &Superluminal::RemoteAccessToken);
+    m.def("print_remote_info", &Superluminal::PrintRemoteInfo);
 
     static std::vector<std::shared_ptr<nb::object>> stored_callbacks;
 

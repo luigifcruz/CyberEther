@@ -22,7 +22,7 @@ std::set<std::string> Vulkan::getRequiredInstanceExtensions() {
 
     // Presentation extensions.
 
-    if (!config.remote) {
+    if (!config.headless) {
         extensions.insert(VK_KHR_SURFACE_EXTENSION_NAME);
 
 #if defined(JST_OS_LINUX)
@@ -72,7 +72,7 @@ std::set<std::string> Vulkan::getRequiredValidationLayers() {
 std::set<std::string> Vulkan::getRequiredDeviceExtensions() {
     std::set<std::string> extensions;
 
-    if (!config.remote) {
+    if (!config.headless) {
         extensions.insert(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
 
@@ -418,8 +418,16 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 
         // TODO: Add validation for these features.
+        VkPhysicalDeviceFeatures supportedDeviceFeatures = {};
+        vkGetPhysicalDeviceFeatures(physicalDevice, &supportedDeviceFeatures);
+
+        cache.supportsMultiDrawIndirect = supportedDeviceFeatures.multiDrawIndirect;
+        if (!cache.supportsMultiDrawIndirect) {
+            JST_WARN("[VULKAN] VkPhysicalDeviceFeatures.multiDrawIndirect not supported. Falling back to single indirect draws.");
+        }
+
         VkPhysicalDeviceFeatures deviceFeatures = {};
-        deviceFeatures.multiDrawIndirect = true;
+        deviceFeatures.multiDrawIndirect = cache.supportsMultiDrawIndirect;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -656,6 +664,10 @@ PhysicalDeviceType Vulkan::getPhysicalDeviceType() const {
 
 bool Vulkan::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
+}
+
+bool Vulkan::supportsMultiDrawIndirect() const {
+    return cache.supportsMultiDrawIndirect;
 }
 
 bool Vulkan::canExportDeviceMemory() const {
