@@ -23,9 +23,14 @@ Result FileWriterImplNativeCpu::create() {
 
     if (input.dtype() != DataType::CF32 &&
         input.dtype() != DataType::F32 &&
+        input.dtype() != DataType::CI8 &&
         input.dtype() != DataType::I16 &&
+        input.dtype() != DataType::CI16 &&
         input.dtype() != DataType::I8 &&
-        input.dtype() != DataType::U8) {
+        input.dtype() != DataType::CU8 &&
+        input.dtype() != DataType::U8 &&
+        input.dtype() != DataType::CU16 &&
+        input.dtype() != DataType::U16) {
         JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Unsupported input data type.");
         return Result::ERROR;
     }

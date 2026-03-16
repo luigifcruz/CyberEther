@@ -1,6 +1,7 @@
 src_lst += files([
     'parser.cc',
     'instance.cc',
+    'instance_remote_ui.cc',
     'logger.cc',
     'module.cc',
     'module_impl.cc',

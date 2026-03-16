@@ -31,9 +31,15 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_CUDA_CHECK_THROW(cudaSetDevice(config.deviceId), [&]{
         JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", config.deviceId, err);
     });
+#if CUDA_VERSION >= 13000
+    JST_CUDA_CHECK_THROW(cuCtxCreate(&context, nullptr, 0, device), [&]{
+        JST_FATAL("[CUDA] Cannot create context for device ID ({}): {}", config.deviceId, err);
+    });
+#else
     JST_CUDA_CHECK_THROW(cuCtxCreate(&context, 0, device), [&]{
         JST_FATAL("[CUDA] Cannot create context for device ID ({}): {}", config.deviceId, err);
     });
+#endif
     _isAvailable = true;
 
     // Parse device information.

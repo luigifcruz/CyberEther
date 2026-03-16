@@ -12,6 +12,10 @@ std::unique_ptr<detail::Backend> MakeBackend(DeviceType device) {
     switch (device) {
         case DeviceType::CPU:
             return detail::CreateCpuBackend();
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        case DeviceType::CUDA:
+            return detail::CreateCudaBackend();
+#endif
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
         case DeviceType::Metal:
             return detail::CreateMetalBackend();

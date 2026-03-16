@@ -10,7 +10,6 @@
 #include "jetstream/types.hh"
 #include "jetstream/compositor.hh"
 #include "jetstream/flowgraph.hh"
-#include "jetstream/viewport/types.hh"
 
 namespace Jetstream {
 

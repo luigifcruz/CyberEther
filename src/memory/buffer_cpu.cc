@@ -15,6 +15,10 @@
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/memory/devices/cuda/buffer.hh"
+#endif
+
 #ifdef JST_OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -87,8 +91,6 @@ class CpuBackend final : public Backend {
     }
 
     Result create(const Backend& source) override {
-        // TODO: Implement CUDA -> CPU.
-
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
         if (source.device() == DeviceType::Metal) {
             JST_TRACE("[MEMORY:BUFFER:CPU] Mirroring Metal buffer.");
@@ -128,6 +130,37 @@ class CpuBackend final : public Backend {
             ownsMemory = false;
             locationState = source.location();
             externalDevice = DeviceType::Vulkan;
+
+            return Result::SUCCESS;
+        }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        if (source.device() == DeviceType::CUDA) {
+            JST_TRACE("[MEMORY:BUFFER:CPU] Mirroring CUDA buffer.");
+
+            const auto* cudaBackend = dynamic_cast<const CudaBufferBackend*>(&source);
+            if (!cudaBackend) {
+                JST_ERROR("[MEMORY:BUFFER:CPU] CUDA backend does not expose interop metadata.");
+                return Result::ERROR;
+            }
+
+            if (!cudaBackend->hostAccessible()) {
+                JST_ERROR("[MEMORY:BUFFER:CPU] CUDA buffer is not host accessible.");
+                return Result::ERROR;
+            }
+
+            dataPtr = const_cast<void*>(source.rawHandle());
+            if (!dataPtr) {
+                JST_ERROR("[MEMORY:BUFFER:CPU] CUDA buffer has no host-accessible pointer.");
+                return Result::ERROR;
+            }
+
+            sizeBytes = source.size();
+            borrowed = true;
+            ownsMemory = false;
+            locationState = source.location();
+            externalDevice = DeviceType::CUDA;
 
             return Result::SUCCESS;
         }

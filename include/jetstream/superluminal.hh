@@ -58,7 +58,13 @@ class Superluminal {
         F32 interfaceScale = 1.0f;
         Extent2D<U64> interfaceSize = {1280, 720};
         std::string windowTitle = "Superluminal";
+        DeviceType device = DeviceType::None;
         bool remote = false;
+        std::string remoteBroker = "https://cyberether.org";
+        std::string remoteCodec = "h264";
+        std::string remoteEncoder = "auto";
+        bool remoteAutoJoin = false;
+        U32 remoteFramerate = 30;
         DeviceType preferredDevice = DeviceType::CPU;
     };
 
@@ -168,6 +174,11 @@ class Superluminal {
     static Result Markdown(const std::string& content) {
         return GetInstance()->markdown(content);
     }
+
+    static std::string RemoteRoomId();
+    static std::string RemoteInviteUrl();
+    static std::string RemoteAccessToken();
+    static Result PrintRemoteInfo();
 
     static Mosaic MosaicLayout(U8 matrixHeight, U8 matrixWidth,
                                U8 panelHeight, U8 panelWidth,

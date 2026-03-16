@@ -48,7 +48,7 @@ TEST_CASE("Websocket module rejects invalid configuration",
             TestContext ctx("websocket", impl.device, impl.runtime,
                             impl.provider);
             Modules::Websocket config;
-            config.dataType = "I32";
+            config.dataType = "CS8";
             ctx.setConfig(config);
             REQUIRE(ctx.run() == Result::ERROR);
         }
@@ -63,8 +63,12 @@ TEST_CASE("Websocket module rejects invalid configuration",
         }
 
         SECTION("supported data types pass validation") {
-            const std::array<std::string, 5> validTypes = {
-                "CF32", "CU8", "CS8", "CI16", "CU16"
+            const std::array<std::string, 10> validTypes = {
+                "CF32", "F32",
+                "CI8", "I8",
+                "CU8", "U8",
+                "CI16", "I16",
+                "CU16", "U16"
             };
 
             for (const auto& dataType : validTypes) {

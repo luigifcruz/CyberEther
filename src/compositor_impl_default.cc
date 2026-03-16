@@ -1265,6 +1265,13 @@ class DefaultCompositor : public Compositor::Impl {
     std::string cachedQrUrl;
     std::vector<U8> cachedQrData;
     int cachedQrWidth = 0;
+
+    // Remote streaming configuration state
+    std::string remoteBrokerUrl = "https://cyberether.org";
+    Instance::Remote::CodecType remoteCodec = Instance::Remote::CodecType::H264;
+    Instance::Remote::EncoderType remoteEncoder = Instance::Remote::EncoderType::Auto;
+    bool remoteAutoJoinSessions = false;
+    U32 remoteFramerate = 30;
 };
 
 Result DefaultCompositor::create() {
@@ -4095,6 +4102,7 @@ Result DefaultCompositor::renderGlobalModal() {
                 ImGui::BulletText("stb - MIT License");
                 ImGui::BulletText("fmtlib - MIT License");
                 ImGui::BulletText("SoapySDR - Boost Software License");
+                ImGui::BulletText("libmodes - BSD-2-Clause License");
                 ImGui::BulletText("GLFW - zlib/libpng License");
                 ImGui::BulletText("imgui-notify - MIT License");
                 ImGui::BulletText("spirv-cross - MIT License");
@@ -4275,9 +4283,176 @@ Result DefaultCompositor::renderGlobalModal() {
 
             if (!isStarted) {
                 ImGui::Spacing();
+
+                // Broker URL Configuration
+                ImGui::TextUnformatted("Broker URL");
+                ImGui::SameLine();
+                ImGui::PushFont(ImGui::GetFont(), ImGui::GetFontSize() * 0.7f);
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scalingFactor);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 4.0f * scalingFactor);
+                ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
+                ImGui::PopFont();
+                if (ImGui::IsItemHovered()) {
+                    ImGui::BeginTooltip();
+                    ImGui::TextUnformatted("The WebRTC signaling server URL used to coordinate connections with remote clients.");
+                    ImGui::EndTooltip();
+                }
+                ImGui::SetNextItemWidth(-1);
+                char brokerBuf[256];
+                strncpy(brokerBuf, remoteBrokerUrl.c_str(), sizeof(brokerBuf) - 1);
+                brokerBuf[sizeof(brokerBuf) - 1] = '\0';
+                if (ImGui::InputText("##broker_url", brokerBuf, sizeof(brokerBuf))) {
+                    remoteBrokerUrl = brokerBuf;
+                }
+                ImGui::Spacing();
+
+                const char* framerateOptions[] = { "15 FPS", "30 FPS", "60 FPS", "120 FPS" };
+                int remoteFramerateIndex = 1;
+
+                if (remoteFramerate == 15) {
+                    remoteFramerateIndex = 0;
+                } else if (remoteFramerate == 30) {
+                    remoteFramerateIndex = 1;
+                } else if (remoteFramerate == 60) {
+                    remoteFramerateIndex = 2;
+                } else if (remoteFramerate == 120) {
+                    remoteFramerateIndex = 3;
+                }
+
+                if (ImGui::BeginTable("remote_stream_options", 2, ImGuiTableFlags_SizingStretchSame)) {
+                    ImGui::TableNextRow();
+
+                    ImGui::TableNextColumn();
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextUnformatted("Video Codec");
+                    ImGui::SameLine();
+                    ImGui::PushFont(ImGui::GetFont(), ImGui::GetFontSize() * 0.7f);
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scalingFactor);
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 4.0f * scalingFactor);
+                    ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
+                    ImGui::PopFont();
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::BeginTooltip();
+                        ImGui::TextUnformatted("The video encoding format used for streaming. Use H264 for universal playback, or AV1 for improved efficiency at the cost of higher CPU usage.");
+                        ImGui::EndTooltip();
+                    }
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::BeginCombo("##codec", Jetstream::GetRemoteCodecPrettyName(remoteCodec))) {
+                        for (const auto codec : Jetstream::RemoteCodecTypes) {
+                            const bool selected = (remoteCodec == codec);
+
+                            if (ImGui::Selectable(Jetstream::GetRemoteCodecPrettyName(codec), selected)) {
+                                remoteCodec = codec;
+                            }
+
+                            if (selected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    ImGui::TableNextColumn();
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextUnformatted("Framerate");
+                    ImGui::SameLine();
+                    ImGui::PushFont(ImGui::GetFont(), ImGui::GetFontSize() * 0.7f);
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scalingFactor);
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 4.0f * scalingFactor);
+                    ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
+                    ImGui::PopFont();
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::BeginTooltip();
+                        ImGui::TextUnformatted("The number of video frames sent per second. Higher framerates provide smoother video but use more bandwidth.");
+                        ImGui::EndTooltip();
+                    }
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::Combo("##framerate", &remoteFramerateIndex, framerateOptions, IM_ARRAYSIZE(framerateOptions))) {
+                        if (remoteFramerateIndex == 0) {
+                            remoteFramerate = 15;
+                        } else if (remoteFramerateIndex == 1) {
+                            remoteFramerate = 30;
+                        } else if (remoteFramerateIndex == 2) {
+                            remoteFramerate = 60;
+                        } else if (remoteFramerateIndex == 3) {
+                            remoteFramerate = 120;
+                        }
+                    }
+
+                    ImGui::EndTable();
+                }
+                ImGui::Spacing();
+
+                if (ImGui::BeginTable("remote_stream_options", 2, ImGuiTableFlags_SizingStretchSame)) {
+                    ImGui::TableNextRow();
+
+                    ImGui::TableNextColumn();
+                    // Encoder Selection
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::Text("Encoder");
+                    ImGui::SameLine();
+                    ImGui::PushFont(ImGui::GetFont(), ImGui::GetFontSize() * 0.7f);
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scalingFactor);
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 4.0f * scalingFactor);
+                    ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
+                    ImGui::PopFont();
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::BeginTooltip();
+                        ImGui::TextUnformatted("Choose how video encoding is handled for the remote stream.");
+                        ImGui::EndTooltip();
+                    }
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::BeginCombo("##encoder", Jetstream::GetRemoteEncoderPrettyName(remoteEncoder))) {
+                        for (const auto encoder : Jetstream::RemoteEncoderTypes) {
+                            const bool selected = (remoteEncoder == encoder);
+
+                            if (ImGui::Selectable(Jetstream::GetRemoteEncoderPrettyName(encoder), selected)) {
+                                remoteEncoder = encoder;
+                            }
+
+                            if (selected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    ImGui::TableNextColumn();
+                    // Client Approval Mode
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::Text("Client Approval");
+                    ImGui::SameLine();
+                    ImGui::PushFont(ImGui::GetFont(), ImGui::GetFontSize() * 0.7f);
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f * scalingFactor);
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - 4.0f * scalingFactor);
+                    ImGui::TextDisabled(ICON_FA_CIRCLE_QUESTION);
+                    ImGui::PopFont();
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::BeginTooltip();
+                        ImGui::TextUnformatted("Choose whether incoming client connections require manual approval or are approved automatically. Only use auto approval in trusted environments.");
+                        ImGui::EndTooltip();
+                    }
+                    ImGui::SetNextItemWidth(-1);
+                    int remoteApprovalIndex = remoteAutoJoinSessions ? 1 : 0;
+                    const char* remoteApprovalOptions[] = { "Manual Approval", "Auto Approve" };
+                    if (ImGui::Combo("##client_approval", &remoteApprovalIndex, remoteApprovalOptions, IM_ARRAYSIZE(remoteApprovalOptions))) {
+                        remoteAutoJoinSessions = (remoteApprovalIndex == 1);
+                    }
+
+                    ImGui::EndTable();
+                }
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
                 ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f * scalingFactor);
                 if (ImGui::Button(ICON_FA_PLAY " Start Streaming", ImVec2(-1, 40.0f * scalingFactor))) {
                     Instance::Remote::Config remoteConfig;
+                    remoteConfig.broker = remoteBrokerUrl;
+                    remoteConfig.codec = remoteCodec;
+                    remoteConfig.encoder = remoteEncoder;
+                    remoteConfig.autoJoinSessions = remoteAutoJoinSessions;
+                    remoteConfig.framerate = remoteFramerate;
                     if (remote->create(remoteConfig) == Result::SUCCESS) {
                         ImGui::InsertNotification({ ImGuiToastType_Success, 5000, "Remote streaming started." });
                     } else {

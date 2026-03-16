@@ -106,10 +106,10 @@ class JETSTREAM_API Instance {
     const auto& state() {
         using BackendType = typename GetBackend<DeviceId>::Type;
         if (!backends.contains(DeviceId)) {
-            JST_WARN("The {} backend is not initialized. Initializing with default remote settings.", DeviceId);
+            JST_WARN("The {} backend is not initialized. Initializing with default headless settings.", DeviceId);
 
             Backend::Config config;
-            config.remote = true;
+            config.headless = true;
             JST_CHECK_THROW(initialize<DeviceId>(config));
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);

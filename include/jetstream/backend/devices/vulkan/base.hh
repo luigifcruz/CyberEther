@@ -47,6 +47,7 @@ class Vulkan {
     U64 getThermalState() const;
 
     bool hasUnifiedMemory() const;
+    bool supportsMultiDrawIndirect() const;
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
@@ -56,7 +57,7 @@ class Vulkan {
     }
 
     constexpr const bool& headless() const {
-        return config.remote;
+        return config.headless;
     }
 
     constexpr VkDevice& getDevice() {
@@ -140,6 +141,7 @@ class Vulkan {
         std::string apiVersion;
         PhysicalDeviceType physicalDeviceType;
         bool hasUnifiedMemory;
+        bool supportsMultiDrawIndirect;
         U64 physicalMemory;
         U64 totalProcessorCount;
         bool lowPowerStatus;

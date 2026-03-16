@@ -1,15 +1,12 @@
+#include <cstdio>
 #include <thread>
-#include <iostream>
-#include <atomic>
-#include <set>
 
 #include "jetstream/config.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
-
-#include <qrencode.h>
+#include "jetstream/instance_remote_ui.hh"
 
 #ifdef JST_OS_BROWSER
 #include <emscripten.h>
@@ -18,6 +15,38 @@
 #endif
 
 using namespace Jetstream;
+
+namespace {
+
+std::string RemoteCodecOptionsString() {
+    std::string options;
+
+    for (const auto codec : Jetstream::RemoteCodecTypes) {
+        if (!options.empty()) {
+            options += ", ";
+        }
+
+        options += Jetstream::GetRemoteCodecName(codec);
+    }
+
+    return options;
+}
+
+std::string RemoteEncoderOptionsString() {
+    std::string options;
+
+    for (const auto encoder : Jetstream::RemoteEncoderTypes) {
+        if (!options.empty()) {
+            options += ", ";
+        }
+
+        options += Jetstream::GetRemoteEncoderName(encoder);
+    }
+
+    return options;
+}
+
+}  // namespace
 
 #ifdef JST_OS_BROWSER
 extern "C" {
@@ -31,150 +60,77 @@ void cyberether_shutdown() {
 }
 #endif
 
-void PrintRemoteInfo(Instance::Remote* remote) {
-    QRcode* qr = QRcode_encodeString8bit(remote->inviteUrl().c_str(), 0, QR_ECLEVEL_L);
-    if (!qr) {
-        jst::fmt::print(stderr, "[QR encode error]\n");
-        return;
-    }
-
-    const int qrWidth = qr->width;
-    const int border = 2;
-    const int totalWidth = qrWidth + border * 2;
-    const int boxInner = totalWidth + 4;
-
-    auto isBlack = [&](int x, int y) -> bool {
-        if (x < 0 || y < 0 || x >= qrWidth || y >= qrWidth) return false;
-        return (qr->data[y * qrWidth + x] & 1) != 0;
-    };
-
-    std::string hLine;
-    for (int i = 0; i < boxInner; ++i) hLine += "═";
-
-    auto printCentered = [&](const std::string& text) {
-        int totalPad = boxInner - static_cast<int>(text.length());
-        int left = totalPad / 2;
-        int right = totalPad - left;
-        jst::fmt::print("║{:>{}}{}{:>{}}\n", "", left, text, "║", right + 1);
-    };
-
-    jst::fmt::print("\n╔{}╗\n", hLine);
-    printCentered("CyberEther Remote");
-    printCentered("Scan QR code or open link to connect");
-    jst::fmt::print("╠{}╣\n", hLine);
-
-    for (int y = -border; y < qrWidth + border; y += 2) {
-        std::string row;
-        for (int x = -border; x < qrWidth + border; ++x) {
-            const bool upper = isBlack(x, y);
-            const bool lower = isBlack(x, y + 1);
-            if (upper && lower)      row += "█";
-            else if (upper)          row += "▀";
-            else if (lower)          row += "▄";
-            else                     row += " ";
-        }
-        jst::fmt::print("║  {}  ║\n", row);
-    }
-
-    jst::fmt::print("╚{}╝\n\n", hLine);
-
-    QRcode_free(qr);
-
-    jst::fmt::print("Room ID:      {}\n", remote->roomId());
-    jst::fmt::print("Join URL:     {}\n", remote->inviteUrl());
-    jst::fmt::print("Access Token: {}\n\n", remote->accessToken());
-}
-
-void PrintClientApproval(const std::string& code) {
-    const int boxInner = 38;
-
-    std::string hLine;
-    for (int i = 0; i < boxInner; ++i) hLine += "═";
-
-    auto printCentered = [&](const std::string& text) {
-        int totalPad = boxInner - static_cast<int>(text.length());
-        int left = totalPad / 2;
-        int right = totalPad - left;
-        jst::fmt::print("║{:>{}}{}{:>{}}\n", "", left, text, "║", right + 1);
-    };
-
-    jst::fmt::print("\n╔{}╗\n", hLine);
-    printCentered("New Connection Request");
-    printCentered("Verify client code before approving");
-    jst::fmt::print("╠{}╣\n", hLine);
-    printCentered(code);
-    jst::fmt::print("╚{}╝\n\n", hLine);
-
-    jst::fmt::print("Approve? [Y/n]: ");
-    std::fflush(stdout);
-}
-
-void RunSessionMonitor(Instance::Remote* remote, std::atomic<bool>& running, bool autoJoin) {
-    std::set<std::string> seenSessions;
-
-    while (running) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-
-        if (!running) break;
-
-        const auto& waitlist = remote->waitlist();
-        if (waitlist.empty()) {
-            continue;
-        }
-
-        for (const auto& sessionId : waitlist) {
-            if (seenSessions.count(sessionId)) continue;
-            seenSessions.insert(sessionId);
-
-            std::string code = sessionId.substr(sessionId.length() - 6);
-            std::transform(code.begin(), code.end(), code.begin(), ::toupper);
-
-            if (autoJoin) {
-                remote->approveClient(code);
-            } else {
-                PrintClientApproval(code);
-
-                std::string input;
-                if (std::getline(std::cin, input)) {
-                    if (input.empty() || input == "y" || input == "Y") {
-                        remote->approveClient(code);
-                    }
-                }
-            }
-        }
-    }
-}
-
 void printUsage(const char* program) {
+    const std::string codecOptions = RemoteCodecOptionsString();
+    const std::string encoderOptions = RemoteEncoderOptionsString();
+
     jst::fmt::print("Usage: {} [command] [options] [flowgraph]\n\n", program);
     jst::fmt::print("Commands:\n");
+    jst::fmt::print("  run                          Run normally (default)\n");
     jst::fmt::print("  remote                       Run with remote streaming enabled\n");
-    jst::fmt::print("  benchmark [format]           Run benchmarks (markdown, json, csv)\n\n");
+    jst::fmt::print("  benchmark                    Run benchmarks\n\n");
     jst::fmt::print("Global Options:\n");
-    jst::fmt::print("  -d, --device <type>          Device type (metal, vulkan)\n");
-    jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
     jst::fmt::print("  -h, --help                   Show this help\n");
     jst::fmt::print("  -v, --version                Show version\n\n");
-    jst::fmt::print("Remote Options:\n");
+    jst::fmt::print("Graphics Options:\n");
+    jst::fmt::print("  --device <type>              Device type (metal, vulkan)\n");
+    jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
     jst::fmt::print("  --headless                   Run in headless mode (no window)\n");
     jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
-    jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n");
-    jst::fmt::print("  --endpoint <url>             Broker URL (default: https://api.cyberether.org)\n");
-    jst::fmt::print("  --codec <codec>              Video codec: h264, vp8, vp9, av1 (default: h264)\n");
-    jst::fmt::print("  --acceleration               Enable hardware acceleration\n");
+    jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n\n");
+    jst::fmt::print("Benchmark Options:\n");
+    jst::fmt::print("  --format <type>             Output format: markdown, json, csv (default: markdown)\n\n");
+    jst::fmt::print("Remote Options:\n");
+    jst::fmt::print("  --endpoint <url>             Broker URL (default: https://cyberether.org)\n");
     jst::fmt::print("  --auto-join                  Auto-join sessions\n");
+    jst::fmt::print("  --codec <codec>              Codec: {} (default: {})\n",
+                    codecOptions,
+                    Jetstream::GetRemoteCodecName(Instance::Remote::CodecType::H264));
+    jst::fmt::print("  --encoder <type>             Encoder: {} (default: {})\n",
+                    encoderOptions,
+                    Jetstream::GetRemoteEncoderName(Instance::Remote::EncoderType::Auto));
 }
 
+enum class CommandType {
+    Run,
+    Remote,
+    Benchmark,
+};
+
 int main(int argc, char* argv[]) {
+    CommandType command = CommandType::Run;
+
     Instance::Config config = {
         .compositor = CompositorType::DEFAULT,
     };
-    std::string flowgraphPath;
-    bool enableRemote = false;
     Instance::Remote::Config remoteConfig;
+
+    std::string flowgraphPath;
+    std::string benchmarkFormat = "markdown";
 
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
+
+        // Handle Commands
+
+        if (i == 1) {
+            if (arg == "run") {
+                command = CommandType::Run;
+                continue;
+            }
+
+            if (arg == "remote") {
+                command = CommandType::Remote;
+                continue;
+            }
+
+            if (arg == "benchmark") {
+                command = CommandType::Benchmark;
+                continue;
+            }
+        }
+
+        // Handle Global Options
 
         if (arg == "-h" || arg == "--help") {
             printUsage(argv[0]);
@@ -186,7 +142,9 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        if (arg == "-d" || arg == "--device") {
+        // Handle Graphics Options
+
+        if (arg == "--device") {
             if (i + 1 < argc) {
                 config.device = StringToDevice(argv[++i]);
             }
@@ -197,24 +155,6 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 ++i; // TODO: Implement device selection.
             }
-            continue;
-        }
-
-        if (arg == "benchmark") {
-            std::string format = "markdown";
-            if (i + 1 < argc) {
-                const std::string next = argv[i + 1];
-                if (next == "markdown" || next == "json" || next == "csv") {
-                    format = next;
-                    ++i;
-                }
-            }
-            Benchmark::Run(format);
-            return 0;
-        }
-
-        if (arg == "remote") {
-            enableRemote = true;
             continue;
         }
 
@@ -242,37 +182,104 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        if (arg == "--endpoint") {
-            if (i + 1 < argc) {
-                remoteConfig.broker = argv[++i];
-            }
-            continue;
-        }
+        // Handle Command Options
 
-        if (arg == "--codec") {
-            if (i + 1 < argc) {
-                const std::string codec = argv[++i];
-                if (codec == "h264") {
-                    remoteConfig.codec = Viewport::VideoCodec::H264;
-                } else if (codec == "vp8") {
-                    remoteConfig.codec = Viewport::VideoCodec::VP8;
-                } else if (codec == "vp9") {
-                    remoteConfig.codec = Viewport::VideoCodec::VP9;
-                } else if (codec == "av1") {
-                    remoteConfig.codec = Viewport::VideoCodec::AV1;
+        switch (command) {
+            case CommandType::Benchmark:
+                if (arg == "--format") {
+                    if (i + 1 >= argc) {
+                        jst::fmt::print(stderr,
+                                        "Missing value for --format. Expected one of: markdown, json, csv.\n\n");
+                        printUsage(argv[0]);
+                        return 1;
+                    }
+
+                    benchmarkFormat = argv[++i];
+                    if (benchmarkFormat != "markdown" && benchmarkFormat != "json" && benchmarkFormat != "csv") {
+                        jst::fmt::print(stderr,
+                                        "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
+                                        benchmarkFormat);
+                        printUsage(argv[0]);
+                        return 1;
+                    }
+                    continue;
                 }
-            }
-            continue;
+                break;
+
+            case CommandType::Remote:
+                if (arg == "--endpoint") {
+                    if (i + 1 < argc) {
+                        remoteConfig.broker = argv[++i];
+                    }
+                    continue;
+                }
+
+                if (arg == "--codec") {
+                    if (i + 1 < argc) {
+                        const std::string codec = argv[++i];
+                        try {
+                            remoteConfig.codec = Jetstream::StringToRemoteCodec(codec);
+                        } catch (const Result&) {
+                            jst::fmt::print(stderr,
+                                            "Invalid value for --codec: '{}'. Expected one of: {}.\n\n",
+                                            codec,
+                                            RemoteCodecOptionsString());
+                            printUsage(argv[0]);
+                            return 1;
+                        }
+                    } else {
+                        jst::fmt::print(stderr,
+                                        "Missing value for --codec. Expected one of: {}.\n\n",
+                                        RemoteCodecOptionsString());
+                        printUsage(argv[0]);
+                        return 1;
+                    }
+                    continue;
+                }
+
+                if (arg == "--encoder") {
+                    if (i + 1 < argc) {
+                        const std::string enc = argv[++i];
+                        try {
+                            remoteConfig.encoder = Jetstream::StringToRemoteEncoder(enc);
+                        } catch (const Result&) {
+                            jst::fmt::print(stderr,
+                                            "Invalid value for --encoder: '{}'. Expected one of: {}.\n\n",
+                                            enc,
+                                            RemoteEncoderOptionsString());
+                            printUsage(argv[0]);
+                            return 1;
+                        }
+                    } else {
+                        jst::fmt::print(stderr,
+                                        "Missing value for --encoder. Expected one of: {}.\n\n",
+                                        RemoteEncoderOptionsString());
+                        printUsage(argv[0]);
+                        return 1;
+                    }
+                    continue;
+                }
+
+                if (arg == "--auto-join") {
+                    remoteConfig.autoJoinSessions = true;
+                    continue;
+                }
+                break;
+
+            case CommandType::Run:
+                break;
         }
 
-        if (arg == "--acceleration") {
-            remoteConfig.hardwareAcceleration = true;
-            continue;
+        if (arg[0] == '-') {
+            jst::fmt::print(stderr, "Unknown option: '{}'.\n\n", arg);
+            printUsage(argv[0]);
+            return 1;
         }
 
-        if (arg == "--auto-join") {
-            remoteConfig.autoJoinSessions = true;
-            continue;
+        if (command == CommandType::Benchmark) {
+            jst::fmt::print(stderr, "The benchmark command does not accept a flowgraph path: '{}'.\n\n", arg);
+            printUsage(argv[0]);
+            return 1;
         }
 
         if (arg[0] != '-') {
@@ -280,6 +287,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (command == CommandType::Benchmark) {
+        Benchmark::Run(benchmarkFormat);
+        return 0;
+    }
 
 #ifdef JST_OS_BROWSER
     std::thread([] {
@@ -301,7 +312,7 @@ int main(int argc, char* argv[]) {
 
     JST_CHECK_THROW(instance->start());
 
-    if (enableRemote) {
+    if (command == CommandType::Remote) {
         JST_CHECK_THROW(instance->remote()->create(remoteConfig));
     }
 
@@ -329,30 +340,29 @@ int main(int argc, char* argv[]) {
 #ifdef JST_OS_BROWSER
     emscripten_runtime_keepalive_push();
 #else
-    std::atomic<bool> sessionMonitorRunning{false};
-    std::thread sessionMonitorThread;
+    std::unique_ptr<RemoteSessionMonitor> sessionMonitor;
 
-    if (enableRemote && instance->remote()) {
+    if (command == CommandType::Remote && instance->remote()) {
         PrintRemoteInfo(instance->remote().get());
 
-        sessionMonitorRunning = true;
-        sessionMonitorThread = std::thread(RunSessionMonitor,
+        sessionMonitor = std::make_unique<RemoteSessionMonitor>(
             instance->remote().get(),
-            std::ref(sessionMonitorRunning),
-            remoteConfig.autoJoinSessions);
+            remoteConfig.autoJoinSessions,
+            PromptRemoteClientApproval
+        );
+        sessionMonitor->start();
     }
 
     while (instance->polling()) {
         instance->poll();
     }
 
-    sessionMonitorRunning = false;
-    if (sessionMonitorThread.joinable()) {
-        sessionMonitorThread.join();
+    if (sessionMonitor) {
+        sessionMonitor->stop();
     }
 #endif
 
-    if (enableRemote && instance->remote()->started()) {
+    if (command == CommandType::Remote && instance->remote()->started()) {
         JST_CHECK_THROW(instance->remote()->destroy());
     }
 

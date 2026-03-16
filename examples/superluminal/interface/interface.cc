@@ -37,7 +37,7 @@ void GenerateTestSignal(Tensor& data, float frequency = 1000.0f, float amplitude
  * - Interactive controls (sliders, buttons)
  * - Real-time signal plotting with domain transforms
  */
-int main() {
+static Result App() {
     std::cout << "Initializing Superluminal Interface..." << std::endl;
 
     // Create memory buffer
@@ -52,7 +52,7 @@ int main() {
     float noise_level = 0.1f;
 
     // Interactive controls section
-    Superluminal::Box("Controls", {{1, 0, 0}, {1, 0, 0}}, [&]{
+    JST_CHECK(Superluminal::Box("Controls", {{1, 0, 0}, {1, 0, 0}}, [&]{
         // Markdown documentation example
 
         Superluminal::Markdown(
@@ -68,27 +68,31 @@ int main() {
         Superluminal::Slider("Frequency (Hz)", 100.0f, 5000.0f, frequency);
         Superluminal::Slider("Amplitude", 0.1f, 2.0f, amplitude);
         Superluminal::Slider("Noise Level", 0.0f, 0.5f, noise_level);
-    });
+    }));
 
     // Signal visualization - shows domain transform capability
-    Superluminal::Plot("Sine", {{0, 1, 1}, {0, 1, 1}}, {
+    JST_CHECK(Superluminal::Plot("Sine", {{0, 1, 1}, {0, 1, 1}}, {
         .buffer = data,
         .type = Superluminal::Type::Line,
         .source = Superluminal::Domain::Time,       // Input is time domain data
         .display = Superluminal::Domain::Frequency, // Display as frequency domain
         .options = {},
-    });
+    }));
 
-    Superluminal::RealtimeLoop([&](const bool& running){
+    JST_CHECK(Superluminal::RealtimeLoop([&](const bool& running){
         while (running) {
             GenerateTestSignal(data, frequency, amplitude, noise_level);
 
             Superluminal::Update();
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-    });
+    }));
 
     std::cout << "Superluminal demo completed successfully!" << std::endl;
 
-    return 0;
+    return Result::SUCCESS;
+}
+
+int main() {
+    return App() == Result::SUCCESS ? 0 : 1;
 }

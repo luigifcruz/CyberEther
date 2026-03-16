@@ -10,10 +10,9 @@ namespace Jetstream::Modules {
 
 struct Cast : public Module::Config {
     std::string outputType = "CF32";
-    F32 scaler = 0.0f;
 
     JST_MODULE_TYPE(cast);
-    JST_MODULE_PARAMS(outputType, scaler);
+    JST_MODULE_PARAMS(outputType);
 };
 
 }  // namespace Jetstream::Modules

@@ -7,6 +7,12 @@ src_lst += files([
     'types.cc',
 ])
 
+if cfg_lst.get('JETSTREAM_BACKEND_CUDA_AVAILABLE', false)
+    src_lst += files([
+        'buffer_cuda.cc',
+    ])
+endif
+
 if cfg_lst.get('JETSTREAM_BACKEND_VULKAN_AVAILABLE', false)
     src_lst += files([
         'buffer_vulkan.cc',

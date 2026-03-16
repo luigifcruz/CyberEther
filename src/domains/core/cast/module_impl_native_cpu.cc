@@ -17,6 +17,15 @@ struct CastImplNativeCpu : public CastImpl,
     Result computeSubmit() override;
 
  private:
+    // Real -> F32 kernels.
+    Result kernelF32ToF32();
+    Result kernelI8ToF32();
+    Result kernelU8ToF32();
+    Result kernelI16ToF32();
+    Result kernelU16ToF32();
+    Result kernelI32ToF32();
+    Result kernelU32ToF32();
+
     // Complex integer -> CF32 kernels.
     Result kernelCi8ToCf32();
     Result kernelCi16ToCf32();
@@ -32,6 +41,43 @@ Result CastImplNativeCpu::create() {
     JST_CHECK(CastImpl::create());
 
     // Dispatch kernel based on input/output dtype pair.
+
+    if (outputDtype == DataType::F32) {
+        if (input.dtype() == DataType::F32) {
+            kernel = [this]() { return kernelF32ToF32(); };
+            return Result::SUCCESS;
+        }
+
+        if (input.dtype() == DataType::I8) {
+            kernel = [this]() { return kernelI8ToF32(); };
+            return Result::SUCCESS;
+        }
+
+        if (input.dtype() == DataType::U8) {
+            kernel = [this]() { return kernelU8ToF32(); };
+            return Result::SUCCESS;
+        }
+
+        if (input.dtype() == DataType::I16) {
+            kernel = [this]() { return kernelI16ToF32(); };
+            return Result::SUCCESS;
+        }
+
+        if (input.dtype() == DataType::U16) {
+            kernel = [this]() { return kernelU16ToF32(); };
+            return Result::SUCCESS;
+        }
+
+        if (input.dtype() == DataType::I32) {
+            kernel = [this]() { return kernelI32ToF32(); };
+            return Result::SUCCESS;
+        }
+
+        if (input.dtype() == DataType::U32) {
+            kernel = [this]() { return kernelU32ToF32(); };
+            return Result::SUCCESS;
+        }
+    }
 
     if (outputDtype == DataType::CF32) {
         if (input.dtype() == DataType::CI8) {
@@ -72,6 +118,74 @@ Result CastImplNativeCpu::create() {
 
 Result CastImplNativeCpu::computeSubmit() {
     return kernel();
+}
+
+Result CastImplNativeCpu::kernelF32ToF32() {
+    return AutomaticIterator<const F32, F32>(
+        [](const auto& in, auto& out) {
+            out = in;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelI8ToF32() {
+    const F32 s = scaler;
+
+    return AutomaticIterator<const I8, F32>(
+        [s](const auto& in, auto& out) {
+            out = static_cast<F32>(in) / s;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelU8ToF32() {
+    const F32 s = scaler;
+
+    return AutomaticIterator<const U8, F32>(
+        [s](const auto& in, auto& out) {
+            out = static_cast<F32>(in) / s;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelI16ToF32() {
+    const F32 s = scaler;
+
+    return AutomaticIterator<const I16, F32>(
+        [s](const auto& in, auto& out) {
+            out = static_cast<F32>(in) / s;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelU16ToF32() {
+    const F32 s = scaler;
+
+    return AutomaticIterator<const U16, F32>(
+        [s](const auto& in, auto& out) {
+            out = static_cast<F32>(in) / s;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelI32ToF32() {
+    const F32 s = scaler;
+
+    return AutomaticIterator<const I32, F32>(
+        [s](const auto& in, auto& out) {
+            out = static_cast<F32>(in) / s;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelU32ToF32() {
+    const F32 s = scaler;
+
+    return AutomaticIterator<const U32, F32>(
+        [s](const auto& in, auto& out) {
+            out = static_cast<F32>(in) / s;
+        },
+    input, output);
 }
 
 Result CastImplNativeCpu::kernelCi8ToCf32() {

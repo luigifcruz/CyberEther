@@ -20,11 +20,16 @@ Result WebsocketImpl::validate() {
         return Result::ERROR;
     }
 
-    if (config.dataType != "CU8" &&
-        config.dataType != "CS8" &&
+    if (config.dataType != "CF32" &&
+        config.dataType != "F32" &&
+        config.dataType != "CI8" &&
+        config.dataType != "I8" &&
+        config.dataType != "CU8" &&
+        config.dataType != "U8" &&
         config.dataType != "CI16" &&
+        config.dataType != "I16" &&
         config.dataType != "CU16" &&
-        config.dataType != "CF32") {
+        config.dataType != "U16") {
         JST_ERROR("[MODULE_WEBSOCKET] Invalid data type '{}'.", config.dataType);
         return Result::ERROR;
     }
