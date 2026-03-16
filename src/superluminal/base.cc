@@ -26,6 +26,7 @@ struct Superluminal::Impl {
 
     std::thread computeThread;
     std::thread presentThread;
+    std::unique_ptr<RemoteSessionMonitor> sessionMonitor;
 
     Extent2D<U8> mosaicDims;
 
@@ -165,6 +166,11 @@ Result Superluminal::terminate() {
         JST_CHECK(stop());
     }
 
+    if (impl->sessionMonitor) {
+        impl->sessionMonitor->stop();
+        impl->sessionMonitor.reset();
+    }
+
     if (impl->config.remote && impl->instance->remote()->started()) {
         JST_CHECK(impl->instance->remote()->destroy());
     }
@@ -214,6 +220,13 @@ Result Superluminal::start() {
 
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
     ImGui::GetStyle().WindowRounding = 0.0f;
+
+    if (impl->config.remote && impl->instance->remote()) {
+        impl->sessionMonitor = std::make_unique<RemoteSessionMonitor>(impl->instance->remote().get(),
+                                                                      impl->config.remoteAutoJoin,
+                                                                      PromptRemoteClientApproval);
+        impl->sessionMonitor->start();
+    }
 
     // Start the compute, present, and input threads.
 
@@ -379,6 +392,11 @@ Result Superluminal::stop() {
     // Update the state.
 
     impl->running = false;
+
+    if (impl->sessionMonitor) {
+        impl->sessionMonitor->stop();
+        impl->sessionMonitor.reset();
+    }
 
     // Request to end the instance.
 
