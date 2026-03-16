@@ -118,12 +118,35 @@ Result Implementation::destroy() {
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     JST_CHECK(buffer->encode(commandBuffer));
 
+    const auto& state = Backend::State<DeviceType::Vulkan>();
+    const bool supportsMultiDrawIndirect = state->supportsMultiDrawIndirect();
+
     if (buffer->isBuffered()) {
-        vkCmdDrawIndexedIndirect(commandBuffer, indexedIndirectBuffer->getHandle(), 0,
-                                 indexedDrawCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
+        if (supportsMultiDrawIndirect) {
+            vkCmdDrawIndexedIndirect(commandBuffer, indexedIndirectBuffer->getHandle(), 0,
+                                     indexedDrawCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
+        } else {
+            for (U64 i = 0; i < indexedDrawCommands.size(); i++) {
+                vkCmdDrawIndexedIndirect(commandBuffer,
+                                         indexedIndirectBuffer->getHandle(),
+                                         i * sizeof(VkDrawIndexedIndirectCommand),
+                                         1,
+                                         sizeof(VkDrawIndexedIndirectCommand));
+            }
+        }
     } else {
-        vkCmdDrawIndirect(commandBuffer, indirectBuffer->getHandle(), 0,
-                          drawCommands.size(), sizeof(VkDrawIndirectCommand));
+        if (supportsMultiDrawIndirect) {
+            vkCmdDrawIndirect(commandBuffer, indirectBuffer->getHandle(), 0,
+                              drawCommands.size(), sizeof(VkDrawIndirectCommand));
+        } else {
+            for (U64 i = 0; i < drawCommands.size(); i++) {
+                vkCmdDrawIndirect(commandBuffer,
+                                  indirectBuffer->getHandle(),
+                                  i * sizeof(VkDrawIndirectCommand),
+                                  1,
+                                  sizeof(VkDrawIndirectCommand));
+            }
+        }
     }
 
     return Result::SUCCESS;
