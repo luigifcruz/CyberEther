@@ -64,11 +64,11 @@ struct Instance::Remote {
     std::shared_ptr<Impl> impl;
 };
 
-std::string RemoteCodecToString(const Instance::Remote::CodecType& codec);
+std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec);
 Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec);
 const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec);
 
-std::string RemoteEncoderToString(const Instance::Remote::EncoderType& encoder);
+std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder);
 Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);
 const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& encoder);
 

@@ -526,7 +526,7 @@ Result Instance::Remote::Impl::createStream() {
 
     if (config.encoder != Instance::Remote::EncoderType::Auto) {
         const std::string encoderName = Jetstream::GetRemoteEncoderPrettyName(config.encoder);
-        const std::string codecName = RemoteCodecToString(config.codec);
+        const std::string codecName = Jetstream::GetRemoteCodecName(config.codec);
 
         if (!requestedEncoderFound) {
             JST_ERROR("[REMOTE] Requested encoder '{}' is not available for codec '{}' on this system.",
@@ -1148,7 +1148,7 @@ const char* Instance::Remote::Impl::GetEncodingStrategyPrettyName(const Encoding
     }
 }
 
-std::string RemoteCodecToString(const Instance::Remote::CodecType& codec) {
+std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec) {
     switch (codec) {
         case Instance::Remote::CodecType::AV1:
             return "av1";
@@ -1197,7 +1197,7 @@ const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec) {
     }
 }
 
-std::string RemoteEncoderToString(const Instance::Remote::EncoderType& encoder) {
+std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder) {
     switch (encoder) {
         case Instance::Remote::EncoderType::Auto:
             return "auto";

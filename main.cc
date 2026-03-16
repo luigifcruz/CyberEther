@@ -26,7 +26,7 @@ std::string RemoteCodecOptionsString() {
             options += ", ";
         }
 
-        options += RemoteCodecToString(codec);
+        options += Jetstream::GetRemoteCodecName(codec);
     }
 
     return options;
@@ -40,7 +40,7 @@ std::string RemoteEncoderOptionsString() {
             options += ", ";
         }
 
-        options += RemoteEncoderToString(encoder);
+        options += Jetstream::GetRemoteEncoderName(encoder);
     }
 
     return options;
@@ -85,10 +85,10 @@ void printUsage(const char* program) {
     jst::fmt::print("  --auto-join                  Auto-join sessions\n");
     jst::fmt::print("  --codec <codec>              Codec: {} (default: {})\n",
                     codecOptions,
-                    RemoteCodecToString(Instance::Remote::CodecType::H264));
+                    Jetstream::GetRemoteCodecName(Instance::Remote::CodecType::H264));
     jst::fmt::print("  --encoder <type>             Encoder: {} (default: {})\n",
                     encoderOptions,
-                    RemoteEncoderToString(Instance::Remote::EncoderType::Auto));
+                    Jetstream::GetRemoteEncoderName(Instance::Remote::EncoderType::Auto));
 }
 
 enum class CommandType {
