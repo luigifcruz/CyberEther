@@ -139,7 +139,10 @@ def configure(
     window_title: str = "Superluminal",
     remote: bool = False,
     remote_broker: str = "https://cyberether.org",
+    remote_codec: str = "h264",
+    remote_encoder: str = "auto",
     remote_auto_join: bool = False,
+    remote_framerate: int = 30,
     on_remote_ready=None,
 ):
     if not isinstance(device, lm.constant):
@@ -151,8 +154,17 @@ def configure(
     if not isinstance(remote_broker, str):
         raise TypeError("Remote broker must be a string.")
 
+    if not isinstance(remote_codec, str):
+        raise TypeError("Remote codec must be a string.")
+
+    if not isinstance(remote_encoder, str):
+        raise TypeError("Remote encoder must be a string.")
+
     if not isinstance(remote_auto_join, bool):
         raise TypeError("Remote auto join must be a bool.")
+
+    if not isinstance(remote_framerate, int):
+        raise TypeError("Remote framerate must be an int.")
 
     if remote and device.value == lm.none.value:
         device = lm.vulkan
@@ -164,7 +176,10 @@ def configure(
     cfg.window_title = window_title
     cfg.remote = remote
     cfg.remote_broker = remote_broker
+    cfg.remote_codec = remote_codec
+    cfg.remote_encoder = remote_encoder
     cfg.remote_auto_join = remote_auto_join
+    cfg.remote_framerate = remote_framerate
     result = lm.initialize(cfg)
 
     if result != lm.result.success:

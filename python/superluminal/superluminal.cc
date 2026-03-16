@@ -124,7 +124,10 @@ NB_MODULE(_impl, m) {
         .def_rw("device", &Superluminal::InstanceConfig::device)
         .def_rw("remote", &Superluminal::InstanceConfig::remote)
         .def_rw("remote_broker", &Superluminal::InstanceConfig::remoteBroker)
+        .def_rw("remote_codec", &Superluminal::InstanceConfig::remoteCodec)
+        .def_rw("remote_encoder", &Superluminal::InstanceConfig::remoteEncoder)
         .def_rw("remote_auto_join", &Superluminal::InstanceConfig::remoteAutoJoin)
+        .def_rw("remote_framerate", &Superluminal::InstanceConfig::remoteFramerate)
         .def_rw("preferred_device", &Superluminal::InstanceConfig::preferredDevice);
 
     m.def("initialize", &Superluminal::Initialize, nb::arg("config") = Superluminal::InstanceConfig());
