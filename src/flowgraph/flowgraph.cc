@@ -790,10 +790,13 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         return Result::ERROR;
     }
 
-    std::string protocolVersion;
-    JST_CHECK(ReadScalar(root, "protocolVersion", protocolVersion));
-    if (!protocolVersion.empty() && protocolVersion != "1.0.0") {
-        JST_ERROR("[FLOWGRAPH] Invalid protocol version '{}'.", protocolVersion);
+    std::string version;
+    JST_CHECK(ReadScalar(root, "version", version));
+    if (version.empty()) {
+        JST_CHECK(ReadScalar(root, "protocolVersion", version));
+    }
+    if (!version.empty() && version != "1.0.0") {
+        JST_ERROR("[FLOWGRAPH] Invalid flowgraph version '{}'.", version);
         return Result::ERROR;
     }
 
@@ -1073,7 +1076,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     auto root = yaml.rootref();
     root |= ryml::MAP;
 
-    root["protocolVersion"] << "1.0.0";
+    root["version"] << "1.0.0";
 
     SetScalarNode(root, "title", impl->title);
     SetScalarNode(root, "summary", impl->summary);
@@ -1166,11 +1169,20 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     }
 
     auto emitted = ryml::emitrs_yaml<std::vector<char>>(yaml);
+    std::string yamlText(emitted.begin(), emitted.end());
+
+    const auto versionPos = yamlText.find("version: ");
+    if (versionPos != std::string::npos) {
+        const auto newlinePos = yamlText.find('\n', versionPos);
+        if (newlinePos != std::string::npos && newlinePos + 1 < yamlText.size() && yamlText[newlinePos + 1] != '\n') {
+            yamlText.insert(newlinePos + 1, "\n");
+        }
+    }
 
     blob.clear();
     const char header[] = {'-', '-', '-', '\n'};
     blob.insert(blob.end(), std::begin(header), std::end(header));
-    blob.insert(blob.end(), emitted.begin(), emitted.end());
+    blob.insert(blob.end(), yamlText.begin(), yamlText.end());
 
     return Result::SUCCESS;
 }

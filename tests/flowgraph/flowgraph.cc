@@ -802,7 +802,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(!blob.empty());
 
         const std::string yaml(blob.begin(), blob.end());
-        REQUIRE(yaml.find("cyberetherVersion") == std::string::npos);
+        REQUIRE(yaml.starts_with("---\nversion: 1.0.0\n\n"));
     }
 
     SECTION("export and reimport") {

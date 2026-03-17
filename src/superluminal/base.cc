@@ -1095,7 +1095,8 @@ U64 Superluminal::Impl::BufferKey(const Tensor& buffer) {
 std::vector<char> Superluminal::Impl::GraphToYaml(const Graph& graph, std::string domain) {
     std::string yaml = jst::fmt::format(
         "---\n"
-        "protocolVersion: 1.0.0\n"
+        "version: 1.0.0\n"
+        "\n"
         "graph:\n"
     );
 

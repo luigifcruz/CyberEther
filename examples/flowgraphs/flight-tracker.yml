@@ -1,5 +1,6 @@
 ---
-protocolVersion: 1.0.0
+version: 1.0.0
+
 title: ADS-B Flight Tracker
 summary: Flight tracker using ADS-B data.
 author: Luigi
