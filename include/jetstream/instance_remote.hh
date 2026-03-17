@@ -4,15 +4,18 @@
 #include "jetstream/instance.hh"
 
 #include <array>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace Jetstream {
 
 struct Instance::Remote {
  public:
+    struct Impl;
+    struct Supervisor;
+
     enum class CodecType : uint32_t {
         H264,
         AV1,
@@ -61,7 +64,6 @@ struct Instance::Remote {
     Result approveClient(const std::string& code);
 
  private:
-    struct Impl;
     std::shared_ptr<Impl> impl;
 };
 
