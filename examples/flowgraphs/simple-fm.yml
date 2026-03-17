@@ -1,6 +1,5 @@
 ---
 protocolVersion: 1.0.0
-cyberetherVersion: 1.0.0
 title: Simple FM Receiver
 summary: Radio receiver with RTLSDR.
 author: Luigi

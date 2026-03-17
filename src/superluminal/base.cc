@@ -1096,7 +1096,6 @@ std::vector<char> Superluminal::Impl::GraphToYaml(const Graph& graph, std::strin
     std::string yaml = jst::fmt::format(
         "---\n"
         "protocolVersion: 1.0.0\n"
-        "cyberetherVersion: 1.0.0\n"
         "graph:\n"
     );
 

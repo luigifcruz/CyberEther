@@ -1,6 +1,5 @@
 ---
 protocolVersion: 1.0.0
-cyberetherVersion: 1.0.0
 title: 'Overlap-Add-Fold'
 summary: 'Filter with overlap-add & resample.'
 author: Luigi

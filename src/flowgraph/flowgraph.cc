@@ -797,12 +797,6 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         return Result::ERROR;
     }
 
-    std::string cyberetherVersion;
-    JST_CHECK(ReadScalar(root, "cyberetherVersion", cyberetherVersion));
-    if (!cyberetherVersion.empty() && cyberetherVersion != JETSTREAM_VERSION_STR) {
-        JST_WARN("[FLOWGRAPH] Flowgraph created with a different version of CyberEther ({}).", cyberetherVersion);
-    }
-
     std::string title;
     std::string summary;
     std::string author;
@@ -1080,7 +1074,6 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     root |= ryml::MAP;
 
     root["protocolVersion"] << "1.0.0";
-    root["cyberetherVersion"] << JETSTREAM_VERSION_STR;
 
     SetScalarNode(root, "title", impl->title);
     SetScalarNode(root, "summary", impl->summary);

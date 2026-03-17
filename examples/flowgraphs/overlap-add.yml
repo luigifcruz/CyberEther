@@ -1,6 +1,5 @@
 ---
 protocolVersion: 1.0.0
-cyberetherVersion: 1.0.0
 title: 'Overlap-Add'
 summary: Frequency domain FIR filter.
 author: Luigi
