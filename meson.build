@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.0.0',  # [VERSION HOOK]
+    version: '1.0.1',  # [VERSION HOOK]
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
