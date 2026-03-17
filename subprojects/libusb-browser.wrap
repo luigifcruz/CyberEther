@@ -3,7 +3,7 @@ directory = libusb-browser-git
 url = https://github.com/libusb/libusb.git
 revision = 7ff29f2cd35604ad146dadb7466d7c7c83c43e63
 patch_directory = libusb-browser
-diff_files = libusb-browser/wasmfs-fcntl-fix.diff
+diff_files = libusb-browser/wasmfs-fcntl-fix.diff, libusb-browser/webusb-config-descriptor-read.diff
 
 [provide]
 libusb-browser = libusb_dep
