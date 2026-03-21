@@ -12,7 +12,7 @@ class FrameCaptureVulkan : public FrameCapture {
     FrameCaptureVulkan();
     ~FrameCaptureVulkan() override;
 
-    Result create(Generic* viewport) override;
+    Result create(Generic* viewport, const DeviceType& outputDevice = DeviceType::CPU) override;
     Result destroy() override;
     Result stop() override;
     Result captureFrame() override;

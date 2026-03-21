@@ -1,4 +1,5 @@
 #include "jetstream/viewport/capture/vulkan.hh"
+#include "jetstream/memory/types.hh"
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 #include "jetstream/memory/devices/vulkan/buffer.hh"
@@ -17,8 +18,10 @@ struct FrameCaptureVulkan::Impl {
 
     Adapter<DeviceType::Vulkan>* vulkanViewport = nullptr;
     VkExtent2D extent = {};
+    DeviceType outputDevice = DeviceType::Vulkan;
 
     std::array<Tensor, MAX_FRAMES_IN_FLIGHT> stagingTensors = {};
+    std::array<Tensor, MAX_FRAMES_IN_FLIGHT> outputTensors = {};
 
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> commandBuffers = {};
@@ -39,7 +42,7 @@ FrameCaptureVulkan::FrameCaptureVulkan() : pimpl(std::make_unique<Impl>()) {}
 
 FrameCaptureVulkan::~FrameCaptureVulkan() = default;
 
-Result FrameCaptureVulkan::create(Generic* viewport) {
+Result FrameCaptureVulkan::create(Generic* viewport, const DeviceType& outputDevice) {
     JST_DEBUG("[CAPTURE] Creating Vulkan frame capture.");
 
     pimpl->vulkanViewport = dynamic_cast<Adapter<DeviceType::Vulkan>*>(viewport);
@@ -47,6 +50,8 @@ Result FrameCaptureVulkan::create(Generic* viewport) {
         JST_ERROR("[CAPTURE] Viewport is not a Vulkan adapter.");
         return Result::ERROR;
     }
+
+    pimpl->outputDevice = outputDevice;
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
@@ -60,11 +65,16 @@ Result FrameCaptureVulkan::create(Generic* viewport) {
             pimpl->extent.width,
             4
         };
-        const Buffer::Config config = {
-            .hostAccessible = true
-        };
 
+        const Buffer::Config config = {
+            .hostAccessible = (pimpl->outputDevice == DeviceType::CPU),
+        };
         JST_CHECK(pimpl->stagingTensors[i].create(DeviceType::Vulkan, DataType::U8, extent, config));
+
+        if (pimpl->outputTensors[i].create(pimpl->outputDevice, pimpl->stagingTensors[i]) != Result::SUCCESS) {
+            JST_ERROR("[CAPTURE] Staging tensor does not support requested output device.");
+            return Result::ERROR;
+        }
     }
 
     Backend::QueueFamilyIndices indices = Backend::FindQueueFamilies(physicalDevice);
@@ -131,6 +141,7 @@ Result FrameCaptureVulkan::destroy() {
 
     for (U32 i = 0; i < Impl::MAX_FRAMES_IN_FLIGHT; i++) {
         pimpl->stagingTensors[i] = Tensor();
+        pimpl->outputTensors[i] = Tensor();
     }
 
     pimpl->vulkanViewport = nullptr;
@@ -303,7 +314,7 @@ Result FrameCaptureVulkan::getFrameData(Tensor& tensor) {
     vkWaitForFences(device, 1, &pimpl->fences[frameIndex], VK_TRUE, UINT64_MAX);
 
     pimpl->currentReadyIndex = frameIndex;
-    tensor = pimpl->stagingTensors[frameIndex];
+    tensor = pimpl->outputTensors[frameIndex];
 
     return Result::SUCCESS;
 }

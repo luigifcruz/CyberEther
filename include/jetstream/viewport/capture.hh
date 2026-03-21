@@ -11,7 +11,7 @@ class FrameCapture {
  public:
     virtual ~FrameCapture() = default;
 
-    virtual Result create(Generic* viewport) = 0;
+    virtual Result create(Generic* viewport, const DeviceType& outputDevice = DeviceType::CPU) = 0;
     virtual Result destroy() = 0;
 
     virtual Result stop() = 0;

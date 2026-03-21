@@ -153,7 +153,7 @@ Result Instance::Remote::create(const Config& config) {
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
     if (impl->viewportDevice == DeviceType::Vulkan) {
         impl->frameCapture = std::make_unique<Viewport::FrameCaptureVulkan>();
-        JST_CHECK(impl->frameCapture->create(impl->viewport));
+        JST_CHECK(impl->frameCapture->create(impl->viewport, impl->inputMemoryDevice_));
     }
 #endif
 
