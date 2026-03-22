@@ -1,7 +1,8 @@
 #include "common.hh"
 #include "jetstream/render/components/text.hh"
 #include <chrono>
-#include <format>
+
+#include <fmt/format.h>
 
 class TextTestUI : public TestUIBase<Render::Components::Text> {
  public:
@@ -117,16 +118,16 @@ class TextTestUI : public TestUIBase<Render::Components::Text> {
             if (frameCounter % 30 == 0) {
                 F32 fps = ImGui::GetIO().Framerate;
                 auto fpsConfig = component->get("fps");
-                fpsConfig.fill = std::format("FPS: {:.1f}", fps);
+                fpsConfig.fill = jst::fmt::format("FPS: {:.1f}", fps);
                 JST_CHECK(component->update("fps", fpsConfig));
             }
 
             auto timeConfig = component->get("time");
-            timeConfig.fill = std::format("Time: {:.2f}s", elapsed);
+            timeConfig.fill = jst::fmt::format("Time: {:.2f}s", elapsed);
             JST_CHECK(component->update("time", timeConfig));
 
             auto counterConfig = component->get("counter");
-            counterConfig.fill = std::format("Count: {}", frameCounter);
+            counterConfig.fill = jst::fmt::format("Count: {}", frameCounter);
             JST_CHECK(component->update("counter", counterConfig));
 
             F32 bounce = std::sin(elapsed * animationSpeed * 3.0f) * 0.2f;

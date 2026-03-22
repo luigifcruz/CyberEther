@@ -15,6 +15,10 @@
 #include <string>
 #include <cstdio>
 
+#include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/tools/imgui_internal.h"
+#include "jetstream/render/tools/imgui_stdlib.h"
+
 namespace ImGui {
 
 inline bool InputTextCodeEditor(

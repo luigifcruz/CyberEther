@@ -1,6 +1,9 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
 
+#include <mutex>
+#include <vector>
+
 #include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/platforms/glfw/generic.hh"
 

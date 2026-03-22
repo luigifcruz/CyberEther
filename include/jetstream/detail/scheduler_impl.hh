@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_SCHEDULER_IMPL_HH
 #define JETSTREAM_SCHEDULER_IMPL_HH
 
+#include <unordered_map>
+
 #include "jetstream/scheduler.hh"
 
 namespace Jetstream {

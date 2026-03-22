@@ -2,6 +2,7 @@
 #define JETSTREAM_TOOLS_JUGGLER_HH
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "jetstream/types.hh"

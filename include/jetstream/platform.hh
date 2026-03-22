@@ -1,11 +1,13 @@
 #ifndef JETSTREAM_PLATFORM_HH
 #define JETSTREAM_PLATFORM_HH
 
+#include <vector>
+#include <functional>
+#include <string>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
-#include <vector>
-#include <functional>
 
 namespace Jetstream::Platform {
 

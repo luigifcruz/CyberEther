@@ -8,7 +8,7 @@ build-backend = "mesonpy"
 
 [project]
 name = "superluminal"
-version = "v1.0.1"  # [VERSION HOOK]
+version = "v1.0.2"  # [VERSION HOOK]
 description = "Multi-platform GPU-accelerated interface for compute-intensive pipelines. Radio, the final frontier."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -35,4 +35,3 @@ classifiers = [
 
 [tool.meson-python.args]
 install = ["--skip-subprojects"]
-setup = ["--default-library=static"]

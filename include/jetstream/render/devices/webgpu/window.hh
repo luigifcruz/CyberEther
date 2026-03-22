@@ -4,7 +4,10 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/backend/base.hh"
+#include "jetstream/render/tools/imgui.h"
 #include "jetstream/viewport/base.hh"
+
+#include <webgpu/webgpu.h>
 
 namespace Jetstream::Render {
 

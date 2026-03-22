@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_COMPUTE_PROVIDER_HH
 #define JETSTREAM_COMPUTE_PROVIDER_HH
 
+#include <string>
+
 #include "jetstream/types.hh"
 
 namespace Jetstream {

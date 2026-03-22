@@ -3,7 +3,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
+#include <map>
+#include <memory>
 #include <thread>
+#include <variant>
 
 #include "jetstream/base.hh"
 #include "jetstream/types.hh"

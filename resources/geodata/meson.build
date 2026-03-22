@@ -65,5 +65,5 @@ if python_bin.found()
         sources : geodata,
     )
 
-    dep_lst += dependency('zlib', required: true)
+    dep_lst += dependency('zlib', required: true, fallback: ['zlib', 'zlib_dep'])
 endif

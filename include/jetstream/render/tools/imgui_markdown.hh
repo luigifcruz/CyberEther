@@ -1,5 +1,7 @@
 #pragma once
 
+#include "jetstream/render/tools/imgui.h"
+
 // License: zlib
 // Copyright (c) 2019 Juliette Foucaut & Doug Binks
 //

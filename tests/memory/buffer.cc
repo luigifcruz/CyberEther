@@ -412,18 +412,18 @@ TEST_CASE("Buffer Edge Cases", "[buffer][edge]") {
         REQUIRE(buf.destroy() == Result::SUCCESS);
     }
 
-    SECTION("Very Large Size") {
-        // Test with a size that might cause allocation failure
-        U64 huge_size = static_cast<U64>(1024) * 1024 * 1024 * 16;  // 16GB
+    SECTION("Medium Allocation") {
         Buffer buf;
-        Result result = buf.create(DeviceType::CPU, huge_size);
-        // Don't require specific result as it depends on system memory
-        // Just verify that if it fails, buffer state is correct
-        if (result != Result::SUCCESS) {
-            REQUIRE_FALSE(buf.valid());
-            REQUIRE(buf.sizeBytes() == 0);
-            REQUIRE(buf.data() == nullptr);
-        }
+        U64 medium_size = 64 * 1024 * 1024;  // 64MB
+        REQUIRE(buf.create(DeviceType::CPU, medium_size) == Result::SUCCESS);
+        REQUIRE(buf.valid());
+        REQUIRE(buf.sizeBytes() == medium_size);
+        REQUIRE(buf.data() != nullptr);
+
+        WriteTestPattern(buf, 0x5A);
+        REQUIRE(VerifyTestPattern(buf, 0x5A));
+
+        REQUIRE(buf.destroy() == Result::SUCCESS);
     }
 
     SECTION("Borrowed Buffer Destruction Order") {
