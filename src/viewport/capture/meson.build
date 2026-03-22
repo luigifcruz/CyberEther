@@ -18,7 +18,7 @@ endforeach
 if instance_remote_deps_found
     cfg_lst.set('JETSTREAM_INSTANCE_REMOTE_AVAILABLE', true)
     src_lst += files([
-        '../../instance_remote.cc',
+        '../../instance_remote_impl.cc',
     ])
 else
     src_lst += files([

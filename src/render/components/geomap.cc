@@ -18,7 +18,7 @@
 
 namespace Jetstream::Render::Components {
 
-static constexpr F32 Pi = 3.14159265358979323846f;
+static constexpr F32 kPi = JST_PI;
 static constexpr F32 MaxMercatorLatitude = 85.05112878f;
 
 static inline F32 ClampMercatorLatitude(const F32 lat) {
@@ -271,9 +271,9 @@ static void LoadPlacesFromMemory(const uint8_t* gz,
         }
 
         const F32 mx = (lon + 180.0f) / 360.0f;
-        const F32 r = ClampMercatorLatitude(lat) * Pi / 180.0f;
+        const F32 r = ClampMercatorLatitude(lat) * kPi / 180.0f;
         const F32 my = (1.0f - std::log(std::tan(r) +
-            1.0f / std::cos(r)) / Pi) / 2.0f;
+            1.0f / std::cos(r)) / kPi) / 2.0f;
 
         places.push_back({
             .lon = lon,
@@ -1050,13 +1050,13 @@ Result GeoMap::present() {
             const F32 scale =
                 std::pow(2.0f, pimpl->uniforms.zoom);
             const F32 r =
-                ClampMercatorLatitude(pimpl->uniforms.centerLat) * Pi / 180.0f;
+                ClampMercatorLatitude(pimpl->uniforms.centerLat) * kPi / 180.0f;
             const F32 cx =
                 (pimpl->uniforms.centerLon + 180.0f) /
                 360.0f;
             const F32 cy =
                 (1.0f - std::log(std::tan(r) +
-                    1.0f / std::cos(r)) / Pi) / 2.0f;
+                    1.0f / std::cos(r)) / kPi) / 2.0f;
             const F32 ar = pimpl->uniforms.aspectRatio;
 
             // Visibility threshold based on zoom level.

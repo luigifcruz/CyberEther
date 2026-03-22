@@ -1,9 +1,11 @@
 #ifndef JETSTREAM_MEMORY_TENSOR_HH
 #define JETSTREAM_MEMORY_TENSOR_HH
 
+#include <any>
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <vector>
 

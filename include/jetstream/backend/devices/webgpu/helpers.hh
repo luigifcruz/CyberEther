@@ -3,6 +3,8 @@
 
 #include <vector>
 
+#include <webgpu/webgpu.h>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 

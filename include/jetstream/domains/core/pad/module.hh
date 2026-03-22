@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_CORE_PAD_MODULE_HH
 
 #include "jetstream/module.hh"
+#include "jetstream/types.hh"
 
 namespace Jetstream::Modules {
 

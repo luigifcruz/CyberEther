@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_MODULE_CONTEXT_HH
 #define JETSTREAM_MODULE_CONTEXT_HH
 
+#include <memory>
+
 #include "jetstream/module.hh"
 #include "jetstream/scheduler.hh"
 

@@ -1,4 +1,6 @@
 .cache
+.build
+.dist
 .DS_Store
 build/*
 builddir/*

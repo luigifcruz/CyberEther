@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_DOMAINS_CORE_SLICE_BLOCK_HH
 #define JETSTREAM_DOMAINS_CORE_SLICE_BLOCK_HH
 
+#include <string>
+
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {

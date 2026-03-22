@@ -5,6 +5,8 @@
 
 namespace Jetstream::Modules {
 
+static constexpr F32 kPi = JST_PI;
+
 Result PskDemodImpl::validate() {
     const auto& config = *candidate();
 
@@ -165,8 +167,7 @@ CF32 PskDemodImpl::interpolate(const CF32& a, const CF32& b, F64 mu) const {
 
 CF32 PskDemodImpl::decision(const CF32& sample) const {
     constexpr F32 INV_SQRT2 = 0.7071067811865475f;
-    constexpr F32 PI_F = 3.14159265358979323846f;
-    constexpr F32 STEP_8PSK = PI_F / 4.0f;
+    constexpr F32 STEP_8PSK = kPi / 4.0f;
 
     switch (constellationOrder) {
         case 2: {
@@ -218,8 +219,7 @@ F64 PskDemodImpl::costasLoopError(const CF32& sample) const {
         case 8: {
             // 8-PSK.
             const F32 phase = std::arg(sample);
-            constexpr F32 PI_F = 3.14159265358979323846f;
-            const F32 decisionPhase = std::round(phase * 4.0f / PI_F) * PI_F / 4.0f;
+            const F32 decisionPhase = std::round(phase * 4.0f / kPi) * kPi / 4.0f;
             error = std::sin(phase - decisionPhase);
             break;
         }

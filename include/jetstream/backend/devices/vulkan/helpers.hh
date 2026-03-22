@@ -15,6 +15,8 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
+#include "jetstream/logger.hh"
+
 static inline const char* JstVkResultToString(VkResult input_value) {
     switch ((VkResult)input_value) {
         case VK_ERROR_DEVICE_LOST:
