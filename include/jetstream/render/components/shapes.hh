@@ -6,6 +6,7 @@
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 
+#include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/generic.hh"
 
 namespace Jetstream::Render::Components {

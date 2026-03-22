@@ -4,6 +4,9 @@
 #include <any>
 #include <functional>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "jetstream/block.hh"
 

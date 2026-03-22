@@ -1,8 +1,10 @@
 #ifndef JETSTREAM_BLOCK_HH
 #define JETSTREAM_BLOCK_HH
 
-#include <string>
 #include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "jetstream/runtime.hh"
 #include "jetstream/scheduler.hh"

@@ -5,10 +5,10 @@
 #include <string>
 #include <cstdint>
 
+#include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
-#include "jetstream/instance_remote_ui.hh"
 #include "jetstream/render/tools/imgui_markdown.hh"
 
 #include "dmi_block.hh"
@@ -26,7 +26,7 @@ struct Superluminal::Impl {
 
     std::thread computeThread;
     std::thread presentThread;
-    std::unique_ptr<RemoteSessionMonitor> sessionMonitor;
+    std::unique_ptr<Instance::Remote::Supervisor> supervisor;
 
     Extent2D<U8> mosaicDims;
 
@@ -166,9 +166,9 @@ Result Superluminal::terminate() {
         JST_CHECK(stop());
     }
 
-    if (impl->sessionMonitor) {
-        impl->sessionMonitor->stop();
-        impl->sessionMonitor.reset();
+    if (impl->supervisor) {
+        impl->supervisor->stop();
+        impl->supervisor.reset();
     }
 
     if (impl->config.remote && impl->instance->remote()->started()) {
@@ -222,10 +222,10 @@ Result Superluminal::start() {
     ImGui::GetStyle().WindowRounding = 0.0f;
 
     if (impl->config.remote && impl->instance->remote()) {
-        impl->sessionMonitor = std::make_unique<RemoteSessionMonitor>(impl->instance->remote().get(),
-                                                                      impl->config.remoteAutoJoin,
-                                                                      PromptRemoteClientApproval);
-        impl->sessionMonitor->start();
+        impl->supervisor = std::make_unique<Instance::Remote::Supervisor>(
+            impl->instance->remote().get(),
+            impl->config.remoteAutoJoin);
+        impl->supervisor->start();
     }
 
     // Start the compute, present, and input threads.
@@ -393,9 +393,9 @@ Result Superluminal::stop() {
 
     impl->running = false;
 
-    if (impl->sessionMonitor) {
-        impl->sessionMonitor->stop();
-        impl->sessionMonitor.reset();
+    if (impl->supervisor) {
+        impl->supervisor->stop();
+        impl->supervisor.reset();
     }
 
     // Request to end the instance.
@@ -530,7 +530,8 @@ Result Superluminal::PrintRemoteInfo() {
         return Result::SUCCESS;
     }
 
-    ::PrintRemoteInfo(remote.get());
+    Instance::Remote::Supervisor supervisor(remote.get(), false);
+    supervisor.print();
     return Result::SUCCESS;
 }
 

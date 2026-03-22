@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.0.1',  # [VERSION HOOK]
+    version: '1.0.2',  # [VERSION HOOK]
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
@@ -27,6 +27,7 @@ jst_is_ios     = target_machine.system().startswith('ios')
 jst_is_android = target_machine.system().startswith('android')
 jst_is_browser = target_machine.system().startswith('emscripten')
 jst_is_windows = target_machine.system().startswith('windows')
+jst_is_wheel   = get_option('wheel')
 
 if not jst_is_linux   and \
    not jst_is_macos   and \
@@ -103,7 +104,7 @@ subdir('src')
 # Library
 #
 
-if jst_is_browser
+if jst_is_browser or jst_is_static
     libjetstream = static_library(
         'jetstream',
         src_lst,
@@ -159,24 +160,27 @@ endif
 # Executable
 #
 
-if jst_is_browser
-    cyberether_exe = executable(
-        'cyberether',
-        'main.cc',
-        include_directories: inc_lst,
-        dependencies: libjetstream_dep,
-        install: true,
-    )
-elif not jst_is_ios and \
-     not jst_is_android
-    cyberether_exe = executable(
-        'cyberether',
-        'main.cc',
-        include_directories: inc_lst,
-        dependencies: dep_lst,
-        link_with: libjetstream,
-        install: true,
-    )
+if not jst_is_wheel and \
+   not jst_is_ios and \
+   not jst_is_android
+    if jst_is_browser or jst_is_static
+        cyberether_exe = executable(
+            'cyberether',
+            'main.cc',
+            include_directories: inc_lst,
+            dependencies: libjetstream_dep,
+            install: true,
+        )
+    else
+        cyberether_exe = executable(
+            'cyberether',
+            'main.cc',
+            include_directories: inc_lst,
+            dependencies: dep_lst,
+            link_with: libjetstream,
+            install: true,
+        )
+    endif
 endif
 
 #

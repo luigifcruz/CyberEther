@@ -1,6 +1,9 @@
 #ifndef JETSTREAM_RENDER_COMPONENTS_FONT_HH
 #define JETSTREAM_RENDER_COMPONENTS_FONT_HH
 
+#include <memory>
+#include <unordered_map>
+
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 

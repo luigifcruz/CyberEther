@@ -1,6 +1,9 @@
 #ifndef JETSTREAM_MODULE_INTERFACE_HH
 #define JETSTREAM_MODULE_INTERFACE_HH
 
+#include <memory>
+#include <vector>
+
 #include "jetstream/module.hh"
 
 namespace Jetstream {

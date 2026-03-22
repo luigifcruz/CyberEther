@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_MODULE_SURFACE_HH
 #define JETSTREAM_MODULE_SURFACE_HH
 
+#include <memory>
+
 #include "jetstream/module.hh"
 #include "jetstream/surface.hh"
 

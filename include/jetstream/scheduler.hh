@@ -1,6 +1,10 @@
 #ifndef JETSTREAM_SCHEDULER_HH
 #define JETSTREAM_SCHEDULER_HH
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+
 #include "jetstream/macros.hh"
 #include "jetstream/types.hh"
 #include "jetstream/runtime.hh"

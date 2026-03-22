@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_CORE_RANGE_BLOCK_HH
 
 #include "jetstream/block.hh"
+#include "jetstream/types.hh"
 
 namespace Jetstream::Blocks {
 

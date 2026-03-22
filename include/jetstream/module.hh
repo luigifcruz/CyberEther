@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_MODULE_HH
 #define JETSTREAM_MODULE_HH
 
+#include <memory>
+
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"

@@ -1,8 +1,11 @@
 #ifndef JETSTREAM_TOOLS_AUTOMATIC_ITERATOR_HH
 #define JETSTREAM_TOOLS_AUTOMATIC_ITERATOR_HH
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "jetstream/types.hh"

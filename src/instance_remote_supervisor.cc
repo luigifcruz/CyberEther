@@ -1,16 +1,79 @@
-#include "jetstream/instance_remote_ui.hh"
+#include "jetstream/detail/instance_remote_supervisor.hh"
 
 #include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstdio>
 #include <iostream>
-#include <utility>
-
 #include <qrencode.h>
 
-void PrintRemoteInfo(Jetstream::Instance::Remote* remote) {
-    QRcode* qr = QRcode_encodeString8bit(remote->inviteUrl().c_str(), 0, QR_ECLEVEL_L);
+namespace Jetstream {
+
+Instance::Remote::Supervisor::Supervisor(Instance::Remote* remote, bool autoJoin_)
+    : remote_(remote), autoJoin(autoJoin_) {}
+
+Instance::Remote::Supervisor::~Supervisor() {
+    stop();
+}
+
+void Instance::Remote::Supervisor::start() {
+    if (running_ || !remote_) {
+        return;
+    }
+
+    running_ = true;
+    worker_ = std::thread(&Supervisor::run, this);
+}
+
+void Instance::Remote::Supervisor::stop() {
+    running_ = false;
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+}
+
+void Instance::Remote::Supervisor::run() {
+    while (running_) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        if (!running_) {
+            break;
+        }
+
+        const auto& waitlist = remote_->waitlist();
+        if (waitlist.empty()) {
+            continue;
+        }
+
+        for (const auto& sessionId : waitlist) {
+            if (seenSessions.count(sessionId)) {
+                continue;
+            }
+            seenSessions.insert(sessionId);
+
+            if (sessionId.size() < 6) {
+                continue;
+            }
+
+            std::string code = sessionId.substr(sessionId.length() - 6);
+            std::transform(code.begin(), code.end(), code.begin(), [](unsigned char c) {
+                return static_cast<char>(std::toupper(c));
+            });
+
+            if (autoJoin) {
+                remote_->approveClient(code);
+                continue;
+            }
+
+            if (prompt(code)) {
+                remote_->approveClient(code);
+            }
+        }
+    }
+}
+
+void Instance::Remote::Supervisor::print() const {
+    QRcode* qr = QRcode_encodeString8bit(remote_->inviteUrl().c_str(), 0, QR_ECLEVEL_L);
     if (!qr) {
         jst::fmt::print(stderr, "[QR encode error]\n");
         return;
@@ -58,12 +121,12 @@ void PrintRemoteInfo(Jetstream::Instance::Remote* remote) {
 
     QRcode_free(qr);
 
-    jst::fmt::print("Room ID:      {}\n", remote->roomId());
-    jst::fmt::print("Join URL:     {}\n", remote->inviteUrl());
-    jst::fmt::print("Access Token: {}\n\n", remote->accessToken());
+    jst::fmt::print("Room ID:      {}\n", remote_->roomId());
+    jst::fmt::print("Join URL:     {}\n", remote_->inviteUrl());
+    jst::fmt::print("Access Token: {}\n\n", remote_->accessToken());
 }
 
-bool PromptRemoteClientApproval(const std::string& code) {
+bool Instance::Remote::Supervisor::prompt(const std::string& code) const {
     const int boxInner = 38;
 
     std::string hLine;
@@ -88,73 +151,10 @@ bool PromptRemoteClientApproval(const std::string& code) {
 
     std::string input;
     if (std::getline(std::cin, input)) {
-        return (input.empty() || input == "y" || input == "Y");
+        return input.empty() || input == "y" || input == "Y";
     }
 
     return false;
 }
 
-RemoteSessionMonitor::RemoteSessionMonitor(Jetstream::Instance::Remote* remote,
-                                           bool autoJoin,
-                                           ApprovalPrompt approvalPrompt)
-    : remote_(remote), autoJoin_(autoJoin), approvalPrompt_(std::move(approvalPrompt)) {}
-
-RemoteSessionMonitor::~RemoteSessionMonitor() {
-    stop();
-}
-
-void RemoteSessionMonitor::start() {
-    if (running_ || !remote_) {
-        return;
-    }
-
-    running_ = true;
-    worker_ = std::thread(&RemoteSessionMonitor::run, this);
-}
-
-void RemoteSessionMonitor::stop() {
-    running_ = false;
-    if (worker_.joinable()) {
-        worker_.join();
-    }
-}
-
-void RemoteSessionMonitor::run() {
-    while (running_) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-
-        if (!running_) {
-            break;
-        }
-
-        const auto& waitlist = remote_->waitlist();
-        if (waitlist.empty()) {
-            continue;
-        }
-
-        for (const auto& sessionId : waitlist) {
-            if (seenSessions_.count(sessionId)) {
-                continue;
-            }
-            seenSessions_.insert(sessionId);
-
-            if (sessionId.size() < 6) {
-                continue;
-            }
-
-            std::string code = sessionId.substr(sessionId.length() - 6);
-            std::transform(code.begin(), code.end(), code.begin(), [](unsigned char c) {
-                return static_cast<char>(std::toupper(c));
-            });
-
-            if (autoJoin_) {
-                remote_->approveClient(code);
-                continue;
-            }
-
-            if (approvalPrompt_ && approvalPrompt_(code)) {
-                remote_->approveClient(code);
-            }
-        }
-    }
-}
+}  // namespace Jetstream

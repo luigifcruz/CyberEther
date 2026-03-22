@@ -1,7 +1,10 @@
 #ifndef JETSTREAM_DOMAINS_CORE_ARITHMETIC_BLOCK_HH
 #define JETSTREAM_DOMAINS_CORE_ARITHMETIC_BLOCK_HH
 
+#include <string>
+
 #include "jetstream/block.hh"
+#include "jetstream/types.hh"
 
 namespace Jetstream::Blocks {
 

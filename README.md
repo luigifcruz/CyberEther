@@ -42,7 +42,6 @@ CyberEther runs on macOS, Linux, Windows, iOS/iPadOS, Android, Raspberry Pi, and
 
 - [**Try Online**](https://cyberether.org/web): Run the browser build powered by **WebAssembly** and **WebGPU**.
 - [**Build From Source**](https://cyberether.org/docs/installation): Follow the dependency and build guide.
-- [**Docker**](./docker/): Dockerfiles for development and testing.
 
 ## FAQ
 

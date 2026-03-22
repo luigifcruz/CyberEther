@@ -1,0 +1,289 @@
+version: 1
+
+tree:
+  container:
+    kind: container
+    targets:
+      x86_64:
+        base: amd64/ubuntu:24.04
+      aarch64:
+        base: arm64v8/ubuntu:24.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - |
+        apt-get update --fix-missing && \
+        apt-get install -y --no-install-recommends \
+          git build-essential cmake pkg-config ninja-build meson python3-pip \
+          spirv-cross glslang-tools \
+          libglfw3-dev zenity \
+          mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers \
+          libsoapysdr-dev soapysdr-module-rtlsdr \
+          libgstreamer1.0-dev gstreamer1.0-libav gstreamer1.0-plugins-base \
+          libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev \
+          gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+          python3-yaml && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+      - |
+        python3 -m pip install --break-system-packages \
+          meson \
+          numpy \
+          mapbox_earcut
+      - git config --global --add safe.directory /workspace
+      - git submodule sync --recursive && git submodule update --init --recursive --force
+
+    dev:
+      steps:
+        - rm -rf build && meson setup build -Dprefix=/usr -Dbuildtype=debugoptimized
+        - ninja -C build install
+      validate:
+        - kind: smoke
+          name: runtime binary output
+          steps:
+            - test -f /usr/bin/cyberether
+        - kind: test
+          name: meson tests
+          steps:
+            - meson test -C build --print-errorlogs
+      artifacts:
+        - kind: oci
+          name: cyberether-dev-ubuntu24-${OFFWORLD_TARGET_ARCH}
+          publish:
+            tag: cyberether:dev-ubuntu24-${OFFWORLD_TARGET_ARCH}
+            save: .dist/artifacts/cyberether-dev-ubuntu24-${OFFWORLD_TARGET_ARCH}.oci.tar
+    prod:
+      steps:
+        - rm -rf build && meson setup build -Dprefix=/usr -Dbuildtype=release
+        - ninja -C build install
+      validate:
+        - kind: smoke
+          name: runtime binary output
+          steps:
+            - test -f /usr/bin/cyberether
+        - kind: test
+          name: meson tests
+          steps:
+            - meson test -C build --print-errorlogs
+      artifacts:
+        - kind: oci
+          name: cyberether-prod-ubuntu24-${OFFWORLD_TARGET_ARCH}
+          publish:
+            tag: cyberether:prod-ubuntu24-${OFFWORLD_TARGET_ARCH}
+            save: .dist/artifacts/cyberether-prod-ubuntu24-${OFFWORLD_TARGET_ARCH}.oci.tar
+
+  manylinux:
+    kind: container
+    targets:
+      x86_64:
+        base: quay.io/pypa/manylinux_2_34_x86_64
+      aarch64:
+        base: quay.io/pypa/manylinux_2_34_aarch64
+    env:
+      PATH: /opt/python/cp312-cp312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      SYSTEM_SHARED_LIBS: |
+        libc\.so\.6|libm\.so\.6|libstdc\+\+\.so\.6|libgcc_s\.so\.1|libpthread\.so\.0|
+        libdl\.so\.2|librt\.so\.1|ld-linux-x86-64\.so\.2|ld-linux-aarch64\.so\.1|
+        libvulkan\.so\.1|libz\.so\.1|
+        libjetstream\.so|libX11\.so\.6|libXrandr\.so\.2|libXi\.so\.6|libXinerama\.so\.1|
+        libXcursor\.so\.1|libxkbcommon\.so\.0|libwayland-client\.so\.0|libwayland-cursor\.so\.0|
+        libwayland-egl\.so\.1
+    steps:
+      - |
+        dnf install -y \
+          git \
+          gcc-c++ \
+          cmake \
+          glslang \
+          wayland-devel \
+          libxkbcommon-devel \
+          libXcursor-devel \
+          libXi-devel \
+          libXinerama-devel \
+          libXrandr-devel \
+          vulkan-loader-devel \
+          pkgconf-pkg-config && \
+        dnf clean all
+      - |
+        python -m pip install \
+          meson \
+          ninja \
+          numpy \
+          mapbox_earcut
+      - git config --global --add safe.directory /workspace
+      - git submodule sync --recursive && git submodule update --init --recursive --force
+
+    wheel:
+      steps:
+        - rm -rf .dist/wheels .dist/python
+        - |
+          python -m pip install \
+            meson-python \
+            auditwheel
+        - mkdir -p .dist/wheels/repaired .dist/artifacts
+        - |
+          python -m pip wheel . \
+            --no-deps \
+            --no-build-isolation \
+            --wheel-dir .dist/wheels \
+            --config-settings=setup-args=-Dpython=true \
+            --config-settings=setup-args=-Dwheel=true \
+            --config-settings=setup-args=-Dbuildtype=release \
+            --config-settings=setup-args=-Dtests=false \
+            --config-settings=setup-args=-Dexamples=false
+        - auditwheel repair .dist/wheels/*.whl -w .dist/wheels/repaired
+        - |
+          sh -c 'cd .dist/wheels/repaired && tar -czf ../../artifacts/superluminal-manylinux-${OFFWORLD_TARGET_ARCH}-wheel.tar.gz ./*.whl'
+      validate:
+        - kind: smoke
+          name: wheel output
+          steps:
+            - test -f .dist/artifacts/superluminal-manylinux-${OFFWORLD_TARGET_ARCH}-wheel.tar.gz
+        - kind: compliance
+          name: wheel dependency whitelist
+          steps:
+            - rm -rf .dist/wheel-check && mkdir -p .dist/wheel-check
+            - python -m zipfile -e .dist/wheels/repaired/*.whl .dist/wheel-check
+            - readelf -d .dist/wheel-check/superluminal/_impl*.so | grep NEEDED
+            - |
+              pattern="$(printf '%s' "$SYSTEM_SHARED_LIBS" | tr -d '[:space:]')"
+              bad="$(readelf -d .dist/wheel-check/superluminal/_impl*.so | grep NEEDED | grep -Ev "$pattern")"
+              [ -z "$bad" ] || { printf '%s\n' "$bad"; exit 1; }
+      artifacts:
+        - kind: archive
+          name: superluminal-wheel-manylinux-${OFFWORLD_TARGET_ARCH}
+          path: .dist/artifacts/superluminal-manylinux-${OFFWORLD_TARGET_ARCH}-wheel.tar.gz
+
+    bin:
+      steps:
+        - rm -rf build
+        - meson setup build --default-library=static -Dprefix=/opt/cyberether -Dbuildtype=release -Dexamples=false
+        - ninja -C build install
+        - mkdir -p .dist/artifacts .dist/bin
+        - cp /opt/cyberether/bin/cyberether .dist/bin/cyberether
+        - tar -C .dist/bin -czf .dist/artifacts/cyberether-manylinux-${OFFWORLD_TARGET_ARCH}.tar.gz cyberether
+      validate:
+        - kind: smoke
+          name: binary output
+          steps:
+            - test -f /opt/cyberether/bin/cyberether
+        - kind: test
+          name: meson tests
+          steps:
+            - meson test -C build --print-errorlogs
+        - kind: compliance
+          name: binary dependency whitelist
+          steps:
+            - readelf -d /opt/cyberether/bin/cyberether | grep NEEDED
+            - |
+              pattern="$(printf '%s' "$SYSTEM_SHARED_LIBS" | tr -d '[:space:]')"
+              bad="$(readelf -d /opt/cyberether/bin/cyberether | grep NEEDED | grep -Ev "$pattern")"
+              [ -z "$bad" ] || { printf '%s\n' "$bad"; exit 1; }
+      artifacts:
+        - kind: archive
+          name: cyberether-bin-manylinux-${OFFWORLD_TARGET_ARCH}
+          path: .dist/artifacts/cyberether-manylinux-${OFFWORLD_TARGET_ARCH}.tar.gz
+
+  emscripten:
+    kind: container
+    base: emscripten/emsdk:5.0.2
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - |
+        apt-get update --fix-missing && \
+        apt-get install -y --no-install-recommends \
+          git build-essential cmake pkg-config ninja-build meson python3-pip \
+          spirv-cross glslang-tools cargo python3-yaml && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+      - |
+        python3 -m pip install --break-system-packages \
+          meson \
+          numpy \
+          mapbox_earcut
+      - git config --global --add safe.directory /workspace
+      - git submodule sync --recursive && git submodule update --init --recursive --force
+
+    static:
+      steps:
+        - rm -rf build-wasm
+        - meson setup --cross-file meson/crosscompile/emscripten.ini -Dbuildtype=debugoptimized build-wasm
+        - ninja -C build-wasm
+        - mkdir -p .dist/artifacts
+        - |
+          tar -C build-wasm -czf .dist/artifacts/cyberether-emscripten-wasm32.tar.gz \
+            cyberether.js \
+            cyberether.wasm \
+            cyberether.js.symbols \
+            cyberether.wasm.map
+      validate:
+        - kind: smoke
+          name: emscripten output files
+          steps:
+            - test -f build-wasm/cyberether.js
+            - test -f build-wasm/cyberether.wasm
+            - test -f build-wasm/cyberether.js.symbols
+            - test -f build-wasm/cyberether.wasm.map
+      artifacts:
+        - kind: archive
+          name: cyberether-emscripten-wasm32
+          path: .dist/artifacts/cyberether-emscripten-wasm32.tar.gz
+
+  windows:
+    kind: container
+    base: dockcross/windows-static-x64-posix:20260304-b2fe000
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      SYSTEM_WINDOWS_DLLS: |
+        KERNEL32\.dll|USER32\.dll|GDI32\.dll|SHELL32\.dll|OLE32\.dll|WS2_32\.dll|
+        COMDLG32\.dll|MSVCRT\.dll|VULKAN-1\.dll
+      VULKAN_VERSION: 1.4.309.0
+      VULKAN_SDK: /root/.wine/drive_c/VulkanSDK/1.4.309.0
+      WINEDLLOVERRIDES: mscoree,mshtml=
+    steps:
+      - |
+        apt-get update --fix-missing && \
+        apt-get install -y --no-install-recommends \
+          git wget python3-pip python3-yaml \
+          winbind \
+          spirv-cross glslang-tools && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+      - |
+        python3 -m pip install --break-system-packages \
+          meson \
+          numpy \
+          mapbox_earcut
+      - wget -nv -O vulkan-sdk.exe https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/windows/vulkan-sdk.exe
+      - /usr/lib/wine/wine64 vulkan-sdk.exe --accept-licenses --default-answer --confirm-command install
+      - ln -s ${VULKAN_SDK}/Include/ ${VULKAN_SDK}/include
+      - ln -s ${VULKAN_SDK}/Lib/ ${VULKAN_SDK}/lib
+      - ln -s ${VULKAN_SDK}/Lib/vulkan-1.lib ${VULKAN_SDK}/lib/vulkan.lib
+      - git config --global --add safe.directory /workspace
+      - git submodule sync --recursive && git submodule update --init --recursive --force
+
+    bin:
+      steps:
+        - rm -rf build
+        - meson setup --cross-file meson/crosscompile/windows.ini -Dbuildtype=release build
+        - ninja -C build
+        - mkdir -p .dist/artifacts
+        - tar -C build -czf .dist/artifacts/cyberether-windows-x86_64.tar.gz cyberether.exe
+      validate:
+        - kind: smoke
+          name: windows binary output
+          steps:
+            - test -f build/cyberether.exe
+        - kind: compliance
+          name: windows binary dependency whitelist
+          steps:
+            - /usr/src/mxe/usr/bin/x86_64-w64-mingw32.static.posix-objdump -p build/cyberether.exe | grep 'DLL Name:'
+            - |
+              pattern="$(printf '%s' "$SYSTEM_WINDOWS_DLLS" | tr -d '[:space:]')"
+              bad="$({ /usr/src/mxe/usr/bin/x86_64-w64-mingw32.static.posix-objdump -p build/cyberether.exe | grep 'DLL Name:' | sed -E 's/^[[:space:]]*DLL Name: //'; } | grep -Eiv "$pattern" || true)"
+              [ -z "$bad" ] || { printf '%s\n' "$bad"; exit 1; }
+      artifacts:
+        - kind: archive
+          name: cyberether-windows-x86_64
+          path: .dist/artifacts/cyberether-windows-x86_64.tar.gz

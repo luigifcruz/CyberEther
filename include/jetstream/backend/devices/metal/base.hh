@@ -5,6 +5,7 @@
 #pragma GCC diagnostic ignored "-Wgnu-anonymous-struct"
 #pragma GCC diagnostic ignored "-Wnested-anon-types"
 #pragma GCC diagnostic ignored "-Wdtor-name"
+#include <string>
 #include "jetstream/backend/devices/metal/bindings.hpp"
 #pragma GCC diagnostic pop
 #include "jetstream/backend/config.hh"

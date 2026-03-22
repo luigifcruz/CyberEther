@@ -2,11 +2,11 @@
 #include <thread>
 
 #include "jetstream/config.hh"
+#include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
-#include "jetstream/instance_remote_ui.hh"
 
 #ifdef JST_OS_BROWSER
 #include <emscripten.h>
@@ -340,25 +340,23 @@ int main(int argc, char* argv[]) {
 #ifdef JST_OS_BROWSER
     emscripten_runtime_keepalive_push();
 #else
-    std::unique_ptr<RemoteSessionMonitor> sessionMonitor;
+    std::unique_ptr<Instance::Remote::Supervisor> supervisor;
 
     if (command == CommandType::Remote && instance->remote()) {
-        PrintRemoteInfo(instance->remote().get());
-
-        sessionMonitor = std::make_unique<RemoteSessionMonitor>(
+        supervisor = std::make_unique<Instance::Remote::Supervisor>(
             instance->remote().get(),
-            remoteConfig.autoJoinSessions,
-            PromptRemoteClientApproval
+            remoteConfig.autoJoinSessions
         );
-        sessionMonitor->start();
+        supervisor->print();
+        supervisor->start();
     }
 
     while (instance->polling()) {
         instance->poll();
     }
 
-    if (sessionMonitor) {
-        sessionMonitor->stop();
+    if (supervisor) {
+        supervisor->stop();
     }
 #endif
 

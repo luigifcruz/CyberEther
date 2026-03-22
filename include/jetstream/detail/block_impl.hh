@@ -3,6 +3,7 @@
 
 #include <any>
 #include <functional>
+#include <unordered_map>
 
 #include "jetstream/block.hh"
 #include "jetstream/block_interface.hh"

@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_CORE_SQUEEZE_DIMS_MODULE_HH
 
 #include "jetstream/module.hh"
+#include "jetstream/types.hh"
 
 namespace Jetstream::Modules {
 

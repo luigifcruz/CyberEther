@@ -1,7 +1,10 @@
 #ifndef JETSTREAM_DOMAINS_CORE_ARITHMETIC_MODULE_HH
 #define JETSTREAM_DOMAINS_CORE_ARITHMETIC_MODULE_HH
 
+#include <string>
+
 #include "jetstream/module.hh"
+#include "jetstream/types.hh"
 
 namespace Jetstream::Modules {
 

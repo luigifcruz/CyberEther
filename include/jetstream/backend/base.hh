@@ -2,8 +2,9 @@
 #define JETSTREAM_BACKEND_BASE_HH
 
 #include <unordered_map>
-#include <variant>
+#include <memory>
 #include <mutex>
+#include <variant>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"

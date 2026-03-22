@@ -16,6 +16,8 @@ endif
 if (jst_is_windows or jst_is_macos or jst_is_linux) and jst_is_static
     deps += [
         dependency('soapysdr', 'SoapySDR', required: true),
+    ]
+    whole_dep_lst += [
         dependency('soapyairspy', required: true).as_link_whole(),
         dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
