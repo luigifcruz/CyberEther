@@ -300,38 +300,70 @@ static inline bool RenderFieldInt(const std::string& name,
     return changed;
 }
 
-// Format: `vector:float:unit:precision`
-static inline bool RenderFieldVectorFloat(const std::string& name,
-                                          const std::vector<std::string>& parts,
-                                          const std::string& encoded,
-                                          FieldContext& ctx) {
-    std::vector<F32> values;
-    if (!encoded.empty()) {
-        Parser::StringToTyped(encoded, values);
-    }
-
-    if (values.empty()) {
-        return false;
-    }
-
-    const std::string unit = (parts.size() > 2) ? parts[2] : "";
-    const int precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+// Format: `vector:float:unit:precision` or `vector:int:unit`
+static inline bool RenderFieldVector(const std::string& name,
+                                     const std::vector<std::string>& parts,
+                                     const std::string& encoded,
+                                     FieldContext& ctx) {
+    const std::string valueType = (parts.size() > 1) ? parts[1] : "float";
 
     ImGui::PushID(name.c_str());
 
     bool changed = false;
 
-    for (U64 i = 0; i < values.size(); ++i) {
-        ImGui::PushID(static_cast<int>(i));
-
-        ctx.renderHeader(std::to_string(i));
-
-        if (ctx.renderFloatValue(values[i], unit, precision)) {
-            ctx.cfg[name] = values;
-            changed = true;
+    if (valueType == "float") {
+        std::vector<F32> values;
+        if (!encoded.empty()) {
+            Parser::StringToTyped(encoded, values);
         }
 
-        ImGui::PopID();
+        if (values.empty()) {
+            ImGui::PopID();
+            return false;
+        }
+
+        const std::string unit = (parts.size() > 2) ? parts[2] : "";
+        const int precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+
+        for (U64 i = 0; i < values.size(); ++i) {
+            ImGui::PushID(static_cast<int>(i));
+
+            ctx.renderHeader(std::to_string(i));
+
+            if (ctx.renderFloatValue(values[i], unit, precision)) {
+                ctx.cfg[name] = values;
+                changed = true;
+            }
+
+            ImGui::PopID();
+        }
+    } else if (valueType == "int") {
+        std::vector<U64> values;
+        if (!encoded.empty()) {
+            Parser::StringToTyped(encoded, values);
+        }
+
+        if (values.empty()) {
+            ImGui::PopID();
+            return false;
+        }
+
+        const std::string unit = (parts.size() > 2) ? parts[2] : "";
+
+        for (U64 i = 0; i < values.size(); ++i) {
+            ImGui::PushID(static_cast<int>(i));
+
+            ctx.renderHeader(std::to_string(i));
+
+            if (ctx.renderIntValue(values[i], unit)) {
+                ctx.cfg[name] = values;
+                changed = true;
+            }
+
+            ImGui::PopID();
+        }
+    } else {
+        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector field type '{}' for config '{}'", valueType, name);
     }
 
     ImGui::PopID();
@@ -769,7 +801,7 @@ static const std::unordered_map<std::string, FieldRenderer> fieldRenderers = {
     {"dropdown",   RenderFieldDropdown},
     {"float",      RenderFieldFloat},
     {"int",        RenderFieldInt},
-    {"vector",     RenderFieldVectorFloat},
+    {"vector",     RenderFieldVector},
     {"filepicker", RenderFieldFilePicker},
     {"filesave",   RenderFieldFileSave},
     {"bool",       RenderFieldBool},
