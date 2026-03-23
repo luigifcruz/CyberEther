@@ -7,7 +7,6 @@
 #include <string>
 
 #include "jetstream/logger.hh"
-#include "fmt/color.h"
 
 std::string& JST_LOG_LAST_WARNING() {
     static std::string __JST_LOG_LAST_WARNING;

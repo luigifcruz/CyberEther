@@ -8,12 +8,13 @@
 #ifndef JST_FMT_INCLUDED
 #define JST_FMT_INCLUDED
 
+#ifndef JST_FMT_HEADER_ONLY
 #define JST_FMT_HEADER_ONLY
-#include <fmt/format.h>
-#include <fmt/color.h>
-#include <fmt/ostream.h>
-#include <fmt/ranges.h>
-#include <fmt/chrono.h>
+#endif
+#include <jetstream/fmt/format.h>
+#include <jetstream/fmt/color.h>
+#include <jetstream/fmt/ostream.h>
+#include <jetstream/fmt/ranges.h>
 
 #endif  // JST_FMT_INCLUDED
 

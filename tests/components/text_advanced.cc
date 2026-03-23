@@ -2,7 +2,7 @@
 #include "jetstream/render/components/text.hh"
 #include <chrono>
 
-#include <fmt/format.h>
+#include <jetstream/fmt/format.h>
 
 class TextTestUI : public TestUIBase<Render::Components::Text> {
  public:
