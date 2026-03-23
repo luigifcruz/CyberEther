@@ -1168,6 +1168,42 @@ TEST_CASE("Tensor Clone Operations", "[tensor][clone]") {
         REQUIRE(VerifyTestPattern<F32>(clone3, 999.0f));
     }
 
+    SECTION("swapBuffers Updates Shared Clone Storage") {
+        Tensor src(DeviceType::CPU, DataType::F32, {4, 4});
+        Tensor replacement(DeviceType::CPU, DataType::F32, {4, 4});
+
+        WriteTestPattern<F32>(src, 1.0f);
+        WriteTestPattern<F32>(replacement, 2.0f);
+        REQUIRE(src.setAttribute("sampleRate", F32{123.0f}) == Result::SUCCESS);
+
+        Tensor cloned = src.clone();
+
+        const Index srcId = src.id();
+        const Index replacementId = replacement.id();
+        const Shape srcShape = src.shape();
+        const Shape srcStride = src.stride();
+
+        REQUIRE(src.swapBuffers(replacement) == Result::SUCCESS);
+
+        REQUIRE(src.id() == srcId);
+        REQUIRE(replacement.id() == replacementId);
+        REQUIRE(src.shape() == srcShape);
+        REQUIRE(src.stride() == srcStride);
+        REQUIRE(std::any_cast<F32>(src.attribute("sampleRate")) == 123.0f);
+        REQUIRE(cloned.hasAttribute("sampleRate"));
+
+        REQUIRE(VerifyTestPattern<F32>(src, 2.0f));
+        REQUIRE(VerifyTestPattern<F32>(cloned, 2.0f));
+        REQUIRE(VerifyTestPattern<F32>(replacement, 1.0f));
+    }
+
+    SECTION("swapBuffers Rejects Mismatched Layout") {
+        Tensor lhs(DeviceType::CPU, DataType::F32, {4, 4});
+        Tensor rhs(DeviceType::CPU, DataType::F32, {2, 8});
+
+        REQUIRE(lhs.swapBuffers(rhs) == Result::ERROR);
+    }
+
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     SECTION("Clone Metal Tensor") {
         Tensor src(DeviceType::Metal, DataType::F32, TEST_SHAPE_2D);

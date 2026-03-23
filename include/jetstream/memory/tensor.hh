@@ -39,6 +39,7 @@ class Tensor : public std::enable_shared_from_this<Tensor> {
 
     bool hasDevice(const DeviceType& device);
     Result copyFrom(const Tensor& source);
+    Result swapBuffers(Tensor& other);
 
     const DeviceType& device() const;
     const DeviceType& nativeDevice() const;
