@@ -1949,6 +1949,8 @@ Result DefaultCompositor::renderFlowgraph() {
 
             bool hasSurfaces = false;
             bool isDetached = false;
+            const U64 defaultAttachedSurfaceHeight = SurfaceMeta{}.attachedHeight;
+            U64 attachedSurfaceHeight = defaultAttachedSurfaceHeight;
 
             if (!blockPtr->surfaces().empty()) {
                 const auto& surface = blockPtr->surfaces().front();
@@ -1957,6 +1959,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     const auto& manifest = surface->manifests().front();
                     SurfaceMeta surfaceMeta;
                     flowgraph->getMeta("surface_" + manifest.id, surfaceMeta, blockName);
+                    attachedSurfaceHeight = surfaceMeta.attachedHeight;
                     isDetached = surfaceMeta.detached;
                 }
             }
@@ -1967,9 +1970,16 @@ Result DefaultCompositor::renderFlowgraph() {
             const bool isReloading = blockState == Block::State::Creating ||
                                      blockState == Block::State::Incomplete;
             const bool shouldResetNodeHeight = (!hasSurfaces || isDetached) && !isReloading;
+            const F32 minimumSurfaceHeight = static_cast<F32>(attachedSurfaceHeight) * scalingFactor;
+            const bool shouldSeedSurfaceHeight = hasSurfaces && !isDetached &&
+                                                 attachedSurfaceHeight == defaultAttachedSurfaceHeight &&
+                                                 nodeSizes[nodeId].y < minimumSurfaceHeight;
+            const bool hasValidNodeHeight = nodeSizes[nodeId].y > 0.0f;
 
-            if (shouldResetNodeHeight) {
+            if (shouldResetNodeHeight || (isReloading && !hasValidNodeHeight)) {
                 nodeSizes[nodeId].y = 0.0f;
+            } else if (shouldSeedSurfaceHeight) {
+                nodeSizes[nodeId].y = minimumSurfaceHeight;
             }
             ImNodes::SetNodeDimensions(nodeId, nodeSizes[nodeId]);
 
@@ -4829,10 +4839,18 @@ bool DefaultCompositor::helperCheckSurfaceResize(const std::shared_ptr<Module::S
                                                  U64& storedHeight,
                                                  F32 scalingFactor,
                                                  bool detached) {
+    if (availableRegion.x <= 0.0f || availableRegion.y <= 0.0f) {
+        return false;
+    }
+
     const U64 newWidth = static_cast<U64>(availableRegion.x / scalingFactor);
     const U64 newHeight = static_cast<U64>(availableRegion.y / scalingFactor);
     const U64 expectedWidth = static_cast<U64>(availableRegion.x * ImGui::GetIO().DisplayFramebufferScale.x);
     const U64 expectedHeight = static_cast<U64>(availableRegion.y * ImGui::GetIO().DisplayFramebufferScale.y);
+
+    if (newWidth == 0 || newHeight == 0 || expectedWidth == 0 || expectedHeight == 0) {
+        return false;
+    }
 
     if (storedWidth != newWidth || storedHeight != newHeight ||
         manifest.size.x != expectedWidth || manifest.size.y != expectedHeight) {
