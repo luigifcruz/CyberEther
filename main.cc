@@ -17,7 +17,7 @@
 using namespace Jetstream;
 
 #ifdef JST_OS_LINUX
-extern "C" void CyberEtherPluginInit() __attribute__((weak));
+extern "C" void CyberEtherPluginInit(Jetstream::Instance* instance) __attribute__((weak));
 #endif
 
 namespace {
@@ -304,12 +304,6 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-#ifdef JST_OS_LINUX
-    if (CyberEtherPluginInit) {
-        CyberEtherPluginInit();
-    }
-#endif
-
 #ifdef JST_OS_BROWSER
     std::thread([] {
         backend_t opfs = wasmfs_create_opfs_backend();
@@ -321,6 +315,12 @@ int main(int argc, char* argv[]) {
     auto instance = std::make_shared<Instance>();
 
     JST_CHECK_THROW(instance->create(config));
+
+#ifdef JST_OS_LINUX
+    if (CyberEtherPluginInit) {
+        CyberEtherPluginInit(instance.get());
+    }
+#endif
 
     if (!flowgraphPath.empty()) {
         std::shared_ptr<Flowgraph> flowgraph;
