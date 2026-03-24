@@ -9,6 +9,7 @@ struct Runtime::Context {
  public:
     virtual Result computeInitialize();
     virtual Result computeSubmit();
+    virtual Result computeDeinitialize();
 };
 
 }  // namespace Jetstream

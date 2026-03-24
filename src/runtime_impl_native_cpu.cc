@@ -50,6 +50,10 @@ Result NativeCpuRuntime::create(const Runtime::Modules& modules) {
 }
 
 Result NativeCpuRuntime::destroy() {
+    for (auto& [_, module] : modulesMap) {
+        JST_CHECK(module->context()->runtime()->computeDeinitialize());
+    }
+
     modulesMap.clear();
     runtimeMetrics.reset();
 
