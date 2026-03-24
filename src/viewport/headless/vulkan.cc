@@ -175,7 +175,9 @@ Result Implementation::nextDrawable(VkSemaphore& semaphore) {
     // Set ImGui state for headless.
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
+    io.DisplaySize = ImVec2(static_cast<float>(config.size.x), static_cast<float>(config.size.y));
+    io.DisplayFramebufferScale = { static_cast<float>(extent.width) / io.DisplaySize.x,
+                                   static_cast<float>(extent.height) / io.DisplaySize.y };
     io.DeltaTime = deltaTime;
 
     // Dummy signal semaphore.

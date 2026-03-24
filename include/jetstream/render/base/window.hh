@@ -133,12 +133,12 @@ class Window {
 
     std::unordered_map<std::string, std::shared_ptr<Components::Font>> fonts;
 
-    // Style scaling.
+    // Scaling.
 
     F32 _scalingFactor;
     F32 _previousScalingFactor;
 
-    void scaleStyle(const Viewport::Generic& viewport);
+    void updateScalingFactor(const Viewport::Generic& viewport);
 
  private:
     std::vector<std::shared_ptr<Components::Generic>> components;

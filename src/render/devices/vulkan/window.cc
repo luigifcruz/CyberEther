@@ -203,7 +203,7 @@ Result Implementation::createImgui() {
 
     JST_CHECK(viewport->createImgui());
 
-    this->scaleStyle(*viewport);
+    this->updateScalingFactor(*viewport);
 
     auto& backend = Backend::State<DeviceType::Vulkan>();
 
@@ -236,7 +236,7 @@ Result Implementation::destroyImgui() {
 Result Implementation::beginImgui() {
     ImGui_ImplVulkan_NewFrame();
 
-    this->scaleStyle(*viewport);
+    this->updateScalingFactor(*viewport);
 
     ImGui::NewFrame();
 

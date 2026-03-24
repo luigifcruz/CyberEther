@@ -1519,7 +1519,14 @@ Result DefaultCompositor::present() {
 
     if (render->scalingFactor() != scalingFactor) {
         ImGuiStyleScale();
-        ImNodesStyleScale();
+
+        const auto previousContext = ImNodes::GetCurrentContext();
+        for (const auto& [_, context] : contexts) {
+            ImNodes::SetCurrentContext(context);
+            ImNodesStyleScale();
+        }
+        ImNodes::SetCurrentContext(previousContext);
+
         scalingFactor = render->scalingFactor();
     }
     currentHeight = 0.0f;
@@ -5258,6 +5265,7 @@ void DefaultCompositor::ImGuiStyleSetup() {
 }
 
 void DefaultCompositor::ImGuiStyleScale() {
+    const auto& scalingFactor = render->scalingFactor();
     auto& style = ImGui::GetStyle();
 
     // Main
@@ -5267,9 +5275,9 @@ void DefaultCompositor::ImGuiStyleScale() {
     style.ItemInnerSpacing                  = ImVec2(8.00f, 6.00f);
     style.TouchExtraPadding                 = ImVec2(0.00f, 0.00f);
     style.CellPadding                       = ImVec2(6.00f, 4.00f);
-    style.IndentSpacing                     = 20;
-    style.ScrollbarSize                     = 12;
-    style.GrabMinSize                       = 12;
+    style.IndentSpacing                     = 20.0f;
+    style.ScrollbarSize                     = 12.0f;
+    style.GrabMinSize                       = 12.0f;
 
     // Borders
     style.WindowBorderSize                  = 0.5f;
@@ -5294,6 +5302,8 @@ void DefaultCompositor::ImGuiStyleScale() {
 
     // Tessellation
     style.CircleTessellationMaxError        = 0.1f;
+
+    style.ScaleAllSizes(scalingFactor);
 }
 
 //

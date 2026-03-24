@@ -247,13 +247,8 @@ Result Window::processAttachmentQueues() {
     return Result::SUCCESS;
 }
 
-void Window::scaleStyle(const Viewport::Generic& viewport) {
+void Window::updateScalingFactor(const Viewport::Generic& viewport) {
     _scalingFactor = viewport.scale(config.scale);
-
-    if (_scalingFactor != _previousScalingFactor) {
-        auto& style = ImGui::GetStyle();
-        style.ScaleAllSizes(_scalingFactor);
-    }
 
     _previousScalingFactor = _scalingFactor;
 }

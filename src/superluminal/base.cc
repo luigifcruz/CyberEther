@@ -108,6 +108,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
 
     Instance::Config instanceConfig = {
         .size = impl->config.interfaceSize,
+        .scale = impl->config.interfaceScale,
     };
 
     if (impl->config.remote && impl->config.device == DeviceType::None) {
@@ -218,6 +219,7 @@ Result Superluminal::start() {
 
     // Customize ImGui style.
 
+    ImGui::GetStyle().ScaleAllSizes(impl->config.interfaceScale);
     ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
     ImGui::GetStyle().WindowRounding = 0.0f;
 

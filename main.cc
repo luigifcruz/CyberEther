@@ -77,6 +77,7 @@ void printUsage(const char* program) {
     jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
     jst::fmt::print("  --headless                   Run in headless mode (no window)\n");
     jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
+    jst::fmt::print("  --scale <scale>              Interface scale factor (default: 1.0)\n");
     jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n\n");
     jst::fmt::print("Benchmark Options:\n");
     jst::fmt::print("  --format <type>             Output format: markdown, json, csv (default: markdown)\n\n");
@@ -171,6 +172,13 @@ int main(int argc, char* argv[]) {
                     config.size.x = std::stoull(sizeStr.substr(0, xPos));
                     config.size.y = std::stoull(sizeStr.substr(xPos + 1));
                 }
+            }
+            continue;
+        }
+
+        if (arg == "--scale") {
+            if (i + 1 < argc) {
+                config.scale = std::stof(argv[++i]);
             }
             continue;
         }
