@@ -44,6 +44,8 @@
 #include <unordered_map>
 #include <variant>
 
+// TODO: Port `reshape` and `slice` to vector.
+
 namespace Jetstream {
 
 template<class... Ts>
@@ -364,6 +366,171 @@ static inline bool RenderFieldVector(const std::string& name,
         }
     } else {
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector field type '{}' for config '{}'", valueType, name);
+    }
+
+    ImGui::PopID();
+
+    return changed;
+}
+
+// Format: `vector-inline:float:unit:precision` or `vector-inline:int:unit`
+static inline bool RenderFieldVectorInline(const std::string& name,
+                                           const std::vector<std::string>& parts,
+                                           const std::string& encoded,
+                                           FieldContext& ctx) {
+    ctx.renderHeader();
+
+    const std::string valueType = (parts.size() > 1) ? parts[1] : "float";
+    const std::string unit = (parts.size() > 2) ? parts[2] : "";
+    const int precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+
+    ImGui::PushID(name.c_str());
+
+    std::string currentText = encoded.empty() ? "[]" : encoded;
+    const auto normalizeVectorInput = [](const std::string& text,
+                                         std::string& normalized,
+                                         std::string& error) {
+        std::string trimmed = TrimFieldString(text);
+        if (trimmed.empty()) {
+            normalized = "[]";
+            return true;
+        }
+
+        if (trimmed.front() == '[') {
+            if (trimmed.back() != ']') {
+                error = "Vector input must end with ']'.";
+                return false;
+            }
+
+            trimmed = TrimFieldString(trimmed.substr(1, trimmed.size() - 2));
+        } else if (trimmed.back() == ']') {
+            error = "Vector input must start with '['.";
+            return false;
+        }
+
+        std::vector<std::string> entries;
+        std::stringstream ss(trimmed);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            token = TrimFieldString(token);
+            if (token.empty()) {
+                error = "Vector entries cannot be empty.";
+                return false;
+            }
+
+            entries.push_back(token);
+        }
+
+        normalized = jst::fmt::format("[{}]", jst::fmt::join(entries, ", "));
+        return true;
+    };
+
+    if (valueType == "float") {
+        std::vector<F32> values;
+        try {
+            if (!encoded.empty() && Parser::StringToTyped(encoded, values) == Result::SUCCESS) {
+                const F32 multiplier = FieldContext::getUnitMultiplier(unit);
+
+                std::vector<std::string> formattedValues;
+                formattedValues.reserve(values.size());
+
+                for (const auto value : values) {
+                    formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
+                }
+
+                currentText = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+            }
+        } catch (...) {
+        }
+    } else if (valueType == "int") {
+        std::vector<U64> values;
+        try {
+            if (!encoded.empty() && Parser::StringToTyped(encoded, values) == Result::SUCCESS) {
+                currentText = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+            }
+        } catch (...) {
+        }
+    } else {
+        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector-inline field type '{}' for config '{}'", valueType, name);
+        ImGui::PopID();
+        return false;
+    }
+
+    const ImGuiID inputId = ImGui::GetID("##vector_inline");
+    static std::unordered_map<ImGuiID, std::string> buffers;
+    std::string& buffer = buffers[inputId];
+
+    if (ImGui::GetActiveID() != inputId && buffer != currentText) {
+        buffer = currentText;
+    }
+
+    ImGui::SetNextItemWidth(-1);
+
+    bool changed = false;
+    const bool submitted = ImGui::InputText("##vector_inline", &buffer, ImGuiInputTextFlags_EnterReturnsTrue);
+    ctx.renderUnitSuffix(unit);
+
+    const bool shouldApply = submitted || (ImGui::IsItemDeactivatedAfterEdit() && buffer != currentText);
+    if (shouldApply) {
+        std::string normalizedBuffer;
+        std::string error;
+        normalizeVectorInput(buffer, normalizedBuffer, error);
+
+        if (valueType == "float") {
+            std::vector<F32> values;
+            if (error.empty()) {
+                try {
+                    if (normalizedBuffer != "[]" && Parser::StringToTyped(normalizedBuffer, values) != Result::SUCCESS) {
+                        error = CleanUserMessage(JST_LOG_LAST_ERROR());
+                    }
+                } catch (...) {
+                    error = "Invalid float value in vector.";
+                }
+            }
+
+            if (error.empty()) {
+                const F32 multiplier = FieldContext::getUnitMultiplier(unit);
+                for (auto& value : values) {
+                    value *= multiplier;
+                }
+
+                ctx.cfg[name] = values;
+
+                std::vector<std::string> formattedValues;
+                formattedValues.reserve(values.size());
+
+                for (const auto value : values) {
+                    formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
+                }
+
+                buffer = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+                changed = true;
+            }
+        } else {
+            std::vector<U64> values;
+            if (error.empty()) {
+                try {
+                    if (normalizedBuffer != "[]" && Parser::StringToTyped(normalizedBuffer, values) != Result::SUCCESS) {
+                        error = CleanUserMessage(JST_LOG_LAST_ERROR());
+                    }
+                } catch (...) {
+                    error = "Invalid integer value in vector.";
+                }
+            }
+
+            if (error.empty()) {
+                ctx.cfg[name] = values;
+                buffer = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            NotifyResultClean(Result::ERROR,
+                              jst::fmt::format("{}: {}",
+                                               ctx.label,
+                                               error.empty() ? "Use a vector like [x, y, z]." : error));
+        }
     }
 
     ImGui::PopID();
@@ -798,16 +965,17 @@ using FieldRenderer = bool(*)(const std::string&,
                               FieldContext&);
 
 static const std::unordered_map<std::string, FieldRenderer> fieldRenderers = {
-    {"dropdown",   RenderFieldDropdown},
-    {"float",      RenderFieldFloat},
-    {"int",        RenderFieldInt},
-    {"vector",     RenderFieldVector},
-    {"filepicker", RenderFieldFilePicker},
-    {"filesave",   RenderFieldFileSave},
-    {"bool",       RenderFieldBool},
-    {"range",      RenderFieldRange},
-    {"multiline",  RenderFieldMultiline},
-    {"text",       RenderFieldText},
+    {"dropdown",      RenderFieldDropdown},
+    {"float",         RenderFieldFloat},
+    {"int",           RenderFieldInt},
+    {"vector",        RenderFieldVector},
+    {"vector-inline", RenderFieldVectorInline},
+    {"filepicker",    RenderFieldFilePicker},
+    {"filesave",      RenderFieldFileSave},
+    {"bool",          RenderFieldBool},
+    {"range",         RenderFieldRange},
+    {"multiline",     RenderFieldMultiline},
+    {"text",          RenderFieldText},
 };
 
 //
