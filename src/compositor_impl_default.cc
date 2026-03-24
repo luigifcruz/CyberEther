@@ -2297,7 +2297,6 @@ Result DefaultCompositor::renderFlowgraph() {
                         }
 
                         if (!metricRenderers.contains(kind)) {
-                            JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown metric type '{}' for metric '{}'", kind, name);
                             continue;
                         }
 
