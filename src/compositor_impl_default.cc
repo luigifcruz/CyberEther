@@ -1808,7 +1808,8 @@ Result DefaultCompositor::poll() {
 
                 if (msg.gridPosition.has_value()) {
                     const auto& pos = msg.gridPosition.value();
-                    flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, 140.0f, 0.0f}, blockName);
+                    const NodeMeta nodeMeta = { pos.x / scalingFactor, pos.y / scalingFactor, 140.0f, 0.0f };
+                    flowgraph->setMeta("node", nodeMeta, blockName);
                 }
 
                 Compositor::Impl::enqueue([flowgraph, blockName, msg]() -> Result {
@@ -1979,7 +1980,8 @@ Result DefaultCompositor::poll() {
 
                 if (msg.gridPosition.has_value()) {
                     const auto& pos = msg.gridPosition.value();
-                    flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, 140.0f, 0.0f}, blockName);
+                    const NodeMeta nodeMeta = { pos.x / scalingFactor, pos.y / scalingFactor, 140.0f, 0.0f };
+                    flowgraph->setMeta("node", nodeMeta, blockName);
                 }
 
                 auto config = clipboard.config;
@@ -2113,7 +2115,8 @@ Result DefaultCompositor::renderFlowgraph() {
             }
             NodeMeta nodeMeta;
             if (flowgraph->getMeta("node", nodeMeta, blockName) == Result::SUCCESS) {
-                ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(nodeMeta.x, nodeMeta.y));
+                ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(nodeMeta.x * scalingFactor,
+                                                            nodeMeta.y * scalingFactor));
                 if (nodeMeta.width > 0.0f) {
                     nodeSizes[nodeId].x = nodeMeta.width * scalingFactor;
                 }
@@ -3080,10 +3083,13 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             const ImVec2 pos = ImNodes::GetNodeGridSpacePos(nodeId);
+            const F32 posX = pos.x / scalingFactor;
+            const F32 posY = pos.y / scalingFactor;
             const F32 width = nodeSizes[nodeId].x / scalingFactor;
             const F32 height = isDetached ? nodeMeta.height : nodeSizes[nodeId].y / scalingFactor;
+            const NodeMeta updatedNodeMeta = { posX, posY, width, height };
 
-            flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, width, height}, blockName);
+            flowgraph->setMeta("node", updatedNodeMeta, blockName);
         }
 
         static int hoveredNodeId = -1;
