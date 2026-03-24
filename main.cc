@@ -16,6 +16,10 @@
 
 using namespace Jetstream;
 
+#ifdef JST_OS_LINUX
+extern "C" void CyberEtherPluginInit() __attribute__((weak));
+#endif
+
 namespace {
 
 std::string RemoteCodecOptionsString() {
@@ -299,6 +303,12 @@ int main(int argc, char* argv[]) {
         Benchmark::Run(benchmarkFormat);
         return 0;
     }
+
+#ifdef JST_OS_LINUX
+    if (CyberEtherPluginInit) {
+        CyberEtherPluginInit();
+    }
+#endif
 
 #ifdef JST_OS_BROWSER
     std::thread([] {
