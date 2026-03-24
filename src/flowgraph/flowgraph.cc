@@ -85,16 +85,61 @@ Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node) 
     node |= ryml::MAP;
 
     for (const auto& [key, value] : configMap) {
-        std::string encoded;
-        JST_CHECK(Parser::TypedToString(value, encoded));
-
-        if (key.empty() || encoded.empty()) {
+        if (key.empty()) {
             continue;
         }
 
-        node.append_child() << ryml::key(key) << encoded;
+        if (value.type() == typeid(Parser::Map)) {
+            auto child = node.append_child();
+            child << ryml::key(key);
+            JST_CHECK(SerializeConfigToYaml(std::any_cast<const Parser::Map&>(value), child));
+            continue;
+        }
+
+        std::string encoded;
+        JST_CHECK(Parser::TypedToString(value, encoded));
+
+        if (encoded.empty()) {
+            continue;
+        }
+
+        auto child = node.append_child();
+        child << ryml::key(key);
+        child << encoded;
     }
 
+    return Result::SUCCESS;
+}
+
+Result DeserializeConfigFromYaml(ryml::ConstNodeRef node, Parser::Map& configMap) {
+    if (!node.is_map()) {
+        JST_ERROR("[FLOWGRAPH] Config node must be a map.");
+        return Result::ERROR;
+    }
+
+    Parser::Map decoded;
+
+    for (const auto& element : node.children()) {
+        std::string key(element.key().str, element.key().len);
+
+        if (element.is_map()) {
+            Parser::Map nested;
+            JST_CHECK(DeserializeConfigFromYaml(element, nested));
+            decoded[key] = std::move(nested);
+            continue;
+        }
+
+        std::string value;
+        if (!element.has_val()) {
+            JST_ERROR("[FLOWGRAPH] Config '{}' must be a scalar or map.", key);
+            return Result::ERROR;
+        }
+
+        element >> value;
+        decoded[key] = NormalizeScalar(value);
+    }
+
+    configMap = std::move(decoded);
     return Result::SUCCESS;
 }
 
@@ -121,18 +166,7 @@ Result SerializeMetaToYaml(const std::unordered_map<std::string, Flowgraph::Meta
 
         auto entryNode = node.append_child();
         entryNode << ryml::key(key);
-        entryNode |= ryml::MAP;
-
-        for (const auto& [field, value] : data) {
-            std::string encoded;
-            JST_CHECK(Parser::TypedToString(value, encoded));
-
-            if (field.empty() || encoded.empty()) {
-                continue;
-            }
-
-            entryNode.append_child() << ryml::key(field) << encoded;
-        }
+        JST_CHECK(SerializeConfigToYaml(data, entryNode));
     }
 
     return Result::SUCCESS;
@@ -152,18 +186,7 @@ Result DeserializeMetaFromYaml(ryml::ConstNodeRef node, std::unordered_map<std::
         }
 
         Flowgraph::Meta data;
-        for (const auto& field : child.children()) {
-            std::string fieldKey(field.key().str, field.key().len);
-
-            if (!field.has_val()) {
-                JST_ERROR("[FLOWGRAPH] Meta field '{}' in '{}' must be a scalar.", fieldKey, key);
-                return Result::ERROR;
-            }
-
-            std::string value;
-            field >> value;
-            data[fieldKey] = NormalizeScalar(value);
-        }
+        JST_CHECK(DeserializeConfigFromYaml(child, data));
 
         meta[key] = std::move(data);
     }
@@ -922,16 +945,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
                 return Result::ERROR;
             }
 
-            for (const auto& element : cfg.children()) {
-                std::string key(element.key().str, element.key().len);
-                std::string value;
-                if (!element.has_val()) {
-                    JST_ERROR("[FLOWGRAPH] Block '{}' config '{}' must be a scalar.", name, key);
-                    return Result::ERROR;
-                }
-                element >> value;
-                def.config[key] = NormalizeScalar(value);
-            }
+            JST_CHECK(DeserializeConfigFromYaml(cfg, def.config));
         }
 
         if (blockNode.has_child("input")) {

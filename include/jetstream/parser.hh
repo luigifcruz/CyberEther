@@ -48,6 +48,16 @@ concept HasStdHash = requires(const std::remove_cvref_t<T>& value) {
 };
 
 template<typename>
+struct is_string_keyed_unordered_map : std::false_type {};
+
+template<typename V, typename Hash, typename KeyEqual, typename Alloc>
+struct is_string_keyed_unordered_map<std::unordered_map<std::string, V, Hash, KeyEqual, Alloc>>
+    : std::bool_constant<!std::is_same_v<V, std::any>> {};
+
+template<typename T>
+concept StringKeyedUnorderedMap = is_string_keyed_unordered_map<std::remove_cvref_t<T>>::value;
+
+template<typename>
 inline constexpr bool always_false_v = false;
 
 }  // namespace detail
@@ -78,7 +88,13 @@ class JETSTREAM_API Parser {
         }
 
         try {
-            if constexpr (detail::HasParserSerialize<T>) {
+            if constexpr (detail::StringKeyedUnorderedMap<T>) {
+                Map nested;
+                for (const auto& [entryName, entryValue] : variable) {
+                    JST_CHECK(Serialize(nested, entryName, entryValue));
+                }
+                map[name] = std::move(nested);
+            } else if constexpr (detail::HasParserSerialize<T>) {
                 Map nested;
                 JST_CHECK(variable.serialize(nested));
                 map[name] = std::move(nested);
@@ -95,6 +111,8 @@ class JETSTREAM_API Parser {
 
     template<typename T>
     static Result Deserialize(const Map& map, const std::string& name, T& variable) {
+        using ValueType = std::remove_cvref_t<T>;
+
         if (map.contains(name) == 0) {
             JST_TRACE("[PARSER] Variable name '{}' not found inside map.", name);
             return Result::SUCCESS;
@@ -113,7 +131,31 @@ class JETSTREAM_API Parser {
             return Result::SUCCESS;
         }
 
-        if constexpr (detail::HasParserDeserialize<T>) {
+        if constexpr (detail::StringKeyedUnorderedMap<T>) {
+            if (encoded.type() == typeid(Map)) {
+                JST_TRACE("Deserializing '{}': Trying to convert nested 'Parser::Map' into unordered map.", name);
+
+                const auto& nested = std::any_cast<const Map&>(encoded);
+                ValueType decoded;
+
+                for (const auto& [entryName, _] : nested) {
+                    typename ValueType::mapped_type entryValue{};
+                    JST_CHECK(Deserialize(nested, entryName, entryValue));
+                    decoded.emplace(entryName, std::move(entryValue));
+                }
+
+                variable = std::move(decoded);
+                return Result::SUCCESS;
+            }
+
+            if (encoded.type() == typeid(std::string)) {
+                JST_ERROR("[PARSER] Variable '{}' cannot be deserialized from a string.", name);
+                return Result::ERROR;
+            }
+
+            JST_ERROR("[PARSER] Variable '{}' is not of type 'Parser::Map'.", name);
+            return Result::ERROR;
+        } else if constexpr (detail::HasParserDeserialize<T>) {
             if (encoded.type() == typeid(Map)) {
                 JST_TRACE("Deserializing '{}': Trying to convert nested 'Parser::Map' into 'T'.", name);
                 return variable.deserialize(std::any_cast<const Map&>(encoded));
@@ -144,6 +186,23 @@ class JETSTREAM_API Parser {
 
         if constexpr (detail::HasMemberHash<ValueType>) {
             return static_cast<std::size_t>(variable.hash());
+        } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
+            std::vector<std::string> keys;
+            keys.reserve(variable.size());
+
+            for (const auto& [key, _] : variable) {
+                keys.push_back(key);
+            }
+
+            std::sort(keys.begin(), keys.end());
+
+            std::size_t seed = variable.size();
+            for (const auto& key : keys) {
+                seed ^= std::hash<std::string>{}(key) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                seed ^= Hash(variable.at(key)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            }
+
+            return seed;
         } else if constexpr (detail::HasStdHash<ValueType>) {
             return std::hash<ValueType>{}(variable);
         } else {

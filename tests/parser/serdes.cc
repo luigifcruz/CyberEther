@@ -23,6 +23,12 @@ struct OuterConfig {
     JST_SERDES(inner, label);
 };
 
+struct MapConfig {
+    std::unordered_map<std::string, InnerConfig> presets;
+
+    JST_SERDES(presets);
+};
+
 }  // namespace TestParserSerdes
 
 using namespace TestParserSerdes;
@@ -74,6 +80,74 @@ TEST_CASE("JST_SERDES hash includes nested fields", "[parser][hash]") {
     REQUIRE(lhs.hash() == rhs.hash());
 
     rhs.inner.gain = 9;
+    REQUIRE(lhs.hash() != rhs.hash());
+}
+
+TEST_CASE("JST_SERDES serializes unordered maps of nested structs", "[parser][serdes]") {
+    MapConfig source;
+    source.presets["alpha"] = {.gain = 3, .enabled = true};
+    source.presets["beta"] = {.gain = 8, .enabled = false};
+
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    REQUIRE(data.contains("presets"));
+    REQUIRE(data.at("presets").type() == typeid(Parser::Map));
+
+    const auto& presets = std::any_cast<const Parser::Map&>(data.at("presets"));
+    REQUIRE(presets.contains("alpha"));
+    REQUIRE(presets.contains("beta"));
+    REQUIRE(presets.at("alpha").type() == typeid(Parser::Map));
+
+    const auto& alpha = std::any_cast<const Parser::Map&>(presets.at("alpha"));
+    REQUIRE(std::any_cast<U64>(alpha.at("gain")) == 3);
+    REQUIRE(std::any_cast<bool>(alpha.at("enabled")));
+
+    MapConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.presets.size() == 2);
+    REQUIRE(restored.presets.at("alpha").gain == 3);
+    REQUIRE(restored.presets.at("alpha").enabled);
+    REQUIRE(restored.presets.at("beta").gain == 8);
+    REQUIRE(!restored.presets.at("beta").enabled);
+}
+
+TEST_CASE("JST_SERDES deserializes string-backed unordered maps of nested structs", "[parser][serdes]") {
+    Parser::Map alpha;
+    alpha["gain"] = std::string("11");
+    alpha["enabled"] = std::string("true");
+
+    Parser::Map beta;
+    beta["gain"] = std::string("5");
+    beta["enabled"] = std::string("false");
+
+    Parser::Map presets;
+    presets["alpha"] = alpha;
+    presets["beta"] = beta;
+
+    Parser::Map data;
+    data["presets"] = presets;
+
+    MapConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.presets.size() == 2);
+    REQUIRE(restored.presets.at("alpha").gain == 11);
+    REQUIRE(restored.presets.at("alpha").enabled);
+    REQUIRE(restored.presets.at("beta").gain == 5);
+    REQUIRE(!restored.presets.at("beta").enabled);
+}
+
+TEST_CASE("JST_SERDES hash for unordered maps is insertion-order independent", "[parser][hash]") {
+    MapConfig lhs;
+    lhs.presets["alpha"] = {.gain = 1, .enabled = true};
+    lhs.presets["beta"] = {.gain = 2, .enabled = false};
+
+    MapConfig rhs;
+    rhs.presets["beta"] = {.gain = 2, .enabled = false};
+    rhs.presets["alpha"] = {.gain = 1, .enabled = true};
+
+    REQUIRE(lhs.hash() == rhs.hash());
+
+    rhs.presets.at("alpha").gain = 9;
     REQUIRE(lhs.hash() != rhs.hash());
 }
 
