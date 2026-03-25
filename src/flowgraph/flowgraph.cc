@@ -106,6 +106,10 @@ Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node) 
         auto child = node.append_child();
         child << ryml::key(key);
         child << encoded;
+
+        if (std::count(encoded.begin(), encoded.end(), '\n')) {
+            child |= ryml::_WIP_VAL_LITERAL;
+        }
     }
 
     return Result::SUCCESS;
