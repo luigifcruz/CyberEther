@@ -1021,6 +1021,16 @@ struct SurfaceMeta {
     JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached);
 };
 
+struct StackMeta {
+    std::string title;
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 500.0f;
+    F32 height = 300.0f;
+
+    JST_SERDES(title, x, y, width, height);
+};
+
 class DefaultCompositor : public Compositor::Impl {
  public:
     Result create();
@@ -1215,6 +1225,11 @@ class DefaultCompositor : public Compositor::Impl {
     Result helperOpenFlowgraph();
     Result helperSaveFlowgraph(const std::string& flowgraph);
     Result helperCloseFlowgraph(const std::string& flowgraph);
+    Result helperLoadFlowgraphStacks(const std::string& flowgraphId, const std::shared_ptr<Flowgraph>& flowgraph);
+    Result helperSyncFlowgraphStacks(const std::string& flowgraphId);
+    std::string helperMakeStackWindowLabel(const std::string& flowgraphId,
+                                           const std::string& stackId,
+                                           const StackMeta& stackMeta) const;
 
     // Helper elements.
 
@@ -1259,7 +1274,13 @@ class DefaultCompositor : public Compositor::Impl {
     std::optional<std::string> focusedFlowgraph;
     std::deque<std::string> focusHistory;
 
-    std::unordered_map<std::string, std::pair<bool, ImGuiID>> stacks;
+    struct StackWindowState {
+        StackMeta meta;
+        bool enabled = true;
+        ImGuiID dockspaceId = 0;
+    };
+
+    std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> flowgraphStacks;
     std::unordered_map<std::string, std::shared_ptr<Flowgraph>> flowgraphs;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Block>>> blocksCache;
     std::unordered_map<std::string, bool> openDocumentations;
@@ -1496,6 +1517,22 @@ Result DefaultCompositor::poll() {
     blocksCache.clear();
     for (const auto& [flowgraphId, flowgraph] : flowgraphs) {
         blocksCache[flowgraphId] = flowgraph->blockList();
+
+        if (!flowgraphStacks.contains(flowgraphId)) {
+            JST_CHECK(helperLoadFlowgraphStacks(flowgraphId, flowgraph));
+        }
+    }
+
+    if (flowgraphStacks.size() != flowgraphs.size()) {
+        std::vector<std::string> staleStackStates;
+        for (const auto& [flowgraphId, _] : flowgraphStacks) {
+            if (!flowgraphs.contains(flowgraphId)) {
+                staleStackStates.push_back(flowgraphId);
+            }
+        }
+        for (const auto& flowgraphId : staleStackStates) {
+            flowgraphStacks.erase(flowgraphId);
+        }
     }
 
     // Register helper functions.
@@ -3639,7 +3676,21 @@ Result DefaultCompositor::renderToolbar() {
                 ImGui::SameLine();
 
                 if (ImGui::Button(ICON_FA_LAYER_GROUP " New Stack")) {
-                    stacks[jst::fmt::format("Stack {}", stacks.size())] = {true, 0};
+                    auto& stackStates = flowgraphStacks[focusedFlowgraph.value()];
+                    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+                    std::size_t stackIndex = stackStates.size();
+                    std::string stackId = jst::fmt::format("stack_{}", stackIndex);
+
+                    while (stackStates.contains(stackId)) {
+                        stackId = jst::fmt::format("stack_{}", ++stackIndex);
+                    }
+
+                    StackWindowState stackState;
+                    stackState.meta.title = jst::fmt::format("Stack {}", stackIndex);
+                    stackState.meta.x = (viewport->Pos.x + 40.0f * scalingFactor) / scalingFactor;
+                    stackState.meta.y = (viewport->Pos.y + currentHeight + 40.0f * scalingFactor) / scalingFactor;
+                    stackStates[stackId] = std::move(stackState);
+                    JST_CHECK(helperSyncFlowgraphStacks(focusedFlowgraph.value()));
                 }
                 ImGui::SameLine();
             }
@@ -4747,6 +4798,9 @@ Result DefaultCompositor::helperSaveFlowgraph(const std::string& flowgraph) {
         ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Cannot save flowgraph because it doesn't exist." });
         return Result::SUCCESS;
     }
+
+    JST_CHECK(helperSyncFlowgraphStacks(flowgraph));
+
     std::string path = flowgraphs.at(flowgraph)->path();
 
     if (!path.empty()) {
@@ -4775,6 +4829,103 @@ Result DefaultCompositor::helperCloseFlowgraph(const std::string& flowgraph) {
     enqueue(MailCloseFlowgraph{flowgraph});
 
     return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraphId, const std::shared_ptr<Flowgraph>& flowgraph) {
+    if (!flowgraph) {
+        return Result::ERROR;
+    }
+
+    auto& stackStates = flowgraphStacks[flowgraphId];
+    stackStates.clear();
+
+    std::unordered_map<std::string, StackMeta> storedStacks;
+    const auto typedResult = flowgraph->getMeta("stacks", storedStacks);
+    if (typedResult == Result::SUCCESS && !storedStacks.empty()) {
+        for (auto& [stackId, stackMeta] : storedStacks) {
+            if (stackId.empty()) {
+                continue;
+            }
+
+            if (stackMeta.title.empty()) {
+                stackMeta.title = stackId;
+            }
+
+            StackWindowState stackState;
+            stackState.meta = std::move(stackMeta);
+            stackStates[stackId] = std::move(stackState);
+        }
+
+        return Result::SUCCESS;
+    }
+
+    Flowgraph::Meta serializedStacks;
+    JST_CHECK(flowgraph->getMeta("stacks", serializedStacks));
+
+    for (const auto& [stackId, encoded] : serializedStacks) {
+        if (stackId.empty()) {
+            continue;
+        }
+
+        StackMeta stackMeta;
+
+        if (encoded.type() == typeid(Parser::Map)) {
+            const auto result = Parser::Deserialize(serializedStacks, stackId, stackMeta);
+            if (result != Result::SUCCESS) {
+                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid stack window metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
+                continue;
+            }
+        } else {
+            bool enabled = true;
+            const auto result = Parser::Deserialize(serializedStacks, stackId, enabled);
+            if (result != Result::SUCCESS || !enabled) {
+                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid legacy stack metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
+                continue;
+            }
+
+            stackMeta.title = stackId;
+        }
+
+        if (stackMeta.title.empty()) {
+            stackMeta.title = stackId;
+        }
+
+        StackWindowState stackState;
+        stackState.meta = std::move(stackMeta);
+        stackStates[stackId] = std::move(stackState);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperSyncFlowgraphStacks(const std::string& flowgraphId) {
+    if (!flowgraphs.contains(flowgraphId)) {
+        return Result::ERROR;
+    }
+
+    std::unordered_map<std::string, StackMeta> serializedStacks;
+
+    if (flowgraphStacks.contains(flowgraphId)) {
+        for (const auto& [stackId, state] : flowgraphStacks.at(flowgraphId)) {
+            if (stackId.empty() || !state.enabled) {
+                continue;
+            }
+
+            serializedStacks[stackId] = state.meta;
+            if (serializedStacks.at(stackId).title.empty()) {
+                serializedStacks.at(stackId).title = stackId;
+            }
+        }
+    }
+
+    return flowgraphs.at(flowgraphId)->setMeta("stacks", serializedStacks);
+}
+
+std::string DefaultCompositor::helperMakeStackWindowLabel(const std::string& flowgraphId,
+                                                          const std::string& stackId,
+                                                          const StackMeta& stackMeta) const {
+    const std::string title = stackMeta.title.empty() ? stackId : stackMeta.title;
+    return jst::fmt::format("{}###stack:{}:{}", title, flowgraphId, stackId);
 }
 
 void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) {
@@ -5572,53 +5723,82 @@ Result DefaultCompositor::renderDocumentations() {
 Result DefaultCompositor::renderStacks() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    std::vector<std::string> stacksToRemove;
-    for (auto& [stack, state] : stacks) {
-        auto& [enabled, id] = state;
+    std::vector<std::pair<std::string, std::string>> stacksToRemove;
+    std::set<std::string> dirtyFlowgraphs;
 
-        if (!enabled) {
-            stacksToRemove.push_back(stack);
-            continue;
+    for (auto& [flowgraphId, stackStates] : flowgraphStacks) {
+        for (auto& [stackId, stackState] : stackStates) {
+            auto& stackMeta = stackState.meta;
+            auto& enabled = stackState.enabled;
+            auto& id = stackState.dockspaceId;
+
+            if (!enabled) {
+                stacksToRemove.emplace_back(flowgraphId, stackId);
+                dirtyFlowgraphs.insert(flowgraphId);
+                continue;
+            }
+
+            ImGuiWindowClass windowClass;
+            windowClass.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoWindowMenuButton;
+            ImGui::SetNextWindowClass(&windowClass);
+
+            ImGui::SetNextWindowPos(ImVec2(stackMeta.x * scalingFactor, stackMeta.y * scalingFactor), ImGuiCond_Appearing);
+
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowDockID(mainDockspaceID, ImGuiCond_Appearing);
+            ImGui::SetNextWindowSize(ImVec2(stackMeta.width * scalingFactor, stackMeta.height * scalingFactor), ImGuiCond_Appearing);
+            ImGui::Begin(helperMakeStackWindowLabel(flowgraphId, stackId, stackMeta).c_str(), &enabled);
+            ImGui::PopStyleVar();
+
+            bool isDockNew = false;
+
+            if (!id) {
+                isDockNew = true;
+                id = ImGui::GetID(jst::fmt::format("##Stack{}:{}", flowgraphId, stackId).c_str());
+            }
+
+            const ImVec2 windowPos = ImGui::GetWindowPos();
+            const ImVec2 windowSize = ImGui::GetWindowSize();
+            stackMeta.x = windowPos.x / scalingFactor;
+            stackMeta.y = windowPos.y / scalingFactor;
+            stackMeta.width = windowSize.x / scalingFactor;
+            stackMeta.height = windowSize.y / scalingFactor;
+
+            ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+
+            if (isDockNew && stackId == "Graph") {
+                ImGuiID dock_id_main;
+
+                ImGui::DockBuilderRemoveNode(id);
+                ImGui::DockBuilderAddNode(id);
+                ImGui::DockBuilderSetNodePos(id, ImVec2(viewport->Pos.x, currentHeight));
+                ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
+
+                dock_id_main = id;
+                ImGui::DockBuilderDockWindow("Flowgraph", dock_id_main);
+
+                ImGui::DockBuilderFinish(id);
+            }
+
+            ImGui::End();
+
+            if (!enabled) {
+                stacksToRemove.emplace_back(flowgraphId, stackId);
+                dirtyFlowgraphs.insert(flowgraphId);
+            }
         }
-
-        ImGuiWindowClass windowClass;
-        windowClass.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoWindowMenuButton;
-        ImGui::SetNextWindowClass(&windowClass);
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::SetNextWindowDockID(mainDockspaceID, ImGuiCond_Appearing);
-        ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
-        ImGui::Begin(stack.c_str(), &enabled);
-        ImGui::PopStyleVar();
-
-        bool isDockNew = false;
-
-        if (!id) {
-            isDockNew = true;
-            id = ImGui::GetID(jst::fmt::format("##Stack{}", stack).c_str());
-        }
-
-        ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
-
-        if (isDockNew && stack == "Graph") {
-            ImGuiID dock_id_main;
-
-            ImGui::DockBuilderRemoveNode(id);
-            ImGui::DockBuilderAddNode(id);
-            ImGui::DockBuilderSetNodePos(id, ImVec2(viewport->Pos.x, currentHeight));
-            ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
-
-            dock_id_main = id;
-            ImGui::DockBuilderDockWindow("Flowgraph", dock_id_main);
-
-            ImGui::DockBuilderFinish(id);
-        }
-
-        ImGui::End();
     }
 
-    for (const auto& stack : stacksToRemove) {
-        stacks.erase(stack);
+    for (const auto& [flowgraphId, stack] : stacksToRemove) {
+        if (flowgraphStacks.contains(flowgraphId)) {
+            flowgraphStacks.at(flowgraphId).erase(stack);
+        }
+    }
+
+    for (const auto& flowgraphId : dirtyFlowgraphs) {
+        if (flowgraphs.contains(flowgraphId)) {
+            JST_CHECK(helperSyncFlowgraphStacks(flowgraphId));
+        }
     }
 
     return Result::SUCCESS;
