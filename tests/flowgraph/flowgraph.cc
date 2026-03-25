@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_session.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include "flowgraph_fixture.hh"
 #include "jetstream/flowgraph.hh"
@@ -10,6 +11,20 @@
 #include "jetstream/domains/core/add/block.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+struct StackMetaFixture {
+    std::string title;
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 0.0f;
+    F32 height = 0.0f;
+
+    JST_SERDES(title, x, y, width, height);
+};
+
+}  // namespace
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block creation and destruction", "[flowgraph]") {
     SECTION("create single block") {
@@ -795,6 +810,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
     flowgraph->setTitle("Test Flowgraph");
     flowgraph->setAuthor("Test Author");
 
+    std::unordered_map<std::string, StackMetaFixture> stackWindows;
+    stackWindows["stack_0"] = {"Stack 0", 10.0f, 20.0f, 500.0f, 300.0f};
+    stackWindows["stack_1"] = {"Inspector", 30.0f, 40.0f, 640.0f, 360.0f};
+    REQUIRE(flowgraph->setMeta("stacks", stackWindows) == Result::SUCCESS);
+
     SECTION("export to blob") {
         std::vector<char> blob;
         auto result = flowgraph->exportToBlob(blob);
@@ -803,6 +823,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
 
         const std::string yaml(blob.begin(), blob.end());
         REQUIRE(yaml.starts_with("---\nversion: 1.0.0\n\n"));
+        REQUIRE(yaml.find("stacks:") != std::string::npos);
+        REQUIRE(yaml.find("stack_0:") != std::string::npos);
+        REQUIRE(yaml.find("title: Stack 0") != std::string::npos);
     }
 
     SECTION("export and reimport") {
@@ -827,6 +850,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
         REQUIRE(flowgraph->title() == "Test Flowgraph");
         REQUIRE(flowgraph->author() == "Test Author");
+
+        std::unordered_map<std::string, StackMetaFixture> restoredStackWindows;
+        REQUIRE(flowgraph->getMeta("stacks", restoredStackWindows) == Result::SUCCESS);
+        REQUIRE(restoredStackWindows.size() == 2);
+
+        const auto& stackZero = restoredStackWindows.at("stack_0");
+        const auto& inspector = restoredStackWindows.at("stack_1");
+        REQUIRE(stackZero.title == "Stack 0");
+        REQUIRE(stackZero.x == Catch::Approx(10.0f));
+        REQUIRE(stackZero.y == Catch::Approx(20.0f));
+        REQUIRE(stackZero.width == Catch::Approx(500.0f));
+        REQUIRE(stackZero.height == Catch::Approx(300.0f));
+        REQUIRE(inspector.title == "Inspector");
+        REQUIRE(inspector.x == Catch::Approx(30.0f));
+        REQUIRE(inspector.y == Catch::Approx(40.0f));
+        REQUIRE(inspector.width == Catch::Approx(640.0f));
+        REQUIRE(inspector.height == Catch::Approx(360.0f));
     }
 }
 
