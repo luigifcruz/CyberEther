@@ -11,8 +11,8 @@
 namespace Jetstream::Modules {
 
 struct ThrottleImplNativeCpu : public ThrottleImpl,
-                                public Runtime::Context,
-                                public Scheduler::Context {
+                               public NativeCpuRuntimeContext,
+                               public Scheduler::Context {
  public:
     Result computeSubmit() override;
 };

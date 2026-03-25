@@ -11,8 +11,8 @@
 namespace Jetstream::Modules {
 
 struct WindowImplNativeCpu : public WindowImpl,
-                              public Runtime::Context,
-                              public Scheduler::Context {
+                             public NativeCpuRuntimeContext,
+                             public Scheduler::Context {
  public:
     Result computeSubmit() override;
 };

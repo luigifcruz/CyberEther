@@ -36,8 +36,10 @@ Result NativeCpuRuntime::create(const Runtime::Modules& modules) {
             return Result::ERROR;
         }
 
+        const auto& ctx = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(module->context()->runtime());
+
         const auto start = std::chrono::steady_clock::now();
-        JST_CHECK(module->context()->runtime()->computeInitialize());
+        JST_CHECK(ctx->computeInitialize());
         const auto end = std::chrono::steady_clock::now();
 
         modulesMap[name] = module;
@@ -51,7 +53,8 @@ Result NativeCpuRuntime::create(const Runtime::Modules& modules) {
 
 Result NativeCpuRuntime::destroy() {
     for (auto& [_, module] : modulesMap) {
-        JST_CHECK(module->context()->runtime()->computeDeinitialize());
+        const auto& ctx = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(module->context()->runtime());
+        JST_CHECK(ctx->computeDeinitialize());
     }
 
     modulesMap.clear();
@@ -71,7 +74,8 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
         // Compute all if module list is empty.
 
         for (auto& [name, module] : modulesMap) {
-            JST_CHECK(module->context()->runtime()->computeSubmit());
+            const auto& ctx = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(module->context()->runtime());
+            JST_CHECK(ctx->computeSubmit());
         }
     } else {
         // Compute specific modules if provided.
@@ -81,7 +85,8 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
                 JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
                 return Result::ERROR;
             }
-            JST_CHECK(modulesMap.at(name)->context()->runtime()->computeSubmit());
+            const auto& ctx = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(modulesMap.at(name)->context()->runtime());
+            JST_CHECK(ctx->computeSubmit());
         }
     }
 

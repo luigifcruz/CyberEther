@@ -8,7 +8,7 @@
 namespace Jetstream::Modules {
 
 struct WebsocketImplNativeCpu : public WebsocketImpl,
-                                public Runtime::Context,
+                                public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
     Result create() final;

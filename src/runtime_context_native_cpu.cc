@@ -2,15 +2,15 @@
 
 namespace Jetstream {
 
-Result Runtime::Context::computeInitialize() {
+Result NativeCpuRuntimeContext::computeInitialize() {
     return Result::SUCCESS;
 }
 
-Result Runtime::Context::computeSubmit() {
+Result NativeCpuRuntimeContext::computeSubmit() {
     return Result::SUCCESS;
 }
 
-Result Runtime::Context::computeDeinitialize() {
+Result NativeCpuRuntimeContext::computeDeinitialize() {
     return Result::SUCCESS;
 }
 

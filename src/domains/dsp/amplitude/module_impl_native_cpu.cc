@@ -12,8 +12,8 @@
 namespace Jetstream::Modules {
 
 struct AmplitudeImplNativeCpu : public AmplitudeImpl,
-                                 public Runtime::Context,
-                                 public Scheduler::Context {
+                                public NativeCpuRuntimeContext,
+                                public Scheduler::Context {
  public:
     Result create() final;
 

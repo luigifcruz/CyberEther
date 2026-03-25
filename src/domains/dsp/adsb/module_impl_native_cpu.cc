@@ -112,7 +112,7 @@ static bool cprGlobalDecode(F64 rawLatEven,
 }
 
 struct AdsbImplNativeCpu : public AdsbImpl,
-                           public Runtime::Context,
+                           public NativeCpuRuntimeContext,
                            public Scheduler::Context {
  public:
     Result create() final;

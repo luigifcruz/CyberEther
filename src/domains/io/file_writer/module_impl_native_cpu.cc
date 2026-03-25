@@ -8,7 +8,7 @@
 namespace Jetstream::Modules {
 
 struct FileWriterImplNativeCpu : public FileWriterImpl,
-                                 public Runtime::Context,
+                                 public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
     Result create() final;
