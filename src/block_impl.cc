@@ -237,6 +237,10 @@ const std::vector<std::shared_ptr<Module::Surface>>& Block::Impl::surfaces() con
     return _surfaces;
 }
 
+const std::vector<std::string>& Block::Impl::modules() const {
+    return _moduleOrder;
+}
+
 Result Block::Impl::defineInterfaceInput(const std::string& key,
                                          const std::string& label,
                                          const std::string& help) {
