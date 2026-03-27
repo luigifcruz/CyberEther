@@ -3,10 +3,17 @@
 
 namespace Jetstream {
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 std::shared_ptr<Runtime::Impl> NativeCpuRuntimeFactory();
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+std::shared_ptr<Runtime::Impl> NativeCudaRuntimeFactory();
+#endif
 
 Runtime::Runtime(const std::string& name, const DeviceType& device, const RuntimeType& type) {
     switch (device) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         case DeviceType::CPU:
             switch (type) {
                 case RuntimeType::NATIVE:
@@ -21,6 +28,23 @@ Runtime::Runtime(const std::string& name, const DeviceType& device, const Runtim
                     JST_FATAL("[RUNTIME] Unknown runtime type.");
                     throw Result::FATAL;
             }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        case DeviceType::CUDA:
+            switch (type) {
+                case RuntimeType::NATIVE:
+                    impl = NativeCudaRuntimeFactory();
+                    impl->name = name;
+                    impl->device = device;
+                    impl->backend = type;
+                    return;
+                case RuntimeType::MLIR:
+                    return;
+                default:
+                    JST_FATAL("[RUNTIME] Unknown runtime type.");
+                    throw Result::FATAL;
+            }
+#endif
         default:
             JST_FATAL("[RUNTIME] Unknown device type.");
             throw Result::FATAL;
