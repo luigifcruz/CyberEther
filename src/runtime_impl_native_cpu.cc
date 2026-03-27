@@ -67,7 +67,7 @@ const std::shared_ptr<Runtime::Metrics>& NativeCpuRuntime::metrics() const {
 }
 
 Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
-    const auto measure = [&](const std::string& name, const std::function<Result(void)>& func){
+    const auto execute = [&](const std::string& name, const std::function<Result(void)>& func){
         const auto start = std::chrono::steady_clock::now();
 
         const auto res = func();
@@ -86,7 +86,7 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
 
     if (modules.empty()) {
         for (auto& [name, module] : modulesMap) {
-            JST_CHECK(measure(name, [&]{
+            JST_CHECK(execute(name, [&]{
                 return getRuntimeContext(module)->computeSubmit();
             }));
         }
@@ -96,7 +96,7 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
                 JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
                 return Result::ERROR;
             }
-            JST_CHECK(measure(name, [&]{
+            JST_CHECK(execute(name, [&]{
                 return getRuntimeContext(modulesMap.at(name))->computeSubmit();
             }));
         }
