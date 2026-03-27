@@ -55,7 +55,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         cuDeviceGetAttribute(&ccVersionMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
         int ccVersionMinor;
         cuDeviceGetAttribute(&ccVersionMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device);
-        cache.computeCapability = jst::fmt::format("{}.{}", ccVersionMajor, ccVersionMinor);
+        cache.computeCapability = jst::fmt::format("{}{}", ccVersionMajor, ccVersionMinor);
     }
 
     {
