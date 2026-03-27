@@ -40,6 +40,7 @@
 #include <optional>
 #include <regex>
 #include <set>
+#include <tuple>
 #include <vector>
 #include <unordered_map>
 #include <variant>
@@ -2847,27 +2848,50 @@ Result DefaultCompositor::renderFlowgraph() {
         // Render runtime metrics below blocks.
 
         if (debugRuntimeMetricsEnabled) {
-            const auto& metricsMap = flowgraph->metrics();
-
             for (const auto& [blockName, blockPtr] : blocks) {
                 if (blockPtr->state() != Block::State::Created) {
                     continue;
                 }
 
+                if (!flowgraph->metrics().contains(blockName)) {
+                    continue;
+                }
+                const auto& blockMetrics = flowgraph->metrics().at(blockName);
+
                 const int nodeId = idFromStr("node:" + flowgraphId + ":" + blockName);
                 const ImVec2 nodePos = ImNodes::GetNodeScreenSpacePos(nodeId);
                 const ImVec2 nodeSize = ImNodes::GetNodeDimensions(nodeId);
 
-                const std::string moduleName = jst::fmt::format("{}-{}", blockName, blockPtr->config().type());
-                if (metricsMap.contains(moduleName)) {
-                    const auto& m = metricsMap.at(moduleName);
-                    const std::string line1 = jst::fmt::format("Runtime #{} ({}/{})", m->runtime, m->device, m->backend);
-                    const std::string line2 = jst::fmt::format("{:.2f} ms | {:.1f}k cycles", m->averageComputeTime, m->cycles / 1000.0f);
+                std::vector<std::string> lines;
+                F32 totalTime = 0.0f;
+
+                lines.push_back(jst::fmt::format("Runtime #{} ({}/{})", blockMetrics->runtime,
+                                                                        blockMetrics->device,
+                                                                        blockMetrics->backend));
+
+                for (const auto& moduleName : blockPtr->modules()) {
+                    const auto& fullModuleName = jst::fmt::format("{}-{}", blockName, moduleName);
+                    if (!blockMetrics->averageComputeTime.contains(fullModuleName)) {
+                        continue;
+                    }
+                    const auto& averageComputeTime = blockMetrics->averageComputeTime.at(fullModuleName);
+                    lines.push_back(jst::fmt::format("→ {}: {:.3f} ms", moduleName, averageComputeTime));
+                    totalTime += averageComputeTime;
+                }
+
+                lines.push_back(jst::fmt::format("Total: {:.3f} ms", totalTime));
+
+                if (!lines.empty()) {
                     const ImVec2 textPos(nodePos.x, nodePos.y + nodeSize.y + 4.0f * scalingFactor);
-                    const ImU32 color = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
+                    const ImU32 whiteColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                    const ImU32 secondaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
                     ImDrawList* drawList = ImGui::GetWindowDrawList();
-                    drawList->AddText(textPos, color, line1.c_str());
-                    drawList->AddText(ImVec2(textPos.x, textPos.y + ImGui::GetTextLineHeight()), color, line2.c_str());
+
+                    for (size_t i = 0; i < lines.size(); i++) {
+                        ImVec2 pos(textPos.x, textPos.y + i * ImGui::GetTextLineHeight());
+                        const ImU32 lineColor = (i == 0 || i == lines.size() - 1) ? whiteColor : secondaryColor;
+                        drawList->AddText(pos, lineColor, lines[i].c_str());
+                    }
                 }
             }
         }

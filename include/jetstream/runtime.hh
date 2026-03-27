@@ -24,9 +24,8 @@ class JETSTREAM_API Runtime {
         std::string runtime;
         std::string device;
         std::string backend;
-        F32 averageComputeTime = 0.0f;
-        F32 initializationTime = 0.0f;
-        U64 cycles = 0;
+        std::unordered_map<std::string, F32> averageComputeTime;
+        std::unordered_map<std::string, U64> cycles;
     };
 
     typedef std::unordered_map<std::string, std::shared_ptr<Module>> Modules;
