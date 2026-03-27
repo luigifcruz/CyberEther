@@ -63,9 +63,21 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying texture.");
 
-    wgpuSamplerRelease(sampler);
-    wgpuTextureViewRelease(textureView);
-    wgpuTextureDestroy(texture);
+    if (sampler) {
+        wgpuSamplerRelease(sampler);
+        sampler = nullptr;
+    }
+
+    if (textureView) {
+        wgpuTextureViewRelease(textureView);
+        textureView = nullptr;
+    }
+
+    if (texture) {
+        wgpuTextureDestroy(texture);
+        wgpuTextureRelease(texture);
+        texture = nullptr;
+    }
 
     return Result::SUCCESS;
 }
