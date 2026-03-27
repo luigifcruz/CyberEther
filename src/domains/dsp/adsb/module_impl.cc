@@ -138,7 +138,7 @@ Result AdsbImpl::createPresent() {
         JST_CHECK(geoMapComponent->create(window.get()));
     }
 
-    // Fill screen geometry (for aircraft pass).
+    // Shared quad geometry (for aircraft icons).
 
     {
         Render::Buffer::Config cfg;
@@ -152,16 +152,6 @@ Result AdsbImpl::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = &FillScreenTextureVertices;
-        cfg.elementByteSize = sizeof(float);
-        cfg.size = 8;
-        cfg.target = Render::Buffer::Target::VERTEX;
-        JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
-    }
-
-    {
-        Render::Buffer::Config cfg;
         cfg.buffer = &FillScreenIndices;
         cfg.elementByteSize = sizeof(uint32_t);
         cfg.size = 6;
@@ -170,14 +160,16 @@ Result AdsbImpl::createPresent() {
         JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
-    // Aircraft storage buffer.
+    // Aircraft instance buffer.
 
     {
+        this->aircraftInstances.resize(maxAircraft * 4, 0.0f);
+
         Render::Buffer::Config cfg;
-        cfg.buffer = aircraft.data();
-        cfg.size = aircraft.size();
+        cfg.buffer = this->aircraftInstances.data();
+        cfg.size = this->aircraftInstances.size();
         cfg.elementByteSize = sizeof(F32);
-        cfg.target = Render::Buffer::Target::STORAGE;
+        cfg.target = Render::Buffer::Target::VERTEX;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(aircraftBuffer, cfg));
         JST_CHECK(window->bind(aircraftBuffer));
@@ -189,7 +181,9 @@ Result AdsbImpl::createPresent() {
         Render::Vertex::Config cfg;
         cfg.vertices = {
             {fillScreenVerticesBuffer, 3},
-            {fillScreenTextureVerticesBuffer, 2},
+        };
+        cfg.instances = {
+            {aircraftBuffer, 4},
         };
         cfg.indices = fillScreenIndicesBuffer;
         JST_CHECK(window->build(aircraftVertex, cfg));
@@ -199,6 +193,7 @@ Result AdsbImpl::createPresent() {
         Render::Draw::Config cfg;
         cfg.buffer = aircraftVertex;
         cfg.mode = Render::Draw::Mode::TRIANGLES;
+        cfg.numberOfInstances = 0;
         JST_CHECK(window->build(drawAircraftDots, cfg));
     }
 
@@ -221,9 +216,7 @@ Result AdsbImpl::createPresent() {
         cfg.shaders = ShadersPackage["aircraft"];
         cfg.draws = {drawAircraftDots};
         cfg.buffers = {
-            {aircraftUniformBuffer, Render::Program::Target::VERTEX |
-                                    Render::Program::Target::FRAGMENT},
-            {aircraftBuffer, Render::Program::Target::FRAGMENT},
+            {aircraftUniformBuffer, Render::Program::Target::VERTEX},
         };
         cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(aircraftProgram, cfg));
@@ -307,7 +300,7 @@ Result AdsbImpl::createPresent() {
             Render::Draw::Config cfg;
             cfg.buffer = trackVertex;
             cfg.mode = Render::Draw::Mode::TRIANGLES;
-            cfg.numberOfInstances = maxSegments;
+            cfg.numberOfInstances = 0;
             JST_CHECK(window->build(trackDraw, cfg));
         }
 
@@ -390,7 +383,6 @@ Result AdsbImpl::destroyPresent() {
 
     JST_CHECK(window->unbind(renderSurface));
     JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
     JST_CHECK(window->unbind(fillScreenIndicesBuffer));
     JST_CHECK(window->unbind(aircraftBuffer));
     JST_CHECK(window->unbind(aircraftUniformBuffer));
@@ -447,6 +439,8 @@ Result AdsbImpl::present() {
     }
 
     // Pack track segments from aircraft history.
+    U64 activeTrackSegments = 0;
+
     {
         std::lock_guard<std::mutex> lock(aircraftMutex);
 
@@ -466,17 +460,12 @@ Result AdsbImpl::present() {
             }
         }
 
-        // Zero-fill remaining segments.
-        for (U64 i = segIdx; i < maxSegments; ++i) {
-            trackSegments[i * 4 + 0] = 0.0f;
-            trackSegments[i * 4 + 1] = 0.0f;
-            trackSegments[i * 4 + 2] = 0.0f;
-            trackSegments[i * 4 + 3] = 0.0f;
-        }
+        activeTrackSegments = segIdx;
     }
 
     // Update track instance buffer.
     trackInstanceBuffer->update();
+    JST_CHECK(trackDraw->updateInstanceCount(activeTrackSegments));
 
     // Update track uniforms.
     trackGpuUniforms.centerLon = mapInteraction.centerLon;
@@ -495,11 +484,19 @@ Result AdsbImpl::present() {
     aircraftUniforms.viewWidth = static_cast<int>(mapInteraction.viewSize.x);
     aircraftUniforms.viewHeight = static_cast<int>(mapInteraction.viewSize.y);
 
-    // Update aircraft buffer.
-    aircraftBuffer->update();
-
     const U64* countPtr = static_cast<const U64*>(aircraftCount.data());
-    U64 countValue = countPtr[0];
+    const U64 countValue = std::min<U64>(countPtr[0], maxAircraft);
+
+    const F32* aircraftData = static_cast<const F32*>(aircraft.data());
+    for (U64 i = 0; i < countValue; ++i) {
+        this->aircraftInstances[i * 4 + 0] = aircraftData[i * 4 + 0];
+        this->aircraftInstances[i * 4 + 1] = aircraftData[i * 4 + 1];
+        this->aircraftInstances[i * 4 + 2] = aircraftData[i * 4 + 2];
+        this->aircraftInstances[i * 4 + 3] = aircraftData[i * 4 + 3];
+    }
+
+    aircraftBuffer->update();
+    JST_CHECK(drawAircraftDots->updateInstanceCount(countValue));
 
     aircraftUniforms.aircraftCount = static_cast<int>(countValue);
 

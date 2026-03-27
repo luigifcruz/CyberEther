@@ -63,6 +63,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
     Tensor input;
     Tensor aircraft;
     Tensor aircraftCount;
+    std::vector<F32> aircraftInstances;
 
     std::mutex aircraftMutex;
     std::map<U32, AircraftInfo> aircraftMap;
@@ -107,7 +108,6 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
 
     // Aircraft rendering members.
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
 
     std::shared_ptr<Render::Buffer> aircraftBuffer;
