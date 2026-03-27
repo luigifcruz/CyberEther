@@ -16,6 +16,9 @@ struct NativeCudaRuntimeContext : Runtime::Context {
     Result createKernel(const std::string& name,
                         const std::string& source,
                         const std::vector<std::string>& headers = {});
+    Result createKernelFromPtx(const std::string& name,
+                               const std::string& ptx,
+                               const std::string& kernelName);
     Result scheduleKernel(const std::string& name,
                           const cudaStream_t& stream,
                           const Extent3D<U64>& grid,

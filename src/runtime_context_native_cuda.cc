@@ -116,6 +116,35 @@ Result NativeCudaRuntimeContext::createKernel(const std::string& name,
     return Result::SUCCESS;
 }
 
+Result NativeCudaRuntimeContext::createKernelFromPtx(const std::string& name,
+                                                     const std::string& ptx,
+                                                     const std::string& kernelName) {
+    if (pimpl->kernels.contains(name)) {
+        JST_ERROR("[RUNTIME_CONTEXT_NATIVE_CUDA] Kernel name '{}' already exists.", name);
+        return Result::ERROR;
+    }
+
+    Impl::KernelState kernel;
+
+    // Create module.
+
+    JST_CUDA_CHECK(cuModuleLoadData(&kernel.module, ptx.data()), [&]{
+        JST_ERROR("[RUNTIME_CONTEXT_NATIVE_CUDA] Can't load module: {}", err);
+    });
+
+    // Get function.
+
+    JST_CUDA_CHECK(cuModuleGetFunction(&kernel.function, kernel.module, kernelName.c_str()), [&]{
+        JST_ERROR("[RUNTIME_CONTEXT_NATIVE_CUDA] Can't get function: {}", err);
+    });
+
+    // Store kernel.
+
+    pimpl->kernels[name] = kernel;
+
+    return Result::SUCCESS;
+}
+
 Result NativeCudaRuntimeContext::scheduleKernel(const std::string& name,
                                                 const cudaStream_t& stream,
                                                 const Extent3D<U64>& grid,
