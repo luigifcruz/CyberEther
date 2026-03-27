@@ -167,4 +167,31 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
     return Result::SUCCESS;
 }
 
+Result Implementation::updateInstanceCount(U64 instanceCount) {
+    if (indexedDrawCommands.empty() && drawCommands.empty()) {
+        JST_ERROR("[METAL] Cannot update instance count: draw not created yet");
+        return Result::ERROR;
+    }
+
+    config.numberOfInstances = instanceCount;
+
+    if (buffer->isBuffered()) {
+        for (U64 i = 0; i < indexedDrawCommands.size(); ++i) {
+            auto& drawCommand = indexedDrawCommands[i];
+            drawCommand.instanceCount = instanceCount;
+            drawCommand.baseInstance = i * instanceCount;
+        }
+        indexedIndirectBuffer->update();
+    } else {
+        for (U64 i = 0; i < drawCommands.size(); ++i) {
+            auto& drawCommand = drawCommands[i];
+            drawCommand.instanceCount = instanceCount;
+            drawCommand.baseInstance = i * instanceCount;
+        }
+        indirectBuffer->update();
+    }
+
+    return Result::SUCCESS;
+}
+
 }  // namespace Jetstream::Render

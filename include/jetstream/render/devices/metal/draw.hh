@@ -16,6 +16,7 @@ class DrawImp<DeviceType::Metal> : public Draw {
     Result destroy();
     Result encode(MTL::RenderCommandEncoder* encode);
     Result updateVertexCount(U64 vertexCount) override;
+    Result updateInstanceCount(U64 instanceCount) override;
 
  private:
     std::shared_ptr<VertexImp<DeviceType::Metal>> buffer;
