@@ -67,10 +67,28 @@ const std::shared_ptr<Runtime::Metrics>& NativeCpuRuntime::metrics() const {
 }
 
 Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
-    const auto execute = [&](const std::string& name, const std::function<Result(void)>& func){
+    // Build target list.
+
+    std::unordered_map<std::string, std::shared_ptr<Module>> targets;
+
+    if (modules.empty()) {
+        targets = modulesMap;
+    } else {
+        for (const auto& name : modules) {
+            if (!modulesMap.contains(name)) {
+                JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
+                return Result::ERROR;
+            }
+            targets[name] = modulesMap.at(name);
+        }
+    }
+
+    // Execute modules.
+
+    for (auto& [name, module] : targets) {
         const auto start = std::chrono::steady_clock::now();
 
-        const auto res = func();
+        JST_CHECK(getRuntimeContext(module)->computeSubmit());
 
         const auto end = std::chrono::steady_clock::now();
 
@@ -80,26 +98,6 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
         const F32 elapsedMs = std::chrono::duration<F32, std::milli>(end - start).count();
         const F32 totalTime = averageComputeTime * static_cast<F32>(cycles++);
         averageComputeTime = (totalTime + elapsedMs) / static_cast<F32>(cycles);
-
-        return res;
-    };
-
-    if (modules.empty()) {
-        for (auto& [name, module] : modulesMap) {
-            JST_CHECK(execute(name, [&]{
-                return getRuntimeContext(module)->computeSubmit();
-            }));
-        }
-    } else {
-        for (const auto& name : modules) {
-            if (!modulesMap.contains(name)) {
-                JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
-                return Result::ERROR;
-            }
-            JST_CHECK(execute(name, [&]{
-                return getRuntimeContext(modulesMap.at(name))->computeSubmit();
-            }));
-        }
     }
 
     return Result::SUCCESS;
