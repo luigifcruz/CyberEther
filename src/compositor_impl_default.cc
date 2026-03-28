@@ -1022,7 +1022,8 @@ static inline void RenderMetricProgressBar(const Block::Interface::Entry& entry,
     }
 
     try {
-        const F32 value = std::clamp(std::any_cast<F32>(entry.metric()), 0.0f, 1.0f);
+        const auto& [overlay, rawValue] = std::any_cast<std::pair<std::string, F32>>(entry.metric());
+        const F32 value = std::clamp(rawValue, 0.0f, 1.0f);
         const auto& bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
@@ -1033,7 +1034,6 @@ static inline void RenderMetricProgressBar(const Block::Interface::Entry& entry,
 
         const ImVec2 rectMin = ImGui::GetItemRectMin();
         const ImVec2 rectMax = ImGui::GetItemRectMax();
-        const std::string overlay = jst::fmt::format("{:.1f}%", value * 100.0f);
         const float fontSize = ImGui::GetFontSize();
         const ImVec2 textSize = ImGui::CalcTextSize(overlay.c_str());
         const F32 textX = rectMax.x - textSize.x - 6.0f * ctx.scalingFactor;
