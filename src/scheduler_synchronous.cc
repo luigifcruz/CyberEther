@@ -298,6 +298,7 @@ Result SynchronousScheduler::compute() {
     // Phase 3: Execute modules with priority yield mechanism.
 
     Result res = Result::SUCCESS;
+    std::unordered_set<std::string> skippedModules;
 
     for (U64 i = 0; i < runtimes.size(); i++) {
         // Priority Yield: Check if present wants in before each segment.
@@ -335,7 +336,7 @@ Result SynchronousScheduler::compute() {
 
             setComputeActive();
 
-            res = runtimes[i].runtime->compute(runtimes[i].modules);
+            res = runtimes[i].runtime->compute(runtimes[i].modules, skippedModules);
 
             clearComputeActive();
         }

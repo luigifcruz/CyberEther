@@ -5,6 +5,7 @@
 #include "jetstream/runtime.hh"
 
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Jetstream {
 
@@ -77,7 +78,8 @@ Result TestContext::run() {
         return runtimeCreateResult;
     }
 
-    auto computeResult = pimpl->runtime->compute();
+    std::unordered_set<std::string> skippedModules;
+    auto computeResult = pimpl->runtime->compute({}, skippedModules);
     if (computeResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to run compute: {}", pimpl->moduleType);
         return computeResult;

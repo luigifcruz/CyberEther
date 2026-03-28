@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <unordered_set>
 
 #include <nanobench.h>
 
@@ -138,7 +139,8 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
                 const std::string benchName = spec.variant;
 
                 bench.run(benchName, [&]() {
-                    runtime.compute();
+                    std::unordered_set<std::string> skippedModules;
+                    runtime.compute({}, skippedModules);
                 });
 
                 runtime.destroy();

@@ -1,5 +1,6 @@
 #include "jetstream/runtime.hh"
 #include "jetstream/detail/runtime_impl.hh"
+#include "jetstream/module.hh"
 
 namespace Jetstream {
 
@@ -65,17 +66,33 @@ const std::shared_ptr<Runtime::Metrics>& Runtime::metrics() const {
     return impl->metrics();
 }
 
-Result Runtime::compute(const std::vector<std::string>& modules) {
+Result Runtime::compute(const std::vector<std::string>& modules,
+                        std::unordered_set<std::string>& skippedModules) {
     if (impl->presentRunning.load(std::memory_order_acquire)) {
         JST_ERROR("[RUNTIME] Cannot call compute() while present() is running.");
         return Result::ERROR;
     }
 
     impl->computeRunning.store(true, std::memory_order_release);
-    Result result = impl->compute(modules);
+    Result result = impl->compute(modules, skippedModules);
     impl->computeRunning.store(false, std::memory_order_release);
 
     return result;
+}
+
+bool Runtime::Impl::hasSkippedInputs(const std::shared_ptr<Module>& module,
+                                     const std::unordered_set<std::string>& skippedModules) {
+    for (const auto& [_, link] : module->inputs()) {
+        if (link.block.empty()) {
+            continue;
+        }
+
+        if (skippedModules.contains(link.block)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 const char* GetRuntimeName(const RuntimeType& runtime) {

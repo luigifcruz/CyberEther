@@ -15,7 +15,8 @@ struct NativeCudaRuntime : public Runtime::Impl {
     Result create(const Runtime::Modules& modules) override;
     Result destroy() override;
 
-    Result compute(const std::vector<std::string>& modules = {}) override;
+    Result compute(const std::vector<std::string>& modules,
+                   std::unordered_set<std::string>& skippedModules) override;
 
     const std::shared_ptr<Runtime::Metrics>& metrics() const final;
 
@@ -25,6 +26,7 @@ struct NativeCudaRuntime : public Runtime::Impl {
     }
 
     Runtime::Modules modulesMap;
+    std::vector<std::string> moduleNames;
     std::shared_ptr<Runtime::Metrics> runtimeMetrics;
 
     cudaStream_t stream;
@@ -46,6 +48,9 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
     });
 
     // Initialize modules.
+
+    modulesMap.clear();
+    moduleNames.clear();
 
     for (const auto& [name, module] : modules) {
         // Check module and runtime compatibility.
@@ -77,6 +82,7 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
         // Save module state.
 
         modulesMap[name] = module;
+        moduleNames.push_back(name);
         eventMap[name] = {startEvent, endEvent};
     }
 
@@ -113,6 +119,7 @@ Result NativeCudaRuntime::destroy() {
     // Clear module state.
 
     modulesMap.clear();
+    moduleNames.clear();
     eventMap.clear();
     runtimeMetrics.reset();
 
@@ -123,33 +130,44 @@ const std::shared_ptr<Runtime::Metrics>& NativeCudaRuntime::metrics() const {
     return runtimeMetrics;
 }
 
-Result NativeCudaRuntime::compute(const std::vector<std::string>& modules) {
-    // Build target list.
+Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
+                                  std::unordered_set<std::string>& skippedModules) {
+    const auto& targetNames = modules.empty() ? moduleNames : modules;
+    std::vector<std::string> executedModules;
 
-    std::unordered_map<std::string, std::shared_ptr<Module>> targets;
-
-    if (modules.empty()) {
-        targets = modulesMap;
-    } else {
-        for (const auto& name : modules) {
-            if (!modulesMap.contains(name)) {
-                JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Context for module '{}' not found.", name);
-                return Result::ERROR;
-            }
-            targets[name] = modulesMap.at(name);
+    for (const auto& name : targetNames) {
+        if (!modulesMap.contains(name)) {
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Context for module '{}' not found.", name);
+            return Result::ERROR;
         }
-    }
 
-    // Schedule modules.
+        const auto& module = modulesMap.at(name);
 
-    for (auto& [name, module] : targets) {
+        if (hasSkippedInputs(module, skippedModules)) {
+            skippedModules.insert(name);
+            continue;
+        }
+
         auto& [startEvent, endEvent] = eventMap[name];
 
         JST_CUDA_CHECK(cudaEventRecord(startEvent, stream), [&]{
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't record start event for '{}': {}", name, err);
         });
 
-        JST_CHECK(getRuntimeContext(module)->computeSubmit(stream));
+        const auto result = getRuntimeContext(module)->computeSubmit(stream);
+
+        if (result == Result::SKIP) {
+            skippedModules.insert(name);
+            continue;
+        }
+
+        if (result == Result::YIELD || result == Result::TIMEOUT) {
+            return result;
+        }
+
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result;
+        }
 
         JST_CUDA_CHECK(cudaEventRecord(endEvent, stream), [&]{
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't record end event for '{}': {}", name, err);
@@ -158,6 +176,12 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules) {
         JST_CUDA_CHECK(cudaGetLastError(), [&]{
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Module kernel execution failed: {}", err);
         });
+
+        executedModules.push_back(name);
+    }
+
+    if (executedModules.empty()) {
+        return Result::SUCCESS;
     }
 
     // Wait for all blocks to finish.
@@ -174,7 +198,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules) {
 
     // Register timings.
 
-    for (auto& [name, module] : targets) {
+    for (const auto& name : executedModules) {
         auto& [startEvent, endEvent] = eventMap[name];
 
         F32 elapsedMs = 0;

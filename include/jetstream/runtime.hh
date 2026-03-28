@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "jetstream/types.hh"
 
@@ -35,7 +36,8 @@ class JETSTREAM_API Runtime {
     Result create(const Modules& modules);
     Result destroy();
 
-    Result compute(const std::vector<std::string>& modules = {});
+    Result compute(const std::vector<std::string>& modules,
+                   std::unordered_set<std::string>& skippedModules);
 
     const std::shared_ptr<Metrics>& metrics() const;
 
