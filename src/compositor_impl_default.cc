@@ -2864,6 +2864,7 @@ Result DefaultCompositor::renderFlowgraph() {
 
                 std::vector<std::string> lines;
                 F32 totalTime = 0.0f;
+                U64 maxCycles = 0;
 
                 lines.push_back(jst::fmt::format("Runtime #{} ({}/{})", blockMetrics->runtime,
                                                                         blockMetrics->device,
@@ -2871,15 +2872,20 @@ Result DefaultCompositor::renderFlowgraph() {
 
                 for (const auto& moduleName : blockPtr->modules()) {
                     const auto& fullModuleName = jst::fmt::format("{}-{}", blockName, moduleName);
-                    if (!blockMetrics->averageComputeTime.contains(fullModuleName)) {
+                    if (!blockMetrics->averageComputeTime.contains(fullModuleName) ||
+                        !blockMetrics->cycles.contains(fullModuleName)) {
                         continue;
                     }
                     const auto& averageComputeTime = blockMetrics->averageComputeTime.at(fullModuleName);
-                    lines.push_back(jst::fmt::format("→ {}: {:.3f} ms", moduleName, averageComputeTime));
+                    const auto& cycles = blockMetrics->cycles.at(fullModuleName);
+                    lines.push_back(jst::fmt::format("+ {}: {:.3f} ms", moduleName, averageComputeTime));
                     totalTime += averageComputeTime;
+                    maxCycles = std::max(maxCycles, cycles);
                 }
 
-                lines.push_back(jst::fmt::format("Total: {:.3f} ms", totalTime));
+                const std::string cyclesStr = (maxCycles > 1000) ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f) :
+                                                                   jst::fmt::format("{}", maxCycles);
+                lines.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
 
                 if (!lines.empty()) {
                     const ImVec2 textPos(nodePos.x, nodePos.y + nodeSize.y + 4.0f * scalingFactor);
