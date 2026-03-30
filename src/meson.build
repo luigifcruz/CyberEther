@@ -1,3 +1,13 @@
+subdir('backend')
+subdir('memory')
+subdir('tools')
+subdir('viewport')
+subdir('render')
+subdir('flowgraph')
+subdir('domains')
+subdir('platform')
+subdir('superluminal')
+
 src_lst += files([
     'parser.cc',
     'instance.cc',
@@ -26,12 +36,9 @@ src_lst += files([
     'scheduler_synchronous.cc',
 ])
 
-subdir('backend')
-subdir('memory')
-subdir('tools')
-subdir('viewport')
-subdir('render')
-subdir('flowgraph')
-subdir('domains')
-subdir('platform')
-subdir('superluminal')
+if cfg_lst.get('JETSTREAM_BACKEND_CUDA_AVAILABLE', false)
+    src_lst += files([
+        'runtime_impl_native_cuda.cc',
+        'runtime_context_native_cuda.cc',
+    ])
+endif

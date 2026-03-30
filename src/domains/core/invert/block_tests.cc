@@ -12,7 +12,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block creates with complex input",
     REQUIRE(flowgraph->blockCreate("invert_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"invert_src", "window", {}};
+    inputs["signal"].requested("invert_src", "window");
 
     Blocks::Invert config;
     REQUIRE(flowgraph->blockCreate("invert_block", config, inputs) == Result::SUCCESS);
@@ -26,7 +26,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block input reconnect lifecycle",
     REQUIRE(flowgraph->blockCreate("invert_life_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"invert_life_src", "window", {}};
+    inputs["signal"].requested("invert_life_src", "window");
     REQUIRE(flowgraph->blockCreate("invert_life", "invert", {}, inputs) ==
             Result::SUCCESS);
 

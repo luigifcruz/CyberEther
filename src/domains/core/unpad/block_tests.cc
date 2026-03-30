@@ -14,14 +14,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Unpad block creates and exposes both outputs
     REQUIRE(flowgraph->blockCreate("unpad_src", source, {}) == Result::SUCCESS);
 
     TensorMap padInputs;
-    padInputs["unpadded"] = {"unpad_src", "window", {}};
+    padInputs["unpadded"].requested("unpad_src", "window");
     Blocks::Pad padConfig;
     padConfig.size = 4;
     padConfig.axis = 0;
     REQUIRE(flowgraph->blockCreate("unpad_pad", padConfig, padInputs) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["padded"] = {"unpad_pad", "padded", {}};
+    inputs["padded"].requested("unpad_pad", "padded");
     Blocks::Unpad config;
     config.size = 4;
     config.axis = 0;
@@ -37,7 +37,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Unpad block rejects invalid axis",
     REQUIRE(flowgraph->blockCreate("unpad_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["padded"] = {"unpad_bad_src", "window", {}};
+    inputs["padded"].requested("unpad_bad_src", "window");
 
     Blocks::Unpad config;
     config.size = 1;

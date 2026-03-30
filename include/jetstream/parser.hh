@@ -10,6 +10,7 @@
 #include <iterator>
 #include <sstream>
 #include <iostream>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -20,10 +21,24 @@
 
 namespace Jetstream {
 
-struct TensorLink {
+struct BlockEndpoint {
     std::string block;
     std::string port;
+};
+
+struct ModuleEndpoint {
+    std::string module;
+    std::string port;
+};
+
+struct TensorLink {
+    std::optional<ModuleEndpoint> producer;
+    std::optional<BlockEndpoint> external;
     Tensor tensor;
+
+    void requested(const std::string& block, const std::string& port);
+    void produced(const std::string& module, const std::string& port, const Tensor& tensor);
+    void exposedAs(const std::string& block, const std::string& port);
 
     bool resolved() const;
 };

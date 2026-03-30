@@ -22,8 +22,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"buffer_src", "signal", {}};
-    inputs["overlap"] = {"overlap_src", "window", {}};
+    inputs["buffer"].requested("buffer_src", "signal");
+    inputs["overlap"].requested("overlap_src", "window");
 
     REQUIRE(flowgraph->blockCreate("overlap_add", "overlap_add", {}, inputs) ==
             Result::SUCCESS);

@@ -13,7 +13,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block applies axis configuration"
     REQUIRE(flowgraph->blockCreate("expand_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"expand_src", "window", {}};
+    inputs["buffer"].requested("expand_src", "window");
 
     Blocks::ExpandDims config;
     config.axis = 1;
@@ -28,7 +28,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block rejects invalid axis",
     REQUIRE(flowgraph->blockCreate("expand_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"expand_bad_src", "window", {}};
+    inputs["buffer"].requested("expand_bad_src", "window");
 
     Blocks::ExpandDims config;
     config.axis = 10;

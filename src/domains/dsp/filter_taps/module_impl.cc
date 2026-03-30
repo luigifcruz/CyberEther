@@ -60,7 +60,7 @@ Result FilterTapsImpl::create() {
 
     JST_CHECK(coeffs.create(device(), DataType::CF32, {heads, taps}));
 
-    outputs()["coeffs"] = {name(), "coeffs", coeffs};
+    outputs()["coeffs"].produced(name(), "coeffs", coeffs);
 
     // Attach filter parameters as tensor attributes so downstream
     // blocks (e.g. FilterEngine) can read them.

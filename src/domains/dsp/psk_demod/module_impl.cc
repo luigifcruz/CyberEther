@@ -106,7 +106,7 @@ Result PskDemodImpl::create() {
     // Initialize state.
     initializeState();
 
-    outputs()["signal"] = {name(), "signal", output};
+    outputs()["signal"].produced(name(), "signal", output);
 
     return Result::SUCCESS;
 }

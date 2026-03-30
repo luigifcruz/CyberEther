@@ -18,7 +18,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     Blocks::Constellation constellationConfig;
     REQUIRE(flowgraph->blockCreate("constellation", constellationConfig, inputs) ==

@@ -12,7 +12,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block reports error for unsupported sou
     REQUIRE(flowgraph->blockCreate("cast_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"cast_src", "window", {}};
+    inputs["buffer"].requested("cast_src", "window");
 
     Blocks::Cast config;
     config.outputType = "CF32";
@@ -26,7 +26,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block rejects invalid output type",
     REQUIRE(flowgraph->blockCreate("cast_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"cast_bad_src", "window", {}};
+    inputs["buffer"].requested("cast_bad_src", "window");
 
     Blocks::Cast config;
     config.outputType = "INVALID";
