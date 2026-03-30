@@ -6,6 +6,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float centerLat;
     float zoom;
     float aspectRatio;
+    float surfaceScale;
     float lineWidth;
     float colorR;
     float colorG;
@@ -76,8 +77,8 @@ void main() {
     vec2 perp = vec2(-dir.y, dir.x);
 
     // Convert thickness from pixels to NDC — same as thicklines.
-    vec2 pixToNDC = vec2(2.0 / uniforms.viewportWidth,
-                         2.0 / uniforms.viewportHeight);
+    vec2 pixToNDC = vec2((2.0 * uniforms.surfaceScale) / uniforms.viewportWidth,
+                         (2.0 * uniforms.surfaceScale) / uniforms.viewportHeight);
     vec2 thickness = vec2(uniforms.lineWidth * 0.5) * pixToNDC;
     vec2 offset = perp * thickness * inQuad.y;
 

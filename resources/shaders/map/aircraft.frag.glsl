@@ -9,6 +9,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float centerLat;
     float zoom;
     float aspectRatio;
+    float surfaceScale;
     int viewWidth;
     int viewHeight;
     int aircraftCount;
@@ -87,8 +88,8 @@ void main() {
         float acNdcY = (cy - acMy) * scale * 2.0;
 
         // Distance in pixels.
-        float dx = (fragNdc.x - acNdcX) * uniforms.viewWidth * 0.5;
-        float dy = (fragNdc.y - acNdcY) * uniforms.viewHeight * 0.5;
+        float dx = (fragNdc.x - acNdcX) * uniforms.viewWidth * 0.5 / uniforms.surfaceScale;
+        float dy = (fragNdc.y - acNdcY) * uniforms.viewHeight * 0.5 / uniforms.surfaceScale;
 
         // Fast reject outside the marker's outer radius.
         float distSq = dx * dx + dy * dy;

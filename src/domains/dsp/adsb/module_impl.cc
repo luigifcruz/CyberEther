@@ -273,6 +273,7 @@ Result AdsbImpl::createPresent() {
         trackGpuUniforms.centerLat = mapInteraction.centerLat;
         trackGpuUniforms.zoom = mapInteraction.zoom;
         trackGpuUniforms.aspectRatio = 1.0f;
+        trackGpuUniforms.surfaceScale = mapInteraction.scale;
         trackGpuUniforms.lineWidth = 5.0f;
         trackGpuUniforms.colorR = 0.8f;
         trackGpuUniforms.colorG = 0.4f;
@@ -413,13 +414,6 @@ Result AdsbImpl::present() {
         return Result::SUCCESS;
     }
 
-    auto& window = render();
-    if (window) {
-        const F32 runtimeScale = std::max(window->scalingFactor(), 1.0f);
-        mapInteraction.scale = runtimeScale;
-        surfaceInteraction.scale = runtimeScale;
-    }
-
     processMapInteraction(surfaceConsumeSurfaceEvents(),
                           surfaceConsumeMouseEvents());
 
@@ -440,6 +434,7 @@ Result AdsbImpl::present() {
             .centerLat = mapInteraction.centerLat,
             .zoom = mapInteraction.zoom,
             .aspectRatio = aspectRatio,
+            .surfaceScale = mapInteraction.scale,
             .viewportWidth = w,
             .viewportHeight = h,
         }));
@@ -483,6 +478,7 @@ Result AdsbImpl::present() {
     trackGpuUniforms.centerLat = mapInteraction.centerLat;
     trackGpuUniforms.zoom = mapInteraction.zoom;
     trackGpuUniforms.aspectRatio = aspectRatio;
+    trackGpuUniforms.surfaceScale = mapInteraction.scale;
     trackGpuUniforms.viewportWidth = w;
     trackGpuUniforms.viewportHeight = h;
     trackUniformBuffer->update();
@@ -492,6 +488,7 @@ Result AdsbImpl::present() {
     aircraftUniforms.centerLat = mapInteraction.centerLat;
     aircraftUniforms.zoom = mapInteraction.zoom;
     aircraftUniforms.aspectRatio = aspectRatio;
+    aircraftUniforms.surfaceScale = mapInteraction.scale;
     aircraftUniforms.viewWidth = static_cast<int>(mapInteraction.viewSize.x);
     aircraftUniforms.viewHeight = static_cast<int>(mapInteraction.viewSize.y);
 
@@ -508,11 +505,9 @@ Result AdsbImpl::present() {
     if (hoverText) {
         const F32 safeW = std::max(w, 1.0f);
         const F32 safeH = std::max(h, 1.0f);
-        const F32 textScale = (window) ? std::max(window->scalingFactor(), 1.0f)
-                                       : std::max(mapInteraction.scale, 1.0f);
         const Extent2D<F32> pixelSize = {
-            (2.0f * textScale) / safeW,
-            (2.0f * textScale) / safeH,
+            (2.0f * mapInteraction.scale) / safeW,
+            (2.0f * mapInteraction.scale) / safeH,
         };
         hoverText->updatePixelSize(pixelSize);
 
