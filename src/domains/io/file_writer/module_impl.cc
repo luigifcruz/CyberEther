@@ -22,6 +22,19 @@ Result FileWriterImpl::define() {
 
 Result FileWriterImpl::create() {
     bytesWritten = 0;
+    filePath.clear();
+
+    if (!filepath.empty()) {
+        filePath = std::filesystem::path(filepath);
+
+        std::error_code ec;
+        if (std::filesystem::exists(filePath, ec) && !ec) {
+            bytesWritten = std::filesystem::file_size(filePath, ec);
+            if (ec) {
+                bytesWritten = 0;
+            }
+        }
+    }
 
     if (!recording) {
         return Result::SUCCESS;
@@ -31,8 +44,6 @@ Result FileWriterImpl::create() {
         JST_WARN("[MODULE_FILE_WRITER] File path is empty.");
         return Result::INCOMPLETE;
     }
-
-    filePath = std::filesystem::path(filepath);
 
     auto parentPath = filePath.parent_path();
     if (!parentPath.empty() && !std::filesystem::exists(parentPath)) {
@@ -53,6 +64,8 @@ Result FileWriterImpl::create() {
         return Result::ERROR;
     }
 
+    bytesWritten = 0;
+
     JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", filePath.string());
 
     return Result::SUCCESS;
@@ -69,30 +82,8 @@ Result FileWriterImpl::destroy() {
     return Result::SUCCESS;
 }
 
-const U64& FileWriterImpl::getBytesWritten() const {
+U64 FileWriterImpl::getBytesWritten() const {
     return bytesWritten;
-}
-
-U64 FileWriterImpl::getFileSize() const {
-    std::filesystem::path targetPath;
-
-    if (!filePath.empty()) {
-        targetPath = filePath;
-    } else if (!filepath.empty()) {
-        targetPath = std::filesystem::path(filepath);
-    }
-
-    if (targetPath.empty()) {
-        return 0;
-    }
-
-    std::error_code ec;
-    const U64 size = std::filesystem::file_size(targetPath, ec);
-    if (ec) {
-        return 0;
-    }
-
-    return size;
 }
 
 }  // namespace Jetstream::Modules

@@ -16,8 +16,7 @@ struct FileWriterImpl : public Module::Impl, public DynamicConfig<FileWriter> {
     Result create() override;
     Result destroy() override;
 
-    const U64& getBytesWritten() const;
-    U64 getFileSize() const;
+    U64 getBytesWritten() const;
 
  protected:
     std::ofstream dataFile;
