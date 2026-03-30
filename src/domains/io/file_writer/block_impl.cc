@@ -79,7 +79,7 @@ Result FileWriterImpl::define() {
             if (!moduleImpl) {
                 return std::string("0 B");
             }
-            return FormatBytes(moduleImpl->getFileSize());
+            return FormatBytes(moduleImpl->getBytesWritten());
         }));
 
     return Result::SUCCESS;
