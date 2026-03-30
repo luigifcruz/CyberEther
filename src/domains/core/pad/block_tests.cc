@@ -13,7 +13,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block creates with axis and size",
     REQUIRE(flowgraph->blockCreate("pad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["unpadded"] = {"pad_src", "window", {}};
+    inputs["unpadded"].requested("pad_src", "window");
 
     Blocks::Pad config;
     config.size = 4;
@@ -29,7 +29,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block rejects invalid axis",
     REQUIRE(flowgraph->blockCreate("pad_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["unpadded"] = {"pad_bad_src", "window", {}};
+    inputs["unpadded"].requested("pad_bad_src", "window");
 
     Blocks::Pad config;
     config.axis = 5;

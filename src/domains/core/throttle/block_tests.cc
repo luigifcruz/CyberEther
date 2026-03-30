@@ -12,7 +12,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Throttle block creates with non-default inte
     REQUIRE(flowgraph->blockCreate("thr_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"thr_src", "window", {}};
+    inputs["buffer"].requested("thr_src", "window");
 
     Blocks::Throttle config;
     config.intervalMs = 5;
@@ -27,7 +27,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Throttle block rejects zero interval",
     REQUIRE(flowgraph->blockCreate("thr_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"thr_bad_src", "window", {}};
+    inputs["buffer"].requested("thr_bad_src", "window");
 
     Blocks::Throttle config;
     config.intervalMs = 0;

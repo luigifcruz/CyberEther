@@ -14,7 +14,8 @@ struct NativeCpuRuntime : public Runtime::Impl {
     Result create(const Runtime::Modules& modules) override;
     Result destroy() override;
 
-    Result compute(const std::vector<std::string>& modules = {}) override;
+    Result compute(const std::vector<std::string>& modules,
+                   std::unordered_set<std::string>& skippedModules) override;
 
     const std::shared_ptr<Runtime::Metrics>& metrics() const final;
 
@@ -24,6 +25,7 @@ struct NativeCpuRuntime : public Runtime::Impl {
     }
 
     Runtime::Modules modulesMap;
+    std::vector<std::string> moduleNames;
     std::shared_ptr<Runtime::Metrics> runtimeMetrics;
 };
 
@@ -37,6 +39,9 @@ Result NativeCpuRuntime::create(const Runtime::Modules& modules) {
 
     // Initialize modules.
 
+    modulesMap.clear();
+    moduleNames.clear();
+
     for (const auto& [name, module] : modules) {
         if (module->device() != DeviceType::CPU || module->runtime() != RuntimeType::NATIVE) {
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Module '{}' is incompatible "
@@ -46,6 +51,7 @@ Result NativeCpuRuntime::create(const Runtime::Modules& modules) {
 
         JST_CHECK(getRuntimeContext(module)->computeInitialize());
         modulesMap[name] = module;
+        moduleNames.push_back(name);
     }
 
     return Result::SUCCESS;
@@ -57,6 +63,7 @@ Result NativeCpuRuntime::destroy() {
     }
 
     modulesMap.clear();
+    moduleNames.clear();
     runtimeMetrics.reset();
 
     return Result::SUCCESS;
@@ -66,31 +73,39 @@ const std::shared_ptr<Runtime::Metrics>& NativeCpuRuntime::metrics() const {
     return runtimeMetrics;
 }
 
-Result NativeCpuRuntime::compute(const std::vector<std::string>& modules) {
-    // Build target list.
+Result NativeCpuRuntime::compute(const std::vector<std::string>& modules,
+                                 std::unordered_set<std::string>& skippedModules) {
+    const auto& targetNames = modules.empty() ? moduleNames : modules;
 
-    std::unordered_map<std::string, std::shared_ptr<Module>> targets;
-
-    if (modules.empty()) {
-        targets = modulesMap;
-    } else {
-        for (const auto& name : modules) {
-            if (!modulesMap.contains(name)) {
-                JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
-                return Result::ERROR;
-            }
-            targets[name] = modulesMap.at(name);
+    for (const auto& name : targetNames) {
+        if (!modulesMap.contains(name)) {
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
+            return Result::ERROR;
         }
-    }
 
-    // Execute modules.
+        const auto& module = modulesMap.at(name);
 
-    for (auto& [name, module] : targets) {
+        if (hasSkippedInputs(module, skippedModules)) {
+            skippedModules.insert(name);
+            continue;
+        }
+
         const auto start = std::chrono::steady_clock::now();
-
-        JST_CHECK(getRuntimeContext(module)->computeSubmit());
-
+        const auto result = getRuntimeContext(module)->computeSubmit();
         const auto end = std::chrono::steady_clock::now();
+
+        if (result == Result::SKIP) {
+            skippedModules.insert(name);
+            continue;
+        }
+
+        if (result == Result::YIELD || result == Result::TIMEOUT) {
+            return result;
+        }
+
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result;
+        }
 
         auto& cycles = runtimeMetrics->cycles[name];
         auto& averageComputeTime = runtimeMetrics->averageComputeTime[name];

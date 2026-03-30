@@ -25,7 +25,7 @@ Result ThrottleImpl::create() {
     input = inputTensor;
 
     // Install bypass - output is same as input.
-    outputs()["buffer"] = {name(), "buffer", input};
+    outputs()["buffer"].produced(name(), "buffer", input);
 
     // Reset timing to allow immediate first pass.
     lastExecutionTime = std::chrono::steady_clock::now() -

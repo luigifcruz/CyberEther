@@ -12,7 +12,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Duplicate block creates and exposes buffer",
     REQUIRE(flowgraph->blockCreate("dup_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"dup_src", "window", {}};
+    inputs["buffer"].requested("dup_src", "window");
 
     Blocks::Duplicate config;
     config.hostAccessible = true;
@@ -27,7 +27,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Duplicate block reconnects input",
     REQUIRE(flowgraph->blockCreate("dup_life_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"dup_life_src", "window", {}};
+    inputs["buffer"].requested("dup_life_src", "window");
     REQUIRE(flowgraph->blockCreate("dup_life", "duplicate", {}, inputs) ==
             Result::SUCCESS);
 

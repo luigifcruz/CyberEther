@@ -14,8 +14,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Multiply block creates and exposes output",
     REQUIRE(flowgraph->blockCreate("mul_src_b", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["a"] = {"mul_src_a", "window", {}};
-    inputs["b"] = {"mul_src_b", "window", {}};
+    inputs["a"].requested("mul_src_a", "window");
+    inputs["b"].requested("mul_src_b", "window");
 
     Blocks::Multiply config;
     REQUIRE(flowgraph->blockCreate("mul_block", config, inputs) == Result::SUCCESS);
@@ -30,8 +30,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Multiply block handles disconnect and reconn
     REQUIRE(flowgraph->blockCreate("mul_life_b", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["a"] = {"mul_life_a", "window", {}};
-    inputs["b"] = {"mul_life_b", "window", {}};
+    inputs["a"].requested("mul_life_a", "window");
+    inputs["b"].requested("mul_life_b", "window");
     REQUIRE(flowgraph->blockCreate("mul_life", "multiply", {}, inputs) ==
             Result::SUCCESS);
 

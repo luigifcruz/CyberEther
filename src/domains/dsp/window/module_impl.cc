@@ -23,7 +23,7 @@ Result WindowImpl::create() {
     // Allocate output tensor.
     JST_CHECK(output.create(device(), DataType::CF32, {size}));
 
-    outputs()["window"] = {name(), "window", output};
+    outputs()["window"].produced(name(), "window", output);
 
     // Configure initial state.
     baked = false;

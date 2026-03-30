@@ -37,7 +37,7 @@ Result RangeImpl::create() {
     JST_CHECK(output.create(input.device(), input.dtype(), input.shape()));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["signal"] = {name(), "signal", output};
+    outputs()["signal"].produced(name(), "signal", output);
 
     return Result::SUCCESS;
 }

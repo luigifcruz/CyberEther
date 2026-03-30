@@ -13,7 +13,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Slice block creates with contiguous output",
     REQUIRE(flowgraph->blockCreate("slice_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"slice_src", "window", {}};
+    inputs["buffer"].requested("slice_src", "window");
 
     Blocks::Slice config;
     config.slice = "[0:8]";
@@ -29,7 +29,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Slice block rejects malformed slice string",
     REQUIRE(flowgraph->blockCreate("slice_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"slice_bad_src", "window", {}};
+    inputs["buffer"].requested("slice_bad_src", "window");
 
     Blocks::Slice config;
     config.slice = "foo";

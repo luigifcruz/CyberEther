@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <unordered_set>
 
 #include <nanobench.h>
 
@@ -115,7 +116,8 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
                     std::memset(tensor.data(), 0, tensor.sizeBytes());
 
-                    inputs[inputSpec.name] = {"benchmark", inputSpec.name, tensor};
+                    inputs[inputSpec.name].requested("benchmark", inputSpec.name);
+                    inputs[inputSpec.name].tensor = tensor;
                 }
 
                 if (!inputsValid) {
@@ -138,7 +140,8 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
                 const std::string benchName = spec.variant;
 
                 bench.run(benchName, [&]() {
-                    runtime.compute();
+                    std::unordered_set<std::string> skippedModules;
+                    runtime.compute({}, skippedModules);
                 });
 
                 runtime.destroy();
