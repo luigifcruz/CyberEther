@@ -56,8 +56,8 @@ Result SquelchImplNativeCpu::kernelCF32() {
     }
 
     const bool shouldPass = peakAmplitude > threshold;
-    passingState.store(shouldPass, std::memory_order_relaxed);
-    amplitudeState.store(peakAmplitude, std::memory_order_relaxed);
+    passingState.publish(shouldPass);
+    amplitudeState.publish(peakAmplitude);
     return shouldPass ? Result::SUCCESS : Result::SKIP;
 }
 
@@ -71,8 +71,8 @@ Result SquelchImplNativeCpu::kernelF32() {
     }
 
     const bool shouldPass = peakAmplitude > threshold;
-    passingState.store(shouldPass, std::memory_order_relaxed);
-    amplitudeState.store(peakAmplitude, std::memory_order_relaxed);
+    passingState.publish(shouldPass);
+    amplitudeState.publish(peakAmplitude);
     return shouldPass ? Result::SUCCESS : Result::SKIP;
 }
 

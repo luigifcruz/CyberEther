@@ -29,15 +29,15 @@ Result SquelchImpl::create() {
     output = input.clone();
     outputs()["signal"].produced(name(), "signal", output);
 
-    passingState.store(false, std::memory_order_relaxed);
-    amplitudeState.store(0.0f, std::memory_order_relaxed);
+    passingState.publish(false);
+    amplitudeState.publish(0.0f);
 
     return Result::SUCCESS;
 }
 
 Result SquelchImpl::destroy() {
-    passingState.store(false, std::memory_order_relaxed);
-    amplitudeState.store(0.0f, std::memory_order_relaxed);
+    passingState.publish(false);
+    amplitudeState.publish(0.0f);
     return Result::SUCCESS;
 }
 
@@ -51,6 +51,14 @@ Result SquelchImpl::reconfigure() {
     }
 
     return Result::SUCCESS;
+}
+
+bool SquelchImpl::getPassing() const {
+    return passingState.get();
+}
+
+F32 SquelchImpl::getAmplitude() const {
+    return amplitudeState.get();
 }
 
 }  // namespace Jetstream::Modules

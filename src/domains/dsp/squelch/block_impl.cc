@@ -35,7 +35,7 @@ Result SquelchImpl::define() {
                 return std::string("Closed");
             }
 
-            return std::string(moduleImpl->passing() ? "Open" : "Closed");
+            return std::string(moduleImpl->getPassing() ? "Open" : "Closed");
         }));
 
     JST_CHECK(defineInterfaceMetric("amplitude",
@@ -47,7 +47,7 @@ Result SquelchImpl::define() {
                 return std::string("0.000");
             }
 
-            return jst::fmt::format("{:.3f}", moduleImpl->amplitude());
+            return jst::fmt::format("{:.3f}", moduleImpl->getAmplitude());
         }));
 
     JST_CHECK(defineInterfaceConfig("threshold",

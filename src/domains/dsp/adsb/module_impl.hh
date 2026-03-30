@@ -11,6 +11,7 @@
 #include <jetstream/domains/dsp/adsb/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/surface.hh>
+#include <jetstream/tools/snapshot.hh>
 #include <jetstream/render/base/buffer.hh>
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/base/surface.hh>
@@ -53,7 +54,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
         U64 oddTimestamp = 0;
     };
 
-    std::string getAircraftTable();
+    std::string getAircraftTable() const;
     void updateOutputTensors();
 
  protected:
@@ -63,9 +64,11 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
     Tensor input;
     Tensor aircraft;
     Tensor aircraftCount;
+    Tools::Snapshot<std::string> aircraftTable{std::string("No aircraft detected.")};
 
-    std::mutex aircraftMutex;
+    mutable std::mutex aircraftMutex;
     std::map<U32, AircraftInfo> aircraftMap;
+    bool aircraftTableDirty = true;
     std::string hoveredFlightId;
     Extent2D<F32> hoveredFlightNdc = {0.0f, 0.0f};
     bool hasLastCursorSample = false;

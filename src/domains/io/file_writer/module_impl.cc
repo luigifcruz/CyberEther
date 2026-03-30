@@ -21,7 +21,7 @@ Result FileWriterImpl::define() {
 }
 
 Result FileWriterImpl::create() {
-    bytesWritten = 0;
+    bytesWritten.publish(0);
     filePath.clear();
 
     if (!filepath.empty()) {
@@ -29,9 +29,9 @@ Result FileWriterImpl::create() {
 
         std::error_code ec;
         if (std::filesystem::exists(filePath, ec) && !ec) {
-            bytesWritten = std::filesystem::file_size(filePath, ec);
+            bytesWritten.publish(std::filesystem::file_size(filePath, ec));
             if (ec) {
-                bytesWritten = 0;
+                bytesWritten.publish(0);
             }
         }
     }
@@ -64,7 +64,7 @@ Result FileWriterImpl::create() {
         return Result::ERROR;
     }
 
-    bytesWritten = 0;
+    bytesWritten.publish(0);
 
     JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", filePath.string());
 
@@ -76,14 +76,14 @@ Result FileWriterImpl::destroy() {
         dataFile.close();
         JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
                  filePath.string(),
-                 bytesWritten);
+                 bytesWritten.get());
     }
 
     return Result::SUCCESS;
 }
 
 U64 FileWriterImpl::getBytesWritten() const {
-    return bytesWritten;
+    return bytesWritten.get();
 }
 
 }  // namespace Jetstream::Modules

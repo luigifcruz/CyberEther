@@ -70,7 +70,7 @@ Result FileReaderImpl::define() {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
-            const U64& size = moduleImpl->getFileSize();
+            const U64 size = moduleImpl->getFileSize();
             if (size == 0) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }

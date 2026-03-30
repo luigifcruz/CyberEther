@@ -30,12 +30,16 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     }
 
     const U64 bytesToRead = buffer.sizeBytes();
-    const U64 remainingBytes = fileSize - currentPosition;
+    const U64 totalSize = fileSize.get();
+    U64 currentOffset = currentPosition.get();
+    U64 remainingBytes = totalSize - currentOffset;
 
     if (remainingBytes == 0) {
         if (loop) {
             dataFile.seekg(0, std::ios::beg);
-            currentPosition = 0;
+            currentOffset = 0;
+            currentPosition.publish(currentOffset);
+            remainingBytes = totalSize;
         } else {
             return Result::SUCCESS;
         }
@@ -44,7 +48,8 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     const U64 actualBytesToRead = std::min(bytesToRead, remainingBytes);
 
     dataFile.read(reinterpret_cast<char*>(buffer.data()), actualBytesToRead);
-    currentPosition += dataFile.gcount();
+    currentOffset += dataFile.gcount();
+    currentPosition.publish(currentOffset);
 
     return Result::SUCCESS;
 }

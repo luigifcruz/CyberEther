@@ -6,6 +6,7 @@
 
 #include <jetstream/domains/io/file_writer/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/tools/snapshot.hh>
 
 namespace Jetstream::Modules {
 
@@ -21,7 +22,7 @@ struct FileWriterImpl : public Module::Impl, public DynamicConfig<FileWriter> {
  protected:
     std::ofstream dataFile;
     std::filesystem::path filePath;
-    U64 bytesWritten = 0;
+    Tools::Snapshot<U64> bytesWritten{0};
 };
 
 }  // namespace Jetstream::Modules

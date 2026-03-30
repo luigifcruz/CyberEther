@@ -6,6 +6,7 @@
 
 #include <jetstream/domains/io/file_reader/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/tools/snapshot.hh>
 
 namespace Jetstream::Modules {
 
@@ -17,16 +18,16 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     Result destroy() override;
     Result reconfigure() override;
 
-    const U64& getCurrentPosition() const;
-    const U64& getFileSize() const;
+    U64 getCurrentPosition() const;
+    U64 getFileSize() const;
 
  protected:
     Tensor buffer;
 
     std::ifstream dataFile;
     std::filesystem::path filePath;
-    U64 fileSize = 0;
-    U64 currentPosition = 0;
+    Tools::Snapshot<U64> fileSize{0};
+    Tools::Snapshot<U64> currentPosition{0};
 };
 
 }  // namespace Jetstream::Modules
