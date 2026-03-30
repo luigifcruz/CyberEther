@@ -95,6 +95,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
         float centerLat;
         float zoom;
         float aspectRatio;
+        float surfaceScale;
         int viewWidth;
         int viewHeight;
         int aircraftCount;
@@ -129,6 +130,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
         float centerLat;
         float zoom;
         float aspectRatio;
+        float surfaceScale;
         float lineWidth;
         float colorR;
         float colorG;
