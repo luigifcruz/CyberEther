@@ -16,13 +16,8 @@ struct SquelchImpl : public Module::Impl, public DynamicConfig<Squelch> {
     Result destroy() override;
     Result reconfigure() override;
 
-    bool passing() const {
-        return passingState.load(std::memory_order_relaxed);
-    }
-
-    F32 amplitude() const {
-        return amplitudeState.load(std::memory_order_relaxed);
-    }
+    bool getPassing() const;
+    F32 getAmplitude() const;
 
   protected:
     Tensor input;

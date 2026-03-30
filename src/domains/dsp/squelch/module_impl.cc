@@ -53,4 +53,12 @@ Result SquelchImpl::reconfigure() {
     return Result::SUCCESS;
 }
 
+bool SquelchImpl::getPassing() const {
+    return passingState.load(std::memory_order_relaxed);
+}
+
+F32 SquelchImpl::getAmplitude() const {
+    return amplitudeState.load(std::memory_order_relaxed);
+}
+
 }  // namespace Jetstream::Modules
