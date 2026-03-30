@@ -58,7 +58,7 @@ Result FileWriterImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    bytesWritten += bytesToWrite;
+    bytesWritten.publish(bytesWritten.get() + bytesToWrite);
 
     return Result::SUCCESS;
 }

@@ -135,7 +135,7 @@ Result SoapyImpl::define() {
             if (!moduleImpl) {
                 return std::string("N/A");
             }
-            const auto& [actual, expected] = moduleImpl->getThroughput();
+            const auto [actual, expected] = moduleImpl->getThroughput();
             return jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected);
         }));
 

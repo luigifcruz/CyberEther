@@ -45,6 +45,7 @@ Result AdsbImpl::create() {
     {
         std::lock_guard<std::mutex> lock(aircraftMutex);
         aircraftMap.clear();
+        aircraftTableDirty = true;
         hoveredFlightId.clear();
         hoveredFlightNdc = {0.0f, 0.0f};
         hasLastCursorSample = false;
@@ -59,57 +60,69 @@ Result AdsbImpl::create() {
     return Result::SUCCESS;
 }
 
-std::string AdsbImpl::getAircraftTable() {
-    std::lock_guard<std::mutex> lock(aircraftMutex);
-
-    if (aircraftMap.empty()) {
-        return "No aircraft detected.";
-    }
-
-    std::string table;
-    table += "ICAO\tCallsign\tAlt (ft)\tSpeed (kt)\tHdg\tLat\tLon\n";
-
-    for (const auto& [icao, ac] : aircraftMap) {
-        table += jst::fmt::format("{:06X}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-            icao,
-            ac.hasCallsign ? ac.callsign : "-",
-            ac.hasAltitude ? jst::fmt::format("{}", ac.altitude) : "-",
-            ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.speed) : "-",
-            ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.heading) : "-",
-            ac.hasPosition ? jst::fmt::format("{:.4f}", ac.latitude) : "-",
-            ac.hasPosition ? jst::fmt::format("{:.4f}", ac.longitude) : "-");
-    }
-
-    return table;
+std::string AdsbImpl::getAircraftTable() const {
+    return aircraftTable.get();
 }
 
 void AdsbImpl::updateOutputTensors() {
-    std::lock_guard<std::mutex> lock(aircraftMutex);
+    std::string nextAircraftTable;
+    bool publishAircraftTable = false;
 
-    F32* data = static_cast<F32*>(aircraft.data());
-    U64* count = static_cast<U64*>(aircraftCount.data());
+    {
+        std::lock_guard<std::mutex> lock(aircraftMutex);
 
-    U64 idx = 0;
-    for (const auto& [icao, ac] : aircraftMap) {
-        if (!ac.hasPosition || idx >= maxAircraft) {
-            continue;
+        F32* data = static_cast<F32*>(aircraft.data());
+        U64* count = static_cast<U64*>(aircraftCount.data());
+
+        U64 idx = 0;
+        for (const auto& [icao, ac] : aircraftMap) {
+            if (!ac.hasPosition || idx >= maxAircraft) {
+                continue;
+            }
+            data[idx * 4 + 0] = static_cast<F32>(ac.latitude);
+            data[idx * 4 + 1] = static_cast<F32>(ac.longitude);
+            data[idx * 4 + 2] = ac.heading;
+            data[idx * 4 + 3] = static_cast<F32>(ac.altitude);
+            idx++;
         }
-        data[idx * 4 + 0] = static_cast<F32>(ac.latitude);
-        data[idx * 4 + 1] = static_cast<F32>(ac.longitude);
-        data[idx * 4 + 2] = ac.heading;
-        data[idx * 4 + 3] = static_cast<F32>(ac.altitude);
-        idx++;
+
+        // Zero remaining entries.
+        for (U64 i = idx; i < maxAircraft; ++i) {
+            data[i * 4 + 0] = 0.0f;
+            data[i * 4 + 1] = 0.0f;
+            data[i * 4 + 2] = 0.0f;
+            data[i * 4 + 3] = 0.0f;
+        }
+
+        count[0] = idx;
+
+        if (aircraftTableDirty) {
+            publishAircraftTable = true;
+
+            if (aircraftMap.empty()) {
+                nextAircraftTable = "No aircraft detected.";
+            } else {
+                nextAircraftTable += "ICAO\tCallsign\tAlt (ft)\tSpeed (kt)\tHdg\tLat\tLon\n";
+
+                for (const auto& [icao, ac] : aircraftMap) {
+                    nextAircraftTable += jst::fmt::format("{:06X}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                        icao,
+                        ac.hasCallsign ? ac.callsign : "-",
+                        ac.hasAltitude ? jst::fmt::format("{}", ac.altitude) : "-",
+                        ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.speed) : "-",
+                        ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.heading) : "-",
+                        ac.hasPosition ? jst::fmt::format("{:.4f}", ac.latitude) : "-",
+                        ac.hasPosition ? jst::fmt::format("{:.4f}", ac.longitude) : "-");
+                }
+            }
+
+            aircraftTableDirty = false;
+        }
     }
 
-    // Zero remaining entries.
-    for (U64 i = idx; i < maxAircraft; ++i) {
-        data[i * 4 + 0] = 0.0f;
-        data[i * 4 + 1] = 0.0f;
-        data[i * 4 + 2] = 0.0f;
-        data[i * 4 + 3] = 0.0f;
+    if (publishAircraftTable) {
+        aircraftTable.publish(std::move(nextAircraftTable));
     }
-
-    count[0] = idx;
 }
 
 // Rendering lifecycle.

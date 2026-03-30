@@ -1,10 +1,9 @@
 #ifndef JETSTREAM_DOMAINS_DSP_SQUELCH_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_DSP_SQUELCH_MODULE_IMPL_HH
 
-#include <atomic>
-
 #include <jetstream/domains/dsp/squelch/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/tools/snapshot.hh>
 
 namespace Jetstream::Modules {
 
@@ -22,8 +21,8 @@ struct SquelchImpl : public Module::Impl, public DynamicConfig<Squelch> {
   protected:
     Tensor input;
     Tensor output;
-    std::atomic<bool> passingState{false};
-    std::atomic<F32> amplitudeState{0.0f};
+    Tools::Snapshot<bool> passingState{false};
+    Tools::Snapshot<F32> amplitudeState{0.0f};
 };
 
 }  // namespace Jetstream::Modules

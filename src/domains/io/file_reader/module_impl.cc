@@ -44,6 +44,8 @@ Result FileReaderImpl::create() {
     JST_CHECK(buffer.create(device(), NameToDataType(dataType), {batchSize}));
 
     outputs()["signal"].produced(name(), "signal", buffer);
+    fileSize.publish(0);
+    currentPosition.publish(0);
 
     if (filepath.empty()) {
         JST_WARN("[MODULE_FILE_READER] File path is empty.");
@@ -58,11 +60,12 @@ Result FileReaderImpl::create() {
     }
 
     std::error_code ec;
-    fileSize = std::filesystem::file_size(filePath, ec);
+    const U64 inputFileSize = std::filesystem::file_size(filePath, ec);
     if (ec) {
         JST_WARN("[MODULE_FILE_READER] Failed to get file size for '{}'.", filePath.string());
         return Result::INCOMPLETE;
     }
+    fileSize.publish(inputFileSize);
 
     dataFile.open(filePath, std::ios::in | std::ios::binary);
     if (!dataFile.is_open()) {
@@ -70,9 +73,7 @@ Result FileReaderImpl::create() {
         return Result::INCOMPLETE;
     }
 
-    currentPosition = 0;
-
-    JST_INFO("[MODULE_FILE_READER] Opened '{}' ({} bytes).", filePath.string(), fileSize);
+    JST_INFO("[MODULE_FILE_READER] Opened '{}' ({} bytes).", filePath.string(), fileSize.get());
 
     return Result::SUCCESS;
 }
@@ -100,12 +101,12 @@ Result FileReaderImpl::reconfigure() {
     return Result::RECREATE;
 }
 
-const U64& FileReaderImpl::getCurrentPosition() const {
-    return currentPosition;
+U64 FileReaderImpl::getCurrentPosition() const {
+    return currentPosition.get();
 }
 
-const U64& FileReaderImpl::getFileSize() const {
-    return fileSize;
+U64 FileReaderImpl::getFileSize() const {
+    return fileSize.get();
 }
 
 }  // namespace Jetstream::Modules

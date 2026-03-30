@@ -44,8 +44,8 @@ Result SoapyImpl::create() {
 
     errored = false;
     streaming = false;
-    deviceName = "None";
-    deviceHardwareKey = "None";
+    bufferHealth.publish(0.0f);
+    throughput.publish({0.0f, 0.0f});
 
     SoapySDR::Kwargs args = SoapySDR::KwargsFromString(deviceString);
     SoapySDR::Kwargs streamArgs = SoapySDR::KwargsFromString(streamString);
@@ -67,7 +67,6 @@ Result SoapyImpl::create() {
             JST_ERROR("[MODULE_SOAPY] No SoapySDR devices found.");
             return Result::INCOMPLETE;
         }
-        deviceLabel = devices.at(0).at("label");
         soapyDevice = SoapySDR::Device::make(devices.at(0));
     } catch (const std::exception& e) {
         JST_ERROR("[MODULE_SOAPY] Failed to open device: {}", e.what());
@@ -125,8 +124,6 @@ Result SoapyImpl::create() {
         }
         soapyDevice->activateStream(soapyStream, 0, 0, 0);
 
-        deviceName = soapyDevice->getDriverKey();
-        deviceHardwareKey = soapyDevice->getHardwareKey();
     } catch (const std::exception& e) {
         JST_ERROR("[MODULE_SOAPY] Failed to configure device: {}", e.what());
         if (soapyStream) {
@@ -198,6 +195,9 @@ Result SoapyImpl::destroy() {
         soapyDevice = nullptr;
     }
 
+    bufferHealth.publish(0.0f);
+    throughput.publish({0.0f, 0.0f});
+
     return Result::SUCCESS;
 }
 
@@ -243,11 +243,12 @@ Result SoapyImpl::soapyThreadLoop() {
                 if (capacity > 0) {
                     const F32 newHealth = static_cast<F32>(circularBuffer.getOccupancy()) /
                                           static_cast<F32>(capacity);
-                    bufferHealth = bufferHealth * 0.99f + newHealth * 0.01f;
+                    const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
+                    bufferHealth.publish(smoothedHealth);
                 }
                 const F32 actualMB = static_cast<F32>(circularBuffer.getThroughput() * sizeof(CF32)) / 1e6f;
                 const F32 expectedMB = (sampleRate * sizeof(CF32)) / 1e6f;
-                throughput = {actualMB, expectedMB};
+                throughput.publish({actualMB, expectedMB});
             }
         } catch (const std::exception& e) {
             JST_ERROR("[MODULE_SOAPY] Failed to read stream: {}", e.what());
@@ -300,28 +301,12 @@ bool SoapyImpl::CheckValidRange(const std::vector<SoapySDR::Range>& ranges, cons
     return false;
 }
 
-Tools::CircularBuffer<CF32>& SoapyImpl::getCircularBuffer() {
-    return circularBuffer;
+F32 SoapyImpl::getBufferHealth() const {
+    return bufferHealth.get();
 }
 
-const std::string& SoapyImpl::getDeviceName() const {
-    return deviceName;
-}
-
-const std::string& SoapyImpl::getDeviceHardwareKey() const {
-    return deviceHardwareKey;
-}
-
-const std::string& SoapyImpl::getDeviceLabel() const {
-    return deviceLabel;
-}
-
-const F32& SoapyImpl::getBufferHealth() const {
-    return bufferHealth;
-}
-
-const std::pair<F32, F32>& SoapyImpl::getThroughput() const {
-    return throughput;
+std::pair<F32, F32> SoapyImpl::getThroughput() const {
+    return throughput.get();
 }
 
 Result SoapyImpl::setTunerFrequency(const F32& freq) {

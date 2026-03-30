@@ -12,6 +12,7 @@
 #include <jetstream/domains/io/soapy/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/circular_buffer.hh>
+#include <jetstream/tools/snapshot.hh>
 
 namespace Jetstream::Modules {
 
@@ -29,12 +30,8 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     static DeviceList ListAvailableDevices(const std::string& filter = "");
     static std::string DeviceEntryToString(const DeviceEntry& entry);
 
-    Tools::CircularBuffer<CF32>& getCircularBuffer();
-    const std::string& getDeviceName() const;
-    const std::string& getDeviceHardwareKey() const;
-    const std::string& getDeviceLabel() const;
-    const F32& getBufferHealth() const;
-    const std::pair<F32, F32>& getThroughput() const;
+    F32 getBufferHealth() const;
+    std::pair<F32, F32> getThroughput() const;
 
     Result setTunerFrequency(const F32& frequency);
     Result setSampleRate(const F32& sampleRate);
@@ -53,13 +50,9 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     std::atomic<bool> errored{false};
     std::atomic<bool> streaming{false};
 
-    std::string deviceLabel;
-    std::string deviceName;
-    std::string deviceHardwareKey;
-
     Tools::CircularBuffer<CF32> circularBuffer;
-    F32 bufferHealth = 0.0f;
-    std::pair<F32, F32> throughput = {0.0f, 0.0f};
+    Tools::Snapshot<F32> bufferHealth{0.0f};
+    Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
 
     Result soapyThreadLoop();
     static bool CheckValidRange(const std::vector<SoapySDR::Range>& ranges, const F32& val);
