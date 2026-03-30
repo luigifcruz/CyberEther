@@ -1391,7 +1391,7 @@ class DefaultCompositor : public Compositor::Impl {
     void helperSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                              U64 width,
                              U64 height,
-                             F32 scalingFactor,
+                             F32 surfaceScale,
                              bool detached = false);
     bool helperCheckSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                                   const SurfaceManifest& manifest,
@@ -2412,7 +2412,7 @@ Result DefaultCompositor::renderFlowgraph() {
                                     helperSurfaceResize(surface,
                                                         static_cast<U64>(surfaceMeta.detachedWidth * ImGui::GetIO().DisplayFramebufferScale.x),
                                                         static_cast<U64>(surfaceMeta.detachedHeight * ImGui::GetIO().DisplayFramebufferScale.y),
-                                                        scalingFactor,
+                                                        scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f,
                                                         true);
                                 }
                             }
@@ -5035,13 +5035,13 @@ void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) 
 void DefaultCompositor::helperSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                                             U64 width,
                                             U64 height,
-                                            F32 scalingFactor,
+                                            F32 surfaceScale,
                                             bool detached) {
     const auto& bg = ColorMap.at(detached ? "background" : "node_background");
     SurfaceEvent event;
     event.type = SurfaceEventType::Resize;
     event.size = {width, height};
-    event.scale = scalingFactor;
+    event.scale = surfaceScale;
     event.backgroundColor = {bg.x, bg.y, bg.z, bg.w};
     surface->pushSurfaceEvent(event);
 }
@@ -5061,6 +5061,7 @@ bool DefaultCompositor::helperCheckSurfaceResize(const std::shared_ptr<Module::S
     const U64 newHeight = static_cast<U64>(availableRegion.y / scalingFactor);
     const U64 expectedWidth = static_cast<U64>(availableRegion.x * ImGui::GetIO().DisplayFramebufferScale.x);
     const U64 expectedHeight = static_cast<U64>(availableRegion.y * ImGui::GetIO().DisplayFramebufferScale.y);
+    const F32 surfaceScale = scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f;
 
     if (newWidth == 0 || newHeight == 0 || expectedWidth == 0 || expectedHeight == 0) {
         return false;
@@ -5070,7 +5071,7 @@ bool DefaultCompositor::helperCheckSurfaceResize(const std::shared_ptr<Module::S
         manifest.size.x != expectedWidth || manifest.size.y != expectedHeight) {
         storedWidth = newWidth;
         storedHeight = newHeight;
-        helperSurfaceResize(surface, expectedWidth, expectedHeight, scalingFactor, detached);
+        helperSurfaceResize(surface, expectedWidth, expectedHeight, surfaceScale, detached);
         return true;
     }
     return false;
@@ -5745,7 +5746,7 @@ Result DefaultCompositor::renderDetachedSurfaces() {
                         helperSurfaceResize(surface,
                                             static_cast<U64>(surfaceMeta.attachedWidth * ImGui::GetIO().DisplayFramebufferScale.x),
                                             static_cast<U64>(surfaceMeta.attachedHeight * ImGui::GetIO().DisplayFramebufferScale.y),
-                                            scalingFactor,
+                                            scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f,
                                             false);
                     }
                 }
