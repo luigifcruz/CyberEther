@@ -44,8 +44,10 @@ Result UnpadImpl::create() {
     JST_CHECK(outputUnpadded.propagateAttributes(input));
     JST_CHECK(outputPad.propagateAttributes(input));
 
-    outputs()["unpadded"] = {name(), "unpadded", outputUnpadded};
-    outputs()["pad"] = {name(), "pad", outputPad};
+    outputs()["unpadded"].produced(name(), "unpadded", outputUnpadded);
+    outputs()["pad"].produced(name(), "pad", outputPad);
+
+    return Result::SUCCESS;
 
     return Result::SUCCESS;
 }

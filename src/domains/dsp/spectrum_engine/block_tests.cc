@@ -23,7 +23,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     engineConfig["rangeMax"] = std::string("0");
 
     TensorMap inputs;
-    inputs["buffer"] = {"src", "signal", {}};
+    inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("spec", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);
@@ -48,7 +48,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     engineConfig["axis"] = std::string("2");
 
     TensorMap inputs;
-    inputs["buffer"] = {"src", "signal", {}};
+    inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("spec_bad", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);

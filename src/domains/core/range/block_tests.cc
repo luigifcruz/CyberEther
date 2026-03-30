@@ -13,12 +13,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "Range block creates with F32 upstream",
     REQUIRE(flowgraph->blockCreate("range_win", window, {}) == Result::SUCCESS);
 
     TensorMap amplitudeInputs;
-    amplitudeInputs["signal"] = {"range_win", "window", {}};
+    amplitudeInputs["signal"].requested("range_win", "window");
     REQUIRE(flowgraph->blockCreate("range_amp", "amplitude", {}, amplitudeInputs) ==
             Result::SUCCESS);
 
     TensorMap rangeInputs;
-    rangeInputs["signal"] = {"range_amp", "signal", {}};
+    rangeInputs["signal"].requested("range_amp", "signal");
 
     Blocks::Range config;
     config.min = -120.0f;
@@ -35,12 +35,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "Range block rejects invalid min/max",
     REQUIRE(flowgraph->blockCreate("range_bad_win", window, {}) == Result::SUCCESS);
 
     TensorMap amplitudeInputs;
-    amplitudeInputs["signal"] = {"range_bad_win", "window", {}};
+    amplitudeInputs["signal"].requested("range_bad_win", "window");
     REQUIRE(flowgraph->blockCreate("range_bad_amp", "amplitude", {}, amplitudeInputs) ==
             Result::SUCCESS);
 
     TensorMap rangeInputs;
-    rangeInputs["signal"] = {"range_bad_amp", "signal", {}};
+    rangeInputs["signal"].requested("range_bad_amp", "signal");
 
     Blocks::Range config;
     config.min = 1.0f;

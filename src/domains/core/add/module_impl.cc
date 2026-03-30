@@ -109,7 +109,7 @@ Result AddImpl::create() {
         });
     }
 
-    outputs()["sum"] = {name(), "sum", c};
+    outputs()["sum"].produced(name(), "sum", c);
 
     return Result::SUCCESS;
 }

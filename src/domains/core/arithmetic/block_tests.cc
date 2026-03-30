@@ -13,7 +13,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Arithmetic block creates with custom config"
     REQUIRE(flowgraph->blockCreate("arith_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"arith_src", "window", {}};
+    inputs["buffer"].requested("arith_src", "window");
 
     Blocks::Arithmetic config;
     config.operation = "add";
@@ -31,7 +31,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Arithmetic block rejects invalid operation",
     REQUIRE(flowgraph->blockCreate("arith_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"arith_bad_src", "window", {}};
+    inputs["buffer"].requested("arith_bad_src", "window");
 
     Blocks::Arithmetic config;
     config.operation = "invalid";

@@ -77,7 +77,7 @@ Result OverlapAddImpl::create() {
                             inputBuffer.shape()));
     JST_CHECK(output.propagateAttributes(inputBuffer));
 
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     // Allocate previous overlap state tensor.
     // Shape matches overlap but with batch dimension (dim 0) = 1.

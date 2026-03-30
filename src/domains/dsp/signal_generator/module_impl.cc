@@ -80,7 +80,7 @@ Result SignalGeneratorImpl::create() {
     signal.setAttribute("frequency", static_cast<F32>(frequency));
     signal.setAttribute("sampleRate", static_cast<F32>(sampleRate));
 
-    outputs()["signal"] = {name(), "signal", signal};
+    outputs()["signal"].produced(name(), "signal", signal);
 
     return Result::SUCCESS;
 }

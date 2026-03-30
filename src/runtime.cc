@@ -83,11 +83,11 @@ Result Runtime::compute(const std::vector<std::string>& modules,
 bool Runtime::Impl::hasSkippedInputs(const std::shared_ptr<Module>& module,
                                      const std::unordered_set<std::string>& skippedModules) {
     for (const auto& [_, link] : module->inputs()) {
-        if (link.block.empty()) {
+        if (!link.producer.has_value()) {
             continue;
         }
 
-        if (skippedModules.contains(link.block)) {
+        if (skippedModules.contains(link.producer->module)) {
             return true;
         }
     }

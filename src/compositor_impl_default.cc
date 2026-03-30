@@ -2456,8 +2456,12 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             for (const auto& [inputSlot, link] : consumerPtr->inputs()) {
+                if (!link.external.has_value()) {
+                    continue;
+                }
+                const auto& ext = link.external.value();
                 const int inPinId = idFromStr("pin:in:" + flowgraphId + ":" + consumerName + ":" + inputSlot);
-                const int outPinId = idFromStr("pin:out:" + flowgraphId + ":" + link.block + ":" + link.port);
+                const int outPinId = idFromStr("pin:out:" + flowgraphId + ":" + ext.block + ":" + ext.port);
                 const int linkId = idFromStr("link:" + flowgraphId + ":" + consumerName + ":" + inputSlot);
                 const bool linkUnresolved = !link.resolved();
 
@@ -2472,7 +2476,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     ImNodes::PushColorStyle(ImNodesCol_LinkSelected, greyColor);
                 }
 
-                linkIdToConnection[linkId] = {consumerName, inputSlot, link.block, link.port, &link};
+                linkIdToConnection[linkId] = {consumerName, inputSlot, ext.block, ext.port, &link};
                 ImNodes::Link(linkId, outPinId, inPinId);
 
                 if (linkUnresolved) {

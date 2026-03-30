@@ -57,7 +57,7 @@ Result WebsocketImpl::create() {
     JST_CHECK(buffer.create(device(), NameToDataType(dataType),
                             {numberOfBatches, numberOfTimeSamples}));
 
-    outputs()["signal"] = {name(), "signal", buffer};
+    outputs()["signal"].produced(name(), "signal", buffer);
 
     circularBuffer.resize(buffer.sizeBytes() * bufferMultiplier);
 

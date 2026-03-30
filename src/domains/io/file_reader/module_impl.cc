@@ -43,7 +43,7 @@ Result FileReaderImpl::define() {
 Result FileReaderImpl::create() {
     JST_CHECK(buffer.create(device(), NameToDataType(dataType), {batchSize}));
 
-    outputs()["signal"] = {name(), "signal", buffer};
+    outputs()["signal"].produced(name(), "signal", buffer);
 
     if (filepath.empty()) {
         JST_WARN("[MODULE_FILE_READER] File path is empty.");

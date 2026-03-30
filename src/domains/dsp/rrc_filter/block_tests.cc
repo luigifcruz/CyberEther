@@ -17,7 +17,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"src", "signal", {}};
+    inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("rrc", "rrc_filter", {}, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("rrc")->state() == Block::State::Created);

@@ -33,7 +33,7 @@ Result SqueezeDimsImpl::create() {
     JST_CHECK(output.squeezeDims(axis));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

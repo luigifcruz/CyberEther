@@ -55,8 +55,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {
     REQUIRE(flowgraph->blockCreate("gen3", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap addInputs;
-    addInputs["a"] = {"gen1", "signal", {}};
-    addInputs["b"] = {"gen2", "signal", {}};
+    addInputs["a"].requested("gen1", "signal");
+    addInputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, addInputs) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
 
@@ -109,14 +109,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Downstream propagation on connect", "[flowgr
 
     // Connect gen1 -> add1.a
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     // Connect add1 -> add2.a
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     // All blocks should exist and be created
@@ -153,13 +153,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Downstream propagation on destroy", "[flowgr
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
@@ -202,18 +202,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with multi-input downstream", 
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add0Inputs;
-    add0Inputs["a"] = {"gen1", "signal", {}};
-    add0Inputs["b"] = {"gen1", "signal", {}};
+    add0Inputs["a"].requested("gen1", "signal");
+    add0Inputs["b"].requested("gen1", "signal");
     REQUIRE(flowgraph->blockCreate("add0", "add", {}, add0Inputs) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"add0", "sum", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("add0", "sum");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 5);
@@ -260,23 +260,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with deep downstream chain", "
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     TensorMap add3Inputs;
-    add3Inputs["a"] = {"add2", "sum", {}};
-    add3Inputs["b"] = {"gen2", "signal", {}};
+    add3Inputs["a"].requested("add2", "sum");
+    add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
     TensorMap add4Inputs;
-    add4Inputs["a"] = {"add3", "sum", {}};
-    add4Inputs["b"] = {"gen2", "signal", {}};
+    add4Inputs["a"].requested("add3", "sum");
+    add4Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add4", "add", {}, add4Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 6);
@@ -321,18 +321,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with diamond dependency", "[fl
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"gen1", "signal", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("gen1", "signal");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     TensorMap add3Inputs;
-    add3Inputs["a"] = {"add1", "sum", {}};
-    add3Inputs["b"] = {"add2", "sum", {}};
+    add3Inputs["a"].requested("add1", "sum");
+    add3Inputs["b"].requested("add2", "sum");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 5);
@@ -385,23 +385,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with multiple dependents at sa
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add0Inputs;
-    add0Inputs["a"] = {"gen1", "signal", {}};
-    add0Inputs["b"] = {"gen2", "signal", {}};
+    add0Inputs["a"].requested("gen1", "signal");
+    add0Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add0", "add", {}, add0Inputs) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"add0", "sum", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("add0", "sum");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add0", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add0", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     TensorMap add3Inputs;
-    add3Inputs["a"] = {"add0", "sum", {}};
-    add3Inputs["b"] = {"gen2", "signal", {}};
+    add3Inputs["a"].requested("add0", "sum");
+    add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 6);
@@ -427,13 +427,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy with no propagation flag", "[flowgra
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     SECTION("destroy with propagate=false does not touch downstream") {
@@ -452,13 +452,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block then recreate with same name",
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     SECTION("can recreate block with same name after destruction") {
@@ -484,8 +484,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy source block used by multiple inputs
     REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen1", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen1", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
@@ -506,13 +506,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Fan-out propagation", "[flowgraph][propagati
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"gen1", "signal", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("gen1", "signal");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
@@ -579,18 +579,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[f
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     TensorMap add3Inputs;
-    add3Inputs["a"] = {"add2", "sum", {}};
-    add3Inputs["b"] = {"gen2", "signal", {}};
+    add3Inputs["a"].requested("add2", "sum");
+    add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 5);
@@ -649,18 +649,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with diamond dependency", "
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"gen1", "signal", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("gen1", "signal");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     TensorMap add3Inputs;
-    add3Inputs["a"] = {"add1", "sum", {}};
-    add3Inputs["b"] = {"add2", "sum", {}};
+    add3Inputs["a"].requested("add1", "sum");
+    add3Inputs["b"].requested("add2", "sum");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 5);
@@ -700,23 +700,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with fan-out", "[flowgraph]
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add0Inputs;
-    add0Inputs["a"] = {"gen1", "signal", {}};
-    add0Inputs["b"] = {"gen2", "signal", {}};
+    add0Inputs["a"].requested("gen1", "signal");
+    add0Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add0", "add", {}, add0Inputs) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"add0", "sum", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("add0", "sum");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add0", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add0", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     TensorMap add3Inputs;
-    add3Inputs["a"] = {"add0", "sum", {}};
-    add3Inputs["b"] = {"gen2", "signal", {}};
+    add3Inputs["a"].requested("add0", "sum");
+    add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().size() == 6);
@@ -753,13 +753,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation preserves connections", "[f
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap add1Inputs;
-    add1Inputs["a"] = {"gen1", "signal", {}};
-    add1Inputs["b"] = {"gen2", "signal", {}};
+    add1Inputs["a"].requested("gen1", "signal");
+    add1Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
     TensorMap add2Inputs;
-    add2Inputs["a"] = {"add1", "sum", {}};
-    add2Inputs["b"] = {"gen2", "signal", {}};
+    add2Inputs["a"].requested("add1", "sum");
+    add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     SECTION("connections are preserved after recreation") {
@@ -774,8 +774,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation preserves connections", "[f
         const auto& add2Ptr = flowgraph->blockList().at("add2");
         const auto& inputs = add2Ptr->inputs();
         REQUIRE(inputs.contains("a"));
-        REQUIRE(inputs.at("a").block == "add1");
-        REQUIRE(inputs.at("a").port == "sum");
+        REQUIRE(inputs.at("a").external.has_value());
+        REQUIRE(inputs.at("a").external->block == "add1");
+        REQUIRE(inputs.at("a").external->port == "sum");
     }
 }
 
@@ -784,8 +785,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
     REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
 
     TensorMap addInputs;
-    addInputs["a"] = {"gen1", "signal", {}};
-    addInputs["b"] = {"gen2", "signal", {}};
+    addInputs["a"].requested("gen1", "signal");
+    addInputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, addInputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);

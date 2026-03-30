@@ -104,7 +104,7 @@ Result MultiplyImpl::create() {
         });
     }
 
-    outputs()["product"] = {name(), "product", c};
+    outputs()["product"].produced(name(), "product", c);
 
     return Result::SUCCESS;
 }

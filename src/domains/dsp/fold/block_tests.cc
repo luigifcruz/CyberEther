@@ -22,7 +22,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     foldConfig["size"] = std::string("16");
 
     TensorMap inputs;
-    inputs["buffer"] = {"src", "signal", {}};
+    inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("fold", "fold", foldConfig, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("fold")->state() == Block::State::Created);

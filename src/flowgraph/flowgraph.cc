@@ -233,23 +233,30 @@ Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& res
     Result result = Result::SUCCESS;
 
     for (const auto& [slot, link] : requested) {
-        if (!blocks.contains(link.block)) {
-            JST_ERROR("[FLOWGRAPH] Block '{}' does not exist.", link.block);
+        if (!link.external.has_value()) {
+            JST_ERROR("[FLOWGRAPH] Input '{}' has no external block reference.", slot);
             return Result::ERROR;
         }
 
-        const auto& outputs = blocks.at(link.block)->outputs();
+        const auto& ext = link.external.value();
+        
+        if (!blocks.contains(ext.block)) {
+            JST_ERROR("[FLOWGRAPH] Block '{}' does not exist.", ext.block);
+            return Result::ERROR;
+        }
 
-        if (!outputs.contains(link.port)) {
-            JST_WARN("[FLOWGRAPH] Block '{}' has no output '{}' to satisfy connection '{}'.", link.block,
-                                                                                              link.port,
+        const auto& outputs = blocks.at(ext.block)->outputs();
+
+        if (!outputs.contains(ext.port)) {
+            JST_WARN("[FLOWGRAPH] Block '{}' has no output '{}' to satisfy connection '{}'.", ext.block,
+                                                                                              ext.port,
                                                                                               slot);
             resolved.emplace(slot, link);
             result = Result::INCOMPLETE;
             continue;
         }
 
-        resolved.emplace(slot, outputs.at(link.port));
+        resolved.emplace(slot, outputs.at(ext.port));
     }
 
     return result;
@@ -408,7 +415,10 @@ Result Flowgraph::blockCreate(const std::string name,
     // Register dependency list.
 
     for (const auto& [_, link] : inputs) {
-        impl->edges[link.block].push_back(name);
+        if (!link.external.has_value()) {
+            continue;
+        }
+        impl->edges[link.external->block].push_back(name);
     }
 
     return Result::SUCCESS;
@@ -442,8 +452,11 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
             JST_CHECK(dep->config().serialize(state.config));
 
             for (const auto& [slot, link] : dep->inputs()) {
-                if (link.block != name) {
-                    state.inputs[slot] = {link.block, link.port, {}};
+                if (!link.external.has_value()) {
+                    continue;
+                }
+                if (link.external->block != name) {
+                    state.inputs[slot].requested(link.external->block, link.external->port);
                 }
             }
 
@@ -532,7 +545,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
         JST_CHECK(dep->config().serialize(state.config));
 
         for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         downstreamStates.push_back(std::move(state));
@@ -555,7 +568,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
     JST_CHECK(block->config().serialize(serializedConfig));
 
     TensorMap newInputs = block->inputs();
-    newInputs[inputPort] = {sourceBlock, sourcePort, {}};
+    newInputs[inputPort].requested(sourceBlock, sourcePort);
 
     // 4. Destroy and recreate target block.
 
@@ -608,7 +621,7 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
         JST_CHECK(dep->config().serialize(state.config));
 
         for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         downstreamStates.push_back(std::move(state));
@@ -698,7 +711,7 @@ Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& confi
         state.config = config;
 
         for (const auto& [slot, link] : block->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         blocksToRecreate.push_back(std::move(state));
@@ -718,7 +731,7 @@ Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& confi
         JST_CHECK(dep->config().serialize(state.config));
 
         for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         blocksToRecreate.push_back(std::move(state));
@@ -1020,7 +1033,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 
         TensorMap requestedInputs;
         for (const auto& [slot, ref] : def.inputs) {
-            requestedInputs[slot] = {ref.block, ref.port, {}};
+            requestedInputs[slot].requested(ref.block, ref.port);
         }
 
         if (!def.meta.empty()) {
@@ -1136,8 +1149,13 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
                 for (const auto& [slot, link] : inputs) {
                     const U64 tensorId = link.tensor.id();
 
-                    std::string producerBlock = link.block;
-                    std::string producerPort = link.port;
+                    std::string producerBlock;
+                    std::string producerPort;
+                    
+                    if (link.external.has_value()) {
+                        producerBlock = link.external->block;
+                        producerPort = link.external->port;
+                    }
 
                     if (tensorId != 0 && outputLookup.contains(tensorId)) {
                         producerBlock = outputLookup.at(tensorId).block;

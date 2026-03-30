@@ -17,7 +17,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("demod", "psk_demod", {}, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("demod")->state() == Block::State::Created);

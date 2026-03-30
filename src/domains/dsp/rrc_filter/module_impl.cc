@@ -64,7 +64,7 @@ Result RrcFilterImpl::create() {
     JST_CHECK(output.create(input.device(), input.dtype(), input.shape()));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     // Allocate coefficient buffer (always F32).
     JST_CHECK(coeffs.create(input.device(), DataType::F32, {taps}));

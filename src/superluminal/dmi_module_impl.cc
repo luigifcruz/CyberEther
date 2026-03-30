@@ -12,7 +12,7 @@ Result DynamicTensorImportImpl::create() {
     JST_DEBUG("[SUPERLUMINAL] Initializing Dynamic Tensor Import module.");
 
     output = buffer;
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

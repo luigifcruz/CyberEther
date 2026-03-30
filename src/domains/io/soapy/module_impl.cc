@@ -149,7 +149,7 @@ Result SoapyImpl::create() {
 
     JST_CHECK(buffer.create(device(), DataType::CF32, {numberOfBatches, numberOfTimeSamples}));
 
-    outputs()["signal"] = {name(), "signal", buffer};
+    outputs()["signal"].produced(name(), "signal", buffer);
 
     buffer.setAttribute("frequency", frequency);
     buffer.setAttribute("sampleRate", sampleRate);

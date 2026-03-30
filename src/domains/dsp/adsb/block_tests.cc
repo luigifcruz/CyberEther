@@ -17,7 +17,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("adsb", "adsb", {}, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("adsb")->state() == Block::State::Created);

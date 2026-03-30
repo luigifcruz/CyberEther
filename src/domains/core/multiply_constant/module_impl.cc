@@ -18,7 +18,7 @@ Result MultiplyConstantImpl::create() {
     JST_CHECK(output.create(input.device(), input.dtype(), input.shape()));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["product"] = {name(), "product", output};
+    outputs()["product"].produced(name(), "product", output);
 
     return Result::SUCCESS;
 }

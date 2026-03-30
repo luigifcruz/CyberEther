@@ -68,7 +68,7 @@ Result ReshapeImpl::create() {
     JST_CHECK(output.reshape(parsedShape));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

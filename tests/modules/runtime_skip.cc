@@ -115,7 +115,7 @@ struct SkipTestSourceModule : Module::Impl,
     Result create() override {
         JST_CHECK(output.create(DeviceType::CPU, DataType::F32, {1}));
         output.at<F32>(0) = 1.0f;
-        outputs()["out"] = {name(), "out", output};
+        outputs()["out"].produced(name(), "out", output);
         return Result::SUCCESS;
     }
 
@@ -140,7 +140,7 @@ struct SkipTestPassthroughModule : Module::Impl,
 
     Result create() override {
         output = inputs().at("in").tensor.clone();
-        outputs()["out"] = {name(), "out", output};
+        outputs()["out"].produced(name(), "out", output);
         return Result::SUCCESS;
     }
 
@@ -166,7 +166,7 @@ struct SkipTestMergeModule : Module::Impl,
 
     Result create() override {
         output = inputs().at("left").tensor.clone();
-        outputs()["out"] = {name(), "out", output};
+        outputs()["out"].produced(name(), "out", output);
         return Result::SUCCESS;
     }
 
@@ -229,12 +229,14 @@ TEST_CASE("Scheduler propagates SKIP to downstream modules", "[runtime][schedule
 
     auto sourceSkip = createModule("skip_test_source", "source_skip");
     auto sourceRun = createModule("skip_test_source", "source_run");
-    auto downstreamSkip = createModule("skip_test_passthrough", "downstream_skip", {
-        {"in", {"source_skip", "out", makeTensor()}},
-    });
-    auto downstreamRun = createModule("skip_test_passthrough", "downstream_run", {
-        {"in", {"source_run", "out", makeTensor()}},
-    });
+    
+    TensorMap downstreamSkipInputs;
+    downstreamSkipInputs["in"].produced("source_skip", "out", makeTensor());
+    auto downstreamSkip = createModule("skip_test_passthrough", "downstream_skip", downstreamSkipInputs);
+    
+    TensorMap downstreamRunInputs;
+    downstreamRunInputs["in"].produced("source_run", "out", makeTensor());
+    auto downstreamRun = createModule("skip_test_passthrough", "downstream_run", downstreamRunInputs);
 
     std::vector<std::shared_ptr<Module>> modules = {
         sourceSkip,
@@ -269,9 +271,10 @@ TEST_CASE("Runtime propagates SKIP across compute barriers", "[runtime][skip][ba
     state.reset();
 
     auto source = createModule("skip_test_source", "barrier_source");
-    auto sink = createModule("skip_test_passthrough", "barrier_sink", {
-        {"in", {"barrier_source", "out", makeTensor()}},
-    });
+    
+    TensorMap sinkInputs;
+    sinkInputs["in"].produced("barrier_source", "out", makeTensor());
+    auto sink = createModule("skip_test_passthrough", "barrier_sink", sinkInputs);
 
     Runtime upstream("upstream", DeviceType::CPU, RuntimeType::NATIVE);
     Runtime downstream("downstream", DeviceType::CPU, RuntimeType::NATIVE);
@@ -300,10 +303,11 @@ TEST_CASE("Runtime skips multi-input consumers when any upstream module skips", 
 
     auto sourceSkip = createModule("skip_test_source", "fanin_source_skip");
     auto sourceRun = createModule("skip_test_source", "fanin_source_run");
-    auto merge = createModule("skip_test_merge", "fanin_merge", {
-        {"left", {"fanin_source_skip", "out", makeTensor()}},
-        {"right", {"fanin_source_run", "out", makeTensor()}},
-    });
+    
+    TensorMap mergeInputs;
+    mergeInputs["left"].produced("fanin_source_skip", "out", makeTensor());
+    mergeInputs["right"].produced("fanin_source_run", "out", makeTensor());
+    auto merge = createModule("skip_test_merge", "fanin_merge", mergeInputs);
 
     Runtime runtime("fanin", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({

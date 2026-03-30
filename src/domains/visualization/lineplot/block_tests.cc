@@ -18,7 +18,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     Blocks::Lineplot lineplotConfig;
     lineplotConfig.averaging = 2;
@@ -49,7 +49,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("lineplot", Blocks::Lineplot(), inputs) ==
             Result::SUCCESS);

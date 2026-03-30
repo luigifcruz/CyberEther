@@ -380,15 +380,15 @@ Result SynchronousScheduler::rebuildOrder() {
         for (const auto& [slot, link] : inputs) {
             (void)slot;
 
-            if (link.block.empty()) {
+            if (!link.producer.has_value()) {
                 continue;
             }
 
-            if (!modules.contains(link.block)) {
+            if (!modules.contains(link.producer->module)) {
                 continue;
             }
 
-            adj[link.block].push_back(consumerName);
+            adj[link.producer->module].push_back(consumerName);
             inDegree[consumerName] += 1;
         }
     }
