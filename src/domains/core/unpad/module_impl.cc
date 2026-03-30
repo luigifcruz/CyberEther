@@ -48,8 +48,6 @@ Result UnpadImpl::create() {
     outputs()["pad"].produced(name(), "pad", outputPad);
 
     return Result::SUCCESS;
-
-    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream::Modules
