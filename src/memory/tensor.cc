@@ -12,6 +12,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 
+// TODO: Centralize singleton-aware contiguity detection for slice() and permute().
+
 namespace Jetstream {
 
 namespace {
@@ -52,6 +54,7 @@ struct Tensor::Impl {
         Result reshape(const Shape& newShape);
         Result broadcast(const Shape& targetShape);
         Result slice(const std::vector<Token>& slice);
+        Result permute(const Shape& axes);
         U64 shapeToOffset(const std::initializer_list<U64>& coordinates) const;
     } layout;
 };
@@ -325,6 +328,60 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
     shape = std::move(newShape);
     stride = std::move(newStride);
     offset = offsetVal;
+    contiguous = isContiguous;
+    updateCache();
+
+    return Result::SUCCESS;
+}
+
+Result Tensor::Impl::Layout::permute(const Shape& axes) {
+    if (axes.empty()) {
+        JST_ERROR("[MEMORY:TENSOR] Permutation cannot be empty.");
+        return Result::ERROR;
+    }
+
+    if (axes.size() != shape.size()) {
+        JST_ERROR("[MEMORY:TENSOR] Permutation rank {} does not match tensor rank {}.",
+                  axes.size(), shape.size());
+        return Result::ERROR;
+    }
+
+    Shape newShape(shape.size());
+    Shape newStride(shape.size());
+    std::vector<bool> seen(shape.size(), false);
+
+    for (std::size_t i = 0; i < axes.size(); ++i) {
+        const U64 axis = axes[i];
+
+        if (axis >= shape.size()) {
+            JST_ERROR("[MEMORY:TENSOR] Permutation axis {} out of range {}.",
+                      axis, shape.size());
+            return Result::ERROR;
+        }
+
+        if (seen[axis]) {
+            JST_ERROR("[MEMORY:TENSOR] Permutation axis {} appears more than once.", axis);
+            return Result::ERROR;
+        }
+
+        seen[axis] = true;
+        newShape[i] = shape[axis];
+        newStride[i] = stride[axis];
+    }
+
+    bool isContiguous = true;
+    U64 expectedStride = 1;
+    for (std::size_t i = newShape.size(); i-- > 0;) {
+        if (newStride[i] != expectedStride) {
+            isContiguous = false;
+            break;
+        }
+
+        expectedStride *= newShape[i];
+    }
+
+    shape = std::move(newShape);
+    stride = std::move(newStride);
     contiguous = isContiguous;
     updateCache();
 
@@ -615,6 +672,13 @@ Result Tensor::slice(const std::vector<Token>& tokens) {
         return Result::ERROR;
     }
     return impl->layout.slice(tokens);
+}
+
+Result Tensor::permute(const Shape& axes) {
+    if (!impl) {
+        return Result::ERROR;
+    }
+    return impl->layout.permute(axes);
 }
 
 bool Tensor::hasDevice(const DeviceType& device) {

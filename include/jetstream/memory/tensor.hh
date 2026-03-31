@@ -74,6 +74,7 @@ class Tensor : public std::enable_shared_from_this<Tensor> {
     Result reshape(const Shape& newShape);
     Result broadcastTo(const Shape& newShape);
     Result slice(const std::vector<Token>& tokens);
+    Result permute(const Shape& axes);
 
     bool hasAttribute(const std::string& key) const;
     std::vector<std::string> attributeKeys() const;
