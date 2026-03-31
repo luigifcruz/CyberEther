@@ -706,7 +706,7 @@ bool Tensor::hasDevice(const DeviceType& device) {
     return true;
 }
 
-Result Tensor::copyFrom(const Tensor& source) {
+Result Tensor::copyFrom(const Tensor& source, void* context) {
     ensureImpl();
 
     if (!contiguous()) {
@@ -726,7 +726,7 @@ Result Tensor::copyFrom(const Tensor& source) {
     }
 
     // Copy the buffer from the source device to the current device.
-    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.buffer()));
+    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.buffer(), context));
 
     return Result::SUCCESS;
 }

@@ -170,7 +170,7 @@ class CpuBackend final : public Backend {
         return Result::ERROR;
     }
 
-    Result copyFrom(const Backend& source) override {
+    Result copyFrom(const Backend& source, void*) override {
         JST_TRACE("[MEMORY:BUFFER:CPU] Copying buffer.");
         std::memcpy(dataPtr, source.rawHandle(), source.size());
         return Result::SUCCESS;
