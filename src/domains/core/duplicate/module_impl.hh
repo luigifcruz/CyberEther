@@ -8,11 +8,13 @@ namespace Jetstream::Modules {
 
 struct DuplicateImpl : public Module::Impl, public DynamicConfig<Duplicate> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
 
  protected:
     Tensor input;
+    Tensor staging;
     Tensor output;
 };
 
