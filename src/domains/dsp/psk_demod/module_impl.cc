@@ -49,8 +49,6 @@ Result PskDemodImpl::validate() {
 }
 
 Result PskDemodImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
-
     JST_CHECK(defineInterfaceInput("signal"));
     JST_CHECK(defineInterfaceOutput("signal"));
 

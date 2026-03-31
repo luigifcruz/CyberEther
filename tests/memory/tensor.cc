@@ -569,6 +569,77 @@ TEST_CASE("Tensor Reshaping and Dimensions", "[tensor][reshape]") {
     }
 }
 
+TEST_CASE("Tensor Permutation", "[tensor][permute]") {
+    SECTION("Transpose 2D Tensor") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
+        Write2DTestPattern<F32>(t);
+
+        REQUIRE(t.permute({1, 0}) == Result::SUCCESS);
+        REQUIRE(t.shape() == Shape{3, 2});
+        REQUIRE(t.stride() == Shape{1, 3});
+        REQUIRE_FALSE(t.contiguous());
+
+        REQUIRE(t.at<F32>(0, 0) == 0.0f);
+        REQUIRE(t.at<F32>(0, 1) == 3.0f);
+        REQUIRE(t.at<F32>(1, 0) == 1.0f);
+        REQUIRE(t.at<F32>(2, 1) == 5.0f);
+    }
+
+    SECTION("Reorder 3D Tensor") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3, 4});
+
+        for (U64 i = 0; i < 2; ++i) {
+            for (U64 j = 0; j < 3; ++j) {
+                for (U64 k = 0; k < 4; ++k) {
+                    t.at<F32>(i, j, k) = static_cast<F32>(i * 100 + j * 10 + k);
+                }
+            }
+        }
+
+        REQUIRE(t.permute({2, 0, 1}) == Result::SUCCESS);
+        REQUIRE(t.shape() == Shape{4, 2, 3});
+        REQUIRE(t.stride() == Shape{1, 12, 4});
+        REQUIRE_FALSE(t.contiguous());
+
+        REQUIRE(t.at<F32>(0, 0, 0) == 0.0f);
+        REQUIRE(t.at<F32>(3, 1, 2) == 123.0f);
+        REQUIRE(t.at<F32>(1, 1, 0) == 101.0f);
+    }
+
+    SECTION("Identity Permutation Keeps Layout") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3, 4});
+
+        REQUIRE(t.permute({0, 1, 2}) == Result::SUCCESS);
+        REQUIRE(t.shape() == Shape{2, 3, 4});
+        REQUIRE(t.stride() == Shape{12, 4, 1});
+        REQUIRE(t.contiguous());
+    }
+
+    SECTION("Reject Empty Permutation") {
+        Tensor t(DeviceType::CPU, DataType::F32, {4});
+
+        REQUIRE(t.permute({}) == Result::ERROR);
+    }
+
+    SECTION("Reject Rank Mismatch") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3, 4});
+
+        REQUIRE(t.permute({1, 0}) == Result::ERROR);
+    }
+
+    SECTION("Reject Duplicate Axis") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
+
+        REQUIRE(t.permute({1, 1}) == Result::ERROR);
+    }
+
+    SECTION("Reject Out Of Range Axis") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
+
+        REQUIRE(t.permute({0, 2}) == Result::ERROR);
+    }
+}
+
 TEST_CASE("Tensor Slicing", "[tensor][slice]") {
     SECTION("Simple Range Slice") {
         Tensor t(DeviceType::CPU, DataType::F32, {6, 4});
