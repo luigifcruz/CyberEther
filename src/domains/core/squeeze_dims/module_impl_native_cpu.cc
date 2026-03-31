@@ -15,7 +15,6 @@ struct SqueezeDimsImplNativeCpu : public SqueezeDimsImpl,
 };
 
 Result SqueezeDimsImplNativeCpu::computeSubmit() {
-    // Squeeze dims is a view operation with no data movement.
     return Result::SUCCESS;
 }
 
