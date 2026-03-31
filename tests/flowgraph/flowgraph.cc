@@ -2,14 +2,89 @@
 #include <catch2/catch_session.hpp>
 
 #include "flowgraph_fixture.hh"
+#include "jetstream/detail/module_impl.hh"
 #include "jetstream/flowgraph.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime_context_native_cpu.hh"
+#include "jetstream/scheduler_context.hh"
 
 #include "jetstream/domains/dsp/signal_generator/block.hh"
+#include "jetstream/domains/dsp/signal_generator/module.hh"
 #include "jetstream/domains/core/add/block.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+constexpr auto kSignalGeneratorTestProvider = "test-alt";
+
+struct SignalGeneratorTestProviderImpl : Module::Impl,
+                                         DynamicConfig<Modules::SignalGenerator>,
+                                         NativeCpuRuntimeContext,
+                                         Scheduler::Context {
+    Result validate() override {
+        if (signalDataType != "F32" && signalDataType != "CF32") {
+            return Result::ERROR;
+        }
+
+        if (bufferSize == 0) {
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    }
+
+    Result define() override {
+        return defineInterfaceOutput("signal");
+    }
+
+    Result create() override {
+        JST_CHECK(signal.create(device(), NameToDataType(signalDataType), {bufferSize}));
+        outputs()["signal"].produced(name(), "signal", signal);
+
+        return Result::SUCCESS;
+    }
+
+    Result destroy() override {
+        return Result::SUCCESS;
+    }
+
+    Result reconfigure() override {
+        return Result::RECREATE;
+    }
+
+    Tensor signal;
+};
+
+Result RegisterSignalGeneratorTestProvider() {
+    static const Result result = Registry::RegisterModule(
+        "signal_generator",
+        DeviceType::CPU,
+        RuntimeType::NATIVE,
+        kSignalGeneratorTestProvider,
+        []() -> std::shared_ptr<Module> {
+            const auto impl = std::make_shared<SignalGeneratorTestProviderImpl>();
+            const auto runtimeContext = std::static_pointer_cast<Runtime::Context>(impl);
+            const auto schedulerContext = std::static_pointer_cast<Scheduler::Context>(impl);
+            const auto context = std::make_shared<Module::Context>(runtimeContext, schedulerContext);
+            const auto stagedConfig = std::static_pointer_cast<Module::Config>(impl);
+            const auto candidateConfig = std::static_pointer_cast<Module::Config>(impl->candidate());
+
+            return std::make_shared<Module>(DeviceType::CPU,
+                                            RuntimeType::NATIVE,
+                                            kSignalGeneratorTestProvider,
+                                            impl,
+                                            context,
+                                            stagedConfig,
+                                            candidateConfig);
+        });
+
+    return result;
+}
+
+}  // namespace
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block creation and destruction", "[flowgraph]") {
     SECTION("create single block") {
@@ -571,6 +646,35 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation", "[flowgraph][recreation]"
         auto result = flowgraph->blockRecreate("nonexistent", newConfig);
         REQUIRE(result == Result::ERROR);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Block recreation can change implementation", "[flowgraph][recreation]") {
+    REQUIRE(RegisterSignalGeneratorTestProvider() == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    Parser::Map config;
+    REQUIRE(flowgraph->blockConfig("gen1", config) == Result::SUCCESS);
+
+    const auto& block = flowgraph->blockList().at("gen1");
+    const auto implementations = Registry::ListAvailableModules("signal_generator",
+                                                                 block->device(),
+                                                                 block->runtime(),
+                                                                 kSignalGeneratorTestProvider);
+
+    REQUIRE(implementations.size() == 1);
+    REQUIRE(block->provider() != implementations.front().provider);
+
+    REQUIRE(flowgraph->blockRecreate("gen1",
+                                     config,
+                                     implementations.front().device,
+                                     implementations.front().runtime,
+                                     implementations.front().provider) == Result::SUCCESS);
+
+    const auto& recreated = flowgraph->blockList().at("gen1");
+    REQUIRE(recreated->state() == Block::State::Created);
+    REQUIRE(recreated->device() == implementations.front().device);
+    REQUIRE(recreated->runtime() == implementations.front().runtime);
+    REQUIRE(recreated->provider() == implementations.front().provider);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[flowgraph][recreation]") {

@@ -91,6 +91,57 @@ static inline void NotifyResultClean(const Result value, const std::string& mess
     }
 }
 
+static inline std::vector<DeviceType> ListBlockDeviceOptions(const std::string& blockType,
+                                                             const DeviceType& currentDevice) {
+    std::vector<DeviceType> devices;
+    for (const auto& module : Registry::ListAvailableModules(blockType)) {
+        if (std::find(devices.begin(), devices.end(), module.device) == devices.end()) {
+            devices.push_back(module.device);
+        }
+    }
+
+    if (devices.empty() && currentDevice != DeviceType::None) {
+        devices.push_back(currentDevice);
+    }
+
+    return devices;
+}
+
+static inline std::optional<Registry::ModuleRegistration>
+ResolveBlockImplementationForDevice(const std::string& blockType,
+                                    const DeviceType& device,
+                                    const RuntimeType& preferredRuntime,
+                                    const ProviderType& preferredProvider) {
+    const auto implementations = Registry::ListAvailableModules(blockType,
+                                                                std::optional<DeviceType>{device});
+    if (implementations.empty()) {
+        return std::nullopt;
+    }
+
+    const auto exactMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.runtime == preferredRuntime && entry.provider == preferredProvider;
+    });
+    if (exactMatch != implementations.end()) {
+        return *exactMatch;
+    }
+
+    const auto runtimeMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.runtime == preferredRuntime;
+    });
+    if (runtimeMatch != implementations.end()) {
+        return *runtimeMatch;
+    }
+
+    const auto providerMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.provider == preferredProvider;
+    });
+    if (providerMatch != implementations.end()) {
+        return *providerMatch;
+    }
+
+    return implementations.front();
+}
+
 struct FieldContext {
     Parser::Map& cfg;
     F32 scalingFactor;
@@ -1306,6 +1357,14 @@ class DefaultCompositor : public Compositor::Impl {
         std::string blockId;
     };
 
+    struct MailChangeBlockDevice {
+        std::string flowgraph;
+        std::string blockId;
+        DeviceType device;
+        RuntimeType runtime;
+        ProviderType provider;
+    };
+
     struct MailConnectBlock {
         std::string flowgraph;
         std::string blockName;
@@ -1347,6 +1406,7 @@ class DefaultCompositor : public Compositor::Impl {
                               MailRenameBlock,
                               MailDeleteBlock,
                               MailReloadBlock,
+                              MailChangeBlockDevice,
                               MailConnectBlock,
                               MailDisconnectBlock,
                               MailReconfigureBlock,
@@ -1870,6 +1930,43 @@ Result DefaultCompositor::poll() {
                     Parser::Map config;
                     JST_CHECK(flowgraph->blockConfig(blockId, config));
                     return flowgraph->blockRecreate(blockId, config);
+                });
+
+                return Result::SUCCESS;
+            },
+            [&](const MailChangeBlockDevice& msg) -> Result {
+                if (!flowgraphs.contains(msg.flowgraph)) {
+                    JST_ERROR("Failed to change block device because flowgraph was not found.");
+                    return Result::ERROR;
+                }
+
+                if (msg.blockId.empty()) {
+                    JST_ERROR("Failed to change block device due to empty block ID.");
+                    return Result::ERROR;
+                }
+
+                if (!blocksCache.at(msg.flowgraph).contains(msg.blockId)) {
+                    JST_ERROR("Failed to change block device because block was not found.");
+                    return Result::ERROR;
+                }
+
+                const auto& block = blocksCache.at(msg.flowgraph).at(msg.blockId);
+                if (block->device() == msg.device &&
+                    block->runtime() == msg.runtime &&
+                    block->provider() == msg.provider) {
+                    return Result::SUCCESS;
+                }
+
+                auto flowgraph = flowgraphs[msg.flowgraph];
+                auto blockId = msg.blockId;
+                auto device = msg.device;
+                auto runtime = msg.runtime;
+                auto provider = msg.provider;
+
+                Compositor::Impl::enqueue([flowgraph, blockId, device, runtime, provider]() -> Result {
+                    Parser::Map config;
+                    JST_CHECK(flowgraph->blockConfig(blockId, config));
+                    return flowgraph->blockRecreate(blockId, config, device, runtime, provider);
                 });
 
                 return Result::SUCCESS;
@@ -3177,26 +3274,58 @@ Result DefaultCompositor::renderFlowgraph() {
             }
         }
 
-        if (hoveredFlowgraphId == flowgraphId && ImGui::BeginPopup("##node_context_menu")) {
+        if (hoveredFlowgraphId == flowgraphId &&
+            nodeIdToBlockName.contains(hoveredNodeId) &&
+            blocks.contains(nodeIdToBlockName.at(hoveredNodeId)) &&
+            ImGui::BeginPopup("##node_context_menu")) {
+            const auto& hoveredBlockId = nodeIdToBlockName.at(hoveredNodeId);
+            const auto& hoveredBlock = blocks.at(hoveredBlockId);
+            const auto availableDevices = ListBlockDeviceOptions(hoveredBlock->config().type(),
+                                                                 hoveredBlock->device());
+
             if (ImGui::MenuItem(ICON_FA_COPY " Copy Block", "CTRL+C")) {
-                enqueue(MailCopyBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailCopyBlock{flowgraphId, hoveredBlockId});
             }
             if (ImGui::MenuItem(ICON_FA_PASTE " Paste Block", "CTRL+V", false, clipboard.hasData)) {
                 NodeMeta nodeMeta;
-                flowgraph->getMeta("node", nodeMeta, nodeIdToBlockName.at(hoveredNodeId));
+                flowgraph->getMeta("node", nodeMeta, hoveredBlockId);
                 const ImVec2 pastePos = {nodeMeta.x + 50.0f, nodeMeta.y + 50.0f};
                 enqueue(MailPasteBlock{flowgraphId, pastePos});
             }
             ImGui::Separator();
+
+            const std::string changeDeviceLabel = std::string(ICON_FA_MICROCHIP) + " Change Device";
+            if (ImGui::BeginMenu(changeDeviceLabel.c_str(), !availableDevices.empty())) {
+                for (const auto& device : availableDevices) {
+                    const bool selected = (device == hoveredBlock->device());
+                    const auto implementation = ResolveBlockImplementationForDevice(hoveredBlock->config().type(),
+                                                                                   device,
+                                                                                   hoveredBlock->runtime(),
+                                                                                   hoveredBlock->provider());
+
+                    if (ImGui::MenuItem(GetDevicePrettyName(device), nullptr, selected, !selected && implementation.has_value())) {
+                        enqueue(MailChangeBlockDevice{
+                            flowgraphId,
+                            hoveredBlockId,
+                            implementation->device,
+                            implementation->runtime,
+                            implementation->provider,
+                        });
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
+            ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_ARROW_ROTATE_RIGHT " Reload Block")) {
-                enqueue(MailReloadBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailReloadBlock{flowgraphId, hoveredBlockId});
             }
             if (ImGui::MenuItem(ICON_FA_XMARK " Delete Block")) {
-                enqueue(MailDeleteBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailDeleteBlock{flowgraphId, hoveredBlockId});
             }
             ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_BOOK " Documentation")) {
-                const std::string docKey = flowgraphId + ":" + nodeIdToBlockName.at(hoveredNodeId);
+                const std::string docKey = flowgraphId + ":" + hoveredBlockId;
                 openDocumentations[docKey] = true;
             }
             ImGui::EndPopup();

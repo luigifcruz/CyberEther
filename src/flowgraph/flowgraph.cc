@@ -685,6 +685,20 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
 }
 
 Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& config) {
+    if (!impl->blocks.contains(name)) {
+        JST_ERROR("[FLOWGRAPH] Cannot recreate block '{}' because it doesn't exist.", name);
+        return Result::ERROR;
+    }
+
+    const auto& block = impl->blocks.at(name);
+    return blockRecreate(name, config, block->device(), block->runtime(), block->provider());
+}
+
+Result Flowgraph::blockRecreate(const std::string name,
+                                const Parser::Map& config,
+                                const DeviceType& device,
+                                const RuntimeType& runtime,
+                                const ProviderType& provider) {
     JST_INFO("[FLOWGRAPH] Recreating block '{}' and downstream blocks.", name);
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
 
@@ -705,9 +719,9 @@ Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& confi
         BlockState state;
         state.name = name;
         state.type = block->config().type();
-        state.device = block->device();
-        state.runtime = block->runtime();
-        state.provider = block->provider();
+        state.device = device;
+        state.runtime = runtime;
+        state.provider = provider;
         state.config = config;
 
         for (const auto& [slot, link] : block->inputs()) {

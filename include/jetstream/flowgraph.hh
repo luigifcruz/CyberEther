@@ -71,6 +71,11 @@ class JETSTREAM_API Flowgraph {
                             const Parser::Map& config);
     Result blockRecreate(const std::string name,
                          const Parser::Map& config);
+    Result blockRecreate(const std::string name,
+                         const Parser::Map& config,
+                         const DeviceType& device,
+                         const RuntimeType& runtime,
+                         const ProviderType& provider);
     Result blockConfig(const std::string name,
                        Parser::Map& config) const;
     const std::unordered_map<std::string, std::shared_ptr<Block>>& blockList() const;
