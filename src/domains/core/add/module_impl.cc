@@ -122,5 +122,4 @@ Result AddImpl::reconfigure() {
     return Result::RECREATE;
 }
 
-
 }  // namespace Jetstream::Modules
