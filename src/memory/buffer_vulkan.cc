@@ -278,7 +278,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         return Result::ERROR;
     }
 
-    Result copyFrom(const Backend& source) override {
+    Result copyFrom(const Backend& source, void*) override {
         JST_TRACE("[MEMORY:BUFFER:VULKAN] Copying buffer.");
 
         if (!mappedPtr) {

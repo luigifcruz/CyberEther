@@ -19,7 +19,7 @@ struct Backend {
     virtual Result create(const Backend& source) = 0;
     virtual void destroy() = 0;
 
-    virtual Result copyFrom(const Backend& source) = 0;
+    virtual Result copyFrom(const Backend& source, void* context) = 0;
 
     virtual void* rawHandle() = 0;
     virtual const void* rawHandle() const = 0;

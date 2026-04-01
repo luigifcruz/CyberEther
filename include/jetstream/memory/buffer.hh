@@ -25,7 +25,7 @@ class Buffer {
     Result create(const DeviceType& device, void* pointer, const U64& sizeBytes);
     Result create(const DeviceType& device, const Buffer& source);
 
-    Result copyFrom(const Buffer& source);
+    Result copyFrom(const Buffer& source, void* context = nullptr);
 
     Result destroy();
 

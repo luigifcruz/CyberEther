@@ -15,7 +15,6 @@ struct ExpandDimsImplNativeCpu : public ExpandDimsImpl,
 };
 
 Result ExpandDimsImplNativeCpu::computeSubmit() {
-    // Expand dims is a view operation with no data movement.
     return Result::SUCCESS;
 }
 

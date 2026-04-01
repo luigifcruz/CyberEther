@@ -17,6 +17,7 @@
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/backend/devices/cuda/base.hh"
+#include <cuda_runtime.h>
 #endif
 
 using namespace Jetstream;
@@ -64,6 +65,17 @@ void WriteTestPattern(Tensor& tensor, T pattern) {
         }
     }
 #endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        auto* typed_ptr = static_cast<T*>(tensor.data());
+        if (typed_ptr) {
+            for (U64 i = 0; i < tensor.size(); ++i) {
+                typed_ptr[i] = pattern;
+            }
+        }
+    }
+#endif
 }
 
 // Helper function to verify test pattern in tensor data
@@ -87,6 +99,20 @@ bool VerifyTestPattern(const Tensor& tensor, T pattern) {
         const void* ptr = GetMetalBufferContents(tensor);
         if (ptr) {
             const auto* typed_ptr = static_cast<const T*>(ptr);
+            for (U64 i = 0; i < tensor.size(); ++i) {
+                if (typed_ptr[i] != pattern) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        const auto* typed_ptr = static_cast<const T*>(tensor.data());
+        if (typed_ptr) {
             for (U64 i = 0; i < tensor.size(); ++i) {
                 if (typed_ptr[i] != pattern) {
                     return false;
@@ -132,6 +158,20 @@ void Write2DTestPattern(Tensor& tensor, T base_value = T{}) {
         }
     }
 #endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    else if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        auto* typed_ptr = static_cast<T*>(tensor.data());
+        if (typed_ptr) {
+            for (Index i = 0; i < rows; ++i) {
+                for (Index j = 0; j < cols; ++j) {
+                    U64 offset = tensor.shapeToOffset({i, j});
+                    typed_ptr[offset] = base_value + static_cast<T>(i * cols + j);
+                }
+            }
+        }
+    }
+#endif
 }
 
 // Helper to verify 2D pattern in tensor
@@ -161,6 +201,24 @@ bool Verify2DTestPattern(const Tensor& tensor, T base_value = T{}) {
         const void* ptr = GetMetalBufferContents(tensor);
         if (ptr) {
             const auto* typed_ptr = static_cast<const T*>(ptr);
+            for (Index i = 0; i < rows; ++i) {
+                for (Index j = 0; j < cols; ++j) {
+                    U64 offset = tensor.shapeToOffset({i, j});
+                    T expected = base_value + static_cast<T>(i * cols + j);
+                    if (typed_ptr[offset] != expected) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    else if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        const auto* typed_ptr = static_cast<const T*>(tensor.data());
+        if (typed_ptr) {
             for (Index i = 0; i < rows; ++i) {
                 for (Index j = 0; j < cols; ++j) {
                     U64 offset = tensor.shapeToOffset({i, j});
@@ -371,6 +429,29 @@ TEST_CASE("Tensor Copy Operations", "[tensor][copy]") {
         REQUIRE(Verify2DTestPattern<F32>(dst, 5.0f));
     }
 #endif
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    SECTION("CUDA to CUDA Copy With Stream Context") {
+        Buffer::Config config{};
+        config.hostAccessible = true;
+
+        Tensor src;
+        REQUIRE(src.create(DeviceType::CUDA, DataType::F32, TEST_SHAPE_2D, config) == Result::SUCCESS);
+        Write2DTestPattern<F32>(src, 6.0f);
+
+        Tensor dst;
+        REQUIRE(dst.create(DeviceType::CUDA, DataType::F32, TEST_SHAPE_2D, config) == Result::SUCCESS);
+        Write2DTestPattern<F32>(dst, 0.0f);
+
+        cudaStream_t stream = nullptr;
+        REQUIRE(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking) == cudaSuccess);
+        REQUIRE(dst.copyFrom(src, stream) == Result::SUCCESS);
+        REQUIRE(cudaStreamSynchronize(stream) == cudaSuccess);
+        REQUIRE(cudaStreamDestroy(stream) == cudaSuccess);
+
+        REQUIRE(Verify2DTestPattern<F32>(dst, 6.0f));
+    }
 #endif
 }
 

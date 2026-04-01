@@ -508,7 +508,16 @@ Result Tensor::create(const DeviceType& device, const Tensor& source) {
     impl->storage->buffers.emplace(device, std::move(buffer));
 
     impl->dtype = source.dtype();
-    impl->layout.initialize(source.shape(), DataTypeSize(source.dtype()));
+    impl->layout.shape = source.impl->layout.shape;
+    impl->layout.stride = source.impl->layout.stride;
+    impl->layout.shapeMinusOne = source.impl->layout.shapeMinusOne;
+    impl->layout.backstride = source.impl->layout.backstride;
+    impl->layout.offset = source.impl->layout.offset;
+    impl->layout.size = source.impl->layout.size;
+    impl->layout.sizeBytes = source.impl->layout.sizeBytes;
+    impl->layout.offsetBytes = source.impl->layout.offsetBytes;
+    impl->layout.elementSize = source.impl->layout.elementSize;
+    impl->layout.contiguous = source.impl->layout.contiguous;
     impl->storage->rootDevice = source.nativeDevice();
     impl->currentDevice = device;
     impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
@@ -706,7 +715,7 @@ bool Tensor::hasDevice(const DeviceType& device) {
     return true;
 }
 
-Result Tensor::copyFrom(const Tensor& source) {
+Result Tensor::copyFrom(const Tensor& source, void* context) {
     ensureImpl();
 
     if (!contiguous()) {
@@ -726,7 +735,7 @@ Result Tensor::copyFrom(const Tensor& source) {
     }
 
     // Copy the buffer from the source device to the current device.
-    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.buffer()));
+    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.buffer(), context));
 
     return Result::SUCCESS;
 }

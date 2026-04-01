@@ -119,7 +119,7 @@ Result Buffer::create(const DeviceType& device, const Buffer& source) {
     return Result::SUCCESS;
 }
 
-Result Buffer::copyFrom(const Buffer& source) {
+Result Buffer::copyFrom(const Buffer& source, void* context) {
     ensureImpl();
 
     // Check if source buffer is valid.
@@ -155,7 +155,7 @@ Result Buffer::copyFrom(const Buffer& source) {
     }
 
     // Copy data from source buffer to destination buffer.
-    JST_CHECK(impl->backend->copyFrom(*source.impl->backend));
+    JST_CHECK(impl->backend->copyFrom(*source.impl->backend, context));
 
     return Result::SUCCESS;
 }

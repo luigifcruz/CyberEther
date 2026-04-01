@@ -65,14 +65,15 @@ Result DuplicateImplNativeCpu::computeSubmit() {
 
 template<typename T>
 Result DuplicateImplNativeCpu::kernelCopy() {
-    if (input.contiguous() && input.sizeBytes() == input.buffer().sizeBytes()) {
-        JST_CHECK(output.copyFrom(input));
+    if (input.contiguous() &&
+        input.sizeBytes() == input.buffer().sizeBytes()) {
+        JST_CHECK(staging.copyFrom(input));
     } else {
         JST_CHECK(AutomaticIterator<const T, T>(
             [](const auto& in, auto& out) {
                 out = in;
             },
-        input, output));
+        input, staging));
     }
 
     return Result::SUCCESS;

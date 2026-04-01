@@ -15,7 +15,6 @@ struct ReshapeImplNativeCpu : public ReshapeImpl,
 };
 
 Result ReshapeImplNativeCpu::computeSubmit() {
-    // Reshape is a view operation with no data movement.
     return Result::SUCCESS;
 }
 
