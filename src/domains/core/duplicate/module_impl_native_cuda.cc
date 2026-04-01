@@ -49,8 +49,8 @@ struct DuplicateImplNativeCuda : public DuplicateImpl,
                                  public Scheduler::Context {
  public:
     Result create() final;
-    Result destroy() override;
 
+    Result computeInitialize() override;
     Result computeSubmit(const cudaStream_t& stream) override;
     Result computeDeinitialize() override;
 
@@ -62,8 +62,10 @@ struct DuplicateImplNativeCuda : public DuplicateImpl,
 };
 
 Result DuplicateImplNativeCuda::create() {
-    JST_CHECK(DuplicateImpl::create());
+    return DuplicateImpl::create();
+}
 
+Result DuplicateImplNativeCuda::computeInitialize() {
     requiresKernel = !(input.contiguous() && input.sizeBytes() == input.buffer().sizeBytes());
 
     if (!requiresKernel) {
@@ -89,11 +91,6 @@ Result DuplicateImplNativeCuda::create() {
     kernelCreated = true;
 
     return Result::SUCCESS;
-}
-
-Result DuplicateImplNativeCuda::destroy() {
-    JST_CHECK(computeDeinitialize());
-    return DuplicateImpl::destroy();
 }
 
 Result DuplicateImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
