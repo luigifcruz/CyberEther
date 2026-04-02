@@ -7,6 +7,3 @@
 [submodule "subprojects/cpp-httplib"]
 	path = subprojects/cpp-httplib
 	url = https://github.com/yhirose/cpp-httplib.git
-[submodule "subprojects/json"]
-	path = subprojects/json
-	url = https://github.com/nlohmann/json.git

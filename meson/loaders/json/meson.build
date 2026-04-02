@@ -1,6 +1,6 @@
 deps = [
     subproject(
-        'json',
+        'nlohmann_json',
         default_options: []
     ).get_variable('nlohmann_json_dep'),
 ]

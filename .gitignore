@@ -19,7 +19,6 @@ subprojects/*
 !subprojects/nanobind
 !subprojects/nanobench
 !subprojects/cpp-httplib
-!subprojects/json
 !subprojects/packagefiles
 
 build
