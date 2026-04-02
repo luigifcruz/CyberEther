@@ -17,7 +17,6 @@ imgui.ini
 subprojects/*
 !subprojects/*.wrap
 !subprojects/nanobind
-!subprojects/nanobench
 !subprojects/packagefiles
 
 build
