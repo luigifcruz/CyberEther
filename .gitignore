@@ -16,7 +16,6 @@ imgui.ini
 *.zip
 subprojects/*
 !subprojects/*.wrap
-!subprojects/nanobind
 !subprojects/packagefiles
 
 build
