@@ -2,7 +2,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
-#include "rapidyaml.hh"
+#include <ryml.hpp>
+#include <ryml_std.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -107,7 +108,7 @@ void SetScalarNode(ryml::NodeRef& node, const char* key, const std::string& valu
     child << ryml::key(key) << value;
 
     if (literalOnNewline && std::count(value.begin(), value.end(), '\n')) {
-        child |= ryml::_WIP_VAL_LITERAL;
+        child |= ryml::VAL_LITERAL;
     }
 }
 

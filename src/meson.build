@@ -3,12 +3,12 @@ subdir('memory')
 subdir('tools')
 subdir('viewport')
 subdir('render')
-subdir('flowgraph')
 subdir('domains')
 subdir('platform')
 subdir('superluminal')
 
 src_lst += files([
+    'flowgraph.cc',
     'parser.cc',
     'instance.cc',
     'instance_remote.cc',
