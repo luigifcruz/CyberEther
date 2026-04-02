@@ -16,8 +16,6 @@ imgui.ini
 *.zip
 subprojects/*
 !subprojects/*.wrap
-!subprojects/libmodes
-!subprojects/libusb
 !subprojects/nanobind
 !subprojects/nanobench
 !subprojects/cpp-httplib
