@@ -23,7 +23,7 @@ foreach shader_pkg: shader_pkg_lst
         # Translate to SPIR-V (Vulkan).
         #
 
-        build_spirv = glslang_bin.found() and python_bin.found()
+        build_spirv = glslang_bin.found() and py.found()
 
         if build_spirv
             spirv_vert = custom_target(
@@ -103,7 +103,7 @@ foreach shader_pkg: shader_pkg_lst
         # Translate to SPIR-V (Vulkan).
         #
 
-        build_spirv = glslang_bin.found() and python_bin.found()
+        build_spirv = glslang_bin.found() and py.found()
 
         if build_spirv
             spirv = custom_target(
@@ -163,7 +163,7 @@ foreach shader_pkg: shader_pkg_lst
     if build_spirv
         shader_obj = custom_target(
             output: name + '_shaders.hh',
-            command: [python_bin, files('parser.py'), meson.project_build_root(), name],
+            command: [py, files('parser.py'), meson.project_build_root(), name],
             depends: shader_lst + kernel_lst,
         )
 
