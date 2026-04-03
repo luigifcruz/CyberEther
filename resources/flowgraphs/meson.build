@@ -1,4 +1,10 @@
-if python_bin.found()
+if py.found()
+    python_with_modules = pymod.find_installation(
+        py.full_path(),
+        required : true,
+        modules : ['yaml'],
+    )
+
     flowchart = custom_target(
         input : files([
             meson.project_source_root() / 'examples/flowgraphs/flight-tracker.yml',
@@ -10,7 +16,7 @@ if python_bin.found()
             meson.project_source_root() / 'examples/flowgraphs/signal-generator.yml',
         ]),
         output : ['base.hh'],
-        command : [python_bin, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],
+        command : [python_with_modules, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],
     )
     dep_lst += declare_dependency(
         sources : flowchart,

@@ -52,6 +52,13 @@ if get_option('native')
 endif
 
 #
+# Load Python
+#
+
+pymod = import('python')
+py = pymod.find_installation(required: false)
+
+#
 # Handle Options
 #
 

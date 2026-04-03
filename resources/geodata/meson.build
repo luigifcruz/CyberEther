@@ -1,7 +1,6 @@
-if python_bin.found()
-    pymod = import('python')
+if py.found()
     python_with_modules = pymod.find_installation(
-        python_bin.full_path(),
+        py.full_path(),
         required : true,
         modules : ['numpy', 'mapbox_earcut'],
     )
