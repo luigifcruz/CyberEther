@@ -156,16 +156,11 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
 
         const auto result = getRuntimeContext(module)->computeSubmit(stream);
 
-        if (result == Result::SKIP) {
-            skippedModules.insert(name);
-            continue;
-        }
-
         if (result == Result::YIELD || result == Result::TIMEOUT) {
             return result;
         }
 
-        if (result != Result::SUCCESS && result != Result::RELOAD) {
+        if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {
             return result;
         }
 
@@ -178,10 +173,10 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
         });
 
         executedModules.push_back(name);
-    }
 
-    if (executedModules.empty()) {
-        return Result::SUCCESS;
+        if (result == Result::SKIP) {
+            skippedModules.insert(name);
+        }
     }
 
     // Wait for all blocks to finish.
