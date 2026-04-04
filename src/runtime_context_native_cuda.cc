@@ -181,7 +181,7 @@ Result NativeCudaRuntimeContext::createKernel(const std::string& name,
 
     const std::vector<const char*> options = {
         arch.c_str(),
-        "--std=c++14"
+        "--std=c++20"
     };
 
     JST_TRACE("[RUNTIME_CONTEXT_NATIVE_CUDA] Compiling kernel with options: {}", options);
