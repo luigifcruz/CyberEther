@@ -1,6 +1,7 @@
 subdir('add')
 subdir('arithmetic')
 subdir('cast')
+subdir('ones_tensor')
 subdir('duplicate')
 subdir('expand_dims')
 subdir('invert')
