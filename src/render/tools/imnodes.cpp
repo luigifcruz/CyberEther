@@ -1654,12 +1654,17 @@ void DrawNode(ImNodesEditorContext& editor, const int node_idx)
     const bool resize_active = GImNodes->NodeResizeIdx == node_idx &&
                                editor.ClickInteraction.Type == ImNodesClickInteractionType_NodeResize;
 
-    const ImU32 grip_color = ImGui::GetColorU32(resize_active
-                                                    ? ImGuiCol_ResizeGripActive
-                                                    : resize_hovered ? ImGuiCol_ResizeGripHovered
-                                                                      : ImGuiCol_ResizeGrip);
+    const ImU32 grip_base_color = ImGui::GetColorU32(resize_active
+                                                         ? ImGuiCol_ResizeGripActive
+                                                         : resize_hovered ? ImGuiCol_ResizeGripHovered
+                                                                           : ImGuiCol_ResizeGrip);
+    const ImVec4 grip_color_vec = ImGui::ColorConvertU32ToFloat4(grip_base_color);
+    const ImU32 grip_color = ImGui::GetColorU32(ImVec4(ImMin(grip_color_vec.x * 2.0f, 1.0f),
+                                                       ImMin(grip_color_vec.y * 2.0f, 1.0f),
+                                                       ImMin(grip_color_vec.z * 2.0f, 1.0f),
+                                                       grip_color_vec.w));
     const float grip_margin = ImMax(4.0f, node.LayoutStyle.Padding.x * 0.5f);
-    const float grip_size = ImMax(7.0f, ImGui::GetFontSize() * 0.55f);
+    const float grip_size = ImMax(7.5f, ImGui::GetFontSize() * 0.60f);
     const float grip_step = grip_size * 0.35f;
     const ImVec2 grip_corner = node.Rect.Max - ImVec2(grip_margin, grip_margin);
 

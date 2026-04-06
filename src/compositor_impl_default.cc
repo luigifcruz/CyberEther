@@ -5500,7 +5500,7 @@ void DefaultCompositor::ImNodesStyleSetup() {
 void DefaultCompositor::ImNodesStyleScale() {
     const auto& scalingFactor = render->scalingFactor();
     auto& style = ImNodes::GetStyle();
-    style.NodePadding               = ImVec2(6.0f * scalingFactor,  6.0f * scalingFactor);
+    style.NodePadding               = ImVec2(8.0f * scalingFactor,  8.0f * scalingFactor);
     style.PinCircleRadius           = 4.0f  * scalingFactor;
     style.GridSpacing               = 23.0f * scalingFactor;
     style.NodeBorderThickness       = 2.0f  * scalingFactor;
