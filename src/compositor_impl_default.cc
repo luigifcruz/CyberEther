@@ -803,7 +803,7 @@ static inline bool RenderFieldRange(const std::string& name,
     const ImVec4 bgColorVec = ImGui::ColorConvertU32ToFloat4(bgColor);
     const ImU32 sliderColor = ImGui::GetColorU32(ImVec4(bgColorVec.x * 1.5f, bgColorVec.y * 1.5f, bgColorVec.z * 1.5f, bgColorVec.w));
 
-    const F32 knobWidth = 8.0f * ctx.scalingFactor;
+    const F32 knobWidth = ImMax(8.0f * ctx.scalingFactor, rounding * 2.0f);
     const F32 knobX = std::clamp(rectMin.x + sliderWidth - knobWidth * 0.5f, rectMin.x, rectMax.x - knobWidth);
 
     ImGui::GetWindowDrawList()->AddRectFilled(rectMin, ImVec2(knobX + knobWidth, rectMax.y), sliderColor, rounding);
