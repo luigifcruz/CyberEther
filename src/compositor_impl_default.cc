@@ -5275,7 +5275,7 @@ void DefaultCompositor::ImGuiStyleScale() {
     style.TabBarBorderSize                  = 1.0f;
 
     // Rounding
-    style.WindowRounding                    = 18.0f;
+    style.WindowRounding                    = 12.0f;
     style.ChildRounding                     = 0.0f;
     style.FrameRounding                     = 6.0f;
     style.PopupRounding                     = 18.0f;
