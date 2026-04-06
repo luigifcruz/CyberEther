@@ -1320,10 +1320,6 @@ class DefaultCompositor : public Compositor::Impl {
         std::string path;
     };
 
-    struct MailResetFlowgraph {
-        std::string flowgraph;
-    };
-
     struct MailOpenFlowgraphPath {
         std::string path;
     };
@@ -1402,7 +1398,6 @@ class DefaultCompositor : public Compositor::Impl {
                               MailSaveFlowgraph,
                               MailOpenFlowgraphPath,
                               MailOpenFlowgraphBlob,
-                              MailResetFlowgraph,
                               MailRenameBlock,
                               MailDeleteBlock,
                               MailReloadBlock,
@@ -1826,10 +1821,6 @@ Result DefaultCompositor::poll() {
                     return Result::SUCCESS;
                 });
 
-                return Result::SUCCESS;
-            },
-            [&](const MailResetFlowgraph&) -> Result {
-                // TODO: Implement.
                 return Result::SUCCESS;
             },
             [&](const MailCloseFlowgraph& msg) -> Result {
@@ -3690,9 +3681,6 @@ Result DefaultCompositor::renderMenubar() {
             if (ImGui::MenuItem("Rename", nullptr, false, focusedFlowgraph.has_value())) {
                 globalModalContent = InterfaceModalContent::FlowgraphInfo;
             }
-            if (ImGui::MenuItem("Reset", nullptr, false, focusedFlowgraph.has_value())) {
-                enqueue(MailResetFlowgraph{focusedFlowgraph.value()});
-            }
             ImGui::Separator();
             if (ImGui::MenuItem("Open Examples", nullptr, false, true)) {
                 globalModalContent = InterfaceModalContent::FlowgraphExamples;
@@ -3809,11 +3797,6 @@ Result DefaultCompositor::renderToolbar() {
 
                 if (ImGui::Button(ICON_FA_CIRCLE_XMARK " Close")) {
                     JST_CHECK(helperCloseFlowgraph(focusedFlowgraph.value()));
-                }
-                ImGui::SameLine();
-
-                if (ImGui::Button(ICON_FA_ERASER " Reset")) {
-                    enqueue(MailResetFlowgraph{focusedFlowgraph.value()});
                 }
                 ImGui::SameLine();
 
