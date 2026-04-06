@@ -1506,9 +1506,6 @@ class DefaultCompositor : public Compositor::Impl {
         ImVec2 gridPosition;
         char searchBuffer[128] = "";
         int selectedIndex = 0;
-        int deviceIndex = 0;
-        int runtimeIndex = 0;
-        int providerIndex = 0;
     };
     BlockPickerState blockPicker;
 
@@ -2633,7 +2630,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     const float subtitleFontSize = ImGui::GetFontSize() * 0.85f;
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
                     ImGui::PushFont(ImGui::GetFont(), subtitleFontSize);
-                    const char* subtitle = "Use arrows to navigate, Enter to create";
+                    const char* subtitle = "Use up/down to navigate, Enter to create";
                     const float subtitleWidth = ImGui::CalcTextSize(subtitle).x;
                     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImMax(0.0f, (ImGui::GetContentRegionAvail().x - subtitleWidth) * 0.5f));
                     ImGui::TextUnformatted(subtitle);
@@ -2686,172 +2683,41 @@ Result DefaultCompositor::renderFlowgraph() {
                 if (filteredCount > 0 && blockPicker.selectedIndex >= 0) {
                     availableModules = Registry::ListAvailableModules(filteredBlocks[blockPicker.selectedIndex].type);
                 }
-                const int moduleCount = static_cast<int>(availableModules.size());
-
-                // Clamp implementation index.
-
-                if (blockPicker.deviceIndex >= moduleCount) {
-                    blockPicker.deviceIndex = ImMax(0, moduleCount - 1);
-                }
-
-                // Build unique lists of devices, runtimes, and providers.
-
-                std::vector<DeviceType> uniqueDevices;
-                std::vector<RuntimeType> uniqueRuntimes;
-                std::vector<ProviderType> uniqueProviders;
-
-                for (const auto& mod : availableModules) {
-                    if (std::find(uniqueDevices.begin(), uniqueDevices.end(), mod.device) == uniqueDevices.end()) {
-                        uniqueDevices.push_back(mod.device);
-                    }
-                    if (std::find(uniqueRuntimes.begin(), uniqueRuntimes.end(), mod.runtime) == uniqueRuntimes.end()) {
-                        uniqueRuntimes.push_back(mod.runtime);
-                    }
-                    if (std::find(uniqueProviders.begin(), uniqueProviders.end(), mod.provider) == uniqueProviders.end()) {
-                        uniqueProviders.push_back(mod.provider);
-                    }
-                }
+                DeviceType  selectedDevice = DeviceType::CPU;
+                RuntimeType selectedRuntime = RuntimeType::NATIVE;
+                ProviderType selectedProvider = "generic";
 
                 // Provide defaults for composite blocks without module registrations.
                 // TODO: Properly fix module-less block creation.
 
-                if (uniqueDevices.empty()) {
-                    uniqueDevices.push_back(DeviceType::CPU);
-                }
-                if (uniqueRuntimes.empty()) {
-                    uniqueRuntimes.push_back(RuntimeType::NATIVE);
-                }
-                if (uniqueProviders.empty()) {
-                    uniqueProviders.push_back("generic");
-                }
-
-                // Clamp indices.
-
-                if (blockPicker.deviceIndex >= static_cast<int>(uniqueDevices.size())) {
-                    blockPicker.deviceIndex = ImMax(0, static_cast<int>(uniqueDevices.size()) - 1);
-                }
-                if (blockPicker.runtimeIndex >= static_cast<int>(uniqueRuntimes.size())) {
-                    blockPicker.runtimeIndex = ImMax(0, static_cast<int>(uniqueRuntimes.size()) - 1);
-                }
-                if (blockPicker.providerIndex >= static_cast<int>(uniqueProviders.size())) {
-                    blockPicker.providerIndex = ImMax(0, static_cast<int>(uniqueProviders.size()) - 1);
-                }
-
-                // Display implementation selection dropdowns.
-
-                if (!uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    const float spacing = 4.0f * scalingFactor;
-                    const float availWidth = ImGui::GetContentRegionAvail().x;
-                    const float comboWidth = (availWidth - spacing * 2) / 3.0f;
-
-                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * scalingFactor);
-                    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f * scalingFactor);
-                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scalingFactor, 6.0f * scalingFactor));
-
-                    // Device dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string devicePreview = std::string(ICON_FA_MICROCHIP) + " " + GetDevicePrettyName(uniqueDevices[blockPicker.deviceIndex]);
-                    if (ImGui::BeginCombo("##device", devicePreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueDevices.size()); ++i) {
-                            const bool selected = (i == blockPicker.deviceIndex);
-                            if (ImGui::Selectable(GetDevicePrettyName(uniqueDevices[i]), selected)) {
-                                blockPicker.deviceIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine(0, spacing);
-
-                    // Runtime dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string runtimePreview = std::string(ICON_FA_GAUGE_HIGH) + " " + GetRuntimePrettyName(uniqueRuntimes[blockPicker.runtimeIndex]);
-                    if (ImGui::BeginCombo("##runtime", runtimePreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueRuntimes.size()); ++i) {
-                            const bool selected = (i == blockPicker.runtimeIndex);
-                            if (ImGui::Selectable(GetRuntimePrettyName(uniqueRuntimes[i]), selected)) {
-                                blockPicker.runtimeIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine(0, spacing);
-
-                    // Provider dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string providerPreview = std::string(ICON_FA_CUBES) + " " + uniqueProviders[blockPicker.providerIndex];
-                    if (ImGui::BeginCombo("##provider", providerPreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueProviders.size()); ++i) {
-                            const bool selected = (i == blockPicker.providerIndex);
-                            if (ImGui::Selectable(uniqueProviders[i].c_str(), selected)) {
-                                blockPicker.providerIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::PopStyleVar(3);
+                if (!availableModules.empty()) {
+                    const auto& selectedModule = availableModules.front();
+                    selectedDevice = selectedModule.device;
+                    selectedRuntime = selectedModule.runtime;
+                    selectedProvider = selectedModule.provider;
                 }
 
                 // Handle keyboard navigation.
 
                 if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
                     blockPicker.selectedIndex = (blockPicker.selectedIndex + 1) % ImMax(1, filteredCount);
-                    blockPicker.deviceIndex = 0;
-                    blockPicker.runtimeIndex = 0;
-                    blockPicker.providerIndex = 0;
                 }
                 if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
                     blockPicker.selectedIndex = (blockPicker.selectedIndex - 1 + filteredCount) % ImMax(1, filteredCount);
-                    blockPicker.deviceIndex = 0;
-                    blockPicker.runtimeIndex = 0;
-                    blockPicker.providerIndex = 0;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    blockPicker.providerIndex++;
-                    if (blockPicker.providerIndex >= static_cast<int>(uniqueProviders.size())) {
-                        blockPicker.providerIndex = 0;
-                        blockPicker.runtimeIndex++;
-                        if (blockPicker.runtimeIndex >= static_cast<int>(uniqueRuntimes.size())) {
-                            blockPicker.runtimeIndex = 0;
-                            blockPicker.deviceIndex = (blockPicker.deviceIndex + 1) % static_cast<int>(uniqueDevices.size());
-                        }
-                    }
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    blockPicker.providerIndex--;
-                    if (blockPicker.providerIndex < 0) {
-                        blockPicker.providerIndex = static_cast<int>(uniqueProviders.size()) - 1;
-                        blockPicker.runtimeIndex--;
-                        if (blockPicker.runtimeIndex < 0) {
-                            blockPicker.runtimeIndex = static_cast<int>(uniqueRuntimes.size()) - 1;
-                            blockPicker.deviceIndex--;
-                            if (blockPicker.deviceIndex < 0) {
-                                blockPicker.deviceIndex = static_cast<int>(uniqueDevices.size()) - 1;
-                            }
-                        }
-                    }
                 }
 
                 // Handle enter to create block.
 
                 if ((ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) &&
-                    filteredCount > 0 && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
+                    filteredCount > 0) {
                     const auto& selected = filteredBlocks[blockPicker.selectedIndex];
                     enqueue(MailCreateBlock{
                         flowgraphId,
                         selected.type,
                         blockPicker.gridPosition,
-                        uniqueDevices[blockPicker.deviceIndex],
-                        uniqueRuntimes[blockPicker.runtimeIndex],
-                        uniqueProviders[blockPicker.providerIndex]
+                        selectedDevice,
+                        selectedRuntime,
+                        selectedProvider
                     });
                     blockPicker.active = false;
                 }
@@ -2887,14 +2753,14 @@ Result DefaultCompositor::renderFlowgraph() {
                         blockPicker.selectedIndex = i;
                     }
                     if (ImGui::IsItemClicked() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-                        !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
+                        filteredCount > 0) {
                         enqueue(MailCreateBlock{
                             flowgraphId,
                             item.type,
                             blockPicker.gridPosition,
-                            uniqueDevices[blockPicker.deviceIndex],
-                            uniqueRuntimes[blockPicker.runtimeIndex],
-                            uniqueProviders[blockPicker.providerIndex]
+                            selectedDevice,
+                            selectedRuntime,
+                            selectedProvider
                         });
                         blockPicker.active = false;
                     }
@@ -3019,9 +2885,6 @@ Result DefaultCompositor::renderFlowgraph() {
                 blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
                 blockPicker.searchBuffer[0] = '\0';
                 blockPicker.selectedIndex = 0;
-                blockPicker.deviceIndex = 0;
-                blockPicker.runtimeIndex = 0;
-                blockPicker.providerIndex = 0;
             }
         }
 
