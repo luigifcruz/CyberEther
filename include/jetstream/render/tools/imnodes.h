@@ -339,7 +339,7 @@ void Link(int id, int start_attribute_id, int end_attribute_id);
 // Enable or disable the ability to click and drag a specific node.
 void SetNodeDraggable(int node_id, const bool draggable);
 
-// Enable or disable vertical resize handle on the bottom edge of a node.
+// Enable or disable height changes from the shared bottom-right resize handle.
 void SetNodeVerticalResizeEnabled(int node_id, const bool enabled);
 
 // The node's position can be expressed in three coordinate systems:

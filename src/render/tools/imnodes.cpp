@@ -1013,18 +1013,31 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
     break;
     case ImNodesClickInteractionType_NodeResize:
     {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-
         if (GImNodes->NodeResizeIdx.HasValue())
         {
             ImNodeData& node = editor.Nodes.Pool[GImNodes->NodeResizeIdx.Value()];
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+
             const float min_content_width = 120.0f;
-            const float delta = GImNodes->MousePos.x - GImNodes->NodeResizeStartMousePos.x;
+            const float width_delta = GImNodes->MousePos.x - GImNodes->NodeResizeStartMousePos.x;
             node.ContentSize.x =
-                ImMax(min_content_width, GImNodes->NodeResizeStartContentWidth + delta);
+                ImMax(min_content_width, GImNodes->NodeResizeStartContentWidth + width_delta);
+
+            if (node.VerticalResizeEnabled)
+            {
+                const float min_content_height = 100.0f;
+                const float height_delta = GImNodes->MousePos.y - GImNodes->NodeResizeStartMousePos.y;
+                node.ContentSize.y =
+                    ImMax(min_content_height, GImNodes->NodeResizeStartContentHeight + height_delta);
+            }
+
             if (node.ContentSizeRef != nullptr)
             {
                 node.ContentSizeRef->x = node.ContentSize.x;
+                if (node.VerticalResizeEnabled)
+                {
+                    node.ContentSizeRef->y = node.ContentSize.y;
+                }
             }
         }
 
@@ -1032,30 +1045,6 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
         {
             editor.ClickInteraction.Type = ImNodesClickInteractionType_None;
             GImNodes->NodeResizeIdx.Reset();
-        }
-    }
-    break;
-    case ImNodesClickInteractionType_NodeResizeVertical:
-    {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-
-        if (GImNodes->NodeResizeVerticalIdx.HasValue())
-        {
-            ImNodeData& node = editor.Nodes.Pool[GImNodes->NodeResizeVerticalIdx.Value()];
-            const float min_content_height = 100.0f;
-            const float delta = GImNodes->MousePos.y - GImNodes->NodeResizeStartMousePos.y;
-            node.ContentSize.y =
-                ImMax(min_content_height, GImNodes->NodeResizeStartContentHeight + delta);
-            if (node.ContentSizeRef != nullptr)
-            {
-                node.ContentSizeRef->y = node.ContentSize.y;
-            }
-        }
-
-        if (GImNodes->LeftMouseReleased)
-        {
-            editor.ClickInteraction.Type = ImNodesClickInteractionType_None;
-            GImNodes->NodeResizeVerticalIdx.Reset();
         }
     }
     break;
@@ -1369,7 +1358,7 @@ ImOptionalIndex ResolveHoveredLink(
 
 ImOptionalIndex ResolveHoveredNodeResizeHandle(const ImNodesEditorContext& editor)
 {
-    const float handle_thickness = 6.0f;
+    const float handle_size = ImMax(12.0f, ImGui::GetFontSize() * 0.9f);
     for (int depth_idx = editor.NodeDepthOrder.Size - 1; depth_idx >= 0; --depth_idx)
     {
         const int node_idx = editor.NodeDepthOrder[depth_idx];
@@ -1378,33 +1367,7 @@ ImOptionalIndex ResolveHoveredNodeResizeHandle(const ImNodesEditorContext& edito
             continue;
         }
         const ImNodeData& node = editor.Nodes.Pool[node_idx];
-        ImRect handle_rect = node.Rect;
-        handle_rect.Min.x = handle_rect.Max.x - handle_thickness;
-        if (handle_rect.Contains(GImNodes->MousePos))
-        {
-            return ImOptionalIndex(node_idx);
-        }
-    }
-    return ImOptionalIndex();
-}
-
-ImOptionalIndex ResolveHoveredNodeResizeHandleVertical(const ImNodesEditorContext& editor)
-{
-    const float handle_thickness = 6.0f;
-    for (int depth_idx = editor.NodeDepthOrder.Size - 1; depth_idx >= 0; --depth_idx)
-    {
-        const int node_idx = editor.NodeDepthOrder[depth_idx];
-        if (!editor.Nodes.InUse[node_idx])
-        {
-            continue;
-        }
-        const ImNodeData& node = editor.Nodes.Pool[node_idx];
-        if (!node.VerticalResizeEnabled)
-        {
-            continue;
-        }
-        ImRect handle_rect = node.Rect;
-        handle_rect.Min.y = handle_rect.Max.y - handle_thickness;
+        ImRect handle_rect(node.Rect.Max - ImVec2(handle_size, handle_size), node.Rect.Max);
         if (handle_rect.Contains(GImNodes->MousePos))
         {
             return ImOptionalIndex(node_idx);
@@ -1687,6 +1650,28 @@ void DrawNode(ImNodesEditorContext& editor, const int node_idx)
         DrawPin(editor, node.PinIndices[i]);
     }
 
+    const bool resize_hovered = GImNodes->HoveredNodeResizeIdx == node_idx;
+    const bool resize_active = GImNodes->NodeResizeIdx == node_idx &&
+                               editor.ClickInteraction.Type == ImNodesClickInteractionType_NodeResize;
+
+    const ImU32 grip_color = ImGui::GetColorU32(resize_active
+                                                    ? ImGuiCol_ResizeGripActive
+                                                    : resize_hovered ? ImGuiCol_ResizeGripHovered
+                                                                      : ImGuiCol_ResizeGrip);
+    const float grip_margin = ImMax(4.0f, node.LayoutStyle.Padding.x * 0.5f);
+    const float grip_size = ImMax(7.0f, ImGui::GetFontSize() * 0.55f);
+    const float grip_step = grip_size * 0.35f;
+    const ImVec2 grip_corner = node.Rect.Max - ImVec2(grip_margin, grip_margin);
+
+    for (int line = 0; line < 2; ++line)
+    {
+        const float line_length = grip_size - static_cast<float>(line) * grip_step;
+        GImNodes->CanvasDrawList->AddLine(grip_corner - ImVec2(line_length, 0.0f),
+                                          grip_corner - ImVec2(0.0f, line_length),
+                                          grip_color,
+                                          1.5f);
+    }
+
     if (node_hovered)
     {
         GImNodes->HoveredNodeIdx = node_idx;
@@ -1815,8 +1800,6 @@ void Initialize(ImNodesContext* context)
     context->HoveredNodeResizeIdx.Reset();
     context->NodeResizeStartMousePos = ImVec2(0.f, 0.f);
     context->NodeResizeStartContentWidth = 0.f;
-    context->NodeResizeVerticalIdx.Reset();
-    context->HoveredNodeResizeVerticalIdx.Reset();
     context->NodeResizeStartContentHeight = 0.f;
     context->CachedContentRegionRectMax = ImVec2(0.f, 0.f);
     context->CachedWorkRectMax = ImVec2(0.f, 0.f);
@@ -2348,7 +2331,6 @@ void BeginNodeEditor()
     GImNodes->HoveredLinkIdx.Reset();
     GImNodes->HoveredPinIdx.Reset();
     GImNodes->HoveredNodeResizeIdx.Reset();
-    GImNodes->HoveredNodeResizeVerticalIdx.Reset();
     GImNodes->DeletedLinkIdx.Reset();
     GImNodes->SnapLinkIdx.Reset();
 
@@ -2447,7 +2429,6 @@ void EndNodeEditor()
 
         GImNodes->HoveredPinIdx = ResolveHoveredPin(editor.Pins, GImNodes->OccludedPinIndices);
         GImNodes->HoveredNodeResizeIdx = ResolveHoveredNodeResizeHandle(editor);
-        GImNodes->HoveredNodeResizeVerticalIdx = ResolveHoveredNodeResizeHandleVertical(editor);
 
         if (!GImNodes->HoveredPinIdx.HasValue())
         {
@@ -2462,13 +2443,9 @@ void EndNodeEditor()
             GImNodes->HoveredLinkIdx = ResolveHoveredLink(editor.Links, editor.Pins);
         }
 
-        if (GImNodes->HoveredNodeResizeVerticalIdx.HasValue())
+        if (GImNodes->HoveredNodeResizeIdx.HasValue())
         {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-        }
-        else if (GImNodes->HoveredNodeResizeIdx.HasValue())
-        {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
         }
     }
 
@@ -2509,17 +2486,7 @@ void EndNodeEditor()
 
     if (!IsMiniMapHovered())
     {
-        if (GImNodes->LeftMouseClicked && GImNodes->HoveredNodeResizeVerticalIdx.HasValue())
-        {
-            editor.ClickInteraction.Type = ImNodesClickInteractionType_NodeResizeVertical;
-            GImNodes->NodeResizeVerticalIdx = GImNodes->HoveredNodeResizeVerticalIdx;
-            const ImNodeData& node = editor.Nodes.Pool[GImNodes->HoveredNodeResizeVerticalIdx.Value()];
-            GImNodes->NodeResizeStartMousePos = GImNodes->MousePos;
-            GImNodes->NodeResizeStartContentHeight =
-                ImMax(0.0f, node.Rect.GetHeight() - 2.0f * node.LayoutStyle.Padding.y);
-        }
-
-        else if (GImNodes->LeftMouseClicked && GImNodes->HoveredNodeResizeIdx.HasValue())
+        if (GImNodes->LeftMouseClicked && GImNodes->HoveredNodeResizeIdx.HasValue())
         {
             editor.ClickInteraction.Type = ImNodesClickInteractionType_NodeResize;
             GImNodes->NodeResizeIdx = GImNodes->HoveredNodeResizeIdx;
@@ -2527,6 +2494,8 @@ void EndNodeEditor()
             GImNodes->NodeResizeStartMousePos = GImNodes->MousePos;
             GImNodes->NodeResizeStartContentWidth =
                 ImMax(0.0f, node.Rect.GetWidth() - 2.0f * node.LayoutStyle.Padding.x);
+            GImNodes->NodeResizeStartContentHeight =
+                ImMax(0.0f, node.Rect.GetHeight() - 2.0f * node.LayoutStyle.Padding.y);
         }
 
         else if (GImNodes->LeftMouseClicked && GImNodes->HoveredLinkIdx.HasValue())

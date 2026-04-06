@@ -56,7 +56,6 @@ enum ImNodesClickInteractionType_
     ImNodesClickInteractionType_Link,
     ImNodesClickInteractionType_LinkCreation,
     ImNodesClickInteractionType_NodeResize,
-    ImNodesClickInteractionType_NodeResizeVertical,
     ImNodesClickInteractionType_Panning,
     ImNodesClickInteractionType_BoxSelection,
     ImNodesClickInteractionType_ImGuiItem,
@@ -339,7 +338,6 @@ struct ImNodesContext
     ImOptionalIndex HoveredLinkIdx;
     ImOptionalIndex HoveredPinIdx;
     ImOptionalIndex HoveredNodeResizeIdx;
-    ImOptionalIndex HoveredNodeResizeVerticalIdx;
 
     ImOptionalIndex DeletedLinkIdx;
     ImOptionalIndex SnapLinkIdx;
@@ -356,7 +354,6 @@ struct ImNodesContext
     ImVec2          NodeResizeStartMousePos;
     float           NodeResizeStartContentWidth;
 
-    ImOptionalIndex NodeResizeVerticalIdx;
     float           NodeResizeStartContentHeight;
 
     bool  NodeContentRectOverridden;
