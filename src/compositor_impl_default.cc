@@ -1439,6 +1439,9 @@ class DefaultCompositor : public Compositor::Impl {
     Result helperOpenFlowgraph();
     Result helperSaveFlowgraph(const std::string& flowgraph);
     Result helperCloseFlowgraph(const std::string& flowgraph);
+    void helperOpenBlockPicker(const std::string& flowgraphId,
+                               const ImVec2& pickerScreenPosition,
+                               const ImVec2& blockScreenPosition);
 
     // Helper elements.
 
@@ -1488,6 +1491,7 @@ class DefaultCompositor : public Compositor::Impl {
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Block>>> blocksCache;
     std::unordered_map<std::string, bool> openDocumentations;
     std::unordered_map<int, ImVec2> nodeSizes;
+    std::unordered_map<std::string, ImVec2> flowgraphViewportCenters;
 
     ImGuiID mainDockspaceID = 0;
 
@@ -2147,6 +2151,12 @@ Result DefaultCompositor::renderFlowgraph() {
                 }
                 focusedFlowgraph = flowgraphId;
             }
+        }
+
+        if (windowExpanded) {
+            const ImVec2 contentMin = ImGui::GetCursorScreenPos();
+            const ImVec2 contentSize = ImGui::GetContentRegionAvail();
+            flowgraphViewportCenters[flowgraphId] = contentMin + contentSize * 0.5f;
         }
 
         if (!flowgraphOpen) {
@@ -2902,12 +2912,7 @@ Result DefaultCompositor::renderFlowgraph() {
             const bool isEditorHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && isEditorHovered && !isNodeHovered) {
-                blockPicker.active = true;
-                blockPicker.flowgraphId = flowgraphId;
-                blockPicker.screenPosition = ImGui::GetMousePos();
-                blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
-                blockPicker.searchBuffer[0] = '\0';
-                blockPicker.selectedIndex = 0;
+                helperOpenBlockPicker(flowgraphId, ImGui::GetMousePos(), ImGui::GetMousePos());
             }
         }
 
@@ -3807,6 +3812,21 @@ Result DefaultCompositor::renderToolbar() {
 
                 if (ImGui::Button(ICON_FA_LAYER_GROUP " New Stack")) {
                     stacks[jst::fmt::format("Stack {}", stacks.size())] = {true, 0};
+                }
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_CUBE " Add Block")) {
+                    const ImVec2 buttonMin = ImGui::GetItemRectMin();
+                    const ImVec2 buttonMax = ImGui::GetItemRectMax();
+                    ImVec2 blockScreenPosition = ImGui::GetMainViewport()->GetCenter();
+
+                    if (flowgraphViewportCenters.contains(focusedFlowgraph.value())) {
+                        blockScreenPosition = flowgraphViewportCenters.at(focusedFlowgraph.value());
+                    }
+
+                    helperOpenBlockPicker(focusedFlowgraph.value(),
+                                          ImVec2(buttonMin.x, buttonMax.y + 6.0f * scalingFactor),
+                                          blockScreenPosition);
                 }
                 ImGui::SameLine();
             }
@@ -4942,6 +4962,24 @@ Result DefaultCompositor::helperCloseFlowgraph(const std::string& flowgraph) {
     enqueue(MailCloseFlowgraph{flowgraph});
 
     return Result::SUCCESS;
+}
+
+void DefaultCompositor::helperOpenBlockPicker(const std::string& flowgraphId,
+                                              const ImVec2& pickerScreenPosition,
+                                              const ImVec2& blockScreenPosition) {
+    blockPicker.active = true;
+    blockPicker.flowgraphId = flowgraphId;
+    blockPicker.screenPosition = pickerScreenPosition;
+    blockPicker.searchBuffer[0] = '\0';
+    blockPicker.selectedIndex = 0;
+
+    blockPicker.gridPosition = blockScreenPosition;
+    if (contexts.contains(flowgraphId)) {
+        auto* previousContext = ImNodes::GetCurrentContext();
+        ImNodes::SetCurrentContext(contexts.at(flowgraphId));
+        blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(blockScreenPosition);
+        ImNodes::SetCurrentContext(previousContext);
+    }
 }
 
 void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) {
