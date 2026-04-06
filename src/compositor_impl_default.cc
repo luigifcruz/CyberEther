@@ -2653,24 +2653,43 @@ Result DefaultCompositor::renderFlowgraph() {
                     std::string type;
                     std::string title;
                     std::string summary;
+                    bool titleMatch = false;
                 };
                 std::vector<BlockItem> filteredBlocks;
 
                 const std::string query = std::string(blockPicker.searchBuffer);
-                auto matches = [&](const std::string& title, const std::string& summary) -> bool {
-                    if (query.empty()) return true;
-                    std::string t = title, s = summary, q = query;
-                    std::transform(t.begin(), t.end(), t.begin(), ::tolower);
-                    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-                    std::transform(q.begin(), q.end(), q.begin(), ::tolower);
-                    return (t.find(q) != std::string::npos) || (s.find(q) != std::string::npos);
+                std::string normalizedQuery = query;
+                std::transform(normalizedQuery.begin(), normalizedQuery.end(), normalizedQuery.begin(), [](unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+
+                auto matchPriority = [&](const std::string& title, const std::string& summary) -> int {
+                    if (normalizedQuery.empty()) return 0;
+
+                    std::string normalizedTitle = title;
+                    std::string normalizedSummary = summary;
+                    std::transform(normalizedTitle.begin(), normalizedTitle.end(), normalizedTitle.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+                    std::transform(normalizedSummary.begin(), normalizedSummary.end(), normalizedSummary.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+
+                    if (normalizedTitle.find(normalizedQuery) != std::string::npos) return 0;
+                    if (normalizedSummary.find(normalizedQuery) != std::string::npos) return 1;
+                    return -1;
                 };
 
                 for (const auto& entry : Registry::ListAvailableBlocks("")) {
-                    if (matches(entry.title, entry.summary)) {
-                        filteredBlocks.push_back({entry.type, entry.title, entry.summary});
+                    const int priority = matchPriority(entry.title, entry.summary);
+                    if (priority >= 0) {
+                        filteredBlocks.push_back({entry.type, entry.title, entry.summary, priority == 0});
                     }
                 }
+
+                std::stable_sort(filteredBlocks.begin(), filteredBlocks.end(), [](const BlockItem& lhs, const BlockItem& rhs) {
+                    return lhs.titleMatch && !rhs.titleMatch;
+                });
 
                 const int filteredCount = static_cast<int>(filteredBlocks.size());
                 if (blockPicker.selectedIndex >= filteredCount) {
