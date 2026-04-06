@@ -2469,7 +2469,21 @@ Result DefaultCompositor::renderFlowgraph() {
                             continue;
                         }
 
-                        const auto availableRegion = ImGui::GetContentRegionAvail();
+                        ImVec2 availableRegion = ImGui::GetContentRegionAvail();
+                        const bool shouldPreserveDefaultAspectRatio = surfaceMeta.attachedWidth == SurfaceMeta{}.attachedWidth &&
+                                                                      surfaceMeta.attachedHeight == SurfaceMeta{}.attachedHeight &&
+                                                                      surfaceMeta.attachedWidth > 0;
+
+                        if (shouldPreserveDefaultAspectRatio) {
+                            const F32 aspectHeight = availableRegion.x * static_cast<F32>(surfaceMeta.attachedHeight) /
+                                                     static_cast<F32>(surfaceMeta.attachedWidth);
+
+                            if (aspectHeight > 0.0f && aspectHeight < availableRegion.y) {
+                                nodeSizes[nodeId].y = ImMax(0.0f, nodeSizes[nodeId].y - availableRegion.y + aspectHeight);
+                                availableRegion.y = aspectHeight;
+                            }
+                        }
+
                         if (helperCheckSurfaceResize(surface,
                                                      manifest,
                                                      availableRegion,
