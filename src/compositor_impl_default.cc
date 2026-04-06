@@ -2584,7 +2584,7 @@ Result DefaultCompositor::renderFlowgraph() {
         // Block picker render.
 
         if (blockPicker.active && blockPicker.flowgraphId == flowgraphId) {
-            const ImVec2 pickerSize(280.0f * scalingFactor, 320.0f * scalingFactor);
+            const ImVec2 pickerSize(300.0f * scalingFactor, 400.0f * scalingFactor);
             const ImVec2 screenPos = blockPicker.screenPosition;
 
             ImGui::SetNextWindowPos(screenPos, ImGuiCond_Always);
@@ -2755,9 +2755,14 @@ Result DefaultCompositor::renderFlowgraph() {
                     const auto& item = filteredBlocks[i];
                     const bool isSelected = (i == blockPicker.selectedIndex);
 
+                    const float iconFontSize = ImGui::GetFontSize() * 0.95f;
+                    const char* icon = ICON_FA_CUBE;
+                    const float iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, icon).x;
+                    const float iconGap = 8.0f * scalingFactor;
+                    const float textOffsetX = iconWidth + iconGap;
                     const float titleHeight = ImGui::GetTextLineHeight();
                     const float summaryFontSize = ImGui::GetFontSize() * 0.85f;
-                    const float wrapWidth = ImGui::GetContentRegionAvail().x - padding * 2;
+                    const float wrapWidth = ImGui::GetContentRegionAvail().x - padding * 2 - textOffsetX;
                     const float summaryHeight = ImGui::GetFont()->CalcTextSizeA(summaryFontSize, FLT_MAX, wrapWidth, item.summary.c_str()).y;
                     const float rowHeight = titleHeight + summaryHeight + padding * 2 + 2.0f * scalingFactor;
 
@@ -2791,18 +2796,26 @@ Result DefaultCompositor::renderFlowgraph() {
                     }
 
                     const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(isSelected ? ColorMap.at("header_hovered") : (hovered ? ColorMap.at("cell_background") : ImVec4(0, 0, 0, 0)));
+                    const ImU32 iconColor = ImGui::ColorConvertFloat4ToU32(isSelected
+                                                                               ? ColorMap.at("text_primary")
+                                                                               : ColorMap.at("text_secondary"));
                     drawList->AddRectFilled(cellMin, cellMax, bgColor, rounding);
+
+                    const ImVec2 iconPos(cellMin.x + padding,
+                                         cellMin.y + (rowHeight - iconFontSize) * 0.5f);
+                    drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos, iconColor, icon);
 
                     // Title.
 
-                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding, cellMin.y + padding));
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding + textOffsetX, cellMin.y + padding));
                     ImGui::PushFont(boldFont, ImGui::GetFontSize());
                     ImGui::TextUnformatted(item.title.c_str());
                     ImGui::PopFont();
 
                     // Summary.
 
-                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding, cellMin.y + padding + titleHeight + 2.0f * scalingFactor));
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding + textOffsetX,
+                                                     cellMin.y + padding + titleHeight + 2.0f * scalingFactor));
                     ImGui::PushFont(ImGui::GetFont(), summaryFontSize);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                     ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrapWidth);
