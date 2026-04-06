@@ -5,6 +5,8 @@
 #include "jetstream/runtime_context.hh"
 
 #include <cuda_runtime.h>
+#include <unordered_map>
+#include <vector>
 
 namespace Jetstream {
 
@@ -15,6 +17,7 @@ struct NativeCudaRuntimeContext : Runtime::Context {
 
     Result createKernel(const std::string& name,
                         const std::string& source,
+                        const std::unordered_map<std::string, std::string>& pieces = {},
                         const std::vector<std::string>& headers = {});
     Result createKernelFromPtx(const std::string& name,
                                const std::string& ptx,

@@ -94,16 +94,11 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules,
         const auto result = getRuntimeContext(module)->computeSubmit();
         const auto end = std::chrono::steady_clock::now();
 
-        if (result == Result::SKIP) {
-            skippedModules.insert(name);
-            continue;
-        }
-
         if (result == Result::YIELD || result == Result::TIMEOUT) {
             return result;
         }
 
-        if (result != Result::SUCCESS && result != Result::RELOAD) {
+        if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {
             return result;
         }
 
@@ -113,6 +108,10 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules,
         const F32 elapsedMs = std::chrono::duration<F32, std::milli>(end - start).count();
         const F32 totalTime = averageComputeTime * static_cast<F32>(cycles++);
         averageComputeTime = (totalTime + elapsedMs) / static_cast<F32>(cycles);
+
+        if (result == Result::SKIP) {
+            skippedModules.insert(name);
+        }
     }
 
     return Result::SUCCESS;
