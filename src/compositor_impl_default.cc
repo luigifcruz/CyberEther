@@ -232,6 +232,82 @@ struct FieldContext {
     }
 };
 
+template<typename BrowseFn>
+static inline bool RenderFieldPathControl(const std::string& name,
+                                          const std::string& currentValue,
+                                          FieldContext& ctx,
+                                          BrowseFn&& browse) {
+    ctx.renderHeader();
+
+    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
+    std::string value = currentValue;
+    const F32 buttonWidth = ImGui::GetFrameHeight();
+    const F32 frameHeight = ImGui::GetFrameHeight();
+    const F32 connectorWidth = ImGui::GetStyle().ItemSpacing.x;
+    const F32 inputWidth = std::max(0.0f,
+                                    ImGui::GetContentRegionAvail().x - buttonWidth -
+                                    connectorWidth);
+
+    ImGui::PushID(name.c_str());
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
+
+    const ImVec2 fieldRectMin = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddRectFilled(fieldRectMin,
+                                              ImVec2(fieldRectMin.x + inputWidth + connectorWidth + buttonWidth,
+                                                     fieldRectMin.y + frameHeight),
+                                              bgColor,
+                                              ImGui::GetStyle().FrameRounding);
+
+    bool changed = false;
+
+    ImGui::SetNextItemWidth(inputWidth);
+    if (ImGui::InputTextWithHint("##path", "Select file...", &value, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        ctx.cfg[name] = value;
+        changed = true;
+    }
+    const bool inputHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort);
+
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::Dummy(ImVec2(connectorWidth, frameHeight));
+
+    ImGui::SameLine(0.0f, 0.0f);
+    const F32 iconScale = 0.7f;
+    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize,
+                                                            FLT_MAX,
+                                                            0.0f,
+                                                            ICON_FA_FOLDER_OPEN);
+
+    if (ImGui::Button("##browse", ImVec2(buttonWidth, frameHeight))) {
+        browse();
+    }
+    const ImVec2 buttonRectMin = ImGui::GetItemRectMin();
+    const ImVec2 buttonRectMax = ImGui::GetItemRectMax();
+    const F32 iconX = buttonRectMin.x + ((buttonRectMax.x - buttonRectMin.x) - iconSize.x) * 0.5f;
+    const F32 iconY = buttonRectMin.y + (frameHeight - iconFontSize) * 0.5f;
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
+                                        iconFontSize,
+                                        ImVec2(iconX, iconY),
+                                        ImGui::GetColorU32(ImGuiCol_Text),
+                                        ICON_FA_FOLDER_OPEN);
+
+    const bool buttonHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort);
+
+    if ((inputHovered || buttonHovered) && !currentValue.empty()) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted(currentValue.c_str());
+        ImGui::EndTooltip();
+    }
+
+    ImGui::PopStyleColor(4);
+    ImGui::PopID();
+
+    return changed;
+}
+
 // Format: `dropdown:key1(Label1),key2(Label2),...`
 static inline bool RenderFieldDropdown(const std::string& name,
                                        const std::vector<std::string>& parts,
@@ -883,68 +959,17 @@ static inline bool RenderFieldFilePicker(const std::string& name,
                                          const std::vector<std::string>& parts,
                                          const std::string& currentValue,
                                          FieldContext& ctx) {
-    ctx.renderHeader();
-
-    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
     std::vector<std::string> extensions;
     if (parts.size() > 1 && !parts[1].empty()) {
         extensions = Parser::SplitString(parts[1], ",");
     }
 
-    std::string filename = "Select file...";
-    if (!currentValue.empty()) {
-        const auto pos = currentValue.find_last_of("/\\");
-        filename = (pos != std::string::npos) ? currentValue.substr(pos + 1) : currentValue;
-    }
-
-    const F32 pad = ImGui::GetStyle().FramePadding.x;
-    const F32 iconScale = 0.7f;
-    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FOLDER_OPEN).x;
-
-    ImGui::PushID(name.c_str());
-    ImGui::SetNextItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-
-    if (ImGui::Button(filename.c_str(), ImVec2(-1, 0))) {
+    return RenderFieldPathControl(name, currentValue, ctx, [&] {
         std::string pickedPath;
         Platform::PickFile(pickedPath, extensions, [name, async = ctx.asyncApply](std::string path) {
             async(name, std::move(path));
         });
-    }
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const F32 frameHeight = rectMax.y - rectMin.y;
-    const F32 arrowPad = ImGui::GetStyle().FramePadding.y;
-    const F32 iconX = rectMax.x - pad * 0.4f - iconWidth;
-    const F32 iconY = rectMin.y + (frameHeight - iconFontSize) * 0.5f + arrowPad * 0.1f;
-
-    const ImVec2 bgMin(iconX - pad * 0.5f, rectMin.y);
-    const ImVec2 bgMax(rectMax.x, rectMax.y);
-    ImGui::GetWindowDrawList()->AddRectFilled(bgMin, bgMax, bgColor);
-
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FOLDER_OPEN);
-
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !currentValue.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(currentValue.c_str());
-        ImGui::EndTooltip();
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-    ImGui::PopID();
-
-    return false;
+    });
 }
 
 // Format: `filesave:ext1,ext2,...`
@@ -952,63 +977,12 @@ static inline bool RenderFieldFileSave(const std::string& name,
                                        const std::vector<std::string>&,
                                        const std::string& currentValue,
                                        FieldContext& ctx) {
-    ctx.renderHeader();
-
-    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
-    std::string filename = "Select file...";
-    if (!currentValue.empty()) {
-        const auto pos = currentValue.find_last_of("/\\");
-        filename = (pos != std::string::npos) ? currentValue.substr(pos + 1) : currentValue;
-    }
-
-    const F32 pad = ImGui::GetStyle().FramePadding.x;
-    const F32 iconScale = 0.7f;
-    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FLOPPY_DISK).x;
-
-    ImGui::PushID(name.c_str());
-    ImGui::SetNextItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-
-    if (ImGui::Button(filename.c_str(), ImVec2(-1, 0))) {
+    return RenderFieldPathControl(name, currentValue, ctx, [&] {
         std::string pickedPath;
         Platform::SaveFile(pickedPath, [name, async = ctx.asyncApply](std::string path) {
             async(name, std::move(path));
         });
-    }
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const F32 frameHeight = rectMax.y - rectMin.y;
-    const F32 arrowPad = ImGui::GetStyle().FramePadding.y;
-    const F32 iconX = rectMax.x - pad * 0.4f - iconWidth;
-    const F32 iconY = rectMin.y + (frameHeight - iconFontSize) * 0.5f + arrowPad * 0.1f;
-
-    const ImVec2 bgMin(iconX - pad * 0.5f, rectMin.y);
-    const ImVec2 bgMax(rectMax.x, rectMax.y);
-    ImGui::GetWindowDrawList()->AddRectFilled(bgMin, bgMax, bgColor);
-
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FLOPPY_DISK);
-
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !currentValue.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(currentValue.c_str());
-        ImGui::EndTooltip();
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-    ImGui::PopID();
-
-    return false;
+    });
 }
 
 using FieldRenderer = bool(*)(const std::string&,
