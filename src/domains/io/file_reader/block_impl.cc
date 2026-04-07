@@ -79,6 +79,17 @@ Result FileReaderImpl::define() {
             return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", progress * 100.0f), progress};
         }));
 
+    JST_CHECK(defineInterfaceMetric("currentBandwidth",
+                                    "Bandwidth",
+                                    "Smoothed recent file read rate.",
+                                    "label",
+        [this]() -> std::any {
+            if (!moduleImpl) {
+                return std::string("N/A");
+            }
+            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getCurrentBandwidth());
+        }));
+
     return Result::SUCCESS;
 }
 

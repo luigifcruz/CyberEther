@@ -82,6 +82,17 @@ Result FileWriterImpl::define() {
             return FormatBytes(moduleImpl->getBytesWritten());
         }));
 
+    JST_CHECK(defineInterfaceMetric("currentBandwidth",
+                                    "Bandwidth",
+                                    "Smoothed recent file write rate.",
+                                    "label",
+        [this]() -> std::any {
+            if (!moduleImpl) {
+                return std::string("N/A");
+            }
+            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getCurrentBandwidth());
+        }));
+
     return Result::SUCCESS;
 }
 

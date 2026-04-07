@@ -48,8 +48,13 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     const U64 actualBytesToRead = std::min(bytesToRead, remainingBytes);
 
     dataFile.read(reinterpret_cast<char*>(buffer.data()), actualBytesToRead);
-    currentOffset += dataFile.gcount();
+    const U64 actualBytesRead = static_cast<U64>(dataFile.gcount());
+    currentOffset += actualBytesRead;
     currentPosition.publish(currentOffset);
+
+    if (actualBytesRead > 0) {
+        updateBandwidth(actualBytesRead);
+    }
 
     return Result::SUCCESS;
 }
