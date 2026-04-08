@@ -1,10 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/io/file_writer/module.hh"
+
+#include "module_impl.hh"
 
 using namespace Jetstream;
 
@@ -308,6 +312,64 @@ TEST_CASE("FileWriter Module - Multiple runs overwrite with latest buffer",
             REQUIRE(values[0] == 40);
             REQUIRE(values[1] == 50);
             REQUIRE(values[2] == 60);
+
+            cleanupTestFile(testPath);
+        }
+    }
+}
+
+TEST_CASE("FileWriter Module - Current bandwidth updates after a write",
+          "[modules][file_writer][state]") {
+    auto implementations = Registry::ListAvailableModules("file_writer");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            const auto testPath = getTestFilePath("bandwidth");
+            cleanupTestFile(testPath);
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("file_writer",
+                                          impl.device,
+                                          impl.runtime,
+                                          impl.provider,
+                                          module) == Result::SUCCESS);
+
+            TypedTensor<U8> cpuInput(DeviceType::CPU, {4096});
+            for (U64 i = 0; i < cpuInput.shape(0); ++i) {
+                cpuInput.at(i) = static_cast<U8>(i & 0xFF);
+            }
+
+            Modules::FileWriter config;
+            config.filepath = testPath.string();
+            config.overwrite = true;
+            config.recording = true;
+
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            if (impl.device == DeviceType::CPU) {
+                inputs["buffer"].tensor = cpuInput;
+            } else {
+                inputs["buffer"].tensor = Tensor(impl.device, cpuInput);
+            }
+
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("test", impl.device, impl.runtime);
+            REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+            std::unordered_set<std::string> skippedModules;
+            REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+
+            auto* moduleImpl = module->getImpl<Modules::FileWriterImpl>();
+            REQUIRE(moduleImpl != nullptr);
+            REQUIRE(moduleImpl->getCurrentBandwidth() > 0.0f);
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
 
             cleanupTestFile(testPath);
         }

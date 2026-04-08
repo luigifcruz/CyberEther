@@ -46,6 +46,9 @@ Result FileReaderImpl::create() {
     outputs()["signal"].produced(name(), "signal", buffer);
     fileSize.publish(0);
     currentPosition.publish(0);
+    currentBandwidth.publish(0.0f);
+    bytesSinceLastMeasurement = 0;
+    lastMeasurementTime = std::chrono::steady_clock::now();
 
     if (filepath.empty()) {
         JST_WARN("[MODULE_FILE_READER] File path is empty.");
@@ -83,6 +86,9 @@ Result FileReaderImpl::destroy() {
         dataFile.close();
     }
 
+    currentBandwidth.publish(0.0f);
+    bytesSinceLastMeasurement = 0;
+
     return Result::SUCCESS;
 }
 
@@ -107,6 +113,33 @@ U64 FileReaderImpl::getCurrentPosition() const {
 
 U64 FileReaderImpl::getFileSize() const {
     return fileSize.get();
+}
+
+F32 FileReaderImpl::getCurrentBandwidth() const {
+    return currentBandwidth.get();
+}
+
+void FileReaderImpl::updateBandwidth(const U64 deltaBytes) {
+    constexpr double kBandwidthMeasurementPeriodSeconds = 0.10;
+    constexpr double kBandwidthEmaAlpha = 0.3;
+
+    bytesSinceLastMeasurement += deltaBytes;
+
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsedSeconds = std::chrono::duration<double>(now - lastMeasurementTime).count();
+    if (elapsedSeconds < kBandwidthMeasurementPeriodSeconds) {
+        return;
+    }
+
+    const double instantBandwidth = static_cast<double>(bytesSinceLastMeasurement) /
+                                    static_cast<double>(JST_MB) /
+                                    elapsedSeconds;
+    const double smoothedBandwidth = kBandwidthEmaAlpha * instantBandwidth +
+                                     (1.0 - kBandwidthEmaAlpha) * currentBandwidth.get();
+    currentBandwidth.publish(static_cast<F32>(smoothedBandwidth));
+
+    bytesSinceLastMeasurement = 0;
+    lastMeasurementTime = now;
 }
 
 }  // namespace Jetstream::Modules
