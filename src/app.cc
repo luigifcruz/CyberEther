@@ -99,7 +99,10 @@ enum class CommandType {
     Benchmark,
 };
 
-int Jetstream::RunApp(int argc, char* argv[], PluginInitFn pluginInit) {
+int Jetstream::RunApp(int argc,
+                      char* argv[],
+                      Jetstream::PluginCreateFn pluginCreate,
+                      Jetstream::PluginDestroyFn pluginDestroy) {
     CommandType command = CommandType::Run;
 
     Instance::Config config = {
@@ -313,8 +316,8 @@ int Jetstream::RunApp(int argc, char* argv[], PluginInitFn pluginInit) {
 
     JST_CHECK_THROW(instance->create(config));
 
-    if (pluginInit) {
-        pluginInit(instance.get());
+    if (pluginCreate) {
+        pluginCreate(instance.get());
     }
 
     if (!flowgraphPath.empty()) {
@@ -390,6 +393,10 @@ int Jetstream::RunApp(int argc, char* argv[], PluginInitFn pluginInit) {
         graphicalThread.join();
     }
 #endif
+
+    if (pluginDestroy) {
+        pluginDestroy(instance.get());
+    }
 
     JST_CHECK_THROW(instance->destroy());
 

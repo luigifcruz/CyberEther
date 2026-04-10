@@ -7,9 +7,13 @@ namespace Jetstream {
 
 class Instance;
 
-using PluginInitFn = void (*)(Instance* instance);
+using PluginCreateFn = void (*)(Instance* instance);
+using PluginDestroyFn = void (*)(Instance* instance);
 
-JETSTREAM_API int RunApp(int argc, char* argv[], PluginInitFn pluginInit = nullptr);
+JETSTREAM_API int RunApp(int argc,
+                         char* argv[],
+                         PluginCreateFn pluginCreate = nullptr,
+                         PluginDestroyFn pluginDestroy = nullptr);
 
 }  // namespace Jetstream
 
