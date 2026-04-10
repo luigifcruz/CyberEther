@@ -8,6 +8,7 @@ subdir('platform')
 subdir('superluminal')
 
 src_lst += files([
+    'app.cc',
     'flowgraph.cc',
     'parser.cc',
     'instance.cc',
