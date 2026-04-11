@@ -15,19 +15,19 @@
 #include <emscripten/wasmfs.h>
 #endif
 
-using namespace Jetstream;
+namespace Jetstream {
 
 namespace {
 
 std::string RemoteCodecOptionsString() {
     std::string options;
 
-    for (const auto codec : Jetstream::RemoteCodecTypes) {
+    for (const auto codec : RemoteCodecTypes) {
         if (!options.empty()) {
             options += ", ";
         }
 
-        options += Jetstream::GetRemoteCodecName(codec);
+        options += GetRemoteCodecName(codec);
     }
 
     return options;
@@ -36,12 +36,12 @@ std::string RemoteCodecOptionsString() {
 std::string RemoteEncoderOptionsString() {
     std::string options;
 
-    for (const auto encoder : Jetstream::RemoteEncoderTypes) {
+    for (const auto encoder : RemoteEncoderTypes) {
         if (!options.empty()) {
             options += ", ";
         }
 
-        options += Jetstream::GetRemoteEncoderName(encoder);
+        options += GetRemoteEncoderName(encoder);
     }
 
     return options;
@@ -87,10 +87,10 @@ void printUsage(const char* program) {
     jst::fmt::print("  --auto-join                  Auto-join sessions\n");
     jst::fmt::print("  --codec <codec>              Codec: {} (default: {})\n",
                     codecOptions,
-                    Jetstream::GetRemoteCodecName(Instance::Remote::CodecType::H264));
+                    GetRemoteCodecName(Instance::Remote::CodecType::H264));
     jst::fmt::print("  --encoder <type>             Encoder: {} (default: {})\n",
                     encoderOptions,
-                    Jetstream::GetRemoteEncoderName(Instance::Remote::EncoderType::Auto));
+                    GetRemoteEncoderName(Instance::Remote::EncoderType::Auto));
 }
 
 enum class CommandType {
@@ -99,10 +99,10 @@ enum class CommandType {
     Benchmark,
 };
 
-int Jetstream::RunApp(int argc,
-                      char* argv[],
-                      Jetstream::PluginCreateFn pluginCreate,
-                      Jetstream::PluginDestroyFn pluginDestroy) {
+Result RunApp(int argc,
+              char* argv[],
+              PluginCreateFn pluginCreate,
+              PluginDestroyFn pluginDestroy) {
     CommandType command = CommandType::Run;
 
     Instance::Config config = {
@@ -139,12 +139,12 @@ int Jetstream::RunApp(int argc,
 
         if (arg == "-h" || arg == "--help") {
             printUsage(argv[0]);
-            return 0;
+            return Result::SUCCESS;
         }
 
         if (arg == "-v" || arg == "--version") {
             jst::fmt::print("CyberEther v{}-{}\n", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
-            return 0;
+            return Result::SUCCESS;
         }
 
         // Handle Graphics Options
@@ -203,7 +203,7 @@ int Jetstream::RunApp(int argc,
                         jst::fmt::print(stderr,
                                         "Missing value for --format. Expected one of: markdown, json, csv.\n\n");
                         printUsage(argv[0]);
-                        return 1;
+                        return Result::ERROR;
                     }
 
                     benchmarkFormat = argv[++i];
@@ -212,7 +212,7 @@ int Jetstream::RunApp(int argc,
                                         "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
                                         benchmarkFormat);
                         printUsage(argv[0]);
-                        return 1;
+                        return Result::ERROR;
                     }
                     continue;
                 }
@@ -230,21 +230,21 @@ int Jetstream::RunApp(int argc,
                     if (i + 1 < argc) {
                         const std::string codec = argv[++i];
                         try {
-                            remoteConfig.codec = Jetstream::StringToRemoteCodec(codec);
+                            remoteConfig.codec = StringToRemoteCodec(codec);
                         } catch (const Result&) {
                             jst::fmt::print(stderr,
                                             "Invalid value for --codec: '{}'. Expected one of: {}.\n\n",
                                             codec,
                                             RemoteCodecOptionsString());
                             printUsage(argv[0]);
-                            return 1;
+                            return Result::ERROR;
                         }
                     } else {
                         jst::fmt::print(stderr,
                                         "Missing value for --codec. Expected one of: {}.\n\n",
                                         RemoteCodecOptionsString());
                         printUsage(argv[0]);
-                        return 1;
+                        return Result::ERROR;
                     }
                     continue;
                 }
@@ -253,21 +253,21 @@ int Jetstream::RunApp(int argc,
                     if (i + 1 < argc) {
                         const std::string enc = argv[++i];
                         try {
-                            remoteConfig.encoder = Jetstream::StringToRemoteEncoder(enc);
+                            remoteConfig.encoder = StringToRemoteEncoder(enc);
                         } catch (const Result&) {
                             jst::fmt::print(stderr,
                                             "Invalid value for --encoder: '{}'. Expected one of: {}.\n\n",
                                             enc,
                                             RemoteEncoderOptionsString());
                             printUsage(argv[0]);
-                            return 1;
+                            return Result::ERROR;
                         }
                     } else {
                         jst::fmt::print(stderr,
                                         "Missing value for --encoder. Expected one of: {}.\n\n",
                                         RemoteEncoderOptionsString());
                         printUsage(argv[0]);
-                        return 1;
+                        return Result::ERROR;
                     }
                     continue;
                 }
@@ -285,13 +285,13 @@ int Jetstream::RunApp(int argc,
         if (arg[0] == '-') {
             jst::fmt::print(stderr, "Unknown option: '{}'.\n\n", arg);
             printUsage(argv[0]);
-            return 1;
+            return Result::ERROR;
         }
 
         if (command == CommandType::Benchmark) {
             jst::fmt::print(stderr, "The benchmark command does not accept a flowgraph path: '{}'.\n\n", arg);
             printUsage(argv[0]);
-            return 1;
+            return Result::ERROR;
         }
 
         if (arg[0] != '-') {
@@ -301,7 +301,7 @@ int Jetstream::RunApp(int argc,
 
     if (command == CommandType::Benchmark) {
         Benchmark::Run(benchmarkFormat);
-        return 0;
+        return Result::SUCCESS;
     }
 
 #ifdef JST_OS_BROWSER
@@ -400,7 +400,9 @@ int Jetstream::RunApp(int argc,
 
     JST_CHECK_THROW(instance->destroy());
 
-    Jetstream::Backend::DestroyAll();
+    Backend::DestroyAll();
 
-    return 0;
+    return Result::SUCCESS;
 }
+
+}  // namespace Jetstream
