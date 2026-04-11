@@ -334,13 +334,24 @@ Result RunApp(int argc,
 
     auto computeThread = std::thread([&]{
         while (instance->computing()) {
-            JST_CHECK_THROW(instance->compute());
+            const Result res = instance->compute();
+            if (res != Result::SUCCESS && res != Result::RELOAD) {
+                instance->stop();
+                break;
+            }
         }
     });
 
     auto graphicalThreadLoop = [](void* arg) {
         Instance* instance = reinterpret_cast<Instance*>(arg);
-        JST_CHECK_THROW(instance->present());
+        const Result res = instance->present();
+        if (res != Result::SUCCESS && res != Result::RELOAD) {
+            instance->stop();
+
+#ifdef JST_OS_BROWSER
+            emscripten_cancel_main_loop();
+#endif
+        }
     };
 
 #ifdef JST_OS_BROWSER
@@ -380,7 +391,9 @@ Result RunApp(int argc,
         JST_CHECK(instance->remote()->destroy());
     }
 
-    JST_CHECK(instance->stop());
+    if (instance->computing() || instance->presenting()) {
+        JST_CHECK(instance->stop());
+    }
 
     if (computeThread.joinable()) {
         computeThread.join();
