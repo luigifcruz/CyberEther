@@ -314,7 +314,7 @@ Result RunApp(int argc,
 
     auto instance = std::make_shared<Instance>();
 
-    JST_CHECK_THROW(instance->create(config));
+    JST_CHECK(instance->create(config));
 
     if (pluginCreate) {
         pluginCreate(instance.get());
@@ -322,14 +322,14 @@ Result RunApp(int argc,
 
     if (!flowgraphPath.empty()) {
         std::shared_ptr<Flowgraph> flowgraph;
-        JST_CHECK_THROW(instance->flowgraphCreate("main", {}, flowgraph));
-        JST_CHECK_THROW(flowgraph->importFromFile(flowgraphPath));
+        JST_CHECK(instance->flowgraphCreate("main", {}, flowgraph));
+        JST_CHECK(flowgraph->importFromFile(flowgraphPath));
     }
 
-    JST_CHECK_THROW(instance->start());
+    JST_CHECK(instance->start());
 
     if (command == CommandType::Remote) {
-        JST_CHECK_THROW(instance->remote()->create(remoteConfig));
+        JST_CHECK(instance->remote()->create(remoteConfig));
     }
 
     auto computeThread = std::thread([&]{
@@ -377,10 +377,10 @@ Result RunApp(int argc,
 #endif
 
     if (command == CommandType::Remote && instance->remote()->started()) {
-        JST_CHECK_THROW(instance->remote()->destroy());
+        JST_CHECK(instance->remote()->destroy());
     }
 
-    JST_CHECK_THROW(instance->stop());
+    JST_CHECK(instance->stop());
 
     if (computeThread.joinable()) {
         computeThread.join();
@@ -398,7 +398,7 @@ Result RunApp(int argc,
         pluginDestroy(instance.get());
     }
 
-    JST_CHECK_THROW(instance->destroy());
+    JST_CHECK(instance->destroy());
 
     Backend::DestroyAll();
 
