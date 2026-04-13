@@ -9,12 +9,6 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
 
-#ifdef JST_OS_BROWSER
-#include <emscripten.h>
-#include <emscripten/html5.h>
-#include <emscripten/wasmfs.h>
-#endif
-
 namespace Jetstream {
 
 namespace {
@@ -48,18 +42,6 @@ std::string RemoteEncoderOptionsString() {
 }
 
 }  // namespace
-
-#ifdef JST_OS_BROWSER
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-void cyberether_shutdown() {
-    JST_INFO("Shutting down...");
-    emscripten_cancel_main_loop();
-    emscripten_runtime_keepalive_pop();
-    emscripten_force_exit(0);
-}
-}
-#endif
 
 void printUsage(const char* program) {
     const std::string codecOptions = RemoteCodecOptionsString();
@@ -99,10 +81,9 @@ enum class CommandType {
     Benchmark,
 };
 
-Result RunApp(int argc,
-              char* argv[],
-              PluginCreateFn pluginCreate,
-              PluginDestroyFn pluginDestroy) {
+int RunAppNative(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
+    JST_INFO("[CYBERETHER] Running native app.");
+
     CommandType command = CommandType::Run;
 
     Instance::Config config = {
@@ -112,6 +93,16 @@ Result RunApp(int argc,
 
     std::string flowgraphPath;
     std::string benchmarkFormat = "markdown";
+
+    std::shared_ptr<Instance> instance;
+    std::shared_ptr<Flowgraph> flowgraph;
+    std::unique_ptr<Instance::Remote::Supervisor> supervisor;
+
+    std::atomic<int> code{0};
+
+    //
+    // Parse Arguments
+    //
 
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
@@ -139,12 +130,12 @@ Result RunApp(int argc,
 
         if (arg == "-h" || arg == "--help") {
             printUsage(argv[0]);
-            return Result::SUCCESS;
+            return 0;
         }
 
         if (arg == "-v" || arg == "--version") {
             jst::fmt::print("CyberEther v{}-{}\n", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
-            return Result::SUCCESS;
+            return 0;
         }
 
         // Handle Graphics Options
@@ -203,7 +194,7 @@ Result RunApp(int argc,
                         jst::fmt::print(stderr,
                                         "Missing value for --format. Expected one of: markdown, json, csv.\n\n");
                         printUsage(argv[0]);
-                        return Result::ERROR;
+                        return -1;
                     }
 
                     benchmarkFormat = argv[++i];
@@ -212,7 +203,7 @@ Result RunApp(int argc,
                                         "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
                                         benchmarkFormat);
                         printUsage(argv[0]);
-                        return Result::ERROR;
+                        return -1;
                     }
                     continue;
                 }
@@ -237,14 +228,14 @@ Result RunApp(int argc,
                                             codec,
                                             RemoteCodecOptionsString());
                             printUsage(argv[0]);
-                            return Result::ERROR;
+                            return -1;
                         }
                     } else {
                         jst::fmt::print(stderr,
                                         "Missing value for --codec. Expected one of: {}.\n\n",
                                         RemoteCodecOptionsString());
                         printUsage(argv[0]);
-                        return Result::ERROR;
+                        return -1;
                     }
                     continue;
                 }
@@ -260,14 +251,14 @@ Result RunApp(int argc,
                                             enc,
                                             RemoteEncoderOptionsString());
                             printUsage(argv[0]);
-                            return Result::ERROR;
+                            return -1;
                         }
                     } else {
                         jst::fmt::print(stderr,
                                         "Missing value for --encoder. Expected one of: {}.\n\n",
                                         RemoteEncoderOptionsString());
                         printUsage(argv[0]);
-                        return Result::ERROR;
+                        return -1;
                     }
                     continue;
                 }
@@ -285,13 +276,13 @@ Result RunApp(int argc,
         if (arg[0] == '-') {
             jst::fmt::print(stderr, "Unknown option: '{}'.\n\n", arg);
             printUsage(argv[0]);
-            return Result::ERROR;
+            return -1;
         }
 
         if (command == CommandType::Benchmark) {
             jst::fmt::print(stderr, "The benchmark command does not accept a flowgraph path: '{}'.\n\n", arg);
             printUsage(argv[0]);
-            return Result::ERROR;
+            return -1;
         }
 
         if (arg[0] != '-') {
@@ -299,123 +290,165 @@ Result RunApp(int argc,
         }
     }
 
+    //
+    // Benchmark Logic
+    //
+
     if (command == CommandType::Benchmark) {
         Benchmark::Run(benchmarkFormat);
-        return Result::SUCCESS;
+        return 0;
     }
 
-#ifdef JST_OS_BROWSER
-    std::thread([] {
-        backend_t opfs = wasmfs_create_opfs_backend();
-        int ret = wasmfs_create_directory("/storage", 0777, opfs);
-        JST_DEBUG("OPFS mount on /storage: {}", ret == 0 ? "OK" : "FAILED");
-    }).detach();
-#endif
+    //
+    // Interface Logic
+    //
 
-    auto instance = std::make_shared<Instance>();
+    if (command == CommandType::Run || command == CommandType::Remote) {
+        instance = std::make_shared<Instance>();
 
-    JST_CHECK(instance->create(config));
+        if (instance->create(config) != Result::SUCCESS) {
+            return -1;
+        }
 
-    if (pluginCreate) {
-        pluginCreate(instance.get());
-    }
+        if (pluginCreate) {
+            pluginCreate(instance.get());
+        }
 
-    if (!flowgraphPath.empty()) {
-        std::shared_ptr<Flowgraph> flowgraph;
-        JST_CHECK(instance->flowgraphCreate("main", {}, flowgraph));
-        JST_CHECK(flowgraph->importFromFile(flowgraphPath));
-    }
+        if (!flowgraphPath.empty()) {
+            if (instance->flowgraphCreate("main", {}, flowgraph) != Result::SUCCESS) {
+                if (pluginDestroy) {
+                    pluginDestroy(instance.get());
+                }
+                (void)instance->destroy();
+                return -1;
+            }
+            if (flowgraph->importFromFile(flowgraphPath) != Result::SUCCESS) {
+                if (pluginDestroy) {
+                    pluginDestroy(instance.get());
+                }
+                (void)instance->destroy();
+                return -1;
+            }
+        }
 
-    JST_CHECK(instance->start());
+        if (instance->start() != Result::SUCCESS) {
+            if (pluginDestroy) {
+                pluginDestroy(instance.get());
+            }
+            (void)instance->destroy();
+            return -1;
+        }
 
-    if (command == CommandType::Remote) {
-        JST_CHECK(instance->remote()->create(remoteConfig));
-    }
+        if (command == CommandType::Remote) {
+            if (instance->remote()->create(remoteConfig) != Result::SUCCESS) {
+                (void)instance->stop();
+                if (pluginDestroy) {
+                    pluginDestroy(instance.get());
+                }
+                (void)instance->destroy();
+                return -1;
+            }
+        }
 
-    auto computeThread = std::thread([&]{
-        while (instance->computing()) {
-            const Result res = instance->compute();
-            if (res != Result::SUCCESS && res != Result::RELOAD) {
-                instance->stop();
+        auto computeThread = std::thread([&]{
+            while (instance->computing()) {
+                Result res = Result::SUCCESS;
+
+                try {
+                    res = instance->compute();
+                } catch (const Result& status) {
+                    res = status;
+                    JST_ERROR("[CYBERETHER] Compute loop exception: {}", status);
+                } catch (const std::exception& e) {
+                    res = Result::ERROR;
+                    JST_ERROR("[CYBERETHER] Compute loop exception: {}", e.what());
+                } catch (...) {
+                    res = Result::ERROR;
+                    JST_ERROR("[CYBERETHER] Unknown compute loop exception.");
+                }
+
+                if (res != Result::SUCCESS && res != Result::RELOAD) {
+                    code.store(-1);
+                    (void)instance->stop();
+                    break;
+                }
+            }
+        });
+
+        auto graphicalThread = std::thread([&]{
+            while (instance->presenting()) {
+                Result res = Result::SUCCESS;
+
+                try {
+                    res = instance->present();
+                } catch (const Result& status) {
+                    res = status;
+                    JST_ERROR("[CYBERETHER] Present loop exception: {}", status);
+                } catch (const std::exception& e) {
+                    res = Result::ERROR;
+                    JST_ERROR("[CYBERETHER] Present loop exception: {}", e.what());
+                } catch (...) {
+                    res = Result::ERROR;
+                    JST_ERROR("[CYBERETHER] Unknown present loop exception.");
+                }
+
+                if (res != Result::SUCCESS && res != Result::RELOAD) {
+                    code.store(-1);
+                    (void)instance->stop();
+                    break;
+                }
+            }
+        });
+
+        if (command == CommandType::Remote && instance->remote()) {
+            supervisor = std::make_unique<Instance::Remote::Supervisor>(
+                instance->remote().get(),
+                remoteConfig.autoJoinSessions
+            );
+            supervisor->print();
+            supervisor->start();
+        }
+
+        while (instance->polling()) {
+            if (instance->poll() != Result::SUCCESS) {
+                code.store(-1);
                 break;
             }
         }
-    });
 
-    auto graphicalThreadLoop = [](void* arg) {
-        Instance* instance = reinterpret_cast<Instance*>(arg);
-        const Result res = instance->present();
-        if (res != Result::SUCCESS && res != Result::RELOAD) {
-            instance->stop();
-
-#ifdef JST_OS_BROWSER
-            emscripten_cancel_main_loop();
-#endif
+        if (supervisor) {
+            supervisor->stop();
         }
-    };
 
-#ifdef JST_OS_BROWSER
-    emscripten_set_main_loop_arg(graphicalThreadLoop, instance.get(), 0, 1);
-#else
-    auto graphicalThread = std::thread([&]{
-        while (instance->presenting()) {
-            graphicalThreadLoop(instance.get());
+        if (command == CommandType::Remote && instance->remote()->started()) {
+            (void)instance->remote()->destroy();
         }
-    });
-#endif
 
-#ifdef JST_OS_BROWSER
-    emscripten_runtime_keepalive_push();
-#else
-    std::unique_ptr<Instance::Remote::Supervisor> supervisor;
+        if (instance->computing() || instance->presenting()) {
+            (void)instance->stop();
+        }
 
-    if (command == CommandType::Remote && instance->remote()) {
-        supervisor = std::make_unique<Instance::Remote::Supervisor>(
-            instance->remote().get(),
-            remoteConfig.autoJoinSessions
-        );
-        supervisor->print();
-        supervisor->start();
+        if (computeThread.joinable()) {
+            computeThread.join();
+        }
+
+        if (graphicalThread.joinable()) {
+            graphicalThread.join();
+        }
+
+        if (pluginDestroy) {
+            pluginDestroy(instance.get());
+        }
+
+        (void)instance->destroy();
+
+        Backend::DestroyAll();
+
+        return code.load();
     }
 
-    while (instance->polling()) {
-        instance->poll();
-    }
-
-    if (supervisor) {
-        supervisor->stop();
-    }
-#endif
-
-    if (command == CommandType::Remote && instance->remote()->started()) {
-        JST_CHECK(instance->remote()->destroy());
-    }
-
-    if (instance->computing() || instance->presenting()) {
-        JST_CHECK(instance->stop());
-    }
-
-    if (computeThread.joinable()) {
-        computeThread.join();
-    }
-
-#ifdef JST_OS_BROWSER
-    emscripten_cancel_main_loop();
-#else
-    if (graphicalThread.joinable()) {
-        graphicalThread.join();
-    }
-#endif
-
-    if (pluginDestroy) {
-        pluginDestroy(instance.get());
-    }
-
-    JST_CHECK(instance->destroy());
-
-    Backend::DestroyAll();
-
-    return Result::SUCCESS;
+    JST_ERROR("[CYBERETHER] Internal error occurred.");
+    return -1;
 }
 
 }  // namespace Jetstream
