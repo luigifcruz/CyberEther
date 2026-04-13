@@ -10,6 +10,7 @@ struct Soapy : public Block::Config {
     std::string deviceString = "";
     std::string streamString = "";
     F32 frequency = 96.9e6;
+    F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
     U64 numberOfBatches = 8;
@@ -17,7 +18,7 @@ struct Soapy : public Block::Config {
     U64 bufferMultiplier = 4;
 
     JST_BLOCK_TYPE(soapy);
-    JST_BLOCK_PARAMS(hintString, deviceString, streamString, frequency,
+    JST_BLOCK_PARAMS(hintString, deviceString, streamString, frequency, frequencyStep,
                      sampleRate, automaticGain, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(

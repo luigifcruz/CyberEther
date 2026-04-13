@@ -87,7 +87,7 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    "float:MHz:3"));
+                                    "float:MHz:3:frequencyStep"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
