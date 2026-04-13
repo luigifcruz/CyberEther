@@ -55,8 +55,8 @@ float bicubicInterpolate(float x, float y) {
 }
 
 void main() {
-    float x = inTexcoord.x * uniforms.width;
-    float y = inTexcoord.y * uniforms.height;
+    float x = inTexcoord.x;
+    float y = inTexcoord.y;
 
     float color = bicubicInterpolate(x, y);
 

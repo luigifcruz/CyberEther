@@ -6,9 +6,13 @@
 #include <jetstream/surface.hh>
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/base/surface.hh>
+#include <jetstream/render/components/axis.hh>
 #include <jetstream/render/components/shapes.hh>
 
 namespace Jetstream::Modules {
+
+constexpr F32 kConstellationPointSize = 10.0f;
+constexpr F32 kConstellationZoomSpeed = 0.15f;
 
 struct ConstellationImpl : public Module::Impl,
                            public DynamicConfig<Constellation> {
@@ -28,6 +32,7 @@ struct ConstellationImpl : public Module::Impl,
     // Rendering state.
     std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Surface> renderSurface;
+    std::shared_ptr<Render::Components::Axis> axis;
     std::shared_ptr<Render::Components::Shapes> shapes;
 
     // Update flags.
@@ -36,6 +41,8 @@ struct ConstellationImpl : public Module::Impl,
     Result createPresent();
     Result destroyPresent();
     Result present();
+    Result updateAxisState();
+    Result updatePointPositions();
 };
 
 }  // namespace Jetstream::Modules

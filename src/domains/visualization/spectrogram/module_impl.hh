@@ -10,8 +10,12 @@
 #include <jetstream/render/base/program.hh>
 #include <jetstream/render/base/vertex.hh>
 #include <jetstream/render/base/draw.hh>
+#include <jetstream/render/components/axis.hh>
 
 namespace Jetstream::Modules {
+
+constexpr F32 kSpectrogramDecayBase = 0.999f;
+constexpr F32 kSpectrogramMinTickSpacingPx = 65.0f;
 
 struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> {
  public:
@@ -38,6 +42,8 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
         int height;
         float offset;
         float zoom;
+        float paddingScaleX;
+        float paddingScaleY;
     } signalUniforms;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
@@ -57,9 +63,12 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
 
     std::shared_ptr<Render::Draw> drawVertex;
 
+    std::shared_ptr<Render::Components::Axis> axis;
+
     Result createPresent();
     Result destroyPresent();
     Result present();
+    Result updateAxisState();
 };
 
 }  // namespace Jetstream::Modules

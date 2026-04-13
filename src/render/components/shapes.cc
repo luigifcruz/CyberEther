@@ -547,6 +547,11 @@ Result Shapes::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
+Result Shapes::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
+    pimpl->program->scissorRect(rect);
+    return Result::SUCCESS;
+}
+
 Result Shapes::present() {
     // Update render buffers.
 
