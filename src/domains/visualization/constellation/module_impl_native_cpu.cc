@@ -3,6 +3,8 @@
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
 
+#include <algorithm>
+
 #include "module_impl.hh"
 
 namespace Jetstream::Modules {
@@ -48,20 +50,34 @@ Result ConstellationImplNativeCpu::computeSubmit() {
         return Result::SUCCESS;
     }
 
-    // Get position buffer from shapes component.
+    return updatePointPositions();
+}
+
+Result ConstellationImpl::updatePointPositions() {
+    if (!shapes) {
+        return Result::SUCCESS;
+    }
 
     std::span<Extent2D<F32>> positions;
     JST_CHECK(shapes->getPositions("constellation_points", positions));
 
-    // Map complex values to 2D positions.
-
+    const auto paddingScale = axis ? axis->paddingScale() : Extent2D<F32>{1.0f, 1.0f};
+    const Extent2D<F32> pointMargin = {
+        kConstellationPointSize * ((2.0f * interaction.scale) / interaction.viewSize.x),
+        kConstellationPointSize * ((2.0f * interaction.scale) / interaction.viewSize.y),
+    };
+    const Extent2D<F32> safeScale = {
+        std::max(0.0f, paddingScale.x - pointMargin.x),
+        std::max(0.0f, paddingScale.y - pointMargin.y),
+    };
     const CF32* inputData = input.data<CF32>();
 
     for (U64 i = 0; i < numberOfPoints; i++) {
-        positions[i] = {inputData[i].real(), inputData[i].imag()};
+        positions[i] = {
+            inputData[i].real() * safeScale.x * interaction.zoom,
+            inputData[i].imag() * safeScale.y * interaction.zoom,
+        };
     }
-
-    // Schedule positions for update.
 
     updatePositionsFlag = true;
 
