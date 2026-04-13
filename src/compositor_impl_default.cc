@@ -192,22 +192,130 @@ struct FieldContext {
         ImGui::GetWindowDrawList()->AddText(textPos, unitColor, unitStr.c_str());
     }
 
-    bool renderFloatValue(F32& value, const std::string& unit = "", int precision = 2) {
+    bool renderFloatValue(F32& value,
+                          const std::string& unit = "",
+                          int precision = 2,
+                          F32* step = nullptr) {
         const F32 multiplier = getUnitMultiplier(unit);
         F32 displayValue = value / multiplier;
+        F32 displayStep = (step != nullptr) ? (*step / multiplier) : 0.0f;
 
         char fmt[16];
         snprintf(fmt, sizeof(fmt), "%%.%df", precision);
 
-        ImGui::SetNextItemWidth(-1);
-
         bool changed = false;
+
+        if (step == nullptr) {
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputFloat("##float", &displayValue, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                value = displayValue * multiplier;
+                changed = true;
+            }
+            renderUnitSuffix(unit);
+
+            return changed;
+        }
+
+        const F32 availWidth = ImGui::GetContentRegionAvail().x;
+        const F32 btnHeight = ImGui::GetTextLineHeight() + 4.0f * scalingFactor;
+        const auto bgColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("card"));
+        const auto btnColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("text_secondary"));
+        const auto btnActiveColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("text_primary"));
+        const F32 rounding = ImGui::GetStyle().FrameRounding;
+        const F32 btnWidth = availWidth * 0.2f;
+        const F32 stepInputWidth = availWidth - btnWidth * 2.0f;
+
+        const auto drawCenteredLabel = [&](const char* label,
+                                           const ImVec2& min,
+                                           const ImVec2& max,
+                                           const bool hovered) {
+            const ImVec2 textSize = ImGui::CalcTextSize(label);
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2((min.x + max.x) * 0.5f - textSize.x * 0.5f,
+                       (min.y + max.y) * 0.5f - textSize.y * 0.5f),
+                hovered ? btnActiveColor : btnColor,
+                label);
+        };
+        const auto renderStepButton = [&](const char* id,
+                                          const char* label,
+                                          const F32 delta) {
+            ImGui::InvisibleButton(id, ImVec2(btnWidth, btnHeight));
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsItemDeactivated()) {
+                displayValue += delta;
+                value = displayValue * multiplier;
+                changed = true;
+            }
+
+            drawCenteredLabel(label, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+        };
+
+        const ImVec2 cellPos = ImGui::GetCursorScreenPos();
+        const F32 inputHeight = ImGui::GetFrameHeight();
+        const F32 totalHeight = inputHeight + btnHeight;
+
+        ImGui::GetWindowDrawList()->AddRectFilled(cellPos,
+                                                  ImVec2(cellPos.x + availWidth, cellPos.y + totalHeight),
+                                                  bgColor, rounding);
+
+        ImGui::SetNextItemWidth(availWidth);
         if (ImGui::InputFloat("##float", &displayValue, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
             value = displayValue * multiplier;
             changed = true;
         }
-
         renderUnitSuffix(unit);
+
+        const ImVec2 inputMax = ImGui::GetItemRectMax();
+        const ImVec2 btnRowPos(cellPos.x, inputMax.y);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+        ImGui::SetCursorScreenPos(btnRowPos);
+        renderStepButton("-##float_step_minus", "-", -displayStep);
+
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::PushID(static_cast<const void*>(step));
+        const ImGuiID stepEditId = ImGui::GetID("##step_editing");
+        const ImGuiID stepFocusId = ImGui::GetID("##step_focus");
+        ImGuiStorage* storage = ImGui::GetStateStorage();
+
+        if (!storage->GetBool(stepEditId, false)) {
+            ImGui::InvisibleButton("##step_toggle", ImVec2(stepInputWidth, btnHeight));
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsItemDeactivated()) {
+                storage->SetBool(stepEditId, true);
+                storage->SetBool(stepFocusId, true);
+            }
+
+            drawCenteredLabel("Step Size", ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+        } else {
+            ImGui::SetNextItemWidth(stepInputWidth);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, colorMap.at("text_secondary"));
+            if (storage->GetBool(stepFocusId, false)) {
+                ImGui::SetKeyboardFocusHere();
+                storage->SetBool(stepFocusId, false);
+            }
+            if (ImGui::InputFloat("##float_step", &displayStep, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                *step = displayStep * multiplier;
+                changed = true;
+            }
+            if (ImGui::IsItemDeactivated()) {
+                storage->SetBool(stepEditId, false);
+                storage->SetBool(stepFocusId, false);
+            }
+            ImGui::PopStyleColor(4);
+        }
+        ImGui::PopID();
+
+        ImGui::SameLine(0.0f, 0.0f);
+        renderStepButton("+##float_step_plus", "+", displayStep);
+
+        ImGui::PopStyleVar();
+        ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight + ImGui::GetStyle().ItemSpacing.y));
 
         return changed;
     }
@@ -376,7 +484,7 @@ static inline bool RenderFieldDropdown(const std::string& name,
     return changed;
 }
 
-// Format: `float:unit:precision`
+// Format: `float:unit:precision:stepConfig`
 static inline bool RenderFieldFloat(const std::string& name,
                                     const std::vector<std::string>& parts,
                                     const std::string& encoded,
@@ -390,12 +498,26 @@ static inline bool RenderFieldFloat(const std::string& name,
 
     const std::string unit = (parts.size() > 1) ? parts[1] : "";
     const int precision = (parts.size() > 2 && !parts[2].empty()) ? std::stoi(parts[2]) : 2;
+    const std::string stepConfig = (parts.size() > 3) ? parts[3] : "";
+
+    F32 step = 0.0f;
+    const bool hasStep = !stepConfig.empty() && stepConfig != name && ctx.cfg.contains(stepConfig) &&
+                         Parser::Deserialize(ctx.cfg, stepConfig, step) == Result::SUCCESS;
+    const F32 originalValue = value;
+    const F32 originalStep = step;
 
     ImGui::PushID(name.c_str());
 
     bool changed = false;
-    if (ctx.renderFloatValue(value, unit, precision)) {
-        ctx.cfg[name] = value;
+    if (ctx.renderFloatValue(value, unit, precision, hasStep ? &step : nullptr)) {
+        if (value != originalValue) {
+            ctx.cfg[name] = value;
+        }
+
+        if (hasStep && step != originalStep) {
+            ctx.cfg[stepConfig] = step;
+        }
+
         changed = true;
     }
 
