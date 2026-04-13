@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <deque>
+#include <random>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -1391,6 +1392,7 @@ class DefaultCompositor : public Compositor::Impl {
     Result renderInfoHud();
     Result renderFullscreenHud();
     Result renderWelcomeHud();
+    Result renderEmptyFlowgraphHint();
     Result renderRemoteHud();
     Result renderNotifications();
     Result renderMenubar();
@@ -1463,6 +1465,9 @@ class DefaultCompositor : public Compositor::Impl {
     std::unordered_map<std::string, std::pair<bool, ImGuiID>> stacks;
     std::unordered_map<std::string, std::shared_ptr<Flowgraph>> flowgraphs;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Block>>> blocksCache;
+    std::unordered_set<std::string> dismissedEmptyFlowgraphHints;
+    std::unordered_map<std::string, int> emptyFlowgraphHintTipIndices;
+    std::mt19937 randomGenerator{std::random_device{}()};
     std::unordered_map<std::string, bool> openDocumentations;
     std::unordered_map<int, ImVec2> nodeSizes;
     std::unordered_map<std::string, ImVec2> flowgraphViewportCenters;
@@ -1684,6 +1689,7 @@ Result DefaultCompositor::present() {
     JST_CHECK(renderDocumentations());
 
     JST_CHECK(renderFlowgraph());
+    JST_CHECK(renderEmptyFlowgraphHint());
     JST_CHECK(renderGlobalModal());
 
     return Result::SUCCESS;
@@ -3557,6 +3563,175 @@ Result DefaultCompositor::renderWelcomeHud() {
     ImGui::End();
 
     ImGui::PopStyleVar(2);
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::renderEmptyFlowgraphHint() {
+    if (!focusedFlowgraph.has_value()) {
+        return Result::SUCCESS;
+    }
+
+    const std::string& flowgraphId = focusedFlowgraph.value();
+    const auto dismissHint = [&]() {
+        emptyFlowgraphHintTipIndices.erase(flowgraphId);
+        dismissedEmptyFlowgraphHints.insert(flowgraphId);
+    };
+
+    if (dismissedEmptyFlowgraphHints.contains(flowgraphId)) {
+        return Result::SUCCESS;
+    }
+
+    const auto blocksIt = blocksCache.find(flowgraphId);
+    if (blocksIt != blocksCache.end() && !blocksIt->second.empty()) {
+        dismissHint();
+        return Result::SUCCESS;
+    }
+
+    static constexpr const char* tips[] = {
+        "Drag from output to input to connect blocks.",
+        "Drag blocks to move them around.",
+        "Right-click a block to open its context menu.",
+        "Use Ctrl+C and Ctrl+V to copy and paste blocks.",
+        "Hover over ports to see their data type.",
+        "Click and drag on empty canvas to pan around.",
+    };
+    const int tipCount = sizeof(tips) / sizeof(tips[0]);
+
+    const auto [tipIt, inserted] = emptyFlowgraphHintTipIndices.try_emplace(flowgraphId, 0);
+    if (inserted) {
+        std::uniform_int_distribution<int> distribution(0, tipCount - 1);
+        tipIt->second = distribution(randomGenerator);
+    }
+
+    const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar |
+                                         ImGuiWindowFlags_NoResize |
+                                         ImGuiWindowFlags_NoCollapse |
+                                         ImGuiWindowFlags_NoDocking |
+                                         ImGuiWindowFlags_AlwaysAutoResize |
+                                         ImGuiWindowFlags_NoSavedSettings |
+                                         ImGuiWindowFlags_NoFocusOnAppearing |
+                                         ImGuiWindowFlags_NoNav;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowViewport(vp->ID);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f * scalingFactor, 20.0f * scalingFactor));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f * scalingFactor);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f * scalingFactor);
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ColorMap.at("card"));
+    ImGui::PushStyleColor(ImGuiCol_Border, ColorMap.at("border"));
+    ImGui::PushStyleColor(ImGuiCol_Button, ColorMap.at("header"));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ColorMap.at("header_hovered"));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ColorMap.at("header_active"));
+
+    bool showHint = true;
+    if (ImGui::Begin("##empty_flowgraph_hint", &showHint, windowFlags)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const float baseFontSize = ImGui::GetFontSize();
+        const auto centerNextItem = [&](float itemWidth) {
+            const float cursorX = ImGui::GetCursorPosX();
+            const float availableWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosX(cursorX + (availableWidth - itemWidth) * 0.5f);
+        };
+
+        const float iconFontSize = baseFontSize * 2.5f;
+        const char* iconText = ICON_FA_LIGHTBULB;
+        ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
+        float iconX = (ImGui::GetContentRegionAvail().x - iconSize.x) * 0.5f;
+        ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x + iconX,
+                                ImGui::GetCursorScreenPos().y);
+        drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos,
+                          ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), iconText);
+        ImGui::Dummy(ImVec2(0, iconSize.y + 12.0f * scalingFactor));
+
+        ImGui::PushFont(h2Font, ImGui::GetFontSize() * 1.2f);
+        const char* title = "Getting Started";
+        ImVec2 titleSize = ImGui::CalcTextSize(title);
+        centerNextItem(titleSize.x);
+        ImGui::TextUnformatted(title);
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_secondary"));
+        const char* subtitle = "Let's get started by adding your first block";
+        ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
+        centerNextItem(subtitleSize.x);
+        ImGui::TextUnformatted(subtitle);
+        ImGui::PopStyleColor();
+
+        ImGui::Dummy(ImVec2(0, 24.0f * scalingFactor));
+
+        struct Instruction {
+            const char* number;
+            const char* text;
+        };
+
+        Instruction instructions[] = {
+            {"1.", "Double-click anywhere on the canvas."},
+            {"2.", "Pick a block from the menu."},
+            {"3.", "Connect blocks to build your flow."},
+        };
+
+        const float instructionWidth = 320.0f * scalingFactor;
+        centerNextItem(instructionWidth);
+        ImGui::BeginGroup();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth);
+        for (const auto& inst : instructions) {
+            ImGui::BeginGroup();
+            ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("cyber_blue"));
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+            const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+            const ImVec2 textSize = ImGui::CalcTextSize(inst.text);
+            const float rowHeight = std::max(numberSize.y, textSize.y);
+            ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+            cursorPos.y += (rowHeight - numberSize.y) * 0.5f;
+            drawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
+                              ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
+            ImGui::Dummy(ImVec2(numberSize.x + 8.0f * scalingFactor, rowHeight));
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (rowHeight - textSize.y) * 0.5f + 1.0f * scalingFactor);
+            ImGui::TextUnformatted(inst.text);
+            ImGui::EndGroup();
+            ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+        }
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+
+        ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+
+        const char* closeText = "Got it!";
+        ImVec2 closeSize = ImGui::CalcTextSize(closeText);
+        float buttonWidth = closeSize.x + 32.0f * scalingFactor;
+        centerNextItem(buttonWidth);
+        if (ImGui::Button(closeText, ImVec2(buttonWidth, 36.0f * scalingFactor))) {
+            showHint = false;
+        }
+
+        const char* randomTip = tips[tipIt->second];
+
+        ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_disabled"));
+        std::string tipText = std::string("Tip: ") + randomTip;
+        ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
+        centerNextItem(tipSize.x);
+        ImGui::TextUnformatted(tipText.c_str());
+        ImGui::PopStyleColor();
+
+        ImGui::End();
+    }
+
+    if (!showHint) {
+        dismissHint();
+    }
+
+    ImGui::PopStyleColor(5);
+    ImGui::PopStyleVar(3);
 
     return Result::SUCCESS;
 }
