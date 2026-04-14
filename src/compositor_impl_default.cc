@@ -1567,6 +1567,7 @@ class DefaultCompositor : public Compositor::Impl {
     Result renderFullscreenHud();
     Result renderWelcomeHud();
     Result renderEmptyFlowgraphHint();
+    Result renderEmptyStackHint(const std::string& flowgraphId, const std::string& stackId, ImGuiID dockspaceId);
     Result renderRemoteHud();
     Result renderNotifications();
     Result renderMenubar();
@@ -3924,14 +3925,6 @@ Result DefaultCompositor::renderEmptyFlowgraphHint() {
 
         ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
 
-        const char* closeText = "Got it!";
-        ImVec2 closeSize = ImGui::CalcTextSize(closeText);
-        float buttonWidth = closeSize.x + 32.0f * scalingFactor;
-        centerNextItem(buttonWidth);
-        if (ImGui::Button(closeText, ImVec2(buttonWidth, 36.0f * scalingFactor))) {
-            showHint = false;
-        }
-
         const char* randomTip = tips[tipIt->second];
 
         ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
@@ -3951,6 +3944,167 @@ Result DefaultCompositor::renderEmptyFlowgraphHint() {
 
     ImGui::PopStyleColor(5);
     ImGui::PopStyleVar(3);
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::renderEmptyStackHint(const std::string& flowgraphId, const std::string& stackId, ImGuiID dockspaceId) {
+    const std::string stackKey = flowgraphId + ":" + stackId;
+
+    ImGuiDockNode* dockNode = ImGui::DockBuilderGetNode(dockspaceId);
+    if (!dockNode) {
+        return Result::SUCCESS;
+    }
+
+    const auto hasDockedWindows = [&](const auto& self, const ImGuiDockNode* node) -> bool {
+        if (!node) {
+            return false;
+        }
+        if (node->Windows.Size > 0) {
+            return true;
+        }
+        return self(self, node->ChildNodes[0]) || self(self, node->ChildNodes[1]);
+    };
+
+    if (hasDockedWindows(hasDockedWindows, dockNode)) {
+        return Result::SUCCESS;
+    }
+
+    static constexpr const char* tips[] = {
+        "Drag a surface tab into this stack to dock it.",
+        "Split the stack by dragging a surface to the edge.",
+        "Stacks sync with your flowgraph.",
+    };
+    const int tipCount = sizeof(tips) / sizeof(tips[0]);
+
+    const float baseFontSize = ImGui::GetFontSize();
+    const float iconFontSize = baseFontSize * 2.5f;
+    const char* iconText = ICON_FA_LAYER_GROUP;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
+
+    const char* title = "Arrange Your Stack";
+    const float titleFontSize = ImGui::GetFontSize() * 1.2f;
+    const ImVec2 titleSize = h2Font->CalcTextSizeA(titleFontSize, FLT_MAX, 0.0f, title);
+
+    const char* subtitle = "Drag surfaces into this stack to create your layout";
+    const ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
+
+    struct Instruction {
+        const char* number;
+        const char* text;
+    };
+
+    Instruction instructions[] = {
+        {"1.", "Detach a visualization surface from the flowgraph."},
+        {"2.", "Drag the detached surface into this stack window."},
+        {"3.", "Resize and rearrange to build your layout."},
+    };
+
+    const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+
+    const char* randomTip = tips[std::hash<std::string>{}(stackKey) % tipCount];
+    std::string tipText = std::string("Tip: ") + randomTip;
+    const ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
+
+    const ImVec2 contentStart = ImGui::GetCursorStartPos();
+    ImGui::SetCursorPos(contentStart);
+    const ImVec2 contentAvail = ImGui::GetContentRegionAvail();
+    const float contentWidth = contentAvail.x;
+    const float itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
+    const float instructionWidth = 320.0f * scalingFactor;
+    const float instructionWrapSlack = 12.0f * scalingFactor;
+    const float instructionNumberGap = 8.0f * scalingFactor;
+    const float instructionTextSpacing = instructionNumberGap + ImGui::GetStyle().ItemSpacing.x;
+    const auto centerNextItem = [&](float itemWidth) {
+        ImGui::SetCursorPosX(std::floor(contentStart.x + (contentWidth - itemWidth) * 0.5f));
+    };
+    const auto instructionRowHeight = [&](const Instruction& inst) {
+        const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+        const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+        const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+        return std::max(numberSize.y, textSize.y);
+    };
+    float instructionsHeight = 0.0f;
+    for (const auto& inst : instructions) {
+        instructionsHeight += instructionRowHeight(inst) + 8.0f * scalingFactor;
+    }
+    instructionsHeight += (2.0f * static_cast<float>(std::size(instructions)) - 1.0f) * itemSpacingY;
+
+    const float contentHeight = iconSize.y +
+                                12.0f * scalingFactor +
+                                titleSize.y +
+                                8.0f * scalingFactor +
+                                subtitleSize.y +
+                                24.0f * scalingFactor +
+                                instructionsHeight +
+                                16.0f * scalingFactor +
+                                tipSize.y +
+                                7.0f * itemSpacingY;
+    const float minContentWidth = std::max(
+        std::max(iconSize.x, titleSize.x),
+        std::max(subtitleSize.x, std::max(tipSize.x, instructionWidth + instructionWrapSlack)));
+
+    if (contentWidth < minContentWidth || contentAvail.y < contentHeight) {
+        return Result::SUCCESS;
+    }
+
+    const float startY = contentStart.y + std::max(0.0f, (contentAvail.y - contentHeight) * 0.5f);
+
+    ImGui::SetCursorPos(ImVec2(contentStart.x, startY));
+
+    centerNextItem(iconSize.x);
+    ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x,
+                            ImGui::GetCursorScreenPos().y);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos,
+                      ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), iconText);
+    ImGui::Dummy(ImVec2(0, iconSize.y + 12.0f * scalingFactor));
+
+    ImGui::PushFont(h2Font, titleFontSize);
+    centerNextItem(titleSize.x);
+    ImGui::TextUnformatted(title);
+    ImGui::PopFont();
+
+    ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_secondary"));
+    centerNextItem(subtitleSize.x);
+    ImGui::TextUnformatted(subtitle);
+    ImGui::PopStyleColor();
+
+    ImGui::Dummy(ImVec2(0, 24.0f * scalingFactor));
+
+    centerNextItem(instructionWidth);
+    ImGui::BeginGroup();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth + instructionWrapSlack);
+    for (const auto& inst : instructions) {
+        ImGui::BeginGroup();
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("cyber_blue"));
+        ImDrawList* instDrawList = ImGui::GetWindowDrawList();
+        const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+        const float rowHeight = instructionRowHeight(inst);
+        const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+        const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+        ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        cursorPos.y += (rowHeight - numberSize.y) * 0.5f;
+        instDrawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
+                              ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
+        ImGui::Dummy(ImVec2(numberSize.x + instructionNumberGap, rowHeight));
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (rowHeight - textSize.y) * 0.5f + 1.0f * scalingFactor);
+        ImGui::TextUnformatted(inst.text);
+        ImGui::EndGroup();
+        ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndGroup();
+
+    ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+    ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_disabled"));
+    centerNextItem(tipSize.x);
+    ImGui::TextUnformatted(tipText.c_str());
+    ImGui::PopStyleColor();
 
     return Result::SUCCESS;
 }
@@ -6748,6 +6902,10 @@ Result DefaultCompositor::renderStacks() {
                 ImGui::DockBuilderDockWindow(helperMakeFlowgraphWindowLabel(flowgraphId).c_str(), dock_id_main);
 
                 ImGui::DockBuilderFinish(id);
+            }
+
+            if (stackId != "Graph") {
+                JST_CHECK(renderEmptyStackHint(flowgraphId, stackId, id));
             }
 
             ImGui::End();
