@@ -95,16 +95,29 @@ class JETSTREAM_API Flowgraph {
     Result getMeta(const std::string& key, T& config, const std::string& block = {}) const {
         Meta data;
         JST_CHECK(getMeta(key, data, block));
-        return config.deserialize(data);
+
+        if (data.empty()) {
+            return Result::SUCCESS;
+        }
+
+        Meta encoded;
+        encoded[key] = data;
+        return Parser::Deserialize(encoded, key, config);
     }
 
     Result getMeta(const std::string& key, Meta& data, const std::string& block = {}) const;
 
     template<typename T>
     Result setMeta(const std::string& key, const T& config, const std::string& block = {}) {
-        Meta data;
-        JST_CHECK(config.serialize(data));
-        return setMeta(key, data, block);
+        Meta encoded;
+        JST_CHECK(Parser::Serialize(encoded, key, config));
+
+        if (!encoded.contains(key) || encoded.at(key).type() != typeid(Meta)) {
+            JST_ERROR("[FLOWGRAPH] Metadata '{}' must serialize to a map.", key);
+            return Result::ERROR;
+        }
+
+        return setMeta(key, std::any_cast<const Meta&>(encoded.at(key)), block);
     }
 
     Result setMeta(const std::string& key, const Meta& data, const std::string& block = {});
