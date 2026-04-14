@@ -1,4 +1,5 @@
 #include "imgui.h"
+#include "jetstream/render/tools/imgui_internal.h"
 #include "jetstream/compositor.hh"
 #include "jetstream/detail/compositor_impl.hh"
 
@@ -1021,14 +1022,53 @@ struct SurfaceMeta {
     JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached);
 };
 
+struct StackDockItemMeta {
+    std::string kind;
+    std::string block;
+    std::string surface;
+    U64 order = 0;
+
+    JST_SERDES(kind, block, surface, order);
+};
+
+struct StackDockFlowgraphMeta {
+    U64 order = 0;
+
+    JST_SERDES(order);
+};
+
+struct StackDockSurfaceMeta {
+    std::string block;
+    std::string surface;
+    U64 order = 0;
+
+    JST_SERDES(block, surface, order);
+};
+
+struct StackDockLayoutMeta {
+    std::string direction;
+    F32 ratio = 0.5f;
+    std::vector<StackDockFlowgraphMeta> flowgraphs;
+    std::vector<StackDockSurfaceMeta> surfaces;
+    std::unordered_map<std::string, StackDockLayoutMeta> children;
+
+    JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
+};
+
 struct StackMeta {
     std::string title;
     F32 x = 0.0f;
     F32 y = 0.0f;
     F32 width = 500.0f;
     F32 height = 300.0f;
+    std::unordered_map<std::string, StackDockLayoutMeta> layout;
 
-    JST_SERDES(title, x, y, width, height);
+    JST_SERDES(title, x, y, width, height, layout);
+};
+
+struct StackWindowItemState {
+    StackDockItemMeta meta;
+    std::string windowLabel;
 };
 
 class DefaultCompositor : public Compositor::Impl {
@@ -1040,6 +1080,8 @@ class DefaultCompositor : public Compositor::Impl {
     Result poll();
 
  private:
+    struct StackWindowState;
+
     // Modal variables.
 
     enum class InterfaceModalContent : I32 {
@@ -1226,7 +1268,24 @@ class DefaultCompositor : public Compositor::Impl {
     Result helperSaveFlowgraph(const std::string& flowgraph);
     Result helperCloseFlowgraph(const std::string& flowgraph);
     Result helperLoadFlowgraphStacks(const std::string& flowgraphId, const std::shared_ptr<Flowgraph>& flowgraph);
+    Result helperEnsureStackedSurfacesDetached(const std::shared_ptr<Flowgraph>& flowgraph,
+                                               const std::unordered_map<std::string, StackWindowState>& stackStates);
     Result helperSyncFlowgraphStacks(const std::string& flowgraphId);
+    Result helperBuildStackWindowItems(const std::string& flowgraphId,
+                                       std::unordered_map<std::string, StackWindowItemState>& itemsByKey) const;
+    Result helperCaptureStackWindowLayout(const std::string& flowgraphId, StackWindowState& stackState) const;
+    Result helperRestoreStackWindowLayout(const std::string& flowgraphId,
+                                          const StackWindowState& stackState,
+                                          const ImVec2& windowPos,
+                                          const ImVec2& windowSize) const;
+    std::string helperMakeFlowgraphWindowLabel(const std::string& flowgraphId) const;
+    std::string helperMakeDetachedSurfaceWindowId(const std::string& flowgraphId,
+                                                  const std::string& blockName,
+                                                  const std::string& surfaceId) const;
+    std::string helperMakeDetachedSurfaceWindowLabel(const std::string& flowgraphId,
+                                                     const std::string& blockName,
+                                                     const std::string& surfaceId,
+                                                     const std::string& blockTitle) const;
     std::string helperMakeStackWindowLabel(const std::string& flowgraphId,
                                            const std::string& stackId,
                                            const StackMeta& stackMeta) const;
@@ -1278,6 +1337,7 @@ class DefaultCompositor : public Compositor::Impl {
         StackMeta meta;
         bool enabled = true;
         ImGuiID dockspaceId = 0;
+        bool restoreDockLayout = false;
     };
 
     std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> flowgraphStacks;
@@ -1907,8 +1967,7 @@ Result DefaultCompositor::renderFlowgraph() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * scalingFactor, 8.0f * scalingFactor));
         ImGui::SetNextWindowSize(ImVec2(640.0f * scalingFactor, 480.0f * scalingFactor), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowDockID(mainDockspaceID, ImGuiCond_FirstUseEver);
-        const std::string windowTitle = flowgraph->title().empty() ? flowgraphId : flowgraph->title();
-        const bool windowExpanded = ImGui::Begin(jst::fmt::format("{}###{}", windowTitle, flowgraphId).c_str(), &flowgraphOpen);
+        const bool windowExpanded = ImGui::Begin(helperMakeFlowgraphWindowLabel(flowgraphId).c_str(), &flowgraphOpen);
         ImGui::PopStyleVar();
 
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
@@ -4839,26 +4898,6 @@ Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraph
     auto& stackStates = flowgraphStacks[flowgraphId];
     stackStates.clear();
 
-    std::unordered_map<std::string, StackMeta> storedStacks;
-    const auto typedResult = flowgraph->getMeta("stacks", storedStacks);
-    if (typedResult == Result::SUCCESS && !storedStacks.empty()) {
-        for (auto& [stackId, stackMeta] : storedStacks) {
-            if (stackId.empty()) {
-                continue;
-            }
-
-            if (stackMeta.title.empty()) {
-                stackMeta.title = stackId;
-            }
-
-            StackWindowState stackState;
-            stackState.meta = std::move(stackMeta);
-            stackStates[stackId] = std::move(stackState);
-        }
-
-        return Result::SUCCESS;
-    }
-
     Flowgraph::Meta serializedStacks;
     JST_CHECK(flowgraph->getMeta("stacks", serializedStacks));
 
@@ -4867,23 +4906,17 @@ Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraph
             continue;
         }
 
+        if (encoded.type() != typeid(Parser::Map)) {
+            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid stack window metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
+            continue;
+        }
+
         StackMeta stackMeta;
 
-        if (encoded.type() == typeid(Parser::Map)) {
-            const auto result = Parser::Deserialize(serializedStacks, stackId, stackMeta);
-            if (result != Result::SUCCESS) {
-                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid stack window metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
-                continue;
-            }
-        } else {
-            bool enabled = true;
-            const auto result = Parser::Deserialize(serializedStacks, stackId, enabled);
-            if (result != Result::SUCCESS || !enabled) {
-                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid legacy stack metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
-                continue;
-            }
-
-            stackMeta.title = stackId;
+        const auto result = Parser::Deserialize(serializedStacks, stackId, stackMeta);
+        if (result != Result::SUCCESS) {
+            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid stack window metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
+            continue;
         }
 
         if (stackMeta.title.empty()) {
@@ -4892,7 +4925,52 @@ Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraph
 
         StackWindowState stackState;
         stackState.meta = std::move(stackMeta);
+        stackState.restoreDockLayout = !stackState.meta.layout.empty();
         stackStates[stackId] = std::move(stackState);
+    }
+
+    JST_CHECK(helperEnsureStackedSurfacesDetached(flowgraph, stackStates));
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperEnsureStackedSurfacesDetached(const std::shared_ptr<Flowgraph>& flowgraph,
+                                                              const std::unordered_map<std::string, StackWindowState>& stackStates) {
+    if (!flowgraph) {
+        return Result::ERROR;
+    }
+
+    std::set<std::pair<std::string, std::string>> stackedSurfaces;
+
+    const auto collectLayoutItems = [&](const auto& self, const StackDockLayoutMeta& layout) -> void {
+        for (const auto& surface : layout.surfaces) {
+            if (surface.block.empty() || surface.surface.empty()) {
+                continue;
+            }
+
+            stackedSurfaces.emplace(surface.block, surface.surface);
+        }
+
+        for (const auto& [_, childLayout] : layout.children) {
+            self(self, childLayout);
+        }
+    };
+
+    for (const auto& [_, stackState] : stackStates) {
+        for (const auto& [_, layout] : stackState.meta.layout) {
+            collectLayoutItems(collectLayoutItems, layout);
+        }
+    }
+
+    for (const auto& [blockName, surfaceId] : stackedSurfaces) {
+        SurfaceMeta surfaceMeta;
+        JST_CHECK(flowgraph->getMeta("surface_" + surfaceId, surfaceMeta, blockName));
+
+        if (surfaceMeta.detached) {
+            continue;
+        }
+
+        surfaceMeta.detached = true;
+        JST_CHECK(flowgraph->setMeta("surface_" + surfaceId, surfaceMeta, blockName));
     }
 
     return Result::SUCCESS;
@@ -4906,10 +4984,12 @@ Result DefaultCompositor::helperSyncFlowgraphStacks(const std::string& flowgraph
     std::unordered_map<std::string, StackMeta> serializedStacks;
 
     if (flowgraphStacks.contains(flowgraphId)) {
-        for (const auto& [stackId, state] : flowgraphStacks.at(flowgraphId)) {
+        for (auto& [stackId, state] : flowgraphStacks.at(flowgraphId)) {
             if (stackId.empty() || !state.enabled) {
                 continue;
             }
+
+            JST_CHECK(helperCaptureStackWindowLayout(flowgraphId, state));
 
             serializedStacks[stackId] = state.meta;
             if (serializedStacks.at(stackId).title.empty()) {
@@ -4919,6 +4999,372 @@ Result DefaultCompositor::helperSyncFlowgraphStacks(const std::string& flowgraph
     }
 
     return flowgraphs.at(flowgraphId)->setMeta("stacks", serializedStacks);
+}
+
+Result DefaultCompositor::helperBuildStackWindowItems(const std::string& flowgraphId,
+                                                      std::unordered_map<std::string, StackWindowItemState>& itemsByKey) const {
+    itemsByKey.clear();
+
+    if (flowgraphs.contains(flowgraphId)) {
+        StackWindowItemState flowgraphItem;
+        flowgraphItem.meta.kind = "flowgraph";
+        flowgraphItem.windowLabel = helperMakeFlowgraphWindowLabel(flowgraphId);
+        itemsByKey["flowgraph"] = std::move(flowgraphItem);
+    }
+
+    if (!flowgraphs.contains(flowgraphId) || !blocksCache.contains(flowgraphId)) {
+        return Result::SUCCESS;
+    }
+
+    for (const auto& [blockName, blockPtr] : blocksCache.at(flowgraphId)) {
+        if (!blockPtr ||
+            !blockPtr->interface() ||
+            blockPtr->state() == Block::State::Destroying ||
+            blockPtr->state() == Block::State::Destroyed) {
+            continue;
+        }
+
+        for (const auto& surface : blockPtr->surfaces()) {
+            for (const auto& manifest : surface->manifests()) {
+                const std::string itemKey = jst::fmt::format("surface:{}:{}", blockName, manifest.id);
+
+                StackWindowItemState itemState;
+                itemState.meta.kind = "surface";
+                itemState.meta.block = blockName;
+                itemState.meta.surface = manifest.id;
+                itemState.windowLabel = helperMakeDetachedSurfaceWindowLabel(flowgraphId,
+                                                                             blockName,
+                                                                             manifest.id,
+                                                                             blockPtr->config().title());
+                itemsByKey[itemKey] = std::move(itemState);
+            }
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperCaptureStackWindowLayout(const std::string& flowgraphId, StackWindowState& stackState) const {
+    if (!stackState.dockspaceId) {
+        return Result::SUCCESS;
+    }
+
+    ImGuiDockNode* rootNode = ImGui::DockBuilderGetNode(stackState.dockspaceId);
+    if (!rootNode) {
+        return Result::SUCCESS;
+    }
+
+    std::unordered_map<std::string, StackWindowItemState> itemsByKey;
+    JST_CHECK(helperBuildStackWindowItems(flowgraphId, itemsByKey));
+
+    std::unordered_map<std::string, std::string> itemKeysByWindowLabel;
+    for (const auto& [itemKey, itemState] : itemsByKey) {
+        itemKeysByWindowLabel[itemState.windowLabel] = itemKey;
+    }
+
+    const auto captureNode = [&](const auto& self, const ImGuiDockNode* dockNode, StackDockLayoutMeta& out) -> bool {
+        if (!dockNode) {
+            return false;
+        }
+
+        out = {};
+
+        if (dockNode->ChildNodes[0] && dockNode->ChildNodes[1]) {
+            const ImGuiDockNode* primaryChild = dockNode->ChildNodes[0];
+            const ImGuiDockNode* secondaryChild = dockNode->ChildNodes[1];
+            const auto resolveAxisSize = [](const ImGuiDockNode* node, ImGuiAxis axis) {
+                if (!node) {
+                    return 0.0f;
+                }
+
+                const float sizeRef = (axis == ImGuiAxis_X) ? node->SizeRef.x : node->SizeRef.y;
+                if (sizeRef > 0.0f) {
+                    return sizeRef;
+                }
+
+                return (axis == ImGuiAxis_X) ? node->Size.x : node->Size.y;
+            };
+
+            if (dockNode->SplitAxis == ImGuiAxis_X) {
+                if (secondaryChild->Pos.x < primaryChild->Pos.x) {
+                    std::swap(primaryChild, secondaryChild);
+                }
+
+                out.direction = "left";
+                const float primarySize = resolveAxisSize(primaryChild, ImGuiAxis_X);
+                const float secondarySize = resolveAxisSize(secondaryChild, ImGuiAxis_X);
+                const float totalSize = primarySize + secondarySize;
+                out.ratio = (totalSize > 0.0f) ? (primarySize / totalSize) : 0.5f;
+            } else if (dockNode->SplitAxis == ImGuiAxis_Y) {
+                if (secondaryChild->Pos.y < primaryChild->Pos.y) {
+                    std::swap(primaryChild, secondaryChild);
+                }
+
+                out.direction = "up";
+                const float primarySize = resolveAxisSize(primaryChild, ImGuiAxis_Y);
+                const float secondarySize = resolveAxisSize(secondaryChild, ImGuiAxis_Y);
+                const float totalSize = primarySize + secondarySize;
+                out.ratio = (totalSize > 0.0f) ? (primarySize / totalSize) : 0.5f;
+            }
+
+            StackDockLayoutMeta primaryLayout;
+            StackDockLayoutMeta secondaryLayout;
+            const bool hasPrimary = self(self, primaryChild, primaryLayout);
+            const bool hasSecondary = self(self, secondaryChild, secondaryLayout);
+
+            if (hasPrimary && hasSecondary && !out.direction.empty()) {
+                out.ratio = std::clamp(out.ratio, 0.05f, 0.95f);
+                out.children["primary"] = std::move(primaryLayout);
+                out.children["secondary"] = std::move(secondaryLayout);
+                return true;
+            }
+
+            if (hasPrimary) {
+                out = std::move(primaryLayout);
+                return true;
+            }
+
+            if (hasSecondary) {
+                out = std::move(secondaryLayout);
+                return true;
+            }
+        }
+
+        std::vector<std::string> orderedItemKeys;
+        std::set<std::string> seenItemKeys;
+        out.ratio = 0.0f;
+
+        const auto appendWindow = [&](const ImGuiWindow* window) {
+            if (!window) {
+                return;
+            }
+
+            const auto itemKeyIt = itemKeysByWindowLabel.find(window->Name);
+            if (itemKeyIt == itemKeysByWindowLabel.end()) {
+                return;
+            }
+
+            if (!seenItemKeys.insert(itemKeyIt->second).second) {
+                return;
+            }
+
+            orderedItemKeys.push_back(itemKeyIt->second);
+        };
+
+        if (dockNode->TabBar && !dockNode->TabBar->Tabs.empty()) {
+            for (const auto& tab : dockNode->TabBar->Tabs) {
+                appendWindow(tab.Window);
+            }
+        } else {
+            for (int windowIndex = 0; windowIndex < dockNode->Windows.Size; ++windowIndex) {
+                appendWindow(dockNode->Windows[windowIndex]);
+            }
+        }
+
+        U64 order = 0;
+        for (const auto& itemKey : orderedItemKeys) {
+            auto itemMeta = itemsByKey.at(itemKey).meta;
+            itemMeta.order = order++;
+
+            if (itemMeta.kind == "flowgraph") {
+                out.flowgraphs.push_back({.order = itemMeta.order});
+                continue;
+            }
+
+            if (itemMeta.kind == "surface" && !itemMeta.block.empty() && !itemMeta.surface.empty()) {
+                out.surfaces.push_back({
+                    .block = itemMeta.block,
+                    .surface = itemMeta.surface,
+                    .order = itemMeta.order,
+                });
+            }
+        }
+
+        return !out.flowgraphs.empty() || !out.surfaces.empty();
+    };
+
+    stackState.meta.layout.clear();
+
+    StackDockLayoutMeta rootLayout;
+    if (captureNode(captureNode, rootNode, rootLayout)) {
+        stackState.meta.layout["root"] = std::move(rootLayout);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperRestoreStackWindowLayout(const std::string& flowgraphId,
+                                                         const StackWindowState& stackState,
+                                                         const ImVec2& windowPos,
+                                                         const ImVec2& windowSize) const {
+    if (!stackState.dockspaceId || stackState.meta.layout.empty()) {
+        return Result::SUCCESS;
+    }
+
+    auto rootLayoutIt = stackState.meta.layout.find("root");
+    if (rootLayoutIt == stackState.meta.layout.end()) {
+        rootLayoutIt = stackState.meta.layout.begin();
+        if (rootLayoutIt == stackState.meta.layout.end()) {
+            return Result::SUCCESS;
+        }
+    }
+
+    const auto directionFromString = [](const std::string& direction) {
+        if (direction == "left") {
+            return ImGuiDir_Left;
+        }
+        if (direction == "right") {
+            return ImGuiDir_Right;
+        }
+        if (direction == "up") {
+            return ImGuiDir_Up;
+        }
+        if (direction == "down") {
+            return ImGuiDir_Down;
+        }
+        return ImGuiDir_None;
+    };
+
+    const auto resolveWindowLabel = [&](const StackDockItemMeta& itemMeta) -> std::string {
+        if (itemMeta.kind == "flowgraph") {
+            return helperMakeFlowgraphWindowLabel(flowgraphId);
+        }
+
+        if (itemMeta.kind != "surface" || itemMeta.block.empty() || itemMeta.surface.empty()) {
+            return {};
+        }
+
+        std::string blockTitle = itemMeta.block;
+
+        if (blocksCache.contains(flowgraphId)) {
+            const auto& blocks = blocksCache.at(flowgraphId);
+            const auto blockIt = blocks.find(itemMeta.block);
+            if (blockIt != blocks.end() && blockIt->second) {
+                const auto configuredTitle = blockIt->second->config().title();
+                if (!configuredTitle.empty()) {
+                    blockTitle = configuredTitle;
+                }
+            }
+        }
+
+        return helperMakeDetachedSurfaceWindowLabel(flowgraphId, itemMeta.block, itemMeta.surface, blockTitle);
+    };
+
+    const auto restoreNode = [&](const auto& self, ImGuiID nodeId, const StackDockLayoutMeta& layout) -> void {
+        auto primaryIt = layout.children.find("primary");
+        auto secondaryIt = layout.children.find("secondary");
+
+        if (primaryIt != layout.children.end() && secondaryIt != layout.children.end()) {
+            const ImGuiDir dockDirection = directionFromString(layout.direction);
+            if (dockDirection != ImGuiDir_None) {
+                ImGuiID primaryNodeId = 0;
+                ImGuiID secondaryNodeId = 0;
+                const float ratio = (layout.ratio > 0.0f) ? layout.ratio : 0.5f;
+
+                ImGui::DockBuilderSplitNode(nodeId,
+                                            dockDirection,
+                                            std::clamp(ratio, 0.05f, 0.95f),
+                                            &primaryNodeId,
+                                            &secondaryNodeId);
+
+                self(self, primaryNodeId, primaryIt->second);
+                self(self, secondaryNodeId, secondaryIt->second);
+                return;
+            }
+        }
+
+        if (primaryIt != layout.children.end() && layout.children.size() == 1) {
+            self(self, nodeId, primaryIt->second);
+            return;
+        }
+
+        if (secondaryIt != layout.children.end() && layout.children.size() == 1) {
+            self(self, nodeId, secondaryIt->second);
+            return;
+        }
+
+        std::vector<std::pair<U64, std::string>> orderedWindows;
+        orderedWindows.reserve(layout.flowgraphs.size() + layout.surfaces.size());
+
+        for (const auto& flowgraph : layout.flowgraphs) {
+            StackDockItemMeta itemMeta;
+            itemMeta.kind = "flowgraph";
+            itemMeta.order = flowgraph.order;
+
+            const auto windowLabel = resolveWindowLabel(itemMeta);
+            if (windowLabel.empty()) {
+                continue;
+            }
+
+            orderedWindows.emplace_back(itemMeta.order, windowLabel);
+        }
+
+        for (const auto& surface : layout.surfaces) {
+            if (surface.block.empty() || surface.surface.empty()) {
+                continue;
+            }
+
+            StackDockItemMeta itemMeta;
+            itemMeta.kind = "surface";
+            itemMeta.block = surface.block;
+            itemMeta.surface = surface.surface;
+            itemMeta.order = surface.order;
+
+            const auto windowLabel = resolveWindowLabel(itemMeta);
+            if (windowLabel.empty()) {
+                continue;
+            }
+
+            orderedWindows.emplace_back(itemMeta.order, windowLabel);
+        }
+
+        std::sort(orderedWindows.begin(), orderedWindows.end(), [](const auto& lhs, const auto& rhs) {
+            if (lhs.first != rhs.first) {
+                return lhs.first < rhs.first;
+            }
+
+            return lhs.second < rhs.second;
+        });
+
+        for (const auto& [_, windowLabel] : orderedWindows) {
+            ImGui::DockBuilderDockWindow(windowLabel.c_str(), nodeId);
+        }
+    };
+
+    ImGui::DockBuilderRemoveNode(stackState.dockspaceId);
+    ImGui::DockBuilderAddNode(stackState.dockspaceId, ImGuiDockNodeFlags_DockSpace);
+    ImGui::DockBuilderSetNodePos(stackState.dockspaceId, windowPos);
+    ImGui::DockBuilderSetNodeSize(stackState.dockspaceId, windowSize);
+    restoreNode(restoreNode, stackState.dockspaceId, rootLayoutIt->second);
+    ImGui::DockBuilderFinish(stackState.dockspaceId);
+
+    return Result::SUCCESS;
+}
+
+std::string DefaultCompositor::helperMakeFlowgraphWindowLabel(const std::string& flowgraphId) const {
+    const auto flowgraphIt = flowgraphs.find(flowgraphId);
+    const bool hasCustomTitle = flowgraphIt != flowgraphs.end() &&
+                                flowgraphIt->second &&
+                                !flowgraphIt->second->title().empty();
+    const std::string title = hasCustomTitle ? flowgraphIt->second->title() : flowgraphId;
+    return jst::fmt::format("{}###{}", title, flowgraphId);
+}
+
+std::string DefaultCompositor::helperMakeDetachedSurfaceWindowId(const std::string& flowgraphId,
+                                                                 const std::string& blockName,
+                                                                 const std::string& surfaceId) const {
+    return jst::fmt::format("{}:{}:{}", flowgraphId, blockName, surfaceId);
+}
+
+std::string DefaultCompositor::helperMakeDetachedSurfaceWindowLabel(const std::string& flowgraphId,
+                                                                    const std::string& blockName,
+                                                                    const std::string& surfaceId,
+                                                                    const std::string& blockTitle) const {
+    const std::string resolvedBlockTitle = blockTitle.empty() ? blockName : blockTitle;
+    return jst::fmt::format("{} ({})###{}",
+                            resolvedBlockTitle,
+                            blockName,
+                            helperMakeDetachedSurfaceWindowId(flowgraphId, blockName, surfaceId));
 }
 
 std::string DefaultCompositor::helperMakeStackWindowLabel(const std::string& flowgraphId,
@@ -5624,8 +6070,10 @@ Result DefaultCompositor::renderDetachedSurfaces() {
                         continue;
                     }
 
-                    const std::string windowId = flowgraphId + ":" + blockName + ":" + manifest.id;
-                    const std::string windowTitle = jst::fmt::format("{} ({})###{}", blockPtr->config().title(), blockName, windowId);
+                    const std::string windowTitle = helperMakeDetachedSurfaceWindowLabel(flowgraphId,
+                                                                                         blockName,
+                                                                                         manifest.id,
+                                                                                         blockPtr->config().title());
 
                     ImGui::SetNextWindowSize(ImVec2(static_cast<float>(surfaceMeta.detachedWidth) * scalingFactor,
                                                     static_cast<float>(surfaceMeta.detachedHeight) * scalingFactor), ImGuiCond_FirstUseEver);
@@ -5766,7 +6214,10 @@ Result DefaultCompositor::renderStacks() {
 
             ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
-            if (isDockNew && stackId == "Graph") {
+            if (stackState.restoreDockLayout) {
+                JST_CHECK(helperRestoreStackWindowLayout(flowgraphId, stackState, windowPos, windowSize));
+                stackState.restoreDockLayout = false;
+            } else if (isDockNew && stackId == "Graph") {
                 ImGuiID dock_id_main;
 
                 ImGui::DockBuilderRemoveNode(id);
@@ -5775,7 +6226,7 @@ Result DefaultCompositor::renderStacks() {
                 ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
 
                 dock_id_main = id;
-                ImGui::DockBuilderDockWindow("Flowgraph", dock_id_main);
+                ImGui::DockBuilderDockWindow(helperMakeFlowgraphWindowLabel(flowgraphId).c_str(), dock_id_main);
 
                 ImGui::DockBuilderFinish(id);
             }
