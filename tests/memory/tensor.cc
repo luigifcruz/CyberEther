@@ -17,6 +17,7 @@
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/backend/devices/cuda/base.hh"
+#include <cuda_runtime.h>
 #endif
 
 using namespace Jetstream;
@@ -64,6 +65,17 @@ void WriteTestPattern(Tensor& tensor, T pattern) {
         }
     }
 #endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        auto* typed_ptr = static_cast<T*>(tensor.data());
+        if (typed_ptr) {
+            for (U64 i = 0; i < tensor.size(); ++i) {
+                typed_ptr[i] = pattern;
+            }
+        }
+    }
+#endif
 }
 
 // Helper function to verify test pattern in tensor data
@@ -87,6 +99,20 @@ bool VerifyTestPattern(const Tensor& tensor, T pattern) {
         const void* ptr = GetMetalBufferContents(tensor);
         if (ptr) {
             const auto* typed_ptr = static_cast<const T*>(ptr);
+            for (U64 i = 0; i < tensor.size(); ++i) {
+                if (typed_ptr[i] != pattern) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        const auto* typed_ptr = static_cast<const T*>(tensor.data());
+        if (typed_ptr) {
             for (U64 i = 0; i < tensor.size(); ++i) {
                 if (typed_ptr[i] != pattern) {
                     return false;
@@ -132,6 +158,20 @@ void Write2DTestPattern(Tensor& tensor, T base_value = T{}) {
         }
     }
 #endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    else if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        auto* typed_ptr = static_cast<T*>(tensor.data());
+        if (typed_ptr) {
+            for (Index i = 0; i < rows; ++i) {
+                for (Index j = 0; j < cols; ++j) {
+                    U64 offset = tensor.shapeToOffset({i, j});
+                    typed_ptr[offset] = base_value + static_cast<T>(i * cols + j);
+                }
+            }
+        }
+    }
+#endif
 }
 
 // Helper to verify 2D pattern in tensor
@@ -161,6 +201,24 @@ bool Verify2DTestPattern(const Tensor& tensor, T base_value = T{}) {
         const void* ptr = GetMetalBufferContents(tensor);
         if (ptr) {
             const auto* typed_ptr = static_cast<const T*>(ptr);
+            for (Index i = 0; i < rows; ++i) {
+                for (Index j = 0; j < cols; ++j) {
+                    U64 offset = tensor.shapeToOffset({i, j});
+                    T expected = base_value + static_cast<T>(i * cols + j);
+                    if (typed_ptr[offset] != expected) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    else if (tensor.device() == DeviceType::CUDA && tensor.buffer().location() != Location::Device) {
+        const auto* typed_ptr = static_cast<const T*>(tensor.data());
+        if (typed_ptr) {
             for (Index i = 0; i < rows; ++i) {
                 for (Index j = 0; j < cols; ++j) {
                     U64 offset = tensor.shapeToOffset({i, j});
@@ -372,6 +430,29 @@ TEST_CASE("Tensor Copy Operations", "[tensor][copy]") {
     }
 #endif
 #endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    SECTION("CUDA to CUDA Copy With Stream Context") {
+        Buffer::Config config{};
+        config.hostAccessible = true;
+
+        Tensor src;
+        REQUIRE(src.create(DeviceType::CUDA, DataType::F32, TEST_SHAPE_2D, config) == Result::SUCCESS);
+        Write2DTestPattern<F32>(src, 6.0f);
+
+        Tensor dst;
+        REQUIRE(dst.create(DeviceType::CUDA, DataType::F32, TEST_SHAPE_2D, config) == Result::SUCCESS);
+        Write2DTestPattern<F32>(dst, 0.0f);
+
+        cudaStream_t stream = nullptr;
+        REQUIRE(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking) == cudaSuccess);
+        REQUIRE(dst.copyFrom(src, stream) == Result::SUCCESS);
+        REQUIRE(cudaStreamSynchronize(stream) == cudaSuccess);
+        REQUIRE(cudaStreamDestroy(stream) == cudaSuccess);
+
+        REQUIRE(Verify2DTestPattern<F32>(dst, 6.0f));
+    }
+#endif
 }
 
 TEST_CASE("Tensor Data Access", "[tensor][access]") {
@@ -566,6 +647,77 @@ TEST_CASE("Tensor Reshaping and Dimensions", "[tensor][reshape]") {
         Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
         REQUIRE(t.expandDims(5) == Result::ERROR);  // Out of range
         REQUIRE(t.squeezeDims(5) == Result::ERROR); // Out of range
+    }
+}
+
+TEST_CASE("Tensor Permutation", "[tensor][permute]") {
+    SECTION("Transpose 2D Tensor") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
+        Write2DTestPattern<F32>(t);
+
+        REQUIRE(t.permute({1, 0}) == Result::SUCCESS);
+        REQUIRE(t.shape() == Shape{3, 2});
+        REQUIRE(t.stride() == Shape{1, 3});
+        REQUIRE_FALSE(t.contiguous());
+
+        REQUIRE(t.at<F32>(0, 0) == 0.0f);
+        REQUIRE(t.at<F32>(0, 1) == 3.0f);
+        REQUIRE(t.at<F32>(1, 0) == 1.0f);
+        REQUIRE(t.at<F32>(2, 1) == 5.0f);
+    }
+
+    SECTION("Reorder 3D Tensor") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3, 4});
+
+        for (U64 i = 0; i < 2; ++i) {
+            for (U64 j = 0; j < 3; ++j) {
+                for (U64 k = 0; k < 4; ++k) {
+                    t.at<F32>(i, j, k) = static_cast<F32>(i * 100 + j * 10 + k);
+                }
+            }
+        }
+
+        REQUIRE(t.permute({2, 0, 1}) == Result::SUCCESS);
+        REQUIRE(t.shape() == Shape{4, 2, 3});
+        REQUIRE(t.stride() == Shape{1, 12, 4});
+        REQUIRE_FALSE(t.contiguous());
+
+        REQUIRE(t.at<F32>(0, 0, 0) == 0.0f);
+        REQUIRE(t.at<F32>(3, 1, 2) == 123.0f);
+        REQUIRE(t.at<F32>(1, 1, 0) == 101.0f);
+    }
+
+    SECTION("Identity Permutation Keeps Layout") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3, 4});
+
+        REQUIRE(t.permute({0, 1, 2}) == Result::SUCCESS);
+        REQUIRE(t.shape() == Shape{2, 3, 4});
+        REQUIRE(t.stride() == Shape{12, 4, 1});
+        REQUIRE(t.contiguous());
+    }
+
+    SECTION("Reject Empty Permutation") {
+        Tensor t(DeviceType::CPU, DataType::F32, {4});
+
+        REQUIRE(t.permute({}) == Result::ERROR);
+    }
+
+    SECTION("Reject Rank Mismatch") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3, 4});
+
+        REQUIRE(t.permute({1, 0}) == Result::ERROR);
+    }
+
+    SECTION("Reject Duplicate Axis") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
+
+        REQUIRE(t.permute({1, 1}) == Result::ERROR);
+    }
+
+    SECTION("Reject Out Of Range Axis") {
+        Tensor t(DeviceType::CPU, DataType::F32, {2, 3});
+
+        REQUIRE(t.permute({0, 2}) == Result::ERROR);
     }
 }
 
@@ -1166,6 +1318,42 @@ TEST_CASE("Tensor Clone Operations", "[tensor][clone]") {
         REQUIRE(VerifyTestPattern<F32>(clone1, 999.0f));
         REQUIRE(VerifyTestPattern<F32>(clone2, 999.0f));
         REQUIRE(VerifyTestPattern<F32>(clone3, 999.0f));
+    }
+
+    SECTION("swapBuffers Updates Shared Clone Storage") {
+        Tensor src(DeviceType::CPU, DataType::F32, {4, 4});
+        Tensor replacement(DeviceType::CPU, DataType::F32, {4, 4});
+
+        WriteTestPattern<F32>(src, 1.0f);
+        WriteTestPattern<F32>(replacement, 2.0f);
+        REQUIRE(src.setAttribute("sampleRate", F32{123.0f}) == Result::SUCCESS);
+
+        Tensor cloned = src.clone();
+
+        const Index srcId = src.id();
+        const Index replacementId = replacement.id();
+        const Shape srcShape = src.shape();
+        const Shape srcStride = src.stride();
+
+        REQUIRE(src.swapBuffers(replacement) == Result::SUCCESS);
+
+        REQUIRE(src.id() == srcId);
+        REQUIRE(replacement.id() == replacementId);
+        REQUIRE(src.shape() == srcShape);
+        REQUIRE(src.stride() == srcStride);
+        REQUIRE(std::any_cast<F32>(src.attribute("sampleRate")) == 123.0f);
+        REQUIRE(cloned.hasAttribute("sampleRate"));
+
+        REQUIRE(VerifyTestPattern<F32>(src, 2.0f));
+        REQUIRE(VerifyTestPattern<F32>(cloned, 2.0f));
+        REQUIRE(VerifyTestPattern<F32>(replacement, 1.0f));
+    }
+
+    SECTION("swapBuffers Rejects Mismatched Layout") {
+        Tensor lhs(DeviceType::CPU, DataType::F32, {4, 4});
+        Tensor rhs(DeviceType::CPU, DataType::F32, {2, 8});
+
+        REQUIRE(lhs.swapBuffers(rhs) == Result::ERROR);
     }
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE

@@ -1,12 +1,11 @@
 deps = [
-    dependency(
-        'libqrencode',
+    subproject(
+        'qrencode',
         required: true,
-        fallback: 'qrencode',
         default_options: [
             'default_library=static',
         ],
-    )
+    ).get_variable('libqrencode_dep')
 ]
 
 all_deps_found = true

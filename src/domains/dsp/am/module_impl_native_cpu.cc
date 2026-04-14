@@ -12,7 +12,7 @@
 namespace Jetstream::Modules {
 
 struct AmImplNativeCpu : public AmImpl,
-                         public Runtime::Context,
+                         public NativeCpuRuntimeContext,
                          public Scheduler::Context {
  public:
     Result create() override;

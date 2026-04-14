@@ -8,14 +8,13 @@
 namespace Jetstream::Modules {
 
 struct ReshapeImplNativeCpu : public ReshapeImpl,
-                              public Runtime::Context,
+                              public NativeCpuRuntimeContext,
                               public Scheduler::Context {
  public:
     Result computeSubmit() override;
 };
 
 Result ReshapeImplNativeCpu::computeSubmit() {
-    // Reshape is a view operation with no data movement.
     return Result::SUCCESS;
 }
 

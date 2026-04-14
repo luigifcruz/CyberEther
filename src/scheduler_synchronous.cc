@@ -81,7 +81,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
         std::vector<std::string> modules;
     };
     std::vector<RuntimeSegment> runtimes;
-    std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>> moduleMetrics;
+    std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>> metrics_;
 
     Result rebuildOrder();
     Result rebuildRuntimes();
@@ -298,6 +298,7 @@ Result SynchronousScheduler::compute() {
     // Phase 3: Execute modules with priority yield mechanism.
 
     Result res = Result::SUCCESS;
+    std::unordered_set<std::string> skippedModules;
 
     for (U64 i = 0; i < runtimes.size(); i++) {
         // Priority Yield: Check if present wants in before each segment.
@@ -335,7 +336,7 @@ Result SynchronousScheduler::compute() {
 
             setComputeActive();
 
-            res = runtimes[i].runtime->compute(runtimes[i].modules);
+            res = runtimes[i].runtime->compute(runtimes[i].modules, skippedModules);
 
             clearComputeActive();
         }
@@ -379,15 +380,15 @@ Result SynchronousScheduler::rebuildOrder() {
         for (const auto& [slot, link] : inputs) {
             (void)slot;
 
-            if (link.block.empty()) {
+            if (!link.producer.has_value()) {
                 continue;
             }
 
-            if (!modules.contains(link.block)) {
+            if (!modules.contains(link.producer->module)) {
                 continue;
             }
 
-            adj[link.block].push_back(consumerName);
+            adj[link.producer->module].push_back(consumerName);
             inDegree[consumerName] += 1;
         }
     }
@@ -435,7 +436,7 @@ Result SynchronousScheduler::rebuildRuntimes() {
         }
     }
     runtimes.clear();
-    moduleMetrics.clear();
+    metrics_.clear();
 
     if (topoOrder.empty()) {
         return Result::SUCCESS;
@@ -455,8 +456,16 @@ Result SynchronousScheduler::rebuildRuntimes() {
         auto runtime = std::make_shared<Runtime>(runtimeName, currentDevice, currentRuntime);
         JST_CHECK(runtime->create(segmentModules));
 
-        for (const auto& name : segmentNames) {
-            moduleMetrics[name] = runtime->metrics();
+        // Assign metrics for each block.
+
+        std::unordered_set<std::string> blocks;
+
+        for (const auto& fullName : segmentNames) {
+            blocks.insert(Parser::SplitString(fullName, "-")[0]);
+        }
+
+        for (const auto& name : blocks) {
+            metrics_[name] = runtime->metrics();
         }
 
         runtimes.push_back({std::move(runtime), std::move(segmentNames)});
@@ -487,7 +496,7 @@ Result SynchronousScheduler::rebuildRuntimes() {
 }
 
 const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& SynchronousScheduler::metrics() const {
-    return moduleMetrics;
+    return metrics_;
 }
 
 void SynchronousScheduler::haltAll() {

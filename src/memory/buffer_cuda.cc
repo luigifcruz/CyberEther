@@ -261,16 +261,28 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
         return Result::ERROR;
     }
 
-    Result copyFrom(const Backend& source) override {
+    Result copyFrom(const Backend& source, void* context) override {
         JST_TRACE("[MEMORY:BUFFER:CUDA] Copying buffer.");
 
         if (sizeBytes == 0) {
             return Result::SUCCESS;
         }
 
-        JST_CUDA_CHECK(cudaMemcpy(buffer, source.rawHandle(), source.size(), cudaMemcpyDefault), [&] {
-            JST_ERROR("[MEMORY:BUFFER:CUDA] cudaMemcpy failed: {}.", err);
-        });
+        auto stream = static_cast<cudaStream_t>(context);
+
+        if (stream) {
+            JST_CUDA_CHECK(cudaMemcpyAsync(buffer,
+                                           source.rawHandle(),
+                                           source.size(),
+                                           cudaMemcpyDefault,
+                                           stream), [&] {
+                JST_ERROR("[MEMORY:BUFFER:CUDA] cudaMemcpyAsync failed: {}.", err);
+            });
+        } else {
+            JST_CUDA_CHECK(cudaMemcpy(buffer, source.rawHandle(), source.size(), cudaMemcpyDefault), [&] {
+                JST_ERROR("[MEMORY:BUFFER:CUDA] cudaMemcpy failed: {}.", err);
+            });
+        }
 
         return Result::SUCCESS;
     }

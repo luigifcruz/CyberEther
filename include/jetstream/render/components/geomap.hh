@@ -22,6 +22,7 @@ class GeoMap : public Generic {
         float centerLat = 0.0f;
         float zoom = 1.0f;
         float aspectRatio = 1.0f;
+        float surfaceScale = 1.0f;
         float viewportWidth = 800.0f;
         float viewportHeight = 600.0f;
     };

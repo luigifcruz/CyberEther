@@ -93,6 +93,7 @@ class JETSTREAM_API Block {
     // Components
 
     const std::vector<std::shared_ptr<Module::Surface>>& surfaces() const;
+    const std::vector<std::string>& modules() const;
 
  private:
     std::shared_ptr<Impl> impl;

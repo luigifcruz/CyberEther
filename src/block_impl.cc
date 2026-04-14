@@ -54,7 +54,8 @@ Result Block::Impl::moduleCreate(const std::string name,
 
     TensorMap clonedInputs;
     for (const auto& [key, link] : inputs) {
-        clonedInputs[key] = {link.block, link.port, link.tensor.clone()};
+        clonedInputs[key] = link;
+        clonedInputs[key].tensor = link.tensor.clone();
     }
 
     // Create module.
@@ -170,8 +171,9 @@ Result Block::Impl::moduleExposeOutput(const std::string blockPort,
 
     // Store tensor reference.
 
-    const auto& moduleTensor = entry.module->outputs().at(modulePort);
-    _outputs[blockPort] = {_name, blockPort, moduleTensor.tensor};
+    const auto& moduleTensorLink = entry.module->outputs().at(modulePort);
+    _outputs[blockPort] = moduleTensorLink;
+    _outputs[blockPort].exposedAs(_name, blockPort);
 
     return Result::SUCCESS;
 }
@@ -235,6 +237,10 @@ std::shared_ptr<Scheduler>& Block::Impl::scheduler() {
 
 const std::vector<std::shared_ptr<Module::Surface>>& Block::Impl::surfaces() const {
     return _surfaces;
+}
+
+const std::vector<std::string>& Block::Impl::modules() const {
+    return _moduleOrder;
 }
 
 Result Block::Impl::defineInterfaceInput(const std::string& key,

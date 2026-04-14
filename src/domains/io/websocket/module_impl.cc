@@ -53,11 +53,13 @@ Result WebsocketImpl::create() {
 
     errored = false;
     connected = false;
+    bufferHealth.publish(0.0f);
+    throughputMBs.publish(0.0f);
 
     JST_CHECK(buffer.create(device(), NameToDataType(dataType),
                             {numberOfBatches, numberOfTimeSamples}));
 
-    outputs()["signal"] = {name(), "signal", buffer};
+    outputs()["signal"].produced(name(), "signal", buffer);
 
     circularBuffer.resize(buffer.sizeBytes() * bufferMultiplier);
 
@@ -91,6 +93,8 @@ Result WebsocketImpl::destroy() {
     }
 
     connected = false;
+    bufferHealth.publish(0.0f);
+    throughputMBs.publish(0.0f);
 
     return Result::SUCCESS;
 }
@@ -121,10 +125,11 @@ EM_BOOL WebsocketImpl::onMessage(int,
     if (capacity > 0) {
         const F32 newHealth = static_cast<F32>(self->circularBuffer.getOccupancy()) /
                               static_cast<F32>(capacity);
-        self->bufferHealth = self->bufferHealth * 0.99f + newHealth * 0.01f;
+        const F32 smoothedHealth = self->bufferHealth.get() * 0.99f + newHealth * 0.01f;
+        self->bufferHealth.publish(smoothedHealth);
     }
 
-    self->throughputMBs = static_cast<F32>(self->circularBuffer.getThroughput()) / 1e6f;
+    self->throughputMBs.publish(static_cast<F32>(self->circularBuffer.getThroughput()) / 1e6f);
 
     return EM_TRUE;
 }
@@ -148,16 +153,12 @@ EM_BOOL WebsocketImpl::onError(int,
     return EM_TRUE;
 }
 
-Tools::CircularBuffer<I8>& WebsocketImpl::getCircularBuffer() {
-    return circularBuffer;
+F32 WebsocketImpl::getBufferHealth() const {
+    return bufferHealth.get();
 }
 
-const F32& WebsocketImpl::getBufferHealth() const {
-    return bufferHealth;
-}
-
-const F32& WebsocketImpl::getThroughput() const {
-    return throughputMBs;
+F32 WebsocketImpl::getThroughput() const {
+    return throughputMBs.get();
 }
 
 }  // namespace Jetstream::Modules

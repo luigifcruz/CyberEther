@@ -87,7 +87,7 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    "float:MHz:3"));
+                                    "float:MHz:3:frequencyStep"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
@@ -120,9 +120,11 @@ Result SoapyImpl::define() {
                                     "progressbar",
         [this]() -> std::any {
             if (!moduleImpl) {
-                return F32(0.0f);
+                return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
-            return moduleImpl->getBufferHealth();
+            const F32 bufferHealth = moduleImpl->getBufferHealth();
+            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferHealth * 100.0f),
+                                               bufferHealth};
         }));
 
     JST_CHECK(defineInterfaceMetric("throughput",
@@ -133,7 +135,7 @@ Result SoapyImpl::define() {
             if (!moduleImpl) {
                 return std::string("N/A");
             }
-            const auto& [actual, expected] = moduleImpl->getThroughput();
+            const auto [actual, expected] = moduleImpl->getThroughput();
             return jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected);
         }));
 

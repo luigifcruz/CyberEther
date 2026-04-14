@@ -15,6 +15,7 @@ subdir('fmt')
 subdir('stb')
 subdir('cpphttplib')
 subdir('json')
+subdir('rapidyaml')
 subdir('qrencode')
 subdir('libmodes')
 # [NEW DEPENDENCY HOOK]

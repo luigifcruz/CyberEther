@@ -6,10 +6,11 @@
 namespace Jetstream::Blocks {
 
 struct Duplicate : public Block::Config {
+    std::string outputDevice = "cpu";
     bool hostAccessible = true;
 
     JST_BLOCK_TYPE(duplicate);
-    JST_BLOCK_PARAMS(hostAccessible);
+    JST_BLOCK_PARAMS(hostAccessible, outputDevice);
     JST_BLOCK_DESCRIPTION(
         "Duplicate",
         "Copies and transfers signal data.",
@@ -20,7 +21,9 @@ struct Duplicate : public Block::Config {
 
         "## Arguments\n"
         "- **Host Accessible**: When enabled, the output buffer can be accessed "
-        "from the CPU. This is useful when GPU data needs to be read by the host.\n\n"
+        "from the CPU. This is useful when GPU data needs to be read by the host.\n"
+        "- **Output Device**: Optional device for the duplicated output buffer. "
+        "Use `none` to keep the input tensor's device.\n\n"
 
         "## Useful For\n"
         "- Converting non-contiguous memory to contiguous.\n"
@@ -29,7 +32,7 @@ struct Duplicate : public Block::Config {
 
         "## Examples\n"
         "- Duplicate a GPU tensor for CPU access:\n"
-        "  Config: Host Accessible=true\n"
+        "  Config: Host Accessible=true, Output Device=cpu\n"
         "  Input: CF32[8192] -> Output: CF32[8192] (host-accessible copy)\n\n"
 
         "## Implementation\n"

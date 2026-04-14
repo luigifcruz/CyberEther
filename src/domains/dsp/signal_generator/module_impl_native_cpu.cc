@@ -12,7 +12,7 @@
 namespace Jetstream::Modules {
 
 struct SignalGeneratorImplNativeCpu : public SignalGeneratorImpl,
-                                      public Runtime::Context,
+                                      public NativeCpuRuntimeContext,
                                       public Scheduler::Context {
  public:
     Result create() final;

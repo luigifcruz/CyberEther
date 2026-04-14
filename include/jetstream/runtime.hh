@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "jetstream/types.hh"
 
@@ -24,9 +25,8 @@ class JETSTREAM_API Runtime {
         std::string runtime;
         std::string device;
         std::string backend;
-        F32 averageComputeTime = 0.0f;
-        F32 initializationTime = 0.0f;
-        U64 cycles = 0;
+        std::unordered_map<std::string, F32> averageComputeTime;
+        std::unordered_map<std::string, U64> cycles;
     };
 
     typedef std::unordered_map<std::string, std::shared_ptr<Module>> Modules;
@@ -36,7 +36,8 @@ class JETSTREAM_API Runtime {
     Result create(const Modules& modules);
     Result destroy();
 
-    Result compute(const std::vector<std::string>& modules = {});
+    Result compute(const std::vector<std::string>& modules,
+                   std::unordered_set<std::string>& skippedModules);
 
     const std::shared_ptr<Metrics>& metrics() const;
 

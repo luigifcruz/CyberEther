@@ -26,6 +26,7 @@ class JETSTREAM_API Instance : public std::enable_shared_from_this<Instance> {
         std::optional<CompositorType> compositor{};
         bool headless{false};
         Extent2D<U64> size{1920, 1080};
+        F32 scale{1.0f};
         U64 framerate{60};
     };
 

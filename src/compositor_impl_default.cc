@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <deque>
+#include <random>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -41,9 +42,12 @@
 #include <optional>
 #include <regex>
 #include <set>
+#include <tuple>
 #include <vector>
 #include <unordered_map>
 #include <variant>
+
+// TODO: Port `reshape` and `slice` to vector.
 
 namespace Jetstream {
 
@@ -87,6 +91,57 @@ static inline void NotifyResultClean(const Result value, const std::string& mess
         const auto text = resolveMessage(JST_LOG_LAST_ERROR());
         ImGui::InsertNotification({ ImGuiToastType_Info, 1000, text.c_str() });
     }
+}
+
+static inline std::vector<DeviceType> ListBlockDeviceOptions(const std::string& blockType,
+                                                             const DeviceType& currentDevice) {
+    std::vector<DeviceType> devices;
+    for (const auto& module : Registry::ListAvailableModules(blockType)) {
+        if (std::find(devices.begin(), devices.end(), module.device) == devices.end()) {
+            devices.push_back(module.device);
+        }
+    }
+
+    if (devices.empty() && currentDevice != DeviceType::None) {
+        devices.push_back(currentDevice);
+    }
+
+    return devices;
+}
+
+static inline std::optional<Registry::ModuleRegistration>
+ResolveBlockImplementationForDevice(const std::string& blockType,
+                                    const DeviceType& device,
+                                    const RuntimeType& preferredRuntime,
+                                    const ProviderType& preferredProvider) {
+    const auto implementations = Registry::ListAvailableModules(blockType,
+                                                                std::optional<DeviceType>{device});
+    if (implementations.empty()) {
+        return std::nullopt;
+    }
+
+    const auto exactMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.runtime == preferredRuntime && entry.provider == preferredProvider;
+    });
+    if (exactMatch != implementations.end()) {
+        return *exactMatch;
+    }
+
+    const auto runtimeMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.runtime == preferredRuntime;
+    });
+    if (runtimeMatch != implementations.end()) {
+        return *runtimeMatch;
+    }
+
+    const auto providerMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.provider == preferredProvider;
+    });
+    if (providerMatch != implementations.end()) {
+        return *providerMatch;
+    }
+
+    return implementations.front();
 }
 
 struct FieldContext {
@@ -138,22 +193,130 @@ struct FieldContext {
         ImGui::GetWindowDrawList()->AddText(textPos, unitColor, unitStr.c_str());
     }
 
-    bool renderFloatValue(F32& value, const std::string& unit = "", int precision = 2) {
+    bool renderFloatValue(F32& value,
+                          const std::string& unit = "",
+                          int precision = 2,
+                          F32* step = nullptr) {
         const F32 multiplier = getUnitMultiplier(unit);
         F32 displayValue = value / multiplier;
+        F32 displayStep = (step != nullptr) ? (*step / multiplier) : 0.0f;
 
         char fmt[16];
         snprintf(fmt, sizeof(fmt), "%%.%df", precision);
 
-        ImGui::SetNextItemWidth(-1);
-
         bool changed = false;
+
+        if (step == nullptr) {
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputFloat("##float", &displayValue, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                value = displayValue * multiplier;
+                changed = true;
+            }
+            renderUnitSuffix(unit);
+
+            return changed;
+        }
+
+        const F32 availWidth = ImGui::GetContentRegionAvail().x;
+        const F32 btnHeight = ImGui::GetTextLineHeight() + 4.0f * scalingFactor;
+        const auto bgColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("card"));
+        const auto btnColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("text_secondary"));
+        const auto btnActiveColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("text_primary"));
+        const F32 rounding = ImGui::GetStyle().FrameRounding;
+        const F32 btnWidth = availWidth * 0.2f;
+        const F32 stepInputWidth = availWidth - btnWidth * 2.0f;
+
+        const auto drawCenteredLabel = [&](const char* label,
+                                           const ImVec2& min,
+                                           const ImVec2& max,
+                                           const bool hovered) {
+            const ImVec2 textSize = ImGui::CalcTextSize(label);
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2((min.x + max.x) * 0.5f - textSize.x * 0.5f,
+                       (min.y + max.y) * 0.5f - textSize.y * 0.5f),
+                hovered ? btnActiveColor : btnColor,
+                label);
+        };
+        const auto renderStepButton = [&](const char* id,
+                                          const char* label,
+                                          const F32 delta) {
+            ImGui::InvisibleButton(id, ImVec2(btnWidth, btnHeight));
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsItemDeactivated()) {
+                displayValue += delta;
+                value = displayValue * multiplier;
+                changed = true;
+            }
+
+            drawCenteredLabel(label, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+        };
+
+        const ImVec2 cellPos = ImGui::GetCursorScreenPos();
+        const F32 inputHeight = ImGui::GetFrameHeight();
+        const F32 totalHeight = inputHeight + btnHeight;
+
+        ImGui::GetWindowDrawList()->AddRectFilled(cellPos,
+                                                  ImVec2(cellPos.x + availWidth, cellPos.y + totalHeight),
+                                                  bgColor, rounding);
+
+        ImGui::SetNextItemWidth(availWidth);
         if (ImGui::InputFloat("##float", &displayValue, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
             value = displayValue * multiplier;
             changed = true;
         }
-
         renderUnitSuffix(unit);
+
+        const ImVec2 inputMax = ImGui::GetItemRectMax();
+        const ImVec2 btnRowPos(cellPos.x, inputMax.y);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+        ImGui::SetCursorScreenPos(btnRowPos);
+        renderStepButton("-##float_step_minus", "-", -displayStep);
+
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::PushID(static_cast<const void*>(step));
+        const ImGuiID stepEditId = ImGui::GetID("##step_editing");
+        const ImGuiID stepFocusId = ImGui::GetID("##step_focus");
+        ImGuiStorage* storage = ImGui::GetStateStorage();
+
+        if (!storage->GetBool(stepEditId, false)) {
+            ImGui::InvisibleButton("##step_toggle", ImVec2(stepInputWidth, btnHeight));
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsItemDeactivated()) {
+                storage->SetBool(stepEditId, true);
+                storage->SetBool(stepFocusId, true);
+            }
+
+            drawCenteredLabel("Step Size", ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+        } else {
+            ImGui::SetNextItemWidth(stepInputWidth);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, colorMap.at("text_secondary"));
+            if (storage->GetBool(stepFocusId, false)) {
+                ImGui::SetKeyboardFocusHere();
+                storage->SetBool(stepFocusId, false);
+            }
+            if (ImGui::InputFloat("##float_step", &displayStep, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                *step = displayStep * multiplier;
+                changed = true;
+            }
+            if (ImGui::IsItemDeactivated()) {
+                storage->SetBool(stepEditId, false);
+                storage->SetBool(stepFocusId, false);
+            }
+            ImGui::PopStyleColor(4);
+        }
+        ImGui::PopID();
+
+        ImGui::SameLine(0.0f, 0.0f);
+        renderStepButton("+##float_step_plus", "+", displayStep);
+
+        ImGui::PopStyleVar();
+        ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight + ImGui::GetStyle().ItemSpacing.y));
 
         return changed;
     }
@@ -178,6 +341,82 @@ struct FieldContext {
         return 1.0f;
     }
 };
+
+template<typename BrowseFn>
+static inline bool RenderFieldPathControl(const std::string& name,
+                                          const std::string& currentValue,
+                                          FieldContext& ctx,
+                                          BrowseFn&& browse) {
+    ctx.renderHeader();
+
+    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
+    std::string value = currentValue;
+    const F32 buttonWidth = ImGui::GetFrameHeight();
+    const F32 frameHeight = ImGui::GetFrameHeight();
+    const F32 connectorWidth = ImGui::GetStyle().ItemSpacing.x;
+    const F32 inputWidth = std::max(0.0f,
+                                    ImGui::GetContentRegionAvail().x - buttonWidth -
+                                    connectorWidth);
+
+    ImGui::PushID(name.c_str());
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
+
+    const ImVec2 fieldRectMin = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddRectFilled(fieldRectMin,
+                                              ImVec2(fieldRectMin.x + inputWidth + connectorWidth + buttonWidth,
+                                                     fieldRectMin.y + frameHeight),
+                                              bgColor,
+                                              ImGui::GetStyle().FrameRounding);
+
+    bool changed = false;
+
+    ImGui::SetNextItemWidth(inputWidth);
+    if (ImGui::InputTextWithHint("##path", "Select file...", &value, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        ctx.cfg[name] = value;
+        changed = true;
+    }
+    const bool inputHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort);
+
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::Dummy(ImVec2(connectorWidth, frameHeight));
+
+    ImGui::SameLine(0.0f, 0.0f);
+    const F32 iconScale = 0.7f;
+    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize,
+                                                            FLT_MAX,
+                                                            0.0f,
+                                                            ICON_FA_FOLDER_OPEN);
+
+    if (ImGui::Button("##browse", ImVec2(buttonWidth, frameHeight))) {
+        browse();
+    }
+    const ImVec2 buttonRectMin = ImGui::GetItemRectMin();
+    const ImVec2 buttonRectMax = ImGui::GetItemRectMax();
+    const F32 iconX = buttonRectMin.x + ((buttonRectMax.x - buttonRectMin.x) - iconSize.x) * 0.5f;
+    const F32 iconY = buttonRectMin.y + (frameHeight - iconFontSize) * 0.5f;
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
+                                        iconFontSize,
+                                        ImVec2(iconX, iconY),
+                                        ImGui::GetColorU32(ImGuiCol_Text),
+                                        ICON_FA_FOLDER_OPEN);
+
+    const bool buttonHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort);
+
+    if ((inputHovered || buttonHovered) && !currentValue.empty()) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted(currentValue.c_str());
+        ImGui::EndTooltip();
+    }
+
+    ImGui::PopStyleColor(4);
+    ImGui::PopID();
+
+    return changed;
+}
 
 // Format: `dropdown:key1(Label1),key2(Label2),...`
 static inline bool RenderFieldDropdown(const std::string& name,
@@ -246,7 +485,7 @@ static inline bool RenderFieldDropdown(const std::string& name,
     return changed;
 }
 
-// Format: `float:unit:precision`
+// Format: `float:unit:precision:stepConfig`
 static inline bool RenderFieldFloat(const std::string& name,
                                     const std::vector<std::string>& parts,
                                     const std::string& encoded,
@@ -260,12 +499,26 @@ static inline bool RenderFieldFloat(const std::string& name,
 
     const std::string unit = (parts.size() > 1) ? parts[1] : "";
     const int precision = (parts.size() > 2 && !parts[2].empty()) ? std::stoi(parts[2]) : 2;
+    const std::string stepConfig = (parts.size() > 3) ? parts[3] : "";
+
+    F32 step = 0.0f;
+    const bool hasStep = !stepConfig.empty() && stepConfig != name && ctx.cfg.contains(stepConfig) &&
+                         Parser::Deserialize(ctx.cfg, stepConfig, step) == Result::SUCCESS;
+    const F32 originalValue = value;
+    const F32 originalStep = step;
 
     ImGui::PushID(name.c_str());
 
     bool changed = false;
-    if (ctx.renderFloatValue(value, unit, precision)) {
-        ctx.cfg[name] = value;
+    if (ctx.renderFloatValue(value, unit, precision, hasStep ? &step : nullptr)) {
+        if (value != originalValue) {
+            ctx.cfg[name] = value;
+        }
+
+        if (hasStep && step != originalStep) {
+            ctx.cfg[stepConfig] = step;
+        }
+
         changed = true;
     }
 
@@ -365,6 +618,171 @@ static inline bool RenderFieldVector(const std::string& name,
         }
     } else {
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector field type '{}' for config '{}'", valueType, name);
+    }
+
+    ImGui::PopID();
+
+    return changed;
+}
+
+// Format: `vector-inline:float:unit:precision` or `vector-inline:int:unit`
+static inline bool RenderFieldVectorInline(const std::string& name,
+                                           const std::vector<std::string>& parts,
+                                           const std::string& encoded,
+                                           FieldContext& ctx) {
+    ctx.renderHeader();
+
+    const std::string valueType = (parts.size() > 1) ? parts[1] : "float";
+    const std::string unit = (parts.size() > 2) ? parts[2] : "";
+    const int precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+
+    ImGui::PushID(name.c_str());
+
+    std::string currentText = encoded.empty() ? "[]" : encoded;
+    const auto normalizeVectorInput = [](const std::string& text,
+                                         std::string& normalized,
+                                         std::string& error) {
+        std::string trimmed = TrimFieldString(text);
+        if (trimmed.empty()) {
+            normalized = "[]";
+            return true;
+        }
+
+        if (trimmed.front() == '[') {
+            if (trimmed.back() != ']') {
+                error = "Vector input must end with ']'.";
+                return false;
+            }
+
+            trimmed = TrimFieldString(trimmed.substr(1, trimmed.size() - 2));
+        } else if (trimmed.back() == ']') {
+            error = "Vector input must start with '['.";
+            return false;
+        }
+
+        std::vector<std::string> entries;
+        std::stringstream ss(trimmed);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            token = TrimFieldString(token);
+            if (token.empty()) {
+                error = "Vector entries cannot be empty.";
+                return false;
+            }
+
+            entries.push_back(token);
+        }
+
+        normalized = jst::fmt::format("[{}]", jst::fmt::join(entries, ", "));
+        return true;
+    };
+
+    if (valueType == "float") {
+        std::vector<F32> values;
+        try {
+            if (!encoded.empty() && Parser::StringToTyped(encoded, values) == Result::SUCCESS) {
+                const F32 multiplier = FieldContext::getUnitMultiplier(unit);
+
+                std::vector<std::string> formattedValues;
+                formattedValues.reserve(values.size());
+
+                for (const auto value : values) {
+                    formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
+                }
+
+                currentText = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+            }
+        } catch (...) {
+        }
+    } else if (valueType == "int") {
+        std::vector<U64> values;
+        try {
+            if (!encoded.empty() && Parser::StringToTyped(encoded, values) == Result::SUCCESS) {
+                currentText = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+            }
+        } catch (...) {
+        }
+    } else {
+        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector-inline field type '{}' for config '{}'", valueType, name);
+        ImGui::PopID();
+        return false;
+    }
+
+    const ImGuiID inputId = ImGui::GetID("##vector_inline");
+    static std::unordered_map<ImGuiID, std::string> buffers;
+    std::string& buffer = buffers[inputId];
+
+    if (ImGui::GetActiveID() != inputId && buffer != currentText) {
+        buffer = currentText;
+    }
+
+    ImGui::SetNextItemWidth(-1);
+
+    bool changed = false;
+    const bool submitted = ImGui::InputText("##vector_inline", &buffer, ImGuiInputTextFlags_EnterReturnsTrue);
+    ctx.renderUnitSuffix(unit);
+
+    const bool shouldApply = submitted || (ImGui::IsItemDeactivatedAfterEdit() && buffer != currentText);
+    if (shouldApply) {
+        std::string normalizedBuffer;
+        std::string error;
+        normalizeVectorInput(buffer, normalizedBuffer, error);
+
+        if (valueType == "float") {
+            std::vector<F32> values;
+            if (error.empty()) {
+                try {
+                    if (normalizedBuffer != "[]" && Parser::StringToTyped(normalizedBuffer, values) != Result::SUCCESS) {
+                        error = CleanUserMessage(JST_LOG_LAST_ERROR());
+                    }
+                } catch (...) {
+                    error = "Invalid float value in vector.";
+                }
+            }
+
+            if (error.empty()) {
+                const F32 multiplier = FieldContext::getUnitMultiplier(unit);
+                for (auto& value : values) {
+                    value *= multiplier;
+                }
+
+                ctx.cfg[name] = values;
+
+                std::vector<std::string> formattedValues;
+                formattedValues.reserve(values.size());
+
+                for (const auto value : values) {
+                    formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
+                }
+
+                buffer = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+                changed = true;
+            }
+        } else {
+            std::vector<U64> values;
+            if (error.empty()) {
+                try {
+                    if (normalizedBuffer != "[]" && Parser::StringToTyped(normalizedBuffer, values) != Result::SUCCESS) {
+                        error = CleanUserMessage(JST_LOG_LAST_ERROR());
+                    }
+                } catch (...) {
+                    error = "Invalid integer value in vector.";
+                }
+            }
+
+            if (error.empty()) {
+                ctx.cfg[name] = values;
+                buffer = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            NotifyResultClean(Result::ERROR,
+                              jst::fmt::format("{}: {}",
+                                               ctx.label,
+                                               error.empty() ? "Use a vector like [x, y, z]." : error));
+        }
     }
 
     ImGui::PopID();
@@ -585,7 +1003,7 @@ static inline bool RenderFieldRange(const std::string& name,
     const ImVec4 bgColorVec = ImGui::ColorConvertU32ToFloat4(bgColor);
     const ImU32 sliderColor = ImGui::GetColorU32(ImVec4(bgColorVec.x * 1.5f, bgColorVec.y * 1.5f, bgColorVec.z * 1.5f, bgColorVec.w));
 
-    const F32 knobWidth = 8.0f * ctx.scalingFactor;
+    const F32 knobWidth = ImMax(8.0f * ctx.scalingFactor, rounding * 2.0f);
     const F32 knobX = std::clamp(rectMin.x + sliderWidth - knobWidth * 0.5f, rectMin.x, rectMax.x - knobWidth);
 
     ImGui::GetWindowDrawList()->AddRectFilled(rectMin, ImVec2(knobX + knobWidth, rectMax.y), sliderColor, rounding);
@@ -665,68 +1083,17 @@ static inline bool RenderFieldFilePicker(const std::string& name,
                                          const std::vector<std::string>& parts,
                                          const std::string& currentValue,
                                          FieldContext& ctx) {
-    ctx.renderHeader();
-
-    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
     std::vector<std::string> extensions;
     if (parts.size() > 1 && !parts[1].empty()) {
         extensions = Parser::SplitString(parts[1], ",");
     }
 
-    std::string filename = "Select file...";
-    if (!currentValue.empty()) {
-        const auto pos = currentValue.find_last_of("/\\");
-        filename = (pos != std::string::npos) ? currentValue.substr(pos + 1) : currentValue;
-    }
-
-    const F32 pad = ImGui::GetStyle().FramePadding.x;
-    const F32 iconScale = 0.7f;
-    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FOLDER_OPEN).x;
-
-    ImGui::PushID(name.c_str());
-    ImGui::SetNextItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-
-    if (ImGui::Button(filename.c_str(), ImVec2(-1, 0))) {
+    return RenderFieldPathControl(name, currentValue, ctx, [&] {
         std::string pickedPath;
         Platform::PickFile(pickedPath, extensions, [name, async = ctx.asyncApply](std::string path) {
             async(name, std::move(path));
         });
-    }
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const F32 frameHeight = rectMax.y - rectMin.y;
-    const F32 arrowPad = ImGui::GetStyle().FramePadding.y;
-    const F32 iconX = rectMax.x - pad * 0.4f - iconWidth;
-    const F32 iconY = rectMin.y + (frameHeight - iconFontSize) * 0.5f + arrowPad * 0.1f;
-
-    const ImVec2 bgMin(iconX - pad * 0.5f, rectMin.y);
-    const ImVec2 bgMax(rectMax.x, rectMax.y);
-    ImGui::GetWindowDrawList()->AddRectFilled(bgMin, bgMax, bgColor);
-
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FOLDER_OPEN);
-
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !currentValue.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(currentValue.c_str());
-        ImGui::EndTooltip();
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-    ImGui::PopID();
-
-    return false;
+    });
 }
 
 // Format: `filesave:ext1,ext2,...`
@@ -734,63 +1101,12 @@ static inline bool RenderFieldFileSave(const std::string& name,
                                        const std::vector<std::string>&,
                                        const std::string& currentValue,
                                        FieldContext& ctx) {
-    ctx.renderHeader();
-
-    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
-    std::string filename = "Select file...";
-    if (!currentValue.empty()) {
-        const auto pos = currentValue.find_last_of("/\\");
-        filename = (pos != std::string::npos) ? currentValue.substr(pos + 1) : currentValue;
-    }
-
-    const F32 pad = ImGui::GetStyle().FramePadding.x;
-    const F32 iconScale = 0.7f;
-    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FLOPPY_DISK).x;
-
-    ImGui::PushID(name.c_str());
-    ImGui::SetNextItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-
-    if (ImGui::Button(filename.c_str(), ImVec2(-1, 0))) {
+    return RenderFieldPathControl(name, currentValue, ctx, [&] {
         std::string pickedPath;
         Platform::SaveFile(pickedPath, [name, async = ctx.asyncApply](std::string path) {
             async(name, std::move(path));
         });
-    }
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const F32 frameHeight = rectMax.y - rectMin.y;
-    const F32 arrowPad = ImGui::GetStyle().FramePadding.y;
-    const F32 iconX = rectMax.x - pad * 0.4f - iconWidth;
-    const F32 iconY = rectMin.y + (frameHeight - iconFontSize) * 0.5f + arrowPad * 0.1f;
-
-    const ImVec2 bgMin(iconX - pad * 0.5f, rectMin.y);
-    const ImVec2 bgMax(rectMax.x, rectMax.y);
-    ImGui::GetWindowDrawList()->AddRectFilled(bgMin, bgMax, bgColor);
-
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FLOPPY_DISK);
-
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !currentValue.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(currentValue.c_str());
-        ImGui::EndTooltip();
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-    ImGui::PopID();
-
-    return false;
+    });
 }
 
 using FieldRenderer = bool(*)(const std::string&,
@@ -799,16 +1115,17 @@ using FieldRenderer = bool(*)(const std::string&,
                               FieldContext&);
 
 static const std::unordered_map<std::string, FieldRenderer> fieldRenderers = {
-    {"dropdown",   RenderFieldDropdown},
-    {"float",      RenderFieldFloat},
-    {"int",        RenderFieldInt},
-    {"vector",     RenderFieldVector},
-    {"filepicker", RenderFieldFilePicker},
-    {"filesave",   RenderFieldFileSave},
-    {"bool",       RenderFieldBool},
-    {"range",      RenderFieldRange},
-    {"multiline",  RenderFieldMultiline},
-    {"text",       RenderFieldText},
+    {"dropdown",      RenderFieldDropdown},
+    {"float",         RenderFieldFloat},
+    {"int",           RenderFieldInt},
+    {"vector",        RenderFieldVector},
+    {"vector-inline", RenderFieldVectorInline},
+    {"filepicker",    RenderFieldFilePicker},
+    {"filesave",      RenderFieldFileSave},
+    {"bool",          RenderFieldBool},
+    {"range",         RenderFieldRange},
+    {"multiline",     RenderFieldMultiline},
+    {"text",          RenderFieldText},
 };
 
 //
@@ -854,7 +1171,8 @@ static inline void RenderMetricProgressBar(const Block::Interface::Entry& entry,
     }
 
     try {
-        const F32 value = std::clamp(std::any_cast<F32>(entry.metric()), 0.0f, 1.0f);
+        const auto& [overlay, rawValue] = std::any_cast<std::pair<std::string, F32>>(entry.metric());
+        const F32 value = std::clamp(rawValue, 0.0f, 1.0f);
         const auto& bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
@@ -865,7 +1183,6 @@ static inline void RenderMetricProgressBar(const Block::Interface::Entry& entry,
 
         const ImVec2 rectMin = ImGui::GetItemRectMin();
         const ImVec2 rectMax = ImGui::GetItemRectMax();
-        const std::string overlay = jst::fmt::format("{:.1f}%", value * 100.0f);
         const float fontSize = ImGui::GetFontSize();
         const ImVec2 textSize = ImGui::CalcTextSize(overlay.c_str());
         const F32 textX = rectMax.x - textSize.x - 6.0f * ctx.scalingFactor;
@@ -1152,10 +1469,6 @@ class DefaultCompositor : public Compositor::Impl {
         std::string path;
     };
 
-    struct MailResetFlowgraph {
-        std::string flowgraph;
-    };
-
     struct MailOpenFlowgraphPath {
         std::string path;
     };
@@ -1187,6 +1500,14 @@ class DefaultCompositor : public Compositor::Impl {
     struct MailReloadBlock {
         std::string flowgraph;
         std::string blockId;
+    };
+
+    struct MailChangeBlockDevice {
+        std::string flowgraph;
+        std::string blockId;
+        DeviceType device;
+        RuntimeType runtime;
+        ProviderType provider;
     };
 
     struct MailConnectBlock {
@@ -1226,10 +1547,10 @@ class DefaultCompositor : public Compositor::Impl {
                               MailSaveFlowgraph,
                               MailOpenFlowgraphPath,
                               MailOpenFlowgraphBlob,
-                              MailResetFlowgraph,
                               MailRenameBlock,
                               MailDeleteBlock,
                               MailReloadBlock,
+                              MailChangeBlockDevice,
                               MailConnectBlock,
                               MailDisconnectBlock,
                               MailReconfigureBlock,
@@ -1245,6 +1566,7 @@ class DefaultCompositor : public Compositor::Impl {
     Result renderInfoHud();
     Result renderFullscreenHud();
     Result renderWelcomeHud();
+    Result renderEmptyFlowgraphHint();
     Result renderRemoteHud();
     Result renderNotifications();
     Result renderMenubar();
@@ -1289,6 +1611,9 @@ class DefaultCompositor : public Compositor::Impl {
     std::string helperMakeStackWindowLabel(const std::string& flowgraphId,
                                            const std::string& stackId,
                                            const StackMeta& stackMeta) const;
+    void helperOpenBlockPicker(const std::string& flowgraphId,
+                               const ImVec2& pickerScreenPosition,
+                               const ImVec2& blockScreenPosition);
 
     // Helper elements.
 
@@ -1296,7 +1621,7 @@ class DefaultCompositor : public Compositor::Impl {
     void helperSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                              U64 width,
                              U64 height,
-                             F32 scalingFactor,
+                             F32 surfaceScale,
                              bool detached = false);
     bool helperCheckSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                                   const SurfaceManifest& manifest,
@@ -1344,8 +1669,12 @@ class DefaultCompositor : public Compositor::Impl {
     std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> flowgraphStacks;
     std::unordered_map<std::string, std::shared_ptr<Flowgraph>> flowgraphs;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Block>>> blocksCache;
+    std::unordered_set<std::string> dismissedEmptyFlowgraphHints;
+    std::unordered_map<std::string, int> emptyFlowgraphHintTipIndices;
+    std::mt19937 randomGenerator{std::random_device{}()};
     std::unordered_map<std::string, bool> openDocumentations;
     std::unordered_map<int, ImVec2> nodeSizes;
+    std::unordered_map<std::string, ImVec2> flowgraphViewportCenters;
 
     ImGuiID mainDockspaceID = 0;
 
@@ -1359,9 +1688,6 @@ class DefaultCompositor : public Compositor::Impl {
         ImVec2 gridPosition;
         char searchBuffer[128] = "";
         int selectedIndex = 0;
-        int deviceIndex = 0;
-        int runtimeIndex = 0;
-        int providerIndex = 0;
     };
     BlockPickerState blockPicker;
 
@@ -1433,7 +1759,14 @@ Result DefaultCompositor::present() {
 
     if (render->scalingFactor() != scalingFactor) {
         ImGuiStyleScale();
-        ImNodesStyleScale();
+
+        const auto previousContext = ImNodes::GetCurrentContext();
+        for (const auto& [_, context] : contexts) {
+            ImNodes::SetCurrentContext(context);
+            ImNodesStyleScale();
+        }
+        ImNodes::SetCurrentContext(previousContext);
+
         scalingFactor = render->scalingFactor();
     }
     currentHeight = 0.0f;
@@ -1560,6 +1893,7 @@ Result DefaultCompositor::present() {
     JST_CHECK(renderDocumentations());
 
     JST_CHECK(renderFlowgraph());
+    JST_CHECK(renderEmptyFlowgraphHint());
     JST_CHECK(renderGlobalModal());
 
     return Result::SUCCESS;
@@ -1693,10 +2027,6 @@ Result DefaultCompositor::poll() {
 
                 return Result::SUCCESS;
             },
-            [&](const MailResetFlowgraph&) -> Result {
-                // TODO: Implement.
-                return Result::SUCCESS;
-            },
             [&](const MailCloseFlowgraph& msg) -> Result {
                 if (!flowgraphs.contains(msg.flowgraph)) {
                     JST_ERROR("Failed to close flowgraph because flowgraph was not found.");
@@ -1731,7 +2061,8 @@ Result DefaultCompositor::poll() {
 
                 if (msg.gridPosition.has_value()) {
                     const auto& pos = msg.gridPosition.value();
-                    flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, 140.0f, 0.0f}, blockName);
+                    const NodeMeta nodeMeta = { pos.x / scalingFactor, pos.y / scalingFactor, 140.0f, 0.0f };
+                    flowgraph->setMeta("node", nodeMeta, blockName);
                 }
 
                 Compositor::Impl::enqueue([flowgraph, blockName, msg]() -> Result {
@@ -1791,6 +2122,43 @@ Result DefaultCompositor::poll() {
                     Parser::Map config;
                     JST_CHECK(flowgraph->blockConfig(blockId, config));
                     return flowgraph->blockRecreate(blockId, config);
+                });
+
+                return Result::SUCCESS;
+            },
+            [&](const MailChangeBlockDevice& msg) -> Result {
+                if (!flowgraphs.contains(msg.flowgraph)) {
+                    JST_ERROR("Failed to change block device because flowgraph was not found.");
+                    return Result::ERROR;
+                }
+
+                if (msg.blockId.empty()) {
+                    JST_ERROR("Failed to change block device due to empty block ID.");
+                    return Result::ERROR;
+                }
+
+                if (!blocksCache.at(msg.flowgraph).contains(msg.blockId)) {
+                    JST_ERROR("Failed to change block device because block was not found.");
+                    return Result::ERROR;
+                }
+
+                const auto& block = blocksCache.at(msg.flowgraph).at(msg.blockId);
+                if (block->device() == msg.device &&
+                    block->runtime() == msg.runtime &&
+                    block->provider() == msg.provider) {
+                    return Result::SUCCESS;
+                }
+
+                auto flowgraph = flowgraphs[msg.flowgraph];
+                auto blockId = msg.blockId;
+                auto device = msg.device;
+                auto runtime = msg.runtime;
+                auto provider = msg.provider;
+
+                Compositor::Impl::enqueue([flowgraph, blockId, device, runtime, provider]() -> Result {
+                    Parser::Map config;
+                    JST_CHECK(flowgraph->blockConfig(blockId, config));
+                    return flowgraph->blockRecreate(blockId, config, device, runtime, provider);
                 });
 
                 return Result::SUCCESS;
@@ -1902,7 +2270,8 @@ Result DefaultCompositor::poll() {
 
                 if (msg.gridPosition.has_value()) {
                     const auto& pos = msg.gridPosition.value();
-                    flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, 140.0f, 0.0f}, blockName);
+                    const NodeMeta nodeMeta = { pos.x / scalingFactor, pos.y / scalingFactor, 140.0f, 0.0f };
+                    flowgraph->setMeta("node", nodeMeta, blockName);
                 }
 
                 auto config = clipboard.config;
@@ -1983,6 +2352,12 @@ Result DefaultCompositor::renderFlowgraph() {
             }
         }
 
+        if (windowExpanded) {
+            const ImVec2 contentMin = ImGui::GetCursorScreenPos();
+            const ImVec2 contentSize = ImGui::GetContentRegionAvail();
+            flowgraphViewportCenters[flowgraphId] = contentMin + contentSize * 0.5f;
+        }
+
         if (!flowgraphOpen) {
             if (flowgraph->path().empty()) {
                 focusedFlowgraph = flowgraphId;
@@ -2035,7 +2410,8 @@ Result DefaultCompositor::renderFlowgraph() {
             }
             NodeMeta nodeMeta;
             if (flowgraph->getMeta("node", nodeMeta, blockName) == Result::SUCCESS) {
-                ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(nodeMeta.x, nodeMeta.y));
+                ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(nodeMeta.x * scalingFactor,
+                                                            nodeMeta.y * scalingFactor));
                 if (nodeMeta.width > 0.0f) {
                     nodeSizes[nodeId].x = nodeMeta.width * scalingFactor;
                 }
@@ -2046,6 +2422,8 @@ Result DefaultCompositor::renderFlowgraph() {
 
             bool hasSurfaces = false;
             bool isDetached = false;
+            const U64 defaultAttachedSurfaceHeight = SurfaceMeta{}.attachedHeight;
+            U64 attachedSurfaceHeight = defaultAttachedSurfaceHeight;
 
             if (!blockPtr->surfaces().empty()) {
                 const auto& surface = blockPtr->surfaces().front();
@@ -2054,6 +2432,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     const auto& manifest = surface->manifests().front();
                     SurfaceMeta surfaceMeta;
                     flowgraph->getMeta("surface_" + manifest.id, surfaceMeta, blockName);
+                    attachedSurfaceHeight = surfaceMeta.attachedHeight;
                     isDetached = surfaceMeta.detached;
                 }
             }
@@ -2064,9 +2443,16 @@ Result DefaultCompositor::renderFlowgraph() {
             const bool isReloading = blockState == Block::State::Creating ||
                                      blockState == Block::State::Incomplete;
             const bool shouldResetNodeHeight = (!hasSurfaces || isDetached) && !isReloading;
+            const F32 minimumSurfaceHeight = static_cast<F32>(attachedSurfaceHeight) * scalingFactor;
+            const bool shouldSeedSurfaceHeight = hasSurfaces && !isDetached &&
+                                                 attachedSurfaceHeight == defaultAttachedSurfaceHeight &&
+                                                 nodeSizes[nodeId].y < minimumSurfaceHeight;
+            const bool hasValidNodeHeight = nodeSizes[nodeId].y > 0.0f;
 
-            if (shouldResetNodeHeight) {
+            if (shouldResetNodeHeight || (isReloading && !hasValidNodeHeight)) {
                 nodeSizes[nodeId].y = 0.0f;
+            } else if (shouldSeedSurfaceHeight) {
+                nodeSizes[nodeId].y = minimumSurfaceHeight;
             }
             ImNodes::SetNodeDimensions(nodeId, nodeSizes[nodeId]);
 
@@ -2206,7 +2592,6 @@ Result DefaultCompositor::renderFlowgraph() {
                         }
 
                         if (!metricRenderers.contains(kind)) {
-                            JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown metric type '{}' for metric '{}'", kind, name);
                             continue;
                         }
 
@@ -2283,7 +2668,21 @@ Result DefaultCompositor::renderFlowgraph() {
                             continue;
                         }
 
-                        const auto availableRegion = ImGui::GetContentRegionAvail();
+                        ImVec2 availableRegion = ImGui::GetContentRegionAvail();
+                        const bool shouldPreserveDefaultAspectRatio = surfaceMeta.attachedWidth == SurfaceMeta{}.attachedWidth &&
+                                                                      surfaceMeta.attachedHeight == SurfaceMeta{}.attachedHeight &&
+                                                                      surfaceMeta.attachedWidth > 0;
+
+                        if (shouldPreserveDefaultAspectRatio) {
+                            const F32 aspectHeight = availableRegion.x * static_cast<F32>(surfaceMeta.attachedHeight) /
+                                                     static_cast<F32>(surfaceMeta.attachedWidth);
+
+                            if (aspectHeight > 0.0f && aspectHeight < availableRegion.y) {
+                                nodeSizes[nodeId].y = ImMax(0.0f, nodeSizes[nodeId].y - availableRegion.y + aspectHeight);
+                                availableRegion.y = aspectHeight;
+                            }
+                        }
+
                         if (helperCheckSurfaceResize(surface,
                                                      manifest,
                                                      availableRegion,
@@ -2321,7 +2720,7 @@ Result DefaultCompositor::renderFlowgraph() {
                                     helperSurfaceResize(surface,
                                                         static_cast<U64>(surfaceMeta.detachedWidth * ImGui::GetIO().DisplayFramebufferScale.x),
                                                         static_cast<U64>(surfaceMeta.detachedHeight * ImGui::GetIO().DisplayFramebufferScale.y),
-                                                        scalingFactor,
+                                                        scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f,
                                                         true);
                                 }
                             }
@@ -2365,8 +2764,12 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             for (const auto& [inputSlot, link] : consumerPtr->inputs()) {
+                if (!link.external.has_value()) {
+                    continue;
+                }
+                const auto& ext = link.external.value();
                 const int inPinId = idFromStr("pin:in:" + flowgraphId + ":" + consumerName + ":" + inputSlot);
-                const int outPinId = idFromStr("pin:out:" + flowgraphId + ":" + link.block + ":" + link.port);
+                const int outPinId = idFromStr("pin:out:" + flowgraphId + ":" + ext.block + ":" + ext.port);
                 const int linkId = idFromStr("link:" + flowgraphId + ":" + consumerName + ":" + inputSlot);
                 const bool linkUnresolved = !link.resolved();
 
@@ -2381,7 +2784,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     ImNodes::PushColorStyle(ImNodesCol_LinkSelected, greyColor);
                 }
 
-                linkIdToConnection[linkId] = {consumerName, inputSlot, link.block, link.port, &link};
+                linkIdToConnection[linkId] = {consumerName, inputSlot, ext.block, ext.port, &link};
                 ImNodes::Link(linkId, outPinId, inPinId);
 
                 if (linkUnresolved) {
@@ -2395,7 +2798,7 @@ Result DefaultCompositor::renderFlowgraph() {
         // Block picker render.
 
         if (blockPicker.active && blockPicker.flowgraphId == flowgraphId) {
-            const ImVec2 pickerSize(280.0f * scalingFactor, 320.0f * scalingFactor);
+            const ImVec2 pickerSize(300.0f * scalingFactor, 400.0f * scalingFactor);
             const ImVec2 screenPos = blockPicker.screenPosition;
 
             ImGui::SetNextWindowPos(screenPos, ImGuiCond_Always);
@@ -2441,7 +2844,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     const float subtitleFontSize = ImGui::GetFontSize() * 0.85f;
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
                     ImGui::PushFont(ImGui::GetFont(), subtitleFontSize);
-                    const char* subtitle = "Use arrows to navigate, Enter to create";
+                    const char* subtitle = "Use up/down to navigate, Enter to create";
                     const float subtitleWidth = ImGui::CalcTextSize(subtitle).x;
                     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImMax(0.0f, (ImGui::GetContentRegionAvail().x - subtitleWidth) * 0.5f));
                     ImGui::TextUnformatted(subtitle);
@@ -2464,24 +2867,43 @@ Result DefaultCompositor::renderFlowgraph() {
                     std::string type;
                     std::string title;
                     std::string summary;
+                    bool titleMatch = false;
                 };
                 std::vector<BlockItem> filteredBlocks;
 
                 const std::string query = std::string(blockPicker.searchBuffer);
-                auto matches = [&](const std::string& title, const std::string& summary) -> bool {
-                    if (query.empty()) return true;
-                    std::string t = title, s = summary, q = query;
-                    std::transform(t.begin(), t.end(), t.begin(), ::tolower);
-                    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-                    std::transform(q.begin(), q.end(), q.begin(), ::tolower);
-                    return (t.find(q) != std::string::npos) || (s.find(q) != std::string::npos);
+                std::string normalizedQuery = query;
+                std::transform(normalizedQuery.begin(), normalizedQuery.end(), normalizedQuery.begin(), [](unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+
+                auto matchPriority = [&](const std::string& title, const std::string& summary) -> int {
+                    if (normalizedQuery.empty()) return 0;
+
+                    std::string normalizedTitle = title;
+                    std::string normalizedSummary = summary;
+                    std::transform(normalizedTitle.begin(), normalizedTitle.end(), normalizedTitle.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+                    std::transform(normalizedSummary.begin(), normalizedSummary.end(), normalizedSummary.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+
+                    if (normalizedTitle.find(normalizedQuery) != std::string::npos) return 0;
+                    if (normalizedSummary.find(normalizedQuery) != std::string::npos) return 1;
+                    return -1;
                 };
 
                 for (const auto& entry : Registry::ListAvailableBlocks("")) {
-                    if (matches(entry.title, entry.summary)) {
-                        filteredBlocks.push_back({entry.type, entry.title, entry.summary});
+                    const int priority = matchPriority(entry.title, entry.summary);
+                    if (priority >= 0) {
+                        filteredBlocks.push_back({entry.type, entry.title, entry.summary, priority == 0});
                     }
                 }
+
+                std::stable_sort(filteredBlocks.begin(), filteredBlocks.end(), [](const BlockItem& lhs, const BlockItem& rhs) {
+                    return lhs.titleMatch && !rhs.titleMatch;
+                });
 
                 const int filteredCount = static_cast<int>(filteredBlocks.size());
                 if (blockPicker.selectedIndex >= filteredCount) {
@@ -2494,172 +2916,41 @@ Result DefaultCompositor::renderFlowgraph() {
                 if (filteredCount > 0 && blockPicker.selectedIndex >= 0) {
                     availableModules = Registry::ListAvailableModules(filteredBlocks[blockPicker.selectedIndex].type);
                 }
-                const int moduleCount = static_cast<int>(availableModules.size());
-
-                // Clamp implementation index.
-
-                if (blockPicker.deviceIndex >= moduleCount) {
-                    blockPicker.deviceIndex = ImMax(0, moduleCount - 1);
-                }
-
-                // Build unique lists of devices, runtimes, and providers.
-
-                std::vector<DeviceType> uniqueDevices;
-                std::vector<RuntimeType> uniqueRuntimes;
-                std::vector<ProviderType> uniqueProviders;
-
-                for (const auto& mod : availableModules) {
-                    if (std::find(uniqueDevices.begin(), uniqueDevices.end(), mod.device) == uniqueDevices.end()) {
-                        uniqueDevices.push_back(mod.device);
-                    }
-                    if (std::find(uniqueRuntimes.begin(), uniqueRuntimes.end(), mod.runtime) == uniqueRuntimes.end()) {
-                        uniqueRuntimes.push_back(mod.runtime);
-                    }
-                    if (std::find(uniqueProviders.begin(), uniqueProviders.end(), mod.provider) == uniqueProviders.end()) {
-                        uniqueProviders.push_back(mod.provider);
-                    }
-                }
+                DeviceType  selectedDevice = DeviceType::CPU;
+                RuntimeType selectedRuntime = RuntimeType::NATIVE;
+                ProviderType selectedProvider = "generic";
 
                 // Provide defaults for composite blocks without module registrations.
                 // TODO: Properly fix module-less block creation.
 
-                if (uniqueDevices.empty()) {
-                    uniqueDevices.push_back(DeviceType::CPU);
-                }
-                if (uniqueRuntimes.empty()) {
-                    uniqueRuntimes.push_back(RuntimeType::NATIVE);
-                }
-                if (uniqueProviders.empty()) {
-                    uniqueProviders.push_back("generic");
-                }
-
-                // Clamp indices.
-
-                if (blockPicker.deviceIndex >= static_cast<int>(uniqueDevices.size())) {
-                    blockPicker.deviceIndex = ImMax(0, static_cast<int>(uniqueDevices.size()) - 1);
-                }
-                if (blockPicker.runtimeIndex >= static_cast<int>(uniqueRuntimes.size())) {
-                    blockPicker.runtimeIndex = ImMax(0, static_cast<int>(uniqueRuntimes.size()) - 1);
-                }
-                if (blockPicker.providerIndex >= static_cast<int>(uniqueProviders.size())) {
-                    blockPicker.providerIndex = ImMax(0, static_cast<int>(uniqueProviders.size()) - 1);
-                }
-
-                // Display implementation selection dropdowns.
-
-                if (!uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    const float spacing = 4.0f * scalingFactor;
-                    const float availWidth = ImGui::GetContentRegionAvail().x;
-                    const float comboWidth = (availWidth - spacing * 2) / 3.0f;
-
-                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * scalingFactor);
-                    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f * scalingFactor);
-                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scalingFactor, 6.0f * scalingFactor));
-
-                    // Device dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string devicePreview = std::string(ICON_FA_MICROCHIP) + " " + GetDevicePrettyName(uniqueDevices[blockPicker.deviceIndex]);
-                    if (ImGui::BeginCombo("##device", devicePreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueDevices.size()); ++i) {
-                            const bool selected = (i == blockPicker.deviceIndex);
-                            if (ImGui::Selectable(GetDevicePrettyName(uniqueDevices[i]), selected)) {
-                                blockPicker.deviceIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine(0, spacing);
-
-                    // Runtime dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string runtimePreview = std::string(ICON_FA_GAUGE_HIGH) + " " + GetRuntimePrettyName(uniqueRuntimes[blockPicker.runtimeIndex]);
-                    if (ImGui::BeginCombo("##runtime", runtimePreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueRuntimes.size()); ++i) {
-                            const bool selected = (i == blockPicker.runtimeIndex);
-                            if (ImGui::Selectable(GetRuntimePrettyName(uniqueRuntimes[i]), selected)) {
-                                blockPicker.runtimeIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine(0, spacing);
-
-                    // Provider dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string providerPreview = std::string(ICON_FA_CUBES) + " " + uniqueProviders[blockPicker.providerIndex];
-                    if (ImGui::BeginCombo("##provider", providerPreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueProviders.size()); ++i) {
-                            const bool selected = (i == blockPicker.providerIndex);
-                            if (ImGui::Selectable(uniqueProviders[i].c_str(), selected)) {
-                                blockPicker.providerIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::PopStyleVar(3);
+                if (!availableModules.empty()) {
+                    const auto& selectedModule = availableModules.front();
+                    selectedDevice = selectedModule.device;
+                    selectedRuntime = selectedModule.runtime;
+                    selectedProvider = selectedModule.provider;
                 }
 
                 // Handle keyboard navigation.
 
                 if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
                     blockPicker.selectedIndex = (blockPicker.selectedIndex + 1) % ImMax(1, filteredCount);
-                    blockPicker.deviceIndex = 0;
-                    blockPicker.runtimeIndex = 0;
-                    blockPicker.providerIndex = 0;
                 }
                 if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
                     blockPicker.selectedIndex = (blockPicker.selectedIndex - 1 + filteredCount) % ImMax(1, filteredCount);
-                    blockPicker.deviceIndex = 0;
-                    blockPicker.runtimeIndex = 0;
-                    blockPicker.providerIndex = 0;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    blockPicker.providerIndex++;
-                    if (blockPicker.providerIndex >= static_cast<int>(uniqueProviders.size())) {
-                        blockPicker.providerIndex = 0;
-                        blockPicker.runtimeIndex++;
-                        if (blockPicker.runtimeIndex >= static_cast<int>(uniqueRuntimes.size())) {
-                            blockPicker.runtimeIndex = 0;
-                            blockPicker.deviceIndex = (blockPicker.deviceIndex + 1) % static_cast<int>(uniqueDevices.size());
-                        }
-                    }
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    blockPicker.providerIndex--;
-                    if (blockPicker.providerIndex < 0) {
-                        blockPicker.providerIndex = static_cast<int>(uniqueProviders.size()) - 1;
-                        blockPicker.runtimeIndex--;
-                        if (blockPicker.runtimeIndex < 0) {
-                            blockPicker.runtimeIndex = static_cast<int>(uniqueRuntimes.size()) - 1;
-                            blockPicker.deviceIndex--;
-                            if (blockPicker.deviceIndex < 0) {
-                                blockPicker.deviceIndex = static_cast<int>(uniqueDevices.size()) - 1;
-                            }
-                        }
-                    }
                 }
 
                 // Handle enter to create block.
 
                 if ((ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) &&
-                    filteredCount > 0 && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
+                    filteredCount > 0) {
                     const auto& selected = filteredBlocks[blockPicker.selectedIndex];
                     enqueue(MailCreateBlock{
                         flowgraphId,
                         selected.type,
                         blockPicker.gridPosition,
-                        uniqueDevices[blockPicker.deviceIndex],
-                        uniqueRuntimes[blockPicker.runtimeIndex],
-                        uniqueProviders[blockPicker.providerIndex]
+                        selectedDevice,
+                        selectedRuntime,
+                        selectedProvider
                     });
                     blockPicker.active = false;
                 }
@@ -2678,9 +2969,14 @@ Result DefaultCompositor::renderFlowgraph() {
                     const auto& item = filteredBlocks[i];
                     const bool isSelected = (i == blockPicker.selectedIndex);
 
+                    const float iconFontSize = ImGui::GetFontSize() * 0.95f;
+                    const char* icon = ICON_FA_CUBE;
+                    const float iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, icon).x;
+                    const float iconGap = 8.0f * scalingFactor;
+                    const float textOffsetX = iconWidth + iconGap;
                     const float titleHeight = ImGui::GetTextLineHeight();
                     const float summaryFontSize = ImGui::GetFontSize() * 0.85f;
-                    const float wrapWidth = ImGui::GetContentRegionAvail().x - padding * 2;
+                    const float wrapWidth = ImGui::GetContentRegionAvail().x - padding * 2 - textOffsetX;
                     const float summaryHeight = ImGui::GetFont()->CalcTextSizeA(summaryFontSize, FLT_MAX, wrapWidth, item.summary.c_str()).y;
                     const float rowHeight = titleHeight + summaryHeight + padding * 2 + 2.0f * scalingFactor;
 
@@ -2695,14 +2991,14 @@ Result DefaultCompositor::renderFlowgraph() {
                         blockPicker.selectedIndex = i;
                     }
                     if (ImGui::IsItemClicked() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-                        !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
+                        filteredCount > 0) {
                         enqueue(MailCreateBlock{
                             flowgraphId,
                             item.type,
                             blockPicker.gridPosition,
-                            uniqueDevices[blockPicker.deviceIndex],
-                            uniqueRuntimes[blockPicker.runtimeIndex],
-                            uniqueProviders[blockPicker.providerIndex]
+                            selectedDevice,
+                            selectedRuntime,
+                            selectedProvider
                         });
                         blockPicker.active = false;
                     }
@@ -2714,18 +3010,26 @@ Result DefaultCompositor::renderFlowgraph() {
                     }
 
                     const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(isSelected ? ColorMap.at("header_hovered") : (hovered ? ColorMap.at("cell_background") : ImVec4(0, 0, 0, 0)));
+                    const ImU32 iconColor = ImGui::ColorConvertFloat4ToU32(isSelected
+                                                                               ? ColorMap.at("text_primary")
+                                                                               : ColorMap.at("text_secondary"));
                     drawList->AddRectFilled(cellMin, cellMax, bgColor, rounding);
+
+                    const ImVec2 iconPos(cellMin.x + padding,
+                                         cellMin.y + (rowHeight - iconFontSize) * 0.5f);
+                    drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos, iconColor, icon);
 
                     // Title.
 
-                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding, cellMin.y + padding));
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding + textOffsetX, cellMin.y + padding));
                     ImGui::PushFont(boldFont, ImGui::GetFontSize());
                     ImGui::TextUnformatted(item.title.c_str());
                     ImGui::PopFont();
 
                     // Summary.
 
-                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding, cellMin.y + padding + titleHeight + 2.0f * scalingFactor));
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding + textOffsetX,
+                                                     cellMin.y + padding + titleHeight + 2.0f * scalingFactor));
                     ImGui::PushFont(ImGui::GetFont(), summaryFontSize);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                     ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrapWidth);
@@ -2757,27 +3061,56 @@ Result DefaultCompositor::renderFlowgraph() {
         // Render runtime metrics below blocks.
 
         if (debugRuntimeMetricsEnabled) {
-            const auto& metricsMap = flowgraph->metrics();
-
             for (const auto& [blockName, blockPtr] : blocks) {
                 if (blockPtr->state() != Block::State::Created) {
                     continue;
                 }
 
+                if (!flowgraph->metrics().contains(blockName)) {
+                    continue;
+                }
+                const auto& blockMetrics = flowgraph->metrics().at(blockName);
+
                 const int nodeId = idFromStr("node:" + flowgraphId + ":" + blockName);
                 const ImVec2 nodePos = ImNodes::GetNodeScreenSpacePos(nodeId);
                 const ImVec2 nodeSize = ImNodes::GetNodeDimensions(nodeId);
 
-                const std::string moduleName = jst::fmt::format("{}-{}", blockName, blockPtr->config().type());
-                if (metricsMap.contains(moduleName)) {
-                    const auto& m = metricsMap.at(moduleName);
-                    const std::string line1 = jst::fmt::format("Runtime #{} ({}/{})", m->runtime, m->device, m->backend);
-                    const std::string line2 = jst::fmt::format("{:.2f} ms | {:.1f}k cycles", m->averageComputeTime, m->cycles / 1000.0f);
+                std::vector<std::string> lines;
+                F32 totalTime = 0.0f;
+                U64 maxCycles = 0;
+
+                lines.push_back(jst::fmt::format("Runtime #{} ({}/{})", blockMetrics->runtime,
+                                                                        blockMetrics->device,
+                                                                        blockMetrics->backend));
+
+                for (const auto& moduleName : blockPtr->modules()) {
+                    const auto& fullModuleName = jst::fmt::format("{}-{}", blockName, moduleName);
+                    if (!blockMetrics->averageComputeTime.contains(fullModuleName) ||
+                        !blockMetrics->cycles.contains(fullModuleName)) {
+                        continue;
+                    }
+                    const auto& averageComputeTime = blockMetrics->averageComputeTime.at(fullModuleName);
+                    const auto& cycles = blockMetrics->cycles.at(fullModuleName);
+                    lines.push_back(jst::fmt::format("+ {}: {:.3f} ms", moduleName, averageComputeTime));
+                    totalTime += averageComputeTime;
+                    maxCycles = std::max(maxCycles, cycles);
+                }
+
+                const std::string cyclesStr = (maxCycles > 1000) ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f) :
+                                                                   jst::fmt::format("{}", maxCycles);
+                lines.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
+
+                if (!lines.empty()) {
                     const ImVec2 textPos(nodePos.x, nodePos.y + nodeSize.y + 4.0f * scalingFactor);
-                    const ImU32 color = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
+                    const ImU32 whiteColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                    const ImU32 secondaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
                     ImDrawList* drawList = ImGui::GetWindowDrawList();
-                    drawList->AddText(textPos, color, line1.c_str());
-                    drawList->AddText(ImVec2(textPos.x, textPos.y + ImGui::GetTextLineHeight()), color, line2.c_str());
+
+                    for (size_t i = 0; i < lines.size(); i++) {
+                        ImVec2 pos(textPos.x, textPos.y + i * ImGui::GetTextLineHeight());
+                        const ImU32 lineColor = (i == 0 || i == lines.size() - 1) ? whiteColor : secondaryColor;
+                        drawList->AddText(pos, lineColor, lines[i].c_str());
+                    }
                 }
             }
         }
@@ -2792,15 +3125,7 @@ Result DefaultCompositor::renderFlowgraph() {
             const bool isEditorHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && isEditorHovered && !isNodeHovered) {
-                blockPicker.active = true;
-                blockPicker.flowgraphId = flowgraphId;
-                blockPicker.screenPosition = ImGui::GetMousePos();
-                blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
-                blockPicker.searchBuffer[0] = '\0';
-                blockPicker.selectedIndex = 0;
-                blockPicker.deviceIndex = 0;
-                blockPicker.runtimeIndex = 0;
-                blockPicker.providerIndex = 0;
+                helperOpenBlockPicker(flowgraphId, ImGui::GetMousePos(), ImGui::GetMousePos());
             }
         }
 
@@ -2992,10 +3317,13 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             const ImVec2 pos = ImNodes::GetNodeGridSpacePos(nodeId);
+            const F32 posX = pos.x / scalingFactor;
+            const F32 posY = pos.y / scalingFactor;
             const F32 width = nodeSizes[nodeId].x / scalingFactor;
             const F32 height = isDetached ? nodeMeta.height : nodeSizes[nodeId].y / scalingFactor;
+            const NodeMeta updatedNodeMeta = { posX, posY, width, height };
 
-            flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, width, height}, blockName);
+            flowgraph->setMeta("node", updatedNodeMeta, blockName);
         }
 
         static int hoveredNodeId = -1;
@@ -3050,26 +3378,58 @@ Result DefaultCompositor::renderFlowgraph() {
             }
         }
 
-        if (hoveredFlowgraphId == flowgraphId && ImGui::BeginPopup("##node_context_menu")) {
+        if (hoveredFlowgraphId == flowgraphId &&
+            nodeIdToBlockName.contains(hoveredNodeId) &&
+            blocks.contains(nodeIdToBlockName.at(hoveredNodeId)) &&
+            ImGui::BeginPopup("##node_context_menu")) {
+            const auto& hoveredBlockId = nodeIdToBlockName.at(hoveredNodeId);
+            const auto& hoveredBlock = blocks.at(hoveredBlockId);
+            const auto availableDevices = ListBlockDeviceOptions(hoveredBlock->config().type(),
+                                                                 hoveredBlock->device());
+
             if (ImGui::MenuItem(ICON_FA_COPY " Copy Block", "CTRL+C")) {
-                enqueue(MailCopyBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailCopyBlock{flowgraphId, hoveredBlockId});
             }
             if (ImGui::MenuItem(ICON_FA_PASTE " Paste Block", "CTRL+V", false, clipboard.hasData)) {
                 NodeMeta nodeMeta;
-                flowgraph->getMeta("node", nodeMeta, nodeIdToBlockName.at(hoveredNodeId));
+                flowgraph->getMeta("node", nodeMeta, hoveredBlockId);
                 const ImVec2 pastePos = {nodeMeta.x + 50.0f, nodeMeta.y + 50.0f};
                 enqueue(MailPasteBlock{flowgraphId, pastePos});
             }
             ImGui::Separator();
+
+            const std::string changeDeviceLabel = std::string(ICON_FA_MICROCHIP) + " Change Device";
+            if (ImGui::BeginMenu(changeDeviceLabel.c_str(), !availableDevices.empty())) {
+                for (const auto& device : availableDevices) {
+                    const bool selected = (device == hoveredBlock->device());
+                    const auto implementation = ResolveBlockImplementationForDevice(hoveredBlock->config().type(),
+                                                                                   device,
+                                                                                   hoveredBlock->runtime(),
+                                                                                   hoveredBlock->provider());
+
+                    if (ImGui::MenuItem(GetDevicePrettyName(device), nullptr, selected, !selected && implementation.has_value())) {
+                        enqueue(MailChangeBlockDevice{
+                            flowgraphId,
+                            hoveredBlockId,
+                            implementation->device,
+                            implementation->runtime,
+                            implementation->provider,
+                        });
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
+            ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_ARROW_ROTATE_RIGHT " Reload Block")) {
-                enqueue(MailReloadBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailReloadBlock{flowgraphId, hoveredBlockId});
             }
             if (ImGui::MenuItem(ICON_FA_XMARK " Delete Block")) {
-                enqueue(MailDeleteBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailDeleteBlock{flowgraphId, hoveredBlockId});
             }
             ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_BOOK " Documentation")) {
-                const std::string docKey = flowgraphId + ":" + nodeIdToBlockName.at(hoveredNodeId);
+                const std::string docKey = flowgraphId + ":" + hoveredBlockId;
                 openDocumentations[docKey] = true;
             }
             ImGui::EndPopup();
@@ -3211,7 +3571,7 @@ Result DefaultCompositor::renderWelcomeHud() {
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowViewport(vp->ID);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f * scalingFactor, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 
     ImGui::Begin("Welcome", nullptr, windowFlags);
@@ -3358,70 +3718,6 @@ Result DefaultCompositor::renderWelcomeHud() {
         }
     }
 
-    ImGui::Dummy(ImVec2(0, 12.0f * scalingFactor));
-
-    {
-        const float shortcutBoxWidth = cardWidth;
-        const float shortcutBoxHeight = 55.0f * scalingFactor;
-        const float shortcutBoxRadius = 10.0f * scalingFactor;
-
-        const ImU32 panelColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("panel"));
-        const ImU32 borderColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("border"));
-        const ImU32 textSecondaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
-        const ImU32 textPrimaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_primary"));
-        const ImU32 buttonColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("button"));
-
-        ImVec2 boxPos = ImGui::GetCursorScreenPos();
-        ImVec2 boxEnd = ImVec2(boxPos.x + shortcutBoxWidth, boxPos.y + shortcutBoxHeight);
-
-        drawList->AddRectFilled(boxPos, boxEnd, panelColor, shortcutBoxRadius);
-        drawList->AddRect(boxPos, boxEnd, borderColor, shortcutBoxRadius);
-
-        const char* headerText = ICON_FA_KEYBOARD " Keyboard Shortcuts";
-        drawList->AddText(defaultFont, baseFontSize * 0.85f,
-                          ImVec2(boxPos.x + 12.0f * scalingFactor, boxPos.y + 8.0f * scalingFactor),
-                          textSecondaryColor, headerText);
-
-        struct Shortcut {
-            const char* keys;
-            const char* action;
-        };
-
-        Shortcut shortcuts[] = {
-            {"Ctrl+N", "New"},
-            {"Ctrl+O", "Open"},
-            {"Ctrl+S", "Save"},
-            {"Ctrl+T", "Spotlight"}
-        };
-
-        float shortcutY = boxPos.y + 30.0f * scalingFactor;
-        float shortcutStartX = boxPos.x + 12.0f * scalingFactor;
-        float shortcutSpacing = (shortcutBoxWidth - 24.0f * scalingFactor) / 4.0f;
-
-        for (int i = 0; i < 4; ++i) {
-            float x = shortcutStartX + i * shortcutSpacing;
-
-            ImVec2 keySize = defaultFont->CalcTextSizeA(baseFontSize * 0.85f, FLT_MAX, 0.0f, shortcuts[i].keys);
-            float keyPadX = 5.0f * scalingFactor;
-            float keyPadY = 2.0f * scalingFactor;
-            ImVec2 keyMin = ImVec2(x, shortcutY);
-            ImVec2 keyMax = ImVec2(x + keySize.x + keyPadX * 2.0f, shortcutY + keySize.y + keyPadY * 2.0f);
-
-            drawList->AddRectFilled(keyMin, keyMax, buttonColor, 4.0f * scalingFactor);
-            drawList->AddRect(keyMin, keyMax, borderColor, 4.0f * scalingFactor);
-            drawList->AddText(defaultFont, baseFontSize * 0.85f,
-                              ImVec2(x + keyPadX, shortcutY + keyPadY),
-                              textPrimaryColor, shortcuts[i].keys);
-
-            float actionX = keyMax.x + 4.0f * scalingFactor;
-            drawList->AddText(defaultFont, baseFontSize * 0.85f,
-                              ImVec2(actionX, shortcutY + keyPadY),
-                              textSecondaryColor, shortcuts[i].action);
-        }
-
-        ImGui::Dummy(ImVec2(shortcutBoxWidth, shortcutBoxHeight));
-    }
-
     ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
 
     {
@@ -3486,6 +3782,175 @@ Result DefaultCompositor::renderWelcomeHud() {
     ImGui::End();
 
     ImGui::PopStyleVar(2);
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::renderEmptyFlowgraphHint() {
+    if (!focusedFlowgraph.has_value()) {
+        return Result::SUCCESS;
+    }
+
+    const std::string& flowgraphId = focusedFlowgraph.value();
+    const auto dismissHint = [&]() {
+        emptyFlowgraphHintTipIndices.erase(flowgraphId);
+        dismissedEmptyFlowgraphHints.insert(flowgraphId);
+    };
+
+    if (dismissedEmptyFlowgraphHints.contains(flowgraphId)) {
+        return Result::SUCCESS;
+    }
+
+    const auto blocksIt = blocksCache.find(flowgraphId);
+    if (blocksIt != blocksCache.end() && !blocksIt->second.empty()) {
+        dismissHint();
+        return Result::SUCCESS;
+    }
+
+    static constexpr const char* tips[] = {
+        "Drag from output to input to connect blocks.",
+        "Drag blocks to move them around.",
+        "Right-click a block to open its context menu.",
+        "Use Ctrl+C and Ctrl+V to copy and paste blocks.",
+        "Hover over ports to see their data type.",
+        "Click and drag on empty canvas to pan around.",
+    };
+    const int tipCount = sizeof(tips) / sizeof(tips[0]);
+
+    const auto [tipIt, inserted] = emptyFlowgraphHintTipIndices.try_emplace(flowgraphId, 0);
+    if (inserted) {
+        std::uniform_int_distribution<int> distribution(0, tipCount - 1);
+        tipIt->second = distribution(randomGenerator);
+    }
+
+    const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar |
+                                         ImGuiWindowFlags_NoResize |
+                                         ImGuiWindowFlags_NoCollapse |
+                                         ImGuiWindowFlags_NoDocking |
+                                         ImGuiWindowFlags_AlwaysAutoResize |
+                                         ImGuiWindowFlags_NoSavedSettings |
+                                         ImGuiWindowFlags_NoFocusOnAppearing |
+                                         ImGuiWindowFlags_NoNav;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowViewport(vp->ID);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f * scalingFactor, 20.0f * scalingFactor));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f * scalingFactor);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f * scalingFactor);
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ColorMap.at("card"));
+    ImGui::PushStyleColor(ImGuiCol_Border, ColorMap.at("border"));
+    ImGui::PushStyleColor(ImGuiCol_Button, ColorMap.at("header"));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ColorMap.at("header_hovered"));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ColorMap.at("header_active"));
+
+    bool showHint = true;
+    if (ImGui::Begin("##empty_flowgraph_hint", &showHint, windowFlags)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const float baseFontSize = ImGui::GetFontSize();
+        const auto centerNextItem = [&](float itemWidth) {
+            const float cursorX = ImGui::GetCursorPosX();
+            const float availableWidth = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosX(cursorX + (availableWidth - itemWidth) * 0.5f);
+        };
+
+        const float iconFontSize = baseFontSize * 2.5f;
+        const char* iconText = ICON_FA_LIGHTBULB;
+        ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
+        float iconX = (ImGui::GetContentRegionAvail().x - iconSize.x) * 0.5f;
+        ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x + iconX,
+                                ImGui::GetCursorScreenPos().y);
+        drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos,
+                          ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), iconText);
+        ImGui::Dummy(ImVec2(0, iconSize.y + 12.0f * scalingFactor));
+
+        ImGui::PushFont(h2Font, ImGui::GetFontSize() * 1.2f);
+        const char* title = "Getting Started";
+        ImVec2 titleSize = ImGui::CalcTextSize(title);
+        centerNextItem(titleSize.x);
+        ImGui::TextUnformatted(title);
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_secondary"));
+        const char* subtitle = "Let's get started by adding your first block";
+        ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
+        centerNextItem(subtitleSize.x);
+        ImGui::TextUnformatted(subtitle);
+        ImGui::PopStyleColor();
+
+        ImGui::Dummy(ImVec2(0, 24.0f * scalingFactor));
+
+        struct Instruction {
+            const char* number;
+            const char* text;
+        };
+
+        Instruction instructions[] = {
+            {"1.", "Double-click anywhere on the canvas."},
+            {"2.", "Pick a block from the menu."},
+            {"3.", "Connect blocks to build your flow."},
+        };
+
+        const float instructionWidth = 320.0f * scalingFactor;
+        centerNextItem(instructionWidth);
+        ImGui::BeginGroup();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth);
+        for (const auto& inst : instructions) {
+            ImGui::BeginGroup();
+            ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("cyber_blue"));
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+            const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+            const ImVec2 textSize = ImGui::CalcTextSize(inst.text);
+            const float rowHeight = std::max(numberSize.y, textSize.y);
+            ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+            cursorPos.y += (rowHeight - numberSize.y) * 0.5f;
+            drawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
+                              ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
+            ImGui::Dummy(ImVec2(numberSize.x + 8.0f * scalingFactor, rowHeight));
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (rowHeight - textSize.y) * 0.5f + 1.0f * scalingFactor);
+            ImGui::TextUnformatted(inst.text);
+            ImGui::EndGroup();
+            ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+        }
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+
+        ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+
+        const char* closeText = "Got it!";
+        ImVec2 closeSize = ImGui::CalcTextSize(closeText);
+        float buttonWidth = closeSize.x + 32.0f * scalingFactor;
+        centerNextItem(buttonWidth);
+        if (ImGui::Button(closeText, ImVec2(buttonWidth, 36.0f * scalingFactor))) {
+            showHint = false;
+        }
+
+        const char* randomTip = tips[tipIt->second];
+
+        ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_disabled"));
+        std::string tipText = std::string("Tip: ") + randomTip;
+        ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
+        centerNextItem(tipSize.x);
+        ImGui::TextUnformatted(tipText.c_str());
+        ImGui::PopStyleColor();
+
+        ImGui::End();
+    }
+
+    if (!showHint) {
+        dismissHint();
+    }
+
+    ImGui::PopStyleColor(5);
+    ImGui::PopStyleVar(3);
 
     return Result::SUCCESS;
 }
@@ -3602,9 +4067,6 @@ Result DefaultCompositor::renderMenubar() {
             }
             if (ImGui::MenuItem("Rename", nullptr, false, focusedFlowgraph.has_value())) {
                 globalModalContent = InterfaceModalContent::FlowgraphInfo;
-            }
-            if (ImGui::MenuItem("Reset", nullptr, false, focusedFlowgraph.has_value())) {
-                enqueue(MailResetFlowgraph{focusedFlowgraph.value()});
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Open Examples", nullptr, false, true)) {
@@ -3725,11 +4187,6 @@ Result DefaultCompositor::renderToolbar() {
                 }
                 ImGui::SameLine();
 
-                if (ImGui::Button(ICON_FA_ERASER " Reset")) {
-                    enqueue(MailResetFlowgraph{focusedFlowgraph.value()});
-                }
-                ImGui::SameLine();
-
                 if (ImGui::Button(ICON_FA_CIRCLE_INFO " Info")) {
                     globalModalContent = InterfaceModalContent::FlowgraphInfo;
                 }
@@ -3752,6 +4209,21 @@ Result DefaultCompositor::renderToolbar() {
                     stackState.dockInMainTabBar = true;
                     stackStates[stackId] = std::move(stackState);
                     JST_CHECK(helperSyncFlowgraphStacks(focusedFlowgraph.value()));
+                }
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_CUBE " Add Block")) {
+                    const ImVec2 buttonMin = ImGui::GetItemRectMin();
+                    const ImVec2 buttonMax = ImGui::GetItemRectMax();
+                    ImVec2 blockScreenPosition = ImGui::GetMainViewport()->GetCenter();
+
+                    if (flowgraphViewportCenters.contains(focusedFlowgraph.value())) {
+                        blockScreenPosition = flowgraphViewportCenters.at(focusedFlowgraph.value());
+                    }
+
+                    helperOpenBlockPicker(focusedFlowgraph.value(),
+                                          ImVec2(buttonMin.x, buttonMax.y + 6.0f * scalingFactor),
+                                          blockScreenPosition);
                 }
                 ImGui::SameLine();
             }
@@ -5377,6 +5849,24 @@ std::string DefaultCompositor::helperMakeStackWindowLabel(const std::string& flo
     return jst::fmt::format("{}###stack:{}:{}", title, flowgraphId, stackId);
 }
 
+void DefaultCompositor::helperOpenBlockPicker(const std::string& flowgraphId,
+                                              const ImVec2& pickerScreenPosition,
+                                              const ImVec2& blockScreenPosition) {
+    blockPicker.active = true;
+    blockPicker.flowgraphId = flowgraphId;
+    blockPicker.screenPosition = pickerScreenPosition;
+    blockPicker.searchBuffer[0] = '\0';
+    blockPicker.selectedIndex = 0;
+
+    blockPicker.gridPosition = blockScreenPosition;
+    if (contexts.contains(flowgraphId)) {
+        auto* previousContext = ImNodes::GetCurrentContext();
+        ImNodes::SetCurrentContext(contexts.at(flowgraphId));
+        blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(blockScreenPosition);
+        ImNodes::SetCurrentContext(previousContext);
+    }
+}
+
 void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) {
     const float width = ImGui::GetContentRegionAvail().x;
     const ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -5411,13 +5901,13 @@ void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) 
 void DefaultCompositor::helperSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                                             U64 width,
                                             U64 height,
-                                            F32 scalingFactor,
+                                            F32 surfaceScale,
                                             bool detached) {
     const auto& bg = ColorMap.at(detached ? "background" : "node_background");
     SurfaceEvent event;
     event.type = SurfaceEventType::Resize;
     event.size = {width, height};
-    event.scale = scalingFactor;
+    event.scale = surfaceScale;
     event.backgroundColor = {bg.x, bg.y, bg.z, bg.w};
     surface->pushSurfaceEvent(event);
 }
@@ -5429,16 +5919,25 @@ bool DefaultCompositor::helperCheckSurfaceResize(const std::shared_ptr<Module::S
                                                  U64& storedHeight,
                                                  F32 scalingFactor,
                                                  bool detached) {
+    if (availableRegion.x <= 0.0f || availableRegion.y <= 0.0f) {
+        return false;
+    }
+
     const U64 newWidth = static_cast<U64>(availableRegion.x / scalingFactor);
     const U64 newHeight = static_cast<U64>(availableRegion.y / scalingFactor);
     const U64 expectedWidth = static_cast<U64>(availableRegion.x * ImGui::GetIO().DisplayFramebufferScale.x);
     const U64 expectedHeight = static_cast<U64>(availableRegion.y * ImGui::GetIO().DisplayFramebufferScale.y);
+    const F32 surfaceScale = scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f;
+
+    if (newWidth == 0 || newHeight == 0 || expectedWidth == 0 || expectedHeight == 0) {
+        return false;
+    }
 
     if (storedWidth != newWidth || storedHeight != newHeight ||
         manifest.size.x != expectedWidth || manifest.size.y != expectedHeight) {
         storedWidth = newWidth;
         storedHeight = newHeight;
-        helperSurfaceResize(surface, expectedWidth, expectedHeight, scalingFactor, detached);
+        helperSurfaceResize(surface, expectedWidth, expectedHeight, surfaceScale, detached);
         return true;
     }
     return false;
@@ -5672,6 +6171,7 @@ void DefaultCompositor::ImGuiStyleSetup() {
 }
 
 void DefaultCompositor::ImGuiStyleScale() {
+    const auto& scalingFactor = render->scalingFactor();
     auto& style = ImGui::GetStyle();
 
     // Main
@@ -5681,9 +6181,9 @@ void DefaultCompositor::ImGuiStyleScale() {
     style.ItemInnerSpacing                  = ImVec2(8.00f, 6.00f);
     style.TouchExtraPadding                 = ImVec2(0.00f, 0.00f);
     style.CellPadding                       = ImVec2(6.00f, 4.00f);
-    style.IndentSpacing                     = 20;
-    style.ScrollbarSize                     = 12;
-    style.GrabMinSize                       = 12;
+    style.IndentSpacing                     = 20.0f;
+    style.ScrollbarSize                     = 12.0f;
+    style.GrabMinSize                       = 12.0f;
 
     // Borders
     style.WindowBorderSize                  = 0.5f;
@@ -5694,7 +6194,7 @@ void DefaultCompositor::ImGuiStyleScale() {
     style.TabBarBorderSize                  = 1.0f;
 
     // Rounding
-    style.WindowRounding                    = 18.0f;
+    style.WindowRounding                    = 12.0f;
     style.ChildRounding                     = 0.0f;
     style.FrameRounding                     = 6.0f;
     style.PopupRounding                     = 18.0f;
@@ -5708,6 +6208,8 @@ void DefaultCompositor::ImGuiStyleScale() {
 
     // Tessellation
     style.CircleTessellationMaxError        = 0.1f;
+
+    style.ScaleAllSizes(scalingFactor);
 }
 
 //
@@ -5735,7 +6237,7 @@ void DefaultCompositor::ImNodesStyleSetup() {
 void DefaultCompositor::ImNodesStyleScale() {
     const auto& scalingFactor = render->scalingFactor();
     auto& style = ImNodes::GetStyle();
-    style.NodePadding               = ImVec2(6.0f * scalingFactor,  6.0f * scalingFactor);
+    style.NodePadding               = ImVec2(8.0f * scalingFactor,  8.0f * scalingFactor);
     style.PinCircleRadius           = 4.0f  * scalingFactor;
     style.GridSpacing               = 23.0f * scalingFactor;
     style.NodeBorderThickness       = 2.0f  * scalingFactor;
@@ -6112,7 +6614,7 @@ Result DefaultCompositor::renderDetachedSurfaces() {
                         helperSurfaceResize(surface,
                                             static_cast<U64>(surfaceMeta.attachedWidth * ImGui::GetIO().DisplayFramebufferScale.x),
                                             static_cast<U64>(surfaceMeta.attachedHeight * ImGui::GetIO().DisplayFramebufferScale.y),
-                                            scalingFactor,
+                                            scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f,
                                             false);
                     }
                 }

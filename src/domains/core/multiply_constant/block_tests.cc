@@ -12,7 +12,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "MultiplyConstant block creates with custom c
     REQUIRE(flowgraph->blockCreate("mulc_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["factor"] = {"mulc_src", "window", {}};
+    inputs["factor"].requested("mulc_src", "window");
 
     Blocks::MultiplyConstant config;
     config.constant = 0.25f;
@@ -27,7 +27,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "MultiplyConstant block reconnects input",
     REQUIRE(flowgraph->blockCreate("mulc_life_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["factor"] = {"mulc_life_src", "window", {}};
+    inputs["factor"].requested("mulc_life_src", "window");
     REQUIRE(flowgraph->blockCreate("mulc_life", "multiply_constant", {}, inputs) ==
             Result::SUCCESS);
 

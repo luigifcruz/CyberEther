@@ -6,6 +6,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float centerLat;
     float zoom;
     float aspectRatio;
+    float surfaceScale;
     float lineWidth;
     float colorR;
     float colorG;

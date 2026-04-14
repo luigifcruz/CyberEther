@@ -38,7 +38,8 @@ class Tensor : public std::enable_shared_from_this<Tensor> {
     Tensor clone() const;
 
     bool hasDevice(const DeviceType& device);
-    Result copyFrom(const Tensor& source);
+    Result copyFrom(const Tensor& source, void* context = nullptr);
+    Result swapBuffers(Tensor& other);
 
     const DeviceType& device() const;
     const DeviceType& nativeDevice() const;
@@ -73,6 +74,7 @@ class Tensor : public std::enable_shared_from_this<Tensor> {
     Result reshape(const Shape& newShape);
     Result broadcastTo(const Shape& newShape);
     Result slice(const std::vector<Token>& tokens);
+    Result permute(const Shape& axes);
 
     bool hasAttribute(const std::string& key) const;
     std::vector<std::string> attributeKeys() const;

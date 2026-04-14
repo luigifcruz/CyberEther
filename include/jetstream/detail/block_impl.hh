@@ -77,6 +77,7 @@ struct Block::Impl {
     std::shared_ptr<Render::Window>& render();
     std::shared_ptr<Scheduler>& scheduler();
     const std::vector<std::shared_ptr<Module::Surface>>& surfaces() const;
+    const std::vector<std::string>& modules() const;
 
     // Modules
 

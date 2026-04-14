@@ -10,7 +10,7 @@
 namespace Jetstream::Modules {
 
 struct PadImplNativeCpu : public PadImpl,
-                          public Runtime::Context,
+                          public NativeCpuRuntimeContext,
                           public Scheduler::Context {
  public:
     Result create() final;

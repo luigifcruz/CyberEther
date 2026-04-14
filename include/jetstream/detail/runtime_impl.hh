@@ -14,7 +14,8 @@ struct Runtime::Impl {
     virtual Result create(const Modules& modules) = 0;
     virtual Result destroy() = 0;
 
-    virtual Result compute(const std::vector<std::string>& modules = {}) = 0;
+    virtual Result compute(const std::vector<std::string>& modules,
+                           std::unordered_set<std::string>& skippedModules) = 0;
 
     virtual const std::shared_ptr<Metrics>& metrics() const = 0;
 
@@ -24,6 +25,9 @@ struct Runtime::Impl {
     RuntimeType backend;
     std::atomic<bool> computeRunning{false};
     std::atomic<bool> presentRunning{false};
+
+    static bool hasSkippedInputs(const std::shared_ptr<Module>& module,
+                                 const std::unordered_set<std::string>& skippedModules);
 
     friend class Runtime;
 };

@@ -5,6 +5,7 @@
 #include "jetstream/runtime.hh"
 
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Jetstream {
 
@@ -57,10 +58,12 @@ Result TestContext::run() {
     TensorMap deviceInputs;
     for (auto& [name, cpuTensor] : pimpl->cpuInputs) {
         if (pimpl->deviceType == DeviceType::CPU) {
-            deviceInputs[name] = {"test", name, cpuTensor};
+            deviceInputs[name].requested("test", name);
+            deviceInputs[name].tensor = cpuTensor;
         } else {
             Tensor deviceTensor(pimpl->deviceType, cpuTensor);
-            deviceInputs[name] = {"test", name, deviceTensor};
+            deviceInputs[name].requested("test", name);
+            deviceInputs[name].tensor = deviceTensor;
         }
     }
 
@@ -77,7 +80,8 @@ Result TestContext::run() {
         return runtimeCreateResult;
     }
 
-    auto computeResult = pimpl->runtime->compute();
+    std::unordered_set<std::string> skippedModules;
+    auto computeResult = pimpl->runtime->compute({}, skippedModules);
     if (computeResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to run compute: {}", pimpl->moduleType);
         return computeResult;

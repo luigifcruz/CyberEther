@@ -1,4 +1,24 @@
+subdir('backend')
+subdir('memory')
+subdir('tools')
+subdir('viewport')
+subdir('render')
+subdir('domains')
+subdir('platform')
+subdir('superluminal')
+
+if jst_is_browser
+    src_lst += files('app_browser.cc')
+endif
+
+if jst_is_linux or \
+   jst_is_macos or \
+   jst_is_windows
+    src_lst += files('app_native.cc')
+endif
+
 src_lst += files([
+    'flowgraph.cc',
     'parser.cc',
     'instance.cc',
     'instance_remote.cc',
@@ -26,12 +46,9 @@ src_lst += files([
     'scheduler_synchronous.cc',
 ])
 
-subdir('backend')
-subdir('memory')
-subdir('tools')
-subdir('viewport')
-subdir('render')
-subdir('flowgraph')
-subdir('domains')
-subdir('platform')
-subdir('superluminal')
+if cfg_lst.get('JETSTREAM_BACKEND_CUDA_AVAILABLE', false)
+    src_lst += files([
+        'runtime_impl_native_cuda.cc',
+        'runtime_context_native_cuda.cc',
+    ])
+endif

@@ -71,7 +71,9 @@ Result Instance::create(const Config& config) {
             .size = config.size,
             .framerate = config.framerate,
         };
-        auto renderConfig = Render::Window::Config {};
+        auto renderConfig = Render::Window::Config {
+            .scale = config.scale,
+        };
 
         auto buildGlfw = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));

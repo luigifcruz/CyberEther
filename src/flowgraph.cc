@@ -2,7 +2,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
-#include "rapidyaml.hh"
+#include <ryml.hpp>
+#include <ryml_std.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -100,7 +101,7 @@ Result SerializeConfigValueToYaml(const std::any& value, ryml::NodeRef& node) {
     node << encoded;
 
     if (std::count(encoded.begin(), encoded.end(), '\n')) {
-        node |= ryml::_WIP_VAL_LITERAL;
+        node |= ryml::VAL_LITERAL;
     }
 
     return Result::SUCCESS;
@@ -229,7 +230,7 @@ void SetScalarNode(ryml::NodeRef& node, const char* key, const std::string& valu
     child << ryml::key(key) << value;
 
     if (literalOnNewline && std::count(value.begin(), value.end(), '\n')) {
-        child |= ryml::_WIP_VAL_LITERAL;
+        child |= ryml::VAL_LITERAL;
     }
 }
 
@@ -333,23 +334,30 @@ Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& res
     Result result = Result::SUCCESS;
 
     for (const auto& [slot, link] : requested) {
-        if (!blocks.contains(link.block)) {
-            JST_ERROR("[FLOWGRAPH] Block '{}' does not exist.", link.block);
+        if (!link.external.has_value()) {
+            JST_ERROR("[FLOWGRAPH] Input '{}' has no external block reference.", slot);
             return Result::ERROR;
         }
 
-        const auto& outputs = blocks.at(link.block)->outputs();
+        const auto& ext = link.external.value();
 
-        if (!outputs.contains(link.port)) {
-            JST_WARN("[FLOWGRAPH] Block '{}' has no output '{}' to satisfy connection '{}'.", link.block,
-                                                                                              link.port,
+        if (!blocks.contains(ext.block)) {
+            JST_ERROR("[FLOWGRAPH] Block '{}' does not exist.", ext.block);
+            return Result::ERROR;
+        }
+
+        const auto& outputs = blocks.at(ext.block)->outputs();
+
+        if (!outputs.contains(ext.port)) {
+            JST_WARN("[FLOWGRAPH] Block '{}' has no output '{}' to satisfy connection '{}'.", ext.block,
+                                                                                              ext.port,
                                                                                               slot);
             resolved.emplace(slot, link);
             result = Result::INCOMPLETE;
             continue;
         }
 
-        resolved.emplace(slot, outputs.at(link.port));
+        resolved.emplace(slot, outputs.at(ext.port));
     }
 
     return result;
@@ -508,7 +516,10 @@ Result Flowgraph::blockCreate(const std::string name,
     // Register dependency list.
 
     for (const auto& [_, link] : inputs) {
-        impl->edges[link.block].push_back(name);
+        if (!link.external.has_value()) {
+            continue;
+        }
+        impl->edges[link.external->block].push_back(name);
     }
 
     return Result::SUCCESS;
@@ -542,8 +553,11 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
             JST_CHECK(dep->config().serialize(state.config));
 
             for (const auto& [slot, link] : dep->inputs()) {
-                if (link.block != name) {
-                    state.inputs[slot] = {link.block, link.port, {}};
+                if (!link.external.has_value()) {
+                    continue;
+                }
+                if (link.external->block != name) {
+                    state.inputs[slot].requested(link.external->block, link.external->port);
                 }
             }
 
@@ -632,7 +646,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
         JST_CHECK(dep->config().serialize(state.config));
 
         for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         downstreamStates.push_back(std::move(state));
@@ -655,7 +669,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
     JST_CHECK(block->config().serialize(serializedConfig));
 
     TensorMap newInputs = block->inputs();
-    newInputs[inputPort] = {sourceBlock, sourcePort, {}};
+    newInputs[inputPort].requested(sourceBlock, sourcePort);
 
     // 4. Destroy and recreate target block.
 
@@ -708,7 +722,7 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
         JST_CHECK(dep->config().serialize(state.config));
 
         for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         downstreamStates.push_back(std::move(state));
@@ -772,6 +786,20 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
 }
 
 Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& config) {
+    if (!impl->blocks.contains(name)) {
+        JST_ERROR("[FLOWGRAPH] Cannot recreate block '{}' because it doesn't exist.", name);
+        return Result::ERROR;
+    }
+
+    const auto& block = impl->blocks.at(name);
+    return blockRecreate(name, config, block->device(), block->runtime(), block->provider());
+}
+
+Result Flowgraph::blockRecreate(const std::string name,
+                                const Parser::Map& config,
+                                const DeviceType& device,
+                                const RuntimeType& runtime,
+                                const ProviderType& provider) {
     JST_INFO("[FLOWGRAPH] Recreating block '{}' and downstream blocks.", name);
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
 
@@ -792,13 +820,13 @@ Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& confi
         BlockState state;
         state.name = name;
         state.type = block->config().type();
-        state.device = block->device();
-        state.runtime = block->runtime();
-        state.provider = block->provider();
+        state.device = device;
+        state.runtime = runtime;
+        state.provider = provider;
         state.config = config;
 
         for (const auto& [slot, link] : block->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         blocksToRecreate.push_back(std::move(state));
@@ -818,7 +846,7 @@ Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& confi
         JST_CHECK(dep->config().serialize(state.config));
 
         for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot] = {link.block, link.port, {}};
+            state.inputs[slot].requested(link.external->block, link.external->port);
         }
 
         blocksToRecreate.push_back(std::move(state));
@@ -1111,7 +1139,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 
         TensorMap requestedInputs;
         for (const auto& [slot, ref] : def.inputs) {
-            requestedInputs[slot] = {ref.block, ref.port, {}};
+            requestedInputs[slot].requested(ref.block, ref.port);
         }
 
         if (!def.meta.empty()) {
@@ -1227,8 +1255,13 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
                 for (const auto& [slot, link] : inputs) {
                     const U64 tensorId = link.tensor.id();
 
-                    std::string producerBlock = link.block;
-                    std::string producerPort = link.port;
+                    std::string producerBlock;
+                    std::string producerPort;
+
+                    if (link.external.has_value()) {
+                        producerBlock = link.external->block;
+                        producerPort = link.external->port;
+                    }
 
                     if (tensorId != 0 && outputLookup.contains(tensorId)) {
                         producerBlock = outputLookup.at(tensorId).block;

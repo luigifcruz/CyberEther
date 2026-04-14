@@ -1,14 +1,7 @@
-cmake = import('cmake')
-opt_var = cmake.subproject_options()
-if get_option('buildtype') == 'debugoptimized'
-    opt_var.add_cmake_defines({'CMAKE_BUILD_TYPE': 'Debug'})
-endif
-opt_var.append_compile_args('cpp', '-UNB_ABORT_ON_LEAK')
-sub_proj = cmake.subproject('nanobind', options: opt_var)
-
-deps = []
-deps += sub_proj.dependency('nanobind-static')
-deps += py.dependency()
+deps = [
+    subproject('nanobind').get_variable('nanobind_dep'),
+    py.dependency()
+]
 
 if get_option('buildtype') == 'debugoptimized'
     run_command(

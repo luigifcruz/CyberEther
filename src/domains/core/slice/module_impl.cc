@@ -39,7 +39,7 @@ Result SliceImpl::create() {
         JST_CHECK(output.slice(tokens));
     }
 
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

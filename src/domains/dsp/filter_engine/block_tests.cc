@@ -12,8 +12,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter engine chain", "[modules][dsp][filter
     REQUIRE(flowgraph->blockCreate("taps_filter", "filter_taps", {}, {}) == Result::SUCCESS);
 
     TensorMap engineInputs;
-    engineInputs["signal"] = {"taps_signal", "coeffs", {}};
-    engineInputs["filter"] = {"taps_filter", "coeffs", {}};
+    engineInputs["signal"].requested("taps_signal", "coeffs");
+    engineInputs["filter"].requested("taps_filter", "coeffs");
     REQUIRE(flowgraph->blockCreate("engine1", "filter_engine", {}, engineInputs) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("engine1")->state() == Block::State::Created);
 
