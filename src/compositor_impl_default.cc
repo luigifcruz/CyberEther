@@ -4484,7 +4484,7 @@ Result DefaultCompositor::renderGlobalModal() {
             ImGui::Spacing();
             ImGui::Spacing();
             CenterLine("MIT Licensed", nullptr, 1.0f, textColor);
-            CenterLine("Copyright (c) 2021-2025 Luigi F. Cruz", nullptr, 1.0f, textColor);
+            CenterLine("Copyright (c) 2021-2026 Luigi F. Cruz", nullptr, 1.0f, textColor);
             CenterLine(jst::fmt::format("v{}-{}", JETSTREAM_VERSION_STR,
                                                   JETSTREAM_BUILD_TYPE).c_str(), nullptr, 1.0f, textColor);
             ImGui::Spacing();
@@ -4839,7 +4839,7 @@ Result DefaultCompositor::renderGlobalModal() {
 
             ImGui::Spacing();
 
-            ImGui::Text("Copyright (c) 2021-2025 Luigi F. Cruz");
+            ImGui::Text("Copyright (c) 2021-2026 Luigi F. Cruz");
 
             ImGui::Spacing();
 
