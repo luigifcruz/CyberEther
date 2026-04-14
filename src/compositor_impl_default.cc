@@ -1338,6 +1338,7 @@ class DefaultCompositor : public Compositor::Impl {
         bool enabled = true;
         ImGuiID dockspaceId = 0;
         bool restoreDockLayout = false;
+        bool dockInMainTabBar = false;
     };
 
     std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> flowgraphStacks;
@@ -3748,6 +3749,7 @@ Result DefaultCompositor::renderToolbar() {
                     stackState.meta.title = jst::fmt::format("Stack {}", stackIndex);
                     stackState.meta.x = (viewport->Pos.x + 40.0f * scalingFactor) / scalingFactor;
                     stackState.meta.y = (viewport->Pos.y + currentHeight + 40.0f * scalingFactor) / scalingFactor;
+                    stackState.dockInMainTabBar = true;
                     stackStates[stackId] = std::move(stackState);
                     JST_CHECK(helperSyncFlowgraphStacks(focusedFlowgraph.value()));
                 }
@@ -4926,6 +4928,7 @@ Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraph
         StackWindowState stackState;
         stackState.meta = std::move(stackMeta);
         stackState.restoreDockLayout = !stackState.meta.layout.empty();
+        stackState.dockInMainTabBar = true;
         stackStates[stackId] = std::move(stackState);
     }
 
@@ -6179,6 +6182,7 @@ Result DefaultCompositor::renderStacks() {
             auto& stackMeta = stackState.meta;
             auto& enabled = stackState.enabled;
             auto& id = stackState.dockspaceId;
+            const std::string stackWindowLabel = helperMakeStackWindowLabel(flowgraphId, stackId, stackMeta);
 
             if (!enabled) {
                 stacksToRemove.emplace_back(flowgraphId, stackId);
@@ -6192,11 +6196,24 @@ Result DefaultCompositor::renderStacks() {
 
             ImGui::SetNextWindowPos(ImVec2(stackMeta.x * scalingFactor, stackMeta.y * scalingFactor), ImGuiCond_Appearing);
 
+            ImGuiWindowFlags stackWindowFlags = 0;
+            if (stackState.dockInMainTabBar) {
+                stackWindowFlags |= ImGuiWindowFlags_NoFocusOnAppearing;
+                stackWindowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
+            }
+
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-            ImGui::SetNextWindowDockID(mainDockspaceID, ImGuiCond_Appearing);
+            ImGui::SetNextWindowDockID(mainDockspaceID,
+                                       stackState.dockInMainTabBar ? ImGuiCond_Always : ImGuiCond_Appearing);
             ImGui::SetNextWindowSize(ImVec2(stackMeta.width * scalingFactor, stackMeta.height * scalingFactor), ImGuiCond_Appearing);
-            ImGui::Begin(helperMakeStackWindowLabel(flowgraphId, stackId, stackMeta).c_str(), &enabled);
+            ImGui::Begin(stackWindowLabel.c_str(), &enabled, stackWindowFlags);
             ImGui::PopStyleVar();
+
+            if (stackState.dockInMainTabBar) {
+                ImGui::DockBuilderDockWindow(stackWindowLabel.c_str(), mainDockspaceID);
+                ImGui::DockBuilderFinish(mainDockspaceID);
+                stackState.dockInMainTabBar = false;
+            }
 
             bool isDockNew = false;
 
