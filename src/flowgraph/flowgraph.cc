@@ -81,6 +81,42 @@ std::vector<std::string> CollectTensorTypes(const TensorMap& map) {
     return types;
 }
 
+Result SerializeConfigSequenceToYaml(const Parser::Sequence& sequence, ryml::NodeRef& node);
+Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node);
+Result DeserializeConfigFromYaml(ryml::ConstNodeRef node, Parser::Map& configMap);
+Result DeserializeConfigSequenceFromYaml(ryml::ConstNodeRef node, Parser::Sequence& sequence);
+
+Result SerializeConfigValueToYaml(const std::any& value, ryml::NodeRef& node) {
+    if (value.type() == typeid(Parser::Map)) {
+        return SerializeConfigToYaml(std::any_cast<const Parser::Map&>(value), node);
+    }
+
+    if (value.type() == typeid(Parser::Sequence)) {
+        return SerializeConfigSequenceToYaml(std::any_cast<const Parser::Sequence&>(value), node);
+    }
+
+    std::string encoded;
+    JST_CHECK(Parser::TypedToString(value, encoded));
+    node << encoded;
+
+    if (std::count(encoded.begin(), encoded.end(), '\n')) {
+        node |= ryml::_WIP_VAL_LITERAL;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result SerializeConfigSequenceToYaml(const Parser::Sequence& sequence, ryml::NodeRef& node) {
+    node |= ryml::SEQ;
+
+    for (const auto& value : sequence) {
+        auto child = node.append_child();
+        JST_CHECK(SerializeConfigValueToYaml(value, child));
+    }
+
+    return Result::SUCCESS;
+}
+
 Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node) {
     node |= ryml::MAP;
 
@@ -89,29 +125,59 @@ Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node) 
             continue;
         }
 
-        if (value.type() == typeid(Parser::Map)) {
-            auto child = node.append_child();
-            child << ryml::key(key);
-            JST_CHECK(SerializeConfigToYaml(std::any_cast<const Parser::Map&>(value), child));
-            continue;
+        std::string encoded;
+        const bool isScalar = value.type() != typeid(Parser::Map) && value.type() != typeid(Parser::Sequence);
+        if (isScalar) {
+            JST_CHECK(Parser::TypedToString(value, encoded));
         }
 
-        std::string encoded;
-        JST_CHECK(Parser::TypedToString(value, encoded));
-
-        if (encoded.empty()) {
+        if (isScalar && encoded.empty()) {
             continue;
         }
 
         auto child = node.append_child();
         child << ryml::key(key);
-        child << encoded;
-
-        if (std::count(encoded.begin(), encoded.end(), '\n')) {
-            child |= ryml::_WIP_VAL_LITERAL;
-        }
+        JST_CHECK(SerializeConfigValueToYaml(value, child));
     }
 
+    return Result::SUCCESS;
+}
+
+Result DeserializeConfigSequenceFromYaml(ryml::ConstNodeRef node, Parser::Sequence& sequence) {
+    if (!node.is_seq()) {
+        JST_ERROR("[FLOWGRAPH] Config sequence node must be a sequence.");
+        return Result::ERROR;
+    }
+
+    Parser::Sequence decoded;
+    decoded.reserve(node.num_children());
+
+    for (const auto& entry : node.children()) {
+        if (entry.is_map()) {
+            Parser::Map nested;
+            JST_CHECK(DeserializeConfigFromYaml(entry, nested));
+            decoded.push_back(std::move(nested));
+            continue;
+        }
+
+        if (entry.is_seq()) {
+            Parser::Sequence nested;
+            JST_CHECK(DeserializeConfigSequenceFromYaml(entry, nested));
+            decoded.push_back(std::move(nested));
+            continue;
+        }
+
+        std::string value;
+        if (!entry.has_val()) {
+            JST_ERROR("[FLOWGRAPH] Config sequence entries must be scalars, maps, or sequences.");
+            return Result::ERROR;
+        }
+
+        entry >> value;
+        decoded.push_back(NormalizeScalar(value));
+    }
+
+    sequence = std::move(decoded);
     return Result::SUCCESS;
 }
 
@@ -133,9 +199,16 @@ Result DeserializeConfigFromYaml(ryml::ConstNodeRef node, Parser::Map& configMap
             continue;
         }
 
+        if (element.is_seq()) {
+            Parser::Sequence sequence;
+            JST_CHECK(DeserializeConfigSequenceFromYaml(element, sequence));
+            decoded[key] = std::move(sequence);
+            continue;
+        }
+
         std::string value;
         if (!element.has_val()) {
-            JST_ERROR("[FLOWGRAPH] Config '{}' must be a scalar or map.", key);
+            JST_ERROR("[FLOWGRAPH] Config '{}' must be a scalar, map, or sequence.", key);
             return Result::ERROR;
         }
 
