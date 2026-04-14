@@ -1566,7 +1566,7 @@ class DefaultCompositor : public Compositor::Impl {
     Result renderInfoHud();
     Result renderFullscreenHud();
     Result renderWelcomeHud();
-    Result renderEmptyFlowgraphHint();
+    Result renderEmptyFlowgraphHint(const std::string& flowgraphId);
     Result renderEmptyStackHint(const std::string& flowgraphId, const std::string& stackId, ImGuiID dockspaceId);
     Result renderRemoteHud();
     Result renderNotifications();
@@ -1894,7 +1894,6 @@ Result DefaultCompositor::present() {
     JST_CHECK(renderDocumentations());
 
     JST_CHECK(renderFlowgraph());
-    JST_CHECK(renderEmptyFlowgraphHint());
     JST_CHECK(renderGlobalModal());
 
     return Result::SUCCESS;
@@ -3446,6 +3445,8 @@ Result DefaultCompositor::renderFlowgraph() {
         ImGui::PopStyleVar();
         ImGui::PopFont();
 
+        JST_CHECK(renderEmptyFlowgraphHint(flowgraphId));
+
         ImGui::End();
     }
 
@@ -3787,12 +3788,7 @@ Result DefaultCompositor::renderWelcomeHud() {
     return Result::SUCCESS;
 }
 
-Result DefaultCompositor::renderEmptyFlowgraphHint() {
-    if (!focusedFlowgraph.has_value()) {
-        return Result::SUCCESS;
-    }
-
-    const std::string& flowgraphId = focusedFlowgraph.value();
+Result DefaultCompositor::renderEmptyFlowgraphHint(const std::string& flowgraphId) {
     const auto dismissHint = [&]() {
         emptyFlowgraphHintTipIndices.erase(flowgraphId);
         dismissedEmptyFlowgraphHints.insert(flowgraphId);
@@ -3824,52 +3820,114 @@ Result DefaultCompositor::renderEmptyFlowgraphHint() {
         tipIt->second = distribution(randomGenerator);
     }
 
-    const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoTitleBar |
-                                         ImGuiWindowFlags_NoResize |
-                                         ImGuiWindowFlags_NoCollapse |
-                                         ImGuiWindowFlags_NoDocking |
-                                         ImGuiWindowFlags_AlwaysAutoResize |
-                                         ImGuiWindowFlags_NoSavedSettings |
-                                         ImGuiWindowFlags_NoFocusOnAppearing |
-                                         ImGuiWindowFlags_NoNav;
+    const float baseFontSize = ImGui::GetFontSize();
+    const float iconFontSize = baseFontSize * 2.5f;
+    const char* iconText = ICON_FA_LIGHTBULB;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
 
-    const ImGuiViewport* vp = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowViewport(vp->ID);
+    const char* title = "Getting Started";
+    const float titleFontSize = ImGui::GetFontSize() * 1.2f;
+    const ImVec2 titleSize = h2Font->CalcTextSizeA(titleFontSize, FLT_MAX, 0.0f, title);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f * scalingFactor, 20.0f * scalingFactor));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f * scalingFactor);
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f * scalingFactor);
+    const char* subtitle = "Let's get started by adding your first block";
+    const ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
 
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ColorMap.at("card"));
+    struct Instruction {
+        const char* number;
+        const char* text;
+    };
+
+    Instruction instructions[] = {
+        {"1.", "Double-click anywhere on the canvas."},
+        {"2.", "Pick a block from the menu."},
+        {"3.", "Connect blocks to build your flow."},
+    };
+
+    const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+    const char* randomTip = tips[tipIt->second];
+    std::string tipText = std::string("Tip: ") + randomTip;
+    const ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
+
+    const ImVec2 contentStart = ImGui::GetCursorStartPos();
+    ImGui::SetCursorPos(contentStart);
+    const ImVec2 contentAvail = ImGui::GetContentRegionAvail();
+    const float contentWidth = contentAvail.x;
+    const float itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
+    const float instructionWidth = 320.0f * scalingFactor;
+    const float instructionWrapSlack = 12.0f * scalingFactor;
+    const float instructionNumberGap = 8.0f * scalingFactor;
+    const float instructionTextSpacing = instructionNumberGap + ImGui::GetStyle().ItemSpacing.x;
+    const auto instructionRowHeight = [&](const Instruction& inst) {
+        const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+        const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+        const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+        return std::max(numberSize.y, textSize.y);
+    };
+
+    float instructionsHeight = 0.0f;
+    for (const auto& inst : instructions) {
+        instructionsHeight += instructionRowHeight(inst) + 8.0f * scalingFactor;
+    }
+    const float instructionCount = static_cast<float>(sizeof(instructions) / sizeof(instructions[0]));
+    instructionsHeight += (2.0f * instructionCount - 1.0f) * itemSpacingY;
+
+    const float contentHeight = iconSize.y +
+                                12.0f * scalingFactor +
+                                titleSize.y +
+                                8.0f * scalingFactor +
+                                subtitleSize.y +
+                                24.0f * scalingFactor +
+                                instructionsHeight +
+                                16.0f * scalingFactor +
+                                tipSize.y +
+                                7.0f * itemSpacingY;
+    const float minContentWidth = std::max(
+        std::max(iconSize.x, titleSize.x),
+        std::max(subtitleSize.x, std::max(tipSize.x, instructionWidth + instructionWrapSlack)));
+    const float cardPaddingX = 24.0f * scalingFactor;
+    const float cardPaddingY = 20.0f * scalingFactor;
+    const float cardRounding = 16.0f * scalingFactor;
+    const float cardWidth = minContentWidth + cardPaddingX * 2.0f;
+    const float cardHeight = contentHeight + cardPaddingY * 2.0f;
+
+    if (contentWidth < cardWidth || contentAvail.y < cardHeight) {
+        return Result::SUCCESS;
+    }
+
+    const ImVec2 cardPos(std::floor(contentStart.x + (contentWidth - cardWidth) * 0.5f),
+                         contentStart.y + std::max(0.0f, (contentAvail.y - cardHeight) * 0.5f));
+    ImVec4 opaqueCardColor = ColorMap.at("card");
+    opaqueCardColor.w = 1.0f;
+    ImGui::SetCursorPos(cardPos);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(cardPaddingX, cardPaddingY));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, cardRounding);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f * scalingFactor);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, opaqueCardColor);
     ImGui::PushStyleColor(ImGuiCol_Border, ColorMap.at("border"));
-    ImGui::PushStyleColor(ImGuiCol_Button, ColorMap.at("header"));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ColorMap.at("header_hovered"));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ColorMap.at("header_active"));
 
-    bool showHint = true;
-    if (ImGui::Begin("##empty_flowgraph_hint", &showHint, windowFlags)) {
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        const float baseFontSize = ImGui::GetFontSize();
+    const std::string hintChildLabel = "##empty_flowgraph_hint_" + flowgraphId;
+    const ImGuiWindowFlags hintChildFlags = ImGuiWindowFlags_NoScrollbar |
+                                            ImGuiWindowFlags_NoScrollWithMouse |
+                                            ImGuiWindowFlags_NoSavedSettings |
+                                            ImGuiWindowFlags_NoNav |
+                                            ImGuiWindowFlags_NoMove |
+                                            ImGuiWindowFlags_NoInputs;
+    if (ImGui::BeginChild(hintChildLabel.c_str(), ImVec2(cardWidth, cardHeight), ImGuiChildFlags_Borders, hintChildFlags)) {
+        const ImVec2 cardInnerStart = ImGui::GetCursorStartPos();
+        const float cardInnerWidth = ImGui::GetContentRegionAvail().x;
         const auto centerNextItem = [&](float itemWidth) {
-            const float cursorX = ImGui::GetCursorPosX();
-            const float availableWidth = ImGui::GetContentRegionAvail().x;
-            ImGui::SetCursorPosX(cursorX + (availableWidth - itemWidth) * 0.5f);
+            ImGui::SetCursorPosX(std::floor(cardInnerStart.x + (cardInnerWidth - itemWidth) * 0.5f));
         };
 
-        const float iconFontSize = baseFontSize * 2.5f;
-        const char* iconText = ICON_FA_LIGHTBULB;
-        ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
-        float iconX = (ImGui::GetContentRegionAvail().x - iconSize.x) * 0.5f;
-        ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x + iconX,
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        centerNextItem(iconSize.x);
+        ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x,
                                 ImGui::GetCursorScreenPos().y);
         drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos,
                           ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), iconText);
         ImGui::Dummy(ImVec2(0, iconSize.y + 12.0f * scalingFactor));
 
-        ImGui::PushFont(h2Font, ImGui::GetFontSize() * 1.2f);
-        const char* title = "Getting Started";
-        ImVec2 titleSize = ImGui::CalcTextSize(title);
+        ImGui::PushFont(h2Font, titleFontSize);
         centerNextItem(titleSize.x);
         ImGui::TextUnformatted(title);
         ImGui::PopFont();
@@ -3877,42 +3935,28 @@ Result DefaultCompositor::renderEmptyFlowgraphHint() {
         ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
 
         ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_secondary"));
-        const char* subtitle = "Let's get started by adding your first block";
-        ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
         centerNextItem(subtitleSize.x);
         ImGui::TextUnformatted(subtitle);
         ImGui::PopStyleColor();
 
         ImGui::Dummy(ImVec2(0, 24.0f * scalingFactor));
 
-        struct Instruction {
-            const char* number;
-            const char* text;
-        };
-
-        Instruction instructions[] = {
-            {"1.", "Double-click anywhere on the canvas."},
-            {"2.", "Pick a block from the menu."},
-            {"3.", "Connect blocks to build your flow."},
-        };
-
-        const float instructionWidth = 320.0f * scalingFactor;
         centerNextItem(instructionWidth);
         ImGui::BeginGroup();
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth + instructionWrapSlack);
         for (const auto& inst : instructions) {
             ImGui::BeginGroup();
             ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("cyber_blue"));
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
-            const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+            ImDrawList* instDrawList = ImGui::GetWindowDrawList();
             const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
-            const ImVec2 textSize = ImGui::CalcTextSize(inst.text);
-            const float rowHeight = std::max(numberSize.y, textSize.y);
+            const float rowHeight = instructionRowHeight(inst);
+            const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+            const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
             ImVec2 cursorPos = ImGui::GetCursorScreenPos();
             cursorPos.y += (rowHeight - numberSize.y) * 0.5f;
-            drawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
-                              ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
-            ImGui::Dummy(ImVec2(numberSize.x + 8.0f * scalingFactor, rowHeight));
+            instDrawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
+                                  ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
+            ImGui::Dummy(ImVec2(numberSize.x + instructionNumberGap, rowHeight));
             ImGui::PopStyleColor();
             ImGui::SameLine();
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (rowHeight - textSize.y) * 0.5f + 1.0f * scalingFactor);
@@ -3924,25 +3968,13 @@ Result DefaultCompositor::renderEmptyFlowgraphHint() {
         ImGui::EndGroup();
 
         ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
-
-        const char* randomTip = tips[tipIt->second];
-
-        ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
         ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_disabled"));
-        std::string tipText = std::string("Tip: ") + randomTip;
-        ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
         centerNextItem(tipSize.x);
         ImGui::TextUnformatted(tipText.c_str());
         ImGui::PopStyleColor();
-
-        ImGui::End();
     }
-
-    if (!showHint) {
-        dismissHint();
-    }
-
-    ImGui::PopStyleColor(5);
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
 
     return Result::SUCCESS;
@@ -4028,7 +4060,8 @@ Result DefaultCompositor::renderEmptyStackHint(const std::string& flowgraphId, c
     for (const auto& inst : instructions) {
         instructionsHeight += instructionRowHeight(inst) + 8.0f * scalingFactor;
     }
-    instructionsHeight += (2.0f * static_cast<float>(std::size(instructions)) - 1.0f) * itemSpacingY;
+    const float instructionCount = static_cast<float>(sizeof(instructions) / sizeof(instructions[0]));
+    instructionsHeight += (2.0f * instructionCount - 1.0f) * itemSpacingY;
 
     const float contentHeight = iconSize.y +
                                 12.0f * scalingFactor +
