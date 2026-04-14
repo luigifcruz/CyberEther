@@ -29,6 +29,12 @@ struct MapConfig {
     JST_SERDES(presets);
 };
 
+struct SequenceConfig {
+    std::vector<InnerConfig> steps;
+
+    JST_SERDES(steps);
+};
+
 }  // namespace TestParserSerdes
 
 using namespace TestParserSerdes;
@@ -109,6 +115,58 @@ TEST_CASE("JST_SERDES serializes unordered maps of nested structs", "[parser][se
     REQUIRE(restored.presets.at("alpha").enabled);
     REQUIRE(restored.presets.at("beta").gain == 8);
     REQUIRE(!restored.presets.at("beta").enabled);
+}
+
+TEST_CASE("JST_SERDES serializes vectors of nested structs as sequences", "[parser][serdes]") {
+    SequenceConfig source;
+    source.steps.push_back({.gain = 2, .enabled = true});
+    source.steps.push_back({.gain = 5, .enabled = false});
+
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    REQUIRE(data.contains("steps"));
+    REQUIRE(data.at("steps").type() == typeid(Parser::Sequence));
+
+    const auto& steps = std::any_cast<const Parser::Sequence&>(data.at("steps"));
+    REQUIRE(steps.size() == 2);
+    REQUIRE(steps.at(0).type() == typeid(Parser::Map));
+
+    const auto& first = std::any_cast<const Parser::Map&>(steps.at(0));
+    REQUIRE(std::any_cast<U64>(first.at("gain")) == 2);
+    REQUIRE(std::any_cast<bool>(first.at("enabled")));
+
+    SequenceConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.steps.size() == 2);
+    REQUIRE(restored.steps.at(0).gain == 2);
+    REQUIRE(restored.steps.at(0).enabled);
+    REQUIRE(restored.steps.at(1).gain == 5);
+    REQUIRE(!restored.steps.at(1).enabled);
+}
+
+TEST_CASE("JST_SERDES deserializes string-backed sequences of nested structs", "[parser][serdes]") {
+    Parser::Map first;
+    first["gain"] = std::string("13");
+    first["enabled"] = std::string("true");
+
+    Parser::Map second;
+    second["gain"] = std::string("21");
+    second["enabled"] = std::string("false");
+
+    Parser::Sequence steps;
+    steps.push_back(first);
+    steps.push_back(second);
+
+    Parser::Map data;
+    data["steps"] = steps;
+
+    SequenceConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.steps.size() == 2);
+    REQUIRE(restored.steps.at(0).gain == 13);
+    REQUIRE(restored.steps.at(0).enabled);
+    REQUIRE(restored.steps.at(1).gain == 21);
+    REQUIRE(!restored.steps.at(1).enabled);
 }
 
 TEST_CASE("JST_SERDES deserializes string-backed unordered maps of nested structs", "[parser][serdes]") {
