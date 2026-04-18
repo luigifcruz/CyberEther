@@ -34,9 +34,9 @@ class JETSTREAM_API Instance : public std::enable_shared_from_this<Instance> {
     ~Instance();
 
     Result create(const Config& config);
-    Result destroy();
-
     Result start();
+    Result stop();
+    Result destroy();
 
     bool computing() const;
     Result compute();
@@ -46,8 +46,6 @@ class JETSTREAM_API Instance : public std::enable_shared_from_this<Instance> {
 
     bool polling() const;
     Result poll(const bool wait = true);
-
-    Result stop();
 
     const std::shared_ptr<Remote>& remote();
 

@@ -31,6 +31,8 @@ class JETSTREAM_API Flowgraph {
                   const std::shared_ptr<Instance>& instance,
                   const std::shared_ptr<Render::Window>& render,
                   const std::shared_ptr<Compositor>& compositor);
+    Result start();
+    Result stop();
     Result destroy();
 
     const std::string& title() const;

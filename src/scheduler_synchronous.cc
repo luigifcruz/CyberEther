@@ -27,6 +27,8 @@ struct SynchronousScheduler : public Scheduler::Impl {
  public:
     Result create() override;
     Result destroy() override;
+    Result start() override;
+    Result stop() override;
 
     Result add(const std::shared_ptr<Module>& module) override;
     Result remove(const std::shared_ptr<Module>& module) override;
@@ -46,6 +48,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     void requestPresentEntry();
     void clearPresentRequest();
     bool isPresentRequested() const;
+    bool isStopping() const;
     void setComputeActive();
     void clearComputeActive();
     bool isComputeActive() const;
@@ -69,6 +72,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     bool presentSync = false;
     bool computeSync = false;
     std::atomic<bool> presentWantsIn{false};
+    std::atomic<bool> stopping{false};
     std::atomic<U64> generation{0};
 
     std::unordered_map<std::string, std::shared_ptr<Module>> modules;
@@ -91,6 +95,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
 
 Result SynchronousScheduler::create() {
     JST_DEBUG("[SCHEDULER_SYNCHRONOUS] Creating scheduler.");
+    stopping.store(false, std::memory_order_release);
     return Result::SUCCESS;
 }
 
@@ -113,6 +118,26 @@ Result SynchronousScheduler::destroy() {
 
         return Result::SUCCESS;
     }));
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::start() {
+    stopping.store(false, std::memory_order_release);
+    clearPresentRequest();
+
+    auto lock = exclusiveSharedLock();
+    presentSync = false;
+    computeSync = false;
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::stop() {
+    stopping.store(true, std::memory_order_release);
+    clearPresentRequest();
+    notifyCompute();
+    notifyPresent();
 
     return Result::SUCCESS;
 }
@@ -164,7 +189,7 @@ Result SynchronousScheduler::reload(const std::shared_ptr<Module>&) {
 }
 
 Result SynchronousScheduler::present() {
-    if (isPresentHalted()) {
+    if (isStopping() || isPresentHalted()) {
         clearPresentRequest();
         return Result::SUCCESS;
     }
@@ -181,7 +206,7 @@ Result SynchronousScheduler::present() {
             return Result::SUCCESS;
         }
 
-        if (isPresentHalted()) {
+        if (isStopping() || isPresentHalted()) {
             clearPresentRequest();
             return Result::SUCCESS;
         }
@@ -190,7 +215,19 @@ Result SynchronousScheduler::present() {
 
         auto lock = tryExclusiveSharedLock();
         if (!lock.owns_lock() || isComputeActive()) {
+            if (isStopping()) {
+                clearPresentRequest();
+                clearPresentActive();
+                return Result::SUCCESS;
+            }
+
             requestPresentEntry();
+            clearPresentActive();
+            return Result::SUCCESS;
+        }
+
+        if (isStopping()) {
+            clearPresentRequest();
             clearPresentActive();
             return Result::SUCCESS;
         }
@@ -213,6 +250,11 @@ Result SynchronousScheduler::present() {
 Result SynchronousScheduler::compute() {
     if (isComputeHalted()) {
         waitComputeHalt();
+        return Result::SUCCESS;
+    }
+
+    if (isStopping()) {
+        clearPresentRequest();
         return Result::SUCCESS;
     }
 
@@ -244,6 +286,11 @@ Result SynchronousScheduler::compute() {
 
     {
         while (true) {
+            if (isStopping()) {
+                clearPresentRequest();
+                return Result::SUCCESS;
+            }
+
             if (currentGeneration() != localGeneration) {
                 return Result::SUCCESS;
             }
@@ -305,6 +352,11 @@ Result SynchronousScheduler::compute() {
 
         if (isPresentRequested()) {
             while (isPresentRequested()) {
+                if (isStopping()) {
+                    clearPresentRequest();
+                    return Result::SUCCESS;
+                }
+
                 if (isComputeHalted()) {
                     return Result::SUCCESS;
                 }
@@ -329,6 +381,11 @@ Result SynchronousScheduler::compute() {
 
             auto lock = exclusiveSharedLock();
             waitForPresentToFinish(lock);
+
+            if (isStopping()) {
+                clearPresentRequest();
+                return Result::SUCCESS;
+            }
 
             if (isComputeHalted()) {
                 return Result::SUCCESS;
@@ -543,6 +600,10 @@ bool SynchronousScheduler::isPresentRequested() const {
     return presentWantsIn.load(std::memory_order_acquire);
 }
 
+bool SynchronousScheduler::isStopping() const {
+    return stopping.load(std::memory_order_acquire);
+}
+
 void SynchronousScheduler::setComputeActive() {
     computeSync = true;
 }
@@ -581,7 +642,7 @@ std::unique_lock<std::mutex> SynchronousScheduler::tryExclusiveSharedLock() {
 
 void SynchronousScheduler::waitForPresentToFinish(std::unique_lock<std::mutex>& lock) {
     computeCond.wait(lock, [&] {
-        return !presentSync || computeHalt.test();
+        return !presentSync || computeHalt.test() || isStopping();
     });
 }
 

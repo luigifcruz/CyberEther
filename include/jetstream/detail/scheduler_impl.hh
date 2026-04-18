@@ -12,6 +12,8 @@ struct Scheduler::Impl {
     virtual ~Impl() = default;
 
     virtual Result create() = 0;
+    virtual Result start() = 0;
+    virtual Result stop() = 0;
     virtual Result destroy() = 0;
 
     virtual Result add(const std::shared_ptr<Module>& module) = 0;

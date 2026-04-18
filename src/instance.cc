@@ -216,6 +216,19 @@ Result Instance::start() {
 
     JST_CHECK(impl->render->start());
 
+    std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
+    {
+        std::shared_lock lock(impl->flowgraphsMutex);
+        flowgraphs.reserve(impl->flowgraphs.size());
+        for (const auto& [_, flowgraph] : impl->flowgraphs) {
+            flowgraphs.push_back(flowgraph);
+        }
+    }
+
+    for (const auto& flowgraph : flowgraphs) {
+        JST_CHECK(flowgraph->start());
+    }
+
     impl->started = true;
     impl->computing = true;
     impl->presenting = true;
@@ -227,6 +240,19 @@ Result Instance::stop() {
     JST_INFO("[INSTANCE] Stopping instance.");
     JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
     JST_ASSERT(impl->started, "[INSTANCE] Instance not started.");
+
+    std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
+    {
+        std::shared_lock lock(impl->flowgraphsMutex);
+        flowgraphs.reserve(impl->flowgraphs.size());
+        for (const auto& [_, flowgraph] : impl->flowgraphs) {
+            flowgraphs.push_back(flowgraph);
+        }
+    }
+
+    for (const auto& flowgraph : flowgraphs) {
+        JST_CHECK(flowgraph->stop());
+    }
 
     JST_CHECK(impl->render->stop());
 
@@ -370,6 +396,15 @@ Result Instance::flowgraphCreate(const std::string name,
 
     flowgraph = std::make_shared<Flowgraph>();
     JST_CHECK(flowgraph->create(config, shared_from_this(), impl->render, impl->compositor));
+
+    if (impl->started) {
+        const auto res = flowgraph->start();
+        if (res != Result::SUCCESS) {
+            (void)flowgraph->destroy();
+            flowgraph.reset();
+            return res;
+        }
+    }
 
     {
         std::unique_lock lock(impl->flowgraphsMutex);
