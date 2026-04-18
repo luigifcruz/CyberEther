@@ -175,8 +175,8 @@ Result Instance::destroy() {
     JST_INFO("[INSTANCE] Destroying instance.");
     JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
 
-    for (const auto& [_, flowgraph] : impl->flowgraphs) {
-        JST_CHECK(flowgraph->destroy());
+    if (impl->started) {
+        JST_CHECK(stop());
     }
 
     if (impl->remote && impl->remote->started()) {
@@ -185,6 +185,17 @@ Result Instance::destroy() {
 
     if (impl->compositor) {
         JST_CHECK(impl->compositor->destroy());
+        impl->compositor.reset();
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<Flowgraph>> flowgraphs;
+    {
+        std::unique_lock lock(impl->flowgraphsMutex);
+        flowgraphs.swap(impl->flowgraphs);
+    }
+
+    for (const auto& [_, flowgraph] : flowgraphs) {
+        JST_CHECK(flowgraph->destroy());
     }
 
     // Unload default fonts.
