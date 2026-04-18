@@ -211,35 +211,50 @@ Result SynchronousScheduler::present() {
             return Result::SUCCESS;
         }
 
-        setPresentActive();
-
         auto lock = tryExclusiveSharedLock();
-        if (!lock.owns_lock() || isComputeActive()) {
+        if (!lock.owns_lock()) {
             if (isStopping()) {
                 clearPresentRequest();
-                clearPresentActive();
                 return Result::SUCCESS;
             }
 
             requestPresentEntry();
-            clearPresentActive();
             return Result::SUCCESS;
         }
 
         if (isStopping()) {
             clearPresentRequest();
-            clearPresentActive();
             return Result::SUCCESS;
         }
 
+        if (isComputeActive()) {
+            if (isStopping()) {
+                clearPresentRequest();
+                return Result::SUCCESS;
+            }
+
+            requestPresentEntry();
+            return Result::SUCCESS;
+        }
+
+        setPresentActive();
         clearPresentRequest();
+
+        Result res = Result::SUCCESS;
 
         for (const auto& name : presentModules) {
             const auto& mod = modules.at(name);
-            JST_CHECK(mod->context()->scheduler()->presentSubmit());
+            res = mod->context()->scheduler()->presentSubmit();
+            if (res != Result::SUCCESS && res != Result::RELOAD) {
+                break;
+            }
         }
 
         clearPresentActive();
+
+        if (res != Result::SUCCESS && res != Result::RELOAD) {
+            return res;
+        }
     }
 
     notifyCompute();
