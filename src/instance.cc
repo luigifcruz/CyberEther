@@ -25,6 +25,7 @@ struct Instance::Impl {
     std::atomic<bool> started = false;
     std::atomic<bool> computing = false;
     std::atomic<bool> presenting = false;
+    std::atomic<bool> stopping = false;
 
     DeviceType device;
     std::shared_mutex flowgraphsMutex;
@@ -167,6 +168,7 @@ Result Instance::create(const Config& config) {
 
     impl->remote = std::make_shared<Remote>(impl->viewport.get());
 
+    impl->stopping.store(false);
     impl->created.store(true);
     return Result::SUCCESS;
 }
@@ -243,6 +245,7 @@ Result Instance::start() {
     impl->started.store(true);
     impl->computing.store(true);
     impl->presenting.store(true);
+    impl->stopping.store(false);
 
     return Result::SUCCESS;
 }
@@ -251,6 +254,10 @@ Result Instance::stop() {
     JST_INFO("[INSTANCE] Stopping instance.");
     JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
     JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+
+    impl->stopping.store(true);
+    impl->computing.store(false);
+    impl->presenting.store(false);
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
     {
@@ -268,8 +275,6 @@ Result Instance::stop() {
     JST_CHECK(impl->render->stop());
 
     impl->started.store(false);
-    impl->computing.store(false);
-    impl->presenting.store(false);
 
     return Result::SUCCESS;
 }
@@ -280,7 +285,17 @@ bool Instance::computing() const {
 
 Result Instance::compute() {
     JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->started.load()) {
+        if (impl->stopping.load()) {
+            return Result::SUCCESS;
+        }
+
+        JST_ASSERT(false, "[INSTANCE] Instance not started.");
+    }
 
     // Copy flowgraph pointers while holding lock, then release before compute.
 
@@ -306,7 +321,17 @@ bool Instance::presenting() const {
 
 Result Instance::present(const std::function<Result()>& callback) {
     JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->started.load()) {
+        if (impl->stopping.load()) {
+            return Result::SUCCESS;
+        }
+
+        JST_ASSERT(false, "[INSTANCE] Instance not started.");
+    }
 
     // Create new render frame.
 
@@ -376,7 +401,17 @@ bool Instance::polling() const {
 
 Result Instance::poll(const bool wait) {
     JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->started.load()) {
+        if (impl->stopping.load()) {
+            return Result::SUCCESS;
+        }
+
+        JST_ASSERT(false, "[INSTANCE] Instance not started.");
+    }
 
     if (wait) {
         JST_CHECK(impl->viewport->waitEvents());
