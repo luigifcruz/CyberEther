@@ -180,10 +180,9 @@ Result SynchronousScheduler::remove(const std::shared_ptr<Module>& module) {
 Result SynchronousScheduler::reload(const std::shared_ptr<Module>&) {
     JST_CHECK(lockState([&]{
         JST_CHECK(this->rebuildOrder());
+        JST_CHECK(this->rebuildRuntimes());
         return Result::SUCCESS;
     }));
-
-    JST_CHECK(this->rebuildRuntimes());
 
     return Result::SUCCESS;
 }
@@ -277,10 +276,12 @@ Result SynchronousScheduler::compute() {
 
     std::vector<std::shared_ptr<Module>> localSourceModules;
     U64 localGeneration;
+    U64 localRuntimeCount;
     {
         auto lock = sharedDataLock();
 
-        if (runtimes.empty()) {
+        localRuntimeCount = runtimes.size();
+        if (localRuntimeCount == 0) {
             return Result::SUCCESS;
         }
 
@@ -362,7 +363,7 @@ Result SynchronousScheduler::compute() {
     Result res = Result::SUCCESS;
     std::unordered_set<std::string> skippedModules;
 
-    for (U64 i = 0; i < runtimes.size(); i++) {
+    for (U64 i = 0; i < localRuntimeCount; i++) {
         // Priority Yield: Check if present wants in before each segment.
 
         if (isPresentRequested()) {
