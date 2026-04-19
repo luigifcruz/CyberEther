@@ -4415,21 +4415,6 @@ Result DefaultCompositor::renderToolbar() {
                 ImGui::SameLine();
             }
 
-#ifdef JST_OS_BROWSER
-            ImGui::Dummy(ImVec2(5.0f, 0.0f));
-            ImGui::SameLine();
-
-            if (ImGui::Button(ICON_FA_PLUG " Connect WebUSB Device")) {
-                if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
-                    ImGui::InsertNotification({ ImGuiToastType_Error, 10000, "This browser is not compatible with WebUSB. "
-                                                                             "Try a Chromium based browser like Chrome, Brave, or Opera GX." });
-                } else {
-                    EM_ASM({  openUsbDevice(); });
-                }
-            }
-            ImGui::SameLine();
-#endif
-
             ImGui::PopStyleVar();
         }
 
