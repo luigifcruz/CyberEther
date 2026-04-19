@@ -8,6 +8,7 @@
 #include <jetstream/domains/io/websocket/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/circular_buffer.hh>
+#include <jetstream/tools/snapshot.hh>
 
 namespace Jetstream::Modules {
 
@@ -18,9 +19,8 @@ struct WebsocketImpl : public Module::Impl, public DynamicConfig<Websocket> {
     Result create() override;
     Result destroy() override;
 
-    Tools::CircularBuffer<I8>& getCircularBuffer();
-    const F32& getBufferHealth() const;
-    const F32& getThroughput() const;
+    F32 getBufferHealth() const;
+    F32 getThroughput() const;
 
  protected:
     Tensor buffer;
@@ -30,8 +30,8 @@ struct WebsocketImpl : public Module::Impl, public DynamicConfig<Websocket> {
     std::atomic<bool> errored{false};
 
     Tools::CircularBuffer<I8> circularBuffer;
-    F32 bufferHealth = 0.0f;
-    F32 throughputMBs = 0.0f;
+    Tools::Snapshot<F32> bufferHealth{0.0f};
+    Tools::Snapshot<F32> throughputMBs{0.0f};
 
     static EM_BOOL onOpen(int eventType,
                           const EmscriptenWebSocketOpenEvent* event,

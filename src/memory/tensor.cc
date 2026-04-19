@@ -12,6 +12,8 @@
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 
+// TODO: Centralize singleton-aware contiguity detection for slice() and permute().
+
 namespace Jetstream {
 
 namespace {
@@ -19,10 +21,14 @@ std::atomic<Index> g_tensor_counter{1};
 }
 
 struct Tensor::Impl {
+    struct Storage {
+        DeviceType rootDevice = DeviceType::None;
+        std::unordered_map<DeviceType, Buffer> buffers;
+    };
+
     DataType dtype = DataType::None;
     DeviceType currentDevice = DeviceType::None;
-    DeviceType rootDevice = DeviceType::None;
-    std::unordered_map<DeviceType, Buffer> buffers;
+    std::shared_ptr<Storage> storage = std::make_shared<Storage>();
     Index identifier = 0;
     std::unordered_map<std::string, std::any> attributes;
     std::unordered_map<std::string, std::function<std::any()>> derivedAttributes;
@@ -48,6 +54,7 @@ struct Tensor::Impl {
         Result reshape(const Shape& newShape);
         Result broadcast(const Shape& targetShape);
         Result slice(const std::vector<Token>& slice);
+        Result permute(const Shape& axes);
         U64 shapeToOffset(const std::initializer_list<U64>& coordinates) const;
     } layout;
 };
@@ -327,6 +334,60 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
     return Result::SUCCESS;
 }
 
+Result Tensor::Impl::Layout::permute(const Shape& axes) {
+    if (axes.empty()) {
+        JST_ERROR("[MEMORY:TENSOR] Permutation cannot be empty.");
+        return Result::ERROR;
+    }
+
+    if (axes.size() != shape.size()) {
+        JST_ERROR("[MEMORY:TENSOR] Permutation rank {} does not match tensor rank {}.",
+                  axes.size(), shape.size());
+        return Result::ERROR;
+    }
+
+    Shape newShape(shape.size());
+    Shape newStride(shape.size());
+    std::vector<bool> seen(shape.size(), false);
+
+    for (std::size_t i = 0; i < axes.size(); ++i) {
+        const U64 axis = axes[i];
+
+        if (axis >= shape.size()) {
+            JST_ERROR("[MEMORY:TENSOR] Permutation axis {} out of range {}.",
+                      axis, shape.size());
+            return Result::ERROR;
+        }
+
+        if (seen[axis]) {
+            JST_ERROR("[MEMORY:TENSOR] Permutation axis {} appears more than once.", axis);
+            return Result::ERROR;
+        }
+
+        seen[axis] = true;
+        newShape[i] = shape[axis];
+        newStride[i] = stride[axis];
+    }
+
+    bool isContiguous = true;
+    U64 expectedStride = 1;
+    for (std::size_t i = newShape.size(); i-- > 0;) {
+        if (newStride[i] != expectedStride) {
+            isContiguous = false;
+            break;
+        }
+
+        expectedStride *= newShape[i];
+    }
+
+    shape = std::move(newShape);
+    stride = std::move(newStride);
+    contiguous = isContiguous;
+    updateCache();
+
+    return Result::SUCCESS;
+}
+
 U64 Tensor::Impl::Layout::shapeToOffset(const std::initializer_list<U64>& coordinates) const {
     if (shape.empty()) {
         return 0;
@@ -399,14 +460,14 @@ Result Tensor::create(const DeviceType& device, const DataType& dtype, const Sha
 
     impl->dtype = dtype;
     impl->layout.initialize(shape, DataTypeSize(dtype));
-    impl->buffers.clear();
-    impl->rootDevice = device;
+    impl->storage = std::make_shared<Impl::Storage>();
+    impl->storage->rootDevice = device;
     impl->currentDevice = device;
     impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
 
     Buffer buffer;
     JST_CHECK(buffer.create(device, impl->layout.sizeBytes, config));
-    impl->buffers.emplace(device, std::move(buffer));
+    impl->storage->buffers.emplace(device, std::move(buffer));
 
     return Result::SUCCESS;
 }
@@ -426,14 +487,14 @@ Result Tensor::create(void* pointer, const DeviceType& device, const DataType& d
 
     impl->dtype = dtype;
     impl->layout.initialize(shape, DataTypeSize(dtype));
-    impl->buffers.clear();
-    impl->rootDevice = device;
+    impl->storage = std::make_shared<Impl::Storage>();
+    impl->storage->rootDevice = device;
     impl->currentDevice = device;
     impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
 
     Buffer buffer;
     JST_CHECK(buffer.create(device, pointer, impl->layout.sizeBytes));
-    impl->buffers.emplace(device, std::move(buffer));
+    impl->storage->buffers.emplace(device, std::move(buffer));
 
     return Result::SUCCESS;
 }
@@ -443,12 +504,21 @@ Result Tensor::create(const DeviceType& device, const Tensor& source) {
 
     Buffer buffer;
     JST_CHECK(buffer.create(device, source.buffer()));
-    impl->buffers.clear();
-    impl->buffers.emplace(device, std::move(buffer));
+    impl->storage = std::make_shared<Impl::Storage>();
+    impl->storage->buffers.emplace(device, std::move(buffer));
 
     impl->dtype = source.dtype();
-    impl->layout.initialize(source.shape(), DataTypeSize(source.dtype()));
-    impl->rootDevice = source.nativeDevice();
+    impl->layout.shape = source.impl->layout.shape;
+    impl->layout.stride = source.impl->layout.stride;
+    impl->layout.shapeMinusOne = source.impl->layout.shapeMinusOne;
+    impl->layout.backstride = source.impl->layout.backstride;
+    impl->layout.offset = source.impl->layout.offset;
+    impl->layout.size = source.impl->layout.size;
+    impl->layout.sizeBytes = source.impl->layout.sizeBytes;
+    impl->layout.offsetBytes = source.impl->layout.offsetBytes;
+    impl->layout.elementSize = source.impl->layout.elementSize;
+    impl->layout.contiguous = source.impl->layout.contiguous;
+    impl->storage->rootDevice = source.nativeDevice();
     impl->currentDevice = device;
     impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
     impl->attributeSource = source.impl;
@@ -465,8 +535,7 @@ Tensor Tensor::clone() const {
     copy.ensureImpl();
     copy.impl->dtype = impl->dtype;
     copy.impl->currentDevice = impl->currentDevice;
-    copy.impl->rootDevice = impl->rootDevice;
-    copy.impl->buffers = impl->buffers;
+    copy.impl->storage = impl->storage;
     copy.impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
     copy.impl->attributeSource = impl;
 
@@ -491,7 +560,7 @@ const DeviceType& Tensor::device() const {
 
 const DeviceType& Tensor::nativeDevice() const {
     static const DeviceType kNone = DeviceType::None;
-    return impl ? impl->rootDevice : kNone;
+    return (impl && impl->storage) ? impl->storage->rootDevice : kNone;
 }
 
 const DataType& Tensor::dtype() const {
@@ -614,28 +683,39 @@ Result Tensor::slice(const std::vector<Token>& tokens) {
     return impl->layout.slice(tokens);
 }
 
+Result Tensor::permute(const Shape& axes) {
+    if (!impl) {
+        return Result::ERROR;
+    }
+    return impl->layout.permute(axes);
+}
+
 bool Tensor::hasDevice(const DeviceType& device) {
     ensureImpl();
 
-    if (impl->buffers.contains(device)) {
+    if (!impl->storage) {
+        impl->storage = std::make_shared<Impl::Storage>();
+    }
+
+    if (impl->storage->buffers.contains(device)) {
         return true;
     }
 
-    if (!impl->buffers.contains(impl->rootDevice)) {
+    if (!impl->storage->buffers.contains(impl->storage->rootDevice)) {
         JST_ERROR("[MEMORY:TENSOR] Root buffer is not initialized.");
         return false;
     }
 
     Buffer clone;
-    if (clone.create(device, impl->buffers.at(impl->rootDevice)) != Result::SUCCESS) {
+    if (clone.create(device, impl->storage->buffers.at(impl->storage->rootDevice)) != Result::SUCCESS) {
         return false;
     }
-    impl->buffers.emplace(device, std::move(clone));
+    impl->storage->buffers.emplace(device, std::move(clone));
 
     return true;
 }
 
-Result Tensor::copyFrom(const Tensor& source) {
+Result Tensor::copyFrom(const Tensor& source, void* context) {
     ensureImpl();
 
     if (!contiguous()) {
@@ -655,7 +735,80 @@ Result Tensor::copyFrom(const Tensor& source) {
     }
 
     // Copy the buffer from the source device to the current device.
-    JST_CHECK(impl->buffers.at(source.device()).copyFrom(source.buffer()));
+    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.buffer(), context));
+
+    return Result::SUCCESS;
+}
+
+Result Tensor::swapBuffers(Tensor& other) {
+    ensureImpl();
+    other.ensureImpl();
+
+    if (this == &other || impl == other.impl) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->storage || !other.impl->storage) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap tensor storage before initialization.");
+        return Result::ERROR;
+    }
+
+    if (impl->storage == other.impl->storage) {
+        return Result::SUCCESS;
+    }
+
+    if (dtype() == DataType::None || other.dtype() == DataType::None) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers for uninitialized tensors.");
+        return Result::ERROR;
+    }
+
+    if (dtype() != other.dtype()) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers with mismatched dtypes ({} vs {}).",
+                  dtype(), other.dtype());
+        return Result::ERROR;
+    }
+
+    if (shape() != other.shape() ||
+        stride() != other.stride() ||
+        offset() != other.offset() ||
+        sizeBytes() != other.sizeBytes()) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers for tensors with different layouts.");
+        return Result::ERROR;
+    }
+
+    if (device() == DeviceType::None || other.device() == DeviceType::None) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers without an active device.");
+        return Result::ERROR;
+    }
+
+    if (device() != other.device()) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers across active devices ({} vs {}).",
+                  device(), other.device());
+        return Result::ERROR;
+    }
+
+    if (nativeDevice() != other.nativeDevice()) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers across native devices ({} vs {}).",
+                  nativeDevice(), other.nativeDevice());
+        return Result::ERROR;
+    }
+
+    const auto& lhsBuffers = impl->storage->buffers;
+    const auto& rhsBuffers = other.impl->storage->buffers;
+    if (lhsBuffers.size() != rhsBuffers.size()) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers with different materialized device sets.");
+        return Result::ERROR;
+    }
+
+    for (const auto& [deviceKey, _] : lhsBuffers) {
+        if (!rhsBuffers.contains(deviceKey)) {
+            JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers with different materialized device sets.");
+            return Result::ERROR;
+        }
+    }
+
+    std::swap(impl->storage->rootDevice, other.impl->storage->rootDevice);
+    std::swap(impl->storage->buffers, other.impl->storage->buffers);
 
     return Result::SUCCESS;
 }
@@ -665,11 +818,11 @@ void* Tensor::data() {
         return nullptr;
     }
 
-    if (!impl->buffers.contains(impl->currentDevice)) {
+    if (!impl->storage || !impl->storage->buffers.contains(impl->currentDevice)) {
         return nullptr;
     }
 
-    auto& buf = impl->buffers.at(impl->currentDevice);
+    auto& buf = impl->storage->buffers.at(impl->currentDevice);
     void* base = buf.data();
     if (!base) {
         return nullptr;
@@ -688,11 +841,11 @@ const void* Tensor::data() const {
         return nullptr;
     }
 
-    if (!impl->buffers.contains(impl->currentDevice)) {
+    if (!impl->storage || !impl->storage->buffers.contains(impl->currentDevice)) {
         return nullptr;
     }
 
-    const auto& buf = impl->buffers.at(impl->currentDevice);
+    const auto& buf = impl->storage->buffers.at(impl->currentDevice);
     const void* base = buf.data();
     if (!base) {
         return nullptr;
@@ -710,8 +863,13 @@ const Buffer& Tensor::buffer() const {
     if (!impl || impl->currentDevice == DeviceType::None) {
         throw std::runtime_error("Tensor buffer requested before initialization");
     }
-    const auto it = impl->buffers.find(impl->currentDevice);
-    if (it == impl->buffers.end()) {
+    if (!impl->storage) {
+        JST_ERROR("[MEMORY:TENSOR] Buffer storage not initialized.");
+        throw std::runtime_error("Tensor buffer storage not initialized");
+    }
+
+    const auto it = impl->storage->buffers.find(impl->currentDevice);
+    if (it == impl->storage->buffers.end()) {
         JST_ERROR("[MEMORY:TENSOR] Buffer for device {} is not materialized.", impl->currentDevice);
         throw std::runtime_error("Tensor buffer not materialized for device");
     }
@@ -722,8 +880,13 @@ Buffer& Tensor::buffer() {
     if (!impl || impl->currentDevice == DeviceType::None) {
         throw std::runtime_error("Tensor buffer requested before initialization");
     }
-    const auto it = impl->buffers.find(impl->currentDevice);
-    if (it == impl->buffers.end()) {
+    if (!impl->storage) {
+        JST_ERROR("[MEMORY:TENSOR] Buffer storage not initialized.");
+        throw std::runtime_error("Tensor buffer storage not initialized");
+    }
+
+    const auto it = impl->storage->buffers.find(impl->currentDevice);
+    if (it == impl->storage->buffers.end()) {
         JST_ERROR("[MEMORY:TENSOR] Buffer for device {} is not materialized.", impl->currentDevice);
         throw std::runtime_error("Tensor buffer not materialized for device");
     }

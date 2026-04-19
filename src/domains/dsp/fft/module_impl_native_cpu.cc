@@ -12,7 +12,7 @@
 namespace Jetstream::Modules {
 
 struct FftImplNativeCpu : public FftImpl,
-                          public Runtime::Context,
+                          public NativeCpuRuntimeContext,
                           public Scheduler::Context {
  public:
     Result create() final;

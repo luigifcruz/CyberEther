@@ -21,7 +21,23 @@ Result FileWriterImpl::define() {
 }
 
 Result FileWriterImpl::create() {
-    bytesWritten = 0;
+    bytesWritten.publish(0);
+    currentBandwidth.publish(0.0f);
+    filePath.clear();
+    bytesSinceLastMeasurement = 0;
+    lastMeasurementTime = std::chrono::steady_clock::now();
+
+    if (!filepath.empty()) {
+        filePath = std::filesystem::path(filepath);
+
+        std::error_code ec;
+        if (std::filesystem::exists(filePath, ec) && !ec) {
+            bytesWritten.publish(std::filesystem::file_size(filePath, ec));
+            if (ec) {
+                bytesWritten.publish(0);
+            }
+        }
+    }
 
     if (!recording) {
         return Result::SUCCESS;
@@ -31,8 +47,6 @@ Result FileWriterImpl::create() {
         JST_WARN("[MODULE_FILE_WRITER] File path is empty.");
         return Result::INCOMPLETE;
     }
-
-    filePath = std::filesystem::path(filepath);
 
     auto parentPath = filePath.parent_path();
     if (!parentPath.empty() && !std::filesystem::exists(parentPath)) {
@@ -53,6 +67,8 @@ Result FileWriterImpl::create() {
         return Result::ERROR;
     }
 
+    bytesWritten.publish(0);
+
     JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", filePath.string());
 
     return Result::SUCCESS;
@@ -63,36 +79,44 @@ Result FileWriterImpl::destroy() {
         dataFile.close();
         JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
                  filePath.string(),
-                 bytesWritten);
+                 bytesWritten.get());
     }
+
+    currentBandwidth.publish(0.0f);
+    bytesSinceLastMeasurement = 0;
 
     return Result::SUCCESS;
 }
 
-const U64& FileWriterImpl::getBytesWritten() const {
-    return bytesWritten;
+U64 FileWriterImpl::getBytesWritten() const {
+    return bytesWritten.get();
 }
 
-U64 FileWriterImpl::getFileSize() const {
-    std::filesystem::path targetPath;
+F32 FileWriterImpl::getCurrentBandwidth() const {
+    return currentBandwidth.get();
+}
 
-    if (!filePath.empty()) {
-        targetPath = filePath;
-    } else if (!filepath.empty()) {
-        targetPath = std::filesystem::path(filepath);
+void FileWriterImpl::updateBandwidth(const U64 deltaBytes) {
+    constexpr double kBandwidthMeasurementPeriodSeconds = 0.10;
+    constexpr double kBandwidthEmaAlpha = 0.3;
+
+    bytesSinceLastMeasurement += deltaBytes;
+
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsedSeconds = std::chrono::duration<double>(now - lastMeasurementTime).count();
+    if (elapsedSeconds < kBandwidthMeasurementPeriodSeconds) {
+        return;
     }
 
-    if (targetPath.empty()) {
-        return 0;
-    }
+    const double instantBandwidth = static_cast<double>(bytesSinceLastMeasurement) /
+                                    static_cast<double>(JST_MB) /
+                                    elapsedSeconds;
+    const double smoothedBandwidth = kBandwidthEmaAlpha * instantBandwidth +
+                                     (1.0 - kBandwidthEmaAlpha) * currentBandwidth.get();
+    currentBandwidth.publish(static_cast<F32>(smoothedBandwidth));
 
-    std::error_code ec;
-    const U64 size = std::filesystem::file_size(targetPath, ec);
-    if (ec) {
-        return 0;
-    }
-
-    return size;
+    bytesSinceLastMeasurement = 0;
+    lastMeasurementTime = now;
 }
 
 }  // namespace Jetstream::Modules

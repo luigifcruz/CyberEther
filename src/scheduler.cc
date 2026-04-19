@@ -27,6 +27,14 @@ Result Scheduler::destroy() {
     return impl->destroy();
 }
 
+Result Scheduler::start() {
+    return impl->start();
+}
+
+Result Scheduler::stop() {
+    return impl->stop();
+}
+
 Result Scheduler::add(const std::shared_ptr<Module>& module) {
     JST_DEBUG("[SCHEDULER] Adding module '{}'.", module->name());
     return impl->add(module);

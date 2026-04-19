@@ -281,6 +281,10 @@ const std::vector<std::shared_ptr<Module::Surface>>& Block::surfaces() const {
     return impl->surfaces();
 }
 
+const std::vector<std::string>& Block::modules() const {
+    return impl->modules();
+}
+
 const char* GetBlockStateName(const Block::State& state) {
     switch (state) {
         case Block::State::None:

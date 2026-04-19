@@ -1,5 +1,3 @@
-py = import('python').find_installation('python3', required: false)
-
 py_build_path = meson.current_build_dir()
 py_install_path = join_paths(py.get_install_dir(pure: false), 'superluminal')
 

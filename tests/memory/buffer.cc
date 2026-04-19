@@ -13,6 +13,10 @@
 #include "jetstream/backend/devices/metal/base.hh"
 #endif
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include <cuda_runtime.h>
+#endif
+
 using namespace Jetstream;
 
 namespace {
@@ -46,6 +50,14 @@ void WriteTestPattern(const Buffer& buf, uint8_t pattern) {
         }
     }
 #endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    else if (buf.device() == DeviceType::CUDA && buf.location() != Location::Device) {
+        void* ptr = const_cast<void*>(buf.data());
+        if (ptr) {
+            std::memset(ptr, pattern, buf.sizeBytes());
+        }
+    }
+#endif
 }
 
 // Helper function to verify test pattern in buffer
@@ -61,6 +73,11 @@ bool VerifyTestPattern(const Buffer& buf, uint8_t pattern) {
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
     else if (buf.device() == DeviceType::Metal) {
         ptr = static_cast<const uint8_t*>(GetMetalBufferContents(buf));
+    }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    else if (buf.device() == DeviceType::CUDA && buf.location() != Location::Device) {
+        ptr = static_cast<const uint8_t*>(buf.data());
     }
 #endif
 
@@ -298,6 +315,29 @@ TEST_CASE("Buffer Copy Operations", "[buffer][copy]") {
         REQUIRE_FALSE(dst.isBorrowed());
 
         REQUIRE(VerifyTestPattern(dst, 0x11));
+    }
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    SECTION("CUDA to CUDA Copy With Stream Context") {
+        Buffer::Config config{};
+        config.hostAccessible = true;
+
+        Buffer src;
+        REQUIRE(src.create(DeviceType::CUDA, TEST_SIZE, config) == Result::SUCCESS);
+        WriteTestPattern(src, 0x5A);
+
+        Buffer dst;
+        REQUIRE(dst.create(DeviceType::CUDA, TEST_SIZE, config) == Result::SUCCESS);
+        WriteTestPattern(dst, 0x00);
+
+        cudaStream_t stream = nullptr;
+        REQUIRE(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking) == cudaSuccess);
+        REQUIRE(dst.copyFrom(src, stream) == Result::SUCCESS);
+        REQUIRE(cudaStreamSynchronize(stream) == cudaSuccess);
+        REQUIRE(cudaStreamDestroy(stream) == cudaSuccess);
+
+        REQUIRE(VerifyTestPattern(dst, 0x5A));
     }
 #endif
 }

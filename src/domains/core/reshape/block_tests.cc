@@ -13,7 +13,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Reshape block creates with target shape",
     REQUIRE(flowgraph->blockCreate("reshape_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"reshape_src", "window", {}};
+    inputs["buffer"].requested("reshape_src", "window");
 
     Blocks::Reshape config;
     config.shape = "[2, 4]";
@@ -30,7 +30,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Reshape block rejects invalid target shape",
     REQUIRE(flowgraph->blockCreate("reshape_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"reshape_bad_src", "window", {}};
+    inputs["buffer"].requested("reshape_bad_src", "window");
 
     Blocks::Reshape config;
     config.shape = "[7]";

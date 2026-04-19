@@ -30,7 +30,7 @@ Result PadImpl::create() {
     JST_CHECK(output.create(input.device(), input.dtype(), outputShape));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["padded"] = {name(), "padded", output};
+    outputs()["padded"].produced(name(), "padded", output);
 
     return Result::SUCCESS;
 }

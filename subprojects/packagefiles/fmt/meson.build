@@ -15,5 +15,10 @@ run_command(
 
 fmt_dep = declare_dependency(
   include_directories: 'include',
-  compile_args: '-DFMT_HEADER_ONLY',
+  compile_args: '-DJST_FMT_HEADER_ONLY',
+)
+
+install_subdir(
+  'include/jetstream/fmt',
+  install_dir: get_option('includedir') / 'jetstream',
 )

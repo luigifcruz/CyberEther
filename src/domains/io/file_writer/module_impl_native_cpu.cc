@@ -8,7 +8,7 @@
 namespace Jetstream::Modules {
 
 struct FileWriterImplNativeCpu : public FileWriterImpl,
-                                 public Runtime::Context,
+                                 public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
     Result create() final;
@@ -45,6 +45,12 @@ Result FileWriterImplNativeCpu::computeSubmit() {
 
     const auto& input = inputs().at("buffer").tensor;
     const U64 bytesToWrite = input.sizeBytes();
+    const std::streampos previousPosition = dataFile.tellp();
+    if (previousPosition == std::streampos(-1)) {
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.",
+                  filePath.string());
+        return Result::ERROR;
+    }
 
     dataFile.write(reinterpret_cast<const char*>(input.data()), bytesToWrite);
     if (!dataFile.good()) {
@@ -58,7 +64,25 @@ Result FileWriterImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    bytesWritten += bytesToWrite;
+    const std::streampos currentPosition = dataFile.tellp();
+    if (currentPosition == std::streampos(-1)) {
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.",
+                  filePath.string());
+        return Result::ERROR;
+    }
+
+    const std::streamoff committedBytes = currentPosition - previousPosition;
+    if (committedBytes < 0) {
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Invalid committed byte count for '{}'.",
+                  filePath.string());
+        return Result::ERROR;
+    }
+
+    const U64 actualBytesWritten = static_cast<U64>(committedBytes);
+    bytesWritten.publish(bytesWritten.get() + actualBytesWritten);
+    if (actualBytesWritten > 0) {
+        updateBandwidth(actualBytesWritten);
+    }
 
     return Result::SUCCESS;
 }

@@ -72,7 +72,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     writerConfig["recording"] = std::string("true");
 
     TensorMap inputs;
-    inputs["buffer"] = {"reader", "signal", {}};
+    inputs["buffer"].requested("reader", "signal");
 
     REQUIRE(flowgraph->blockCreate("writer", "file_writer", writerConfig,
                                    inputs) == Result::SUCCESS);
@@ -121,7 +121,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     writerConfig["recording"] = std::string("true");
 
     TensorMap inputs;
-    inputs["buffer"] = {"reader", "signal", {}};
+    inputs["buffer"].requested("reader", "signal");
     REQUIRE(flowgraph->blockCreate("writer", "file_writer", writerConfig,
                                    inputs) == Result::SUCCESS);
 

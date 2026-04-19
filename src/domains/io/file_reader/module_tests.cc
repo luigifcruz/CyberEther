@@ -1,13 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "jetstream/domains/io/file_reader/module.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
+
+#include "module_impl.hh"
 
 using namespace Jetstream;
 
@@ -291,6 +295,59 @@ TEST_CASE("FileReader module playing=false is a no-op success",
             auto& out = ctx.output("signal");
             REQUIRE(out.dtype() == DataType::F32);
             REQUIRE(out.shape(0) == 2);
+        }
+    }
+
+    Cleanup(path);
+}
+
+TEST_CASE("FileReader module current bandwidth updates after a read",
+          "[modules][file_reader][state]") {
+    const auto implementations = Registry::ListAvailableModules("file_reader");
+    REQUIRE(!implementations.empty());
+
+    const auto path = TestFilePath("bandwidth");
+    Cleanup(path);
+
+    std::vector<U8> data(4096);
+    for (U64 i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<U8>(i & 0xFF);
+    }
+    WriteRawFile(path, data);
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("file_reader",
+                                          impl.device,
+                                          impl.runtime,
+                                          impl.provider,
+                                          module) == Result::SUCCESS);
+
+            Modules::FileReader config;
+            config.filepath = path.string();
+            config.dataType = "U8";
+            config.batchSize = data.size();
+            config.loop = false;
+            config.playing = true;
+
+            REQUIRE(module->create("test", config, TensorMap{}) == Result::SUCCESS);
+
+            Runtime runtime("test", impl.device, impl.runtime);
+            REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+            std::unordered_set<std::string> skippedModules;
+            REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+
+            auto* moduleImpl = module->getImpl<Modules::FileReaderImpl>();
+            REQUIRE(moduleImpl != nullptr);
+            REQUIRE(moduleImpl->getCurrentBandwidth() > 0.0f);
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 

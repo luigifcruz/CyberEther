@@ -3,6 +3,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <cufile.h>
 #include <nvrtc.h>
 #include <cufft.h>
 
@@ -31,6 +32,17 @@
     } \
 }
 #endif  // JST_CUDA_CHECK_THROW
+
+#ifndef JST_CUFILE_CHECK
+#define JST_CUFILE_CHECK(x, callback) { \
+    CUfileError_t val = (x); \
+    if (val.err != CU_FILE_SUCCESS) { \
+        const int err = static_cast<int>(val.err); \
+        callback(); \
+        return Result::ERROR; \
+    } \
+}
+#endif  // JST_CUFILE_CHECK
 
 #ifndef JST_NVRTC_CHECK
 #define JST_NVRTC_CHECK(x, callback) { \
@@ -127,7 +139,7 @@ inline const char* cufftGetErrorString(cufftResult error) {
         default:
             return "Unknown error";
     }
-}       
+}
 
 }  // namespace Jetstream
 

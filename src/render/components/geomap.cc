@@ -301,6 +301,7 @@ struct GpuUniforms {
     float centerLat;
     float zoom;
     float aspectRatio;
+    float surfaceScale;
     float lineWidth;
     float colorR;
     float colorG;
@@ -626,6 +627,7 @@ Result GeoMap::create(Window* window) {
         gpuUniforms.centerLat = pimpl->uniforms.centerLat;
         gpuUniforms.zoom = pimpl->uniforms.zoom;
         gpuUniforms.aspectRatio = pimpl->uniforms.aspectRatio;
+        gpuUniforms.surfaceScale = pimpl->uniforms.surfaceScale;
         gpuUniforms.lineWidth = lineWidth;
         gpuUniforms.colorR = colorR;
         gpuUniforms.colorG = colorG;
@@ -745,6 +747,8 @@ Result GeoMap::create(Window* window) {
         layer.gpuUniforms.zoom = pimpl->uniforms.zoom;
         layer.gpuUniforms.aspectRatio =
             pimpl->uniforms.aspectRatio;
+        layer.gpuUniforms.surfaceScale =
+            pimpl->uniforms.surfaceScale;
         layer.gpuUniforms.lineWidth = 0.0f;
         layer.gpuUniforms.viewportWidth =
             pimpl->uniforms.viewportWidth;
@@ -979,6 +983,8 @@ Result GeoMap::present() {
             pimpl->majorGpuUniforms.zoom = pimpl->uniforms.zoom;
             pimpl->majorGpuUniforms.aspectRatio =
                 pimpl->uniforms.aspectRatio;
+            pimpl->majorGpuUniforms.surfaceScale =
+                pimpl->uniforms.surfaceScale;
             pimpl->majorGpuUniforms.viewportWidth =
                 pimpl->uniforms.viewportWidth;
             pimpl->majorGpuUniforms.viewportHeight =
@@ -994,6 +1000,8 @@ Result GeoMap::present() {
             pimpl->minorGpuUniforms.zoom = pimpl->uniforms.zoom;
             pimpl->minorGpuUniforms.aspectRatio =
                 pimpl->uniforms.aspectRatio;
+            pimpl->minorGpuUniforms.surfaceScale =
+                pimpl->uniforms.surfaceScale;
             pimpl->minorGpuUniforms.viewportWidth =
                 pimpl->uniforms.viewportWidth;
             pimpl->minorGpuUniforms.viewportHeight =
@@ -1010,6 +1018,8 @@ Result GeoMap::present() {
                 pimpl->uniforms.zoom;
             pimpl->riverGpuUniforms.aspectRatio =
                 pimpl->uniforms.aspectRatio;
+            pimpl->riverGpuUniforms.surfaceScale =
+                pimpl->uniforms.surfaceScale;
             pimpl->riverGpuUniforms.viewportWidth =
                 pimpl->uniforms.viewportWidth;
             pimpl->riverGpuUniforms.viewportHeight =
@@ -1028,6 +1038,8 @@ Result GeoMap::present() {
                     pimpl->uniforms.zoom;
                 layer.gpuUniforms.aspectRatio =
                     pimpl->uniforms.aspectRatio;
+                layer.gpuUniforms.surfaceScale =
+                    pimpl->uniforms.surfaceScale;
                 layer.gpuUniforms.viewportWidth =
                     pimpl->uniforms.viewportWidth;
                 layer.gpuUniforms.viewportHeight =
@@ -1042,8 +1054,10 @@ Result GeoMap::present() {
         // Update place labels.
         if (pimpl->text && !pimpl->places.empty()) {
             const Extent2D<F32> pixelSize = {
-                2.0f / pimpl->uniforms.viewportWidth,
-                2.0f / pimpl->uniforms.viewportHeight,
+                (2.0f * pimpl->uniforms.surfaceScale) /
+                    pimpl->uniforms.viewportWidth,
+                (2.0f * pimpl->uniforms.surfaceScale) /
+                    pimpl->uniforms.viewportHeight,
             };
             pimpl->text->updatePixelSize(pixelSize);
 
@@ -1098,7 +1112,7 @@ Result GeoMap::present() {
 
                 auto element = pimpl->text->get(id);
                 element.position = {ndcX, ndcY};
-                element.scale = 0.7f * fade;
+                element.scale = 0.8f * fade;
                 if (element.fill != place.name) {
                     element.fill = place.name;
                 }

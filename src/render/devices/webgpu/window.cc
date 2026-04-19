@@ -67,7 +67,7 @@ Result Implementation::createImgui() {
 
     JST_CHECK(viewport->createImgui());
 
-    this->scaleStyle(*viewport);
+    this->updateScalingFactor(*viewport);
 
 
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
@@ -103,7 +103,7 @@ Result Implementation::recreate() {
 Result Implementation::beginImgui() {
     ImGui_ImplWGPU_NewFrame();
 
-    this->scaleStyle(*viewport);
+    this->updateScalingFactor(*viewport);
 
     ImGui::NewFrame();
 

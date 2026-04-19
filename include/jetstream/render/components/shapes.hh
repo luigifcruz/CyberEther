@@ -1,11 +1,13 @@
 #ifndef JETSTREAM_RENDER_COMPONENTS_SHAPES_HH
 #define JETSTREAM_RENDER_COMPONENTS_SHAPES_HH
 
+#include <optional>
 #include <span>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 
+#include "jetstream/render/types.hh"
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/generic.hh"
 
@@ -62,6 +64,7 @@ class Shapes : public Generic {
     Result updateSizes(const std::string& elementId = {});
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
+    Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
 
     constexpr const Config& getConfig() const {
         return config;

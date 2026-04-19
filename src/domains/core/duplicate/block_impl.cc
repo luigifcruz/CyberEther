@@ -22,11 +22,16 @@ Result DuplicateImpl::validate() {
         return Result::RECREATE;
     }
 
+    if (outputDevice != config.outputDevice) {
+        return Result::RECREATE;
+    }
+
     return Result::SUCCESS;
 }
 
 Result DuplicateImpl::configure() {
     moduleConfig->hostAccessible = hostAccessible;
+    moduleConfig->outputDevice = outputDevice;
 
     return Result::SUCCESS;
 }
@@ -35,10 +40,17 @@ Result DuplicateImpl::define() {
     JST_CHECK(defineInterfaceInput("buffer", "Input", "Signal to be duplicated."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output", "Duplicated signal."));
 
-    JST_CHECK(defineInterfaceConfig("hostAccessible",
-                                    "Host Accessible",
-                                    "When enabled, the output buffer can be accessed from the CPU.",
-                                    "bool"));
+    JST_CHECK(defineInterfaceConfig("outputDevice",
+                                    "Output Device",
+                                    "Selects the output device for the duplicated buffer.",
+                                    "dropdown:none(None),cpu(CPU),cuda(CUDA),metal(Metal),vulkan(Vulkan)"));
+
+    if (StringToDevice(outputDevice) != DeviceType::CPU) {
+        JST_CHECK(defineInterfaceConfig("hostAccessible",
+                                        "Host Accessible",
+                                        "When enabled, the output buffer can be accessed from the CPU.",
+                                        "bool"));
+    }
 
     return Result::SUCCESS;
 }

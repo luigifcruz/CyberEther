@@ -21,7 +21,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     decimatorConfig["ratio"] = std::string("4");
 
     TensorMap inputs;
-    inputs["buffer"] = {"src", "signal", {}};
+    inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("decimator", "decimator", decimatorConfig, inputs) ==
             Result::SUCCESS);
@@ -45,7 +45,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     decimatorConfig["ratio"] = std::string("0");
 
     TensorMap inputs;
-    inputs["buffer"] = {"src", "signal", {}};
+    inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("decimator_bad", "decimator", decimatorConfig, inputs) ==
             Result::SUCCESS);

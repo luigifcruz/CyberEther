@@ -8,14 +8,13 @@
 namespace Jetstream::Modules {
 
 struct SqueezeDimsImplNativeCpu : public SqueezeDimsImpl,
-                                  public Runtime::Context,
+                                  public NativeCpuRuntimeContext,
                                   public Scheduler::Context {
  public:
     Result computeSubmit() override;
 };
 
 Result SqueezeDimsImplNativeCpu::computeSubmit() {
-    // Squeeze dims is a view operation with no data movement.
     return Result::SUCCESS;
 }
 

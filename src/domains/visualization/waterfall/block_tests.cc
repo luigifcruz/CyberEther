@@ -18,7 +18,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     Blocks::Waterfall config;
     config.height = 64;
@@ -48,7 +48,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("waterfall", Blocks::Waterfall(), inputs) ==
             Result::SUCCESS);

@@ -11,7 +11,7 @@
 namespace Jetstream::Modules {
 
 struct OverlapAddImplNativeCpu : public OverlapAddImpl,
-                                 public Runtime::Context,
+                                 public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
     Result create() final;

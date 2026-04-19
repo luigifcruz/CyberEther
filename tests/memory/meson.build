@@ -3,6 +3,11 @@ test('memory-token', executable(
     dependencies: [libjetstream_dep, catch2_dep],
 ), is_parallel: false, timeout: 0)
 
+test('memory-snapshot', executable(
+    'jetstream-memory-snapshot', 'snapshot.cc',
+    dependencies: [libjetstream_dep, catch2_dep],
+), is_parallel: false, timeout: 0)
+
 test('memory-buffer', executable(
     'jetstream-memory-buffer', 'buffer.cc',
     dependencies: [libjetstream_dep, catch2_dep],

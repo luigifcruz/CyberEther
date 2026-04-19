@@ -1,12 +1,20 @@
 #include "jetstream/runtime.hh"
 #include "jetstream/detail/runtime_impl.hh"
+#include "jetstream/module.hh"
 
 namespace Jetstream {
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 std::shared_ptr<Runtime::Impl> NativeCpuRuntimeFactory();
+#endif
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+std::shared_ptr<Runtime::Impl> NativeCudaRuntimeFactory();
+#endif
 
 Runtime::Runtime(const std::string& name, const DeviceType& device, const RuntimeType& type) {
     switch (device) {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         case DeviceType::CPU:
             switch (type) {
                 case RuntimeType::NATIVE:
@@ -21,6 +29,23 @@ Runtime::Runtime(const std::string& name, const DeviceType& device, const Runtim
                     JST_FATAL("[RUNTIME] Unknown runtime type.");
                     throw Result::FATAL;
             }
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        case DeviceType::CUDA:
+            switch (type) {
+                case RuntimeType::NATIVE:
+                    impl = NativeCudaRuntimeFactory();
+                    impl->name = name;
+                    impl->device = device;
+                    impl->backend = type;
+                    return;
+                case RuntimeType::MLIR:
+                    return;
+                default:
+                    JST_FATAL("[RUNTIME] Unknown runtime type.");
+                    throw Result::FATAL;
+            }
+#endif
         default:
             JST_FATAL("[RUNTIME] Unknown device type.");
             throw Result::FATAL;
@@ -41,17 +66,33 @@ const std::shared_ptr<Runtime::Metrics>& Runtime::metrics() const {
     return impl->metrics();
 }
 
-Result Runtime::compute(const std::vector<std::string>& modules) {
+Result Runtime::compute(const std::vector<std::string>& modules,
+                        std::unordered_set<std::string>& skippedModules) {
     if (impl->presentRunning.load(std::memory_order_acquire)) {
         JST_ERROR("[RUNTIME] Cannot call compute() while present() is running.");
         return Result::ERROR;
     }
 
     impl->computeRunning.store(true, std::memory_order_release);
-    Result result = impl->compute(modules);
+    Result result = impl->compute(modules, skippedModules);
     impl->computeRunning.store(false, std::memory_order_release);
 
     return result;
+}
+
+bool Runtime::Impl::hasSkippedInputs(const std::shared_ptr<Module>& module,
+                                     const std::unordered_set<std::string>& skippedModules) {
+    for (const auto& [_, link] : module->inputs()) {
+        if (!link.producer.has_value()) {
+            continue;
+        }
+
+        if (skippedModules.contains(link.producer->module)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 const char* GetRuntimeName(const RuntimeType& runtime) {

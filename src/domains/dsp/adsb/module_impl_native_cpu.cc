@@ -112,7 +112,7 @@ static bool cprGlobalDecode(F64 rawLatEven,
 }
 
 struct AdsbImplNativeCpu : public AdsbImpl,
-                           public Runtime::Context,
+                           public NativeCpuRuntimeContext,
                            public Scheduler::Context {
  public:
     Result create() final;
@@ -216,6 +216,8 @@ void AdsbImplNativeCpu::updateAircraftFromMessage(const struct mode_s_msg* mm) {
             }
         }
     }
+
+    aircraftTableDirty = true;
 }
 
 Result AdsbImplNativeCpu::create() {
@@ -255,7 +257,6 @@ Result AdsbImplNativeCpu::computeSubmit() {
     const CF32* iqData = reinterpret_cast<const CF32*>(input.data());
     const U64 numSamples = input.size();
 
-    // Convert CF32 IQ to U16 magnitude in libmodes scale.
     for (U64 i = 0; i < numSamples; ++i) {
         const F32 real = iqData[i].real() * 128.0f;
         const F32 imag = iqData[i].imag() * 128.0f;
@@ -270,7 +271,6 @@ Result AdsbImplNativeCpu::computeSubmit() {
                   &AdsbImplNativeCpu::messageCallback);
     tls_instance = nullptr;
 
-    // Update output tensors with current aircraft positions.
     updateOutputTensors();
 
     return Result::SUCCESS;

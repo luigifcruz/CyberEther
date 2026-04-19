@@ -8,7 +8,7 @@
 namespace Jetstream::Modules {
 
 struct DynamicTensorImportImplNativeCpu : public DynamicTensorImportImpl,
-                                          public Runtime::Context,
+                                          public NativeCpuRuntimeContext,
                                           public Scheduler::Context {
  public:
     Result computeSubmit() override;

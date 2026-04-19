@@ -92,7 +92,7 @@ class MetalBackend final : public Backend {
         return Result::ERROR;
     }
 
-    Result copyFrom(const Backend& source) override {
+    Result copyFrom(const Backend& source, void*) override {
         JST_TRACE("[MEMORY:BUFFER:METAL] Copying buffer.");
 
         auto* metalDevice = FetchDevice();

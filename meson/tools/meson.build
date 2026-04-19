@@ -1,6 +1,5 @@
 tools_lst = {}
 
-subdir('python')
 subdir('glslang')
 subdir('spirv-cross')
 subdir('naga')

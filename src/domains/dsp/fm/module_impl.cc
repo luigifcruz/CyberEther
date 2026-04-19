@@ -34,7 +34,7 @@ Result FmImpl::create() {
     JST_CHECK(output.propagateAttributes(input));
     output.setAttribute("frequency", 0.0f);
 
-    outputs()["signal"] = {name(), "signal", output};
+    outputs()["signal"].produced(name(), "signal", output);
 
     return Result::SUCCESS;
 }

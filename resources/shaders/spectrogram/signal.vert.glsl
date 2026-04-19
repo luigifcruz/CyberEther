@@ -11,9 +11,17 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     uint height;
     float offset;
     float zoom;
+    float paddingScaleX;
+    float paddingScaleY;
 } uniforms;
 
 void main() {
-    gl_Position = vec4(inPosition, 1.0);
-    outTexcoord = inTexcoord;
+    vec4 position = vec4(inPosition, 1.0);
+    position.x *= uniforms.paddingScaleX;
+    position.y *= uniforms.paddingScaleY;
+
+    float horizontal = (((inTexcoord.x / uniforms.zoom) + uniforms.offset) * float(uniforms.width));
+
+    gl_Position = position;
+    outTexcoord = vec2(horizontal, inTexcoord.y * float(uniforms.height));
 }

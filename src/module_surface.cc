@@ -1,7 +1,18 @@
+#include <algorithm>
+#include <cmath>
+
 #include <jetstream/detail/module_surface_impl.hh>
 #include <jetstream/surface.hh>
 
 namespace Jetstream {
+
+namespace {
+
+F32 ClampPanOffsetLimit(const F32 zoom) {
+    return std::max(0.0f, 0.5f * (1.0f - (1.0f / zoom)));
+}
+
+}  // namespace
 
 SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
                                                    std::vector<SurfaceEvent>&& surfaceEvents,
@@ -16,18 +27,20 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
 
     for (const auto& event : surfaceEvents) {
         if (event.type == SurfaceEventType::Resize) {
-            if (event.size != state.viewSize && event.size.x > 0 && event.size.y > 0) {
-                state.viewSize = event.size;
+            const bool validSize = event.size.x > 0 && event.size.y > 0;
+            const bool sizeChanged = validSize && event.size != state.viewSize;
+            const bool scaleChanged = std::abs(event.scale - state.scale) > 1e-6f;
+
+            if (sizeChanged || scaleChanged) {
+                if (sizeChanged) {
+                    state.viewSize = event.size;
+                }
                 state.scale = event.scale;
                 state.viewChanged = true;
             }
             state.backgroundColor = event.backgroundColor;
         }
     }
-
-    // Calculate max offset.
-
-    const F32 maxOffset = 0.5f * (1.0f - (1.0f / state.zoom));
 
     // Process mouse events.
 
@@ -48,7 +61,7 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
                     const F32 zoomDelta = (1.0f / state.zoom) - (1.0f / oldZoom);
                     const F32 newOffset = state.offset - (cursor - 0.5f) * zoomDelta;
 
-                    const F32 maxOffset = 0.5f * (1.0f - (1.0f / state.zoom));
+                    const F32 maxOffset = ClampPanOffsetLimit(state.zoom);
                     state.offset = std::clamp(newOffset, -maxOffset, maxOffset);
                     state.viewChanged = true;
                 }
@@ -60,9 +73,12 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
                     state.dragAnchor = (event.position.x / state.zoom) + state.offset;
                 }
                 if (event.button == MouseButton::Right && config.enableZoom) {
-                    state.zoom = config.minZoom;
-                    state.offset = 0.0f;
-                    state.viewChanged = true;
+                    const F32 resetZoom = std::clamp(1.0f, config.minZoom, config.maxZoom);
+                    if (std::abs(state.zoom - resetZoom) > 1e-6f || std::abs(state.offset) > 1e-6f) {
+                        state.zoom = resetZoom;
+                        state.offset = 0.0f;
+                        state.viewChanged = true;
+                    }
                 }
                 break;
             }
@@ -80,6 +96,7 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
 
                 if (state.dragging && config.enablePan) {
                     const F32 newOffset = state.dragAnchor - (event.position.x / state.zoom);
+                    const F32 maxOffset = ClampPanOffsetLimit(state.zoom);
                     state.offset = std::clamp(newOffset, -maxOffset, maxOffset);
                     state.viewChanged = true;
                 }

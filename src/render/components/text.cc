@@ -582,7 +582,7 @@ Result Text::present() {
     if (pimpl->updateVertexCountFlag) {
         const U64 maxIndices = config.maxCharacters * 6;
         const U64 actualIndices = pimpl->vertexCount;
-        JST_DEBUG("[TEXT] Vertex optimization: {}/{}.", actualIndices, maxIndices);
+        JST_TRACE("[TEXT] Vertex optimization: {}/{}.", actualIndices, maxIndices);
         JST_CHECK(pimpl->drawFont->updateVertexCount(pimpl->vertexCount));
         pimpl->updateVertexCountFlag = false;
     }

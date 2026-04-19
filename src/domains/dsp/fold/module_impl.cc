@@ -59,7 +59,7 @@ Result FoldImpl::create() {
     JST_CHECK(output.create(input.device(), input.dtype(), outputShape));
     JST_CHECK(output.propagateAttributes(input));
 
-    outputs()["buffer"] = {name(), "buffer", output};
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

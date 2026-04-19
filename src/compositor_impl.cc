@@ -56,10 +56,12 @@ void Compositor::Impl::stopWorker() {
 }
 
 void Compositor::Impl::enqueue(std::function<Result()> fn, bool silent) {
-    {
-        std::lock_guard<std::mutex> lock(commandPendingQueueMutex);
-        commandPendingQueue.push({std::move(fn), silent});
+    std::lock_guard<std::mutex> lock(commandPendingQueueMutex);
+    if (!workerRunning) {
+        return;
     }
+
+    commandPendingQueue.push({std::move(fn), silent});
     commandQueueNotEmpty.notify_one();
 }
 

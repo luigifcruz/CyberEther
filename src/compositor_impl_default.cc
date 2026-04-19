@@ -1,4 +1,5 @@
 #include "imgui.h"
+#include "jetstream/render/tools/imgui_internal.h"
 #include "jetstream/compositor.hh"
 #include "jetstream/detail/compositor_impl.hh"
 
@@ -33,6 +34,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <deque>
+#include <random>
 #include <filesystem>
 #include <functional>
 #include <future>
@@ -40,9 +42,12 @@
 #include <optional>
 #include <regex>
 #include <set>
+#include <tuple>
 #include <vector>
 #include <unordered_map>
 #include <variant>
+
+// TODO: Port `reshape` and `slice` to vector.
 
 namespace Jetstream {
 
@@ -86,6 +91,57 @@ static inline void NotifyResultClean(const Result value, const std::string& mess
         const auto text = resolveMessage(JST_LOG_LAST_ERROR());
         ImGui::InsertNotification({ ImGuiToastType_Info, 1000, text.c_str() });
     }
+}
+
+static inline std::vector<DeviceType> ListBlockDeviceOptions(const std::string& blockType,
+                                                             const DeviceType& currentDevice) {
+    std::vector<DeviceType> devices;
+    for (const auto& module : Registry::ListAvailableModules(blockType)) {
+        if (std::find(devices.begin(), devices.end(), module.device) == devices.end()) {
+            devices.push_back(module.device);
+        }
+    }
+
+    if (devices.empty() && currentDevice != DeviceType::None) {
+        devices.push_back(currentDevice);
+    }
+
+    return devices;
+}
+
+static inline std::optional<Registry::ModuleRegistration>
+ResolveBlockImplementationForDevice(const std::string& blockType,
+                                    const DeviceType& device,
+                                    const RuntimeType& preferredRuntime,
+                                    const ProviderType& preferredProvider) {
+    const auto implementations = Registry::ListAvailableModules(blockType,
+                                                                std::optional<DeviceType>{device});
+    if (implementations.empty()) {
+        return std::nullopt;
+    }
+
+    const auto exactMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.runtime == preferredRuntime && entry.provider == preferredProvider;
+    });
+    if (exactMatch != implementations.end()) {
+        return *exactMatch;
+    }
+
+    const auto runtimeMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.runtime == preferredRuntime;
+    });
+    if (runtimeMatch != implementations.end()) {
+        return *runtimeMatch;
+    }
+
+    const auto providerMatch = std::find_if(implementations.begin(), implementations.end(), [&](const auto& entry) {
+        return entry.provider == preferredProvider;
+    });
+    if (providerMatch != implementations.end()) {
+        return *providerMatch;
+    }
+
+    return implementations.front();
 }
 
 struct FieldContext {
@@ -137,22 +193,130 @@ struct FieldContext {
         ImGui::GetWindowDrawList()->AddText(textPos, unitColor, unitStr.c_str());
     }
 
-    bool renderFloatValue(F32& value, const std::string& unit = "", int precision = 2) {
+    bool renderFloatValue(F32& value,
+                          const std::string& unit = "",
+                          int precision = 2,
+                          F32* step = nullptr) {
         const F32 multiplier = getUnitMultiplier(unit);
         F32 displayValue = value / multiplier;
+        F32 displayStep = (step != nullptr) ? (*step / multiplier) : 0.0f;
 
         char fmt[16];
         snprintf(fmt, sizeof(fmt), "%%.%df", precision);
 
-        ImGui::SetNextItemWidth(-1);
-
         bool changed = false;
+
+        if (step == nullptr) {
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputFloat("##float", &displayValue, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                value = displayValue * multiplier;
+                changed = true;
+            }
+            renderUnitSuffix(unit);
+
+            return changed;
+        }
+
+        const F32 availWidth = ImGui::GetContentRegionAvail().x;
+        const F32 btnHeight = ImGui::GetTextLineHeight() + 4.0f * scalingFactor;
+        const auto bgColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("card"));
+        const auto btnColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("text_secondary"));
+        const auto btnActiveColor = ImGui::ColorConvertFloat4ToU32(colorMap.at("text_primary"));
+        const F32 rounding = ImGui::GetStyle().FrameRounding;
+        const F32 btnWidth = availWidth * 0.2f;
+        const F32 stepInputWidth = availWidth - btnWidth * 2.0f;
+
+        const auto drawCenteredLabel = [&](const char* label,
+                                           const ImVec2& min,
+                                           const ImVec2& max,
+                                           const bool hovered) {
+            const ImVec2 textSize = ImGui::CalcTextSize(label);
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2((min.x + max.x) * 0.5f - textSize.x * 0.5f,
+                       (min.y + max.y) * 0.5f - textSize.y * 0.5f),
+                hovered ? btnActiveColor : btnColor,
+                label);
+        };
+        const auto renderStepButton = [&](const char* id,
+                                          const char* label,
+                                          const F32 delta) {
+            ImGui::InvisibleButton(id, ImVec2(btnWidth, btnHeight));
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsItemDeactivated()) {
+                displayValue += delta;
+                value = displayValue * multiplier;
+                changed = true;
+            }
+
+            drawCenteredLabel(label, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+        };
+
+        const ImVec2 cellPos = ImGui::GetCursorScreenPos();
+        const F32 inputHeight = ImGui::GetFrameHeight();
+        const F32 totalHeight = inputHeight + btnHeight;
+
+        ImGui::GetWindowDrawList()->AddRectFilled(cellPos,
+                                                  ImVec2(cellPos.x + availWidth, cellPos.y + totalHeight),
+                                                  bgColor, rounding);
+
+        ImGui::SetNextItemWidth(availWidth);
         if (ImGui::InputFloat("##float", &displayValue, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
             value = displayValue * multiplier;
             changed = true;
         }
-
         renderUnitSuffix(unit);
+
+        const ImVec2 inputMax = ImGui::GetItemRectMax();
+        const ImVec2 btnRowPos(cellPos.x, inputMax.y);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+        ImGui::SetCursorScreenPos(btnRowPos);
+        renderStepButton("-##float_step_minus", "-", -displayStep);
+
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::PushID(static_cast<const void*>(step));
+        const ImGuiID stepEditId = ImGui::GetID("##step_editing");
+        const ImGuiID stepFocusId = ImGui::GetID("##step_focus");
+        ImGuiStorage* storage = ImGui::GetStateStorage();
+
+        if (!storage->GetBool(stepEditId, false)) {
+            ImGui::InvisibleButton("##step_toggle", ImVec2(stepInputWidth, btnHeight));
+            const bool hovered = ImGui::IsItemHovered();
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsItemDeactivated()) {
+                storage->SetBool(stepEditId, true);
+                storage->SetBool(stepFocusId, true);
+            }
+
+            drawCenteredLabel("Step Size", ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
+        } else {
+            ImGui::SetNextItemWidth(stepInputWidth);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, bgColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, colorMap.at("text_secondary"));
+            if (storage->GetBool(stepFocusId, false)) {
+                ImGui::SetKeyboardFocusHere();
+                storage->SetBool(stepFocusId, false);
+            }
+            if (ImGui::InputFloat("##float_step", &displayStep, 0.0f, 0.0f, fmt, ImGuiInputTextFlags_EnterReturnsTrue)) {
+                *step = displayStep * multiplier;
+                changed = true;
+            }
+            if (ImGui::IsItemDeactivated()) {
+                storage->SetBool(stepEditId, false);
+                storage->SetBool(stepFocusId, false);
+            }
+            ImGui::PopStyleColor(4);
+        }
+        ImGui::PopID();
+
+        ImGui::SameLine(0.0f, 0.0f);
+        renderStepButton("+##float_step_plus", "+", displayStep);
+
+        ImGui::PopStyleVar();
+        ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight + ImGui::GetStyle().ItemSpacing.y));
 
         return changed;
     }
@@ -177,6 +341,82 @@ struct FieldContext {
         return 1.0f;
     }
 };
+
+template<typename BrowseFn>
+static inline bool RenderFieldPathControl(const std::string& name,
+                                          const std::string& currentValue,
+                                          FieldContext& ctx,
+                                          BrowseFn&& browse) {
+    ctx.renderHeader();
+
+    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
+    std::string value = currentValue;
+    const F32 buttonWidth = ImGui::GetFrameHeight();
+    const F32 frameHeight = ImGui::GetFrameHeight();
+    const F32 connectorWidth = ImGui::GetStyle().ItemSpacing.x;
+    const F32 inputWidth = std::max(0.0f,
+                                    ImGui::GetContentRegionAvail().x - buttonWidth -
+                                    connectorWidth);
+
+    ImGui::PushID(name.c_str());
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
+
+    const ImVec2 fieldRectMin = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddRectFilled(fieldRectMin,
+                                              ImVec2(fieldRectMin.x + inputWidth + connectorWidth + buttonWidth,
+                                                     fieldRectMin.y + frameHeight),
+                                              bgColor,
+                                              ImGui::GetStyle().FrameRounding);
+
+    bool changed = false;
+
+    ImGui::SetNextItemWidth(inputWidth);
+    if (ImGui::InputTextWithHint("##path", "Select file...", &value, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        ctx.cfg[name] = value;
+        changed = true;
+    }
+    const bool inputHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort);
+
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::Dummy(ImVec2(connectorWidth, frameHeight));
+
+    ImGui::SameLine(0.0f, 0.0f);
+    const F32 iconScale = 0.7f;
+    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize,
+                                                            FLT_MAX,
+                                                            0.0f,
+                                                            ICON_FA_FOLDER_OPEN);
+
+    if (ImGui::Button("##browse", ImVec2(buttonWidth, frameHeight))) {
+        browse();
+    }
+    const ImVec2 buttonRectMin = ImGui::GetItemRectMin();
+    const ImVec2 buttonRectMax = ImGui::GetItemRectMax();
+    const F32 iconX = buttonRectMin.x + ((buttonRectMax.x - buttonRectMin.x) - iconSize.x) * 0.5f;
+    const F32 iconY = buttonRectMin.y + (frameHeight - iconFontSize) * 0.5f;
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
+                                        iconFontSize,
+                                        ImVec2(iconX, iconY),
+                                        ImGui::GetColorU32(ImGuiCol_Text),
+                                        ICON_FA_FOLDER_OPEN);
+
+    const bool buttonHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort);
+
+    if ((inputHovered || buttonHovered) && !currentValue.empty()) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted(currentValue.c_str());
+        ImGui::EndTooltip();
+    }
+
+    ImGui::PopStyleColor(4);
+    ImGui::PopID();
+
+    return changed;
+}
 
 // Format: `dropdown:key1(Label1),key2(Label2),...`
 static inline bool RenderFieldDropdown(const std::string& name,
@@ -245,7 +485,7 @@ static inline bool RenderFieldDropdown(const std::string& name,
     return changed;
 }
 
-// Format: `float:unit:precision`
+// Format: `float:unit:precision:stepConfig`
 static inline bool RenderFieldFloat(const std::string& name,
                                     const std::vector<std::string>& parts,
                                     const std::string& encoded,
@@ -259,12 +499,26 @@ static inline bool RenderFieldFloat(const std::string& name,
 
     const std::string unit = (parts.size() > 1) ? parts[1] : "";
     const int precision = (parts.size() > 2 && !parts[2].empty()) ? std::stoi(parts[2]) : 2;
+    const std::string stepConfig = (parts.size() > 3) ? parts[3] : "";
+
+    F32 step = 0.0f;
+    const bool hasStep = !stepConfig.empty() && stepConfig != name && ctx.cfg.contains(stepConfig) &&
+                         Parser::Deserialize(ctx.cfg, stepConfig, step) == Result::SUCCESS;
+    const F32 originalValue = value;
+    const F32 originalStep = step;
 
     ImGui::PushID(name.c_str());
 
     bool changed = false;
-    if (ctx.renderFloatValue(value, unit, precision)) {
-        ctx.cfg[name] = value;
+    if (ctx.renderFloatValue(value, unit, precision, hasStep ? &step : nullptr)) {
+        if (value != originalValue) {
+            ctx.cfg[name] = value;
+        }
+
+        if (hasStep && step != originalStep) {
+            ctx.cfg[stepConfig] = step;
+        }
+
         changed = true;
     }
 
@@ -364,6 +618,171 @@ static inline bool RenderFieldVector(const std::string& name,
         }
     } else {
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector field type '{}' for config '{}'", valueType, name);
+    }
+
+    ImGui::PopID();
+
+    return changed;
+}
+
+// Format: `vector-inline:float:unit:precision` or `vector-inline:int:unit`
+static inline bool RenderFieldVectorInline(const std::string& name,
+                                           const std::vector<std::string>& parts,
+                                           const std::string& encoded,
+                                           FieldContext& ctx) {
+    ctx.renderHeader();
+
+    const std::string valueType = (parts.size() > 1) ? parts[1] : "float";
+    const std::string unit = (parts.size() > 2) ? parts[2] : "";
+    const int precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+
+    ImGui::PushID(name.c_str());
+
+    std::string currentText = encoded.empty() ? "[]" : encoded;
+    const auto normalizeVectorInput = [](const std::string& text,
+                                         std::string& normalized,
+                                         std::string& error) {
+        std::string trimmed = TrimFieldString(text);
+        if (trimmed.empty()) {
+            normalized = "[]";
+            return true;
+        }
+
+        if (trimmed.front() == '[') {
+            if (trimmed.back() != ']') {
+                error = "Vector input must end with ']'.";
+                return false;
+            }
+
+            trimmed = TrimFieldString(trimmed.substr(1, trimmed.size() - 2));
+        } else if (trimmed.back() == ']') {
+            error = "Vector input must start with '['.";
+            return false;
+        }
+
+        std::vector<std::string> entries;
+        std::stringstream ss(trimmed);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            token = TrimFieldString(token);
+            if (token.empty()) {
+                error = "Vector entries cannot be empty.";
+                return false;
+            }
+
+            entries.push_back(token);
+        }
+
+        normalized = jst::fmt::format("[{}]", jst::fmt::join(entries, ", "));
+        return true;
+    };
+
+    if (valueType == "float") {
+        std::vector<F32> values;
+        try {
+            if (!encoded.empty() && Parser::StringToTyped(encoded, values) == Result::SUCCESS) {
+                const F32 multiplier = FieldContext::getUnitMultiplier(unit);
+
+                std::vector<std::string> formattedValues;
+                formattedValues.reserve(values.size());
+
+                for (const auto value : values) {
+                    formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
+                }
+
+                currentText = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+            }
+        } catch (...) {
+        }
+    } else if (valueType == "int") {
+        std::vector<U64> values;
+        try {
+            if (!encoded.empty() && Parser::StringToTyped(encoded, values) == Result::SUCCESS) {
+                currentText = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+            }
+        } catch (...) {
+        }
+    } else {
+        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown vector-inline field type '{}' for config '{}'", valueType, name);
+        ImGui::PopID();
+        return false;
+    }
+
+    const ImGuiID inputId = ImGui::GetID("##vector_inline");
+    static std::unordered_map<ImGuiID, std::string> buffers;
+    std::string& buffer = buffers[inputId];
+
+    if (ImGui::GetActiveID() != inputId && buffer != currentText) {
+        buffer = currentText;
+    }
+
+    ImGui::SetNextItemWidth(-1);
+
+    bool changed = false;
+    const bool submitted = ImGui::InputText("##vector_inline", &buffer, ImGuiInputTextFlags_EnterReturnsTrue);
+    ctx.renderUnitSuffix(unit);
+
+    const bool shouldApply = submitted || (ImGui::IsItemDeactivatedAfterEdit() && buffer != currentText);
+    if (shouldApply) {
+        std::string normalizedBuffer;
+        std::string error;
+        normalizeVectorInput(buffer, normalizedBuffer, error);
+
+        if (valueType == "float") {
+            std::vector<F32> values;
+            if (error.empty()) {
+                try {
+                    if (normalizedBuffer != "[]" && Parser::StringToTyped(normalizedBuffer, values) != Result::SUCCESS) {
+                        error = CleanUserMessage(JST_LOG_LAST_ERROR());
+                    }
+                } catch (...) {
+                    error = "Invalid float value in vector.";
+                }
+            }
+
+            if (error.empty()) {
+                const F32 multiplier = FieldContext::getUnitMultiplier(unit);
+                for (auto& value : values) {
+                    value *= multiplier;
+                }
+
+                ctx.cfg[name] = values;
+
+                std::vector<std::string> formattedValues;
+                formattedValues.reserve(values.size());
+
+                for (const auto value : values) {
+                    formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
+                }
+
+                buffer = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+                changed = true;
+            }
+        } else {
+            std::vector<U64> values;
+            if (error.empty()) {
+                try {
+                    if (normalizedBuffer != "[]" && Parser::StringToTyped(normalizedBuffer, values) != Result::SUCCESS) {
+                        error = CleanUserMessage(JST_LOG_LAST_ERROR());
+                    }
+                } catch (...) {
+                    error = "Invalid integer value in vector.";
+                }
+            }
+
+            if (error.empty()) {
+                ctx.cfg[name] = values;
+                buffer = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            NotifyResultClean(Result::ERROR,
+                              jst::fmt::format("{}: {}",
+                                               ctx.label,
+                                               error.empty() ? "Use a vector like [x, y, z]." : error));
+        }
     }
 
     ImGui::PopID();
@@ -584,7 +1003,7 @@ static inline bool RenderFieldRange(const std::string& name,
     const ImVec4 bgColorVec = ImGui::ColorConvertU32ToFloat4(bgColor);
     const ImU32 sliderColor = ImGui::GetColorU32(ImVec4(bgColorVec.x * 1.5f, bgColorVec.y * 1.5f, bgColorVec.z * 1.5f, bgColorVec.w));
 
-    const F32 knobWidth = 8.0f * ctx.scalingFactor;
+    const F32 knobWidth = ImMax(8.0f * ctx.scalingFactor, rounding * 2.0f);
     const F32 knobX = std::clamp(rectMin.x + sliderWidth - knobWidth * 0.5f, rectMin.x, rectMax.x - knobWidth);
 
     ImGui::GetWindowDrawList()->AddRectFilled(rectMin, ImVec2(knobX + knobWidth, rectMax.y), sliderColor, rounding);
@@ -664,68 +1083,17 @@ static inline bool RenderFieldFilePicker(const std::string& name,
                                          const std::vector<std::string>& parts,
                                          const std::string& currentValue,
                                          FieldContext& ctx) {
-    ctx.renderHeader();
-
-    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
     std::vector<std::string> extensions;
     if (parts.size() > 1 && !parts[1].empty()) {
         extensions = Parser::SplitString(parts[1], ",");
     }
 
-    std::string filename = "Select file...";
-    if (!currentValue.empty()) {
-        const auto pos = currentValue.find_last_of("/\\");
-        filename = (pos != std::string::npos) ? currentValue.substr(pos + 1) : currentValue;
-    }
-
-    const F32 pad = ImGui::GetStyle().FramePadding.x;
-    const F32 iconScale = 0.7f;
-    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FOLDER_OPEN).x;
-
-    ImGui::PushID(name.c_str());
-    ImGui::SetNextItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-
-    if (ImGui::Button(filename.c_str(), ImVec2(-1, 0))) {
+    return RenderFieldPathControl(name, currentValue, ctx, [&] {
         std::string pickedPath;
         Platform::PickFile(pickedPath, extensions, [name, async = ctx.asyncApply](std::string path) {
             async(name, std::move(path));
         });
-    }
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const F32 frameHeight = rectMax.y - rectMin.y;
-    const F32 arrowPad = ImGui::GetStyle().FramePadding.y;
-    const F32 iconX = rectMax.x - pad * 0.4f - iconWidth;
-    const F32 iconY = rectMin.y + (frameHeight - iconFontSize) * 0.5f + arrowPad * 0.1f;
-
-    const ImVec2 bgMin(iconX - pad * 0.5f, rectMin.y);
-    const ImVec2 bgMax(rectMax.x, rectMax.y);
-    ImGui::GetWindowDrawList()->AddRectFilled(bgMin, bgMax, bgColor);
-
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FOLDER_OPEN);
-
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !currentValue.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(currentValue.c_str());
-        ImGui::EndTooltip();
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-    ImGui::PopID();
-
-    return false;
+    });
 }
 
 // Format: `filesave:ext1,ext2,...`
@@ -733,63 +1101,12 @@ static inline bool RenderFieldFileSave(const std::string& name,
                                        const std::vector<std::string>&,
                                        const std::string& currentValue,
                                        FieldContext& ctx) {
-    ctx.renderHeader();
-
-    const auto bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
-    std::string filename = "Select file...";
-    if (!currentValue.empty()) {
-        const auto pos = currentValue.find_last_of("/\\");
-        filename = (pos != std::string::npos) ? currentValue.substr(pos + 1) : currentValue;
-    }
-
-    const F32 pad = ImGui::GetStyle().FramePadding.x;
-    const F32 iconScale = 0.7f;
-    const F32 iconFontSize = ImGui::GetFontSize() * iconScale;
-    const F32 iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, ICON_FA_FLOPPY_DISK).x;
-
-    ImGui::PushID(name.c_str());
-    ImGui::SetNextItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_Button, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bgColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, bgColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-
-    if (ImGui::Button(filename.c_str(), ImVec2(-1, 0))) {
+    return RenderFieldPathControl(name, currentValue, ctx, [&] {
         std::string pickedPath;
         Platform::SaveFile(pickedPath, [name, async = ctx.asyncApply](std::string path) {
             async(name, std::move(path));
         });
-    }
-
-    const ImVec2 rectMin = ImGui::GetItemRectMin();
-    const ImVec2 rectMax = ImGui::GetItemRectMax();
-    const F32 frameHeight = rectMax.y - rectMin.y;
-    const F32 arrowPad = ImGui::GetStyle().FramePadding.y;
-    const F32 iconX = rectMax.x - pad * 0.4f - iconWidth;
-    const F32 iconY = rectMin.y + (frameHeight - iconFontSize) * 0.5f + arrowPad * 0.1f;
-
-    const ImVec2 bgMin(iconX - pad * 0.5f, rectMin.y);
-    const ImVec2 bgMax(rectMax.x, rectMax.y);
-    ImGui::GetWindowDrawList()->AddRectFilled(bgMin, bgMax, bgColor);
-
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(),
-                                        iconFontSize,
-                                        ImVec2(iconX, iconY),
-                                        ImGui::GetColorU32(ImGuiCol_Text),
-                                        ICON_FA_FLOPPY_DISK);
-
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && !currentValue.empty()) {
-        ImGui::BeginTooltip();
-        ImGui::TextUnformatted(currentValue.c_str());
-        ImGui::EndTooltip();
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-    ImGui::PopID();
-
-    return false;
+    });
 }
 
 using FieldRenderer = bool(*)(const std::string&,
@@ -798,16 +1115,17 @@ using FieldRenderer = bool(*)(const std::string&,
                               FieldContext&);
 
 static const std::unordered_map<std::string, FieldRenderer> fieldRenderers = {
-    {"dropdown",   RenderFieldDropdown},
-    {"float",      RenderFieldFloat},
-    {"int",        RenderFieldInt},
-    {"vector",     RenderFieldVector},
-    {"filepicker", RenderFieldFilePicker},
-    {"filesave",   RenderFieldFileSave},
-    {"bool",       RenderFieldBool},
-    {"range",      RenderFieldRange},
-    {"multiline",  RenderFieldMultiline},
-    {"text",       RenderFieldText},
+    {"dropdown",      RenderFieldDropdown},
+    {"float",         RenderFieldFloat},
+    {"int",           RenderFieldInt},
+    {"vector",        RenderFieldVector},
+    {"vector-inline", RenderFieldVectorInline},
+    {"filepicker",    RenderFieldFilePicker},
+    {"filesave",      RenderFieldFileSave},
+    {"bool",          RenderFieldBool},
+    {"range",         RenderFieldRange},
+    {"multiline",     RenderFieldMultiline},
+    {"text",          RenderFieldText},
 };
 
 //
@@ -853,7 +1171,8 @@ static inline void RenderMetricProgressBar(const Block::Interface::Entry& entry,
     }
 
     try {
-        const F32 value = std::clamp(std::any_cast<F32>(entry.metric()), 0.0f, 1.0f);
+        const auto& [overlay, rawValue] = std::any_cast<std::pair<std::string, F32>>(entry.metric());
+        const F32 value = std::clamp(rawValue, 0.0f, 1.0f);
         const auto& bgColor = ImGui::ColorConvertFloat4ToU32(ctx.colorMap.at("card"));
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, bgColor);
@@ -864,7 +1183,6 @@ static inline void RenderMetricProgressBar(const Block::Interface::Entry& entry,
 
         const ImVec2 rectMin = ImGui::GetItemRectMin();
         const ImVec2 rectMax = ImGui::GetItemRectMax();
-        const std::string overlay = jst::fmt::format("{:.1f}%", value * 100.0f);
         const float fontSize = ImGui::GetFontSize();
         const ImVec2 textSize = ImGui::CalcTextSize(overlay.c_str());
         const F32 textX = rectMax.x - textSize.x - 6.0f * ctx.scalingFactor;
@@ -1021,6 +1339,55 @@ struct SurfaceMeta {
     JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached);
 };
 
+struct StackDockItemMeta {
+    std::string kind;
+    std::string block;
+    std::string surface;
+    U64 order = 0;
+
+    JST_SERDES(kind, block, surface, order);
+};
+
+struct StackDockFlowgraphMeta {
+    U64 order = 0;
+
+    JST_SERDES(order);
+};
+
+struct StackDockSurfaceMeta {
+    std::string block;
+    std::string surface;
+    U64 order = 0;
+
+    JST_SERDES(block, surface, order);
+};
+
+struct StackDockLayoutMeta {
+    std::string direction;
+    F32 ratio = 0.5f;
+    std::vector<StackDockFlowgraphMeta> flowgraphs;
+    std::vector<StackDockSurfaceMeta> surfaces;
+    std::unordered_map<std::string, StackDockLayoutMeta> children;
+
+    JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
+};
+
+struct StackMeta {
+    std::string title;
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 500.0f;
+    F32 height = 300.0f;
+    std::unordered_map<std::string, StackDockLayoutMeta> layout;
+
+    JST_SERDES(title, x, y, width, height, layout);
+};
+
+struct StackWindowItemState {
+    StackDockItemMeta meta;
+    std::string windowLabel;
+};
+
 class DefaultCompositor : public Compositor::Impl {
  public:
     Result create();
@@ -1030,6 +1397,8 @@ class DefaultCompositor : public Compositor::Impl {
     Result poll();
 
  private:
+    struct StackWindowState;
+
     // Modal variables.
 
     enum class InterfaceModalContent : I32 {
@@ -1100,10 +1469,6 @@ class DefaultCompositor : public Compositor::Impl {
         std::string path;
     };
 
-    struct MailResetFlowgraph {
-        std::string flowgraph;
-    };
-
     struct MailOpenFlowgraphPath {
         std::string path;
     };
@@ -1135,6 +1500,14 @@ class DefaultCompositor : public Compositor::Impl {
     struct MailReloadBlock {
         std::string flowgraph;
         std::string blockId;
+    };
+
+    struct MailChangeBlockDevice {
+        std::string flowgraph;
+        std::string blockId;
+        DeviceType device;
+        RuntimeType runtime;
+        ProviderType provider;
     };
 
     struct MailConnectBlock {
@@ -1174,10 +1547,10 @@ class DefaultCompositor : public Compositor::Impl {
                               MailSaveFlowgraph,
                               MailOpenFlowgraphPath,
                               MailOpenFlowgraphBlob,
-                              MailResetFlowgraph,
                               MailRenameBlock,
                               MailDeleteBlock,
                               MailReloadBlock,
+                              MailChangeBlockDevice,
                               MailConnectBlock,
                               MailDisconnectBlock,
                               MailReconfigureBlock,
@@ -1193,6 +1566,8 @@ class DefaultCompositor : public Compositor::Impl {
     Result renderInfoHud();
     Result renderFullscreenHud();
     Result renderWelcomeHud();
+    Result renderEmptyFlowgraphHint(const std::string& flowgraphId);
+    Result renderEmptyStackHint(const std::string& flowgraphId, const std::string& stackId, ImGuiID dockspaceId);
     Result renderRemoteHud();
     Result renderNotifications();
     Result renderMenubar();
@@ -1215,6 +1590,31 @@ class DefaultCompositor : public Compositor::Impl {
     Result helperOpenFlowgraph();
     Result helperSaveFlowgraph(const std::string& flowgraph);
     Result helperCloseFlowgraph(const std::string& flowgraph);
+    Result helperLoadFlowgraphStacks(const std::string& flowgraphId, const std::shared_ptr<Flowgraph>& flowgraph);
+    Result helperEnsureStackedSurfacesDetached(const std::shared_ptr<Flowgraph>& flowgraph,
+                                               const std::unordered_map<std::string, StackWindowState>& stackStates);
+    Result helperSyncFlowgraphStacks(const std::string& flowgraphId);
+    Result helperBuildStackWindowItems(const std::string& flowgraphId,
+                                       std::unordered_map<std::string, StackWindowItemState>& itemsByKey) const;
+    Result helperCaptureStackWindowLayout(const std::string& flowgraphId, StackWindowState& stackState) const;
+    Result helperRestoreStackWindowLayout(const std::string& flowgraphId,
+                                          const StackWindowState& stackState,
+                                          const ImVec2& windowPos,
+                                          const ImVec2& windowSize) const;
+    std::string helperMakeFlowgraphWindowLabel(const std::string& flowgraphId) const;
+    std::string helperMakeDetachedSurfaceWindowId(const std::string& flowgraphId,
+                                                  const std::string& blockName,
+                                                  const std::string& surfaceId) const;
+    std::string helperMakeDetachedSurfaceWindowLabel(const std::string& flowgraphId,
+                                                     const std::string& blockName,
+                                                     const std::string& surfaceId,
+                                                     const std::string& blockTitle) const;
+    std::string helperMakeStackWindowLabel(const std::string& flowgraphId,
+                                           const std::string& stackId,
+                                           const StackMeta& stackMeta) const;
+    void helperOpenBlockPicker(const std::string& flowgraphId,
+                               const ImVec2& pickerScreenPosition,
+                               const ImVec2& blockScreenPosition);
 
     // Helper elements.
 
@@ -1222,7 +1622,7 @@ class DefaultCompositor : public Compositor::Impl {
     void helperSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                              U64 width,
                              U64 height,
-                             F32 scalingFactor,
+                             F32 surfaceScale,
                              bool detached = false);
     bool helperCheckSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                                   const SurfaceManifest& manifest,
@@ -1259,11 +1659,23 @@ class DefaultCompositor : public Compositor::Impl {
     std::optional<std::string> focusedFlowgraph;
     std::deque<std::string> focusHistory;
 
-    std::unordered_map<std::string, std::pair<bool, ImGuiID>> stacks;
+    struct StackWindowState {
+        StackMeta meta;
+        bool enabled = true;
+        ImGuiID dockspaceId = 0;
+        bool restoreDockLayout = false;
+        bool dockInMainTabBar = false;
+    };
+
+    std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> flowgraphStacks;
     std::unordered_map<std::string, std::shared_ptr<Flowgraph>> flowgraphs;
     std::unordered_map<std::string, std::unordered_map<std::string, std::shared_ptr<Block>>> blocksCache;
+    std::unordered_set<std::string> dismissedEmptyFlowgraphHints;
+    std::unordered_map<std::string, int> emptyFlowgraphHintTipIndices;
+    std::mt19937 randomGenerator{std::random_device{}()};
     std::unordered_map<std::string, bool> openDocumentations;
     std::unordered_map<int, ImVec2> nodeSizes;
+    std::unordered_map<std::string, ImVec2> flowgraphViewportCenters;
 
     ImGuiID mainDockspaceID = 0;
 
@@ -1277,9 +1689,6 @@ class DefaultCompositor : public Compositor::Impl {
         ImVec2 gridPosition;
         char searchBuffer[128] = "";
         int selectedIndex = 0;
-        int deviceIndex = 0;
-        int runtimeIndex = 0;
-        int providerIndex = 0;
     };
     BlockPickerState blockPicker;
 
@@ -1351,7 +1760,14 @@ Result DefaultCompositor::present() {
 
     if (render->scalingFactor() != scalingFactor) {
         ImGuiStyleScale();
-        ImNodesStyleScale();
+
+        const auto previousContext = ImNodes::GetCurrentContext();
+        for (const auto& [_, context] : contexts) {
+            ImNodes::SetCurrentContext(context);
+            ImNodesStyleScale();
+        }
+        ImNodes::SetCurrentContext(previousContext);
+
         scalingFactor = render->scalingFactor();
     }
     currentHeight = 0.0f;
@@ -1496,6 +1912,22 @@ Result DefaultCompositor::poll() {
     blocksCache.clear();
     for (const auto& [flowgraphId, flowgraph] : flowgraphs) {
         blocksCache[flowgraphId] = flowgraph->blockList();
+
+        if (!flowgraphStacks.contains(flowgraphId)) {
+            JST_CHECK(helperLoadFlowgraphStacks(flowgraphId, flowgraph));
+        }
+    }
+
+    if (flowgraphStacks.size() != flowgraphs.size()) {
+        std::vector<std::string> staleStackStates;
+        for (const auto& [flowgraphId, _] : flowgraphStacks) {
+            if (!flowgraphs.contains(flowgraphId)) {
+                staleStackStates.push_back(flowgraphId);
+            }
+        }
+        for (const auto& flowgraphId : staleStackStates) {
+            flowgraphStacks.erase(flowgraphId);
+        }
     }
 
     // Register helper functions.
@@ -1595,10 +2027,6 @@ Result DefaultCompositor::poll() {
 
                 return Result::SUCCESS;
             },
-            [&](const MailResetFlowgraph&) -> Result {
-                // TODO: Implement.
-                return Result::SUCCESS;
-            },
             [&](const MailCloseFlowgraph& msg) -> Result {
                 if (!flowgraphs.contains(msg.flowgraph)) {
                     JST_ERROR("Failed to close flowgraph because flowgraph was not found.");
@@ -1633,7 +2061,8 @@ Result DefaultCompositor::poll() {
 
                 if (msg.gridPosition.has_value()) {
                     const auto& pos = msg.gridPosition.value();
-                    flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, 140.0f, 0.0f}, blockName);
+                    const NodeMeta nodeMeta = { pos.x / scalingFactor, pos.y / scalingFactor, 140.0f, 0.0f };
+                    flowgraph->setMeta("node", nodeMeta, blockName);
                 }
 
                 Compositor::Impl::enqueue([flowgraph, blockName, msg]() -> Result {
@@ -1693,6 +2122,43 @@ Result DefaultCompositor::poll() {
                     Parser::Map config;
                     JST_CHECK(flowgraph->blockConfig(blockId, config));
                     return flowgraph->blockRecreate(blockId, config);
+                });
+
+                return Result::SUCCESS;
+            },
+            [&](const MailChangeBlockDevice& msg) -> Result {
+                if (!flowgraphs.contains(msg.flowgraph)) {
+                    JST_ERROR("Failed to change block device because flowgraph was not found.");
+                    return Result::ERROR;
+                }
+
+                if (msg.blockId.empty()) {
+                    JST_ERROR("Failed to change block device due to empty block ID.");
+                    return Result::ERROR;
+                }
+
+                if (!blocksCache.at(msg.flowgraph).contains(msg.blockId)) {
+                    JST_ERROR("Failed to change block device because block was not found.");
+                    return Result::ERROR;
+                }
+
+                const auto& block = blocksCache.at(msg.flowgraph).at(msg.blockId);
+                if (block->device() == msg.device &&
+                    block->runtime() == msg.runtime &&
+                    block->provider() == msg.provider) {
+                    return Result::SUCCESS;
+                }
+
+                auto flowgraph = flowgraphs[msg.flowgraph];
+                auto blockId = msg.blockId;
+                auto device = msg.device;
+                auto runtime = msg.runtime;
+                auto provider = msg.provider;
+
+                Compositor::Impl::enqueue([flowgraph, blockId, device, runtime, provider]() -> Result {
+                    Parser::Map config;
+                    JST_CHECK(flowgraph->blockConfig(blockId, config));
+                    return flowgraph->blockRecreate(blockId, config, device, runtime, provider);
                 });
 
                 return Result::SUCCESS;
@@ -1804,7 +2270,8 @@ Result DefaultCompositor::poll() {
 
                 if (msg.gridPosition.has_value()) {
                     const auto& pos = msg.gridPosition.value();
-                    flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, 140.0f, 0.0f}, blockName);
+                    const NodeMeta nodeMeta = { pos.x / scalingFactor, pos.y / scalingFactor, 140.0f, 0.0f };
+                    flowgraph->setMeta("node", nodeMeta, blockName);
                 }
 
                 auto config = clipboard.config;
@@ -1870,8 +2337,7 @@ Result DefaultCompositor::renderFlowgraph() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f * scalingFactor, 8.0f * scalingFactor));
         ImGui::SetNextWindowSize(ImVec2(640.0f * scalingFactor, 480.0f * scalingFactor), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowDockID(mainDockspaceID, ImGuiCond_FirstUseEver);
-        const std::string windowTitle = flowgraph->title().empty() ? flowgraphId : flowgraph->title();
-        const bool windowExpanded = ImGui::Begin(jst::fmt::format("{}###{}", windowTitle, flowgraphId).c_str(), &flowgraphOpen);
+        const bool windowExpanded = ImGui::Begin(helperMakeFlowgraphWindowLabel(flowgraphId).c_str(), &flowgraphOpen);
         ImGui::PopStyleVar();
 
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
@@ -1884,6 +2350,12 @@ Result DefaultCompositor::renderFlowgraph() {
                 }
                 focusedFlowgraph = flowgraphId;
             }
+        }
+
+        if (windowExpanded) {
+            const ImVec2 contentMin = ImGui::GetCursorScreenPos();
+            const ImVec2 contentSize = ImGui::GetContentRegionAvail();
+            flowgraphViewportCenters[flowgraphId] = contentMin + contentSize * 0.5f;
         }
 
         if (!flowgraphOpen) {
@@ -1938,7 +2410,8 @@ Result DefaultCompositor::renderFlowgraph() {
             }
             NodeMeta nodeMeta;
             if (flowgraph->getMeta("node", nodeMeta, blockName) == Result::SUCCESS) {
-                ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(nodeMeta.x, nodeMeta.y));
+                ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(nodeMeta.x * scalingFactor,
+                                                            nodeMeta.y * scalingFactor));
                 if (nodeMeta.width > 0.0f) {
                     nodeSizes[nodeId].x = nodeMeta.width * scalingFactor;
                 }
@@ -1949,6 +2422,8 @@ Result DefaultCompositor::renderFlowgraph() {
 
             bool hasSurfaces = false;
             bool isDetached = false;
+            const U64 defaultAttachedSurfaceHeight = SurfaceMeta{}.attachedHeight;
+            U64 attachedSurfaceHeight = defaultAttachedSurfaceHeight;
 
             if (!blockPtr->surfaces().empty()) {
                 const auto& surface = blockPtr->surfaces().front();
@@ -1957,6 +2432,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     const auto& manifest = surface->manifests().front();
                     SurfaceMeta surfaceMeta;
                     flowgraph->getMeta("surface_" + manifest.id, surfaceMeta, blockName);
+                    attachedSurfaceHeight = surfaceMeta.attachedHeight;
                     isDetached = surfaceMeta.detached;
                 }
             }
@@ -1967,9 +2443,16 @@ Result DefaultCompositor::renderFlowgraph() {
             const bool isReloading = blockState == Block::State::Creating ||
                                      blockState == Block::State::Incomplete;
             const bool shouldResetNodeHeight = (!hasSurfaces || isDetached) && !isReloading;
+            const F32 minimumSurfaceHeight = static_cast<F32>(attachedSurfaceHeight) * scalingFactor;
+            const bool shouldSeedSurfaceHeight = hasSurfaces && !isDetached &&
+                                                 attachedSurfaceHeight == defaultAttachedSurfaceHeight &&
+                                                 nodeSizes[nodeId].y < minimumSurfaceHeight;
+            const bool hasValidNodeHeight = nodeSizes[nodeId].y > 0.0f;
 
-            if (shouldResetNodeHeight) {
+            if (shouldResetNodeHeight || (isReloading && !hasValidNodeHeight)) {
                 nodeSizes[nodeId].y = 0.0f;
+            } else if (shouldSeedSurfaceHeight) {
+                nodeSizes[nodeId].y = minimumSurfaceHeight;
             }
             ImNodes::SetNodeDimensions(nodeId, nodeSizes[nodeId]);
 
@@ -2109,7 +2592,6 @@ Result DefaultCompositor::renderFlowgraph() {
                         }
 
                         if (!metricRenderers.contains(kind)) {
-                            JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unknown metric type '{}' for metric '{}'", kind, name);
                             continue;
                         }
 
@@ -2186,7 +2668,21 @@ Result DefaultCompositor::renderFlowgraph() {
                             continue;
                         }
 
-                        const auto availableRegion = ImGui::GetContentRegionAvail();
+                        ImVec2 availableRegion = ImGui::GetContentRegionAvail();
+                        const bool shouldPreserveDefaultAspectRatio = surfaceMeta.attachedWidth == SurfaceMeta{}.attachedWidth &&
+                                                                      surfaceMeta.attachedHeight == SurfaceMeta{}.attachedHeight &&
+                                                                      surfaceMeta.attachedWidth > 0;
+
+                        if (shouldPreserveDefaultAspectRatio) {
+                            const F32 aspectHeight = availableRegion.x * static_cast<F32>(surfaceMeta.attachedHeight) /
+                                                     static_cast<F32>(surfaceMeta.attachedWidth);
+
+                            if (aspectHeight > 0.0f && aspectHeight < availableRegion.y) {
+                                nodeSizes[nodeId].y = ImMax(0.0f, nodeSizes[nodeId].y - availableRegion.y + aspectHeight);
+                                availableRegion.y = aspectHeight;
+                            }
+                        }
+
                         if (helperCheckSurfaceResize(surface,
                                                      manifest,
                                                      availableRegion,
@@ -2224,7 +2720,7 @@ Result DefaultCompositor::renderFlowgraph() {
                                     helperSurfaceResize(surface,
                                                         static_cast<U64>(surfaceMeta.detachedWidth * ImGui::GetIO().DisplayFramebufferScale.x),
                                                         static_cast<U64>(surfaceMeta.detachedHeight * ImGui::GetIO().DisplayFramebufferScale.y),
-                                                        scalingFactor,
+                                                        scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f,
                                                         true);
                                 }
                             }
@@ -2268,8 +2764,12 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             for (const auto& [inputSlot, link] : consumerPtr->inputs()) {
+                if (!link.external.has_value()) {
+                    continue;
+                }
+                const auto& ext = link.external.value();
                 const int inPinId = idFromStr("pin:in:" + flowgraphId + ":" + consumerName + ":" + inputSlot);
-                const int outPinId = idFromStr("pin:out:" + flowgraphId + ":" + link.block + ":" + link.port);
+                const int outPinId = idFromStr("pin:out:" + flowgraphId + ":" + ext.block + ":" + ext.port);
                 const int linkId = idFromStr("link:" + flowgraphId + ":" + consumerName + ":" + inputSlot);
                 const bool linkUnresolved = !link.resolved();
 
@@ -2284,7 +2784,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     ImNodes::PushColorStyle(ImNodesCol_LinkSelected, greyColor);
                 }
 
-                linkIdToConnection[linkId] = {consumerName, inputSlot, link.block, link.port, &link};
+                linkIdToConnection[linkId] = {consumerName, inputSlot, ext.block, ext.port, &link};
                 ImNodes::Link(linkId, outPinId, inPinId);
 
                 if (linkUnresolved) {
@@ -2298,7 +2798,7 @@ Result DefaultCompositor::renderFlowgraph() {
         // Block picker render.
 
         if (blockPicker.active && blockPicker.flowgraphId == flowgraphId) {
-            const ImVec2 pickerSize(280.0f * scalingFactor, 320.0f * scalingFactor);
+            const ImVec2 pickerSize(300.0f * scalingFactor, 400.0f * scalingFactor);
             const ImVec2 screenPos = blockPicker.screenPosition;
 
             ImGui::SetNextWindowPos(screenPos, ImGuiCond_Always);
@@ -2344,7 +2844,7 @@ Result DefaultCompositor::renderFlowgraph() {
                     const float subtitleFontSize = ImGui::GetFontSize() * 0.85f;
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
                     ImGui::PushFont(ImGui::GetFont(), subtitleFontSize);
-                    const char* subtitle = "Use arrows to navigate, Enter to create";
+                    const char* subtitle = "Use up/down to navigate, Enter to create";
                     const float subtitleWidth = ImGui::CalcTextSize(subtitle).x;
                     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImMax(0.0f, (ImGui::GetContentRegionAvail().x - subtitleWidth) * 0.5f));
                     ImGui::TextUnformatted(subtitle);
@@ -2367,24 +2867,43 @@ Result DefaultCompositor::renderFlowgraph() {
                     std::string type;
                     std::string title;
                     std::string summary;
+                    bool titleMatch = false;
                 };
                 std::vector<BlockItem> filteredBlocks;
 
                 const std::string query = std::string(blockPicker.searchBuffer);
-                auto matches = [&](const std::string& title, const std::string& summary) -> bool {
-                    if (query.empty()) return true;
-                    std::string t = title, s = summary, q = query;
-                    std::transform(t.begin(), t.end(), t.begin(), ::tolower);
-                    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-                    std::transform(q.begin(), q.end(), q.begin(), ::tolower);
-                    return (t.find(q) != std::string::npos) || (s.find(q) != std::string::npos);
+                std::string normalizedQuery = query;
+                std::transform(normalizedQuery.begin(), normalizedQuery.end(), normalizedQuery.begin(), [](unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+
+                auto matchPriority = [&](const std::string& title, const std::string& summary) -> int {
+                    if (normalizedQuery.empty()) return 0;
+
+                    std::string normalizedTitle = title;
+                    std::string normalizedSummary = summary;
+                    std::transform(normalizedTitle.begin(), normalizedTitle.end(), normalizedTitle.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+                    std::transform(normalizedSummary.begin(), normalizedSummary.end(), normalizedSummary.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+
+                    if (normalizedTitle.find(normalizedQuery) != std::string::npos) return 0;
+                    if (normalizedSummary.find(normalizedQuery) != std::string::npos) return 1;
+                    return -1;
                 };
 
                 for (const auto& entry : Registry::ListAvailableBlocks("")) {
-                    if (matches(entry.title, entry.summary)) {
-                        filteredBlocks.push_back({entry.type, entry.title, entry.summary});
+                    const int priority = matchPriority(entry.title, entry.summary);
+                    if (priority >= 0) {
+                        filteredBlocks.push_back({entry.type, entry.title, entry.summary, priority == 0});
                     }
                 }
+
+                std::stable_sort(filteredBlocks.begin(), filteredBlocks.end(), [](const BlockItem& lhs, const BlockItem& rhs) {
+                    return lhs.titleMatch && !rhs.titleMatch;
+                });
 
                 const int filteredCount = static_cast<int>(filteredBlocks.size());
                 if (blockPicker.selectedIndex >= filteredCount) {
@@ -2397,172 +2916,41 @@ Result DefaultCompositor::renderFlowgraph() {
                 if (filteredCount > 0 && blockPicker.selectedIndex >= 0) {
                     availableModules = Registry::ListAvailableModules(filteredBlocks[blockPicker.selectedIndex].type);
                 }
-                const int moduleCount = static_cast<int>(availableModules.size());
-
-                // Clamp implementation index.
-
-                if (blockPicker.deviceIndex >= moduleCount) {
-                    blockPicker.deviceIndex = ImMax(0, moduleCount - 1);
-                }
-
-                // Build unique lists of devices, runtimes, and providers.
-
-                std::vector<DeviceType> uniqueDevices;
-                std::vector<RuntimeType> uniqueRuntimes;
-                std::vector<ProviderType> uniqueProviders;
-
-                for (const auto& mod : availableModules) {
-                    if (std::find(uniqueDevices.begin(), uniqueDevices.end(), mod.device) == uniqueDevices.end()) {
-                        uniqueDevices.push_back(mod.device);
-                    }
-                    if (std::find(uniqueRuntimes.begin(), uniqueRuntimes.end(), mod.runtime) == uniqueRuntimes.end()) {
-                        uniqueRuntimes.push_back(mod.runtime);
-                    }
-                    if (std::find(uniqueProviders.begin(), uniqueProviders.end(), mod.provider) == uniqueProviders.end()) {
-                        uniqueProviders.push_back(mod.provider);
-                    }
-                }
+                DeviceType  selectedDevice = DeviceType::CPU;
+                RuntimeType selectedRuntime = RuntimeType::NATIVE;
+                ProviderType selectedProvider = "generic";
 
                 // Provide defaults for composite blocks without module registrations.
                 // TODO: Properly fix module-less block creation.
 
-                if (uniqueDevices.empty()) {
-                    uniqueDevices.push_back(DeviceType::CPU);
-                }
-                if (uniqueRuntimes.empty()) {
-                    uniqueRuntimes.push_back(RuntimeType::NATIVE);
-                }
-                if (uniqueProviders.empty()) {
-                    uniqueProviders.push_back("generic");
-                }
-
-                // Clamp indices.
-
-                if (blockPicker.deviceIndex >= static_cast<int>(uniqueDevices.size())) {
-                    blockPicker.deviceIndex = ImMax(0, static_cast<int>(uniqueDevices.size()) - 1);
-                }
-                if (blockPicker.runtimeIndex >= static_cast<int>(uniqueRuntimes.size())) {
-                    blockPicker.runtimeIndex = ImMax(0, static_cast<int>(uniqueRuntimes.size()) - 1);
-                }
-                if (blockPicker.providerIndex >= static_cast<int>(uniqueProviders.size())) {
-                    blockPicker.providerIndex = ImMax(0, static_cast<int>(uniqueProviders.size()) - 1);
-                }
-
-                // Display implementation selection dropdowns.
-
-                if (!uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    const float spacing = 4.0f * scalingFactor;
-                    const float availWidth = ImGui::GetContentRegionAvail().x;
-                    const float comboWidth = (availWidth - spacing * 2) / 3.0f;
-
-                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * scalingFactor);
-                    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f * scalingFactor);
-                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f * scalingFactor, 6.0f * scalingFactor));
-
-                    // Device dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string devicePreview = std::string(ICON_FA_MICROCHIP) + " " + GetDevicePrettyName(uniqueDevices[blockPicker.deviceIndex]);
-                    if (ImGui::BeginCombo("##device", devicePreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueDevices.size()); ++i) {
-                            const bool selected = (i == blockPicker.deviceIndex);
-                            if (ImGui::Selectable(GetDevicePrettyName(uniqueDevices[i]), selected)) {
-                                blockPicker.deviceIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine(0, spacing);
-
-                    // Runtime dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string runtimePreview = std::string(ICON_FA_GAUGE_HIGH) + " " + GetRuntimePrettyName(uniqueRuntimes[blockPicker.runtimeIndex]);
-                    if (ImGui::BeginCombo("##runtime", runtimePreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueRuntimes.size()); ++i) {
-                            const bool selected = (i == blockPicker.runtimeIndex);
-                            if (ImGui::Selectable(GetRuntimePrettyName(uniqueRuntimes[i]), selected)) {
-                                blockPicker.runtimeIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::SameLine(0, spacing);
-
-                    // Provider dropdown.
-
-                    ImGui::SetNextItemWidth(comboWidth);
-                    std::string providerPreview = std::string(ICON_FA_CUBES) + " " + uniqueProviders[blockPicker.providerIndex];
-                    if (ImGui::BeginCombo("##provider", providerPreview.c_str(), ImGuiComboFlags_NoArrowButton)) {
-                        for (int i = 0; i < static_cast<int>(uniqueProviders.size()); ++i) {
-                            const bool selected = (i == blockPicker.providerIndex);
-                            if (ImGui::Selectable(uniqueProviders[i].c_str(), selected)) {
-                                blockPicker.providerIndex = i;
-                            }
-                            if (selected) ImGui::SetItemDefaultFocus();
-                        }
-                        ImGui::EndCombo();
-                    }
-
-                    ImGui::PopStyleVar(3);
+                if (!availableModules.empty()) {
+                    const auto& selectedModule = availableModules.front();
+                    selectedDevice = selectedModule.device;
+                    selectedRuntime = selectedModule.runtime;
+                    selectedProvider = selectedModule.provider;
                 }
 
                 // Handle keyboard navigation.
 
                 if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
                     blockPicker.selectedIndex = (blockPicker.selectedIndex + 1) % ImMax(1, filteredCount);
-                    blockPicker.deviceIndex = 0;
-                    blockPicker.runtimeIndex = 0;
-                    blockPicker.providerIndex = 0;
                 }
                 if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
                     blockPicker.selectedIndex = (blockPicker.selectedIndex - 1 + filteredCount) % ImMax(1, filteredCount);
-                    blockPicker.deviceIndex = 0;
-                    blockPicker.runtimeIndex = 0;
-                    blockPicker.providerIndex = 0;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    blockPicker.providerIndex++;
-                    if (blockPicker.providerIndex >= static_cast<int>(uniqueProviders.size())) {
-                        blockPicker.providerIndex = 0;
-                        blockPicker.runtimeIndex++;
-                        if (blockPicker.runtimeIndex >= static_cast<int>(uniqueRuntimes.size())) {
-                            blockPicker.runtimeIndex = 0;
-                            blockPicker.deviceIndex = (blockPicker.deviceIndex + 1) % static_cast<int>(uniqueDevices.size());
-                        }
-                    }
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
-                    blockPicker.providerIndex--;
-                    if (blockPicker.providerIndex < 0) {
-                        blockPicker.providerIndex = static_cast<int>(uniqueProviders.size()) - 1;
-                        blockPicker.runtimeIndex--;
-                        if (blockPicker.runtimeIndex < 0) {
-                            blockPicker.runtimeIndex = static_cast<int>(uniqueRuntimes.size()) - 1;
-                            blockPicker.deviceIndex--;
-                            if (blockPicker.deviceIndex < 0) {
-                                blockPicker.deviceIndex = static_cast<int>(uniqueDevices.size()) - 1;
-                            }
-                        }
-                    }
                 }
 
                 // Handle enter to create block.
 
                 if ((ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) &&
-                    filteredCount > 0 && !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
+                    filteredCount > 0) {
                     const auto& selected = filteredBlocks[blockPicker.selectedIndex];
                     enqueue(MailCreateBlock{
                         flowgraphId,
                         selected.type,
                         blockPicker.gridPosition,
-                        uniqueDevices[blockPicker.deviceIndex],
-                        uniqueRuntimes[blockPicker.runtimeIndex],
-                        uniqueProviders[blockPicker.providerIndex]
+                        selectedDevice,
+                        selectedRuntime,
+                        selectedProvider
                     });
                     blockPicker.active = false;
                 }
@@ -2581,9 +2969,14 @@ Result DefaultCompositor::renderFlowgraph() {
                     const auto& item = filteredBlocks[i];
                     const bool isSelected = (i == blockPicker.selectedIndex);
 
+                    const float iconFontSize = ImGui::GetFontSize() * 0.95f;
+                    const char* icon = ICON_FA_CUBE;
+                    const float iconWidth = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, icon).x;
+                    const float iconGap = 8.0f * scalingFactor;
+                    const float textOffsetX = iconWidth + iconGap;
                     const float titleHeight = ImGui::GetTextLineHeight();
                     const float summaryFontSize = ImGui::GetFontSize() * 0.85f;
-                    const float wrapWidth = ImGui::GetContentRegionAvail().x - padding * 2;
+                    const float wrapWidth = ImGui::GetContentRegionAvail().x - padding * 2 - textOffsetX;
                     const float summaryHeight = ImGui::GetFont()->CalcTextSizeA(summaryFontSize, FLT_MAX, wrapWidth, item.summary.c_str()).y;
                     const float rowHeight = titleHeight + summaryHeight + padding * 2 + 2.0f * scalingFactor;
 
@@ -2598,14 +2991,14 @@ Result DefaultCompositor::renderFlowgraph() {
                         blockPicker.selectedIndex = i;
                     }
                     if (ImGui::IsItemClicked() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-                        !uniqueDevices.empty() && !uniqueRuntimes.empty() && !uniqueProviders.empty()) {
+                        filteredCount > 0) {
                         enqueue(MailCreateBlock{
                             flowgraphId,
                             item.type,
                             blockPicker.gridPosition,
-                            uniqueDevices[blockPicker.deviceIndex],
-                            uniqueRuntimes[blockPicker.runtimeIndex],
-                            uniqueProviders[blockPicker.providerIndex]
+                            selectedDevice,
+                            selectedRuntime,
+                            selectedProvider
                         });
                         blockPicker.active = false;
                     }
@@ -2617,18 +3010,26 @@ Result DefaultCompositor::renderFlowgraph() {
                     }
 
                     const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(isSelected ? ColorMap.at("header_hovered") : (hovered ? ColorMap.at("cell_background") : ImVec4(0, 0, 0, 0)));
+                    const ImU32 iconColor = ImGui::ColorConvertFloat4ToU32(isSelected
+                                                                               ? ColorMap.at("text_primary")
+                                                                               : ColorMap.at("text_secondary"));
                     drawList->AddRectFilled(cellMin, cellMax, bgColor, rounding);
+
+                    const ImVec2 iconPos(cellMin.x + padding,
+                                         cellMin.y + (rowHeight - iconFontSize) * 0.5f);
+                    drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos, iconColor, icon);
 
                     // Title.
 
-                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding, cellMin.y + padding));
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding + textOffsetX, cellMin.y + padding));
                     ImGui::PushFont(boldFont, ImGui::GetFontSize());
                     ImGui::TextUnformatted(item.title.c_str());
                     ImGui::PopFont();
 
                     // Summary.
 
-                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding, cellMin.y + padding + titleHeight + 2.0f * scalingFactor));
+                    ImGui::SetCursorScreenPos(ImVec2(cellMin.x + padding + textOffsetX,
+                                                     cellMin.y + padding + titleHeight + 2.0f * scalingFactor));
                     ImGui::PushFont(ImGui::GetFont(), summaryFontSize);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                     ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrapWidth);
@@ -2660,27 +3061,56 @@ Result DefaultCompositor::renderFlowgraph() {
         // Render runtime metrics below blocks.
 
         if (debugRuntimeMetricsEnabled) {
-            const auto& metricsMap = flowgraph->metrics();
-
             for (const auto& [blockName, blockPtr] : blocks) {
                 if (blockPtr->state() != Block::State::Created) {
                     continue;
                 }
 
+                if (!flowgraph->metrics().contains(blockName)) {
+                    continue;
+                }
+                const auto& blockMetrics = flowgraph->metrics().at(blockName);
+
                 const int nodeId = idFromStr("node:" + flowgraphId + ":" + blockName);
                 const ImVec2 nodePos = ImNodes::GetNodeScreenSpacePos(nodeId);
                 const ImVec2 nodeSize = ImNodes::GetNodeDimensions(nodeId);
 
-                const std::string moduleName = jst::fmt::format("{}-{}", blockName, blockPtr->config().type());
-                if (metricsMap.contains(moduleName)) {
-                    const auto& m = metricsMap.at(moduleName);
-                    const std::string line1 = jst::fmt::format("Runtime #{} ({}/{})", m->runtime, m->device, m->backend);
-                    const std::string line2 = jst::fmt::format("{:.2f} ms | {:.1f}k cycles", m->averageComputeTime, m->cycles / 1000.0f);
+                std::vector<std::string> lines;
+                F32 totalTime = 0.0f;
+                U64 maxCycles = 0;
+
+                lines.push_back(jst::fmt::format("Runtime #{} ({}/{})", blockMetrics->runtime,
+                                                                        blockMetrics->device,
+                                                                        blockMetrics->backend));
+
+                for (const auto& moduleName : blockPtr->modules()) {
+                    const auto& fullModuleName = jst::fmt::format("{}-{}", blockName, moduleName);
+                    if (!blockMetrics->averageComputeTime.contains(fullModuleName) ||
+                        !blockMetrics->cycles.contains(fullModuleName)) {
+                        continue;
+                    }
+                    const auto& averageComputeTime = blockMetrics->averageComputeTime.at(fullModuleName);
+                    const auto& cycles = blockMetrics->cycles.at(fullModuleName);
+                    lines.push_back(jst::fmt::format("+ {}: {:.3f} ms", moduleName, averageComputeTime));
+                    totalTime += averageComputeTime;
+                    maxCycles = std::max(maxCycles, cycles);
+                }
+
+                const std::string cyclesStr = (maxCycles > 1000) ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f) :
+                                                                   jst::fmt::format("{}", maxCycles);
+                lines.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
+
+                if (!lines.empty()) {
                     const ImVec2 textPos(nodePos.x, nodePos.y + nodeSize.y + 4.0f * scalingFactor);
-                    const ImU32 color = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
+                    const ImU32 whiteColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                    const ImU32 secondaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
                     ImDrawList* drawList = ImGui::GetWindowDrawList();
-                    drawList->AddText(textPos, color, line1.c_str());
-                    drawList->AddText(ImVec2(textPos.x, textPos.y + ImGui::GetTextLineHeight()), color, line2.c_str());
+
+                    for (size_t i = 0; i < lines.size(); i++) {
+                        ImVec2 pos(textPos.x, textPos.y + i * ImGui::GetTextLineHeight());
+                        const ImU32 lineColor = (i == 0 || i == lines.size() - 1) ? whiteColor : secondaryColor;
+                        drawList->AddText(pos, lineColor, lines[i].c_str());
+                    }
                 }
             }
         }
@@ -2695,15 +3125,7 @@ Result DefaultCompositor::renderFlowgraph() {
             const bool isEditorHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && isEditorHovered && !isNodeHovered) {
-                blockPicker.active = true;
-                blockPicker.flowgraphId = flowgraphId;
-                blockPicker.screenPosition = ImGui::GetMousePos();
-                blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(ImGui::GetMousePos());
-                blockPicker.searchBuffer[0] = '\0';
-                blockPicker.selectedIndex = 0;
-                blockPicker.deviceIndex = 0;
-                blockPicker.runtimeIndex = 0;
-                blockPicker.providerIndex = 0;
+                helperOpenBlockPicker(flowgraphId, ImGui::GetMousePos(), ImGui::GetMousePos());
             }
         }
 
@@ -2895,10 +3317,13 @@ Result DefaultCompositor::renderFlowgraph() {
             }
 
             const ImVec2 pos = ImNodes::GetNodeGridSpacePos(nodeId);
+            const F32 posX = pos.x / scalingFactor;
+            const F32 posY = pos.y / scalingFactor;
             const F32 width = nodeSizes[nodeId].x / scalingFactor;
             const F32 height = isDetached ? nodeMeta.height : nodeSizes[nodeId].y / scalingFactor;
+            const NodeMeta updatedNodeMeta = { posX, posY, width, height };
 
-            flowgraph->setMeta("node", NodeMeta{pos.x, pos.y, width, height}, blockName);
+            flowgraph->setMeta("node", updatedNodeMeta, blockName);
         }
 
         static int hoveredNodeId = -1;
@@ -2953,26 +3378,58 @@ Result DefaultCompositor::renderFlowgraph() {
             }
         }
 
-        if (hoveredFlowgraphId == flowgraphId && ImGui::BeginPopup("##node_context_menu")) {
+        if (hoveredFlowgraphId == flowgraphId &&
+            nodeIdToBlockName.contains(hoveredNodeId) &&
+            blocks.contains(nodeIdToBlockName.at(hoveredNodeId)) &&
+            ImGui::BeginPopup("##node_context_menu")) {
+            const auto& hoveredBlockId = nodeIdToBlockName.at(hoveredNodeId);
+            const auto& hoveredBlock = blocks.at(hoveredBlockId);
+            const auto availableDevices = ListBlockDeviceOptions(hoveredBlock->config().type(),
+                                                                 hoveredBlock->device());
+
             if (ImGui::MenuItem(ICON_FA_COPY " Copy Block", "CTRL+C")) {
-                enqueue(MailCopyBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailCopyBlock{flowgraphId, hoveredBlockId});
             }
             if (ImGui::MenuItem(ICON_FA_PASTE " Paste Block", "CTRL+V", false, clipboard.hasData)) {
                 NodeMeta nodeMeta;
-                flowgraph->getMeta("node", nodeMeta, nodeIdToBlockName.at(hoveredNodeId));
+                flowgraph->getMeta("node", nodeMeta, hoveredBlockId);
                 const ImVec2 pastePos = {nodeMeta.x + 50.0f, nodeMeta.y + 50.0f};
                 enqueue(MailPasteBlock{flowgraphId, pastePos});
             }
             ImGui::Separator();
+
+            const std::string changeDeviceLabel = std::string(ICON_FA_MICROCHIP) + " Change Device";
+            if (ImGui::BeginMenu(changeDeviceLabel.c_str(), !availableDevices.empty())) {
+                for (const auto& device : availableDevices) {
+                    const bool selected = (device == hoveredBlock->device());
+                    const auto implementation = ResolveBlockImplementationForDevice(hoveredBlock->config().type(),
+                                                                                   device,
+                                                                                   hoveredBlock->runtime(),
+                                                                                   hoveredBlock->provider());
+
+                    if (ImGui::MenuItem(GetDevicePrettyName(device), nullptr, selected, !selected && implementation.has_value())) {
+                        enqueue(MailChangeBlockDevice{
+                            flowgraphId,
+                            hoveredBlockId,
+                            implementation->device,
+                            implementation->runtime,
+                            implementation->provider,
+                        });
+                    }
+                }
+                ImGui::EndMenu();
+            }
+
+            ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_ARROW_ROTATE_RIGHT " Reload Block")) {
-                enqueue(MailReloadBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailReloadBlock{flowgraphId, hoveredBlockId});
             }
             if (ImGui::MenuItem(ICON_FA_XMARK " Delete Block")) {
-                enqueue(MailDeleteBlock{flowgraphId, nodeIdToBlockName.at(hoveredNodeId)});
+                enqueue(MailDeleteBlock{flowgraphId, hoveredBlockId});
             }
             ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_BOOK " Documentation")) {
-                const std::string docKey = flowgraphId + ":" + nodeIdToBlockName.at(hoveredNodeId);
+                const std::string docKey = flowgraphId + ":" + hoveredBlockId;
                 openDocumentations[docKey] = true;
             }
             ImGui::EndPopup();
@@ -2987,6 +3444,8 @@ Result DefaultCompositor::renderFlowgraph() {
 
         ImGui::PopStyleVar();
         ImGui::PopFont();
+
+        JST_CHECK(renderEmptyFlowgraphHint(flowgraphId));
 
         ImGui::End();
     }
@@ -3114,7 +3573,7 @@ Result DefaultCompositor::renderWelcomeHud() {
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowViewport(vp->ID);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f * scalingFactor, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 
     ImGui::Begin("Welcome", nullptr, windowFlags);
@@ -3261,70 +3720,6 @@ Result DefaultCompositor::renderWelcomeHud() {
         }
     }
 
-    ImGui::Dummy(ImVec2(0, 12.0f * scalingFactor));
-
-    {
-        const float shortcutBoxWidth = cardWidth;
-        const float shortcutBoxHeight = 55.0f * scalingFactor;
-        const float shortcutBoxRadius = 10.0f * scalingFactor;
-
-        const ImU32 panelColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("panel"));
-        const ImU32 borderColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("border"));
-        const ImU32 textSecondaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_secondary"));
-        const ImU32 textPrimaryColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("text_primary"));
-        const ImU32 buttonColor = ImGui::ColorConvertFloat4ToU32(ColorMap.at("button"));
-
-        ImVec2 boxPos = ImGui::GetCursorScreenPos();
-        ImVec2 boxEnd = ImVec2(boxPos.x + shortcutBoxWidth, boxPos.y + shortcutBoxHeight);
-
-        drawList->AddRectFilled(boxPos, boxEnd, panelColor, shortcutBoxRadius);
-        drawList->AddRect(boxPos, boxEnd, borderColor, shortcutBoxRadius);
-
-        const char* headerText = ICON_FA_KEYBOARD " Keyboard Shortcuts";
-        drawList->AddText(defaultFont, baseFontSize * 0.85f,
-                          ImVec2(boxPos.x + 12.0f * scalingFactor, boxPos.y + 8.0f * scalingFactor),
-                          textSecondaryColor, headerText);
-
-        struct Shortcut {
-            const char* keys;
-            const char* action;
-        };
-
-        Shortcut shortcuts[] = {
-            {"Ctrl+N", "New"},
-            {"Ctrl+O", "Open"},
-            {"Ctrl+S", "Save"},
-            {"Ctrl+T", "Spotlight"}
-        };
-
-        float shortcutY = boxPos.y + 30.0f * scalingFactor;
-        float shortcutStartX = boxPos.x + 12.0f * scalingFactor;
-        float shortcutSpacing = (shortcutBoxWidth - 24.0f * scalingFactor) / 4.0f;
-
-        for (int i = 0; i < 4; ++i) {
-            float x = shortcutStartX + i * shortcutSpacing;
-
-            ImVec2 keySize = defaultFont->CalcTextSizeA(baseFontSize * 0.85f, FLT_MAX, 0.0f, shortcuts[i].keys);
-            float keyPadX = 5.0f * scalingFactor;
-            float keyPadY = 2.0f * scalingFactor;
-            ImVec2 keyMin = ImVec2(x, shortcutY);
-            ImVec2 keyMax = ImVec2(x + keySize.x + keyPadX * 2.0f, shortcutY + keySize.y + keyPadY * 2.0f);
-
-            drawList->AddRectFilled(keyMin, keyMax, buttonColor, 4.0f * scalingFactor);
-            drawList->AddRect(keyMin, keyMax, borderColor, 4.0f * scalingFactor);
-            drawList->AddText(defaultFont, baseFontSize * 0.85f,
-                              ImVec2(x + keyPadX, shortcutY + keyPadY),
-                              textPrimaryColor, shortcuts[i].keys);
-
-            float actionX = keyMax.x + 4.0f * scalingFactor;
-            drawList->AddText(defaultFont, baseFontSize * 0.85f,
-                              ImVec2(actionX, shortcutY + keyPadY),
-                              textSecondaryColor, shortcuts[i].action);
-        }
-
-        ImGui::Dummy(ImVec2(shortcutBoxWidth, shortcutBoxHeight));
-    }
-
     ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
 
     {
@@ -3389,6 +3784,360 @@ Result DefaultCompositor::renderWelcomeHud() {
     ImGui::End();
 
     ImGui::PopStyleVar(2);
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::renderEmptyFlowgraphHint(const std::string& flowgraphId) {
+    const auto dismissHint = [&]() {
+        emptyFlowgraphHintTipIndices.erase(flowgraphId);
+        dismissedEmptyFlowgraphHints.insert(flowgraphId);
+    };
+
+    if (dismissedEmptyFlowgraphHints.contains(flowgraphId)) {
+        return Result::SUCCESS;
+    }
+
+    const auto blocksIt = blocksCache.find(flowgraphId);
+    if (blocksIt != blocksCache.end() && !blocksIt->second.empty()) {
+        dismissHint();
+        return Result::SUCCESS;
+    }
+
+    static constexpr const char* tips[] = {
+        "Drag from output to input to connect blocks.",
+        "Drag blocks to move them around.",
+        "Right-click a block to open its context menu.",
+        "Use Ctrl+C and Ctrl+V to copy and paste blocks.",
+        "Hover over ports to see their data type.",
+        "Click and drag on empty canvas to pan around.",
+    };
+    const int tipCount = sizeof(tips) / sizeof(tips[0]);
+
+    const auto [tipIt, inserted] = emptyFlowgraphHintTipIndices.try_emplace(flowgraphId, 0);
+    if (inserted) {
+        std::uniform_int_distribution<int> distribution(0, tipCount - 1);
+        tipIt->second = distribution(randomGenerator);
+    }
+
+    const float baseFontSize = ImGui::GetFontSize();
+    const float iconFontSize = baseFontSize * 2.5f;
+    const char* iconText = ICON_FA_LIGHTBULB;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
+
+    const char* title = "Getting Started";
+    const float titleFontSize = ImGui::GetFontSize() * 1.2f;
+    const ImVec2 titleSize = h2Font->CalcTextSizeA(titleFontSize, FLT_MAX, 0.0f, title);
+
+    const char* subtitle = "Let's get started by adding your first block";
+    const ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
+
+    struct Instruction {
+        const char* number;
+        const char* text;
+    };
+
+    Instruction instructions[] = {
+        {"1.", "Double-click anywhere on the canvas."},
+        {"2.", "Pick a block from the menu."},
+        {"3.", "Connect blocks to build your flow."},
+    };
+
+    const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+    const char* randomTip = tips[tipIt->second];
+    std::string tipText = std::string("Tip: ") + randomTip;
+    const ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
+
+    const ImVec2 contentStart = ImGui::GetCursorStartPos();
+    ImGui::SetCursorPos(contentStart);
+    const ImVec2 contentAvail = ImGui::GetContentRegionAvail();
+    const float contentWidth = contentAvail.x;
+    const float itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
+    const float instructionWidth = 320.0f * scalingFactor;
+    const float instructionWrapSlack = 12.0f * scalingFactor;
+    const float instructionNumberGap = 8.0f * scalingFactor;
+    const float instructionTextSpacing = instructionNumberGap + ImGui::GetStyle().ItemSpacing.x;
+    const auto instructionRowHeight = [&](const Instruction& inst) {
+        const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+        const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+        const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+        return std::max(numberSize.y, textSize.y);
+    };
+
+    float instructionsHeight = 0.0f;
+    for (const auto& inst : instructions) {
+        instructionsHeight += instructionRowHeight(inst) + 8.0f * scalingFactor;
+    }
+    const float instructionCount = static_cast<float>(sizeof(instructions) / sizeof(instructions[0]));
+    instructionsHeight += (2.0f * instructionCount - 1.0f) * itemSpacingY;
+
+    const float contentHeight = iconSize.y +
+                                12.0f * scalingFactor +
+                                titleSize.y +
+                                8.0f * scalingFactor +
+                                subtitleSize.y +
+                                24.0f * scalingFactor +
+                                instructionsHeight +
+                                16.0f * scalingFactor +
+                                tipSize.y +
+                                7.0f * itemSpacingY;
+    const float minContentWidth = std::max(
+        std::max(iconSize.x, titleSize.x),
+        std::max(subtitleSize.x, std::max(tipSize.x, instructionWidth + instructionWrapSlack)));
+    const float cardPaddingX = 24.0f * scalingFactor;
+    const float cardPaddingY = 20.0f * scalingFactor;
+    const float cardRounding = 16.0f * scalingFactor;
+    const float cardWidth = minContentWidth + cardPaddingX * 2.0f;
+    const float cardHeight = contentHeight + cardPaddingY * 2.0f;
+
+    if (contentWidth < cardWidth || contentAvail.y < cardHeight) {
+        return Result::SUCCESS;
+    }
+
+    const ImVec2 cardPos(std::floor(contentStart.x + (contentWidth - cardWidth) * 0.5f),
+                         contentStart.y + std::max(0.0f, (contentAvail.y - cardHeight) * 0.5f));
+    ImVec4 opaqueCardColor = ColorMap.at("card");
+    opaqueCardColor.w = 1.0f;
+    ImGui::SetCursorPos(cardPos);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(cardPaddingX, cardPaddingY));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, cardRounding);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f * scalingFactor);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, opaqueCardColor);
+    ImGui::PushStyleColor(ImGuiCol_Border, ColorMap.at("border"));
+
+    const std::string hintChildLabel = "##empty_flowgraph_hint_" + flowgraphId;
+    const ImGuiWindowFlags hintChildFlags = ImGuiWindowFlags_NoScrollbar |
+                                            ImGuiWindowFlags_NoScrollWithMouse |
+                                            ImGuiWindowFlags_NoSavedSettings |
+                                            ImGuiWindowFlags_NoNav |
+                                            ImGuiWindowFlags_NoMove |
+                                            ImGuiWindowFlags_NoInputs;
+    if (ImGui::BeginChild(hintChildLabel.c_str(), ImVec2(cardWidth, cardHeight), ImGuiChildFlags_Borders, hintChildFlags)) {
+        const ImVec2 cardInnerStart = ImGui::GetCursorStartPos();
+        const float cardInnerWidth = ImGui::GetContentRegionAvail().x;
+        const auto centerNextItem = [&](float itemWidth) {
+            ImGui::SetCursorPosX(std::floor(cardInnerStart.x + (cardInnerWidth - itemWidth) * 0.5f));
+        };
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        centerNextItem(iconSize.x);
+        ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x,
+                                ImGui::GetCursorScreenPos().y);
+        drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos,
+                          ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), iconText);
+        ImGui::Dummy(ImVec2(0, iconSize.y + 12.0f * scalingFactor));
+
+        ImGui::PushFont(h2Font, titleFontSize);
+        centerNextItem(titleSize.x);
+        ImGui::TextUnformatted(title);
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_secondary"));
+        centerNextItem(subtitleSize.x);
+        ImGui::TextUnformatted(subtitle);
+        ImGui::PopStyleColor();
+
+        ImGui::Dummy(ImVec2(0, 24.0f * scalingFactor));
+
+        centerNextItem(instructionWidth);
+        ImGui::BeginGroup();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth + instructionWrapSlack);
+        for (const auto& inst : instructions) {
+            ImGui::BeginGroup();
+            ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("cyber_blue"));
+            ImDrawList* instDrawList = ImGui::GetWindowDrawList();
+            const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+            const float rowHeight = instructionRowHeight(inst);
+            const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+            const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+            ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+            cursorPos.y += (rowHeight - numberSize.y) * 0.5f;
+            instDrawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
+                                  ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
+            ImGui::Dummy(ImVec2(numberSize.x + instructionNumberGap, rowHeight));
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (rowHeight - textSize.y) * 0.5f + 1.0f * scalingFactor);
+            ImGui::TextUnformatted(inst.text);
+            ImGui::EndGroup();
+            ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+        }
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+
+        ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_disabled"));
+        centerNextItem(tipSize.x);
+        ImGui::TextUnformatted(tipText.c_str());
+        ImGui::PopStyleColor();
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3);
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::renderEmptyStackHint(const std::string& flowgraphId, const std::string& stackId, ImGuiID dockspaceId) {
+    const std::string stackKey = flowgraphId + ":" + stackId;
+
+    ImGuiDockNode* dockNode = ImGui::DockBuilderGetNode(dockspaceId);
+    if (!dockNode) {
+        return Result::SUCCESS;
+    }
+
+    const auto hasDockedWindows = [&](const auto& self, const ImGuiDockNode* node) -> bool {
+        if (!node) {
+            return false;
+        }
+        if (node->Windows.Size > 0) {
+            return true;
+        }
+        return self(self, node->ChildNodes[0]) || self(self, node->ChildNodes[1]);
+    };
+
+    if (hasDockedWindows(hasDockedWindows, dockNode)) {
+        return Result::SUCCESS;
+    }
+
+    static constexpr const char* tips[] = {
+        "Drag a surface tab into this stack to dock it.",
+        "Split the stack by dragging a surface to the edge.",
+        "Stacks sync with your flowgraph.",
+    };
+    const int tipCount = sizeof(tips) / sizeof(tips[0]);
+
+    const float baseFontSize = ImGui::GetFontSize();
+    const float iconFontSize = baseFontSize * 2.5f;
+    const char* iconText = ICON_FA_LAYER_GROUP;
+    const ImVec2 iconSize = ImGui::GetFont()->CalcTextSizeA(iconFontSize, FLT_MAX, 0.0f, iconText);
+
+    const char* title = "Arrange Your Stack";
+    const float titleFontSize = ImGui::GetFontSize() * 1.2f;
+    const ImVec2 titleSize = h2Font->CalcTextSizeA(titleFontSize, FLT_MAX, 0.0f, title);
+
+    const char* subtitle = "Drag surfaces into this stack to create your layout";
+    const ImVec2 subtitleSize = ImGui::CalcTextSize(subtitle);
+
+    struct Instruction {
+        const char* number;
+        const char* text;
+    };
+
+    Instruction instructions[] = {
+        {"1.", "Detach a visualization surface from the flowgraph."},
+        {"2.", "Drag the detached surface into this stack window."},
+        {"3.", "Resize and rearrange to build your layout."},
+    };
+
+    const float numberFontSize = ImGui::GetFontSize() * 1.3f;
+
+    const char* randomTip = tips[std::hash<std::string>{}(stackKey) % tipCount];
+    std::string tipText = std::string("Tip: ") + randomTip;
+    const ImVec2 tipSize = ImGui::CalcTextSize(tipText.c_str());
+
+    const ImVec2 contentStart = ImGui::GetCursorStartPos();
+    ImGui::SetCursorPos(contentStart);
+    const ImVec2 contentAvail = ImGui::GetContentRegionAvail();
+    const float contentWidth = contentAvail.x;
+    const float itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
+    const float instructionWidth = 320.0f * scalingFactor;
+    const float instructionWrapSlack = 12.0f * scalingFactor;
+    const float instructionNumberGap = 8.0f * scalingFactor;
+    const float instructionTextSpacing = instructionNumberGap + ImGui::GetStyle().ItemSpacing.x;
+    const auto centerNextItem = [&](float itemWidth) {
+        ImGui::SetCursorPosX(std::floor(contentStart.x + (contentWidth - itemWidth) * 0.5f));
+    };
+    const auto instructionRowHeight = [&](const Instruction& inst) {
+        const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+        const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+        const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+        return std::max(numberSize.y, textSize.y);
+    };
+    float instructionsHeight = 0.0f;
+    for (const auto& inst : instructions) {
+        instructionsHeight += instructionRowHeight(inst) + 8.0f * scalingFactor;
+    }
+    const float instructionCount = static_cast<float>(sizeof(instructions) / sizeof(instructions[0]));
+    instructionsHeight += (2.0f * instructionCount - 1.0f) * itemSpacingY;
+
+    const float contentHeight = iconSize.y +
+                                12.0f * scalingFactor +
+                                titleSize.y +
+                                8.0f * scalingFactor +
+                                subtitleSize.y +
+                                24.0f * scalingFactor +
+                                instructionsHeight +
+                                16.0f * scalingFactor +
+                                tipSize.y +
+                                7.0f * itemSpacingY;
+    const float minContentWidth = std::max(
+        std::max(iconSize.x, titleSize.x),
+        std::max(subtitleSize.x, std::max(tipSize.x, instructionWidth + instructionWrapSlack)));
+
+    if (contentWidth < minContentWidth || contentAvail.y < contentHeight) {
+        return Result::SUCCESS;
+    }
+
+    const float startY = contentStart.y + std::max(0.0f, (contentAvail.y - contentHeight) * 0.5f);
+
+    ImGui::SetCursorPos(ImVec2(contentStart.x, startY));
+
+    centerNextItem(iconSize.x);
+    ImVec2 iconPos = ImVec2(ImGui::GetCursorScreenPos().x,
+                            ImGui::GetCursorScreenPos().y);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddText(ImGui::GetFont(), iconFontSize, iconPos,
+                      ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), iconText);
+    ImGui::Dummy(ImVec2(0, iconSize.y + 12.0f * scalingFactor));
+
+    ImGui::PushFont(h2Font, titleFontSize);
+    centerNextItem(titleSize.x);
+    ImGui::TextUnformatted(title);
+    ImGui::PopFont();
+
+    ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_secondary"));
+    centerNextItem(subtitleSize.x);
+    ImGui::TextUnformatted(subtitle);
+    ImGui::PopStyleColor();
+
+    ImGui::Dummy(ImVec2(0, 24.0f * scalingFactor));
+
+    centerNextItem(instructionWidth);
+    ImGui::BeginGroup();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + instructionWidth + instructionWrapSlack);
+    for (const auto& inst : instructions) {
+        ImGui::BeginGroup();
+        ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("cyber_blue"));
+        ImDrawList* instDrawList = ImGui::GetWindowDrawList();
+        const ImVec2 numberSize = ImGui::GetFont()->CalcTextSizeA(numberFontSize, FLT_MAX, 0.0f, inst.number);
+        const float rowHeight = instructionRowHeight(inst);
+        const float wrapWidth = std::max(1.0f, instructionWidth + instructionWrapSlack - numberSize.x - instructionTextSpacing);
+        const ImVec2 textSize = ImGui::CalcTextSize(inst.text, nullptr, false, wrapWidth);
+        ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        cursorPos.y += (rowHeight - numberSize.y) * 0.5f;
+        instDrawList->AddText(ImGui::GetFont(), numberFontSize, cursorPos,
+                              ImGui::ColorConvertFloat4ToU32(ColorMap.at("cyber_blue")), inst.number);
+        ImGui::Dummy(ImVec2(numberSize.x + instructionNumberGap, rowHeight));
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (rowHeight - textSize.y) * 0.5f + 1.0f * scalingFactor);
+        ImGui::TextUnformatted(inst.text);
+        ImGui::EndGroup();
+        ImGui::Dummy(ImVec2(0, 8.0f * scalingFactor));
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndGroup();
+
+    ImGui::Dummy(ImVec2(0, 16.0f * scalingFactor));
+    ImGui::PushStyleColor(ImGuiCol_Text, ColorMap.at("text_disabled"));
+    centerNextItem(tipSize.x);
+    ImGui::TextUnformatted(tipText.c_str());
+    ImGui::PopStyleColor();
 
     return Result::SUCCESS;
 }
@@ -3505,9 +4254,6 @@ Result DefaultCompositor::renderMenubar() {
             }
             if (ImGui::MenuItem("Rename", nullptr, false, focusedFlowgraph.has_value())) {
                 globalModalContent = InterfaceModalContent::FlowgraphInfo;
-            }
-            if (ImGui::MenuItem("Reset", nullptr, false, focusedFlowgraph.has_value())) {
-                enqueue(MailResetFlowgraph{focusedFlowgraph.value()});
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Open Examples", nullptr, false, true)) {
@@ -3628,36 +4374,46 @@ Result DefaultCompositor::renderToolbar() {
                 }
                 ImGui::SameLine();
 
-                if (ImGui::Button(ICON_FA_ERASER " Reset")) {
-                    enqueue(MailResetFlowgraph{focusedFlowgraph.value()});
-                }
-                ImGui::SameLine();
-
                 if (ImGui::Button(ICON_FA_CIRCLE_INFO " Info")) {
                     globalModalContent = InterfaceModalContent::FlowgraphInfo;
                 }
                 ImGui::SameLine();
 
                 if (ImGui::Button(ICON_FA_LAYER_GROUP " New Stack")) {
-                    stacks[jst::fmt::format("Stack {}", stacks.size())] = {true, 0};
+                    auto& stackStates = flowgraphStacks[focusedFlowgraph.value()];
+                    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+                    std::size_t stackIndex = stackStates.size();
+                    std::string stackId = jst::fmt::format("stack_{}", stackIndex);
+
+                    while (stackStates.contains(stackId)) {
+                        stackId = jst::fmt::format("stack_{}", ++stackIndex);
+                    }
+
+                    StackWindowState stackState;
+                    stackState.meta.title = jst::fmt::format("Stack {}", stackIndex);
+                    stackState.meta.x = (viewport->Pos.x + 40.0f * scalingFactor) / scalingFactor;
+                    stackState.meta.y = (viewport->Pos.y + currentHeight + 40.0f * scalingFactor) / scalingFactor;
+                    stackState.dockInMainTabBar = true;
+                    stackStates[stackId] = std::move(stackState);
+                    JST_CHECK(helperSyncFlowgraphStacks(focusedFlowgraph.value()));
+                }
+                ImGui::SameLine();
+
+                if (ImGui::Button(ICON_FA_CUBE " Add Block")) {
+                    const ImVec2 buttonMin = ImGui::GetItemRectMin();
+                    const ImVec2 buttonMax = ImGui::GetItemRectMax();
+                    ImVec2 blockScreenPosition = ImGui::GetMainViewport()->GetCenter();
+
+                    if (flowgraphViewportCenters.contains(focusedFlowgraph.value())) {
+                        blockScreenPosition = flowgraphViewportCenters.at(focusedFlowgraph.value());
+                    }
+
+                    helperOpenBlockPicker(focusedFlowgraph.value(),
+                                          ImVec2(buttonMin.x, buttonMax.y + 6.0f * scalingFactor),
+                                          blockScreenPosition);
                 }
                 ImGui::SameLine();
             }
-
-#ifdef JST_OS_BROWSER
-            ImGui::Dummy(ImVec2(5.0f, 0.0f));
-            ImGui::SameLine();
-
-            if (ImGui::Button(ICON_FA_PLUG " Connect WebUSB Device")) {
-                if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
-                    ImGui::InsertNotification({ ImGuiToastType_Error, 10000, "This browser is not compatible with WebUSB. "
-                                                                             "Try a Chromium based browser like Chrome, Brave, or Opera GX." });
-                } else {
-                    EM_ASM({  openUsbDevice(); });
-                }
-            }
-            ImGui::SameLine();
-#endif
 
             ImGui::PopStyleVar();
         }
@@ -3713,7 +4469,7 @@ Result DefaultCompositor::renderGlobalModal() {
             ImGui::Spacing();
             ImGui::Spacing();
             CenterLine("MIT Licensed", nullptr, 1.0f, textColor);
-            CenterLine("Copyright (c) 2021-2025 Luigi F. Cruz", nullptr, 1.0f, textColor);
+            CenterLine("Copyright (c) 2021-2026 Luigi F. Cruz", nullptr, 1.0f, textColor);
             CenterLine(jst::fmt::format("v{}-{}", JETSTREAM_VERSION_STR,
                                                   JETSTREAM_BUILD_TYPE).c_str(), nullptr, 1.0f, textColor);
             ImGui::Spacing();
@@ -4068,7 +4824,7 @@ Result DefaultCompositor::renderGlobalModal() {
 
             ImGui::Spacing();
 
-            ImGui::Text("Copyright (c) 2021-2025 Luigi F. Cruz");
+            ImGui::Text("Copyright (c) 2021-2026 Luigi F. Cruz");
 
             ImGui::Spacing();
 
@@ -4747,6 +5503,9 @@ Result DefaultCompositor::helperSaveFlowgraph(const std::string& flowgraph) {
         ImGui::InsertNotification({ ImGuiToastType_Error, 5000, "Cannot save flowgraph because it doesn't exist." });
         return Result::SUCCESS;
     }
+
+    JST_CHECK(helperSyncFlowgraphStacks(flowgraph));
+
     std::string path = flowgraphs.at(flowgraph)->path();
 
     if (!path.empty()) {
@@ -4775,6 +5534,509 @@ Result DefaultCompositor::helperCloseFlowgraph(const std::string& flowgraph) {
     enqueue(MailCloseFlowgraph{flowgraph});
 
     return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraphId, const std::shared_ptr<Flowgraph>& flowgraph) {
+    if (!flowgraph) {
+        return Result::ERROR;
+    }
+
+    auto& stackStates = flowgraphStacks[flowgraphId];
+    stackStates.clear();
+
+    Flowgraph::Meta serializedStacks;
+    JST_CHECK(flowgraph->getMeta("stacks", serializedStacks));
+
+    for (const auto& [stackId, encoded] : serializedStacks) {
+        if (stackId.empty()) {
+            continue;
+        }
+
+        if (encoded.type() != typeid(Parser::Map)) {
+            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid stack window metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
+            continue;
+        }
+
+        StackMeta stackMeta;
+
+        const auto result = Parser::Deserialize(serializedStacks, stackId, stackMeta);
+        if (result != Result::SUCCESS) {
+            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid stack window metadata '{}' for flowgraph '{}'.", stackId, flowgraphId);
+            continue;
+        }
+
+        if (stackMeta.title.empty()) {
+            stackMeta.title = stackId;
+        }
+
+        StackWindowState stackState;
+        stackState.meta = std::move(stackMeta);
+        stackState.restoreDockLayout = !stackState.meta.layout.empty();
+        stackState.dockInMainTabBar = true;
+        stackStates[stackId] = std::move(stackState);
+    }
+
+    JST_CHECK(helperEnsureStackedSurfacesDetached(flowgraph, stackStates));
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperEnsureStackedSurfacesDetached(const std::shared_ptr<Flowgraph>& flowgraph,
+                                                              const std::unordered_map<std::string, StackWindowState>& stackStates) {
+    if (!flowgraph) {
+        return Result::ERROR;
+    }
+
+    std::set<std::pair<std::string, std::string>> stackedSurfaces;
+
+    const auto collectLayoutItems = [&](const auto& self, const StackDockLayoutMeta& layout) -> void {
+        for (const auto& surface : layout.surfaces) {
+            if (surface.block.empty() || surface.surface.empty()) {
+                continue;
+            }
+
+            stackedSurfaces.emplace(surface.block, surface.surface);
+        }
+
+        for (const auto& [_, childLayout] : layout.children) {
+            self(self, childLayout);
+        }
+    };
+
+    for (const auto& [_, stackState] : stackStates) {
+        for (const auto& [_, layout] : stackState.meta.layout) {
+            collectLayoutItems(collectLayoutItems, layout);
+        }
+    }
+
+    for (const auto& [blockName, surfaceId] : stackedSurfaces) {
+        SurfaceMeta surfaceMeta;
+        JST_CHECK(flowgraph->getMeta("surface_" + surfaceId, surfaceMeta, blockName));
+
+        if (surfaceMeta.detached) {
+            continue;
+        }
+
+        surfaceMeta.detached = true;
+        JST_CHECK(flowgraph->setMeta("surface_" + surfaceId, surfaceMeta, blockName));
+    }
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperSyncFlowgraphStacks(const std::string& flowgraphId) {
+    if (!flowgraphs.contains(flowgraphId)) {
+        return Result::ERROR;
+    }
+
+    std::unordered_map<std::string, StackMeta> serializedStacks;
+
+    if (flowgraphStacks.contains(flowgraphId)) {
+        for (auto& [stackId, state] : flowgraphStacks.at(flowgraphId)) {
+            if (stackId.empty() || !state.enabled) {
+                continue;
+            }
+
+            JST_CHECK(helperCaptureStackWindowLayout(flowgraphId, state));
+
+            serializedStacks[stackId] = state.meta;
+            if (serializedStacks.at(stackId).title.empty()) {
+                serializedStacks.at(stackId).title = stackId;
+            }
+        }
+    }
+
+    return flowgraphs.at(flowgraphId)->setMeta("stacks", serializedStacks);
+}
+
+Result DefaultCompositor::helperBuildStackWindowItems(const std::string& flowgraphId,
+                                                      std::unordered_map<std::string, StackWindowItemState>& itemsByKey) const {
+    itemsByKey.clear();
+
+    if (flowgraphs.contains(flowgraphId)) {
+        StackWindowItemState flowgraphItem;
+        flowgraphItem.meta.kind = "flowgraph";
+        flowgraphItem.windowLabel = helperMakeFlowgraphWindowLabel(flowgraphId);
+        itemsByKey["flowgraph"] = std::move(flowgraphItem);
+    }
+
+    if (!flowgraphs.contains(flowgraphId) || !blocksCache.contains(flowgraphId)) {
+        return Result::SUCCESS;
+    }
+
+    for (const auto& [blockName, blockPtr] : blocksCache.at(flowgraphId)) {
+        if (!blockPtr ||
+            !blockPtr->interface() ||
+            blockPtr->state() == Block::State::Destroying ||
+            blockPtr->state() == Block::State::Destroyed) {
+            continue;
+        }
+
+        for (const auto& surface : blockPtr->surfaces()) {
+            for (const auto& manifest : surface->manifests()) {
+                const std::string itemKey = jst::fmt::format("surface:{}:{}", blockName, manifest.id);
+
+                StackWindowItemState itemState;
+                itemState.meta.kind = "surface";
+                itemState.meta.block = blockName;
+                itemState.meta.surface = manifest.id;
+                itemState.windowLabel = helperMakeDetachedSurfaceWindowLabel(flowgraphId,
+                                                                             blockName,
+                                                                             manifest.id,
+                                                                             blockPtr->config().title());
+                itemsByKey[itemKey] = std::move(itemState);
+            }
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperCaptureStackWindowLayout(const std::string& flowgraphId, StackWindowState& stackState) const {
+    if (!stackState.dockspaceId) {
+        return Result::SUCCESS;
+    }
+
+    ImGuiDockNode* rootNode = ImGui::DockBuilderGetNode(stackState.dockspaceId);
+    if (!rootNode) {
+        return Result::SUCCESS;
+    }
+
+    std::unordered_map<std::string, StackWindowItemState> itemsByKey;
+    JST_CHECK(helperBuildStackWindowItems(flowgraphId, itemsByKey));
+
+    std::unordered_map<std::string, std::string> itemKeysByWindowLabel;
+    for (const auto& [itemKey, itemState] : itemsByKey) {
+        itemKeysByWindowLabel[itemState.windowLabel] = itemKey;
+    }
+
+    const auto captureNode = [&](const auto& self, const ImGuiDockNode* dockNode, StackDockLayoutMeta& out) -> bool {
+        if (!dockNode) {
+            return false;
+        }
+
+        out = {};
+
+        if (dockNode->ChildNodes[0] && dockNode->ChildNodes[1]) {
+            const ImGuiDockNode* primaryChild = dockNode->ChildNodes[0];
+            const ImGuiDockNode* secondaryChild = dockNode->ChildNodes[1];
+            const auto resolveAxisSize = [](const ImGuiDockNode* node, ImGuiAxis axis) {
+                if (!node) {
+                    return 0.0f;
+                }
+
+                const float sizeRef = (axis == ImGuiAxis_X) ? node->SizeRef.x : node->SizeRef.y;
+                if (sizeRef > 0.0f) {
+                    return sizeRef;
+                }
+
+                return (axis == ImGuiAxis_X) ? node->Size.x : node->Size.y;
+            };
+
+            if (dockNode->SplitAxis == ImGuiAxis_X) {
+                if (secondaryChild->Pos.x < primaryChild->Pos.x) {
+                    std::swap(primaryChild, secondaryChild);
+                }
+
+                out.direction = "left";
+                const float primarySize = resolveAxisSize(primaryChild, ImGuiAxis_X);
+                const float secondarySize = resolveAxisSize(secondaryChild, ImGuiAxis_X);
+                const float totalSize = primarySize + secondarySize;
+                out.ratio = (totalSize > 0.0f) ? (primarySize / totalSize) : 0.5f;
+            } else if (dockNode->SplitAxis == ImGuiAxis_Y) {
+                if (secondaryChild->Pos.y < primaryChild->Pos.y) {
+                    std::swap(primaryChild, secondaryChild);
+                }
+
+                out.direction = "up";
+                const float primarySize = resolveAxisSize(primaryChild, ImGuiAxis_Y);
+                const float secondarySize = resolveAxisSize(secondaryChild, ImGuiAxis_Y);
+                const float totalSize = primarySize + secondarySize;
+                out.ratio = (totalSize > 0.0f) ? (primarySize / totalSize) : 0.5f;
+            }
+
+            StackDockLayoutMeta primaryLayout;
+            StackDockLayoutMeta secondaryLayout;
+            const bool hasPrimary = self(self, primaryChild, primaryLayout);
+            const bool hasSecondary = self(self, secondaryChild, secondaryLayout);
+
+            if (hasPrimary && hasSecondary && !out.direction.empty()) {
+                out.ratio = std::clamp(out.ratio, 0.05f, 0.95f);
+                out.children["primary"] = std::move(primaryLayout);
+                out.children["secondary"] = std::move(secondaryLayout);
+                return true;
+            }
+
+            if (hasPrimary) {
+                out = std::move(primaryLayout);
+                return true;
+            }
+
+            if (hasSecondary) {
+                out = std::move(secondaryLayout);
+                return true;
+            }
+        }
+
+        std::vector<std::string> orderedItemKeys;
+        std::set<std::string> seenItemKeys;
+        out.ratio = 0.0f;
+
+        const auto appendWindow = [&](const ImGuiWindow* window) {
+            if (!window) {
+                return;
+            }
+
+            const auto itemKeyIt = itemKeysByWindowLabel.find(window->Name);
+            if (itemKeyIt == itemKeysByWindowLabel.end()) {
+                return;
+            }
+
+            if (!seenItemKeys.insert(itemKeyIt->second).second) {
+                return;
+            }
+
+            orderedItemKeys.push_back(itemKeyIt->second);
+        };
+
+        if (dockNode->TabBar && !dockNode->TabBar->Tabs.empty()) {
+            for (const auto& tab : dockNode->TabBar->Tabs) {
+                appendWindow(tab.Window);
+            }
+        } else {
+            for (int windowIndex = 0; windowIndex < dockNode->Windows.Size; ++windowIndex) {
+                appendWindow(dockNode->Windows[windowIndex]);
+            }
+        }
+
+        U64 order = 0;
+        for (const auto& itemKey : orderedItemKeys) {
+            auto itemMeta = itemsByKey.at(itemKey).meta;
+            itemMeta.order = order++;
+
+            if (itemMeta.kind == "flowgraph") {
+                out.flowgraphs.push_back({.order = itemMeta.order});
+                continue;
+            }
+
+            if (itemMeta.kind == "surface" && !itemMeta.block.empty() && !itemMeta.surface.empty()) {
+                out.surfaces.push_back({
+                    .block = itemMeta.block,
+                    .surface = itemMeta.surface,
+                    .order = itemMeta.order,
+                });
+            }
+        }
+
+        return !out.flowgraphs.empty() || !out.surfaces.empty();
+    };
+
+    stackState.meta.layout.clear();
+
+    StackDockLayoutMeta rootLayout;
+    if (captureNode(captureNode, rootNode, rootLayout)) {
+        stackState.meta.layout["root"] = std::move(rootLayout);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result DefaultCompositor::helperRestoreStackWindowLayout(const std::string& flowgraphId,
+                                                         const StackWindowState& stackState,
+                                                         const ImVec2& windowPos,
+                                                         const ImVec2& windowSize) const {
+    if (!stackState.dockspaceId || stackState.meta.layout.empty()) {
+        return Result::SUCCESS;
+    }
+
+    auto rootLayoutIt = stackState.meta.layout.find("root");
+    if (rootLayoutIt == stackState.meta.layout.end()) {
+        rootLayoutIt = stackState.meta.layout.begin();
+        if (rootLayoutIt == stackState.meta.layout.end()) {
+            return Result::SUCCESS;
+        }
+    }
+
+    const auto directionFromString = [](const std::string& direction) {
+        if (direction == "left") {
+            return ImGuiDir_Left;
+        }
+        if (direction == "right") {
+            return ImGuiDir_Right;
+        }
+        if (direction == "up") {
+            return ImGuiDir_Up;
+        }
+        if (direction == "down") {
+            return ImGuiDir_Down;
+        }
+        return ImGuiDir_None;
+    };
+
+    const auto resolveWindowLabel = [&](const StackDockItemMeta& itemMeta) -> std::string {
+        if (itemMeta.kind == "flowgraph") {
+            return helperMakeFlowgraphWindowLabel(flowgraphId);
+        }
+
+        if (itemMeta.kind != "surface" || itemMeta.block.empty() || itemMeta.surface.empty()) {
+            return {};
+        }
+
+        std::string blockTitle = itemMeta.block;
+
+        if (blocksCache.contains(flowgraphId)) {
+            const auto& blocks = blocksCache.at(flowgraphId);
+            const auto blockIt = blocks.find(itemMeta.block);
+            if (blockIt != blocks.end() && blockIt->second) {
+                const auto configuredTitle = blockIt->second->config().title();
+                if (!configuredTitle.empty()) {
+                    blockTitle = configuredTitle;
+                }
+            }
+        }
+
+        return helperMakeDetachedSurfaceWindowLabel(flowgraphId, itemMeta.block, itemMeta.surface, blockTitle);
+    };
+
+    const auto restoreNode = [&](const auto& self, ImGuiID nodeId, const StackDockLayoutMeta& layout) -> void {
+        auto primaryIt = layout.children.find("primary");
+        auto secondaryIt = layout.children.find("secondary");
+
+        if (primaryIt != layout.children.end() && secondaryIt != layout.children.end()) {
+            const ImGuiDir dockDirection = directionFromString(layout.direction);
+            if (dockDirection != ImGuiDir_None) {
+                ImGuiID primaryNodeId = 0;
+                ImGuiID secondaryNodeId = 0;
+                const float ratio = (layout.ratio > 0.0f) ? layout.ratio : 0.5f;
+
+                ImGui::DockBuilderSplitNode(nodeId,
+                                            dockDirection,
+                                            std::clamp(ratio, 0.05f, 0.95f),
+                                            &primaryNodeId,
+                                            &secondaryNodeId);
+
+                self(self, primaryNodeId, primaryIt->second);
+                self(self, secondaryNodeId, secondaryIt->second);
+                return;
+            }
+        }
+
+        if (primaryIt != layout.children.end() && layout.children.size() == 1) {
+            self(self, nodeId, primaryIt->second);
+            return;
+        }
+
+        if (secondaryIt != layout.children.end() && layout.children.size() == 1) {
+            self(self, nodeId, secondaryIt->second);
+            return;
+        }
+
+        std::vector<std::pair<U64, std::string>> orderedWindows;
+        orderedWindows.reserve(layout.flowgraphs.size() + layout.surfaces.size());
+
+        for (const auto& flowgraph : layout.flowgraphs) {
+            StackDockItemMeta itemMeta;
+            itemMeta.kind = "flowgraph";
+            itemMeta.order = flowgraph.order;
+
+            const auto windowLabel = resolveWindowLabel(itemMeta);
+            if (windowLabel.empty()) {
+                continue;
+            }
+
+            orderedWindows.emplace_back(itemMeta.order, windowLabel);
+        }
+
+        for (const auto& surface : layout.surfaces) {
+            if (surface.block.empty() || surface.surface.empty()) {
+                continue;
+            }
+
+            StackDockItemMeta itemMeta;
+            itemMeta.kind = "surface";
+            itemMeta.block = surface.block;
+            itemMeta.surface = surface.surface;
+            itemMeta.order = surface.order;
+
+            const auto windowLabel = resolveWindowLabel(itemMeta);
+            if (windowLabel.empty()) {
+                continue;
+            }
+
+            orderedWindows.emplace_back(itemMeta.order, windowLabel);
+        }
+
+        std::sort(orderedWindows.begin(), orderedWindows.end(), [](const auto& lhs, const auto& rhs) {
+            if (lhs.first != rhs.first) {
+                return lhs.first < rhs.first;
+            }
+
+            return lhs.second < rhs.second;
+        });
+
+        for (const auto& [_, windowLabel] : orderedWindows) {
+            ImGui::DockBuilderDockWindow(windowLabel.c_str(), nodeId);
+        }
+    };
+
+    ImGui::DockBuilderRemoveNode(stackState.dockspaceId);
+    ImGui::DockBuilderAddNode(stackState.dockspaceId, ImGuiDockNodeFlags_DockSpace);
+    ImGui::DockBuilderSetNodePos(stackState.dockspaceId, windowPos);
+    ImGui::DockBuilderSetNodeSize(stackState.dockspaceId, windowSize);
+    restoreNode(restoreNode, stackState.dockspaceId, rootLayoutIt->second);
+    ImGui::DockBuilderFinish(stackState.dockspaceId);
+
+    return Result::SUCCESS;
+}
+
+std::string DefaultCompositor::helperMakeFlowgraphWindowLabel(const std::string& flowgraphId) const {
+    const auto flowgraphIt = flowgraphs.find(flowgraphId);
+    const bool hasCustomTitle = flowgraphIt != flowgraphs.end() &&
+                                flowgraphIt->second &&
+                                !flowgraphIt->second->title().empty();
+    const std::string title = hasCustomTitle ? flowgraphIt->second->title() : flowgraphId;
+    return jst::fmt::format("{}###{}", title, flowgraphId);
+}
+
+std::string DefaultCompositor::helperMakeDetachedSurfaceWindowId(const std::string& flowgraphId,
+                                                                 const std::string& blockName,
+                                                                 const std::string& surfaceId) const {
+    return jst::fmt::format("{}:{}:{}", flowgraphId, blockName, surfaceId);
+}
+
+std::string DefaultCompositor::helperMakeDetachedSurfaceWindowLabel(const std::string& flowgraphId,
+                                                                    const std::string& blockName,
+                                                                    const std::string& surfaceId,
+                                                                    const std::string& blockTitle) const {
+    const std::string resolvedBlockTitle = blockTitle.empty() ? blockName : blockTitle;
+    return jst::fmt::format("{} ({})###{}",
+                            resolvedBlockTitle,
+                            blockName,
+                            helperMakeDetachedSurfaceWindowId(flowgraphId, blockName, surfaceId));
+}
+
+std::string DefaultCompositor::helperMakeStackWindowLabel(const std::string& flowgraphId,
+                                                          const std::string& stackId,
+                                                          const StackMeta& stackMeta) const {
+    const std::string title = stackMeta.title.empty() ? stackId : stackMeta.title;
+    return jst::fmt::format("{}###stack:{}:{}", title, flowgraphId, stackId);
+}
+
+void DefaultCompositor::helperOpenBlockPicker(const std::string& flowgraphId,
+                                              const ImVec2& pickerScreenPosition,
+                                              const ImVec2& blockScreenPosition) {
+    blockPicker.active = true;
+    blockPicker.flowgraphId = flowgraphId;
+    blockPicker.screenPosition = pickerScreenPosition;
+    blockPicker.searchBuffer[0] = '\0';
+    blockPicker.selectedIndex = 0;
+
+    blockPicker.gridPosition = blockScreenPosition;
+    if (contexts.contains(flowgraphId)) {
+        auto* previousContext = ImNodes::GetCurrentContext();
+        ImNodes::SetCurrentContext(contexts.at(flowgraphId));
+        blockPicker.gridPosition = ImNodes::ScreenSpaceToGridSpace(blockScreenPosition);
+        ImNodes::SetCurrentContext(previousContext);
+    }
 }
 
 void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) {
@@ -4811,13 +6073,13 @@ void DefaultCompositor::helperRenderLoadingBar(const ImVec4& color, F32 height) 
 void DefaultCompositor::helperSurfaceResize(const std::shared_ptr<Module::Surface>& surface,
                                             U64 width,
                                             U64 height,
-                                            F32 scalingFactor,
+                                            F32 surfaceScale,
                                             bool detached) {
     const auto& bg = ColorMap.at(detached ? "background" : "node_background");
     SurfaceEvent event;
     event.type = SurfaceEventType::Resize;
     event.size = {width, height};
-    event.scale = scalingFactor;
+    event.scale = surfaceScale;
     event.backgroundColor = {bg.x, bg.y, bg.z, bg.w};
     surface->pushSurfaceEvent(event);
 }
@@ -4829,16 +6091,25 @@ bool DefaultCompositor::helperCheckSurfaceResize(const std::shared_ptr<Module::S
                                                  U64& storedHeight,
                                                  F32 scalingFactor,
                                                  bool detached) {
+    if (availableRegion.x <= 0.0f || availableRegion.y <= 0.0f) {
+        return false;
+    }
+
     const U64 newWidth = static_cast<U64>(availableRegion.x / scalingFactor);
     const U64 newHeight = static_cast<U64>(availableRegion.y / scalingFactor);
     const U64 expectedWidth = static_cast<U64>(availableRegion.x * ImGui::GetIO().DisplayFramebufferScale.x);
     const U64 expectedHeight = static_cast<U64>(availableRegion.y * ImGui::GetIO().DisplayFramebufferScale.y);
+    const F32 surfaceScale = scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f;
+
+    if (newWidth == 0 || newHeight == 0 || expectedWidth == 0 || expectedHeight == 0) {
+        return false;
+    }
 
     if (storedWidth != newWidth || storedHeight != newHeight ||
         manifest.size.x != expectedWidth || manifest.size.y != expectedHeight) {
         storedWidth = newWidth;
         storedHeight = newHeight;
-        helperSurfaceResize(surface, expectedWidth, expectedHeight, scalingFactor, detached);
+        helperSurfaceResize(surface, expectedWidth, expectedHeight, surfaceScale, detached);
         return true;
     }
     return false;
@@ -5072,6 +6343,7 @@ void DefaultCompositor::ImGuiStyleSetup() {
 }
 
 void DefaultCompositor::ImGuiStyleScale() {
+    const auto& scalingFactor = render->scalingFactor();
     auto& style = ImGui::GetStyle();
 
     // Main
@@ -5081,9 +6353,9 @@ void DefaultCompositor::ImGuiStyleScale() {
     style.ItemInnerSpacing                  = ImVec2(8.00f, 6.00f);
     style.TouchExtraPadding                 = ImVec2(0.00f, 0.00f);
     style.CellPadding                       = ImVec2(6.00f, 4.00f);
-    style.IndentSpacing                     = 20;
-    style.ScrollbarSize                     = 12;
-    style.GrabMinSize                       = 12;
+    style.IndentSpacing                     = 20.0f;
+    style.ScrollbarSize                     = 12.0f;
+    style.GrabMinSize                       = 12.0f;
 
     // Borders
     style.WindowBorderSize                  = 0.5f;
@@ -5094,7 +6366,7 @@ void DefaultCompositor::ImGuiStyleScale() {
     style.TabBarBorderSize                  = 1.0f;
 
     // Rounding
-    style.WindowRounding                    = 18.0f;
+    style.WindowRounding                    = 12.0f;
     style.ChildRounding                     = 0.0f;
     style.FrameRounding                     = 6.0f;
     style.PopupRounding                     = 18.0f;
@@ -5108,6 +6380,8 @@ void DefaultCompositor::ImGuiStyleScale() {
 
     // Tessellation
     style.CircleTessellationMaxError        = 0.1f;
+
+    style.ScaleAllSizes(scalingFactor);
 }
 
 //
@@ -5135,7 +6409,7 @@ void DefaultCompositor::ImNodesStyleSetup() {
 void DefaultCompositor::ImNodesStyleScale() {
     const auto& scalingFactor = render->scalingFactor();
     auto& style = ImNodes::GetStyle();
-    style.NodePadding               = ImVec2(6.0f * scalingFactor,  6.0f * scalingFactor);
+    style.NodePadding               = ImVec2(8.0f * scalingFactor,  8.0f * scalingFactor);
     style.PinCircleRadius           = 4.0f  * scalingFactor;
     style.GridSpacing               = 23.0f * scalingFactor;
     style.NodeBorderThickness       = 2.0f  * scalingFactor;
@@ -5473,8 +6747,10 @@ Result DefaultCompositor::renderDetachedSurfaces() {
                         continue;
                     }
 
-                    const std::string windowId = flowgraphId + ":" + blockName + ":" + manifest.id;
-                    const std::string windowTitle = jst::fmt::format("{} ({})###{}", blockPtr->config().title(), blockName, windowId);
+                    const std::string windowTitle = helperMakeDetachedSurfaceWindowLabel(flowgraphId,
+                                                                                         blockName,
+                                                                                         manifest.id,
+                                                                                         blockPtr->config().title());
 
                     ImGui::SetNextWindowSize(ImVec2(static_cast<float>(surfaceMeta.detachedWidth) * scalingFactor,
                                                     static_cast<float>(surfaceMeta.detachedHeight) * scalingFactor), ImGuiCond_FirstUseEver);
@@ -5510,7 +6786,7 @@ Result DefaultCompositor::renderDetachedSurfaces() {
                         helperSurfaceResize(surface,
                                             static_cast<U64>(surfaceMeta.attachedWidth * ImGui::GetIO().DisplayFramebufferScale.x),
                                             static_cast<U64>(surfaceMeta.attachedHeight * ImGui::GetIO().DisplayFramebufferScale.y),
-                                            scalingFactor,
+                                            scalingFactor * ImGui::GetIO().DisplayFramebufferScale.x * 0.5f,
                                             false);
                     }
                 }
@@ -5572,53 +6848,103 @@ Result DefaultCompositor::renderDocumentations() {
 Result DefaultCompositor::renderStacks() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    std::vector<std::string> stacksToRemove;
-    for (auto& [stack, state] : stacks) {
-        auto& [enabled, id] = state;
+    std::vector<std::pair<std::string, std::string>> stacksToRemove;
+    std::set<std::string> dirtyFlowgraphs;
 
-        if (!enabled) {
-            stacksToRemove.push_back(stack);
-            continue;
+    for (auto& [flowgraphId, stackStates] : flowgraphStacks) {
+        for (auto& [stackId, stackState] : stackStates) {
+            auto& stackMeta = stackState.meta;
+            auto& enabled = stackState.enabled;
+            auto& id = stackState.dockspaceId;
+            const std::string stackWindowLabel = helperMakeStackWindowLabel(flowgraphId, stackId, stackMeta);
+
+            if (!enabled) {
+                stacksToRemove.emplace_back(flowgraphId, stackId);
+                dirtyFlowgraphs.insert(flowgraphId);
+                continue;
+            }
+
+            ImGuiWindowClass windowClass;
+            windowClass.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoWindowMenuButton;
+            ImGui::SetNextWindowClass(&windowClass);
+
+            ImGui::SetNextWindowPos(ImVec2(stackMeta.x * scalingFactor, stackMeta.y * scalingFactor), ImGuiCond_Appearing);
+
+            ImGuiWindowFlags stackWindowFlags = 0;
+            if (stackState.dockInMainTabBar) {
+                stackWindowFlags |= ImGuiWindowFlags_NoFocusOnAppearing;
+                stackWindowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
+            }
+
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowDockID(mainDockspaceID,
+                                       stackState.dockInMainTabBar ? ImGuiCond_Always : ImGuiCond_Appearing);
+            ImGui::SetNextWindowSize(ImVec2(stackMeta.width * scalingFactor, stackMeta.height * scalingFactor), ImGuiCond_Appearing);
+            ImGui::Begin(stackWindowLabel.c_str(), &enabled, stackWindowFlags);
+            ImGui::PopStyleVar();
+
+            if (stackState.dockInMainTabBar) {
+                ImGui::DockBuilderDockWindow(stackWindowLabel.c_str(), mainDockspaceID);
+                ImGui::DockBuilderFinish(mainDockspaceID);
+                stackState.dockInMainTabBar = false;
+            }
+
+            bool isDockNew = false;
+
+            if (!id) {
+                isDockNew = true;
+                id = ImGui::GetID(jst::fmt::format("##Stack{}:{}", flowgraphId, stackId).c_str());
+            }
+
+            const ImVec2 windowPos = ImGui::GetWindowPos();
+            const ImVec2 windowSize = ImGui::GetWindowSize();
+            stackMeta.x = windowPos.x / scalingFactor;
+            stackMeta.y = windowPos.y / scalingFactor;
+            stackMeta.width = windowSize.x / scalingFactor;
+            stackMeta.height = windowSize.y / scalingFactor;
+
+            ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+
+            if (stackState.restoreDockLayout) {
+                JST_CHECK(helperRestoreStackWindowLayout(flowgraphId, stackState, windowPos, windowSize));
+                stackState.restoreDockLayout = false;
+            } else if (isDockNew && stackId == "Graph") {
+                ImGuiID dock_id_main;
+
+                ImGui::DockBuilderRemoveNode(id);
+                ImGui::DockBuilderAddNode(id);
+                ImGui::DockBuilderSetNodePos(id, ImVec2(viewport->Pos.x, currentHeight));
+                ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
+
+                dock_id_main = id;
+                ImGui::DockBuilderDockWindow(helperMakeFlowgraphWindowLabel(flowgraphId).c_str(), dock_id_main);
+
+                ImGui::DockBuilderFinish(id);
+            }
+
+            if (stackId != "Graph") {
+                JST_CHECK(renderEmptyStackHint(flowgraphId, stackId, id));
+            }
+
+            ImGui::End();
+
+            if (!enabled) {
+                stacksToRemove.emplace_back(flowgraphId, stackId);
+                dirtyFlowgraphs.insert(flowgraphId);
+            }
         }
-
-        ImGuiWindowClass windowClass;
-        windowClass.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoWindowMenuButton;
-        ImGui::SetNextWindowClass(&windowClass);
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::SetNextWindowDockID(mainDockspaceID, ImGuiCond_Appearing);
-        ImGui::SetNextWindowSize(ImVec2(500.0f * scalingFactor, 300.0f * scalingFactor), ImGuiCond_FirstUseEver);
-        ImGui::Begin(stack.c_str(), &enabled);
-        ImGui::PopStyleVar();
-
-        bool isDockNew = false;
-
-        if (!id) {
-            isDockNew = true;
-            id = ImGui::GetID(jst::fmt::format("##Stack{}", stack).c_str());
-        }
-
-        ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
-
-        if (isDockNew && stack == "Graph") {
-            ImGuiID dock_id_main;
-
-            ImGui::DockBuilderRemoveNode(id);
-            ImGui::DockBuilderAddNode(id);
-            ImGui::DockBuilderSetNodePos(id, ImVec2(viewport->Pos.x, currentHeight));
-            ImGui::DockBuilderSetNodeSize(id, ImVec2(viewport->Size.x, viewport->Size.y - currentHeight));
-
-            dock_id_main = id;
-            ImGui::DockBuilderDockWindow("Flowgraph", dock_id_main);
-
-            ImGui::DockBuilderFinish(id);
-        }
-
-        ImGui::End();
     }
 
-    for (const auto& stack : stacksToRemove) {
-        stacks.erase(stack);
+    for (const auto& [flowgraphId, stack] : stacksToRemove) {
+        if (flowgraphStacks.contains(flowgraphId)) {
+            flowgraphStacks.at(flowgraphId).erase(stack);
+        }
+    }
+
+    for (const auto& flowgraphId : dirtyFlowgraphs) {
+        if (flowgraphs.contains(flowgraphId)) {
+            JST_CHECK(helperSyncFlowgraphStacks(flowgraphId));
+        }
     }
 
     return Result::SUCCESS;

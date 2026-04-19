@@ -15,7 +15,7 @@ namespace Jetstream::Modules {
 static constexpr F64 kPi = JST_PI;
 
 struct PskDemodImplNativeCpu : public PskDemodImpl,
-                               public Runtime::Context,
+                               public NativeCpuRuntimeContext,
                                public Scheduler::Context {
  public:
     Result create() override;

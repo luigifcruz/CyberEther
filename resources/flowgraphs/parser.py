@@ -1,15 +1,9 @@
 #!/bin/python3
 
-import glob
 import os
 import sys
 
-try:
-    import yaml
-
-    YAML_AVAILABLE = True
-except ImportError:
-    YAML_AVAILABLE = False
+import yaml
 
 
 def yml_to_header(path, output, inputs):
@@ -31,15 +25,10 @@ def yml_to_header(path, output, inputs):
             filename = os.path.basename(file).split(".")[0]
 
             with open(os.path.join(path, file), "r") as yml_file:
-                if YAML_AVAILABLE:
-                    yml_content = yaml.safe_load(yml_file)
-                    title = yml_content.get("title", filename)
-                    summary = yml_content.get("summary", "No summary.")
-                    description = yml_content.get("description", "No description.")
-                else:
-                    title = filename
-                    summary = "No summary."
-                    description = "No description."
+                yml_content = yaml.safe_load(yml_file)
+                title = yml_content.get("title", filename)
+                summary = yml_content.get("summary", "No summary.")
+                description = yml_content.get("description", "No description.")
 
                 yml_file.seek(0)
                 content = yml_file.read().replace("\n", "\\n").replace('"', '\\"')

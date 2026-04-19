@@ -21,10 +21,11 @@
 namespace Jetstream {
 
 struct Instance::Impl {
-    bool created = false;
-    bool started = false;
-    bool computing = false;
-    bool presenting = false;
+    std::atomic<bool> created = false;
+    std::atomic<bool> started = false;
+    std::atomic<bool> computing = false;
+    std::atomic<bool> presenting = false;
+    std::atomic<bool> stopping = false;
 
     DeviceType device;
     std::shared_mutex flowgraphsMutex;
@@ -47,7 +48,7 @@ Instance::~Instance() {
 
 Result Instance::create(const Config& config) {
     JST_INFO("[INSTANCE] Creating instance.");
-    JST_ASSERT(!impl->created, "[INSTANCE] Instance already created.");
+    JST_ASSERT(!impl->created.load(), "[INSTANCE] Instance already created.");
 
     // Choose optimal device.
 
@@ -71,7 +72,9 @@ Result Instance::create(const Config& config) {
             .size = config.size,
             .framerate = config.framerate,
         };
-        auto renderConfig = Render::Window::Config {};
+        auto renderConfig = Render::Window::Config {
+            .scale = config.scale,
+        };
 
         auto buildGlfw = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
@@ -165,16 +168,17 @@ Result Instance::create(const Config& config) {
 
     impl->remote = std::make_shared<Remote>(impl->viewport.get());
 
-    impl->created = true;
+    impl->stopping.store(false);
+    impl->created.store(true);
     return Result::SUCCESS;
 }
 
 Result Instance::destroy() {
     JST_INFO("[INSTANCE] Destroying instance.");
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
-    for (const auto& [_, flowgraph] : impl->flowgraphs) {
-        JST_CHECK(flowgraph->destroy());
+    if (impl->started.load()) {
+        JST_CHECK(stop());
     }
 
     if (impl->remote && impl->remote->started()) {
@@ -183,6 +187,17 @@ Result Instance::destroy() {
 
     if (impl->compositor) {
         JST_CHECK(impl->compositor->destroy());
+        impl->compositor.reset();
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<Flowgraph>> flowgraphs;
+    {
+        std::unique_lock lock(impl->flowgraphsMutex);
+        flowgraphs.swap(impl->flowgraphs);
+    }
+
+    for (const auto& [_, flowgraph] : flowgraphs) {
+        JST_CHECK(flowgraph->destroy());
     }
 
     // Unload default fonts.
@@ -203,45 +218,84 @@ Result Instance::destroy() {
         impl->viewport.reset();
     }
 
-    impl->created = false;
+    impl->created.store(false);
     return Result::SUCCESS;
 }
 
 Result Instance::start() {
     JST_INFO("[INSTANCE] Starting instance.");
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
-    JST_ASSERT(!impl->started, "[INSTANCE] Instance already started.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    JST_ASSERT(!impl->started.load(), "[INSTANCE] Instance already started.");
 
     JST_CHECK(impl->render->start());
 
-    impl->started = true;
-    impl->computing = true;
-    impl->presenting = true;
+    std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
+    {
+        std::shared_lock lock(impl->flowgraphsMutex);
+        flowgraphs.reserve(impl->flowgraphs.size());
+        for (const auto& [_, flowgraph] : impl->flowgraphs) {
+            flowgraphs.push_back(flowgraph);
+        }
+    }
+
+    for (const auto& flowgraph : flowgraphs) {
+        JST_CHECK(flowgraph->start());
+    }
+
+    impl->started.store(true);
+    impl->computing.store(true);
+    impl->presenting.store(true);
+    impl->stopping.store(false);
 
     return Result::SUCCESS;
 }
 
 Result Instance::stop() {
     JST_INFO("[INSTANCE] Stopping instance.");
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started, "[INSTANCE] Instance not started.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+
+    impl->stopping.store(true);
+    impl->computing.store(false);
+    impl->presenting.store(false);
+
+    std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
+    {
+        std::shared_lock lock(impl->flowgraphsMutex);
+        flowgraphs.reserve(impl->flowgraphs.size());
+        for (const auto& [_, flowgraph] : impl->flowgraphs) {
+            flowgraphs.push_back(flowgraph);
+        }
+    }
+
+    for (const auto& flowgraph : flowgraphs) {
+        JST_CHECK(flowgraph->stop());
+    }
 
     JST_CHECK(impl->render->stop());
 
-    impl->started = false;
-    impl->computing = false;
-    impl->presenting = false;
+    impl->started.store(false);
 
     return Result::SUCCESS;
 }
 
 bool Instance::computing() const {
-    return impl->computing;
+    return impl->computing.load();
 }
 
 Result Instance::compute() {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started, "[INSTANCE] Instance not started.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->started.load()) {
+        if (impl->stopping.load()) {
+            return Result::SUCCESS;
+        }
+
+        JST_ASSERT(false, "[INSTANCE] Instance not started.");
+    }
 
     // Copy flowgraph pointers while holding lock, then release before compute.
 
@@ -262,12 +316,22 @@ Result Instance::compute() {
 }
 
 bool Instance::presenting() const {
-    return impl->presenting;
+    return impl->presenting.load();
 }
 
 Result Instance::present(const std::function<Result()>& callback) {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started, "[INSTANCE] Instance not started.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->started.load()) {
+        if (impl->stopping.load()) {
+            return Result::SUCCESS;
+        }
+
+        JST_ASSERT(false, "[INSTANCE] Instance not started.");
+    }
 
     // Create new render frame.
 
@@ -276,7 +340,7 @@ Result Instance::present(const std::function<Result()>& callback) {
         return Result::SUCCESS;
     }
     if (beginRes != Result::SUCCESS) {
-        impl->presenting = false;
+        impl->presenting.store(false);
         return beginRes;
     }
 
@@ -312,7 +376,7 @@ Result Instance::present(const std::function<Result()>& callback) {
         return Result::SUCCESS;
     }
     if (endRes != Result::SUCCESS) {
-        impl->presenting = false;
+        impl->presenting.store(false);
         return endRes;
     }
 
@@ -336,8 +400,18 @@ bool Instance::polling() const {
 }
 
 Result Instance::poll(const bool wait) {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
-    JST_ASSERT(impl->started, "[INSTANCE] Instance not started.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+
+    if (!impl->started.load()) {
+        if (impl->stopping.load()) {
+            return Result::SUCCESS;
+        }
+
+        JST_ASSERT(false, "[INSTANCE] Instance not started.");
+    }
 
     if (wait) {
         JST_CHECK(impl->viewport->waitEvents());
@@ -356,7 +430,7 @@ Result Instance::flowgraphCreate(const std::string name,
                                  const Flowgraph::Config& config,
                                  std::shared_ptr<Flowgraph>& flowgraph) {
     JST_INFO("[INSTANCE] Creating flowgraph.");
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
     {
         std::unique_lock lock(impl->flowgraphsMutex);
@@ -369,6 +443,15 @@ Result Instance::flowgraphCreate(const std::string name,
     flowgraph = std::make_shared<Flowgraph>();
     JST_CHECK(flowgraph->create(config, shared_from_this(), impl->render, impl->compositor));
 
+    if (impl->started.load()) {
+        const auto res = flowgraph->start();
+        if (res != Result::SUCCESS) {
+            (void)flowgraph->destroy();
+            flowgraph.reset();
+            return res;
+        }
+    }
+
     {
         std::unique_lock lock(impl->flowgraphsMutex);
         impl->flowgraphs.emplace(name, flowgraph);
@@ -379,7 +462,7 @@ Result Instance::flowgraphCreate(const std::string name,
 
 Result Instance::flowgraphDestroy(const std::string name) {
     JST_INFO("[INSTANCE] Destroying flowgraph.");
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
     std::shared_ptr<Flowgraph> fg;
 
@@ -399,7 +482,7 @@ Result Instance::flowgraphDestroy(const std::string name) {
 }
 
 Result Instance::flowgraphList(std::unordered_map<std::string, std::shared_ptr<Flowgraph>>& flowgraphs) {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
     {
         std::shared_lock lock(impl->flowgraphsMutex);
@@ -413,21 +496,21 @@ Result Instance::flowgraphList(std::unordered_map<std::string, std::shared_ptr<F
 }
 
 Result Instance::compositorGet(std::shared_ptr<Compositor>& compositor) {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
     compositor = impl->compositor;
     return Result::SUCCESS;
 }
 
 Result Instance::viewportGet(std::shared_ptr<Viewport::Generic>& viewport) {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
     viewport = impl->viewport;
     return Result::SUCCESS;
 }
 
 Result Instance::renderGet(std::shared_ptr<Render::Window>& render) {
-    JST_ASSERT(impl->created, "[INSTANCE] Instance not created.");
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
 
     render = impl->render;
     return Result::SUCCESS;

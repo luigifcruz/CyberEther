@@ -52,7 +52,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     TensorMap audioInputs;
-    audioInputs["buffer"] = {"reader", "signal", {}};
+    audioInputs["buffer"].requested("reader", "signal");
 
     REQUIRE(flowgraph->blockCreate("audio_out", "audio", {}, audioInputs) ==
             Result::SUCCESS);
@@ -89,7 +89,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     TensorMap audioInputs;
-    audioInputs["buffer"] = {"reader", "signal", {}};
+    audioInputs["buffer"].requested("reader", "signal");
 
     Parser::Map config;
     config["inSampleRate"] = std::string("0");

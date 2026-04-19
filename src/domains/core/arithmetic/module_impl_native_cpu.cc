@@ -9,8 +9,8 @@
 namespace Jetstream::Modules {
 
 struct ArithmeticImplNativeCpu : public ArithmeticImpl,
-                                public Runtime::Context,
-                                public Scheduler::Context {
+                                 public NativeCpuRuntimeContext,
+                                 public Scheduler::Context {
  public:
     Result create() final;
 

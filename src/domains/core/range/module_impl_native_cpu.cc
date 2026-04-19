@@ -9,7 +9,7 @@
 namespace Jetstream::Modules {
 
 struct RangeImplNativeCpu : public RangeImpl,
-                            public Runtime::Context,
+                            public NativeCpuRuntimeContext,
                             public Scheduler::Context {
  public:
     Result create() final;

@@ -1,0 +1,5 @@
+[wrap-file]
+directory = rapidyaml-0.11.1-src
+source_url = https://github.com/biojppm/rapidyaml/releases/download/v0.11.1/rapidyaml-0.11.1-src.tgz
+source_filename = rapidyaml-0.11.1-src.tgz
+source_hash = 9d9938269adc25e9a9b84650338b87d130cf469d82685fffc028c325279619c1

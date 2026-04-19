@@ -18,7 +18,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     Blocks::Spectrogram config;
     config.height = 128;
@@ -49,7 +49,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"] = {"src", "signal", {}};
+    inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("spectrogram", Blocks::Spectrogram(), inputs) ==
             Result::SUCCESS);

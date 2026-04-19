@@ -14,14 +14,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block creates after expand_dims"
     REQUIRE(flowgraph->blockCreate("sq_src", source, {}) == Result::SUCCESS);
 
     TensorMap expandInputs;
-    expandInputs["buffer"] = {"sq_src", "window", {}};
+    expandInputs["buffer"].requested("sq_src", "window");
     Blocks::ExpandDims expandConfig;
     expandConfig.axis = 0;
     REQUIRE(flowgraph->blockCreate("sq_expand", expandConfig, expandInputs) ==
             Result::SUCCESS);
 
     TensorMap squeezeInputs;
-    squeezeInputs["buffer"] = {"sq_expand", "buffer", {}};
+    squeezeInputs["buffer"].requested("sq_expand", "buffer");
     Blocks::SqueezeDims squeezeConfig;
     squeezeConfig.axis = 0;
     REQUIRE(flowgraph->blockCreate("sq_block", squeezeConfig, squeezeInputs) ==
@@ -35,7 +35,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block rejects non-singleton axis
     REQUIRE(flowgraph->blockCreate("sq_bad_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["buffer"] = {"sq_bad_src", "window", {}};
+    inputs["buffer"].requested("sq_bad_src", "window");
 
     Blocks::SqueezeDims config;
     config.axis = 0;

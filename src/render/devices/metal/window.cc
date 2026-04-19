@@ -78,7 +78,7 @@ Result Implementation::createImgui() {
 
     JST_CHECK(viewport->createImgui());
 
-    this->scaleStyle(*viewport);
+    this->updateScalingFactor(*viewport);
 
     ImGui_ImplMetal_Init(dev);
 
@@ -98,7 +98,7 @@ Result Implementation::destroyImgui() {
 Result Implementation::beginImgui() {
     ImGui_ImplMetal_NewFrame(renderPassDescriptor);
 
-    this->scaleStyle(*viewport);
+    this->updateScalingFactor(*viewport);
 
     ImGui::NewFrame();
 

@@ -49,8 +49,6 @@ Result PskDemodImpl::validate() {
 }
 
 Result PskDemodImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
-
     JST_CHECK(defineInterfaceInput("signal"));
     JST_CHECK(defineInterfaceOutput("signal"));
 
@@ -106,7 +104,7 @@ Result PskDemodImpl::create() {
     // Initialize state.
     initializeState();
 
-    outputs()["signal"] = {name(), "signal", output};
+    outputs()["signal"].produced(name(), "signal", output);
 
     return Result::SUCCESS;
 }
