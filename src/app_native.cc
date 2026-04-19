@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <thread>
 
@@ -54,7 +55,8 @@ void printUsage(const char* program) {
     jst::fmt::print("  benchmark                    Run benchmarks\n\n");
     jst::fmt::print("Global Options:\n");
     jst::fmt::print("  -h, --help                   Show this help\n");
-    jst::fmt::print("  -v, --version                Show version\n\n");
+    jst::fmt::print("  -v, -vv                      Increase log verbosity (debug, trace)\n");
+    jst::fmt::print("  -V, --version                Show version\n\n");
     jst::fmt::print("Graphics Options:\n");
     jst::fmt::print("  --device <type>              Device type (metal, vulkan)\n");
     jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
@@ -82,8 +84,6 @@ enum class CommandType {
 };
 
 int RunAppNative(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
-    JST_INFO("[CYBERETHER] Running native app.");
-
     CommandType command = CommandType::Run;
 
     Instance::Config config = {
@@ -133,9 +133,19 @@ int RunAppNative(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDest
             return 0;
         }
 
-        if (arg == "-v" || arg == "--version") {
+        if (arg == "-V" || arg == "--version") {
             jst::fmt::print("CyberEther v{}-{}\n", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
             return 0;
+        }
+
+        if (arg == "-v") {
+            JST_LOG_SET_DEBUG_LEVEL(std::max(_JST_LOG_DEBUG_LEVEL(), 3));
+            continue;
+        }
+
+        if (arg == "-vv") {
+            JST_LOG_SET_DEBUG_LEVEL(std::max(_JST_LOG_DEBUG_LEVEL(), 4));
+            continue;
         }
 
         // Handle Graphics Options
@@ -289,6 +299,8 @@ int RunAppNative(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDest
             flowgraphPath = arg;
         }
     }
+
+    JST_INFO("[CYBERETHER] Running native app.");
 
     //
     // Benchmark Logic
