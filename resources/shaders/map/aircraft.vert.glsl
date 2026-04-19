@@ -9,6 +9,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float centerLat;
     float zoom;
     float aspectRatio;
+    float surfaceScale;
     int viewWidth;
     int viewHeight;
     int aircraftCount;
@@ -50,8 +51,8 @@ void main() {
     float safeViewHeight = float(max(uniforms.viewHeight, 1));
 
     outLocal = inPosition.xy * MARKER_RADIUS_PX;
-    vec2 offsetNdc = vec2(outLocal.x * 2.0 / safeViewWidth,
-                          outLocal.y * 2.0 / safeViewHeight);
+    vec2 offsetNdc = vec2((outLocal.x * 2.0 * uniforms.surfaceScale) / safeViewWidth,
+                          (outLocal.y * 2.0 * uniforms.surfaceScale) / safeViewHeight);
 
     gl_Position = vec4(acNdcX + offsetNdc.x, acNdcY + offsetNdc.y, 0.0, 1.0);
     outHeading = radians(inAircraft.z);
