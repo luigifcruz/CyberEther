@@ -181,6 +181,11 @@ Result Implementation::underlyingEnd() {
     wgpuCommandBufferRelease(cmdBuffer);
     wgpuCommandEncoderRelease(encoder);
 
+    if (framebufferTexture) {
+        wgpuTextureViewRelease(framebufferTexture);
+        framebufferTexture = nullptr;
+    }
+
     return Result::SUCCESS;
 }
 

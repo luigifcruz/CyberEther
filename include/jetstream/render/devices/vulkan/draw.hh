@@ -17,6 +17,7 @@ class DrawImp<DeviceType::Vulkan> : public Draw {
                  VkPipelineInputAssemblyStateCreateInfo& inputAssembly);
     Result encode(VkCommandBuffer& commandBuffer);
     Result updateVertexCount(U64 vertexCount) override;
+    Result updateInstanceCount(U64 instanceCount) override;
     Result destroy();
 
  private:

@@ -36,6 +36,7 @@ class Draw {
     }
 
     virtual Result updateVertexCount(U64 vertexCount) = 0;
+    virtual Result updateInstanceCount(U64 instanceCount) = 0;
 
     template<DeviceType D>
     static std::shared_ptr<Draw> Factory(const Config& config) {

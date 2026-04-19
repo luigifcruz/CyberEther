@@ -45,7 +45,6 @@ class WindowImp<DeviceType::WebGPU> : public Window {
     WGPURenderPassDescriptor renderPassDesc;
     WGPUQueue queue;
     WGPUTextureView framebufferTexture;
-    WGPUTextureView previousFramebufferTexture;
     std::vector<std::shared_ptr<SurfaceImp<DeviceType::WebGPU>>> surfaces;
 
     std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>> viewport;
