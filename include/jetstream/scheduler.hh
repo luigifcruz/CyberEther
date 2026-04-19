@@ -27,6 +27,8 @@ class JETSTREAM_API Scheduler {
     Scheduler(const SchedulerType& type);
 
     Result create(const std::shared_ptr<Instance>& instance);
+    Result start();
+    Result stop();
     Result destroy();
 
     Result add(const std::shared_ptr<Module>& module);

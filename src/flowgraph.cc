@@ -447,6 +447,7 @@ Result Flowgraph::destroy() {
     }
 
     if (impl->scheduler) {
+        JST_CHECK(impl->scheduler->stop());
         JST_CHECK(impl->scheduler->destroy());
     }
 
@@ -456,6 +457,30 @@ Result Flowgraph::destroy() {
     impl->path.clear();
 
     impl->created = false;
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::start() {
+    if (!impl->created) {
+        return Result::SUCCESS;
+    }
+
+    if (impl->scheduler) {
+        JST_CHECK(impl->scheduler->start());
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::stop() {
+    if (!impl->created) {
+        return Result::SUCCESS;
+    }
+
+    if (impl->scheduler) {
+        JST_CHECK(impl->scheduler->stop());
+    }
+
     return Result::SUCCESS;
 }
 
