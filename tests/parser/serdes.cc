@@ -1,51 +1,30 @@
-#include <any>
-#include <optional>
-
-#include <catch2/catch_session.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "jetstream/parser.hh"
+#include "common.hh"
 
 using namespace Jetstream;
+using namespace TestParser;
 
-namespace TestParserSerdes {
+namespace {
 
-struct InnerConfig {
-    U64 gain = 0;
-    bool enabled = false;
+void RequireF32VectorEq(const std::vector<F32>& actual, const std::vector<F32>& expected) {
+    REQUIRE(actual.size() == expected.size());
 
-    JST_SERDES(gain, enabled);
-};
+    for (U64 i = 0; i < actual.size(); ++i) {
+        REQUIRE(actual[i] == Catch::Approx(expected[i]));
+    }
+}
 
-struct OuterConfig {
-    InnerConfig inner;
-    std::string label;
+void RequireF64VectorEq(const std::vector<F64>& actual, const std::vector<F64>& expected) {
+    REQUIRE(actual.size() == expected.size());
 
-    JST_SERDES(inner, label);
-};
+    for (U64 i = 0; i < actual.size(); ++i) {
+        REQUIRE(actual[i] == Catch::Approx(expected[i]));
+    }
+}
 
-struct MapConfig {
-    std::unordered_map<std::string, InnerConfig> presets;
-
-    JST_SERDES(presets);
-};
-
-struct SequenceConfig {
-    std::vector<InnerConfig> steps;
-
-    JST_SERDES(steps);
-};
-
-struct OptionalConfig {
-    std::optional<std::string> label;
-    std::optional<std::vector<U64>> steps;
-
-    JST_SERDES(label, steps);
-};
-
-}  // namespace TestParserSerdes
-
-using namespace TestParserSerdes;
+}  // namespace
 
 TEST_CASE("JST_SERDES serializes nested structs as maps", "[parser][serdes]") {
     OuterConfig source;
@@ -72,12 +51,8 @@ TEST_CASE("JST_SERDES serializes nested structs as maps", "[parser][serdes]") {
 }
 
 TEST_CASE("JST_SERDES cascades string-backed nested maps", "[parser][serdes]") {
-    Parser::Map nested;
-    nested["gain"] = std::string("7");
-    nested["enabled"] = std::string("true");
-
     Parser::Map data;
-    data["inner"] = nested;
+    data["inner"] = MakeStringInnerMap(7, true);
     data["label"] = std::string("from-yaml");
 
     OuterConfig restored;
@@ -85,16 +60,6 @@ TEST_CASE("JST_SERDES cascades string-backed nested maps", "[parser][serdes]") {
     REQUIRE(restored.inner.gain == 7);
     REQUIRE(restored.inner.enabled);
     REQUIRE(restored.label == "from-yaml");
-}
-
-TEST_CASE("JST_SERDES hash includes nested fields", "[parser][hash]") {
-    OuterConfig lhs;
-    OuterConfig rhs;
-
-    REQUIRE(lhs.hash() == rhs.hash());
-
-    rhs.inner.gain = 9;
-    REQUIRE(lhs.hash() != rhs.hash());
 }
 
 TEST_CASE("JST_SERDES serializes unordered maps of nested structs", "[parser][serdes]") {
@@ -153,17 +118,9 @@ TEST_CASE("JST_SERDES serializes vectors of nested structs as sequences", "[pars
 }
 
 TEST_CASE("JST_SERDES deserializes string-backed sequences of nested structs", "[parser][serdes]") {
-    Parser::Map first;
-    first["gain"] = std::string("13");
-    first["enabled"] = std::string("true");
-
-    Parser::Map second;
-    second["gain"] = std::string("21");
-    second["enabled"] = std::string("false");
-
     Parser::Sequence steps;
-    steps.push_back(first);
-    steps.push_back(second);
+    steps.push_back(MakeStringInnerMap(13, true));
+    steps.push_back(MakeStringInnerMap(21, false));
 
     Parser::Map data;
     data["steps"] = steps;
@@ -178,17 +135,9 @@ TEST_CASE("JST_SERDES deserializes string-backed sequences of nested structs", "
 }
 
 TEST_CASE("JST_SERDES deserializes string-backed unordered maps of nested structs", "[parser][serdes]") {
-    Parser::Map alpha;
-    alpha["gain"] = std::string("11");
-    alpha["enabled"] = std::string("true");
-
-    Parser::Map beta;
-    beta["gain"] = std::string("5");
-    beta["enabled"] = std::string("false");
-
     Parser::Map presets;
-    presets["alpha"] = alpha;
-    presets["beta"] = beta;
+    presets["alpha"] = MakeStringInnerMap(11, true);
+    presets["beta"] = MakeStringInnerMap(5, false);
 
     Parser::Map data;
     data["presets"] = presets;
@@ -200,21 +149,6 @@ TEST_CASE("JST_SERDES deserializes string-backed unordered maps of nested struct
     REQUIRE(restored.presets.at("alpha").enabled);
     REQUIRE(restored.presets.at("beta").gain == 5);
     REQUIRE(!restored.presets.at("beta").enabled);
-}
-
-TEST_CASE("JST_SERDES hash for unordered maps is insertion-order independent", "[parser][hash]") {
-    MapConfig lhs;
-    lhs.presets["alpha"] = {.gain = 1, .enabled = true};
-    lhs.presets["beta"] = {.gain = 2, .enabled = false};
-
-    MapConfig rhs;
-    rhs.presets["beta"] = {.gain = 2, .enabled = false};
-    rhs.presets["alpha"] = {.gain = 1, .enabled = true};
-
-    REQUIRE(lhs.hash() == rhs.hash());
-
-    rhs.presets.at("alpha").gain = 9;
-    REQUIRE(lhs.hash() != rhs.hash());
 }
 
 TEST_CASE("JST_SERDES omits null optional fields during serialization", "[parser][serdes]") {
@@ -255,23 +189,193 @@ TEST_CASE("JST_SERDES round-trips present optional fields", "[parser][serdes]") 
     REQUIRE(restored.steps.value() == std::vector<U64>({4, 8, 15}));
 }
 
-TEST_CASE("JST_SERDES hash includes optional presence and value", "[parser][hash]") {
-    OptionalConfig lhs;
-    OptionalConfig rhs;
+TEST_CASE("Parser stores primitive vectors directly and nested vectors as sequences", "[parser][serdes]") {
+    SECTION("primitive vectors are stored directly") {
+        PrimitiveVectorConfig source;
+        source.counts = {1, 2, 3};
+        source.ratios = {1.5f, 2.5f};
+        source.weights = {3.25, 4.75};
 
-    REQUIRE(lhs.hash() == rhs.hash());
+        Parser::Map data;
+        REQUIRE(source.serialize(data) == Result::SUCCESS);
+        REQUIRE(data.at("counts").type() == typeid(std::vector<U64>));
+        REQUIRE(data.at("ratios").type() == typeid(std::vector<F32>));
+        REQUIRE(data.at("weights").type() == typeid(std::vector<F64>));
 
-    rhs.label = "set";
-    REQUIRE(lhs.hash() != rhs.hash());
+        PrimitiveVectorConfig restored;
+        REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+        REQUIRE(restored.counts == source.counts);
+        RequireF32VectorEq(restored.ratios, source.ratios);
+        RequireF64VectorEq(restored.weights, source.weights);
+    }
 
-    lhs.label = "set";
-    REQUIRE(lhs.hash() == rhs.hash());
+    SECTION("string-backed primitive vectors deserialize through Parser::Deserialize") {
+        Parser::Map data;
+        data["counts"] = std::string("[1, 2, 3]");
+        data["ratios"] = std::string("[1.5, 2.5]");
+        data["weights"] = std::string("[3.25, 4.75]");
 
-    rhs.steps = std::vector<U64>{7};
-    REQUIRE(lhs.hash() != rhs.hash());
+        PrimitiveVectorConfig restored;
+        REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+        REQUIRE(restored.counts == std::vector<U64>({1, 2, 3}));
+        RequireF32VectorEq(restored.ratios, std::vector<F32>{1.5f, 2.5f});
+        RequireF64VectorEq(restored.weights, std::vector<F64>{3.25, 4.75});
+    }
+
+    SECTION("nested vectors are stored as Parser::Sequence") {
+        NestedVectorConfig source;
+        source.groups = {{1, 2}, {3, 5, 8}};
+
+        Parser::Map data;
+        REQUIRE(source.serialize(data) == Result::SUCCESS);
+        REQUIRE(data.at("groups").type() == typeid(Parser::Sequence));
+
+        const auto& groups = std::any_cast<const Parser::Sequence&>(data.at("groups"));
+        REQUIRE(groups.size() == 2);
+        REQUIRE(groups.at(0).type() == typeid(std::vector<U64>));
+        REQUIRE(std::any_cast<const std::vector<U64>&>(groups.at(0)) == std::vector<U64>({1, 2}));
+
+        NestedVectorConfig restored;
+        REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+        REQUIRE(restored.groups == source.groups);
+    }
 }
 
-int main(int argc, char* argv[]) {
-    JST_LOG_SET_DEBUG_LEVEL(0);
-    return Catch::Session().run(argc, argv);
+TEST_CASE("Parser::Serialize overwrites and erases existing entries", "[parser][serdes]") {
+    SECTION("overwrites an existing entry") {
+        Parser::Map data;
+        data["value"] = std::string("old");
+
+        REQUIRE(Parser::Serialize(data, "value", U64{9}) == Result::SUCCESS);
+        REQUIRE(data.contains("value"));
+        REQUIRE(data.at("value").type() == typeid(U64));
+        REQUIRE(std::any_cast<U64>(data.at("value")) == 9);
+    }
+
+    SECTION("erases an existing entry when serializing an empty optional") {
+        Parser::Map data;
+        data["value"] = std::string("old");
+
+        const std::optional<std::string> value;
+        REQUIRE(Parser::Serialize(data, "value", value) == Result::SUCCESS);
+        REQUIRE(!data.contains("value"));
+    }
+}
+
+TEST_CASE("Parser::Deserialize uses exact-type fast paths", "[parser][serdes]") {
+    Parser::Map data;
+    data["gain"] = U64{17};
+    data["counts"] = std::vector<U64>{1, 2, 3};
+    data["inner"] = MakeInnerMap(4, true);
+
+    Parser::Sequence steps;
+    steps.push_back(std::string("first"));
+    steps.push_back(U64{2});
+    data["steps"] = steps;
+
+    U64 gain = 0;
+    REQUIRE(Parser::Deserialize(data, "gain", gain) == Result::SUCCESS);
+    REQUIRE(gain == 17);
+
+    std::vector<U64> counts;
+    REQUIRE(Parser::Deserialize(data, "counts", counts) == Result::SUCCESS);
+    REQUIRE(counts == std::vector<U64>({1, 2, 3}));
+
+    Parser::Map inner;
+    REQUIRE(Parser::Deserialize(data, "inner", inner) == Result::SUCCESS);
+    REQUIRE(inner.contains("gain"));
+    REQUIRE(std::any_cast<U64>(inner.at("gain")) == 4);
+
+    Parser::Sequence decodedSteps;
+    REQUIRE(Parser::Deserialize(data, "steps", decodedSteps) == Result::SUCCESS);
+    REQUIRE(decodedSteps.size() == 2);
+    REQUIRE(std::any_cast<std::string>(decodedSteps.at(0)) == "first");
+    REQUIRE(std::any_cast<U64>(decodedSteps.at(1)) == 2);
+}
+
+TEST_CASE("Parser::Deserialize handles missing and uninitialized values", "[parser][serdes]") {
+    SECTION("leaves missing non-optional values unchanged") {
+        Parser::Map data;
+        U64 gain = 99;
+
+        REQUIRE(Parser::Deserialize(data, "gain", gain) == Result::SUCCESS);
+        REQUIRE(gain == 99);
+    }
+
+    SECTION("returns an error for a present but uninitialized entry") {
+        Parser::Map data;
+        data["gain"] = std::any{};
+
+        U64 gain = 0;
+        REQUIRE(Parser::Deserialize(data, "gain", gain) == Result::ERROR);
+    }
+}
+
+TEST_CASE("Parser::Deserialize reports incompatible types", "[parser][serdes]") {
+    Parser::Map data;
+
+    SECTION("Parser::Map rejects strings") {
+        data["value"] = std::string("wrong");
+        Parser::Map decoded;
+        REQUIRE(Parser::Deserialize(data, "value", decoded) == Result::ERROR);
+    }
+
+    SECTION("Parser::Map rejects scalars") {
+        data["value"] = U64{7};
+        Parser::Map decoded;
+        REQUIRE(Parser::Deserialize(data, "value", decoded) == Result::ERROR);
+    }
+
+    SECTION("Parser::Sequence rejects non-sequences") {
+        data["value"] = U64{7};
+        Parser::Sequence decoded;
+        REQUIRE(Parser::Deserialize(data, "value", decoded) == Result::ERROR);
+    }
+
+    SECTION("unordered maps reject strings") {
+        data["presets"] = std::string("wrong");
+        MapConfig decoded;
+        REQUIRE(decoded.deserialize(data) == Result::ERROR);
+    }
+
+    SECTION("unordered maps reject non-map values") {
+        data["presets"] = U64{7};
+        MapConfig decoded;
+        REQUIRE(decoded.deserialize(data) == Result::ERROR);
+    }
+
+    SECTION("vectors of nested types reject strings") {
+        data["steps"] = std::string("wrong");
+        SequenceConfig decoded;
+        REQUIRE(decoded.deserialize(data) == Result::ERROR);
+    }
+
+    SECTION("vectors of nested types reject non-sequences") {
+        data["steps"] = U64{7};
+        SequenceConfig decoded;
+        REQUIRE(decoded.deserialize(data) == Result::ERROR);
+    }
+
+    SECTION("nested serdes types reject strings") {
+        data["inner"] = std::string("wrong");
+        OuterConfig decoded;
+        REQUIRE(decoded.deserialize(data) == Result::ERROR);
+    }
+
+    SECTION("nested serdes types reject non-map values") {
+        data["inner"] = Parser::Sequence{};
+        OuterConfig decoded;
+        REQUIRE(decoded.deserialize(data) == Result::ERROR);
+    }
+
+    SECTION("scalars reject non-string mismatches") {
+        data["gain"] = bool{true};
+        U64 gain = 0;
+        REQUIRE(Parser::Deserialize(data, "gain", gain) == Result::ERROR);
+    }
+}
+
+TEST_CASE("Parser::Serialize returns errors from throwing serialize methods", "[parser][serdes]") {
+    Parser::Map data;
+    REQUIRE(Parser::Serialize(data, "throwing", ThrowingConfig{}) == Result::ERROR);
 }
