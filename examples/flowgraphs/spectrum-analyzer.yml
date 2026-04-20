@@ -1,18 +1,18 @@
 ---
-version: 1.0.0
+version: 2
 
 title: Spectrum Analyzer
 summary: Simple waterfall and lineplot.
 author: Luigi
 license: MIT
 description: 'Shows how a CyberEther flowgraph can be used as a traditional SDR console. This example will take the samples from the SDR and display a frequency-domain representation of it.'
+
 graph:
-  win:
+  - name: win
     module: window
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       size: 2048
     meta:
@@ -21,12 +21,11 @@ graph:
         x: 22
         height: 74
         width: 140
-  soapy:
+  - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferMultiplier: 512
       sampleRate: 2000000
@@ -41,89 +40,88 @@ graph:
         x: 22
         height: 391
         width: 140
-  invert:
+  - name: invert
     module: invert
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      signal: '${graph.win.output.window}'
+      - name: signal
+        source: '${graph.win.output.window}'
     meta:
       node:
         y: 39
         x: 190
         height: 63
         width: 140
-  multiply:
+  - name: multiply
     module: multiply
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      a: '${graph.invert.output.signal}'
-      b: '${graph.soapy.output.signal}'
+      - name: a
+        source: '${graph.invert.output.signal}'
+      - name: b
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 63
         x: 361
         height: 85
         width: 140
-  fft:
+  - name: fft
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: true
     input:
-      signal: '${graph.multiply.output.product}'
+      - name: signal
+        source: '${graph.multiply.output.product}'
     meta:
       node:
         y: 56
         x: 532
         height: 96
         width: 140
-  amplitude:
+  - name: amplitude
     module: amplitude
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     input:
-      signal: '${graph.fft.output.signal}'
+      - name: signal
+        source: '${graph.fft.output.signal}'
     meta:
       node:
         y: 65
         x: 697
         height: 63
         width: 140
-  range:
+  - name: range
     module: range
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       max: 0
       min: -100
     input:
-      signal: '${graph.amplitude.output.signal}'
+      - name: signal
+        source: '${graph.amplitude.output.signal}'
     meta:
       node:
         y: 52
         x: 864
         height: 129
         width: 140
-  lineplot:
+  - name: lineplot
     module: lineplot
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       thickness: 1
       decimation: 1
@@ -131,7 +129,8 @@ graph:
       numberOfVerticalLines: 11
       averaging: 1
     input:
-      signal: '${graph.range.output.signal}'
+      - name: signal
+        source: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -144,17 +143,17 @@ graph:
         x: 1046
         height: 349
         width: 354
-  waterfall:
+  - name: waterfall
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.range.output.signal}'
+      - name: signal
+        source: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 512

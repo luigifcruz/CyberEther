@@ -1,18 +1,18 @@
 ---
-version: 1.0.0
+version: 2
 
 title: ADS-B Flight Tracker
 summary: Flight tracker using ADS-B data.
 author: Luigi
 license: MIT
 description: Uses an SDR to receive ADS-B signals and track flights.
+
 graph:
-  soapy:
+  - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferMultiplier: 4
       sampleRate: 2000000
@@ -26,14 +26,14 @@ graph:
         x: 88
         height: 47
         width: 140
-  adsb:
+  - name: adsb
     module: adsb
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      signal: '${graph.soapy.output.signal}'
+      - name: signal
+        source: '${graph.soapy.output.signal}'
     meta:
       surface_default:
         detachedWidth: 506
@@ -46,13 +46,11 @@ graph:
         x: 286
         height: 375
         width: 483
-  spectrum_engine:
+  - name: spectrum_engine
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       rangeMin: -102.85714
       enableAgc: false
@@ -60,19 +58,19 @@ graph:
       enableScale: true
       axis: 1
     input:
-      buffer: '${graph.soapy.output.signal}'
+      - name: buffer
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 74
         x: 570
         height: 162
         width: 140
-  lineplot:
+  - name: lineplot
     module: lineplot
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       thickness: 1
       decimation: 1
@@ -80,7 +78,8 @@ graph:
       numberOfVerticalLines: 11
       averaging: 1
     input:
-      signal: '${graph.spectrum_engine.output.buffer}'
+      - name: signal
+        source: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -93,17 +92,17 @@ graph:
         x: 847
         height: 306
         width: 349
-  waterfall:
+  - name: waterfall
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.spectrum_engine.output.buffer}'
+      - name: signal
+        source: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512

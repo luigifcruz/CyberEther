@@ -1,14 +1,14 @@
 ---
-version: 1.0.0
+version: 2
 
 title: Signal Generator
+
 graph:
-  signal_generator:
+  - name: signal_generator
     module: signal_generator
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferSize: 8192
       chirpEndFreq: 10000
@@ -28,12 +28,11 @@ graph:
         x: 17
         height: 338
         width: 140
-  signal_generator_1:
+  - name: signal_generator_1
     module: signal_generator
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferSize: 8192
       chirpEndFreq: 10000
@@ -53,94 +52,94 @@ graph:
         x: 176
         height: 338
         width: 140
-  add:
+  - name: add
     module: add
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      a: '${graph.signal_generator.output.signal}'
-      b: '${graph.signal_generator_1.output.signal}'
+      - name: a
+        source: '${graph.signal_generator.output.signal}'
+      - name: b
+        source: '${graph.signal_generator_1.output.signal}'
     meta:
       node:
         y: 211
         x: 363
         height: 85
         width: 140
-  invert:
+  - name: invert
     module: invert
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      signal: '${graph.add.output.sum}'
+      - name: signal
+        source: '${graph.add.output.sum}'
     meta:
       node:
         y: 227
         x: 542
         height: 63
         width: 140
-  fft:
+  - name: fft
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: true
     input:
-      signal: '${graph.invert.output.signal}'
+      - name: signal
+        source: '${graph.invert.output.signal}'
     meta:
       node:
         y: 237
         x: 717
         height: 96
         width: 140
-  amplitude:
+  - name: amplitude
     module: amplitude
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     input:
-      signal: '${graph.fft.output.signal}'
+      - name: signal
+        source: '${graph.fft.output.signal}'
     meta:
       node:
         y: 243
         x: 891
         height: 63
         width: 140
-  range:
+  - name: range
     module: range
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       max: 0
       min: -90.71429
     input:
-      signal: '${graph.amplitude.output.signal}'
+      - name: signal
+        source: '${graph.amplitude.output.signal}'
     meta:
       node:
         y: 236
         x: 1064
         height: 129
         width: 140
-  waterfall:
+  - name: waterfall
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.range.output.signal}'
+      - name: signal
+        source: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -153,12 +152,11 @@ graph:
         x: 1267
         height: 302
         width: 357
-  lineplot:
+  - name: lineplot
     module: lineplot
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       thickness: 1
       decimation: 1
@@ -166,7 +164,8 @@ graph:
       numberOfVerticalLines: 11
       averaging: 1
     input:
-      signal: '${graph.range.output.signal}'
+      - name: signal
+        source: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 910

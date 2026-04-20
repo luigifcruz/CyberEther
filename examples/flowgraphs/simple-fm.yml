@@ -1,18 +1,18 @@
 ---
-version: 1.0.0
+version: 2
 
 title: Simple FM Receiver
 summary: Radio receiver with RTLSDR.
 author: Luigi
 license: MIT
 description: Shows the simplest way to demodulate an FM station using a RTL-SDR.
+
 graph:
-  soapy:
+  - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferMultiplier: 512
       sampleRate: 240000
@@ -26,32 +26,31 @@ graph:
         x: 50
         height: 309
         width: 233
-  fm:
+  - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     input:
-      signal: '${graph.soapy.output.signal}'
+      - name: signal
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 50
         x: 320
         height: 100
         width: 140
-  audio:
+  - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       inSampleRate: 240000
       outSampleRate: 48000
     input:
-      buffer: '${graph.fm.output.signal}'
+      - name: buffer
+        source: '${graph.fm.output.signal}'
     meta:
       node:
         y: 50

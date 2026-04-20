@@ -1,13 +1,14 @@
 ---
-version: 1.0.0
+version: 2
 
 title: 'Multi-FM'
 summary: Receive multiple FM simultaneously.
 author: Luigi
 license: MIT
 description: 'Shows the reception of multiple FM broadcast stations simultaneously. The partitioning into individual stations is done via the Overlap-Add-Fold method presented in another example. This flowgraph abstracts this mechanism using the `Filter Engine` block.'
+
 graph:
-  not34:
+  - name: not34
     module: note
     device: cpu
     runtime: native
@@ -16,7 +17,7 @@ graph:
       content: |-
         # 1. Multi-FM Example
         This is a simplified flowgraph from what was presented in the `Overlap-Add-Fold` example. That entire mechanism was abstracted away with the `Filter Engine` block.
-        
+
         Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the appropriate slice configuration in the `Slice` block.
     meta:
       node:
@@ -24,7 +25,7 @@ graph:
         x: 11
         height: 332
         width: 362
-  not44:
+  - name: not44
     module: note
     device: cpu
     runtime: native
@@ -39,12 +40,11 @@ graph:
         x: 366
         height: 222
         width: 212
-  soapy:
+  - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferMultiplier: 1024
       sampleRate: 2000000
@@ -59,13 +59,11 @@ graph:
         x: 6
         height: 391
         width: 140
-  spe33:
+  - name: spe33
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       rangeMin: -81
       enableAgc: false
@@ -73,24 +71,25 @@ graph:
       enableScale: true
       axis: 1
     input:
-      buffer: '${graph.soapy.output.signal}'
+      - name: buffer
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 371
         x: 206
         height: 228
         width: 140
-  wtf_input:
+  - name: wtf_input
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.spe33.output.buffer}'
+      - name: signal
+        source: '${graph.spe33.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -103,12 +102,11 @@ graph:
         x: 447
         height: 262
         width: 291
-  lineplot:
+  - name: lineplot
     module: lineplot
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       thickness: 1
       decimation: 1
@@ -116,7 +114,8 @@ graph:
       numberOfVerticalLines: 11
       averaging: 18
     input:
-      signal: '${graph.spe33.output.buffer}'
+      - name: signal
+        source: '${graph.spe33.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 500
@@ -129,12 +128,11 @@ graph:
         x: 447
         height: 277
         width: 286
-  flt:
+  - name: flt
     module: filter
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       taps: 51
       heads: 2
@@ -142,37 +140,36 @@ graph:
       bandwidth: 200000
       sampleRate: 2000000
     input:
-      signal: '${graph.soapy.output.signal}'
+      - name: signal
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 94
         x: 602
         height: 261
         width: 140
-  slice:
+  - name: slice
     module: slice
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       contiguous: true
       slice: '[:, 1, :]'
     input:
-      buffer: '${graph.flt.output.buffer}'
+      - name: buffer
+        source: '${graph.flt.output.buffer}'
     meta:
       node:
         y: 546
         x: 823
         height: 129
         width: 140
-  spectrum_engine:
+  - name: spectrum_engine
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       rangeMin: -270
       enableAgc: true
@@ -180,24 +177,25 @@ graph:
       enableScale: true
       axis: 1
     input:
-      buffer: '${graph.slice.output.buffer}'
+      - name: buffer
+        source: '${graph.slice.output.buffer}'
     meta:
       node:
         y: 554
         x: 1021
         height: 228
         width: 140
-  waterfall:
+  - name: waterfall
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.spectrum_engine.output.buffer}'
+      - name: signal
+        source: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -210,30 +208,28 @@ graph:
         x: 1221
         height: 289
         width: 196
-  sli23:
+  - name: sli23
     module: slice
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       contiguous: true
       slice: '[:, 0, :]'
     input:
-      buffer: '${graph.flt.output.buffer}'
+      - name: buffer
+        source: '${graph.flt.output.buffer}'
     meta:
       node:
         y: 117
         x: 812
         height: 129
         width: 140
-  spe23:
+  - name: spe23
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       rangeMin: -177.85715
       enableAgc: true
@@ -241,41 +237,41 @@ graph:
       enableScale: true
       axis: 1
     input:
-      buffer: '${graph.sli23.output.buffer}'
+      - name: buffer
+        source: '${graph.sli23.output.buffer}'
     meta:
       node:
         y: 253
         x: 1021
         height: 228
         width: 140
-  fm:
+  - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       sampleRate: 200000
     input:
-      signal: '${graph.sli23.output.buffer}'
+      - name: signal
+        source: '${graph.sli23.output.buffer}'
     meta:
       node:
         y: 92
         x: 1014
         height: 96
         width: 140
-  wtf_output:
+  - name: wtf_output
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.spe23.output.buffer}'
+      - name: signal
+        source: '${graph.spe23.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -288,18 +284,18 @@ graph:
         x: 1219
         height: 255
         width: 196
-  audio:
+  - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       outSampleRate: 48000
       inSampleRate: 200000
       deviceName: Default
     input:
-      buffer: '${graph.fm.output.signal}'
+      - name: buffer
+        source: '${graph.fm.output.signal}'
     meta:
       node:
         y: 86
