@@ -3,6 +3,7 @@
 
 #include <concepts>
 #include <functional>
+#include <optional>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -41,6 +42,15 @@ struct is_string_keyed_unordered_map<std::unordered_map<std::string, V, Hash, Ke
 
 template<typename T>
 concept StringKeyedUnorderedMap = is_string_keyed_unordered_map<std::remove_cvref_t<T>>::value;
+
+template<typename>
+struct is_optional : std::false_type {};
+
+template<typename V>
+struct is_optional<std::optional<V>> : std::true_type {};
+
+template<typename T>
+concept Optional = is_optional<std::remove_cvref_t<T>>::value;
 
 template<typename>
 struct is_vector : std::false_type {};

@@ -37,6 +37,12 @@ class JETSTREAM_API Parser {
         try {
             std::any encoded;
             JST_CHECK(Encode(variable, encoded));
+
+            if (!encoded.has_value()) {
+                map.erase(name);
+                return Result::SUCCESS;
+            }
+
             map[name] = std::move(encoded);
         } catch (const std::exception& e) {
             JST_ERROR("[PARSER] Failed to serialize variable '{}': {}", name, e.what());
@@ -49,6 +55,10 @@ class JETSTREAM_API Parser {
     template<typename T>
     static Result Deserialize(const Map& map, const std::string& name, T& variable) {
         if (map.contains(name) == 0) {
+            if constexpr (detail::Optional<std::remove_cvref_t<T>>) {
+                variable.reset();
+            }
+
             JST_TRACE("[PARSER] Variable name '{}' not found inside map.", name);
             return Result::SUCCESS;
         }
@@ -68,6 +78,14 @@ class JETSTREAM_API Parser {
 
         if constexpr (detail::HasMemberHash<ValueType>) {
             return static_cast<std::size_t>(variable.hash());
+        } else if constexpr (detail::Optional<ValueType>) {
+            std::size_t seed = variable.has_value() ? 1 : 0;
+
+            if (variable.has_value()) {
+                seed ^= Hash(*variable) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            }
+
+            return seed;
         } else if constexpr (std::is_same_v<ValueType, Map>) {
             std::vector<std::string> keys;
             keys.reserve(variable.size());
@@ -153,7 +171,13 @@ class JETSTREAM_API Parser {
     static Result Encode(const T& variable, std::any& encoded) {
         using ValueType = std::remove_cvref_t<T>;
 
-        if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
+        if constexpr (detail::Optional<ValueType>) {
+            if (!variable.has_value()) {
+                encoded.reset();
+            } else {
+                JST_CHECK(Encode(*variable, encoded));
+            }
+        } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
             Map nested;
             for (const auto& [entryName, entryValue] : variable) {
                 JST_CHECK(Serialize(nested, entryName, entryValue));
@@ -200,7 +224,13 @@ class JETSTREAM_API Parser {
             return Result::SUCCESS;
         }
 
-        if constexpr (std::is_same_v<ValueType, Map>) {
+        if constexpr (detail::Optional<ValueType>) {
+            using EntryType = typename ValueType::value_type;
+            EntryType decoded{};
+            JST_CHECK(Decode(encoded, name, decoded));
+            variable = std::move(decoded);
+            return Result::SUCCESS;
+        } else if constexpr (std::is_same_v<ValueType, Map>) {
             if (encoded.type() == typeid(Map)) {
                 JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Parser::Map'.", name);
 

@@ -1,4 +1,5 @@
 #include <any>
+#include <optional>
 
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -33,6 +34,13 @@ struct SequenceConfig {
     std::vector<InnerConfig> steps;
 
     JST_SERDES(steps);
+};
+
+struct OptionalConfig {
+    std::optional<std::string> label;
+    std::optional<std::vector<U64>> steps;
+
+    JST_SERDES(label, steps);
 };
 
 }  // namespace TestParserSerdes
@@ -206,6 +214,60 @@ TEST_CASE("JST_SERDES hash for unordered maps is insertion-order independent", "
     REQUIRE(lhs.hash() == rhs.hash());
 
     rhs.presets.at("alpha").gain = 9;
+    REQUIRE(lhs.hash() != rhs.hash());
+}
+
+TEST_CASE("JST_SERDES omits null optional fields during serialization", "[parser][serdes]") {
+    OptionalConfig source;
+
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    REQUIRE(!data.contains("label"));
+    REQUIRE(!data.contains("steps"));
+}
+
+TEST_CASE("JST_SERDES resets missing optional fields during deserialization", "[parser][serdes]") {
+    OptionalConfig restored;
+    restored.label = "present";
+    restored.steps = std::vector<U64>{1, 2, 3};
+
+    Parser::Map data;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(!restored.label.has_value());
+    REQUIRE(!restored.steps.has_value());
+}
+
+TEST_CASE("JST_SERDES round-trips present optional fields", "[parser][serdes]") {
+    OptionalConfig source;
+    source.label = "optional";
+    source.steps = std::vector<U64>{4, 8, 15};
+
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    REQUIRE(data.contains("label"));
+    REQUIRE(data.contains("steps"));
+
+    OptionalConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.label.has_value());
+    REQUIRE(restored.label.value() == "optional");
+    REQUIRE(restored.steps.has_value());
+    REQUIRE(restored.steps.value() == std::vector<U64>({4, 8, 15}));
+}
+
+TEST_CASE("JST_SERDES hash includes optional presence and value", "[parser][hash]") {
+    OptionalConfig lhs;
+    OptionalConfig rhs;
+
+    REQUIRE(lhs.hash() == rhs.hash());
+
+    rhs.label = "set";
+    REQUIRE(lhs.hash() != rhs.hash());
+
+    lhs.label = "set";
+    REQUIRE(lhs.hash() == rhs.hash());
+
+    rhs.steps = std::vector<U64>{7};
     REQUIRE(lhs.hash() != rhs.hash());
 }
 
