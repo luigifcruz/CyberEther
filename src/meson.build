@@ -20,6 +20,7 @@ endif
 src_lst += files([
     'flowgraph.cc',
     'parser.cc',
+    'tensor_link.cc',
     'instance.cc',
     'instance_remote.cc',
     'instance_remote_supervisor.cc',

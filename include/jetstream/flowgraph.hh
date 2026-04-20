@@ -8,6 +8,7 @@
 
 #include "jetstream/scheduler.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/tensor_link.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/block.hh"

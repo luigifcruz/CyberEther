@@ -12,7 +12,6 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
-#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -71,30 +70,6 @@ template<typename>
 inline constexpr bool always_false_v = false;
 
 }  // namespace detail
-
-struct BlockEndpoint {
-    std::string block;
-    std::string port;
-};
-
-struct ModuleEndpoint {
-    std::string module;
-    std::string port;
-};
-
-struct TensorLink {
-    std::optional<ModuleEndpoint> producer;
-    std::optional<BlockEndpoint> external;
-    Tensor tensor;
-
-    void requested(const std::string& block, const std::string& port);
-    void produced(const std::string& module, const std::string& port, const Tensor& tensor);
-    void exposedAs(const std::string& block, const std::string& port);
-
-    bool resolved() const;
-};
-
-typedef std::unordered_map<std::string, TensorLink> TensorMap;
 
 class JETSTREAM_API Parser {
  public:
