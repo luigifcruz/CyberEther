@@ -1,5 +1,9 @@
 #include "jetstream/parser.hh"
 
+#include "jetstream/memory/types.hh"
+#include "jetstream/runtime.hh"
+#include "jetstream/scheduler.hh"
+
 namespace Jetstream {
 
 //
@@ -44,6 +48,21 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
 
     if (variable.type() == typeid(bool)) {
         encoded = jst::fmt::format("{}", std::any_cast<bool>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(DeviceType)) {
+        encoded = GetDeviceName(std::any_cast<DeviceType>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(RuntimeType)) {
+        encoded = GetRuntimeName(std::any_cast<RuntimeType>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(SchedulerType)) {
+        encoded = GetSchedulerName(std::any_cast<SchedulerType>(variable));
         return Result::SUCCESS;
     }
 
