@@ -121,6 +121,50 @@ class JETSTREAM_API Parser {
 
         if constexpr (detail::HasMemberHash<ValueType>) {
             return static_cast<std::size_t>(variable.hash());
+        } else if constexpr (std::is_same_v<ValueType, Map>) {
+            std::vector<std::string> keys;
+            keys.reserve(variable.size());
+
+            for (const auto& [key, _] : variable) {
+                keys.push_back(key);
+            }
+
+            std::sort(keys.begin(), keys.end());
+
+            std::size_t seed = variable.size();
+            for (const auto& key : keys) {
+                seed ^= std::hash<std::string>{}(key) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                seed ^= Hash(variable.at(key)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            }
+
+            return seed;
+        } else if constexpr (std::is_same_v<ValueType, Sequence>) {
+            std::size_t seed = variable.size();
+            for (const auto& entry : variable) {
+                seed ^= Hash(entry) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            }
+
+            return seed;
+        } else if constexpr (std::is_same_v<ValueType, std::any>) {
+            if (!variable.has_value()) {
+                return 0;
+            }
+
+            if (variable.type() == typeid(Map)) {
+                return Hash(std::any_cast<const Map&>(variable));
+            }
+
+            if (variable.type() == typeid(Sequence)) {
+                return Hash(std::any_cast<const Sequence&>(variable));
+            }
+
+            std::string encoded;
+            if (TypedToString(variable, encoded) != Result::SUCCESS) {
+                JST_ERROR("[PARSER] Failed to hash 'std::any' value.");
+                return 0;
+            }
+
+            return std::hash<std::string>{}(encoded);
         } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
             std::vector<std::string> keys;
             keys.reserve(variable.size());
@@ -151,6 +195,9 @@ class JETSTREAM_API Parser {
             static_assert(detail::always_false_v<ValueType>, "[PARSER] Missing hash support for field type.");
         }
     }
+
+    static Result YamlEncode(const Map& data, std::string& yaml);
+    static Result YamlDecode(const std::string& yaml, Map& data);
 
     static std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);
 
@@ -206,7 +253,27 @@ class JETSTREAM_API Parser {
             return Result::SUCCESS;
         }
 
-        if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
+        if constexpr (std::is_same_v<ValueType, Map>) {
+            if (encoded.type() == typeid(Map)) {
+                JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Parser::Map'.", name);
+
+                variable = std::any_cast<const Map&>(encoded);
+                return Result::SUCCESS;
+            }
+
+            JST_ERROR("[PARSER] Variable '{}' is not of type 'Parser::Map'.", name);
+            return Result::ERROR;
+        } else if constexpr (std::is_same_v<ValueType, Sequence>) {
+            if (encoded.type() == typeid(Sequence)) {
+                JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'Parser::Sequence'.", name);
+
+                variable = std::any_cast<const Sequence&>(encoded);
+                return Result::SUCCESS;
+            }
+
+            JST_ERROR("[PARSER] Variable '{}' is not of type 'Parser::Sequence'.", name);
+            return Result::ERROR;
+        } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
             if (encoded.type() == typeid(Map)) {
                 JST_TRACE("Deserializing '{}': Trying to convert nested 'Parser::Map' into unordered map.", name);
 
@@ -332,6 +399,20 @@ struct hash<std::vector<T>> {
                     (seed << 6) + (seed >> 2);
         }
         return seed;
+    }
+};
+
+template<>
+struct hash<Jetstream::Parser::Map> {
+    std::size_t operator()(const Jetstream::Parser::Map& value) const noexcept {
+        return Jetstream::Parser::Hash(value);
+    }
+};
+
+template<>
+struct hash<Jetstream::Parser::Sequence> {
+    std::size_t operator()(const Jetstream::Parser::Sequence& value) const noexcept {
+        return Jetstream::Parser::Hash(value);
     }
 };
 

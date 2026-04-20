@@ -19,7 +19,9 @@ endif
 
 src_lst += files([
     'flowgraph.cc',
-    'parser.cc',
+    'parser_decode.cc',
+    'parser_encode.cc',
+    'parser_yaml.cc',
     'tensor_link.cc',
     'instance.cc',
     'instance_remote.cc',
