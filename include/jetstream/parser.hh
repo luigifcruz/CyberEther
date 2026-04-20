@@ -3,13 +3,7 @@
 
 #include <algorithm>
 #include <any>
-#include <concepts>
 #include <functional>
-#include <iostream>
-#include <iterator>
-#include <memory>
-#include <numeric>
-#include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -20,60 +14,14 @@
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/memory/tensor.hh"
+#include "jetstream/parser_detail.hh"
+#include "jetstream/parser_map.hh"
 
 namespace Jetstream {
 
-namespace detail {
-
-using ParserMapType = std::unordered_map<std::string, std::any>;
-
-template<typename T>
-concept HasParserSerialize = requires(const std::remove_cvref_t<T>& value, ParserMapType& data) {
-    { value.serialize(data) } -> std::same_as<Result>;
-};
-
-template<typename T>
-concept HasParserDeserialize = requires(std::remove_cvref_t<T>& value, const ParserMapType& data) {
-    { value.deserialize(data) } -> std::same_as<Result>;
-};
-
-template<typename T>
-concept HasMemberHash = requires(const std::remove_cvref_t<T>& value) {
-    { value.hash() } -> std::convertible_to<std::size_t>;
-};
-
-template<typename T>
-concept HasStdHash = requires(const std::remove_cvref_t<T>& value) {
-    { std::hash<std::remove_cvref_t<T>>{}(value) } -> std::convertible_to<std::size_t>;
-};
-
-template<typename>
-struct is_string_keyed_unordered_map : std::false_type {};
-
-template<typename V, typename Hash, typename KeyEqual, typename Alloc>
-struct is_string_keyed_unordered_map<std::unordered_map<std::string, V, Hash, KeyEqual, Alloc>>
-    : std::bool_constant<!std::is_same_v<V, std::any>> {};
-
-template<typename T>
-concept StringKeyedUnorderedMap = is_string_keyed_unordered_map<std::remove_cvref_t<T>>::value;
-
-template<typename>
-struct is_vector : std::false_type {};
-
-template<typename V, typename Alloc>
-struct is_vector<std::vector<V, Alloc>> : std::true_type {};
-
-template<typename T>
-concept Vector = is_vector<std::remove_cvref_t<T>>::value;
-
-template<typename>
-inline constexpr bool always_false_v = false;
-
-}  // namespace detail
-
 class JETSTREAM_API Parser {
  public:
-    typedef std::unordered_map<std::string, std::any> Map;
+    typedef ParserMap Map;
     typedef std::vector<std::any> Sequence;
 
     template<typename T>
@@ -84,7 +32,6 @@ class JETSTREAM_API Parser {
     static Result Serialize(Map& map, const std::string& name, const T& variable) {
         if (map.contains(name) != 0) {
             JST_TRACE("Variable name '{}' already inside map. Overwriting.", name);
-            map.erase(name);
         }
 
         try {
