@@ -1889,11 +1889,10 @@ Result DefaultCompositor::present() {
     JST_CHECK(renderToolbar());
     JST_CHECK(renderSeparator());
     JST_CHECK(renderDockspace());
+    JST_CHECK(renderFlowgraph());
     JST_CHECK(renderStacks());
     JST_CHECK(renderDetachedSurfaces());
     JST_CHECK(renderDocumentations());
-
-    JST_CHECK(renderFlowgraph());
     JST_CHECK(renderGlobalModal());
 
     return Result::SUCCESS;
