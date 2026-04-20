@@ -42,7 +42,7 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         encoded = jst::fmt::format("{}{}{}",
                                    complex.real(),
                                    complex.imag() < 0 ? "-" : "+",
-                                   complex.imag());
+                                   std::abs(complex.imag()));
         return Result::SUCCESS;
     }
 

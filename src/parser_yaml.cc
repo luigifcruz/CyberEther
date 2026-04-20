@@ -5,6 +5,7 @@
 #include <ryml_std.hpp>
 
 #include <algorithm>
+#include <stdexcept>
 
 namespace Jetstream {
 
@@ -16,6 +17,18 @@ std::string NormalizeScalar(const std::string& value) {
     }
 
     return value;
+}
+
+[[noreturn]] void ThrowBasicError(ryml::csubstr msg, const ryml::ErrorDataBasic&, void*) {
+    throw std::runtime_error({msg.str, msg.len});
+}
+
+[[noreturn]] void ThrowParseError(ryml::csubstr msg, const ryml::ErrorDataParse&, void*) {
+    throw std::runtime_error({msg.str, msg.len});
+}
+
+[[noreturn]] void ThrowVisitError(ryml::csubstr msg, const ryml::ErrorDataVisit&, void*) {
+    throw std::runtime_error({msg.str, msg.len});
 }
 
 Result SerializeMap(const Parser::Map& data, ryml::NodeRef& node);
@@ -158,9 +171,16 @@ Result Parser::YamlDecode(const std::string& yaml, Parser::Map& data) {
         return Result::SUCCESS;
     }
 
-    ryml::Tree tree;
+    auto callbacks = ryml::get_callbacks();
+    callbacks.set_error_basic(&ThrowBasicError)
+             .set_error_parse(&ThrowParseError)
+             .set_error_visit(&ThrowVisitError);
+    ryml::Parser::handler_type eventHandler(callbacks);
+    ryml::Parser parser(&eventHandler);
+    ryml::Tree tree(callbacks);
+
     try {
-        tree = ryml::parse_in_arena(ryml::to_csubstr(yaml));
+        ryml::parse_in_arena(&parser, ryml::to_csubstr(yaml), &tree);
     } catch (...) {
         JST_ERROR("[PARSER] Failed to parse YAML document.");
         return Result::ERROR;
