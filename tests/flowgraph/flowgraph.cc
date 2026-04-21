@@ -982,7 +982,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(!blob.empty());
 
         const std::string yaml(blob.begin(), blob.end());
-        REQUIRE(yaml.starts_with("---\nversion: 1.0.0\n\n"));
+        REQUIRE(yaml.starts_with("---\nversion: 2\n"));
         REQUIRE(yaml.find("stacks:") != std::string::npos);
         REQUIRE(yaml.find("stack_0:") != std::string::npos);
         REQUIRE(yaml.find("title: Stack 0") != std::string::npos);
