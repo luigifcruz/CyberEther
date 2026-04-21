@@ -1,13 +1,14 @@
 ---
-version: 1.0.0
+version: 2
 
 title: 'Overlap-Add'
 summary: Frequency domain FIR filter.
 author: Luigi
 license: MIT
 description: Shows how to filter a signal in the frequency domain with FIR. Uses multiply and add to reduce blocking artifacts.
+
 graph:
-  not41:
+  - name: not41
     module: note
     device: cpu
     runtime: native
@@ -16,7 +17,7 @@ graph:
       content: |-
         # 4. Unpadding
         Now that the signal is now back to the time domain, the padding added previously can be removed and added to the beginning of the next block. This will smooth out the effects of the discrete convolution performed. Remember, a multiplication in the frequency domain corresponds to a convolution in the time domain!
-        
+
         ### Reference
         A nice visualization is available here in [Wikipedia](https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method).
     meta:
@@ -25,7 +26,7 @@ graph:
         x: 1316
         height: 332
         width: 324
-  not36:
+  - name: not36
     module: note
     device: cpu
     runtime: native
@@ -34,7 +35,7 @@ graph:
       content: |-
         # 2. Padding
         First, the signal and the filter are padded to the same length. The size of the padding will depend on multiple factors. For the sake of simplicity, here the pad size will be set to `50`.
-        
+
         The Pad block will add 50 zeros to the end of the signal resulting in 8050 elements. However, for the filter taps, the padding will be of size `(SIGNAL_SIZE - 1) == 7999` resulting in 8050. Both tensors now have 8050 elements and are ready for the next step.
     meta:
       node:
@@ -42,7 +43,7 @@ graph:
         x: 471.0805
         height: 331.40137
         width: 337
-  not40:
+  - name: not40
     module: note
     device: cpu
     runtime: native
@@ -57,7 +58,7 @@ graph:
         x: 1351.103
         height: 287.6671
         width: 290
-  not39:
+  - name: not39
     module: note
     device: cpu
     runtime: native
@@ -66,7 +67,7 @@ graph:
       content: |-
         # 3. Fast Convolution
         After multiplying the signal and the filter in the frequency domain the resulting signal is now ready to be brought back to the time-domain for playback. This will be done with the same FFT block but now configured in the backward direction.
-        
+
         ### Suggestion
         This is also a good place to do some extra processing. For example, the signal now can be resampled to the desired output sample rate. This is shown in the `Overlap-Add-Fold` example flowgraph.
     meta:
@@ -75,12 +76,11 @@ graph:
         x: 858.99994
         height: 310
         width: 400.00006
-  soapy:
+  - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferMultiplier: 1024
       sampleRate: 2000000
@@ -95,7 +95,7 @@ graph:
         x: -97
         height: 391
         width: 140
-  not38:
+  - name: not38
     module: note
     device: cpu
     runtime: native
@@ -104,7 +104,7 @@ graph:
       content: |-
         # 1. Overlap-Add Example
         This is the filter design block. This will need some parameters from the signal coming from the SDR like the sample rate and bandwidth. The rest of the parameters should look familiar if you designed a FIR filter before.
-        
+
         ### Suggestion
         Other examples will use more features from this block. Like the `multi-fm` example showing how to create multiple filters for different frequencies to demodulate multiple FM stations at once.
     meta:
@@ -113,12 +113,11 @@ graph:
         x: 86
         height: 332
         width: 329
-  flt:
+  - name: flt
     module: filter_taps
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       taps: 51
       heads: 1
@@ -131,127 +130,126 @@ graph:
         x: -97
         height: 206
         width: 140
-  pad_flt:
+  - name: pad_flt
     module: pad
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
       size: 7999
     input:
-      unpadded: '${graph.flt.output.coeffs}'
+      - name: unpadded
+        source: '${graph.flt.output.coeffs}'
     meta:
       node:
         y: -5.9999847
         x: 86
         height: 128.99998
         width: 140
-  fft_flt:
+  - name: fft_flt
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: true
     input:
-      signal: '${graph.pad_flt.output.padded}'
+      - name: signal
+        source: '${graph.pad_flt.output.padded}'
     meta:
       node:
         y: -2.9999847
         x: 263
         height: 95.999985
         width: 140
-  pad_soapy:
+  - name: pad_soapy
     module: pad
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
       size: 50
     input:
-      unpadded: '${graph.soapy.output.signal}'
+      - name: unpadded
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 273
         x: 88
         height: 129
         width: 140
-  fft_soapy:
+  - name: fft_soapy
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: true
     input:
-      signal: '${graph.pad_soapy.output.padded}'
+      - name: signal
+        source: '${graph.pad_soapy.output.padded}'
     meta:
       node:
         y: 271
         x: 268
         height: 96
         width: 140
-  mul:
+  - name: mul
     module: multiply
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      a: '${graph.fft_flt.output.signal}'
-      b: '${graph.fft_soapy.output.signal}'
+      - name: a
+        source: '${graph.fft_flt.output.signal}'
+      - name: b
+        source: '${graph.fft_soapy.output.signal}'
     meta:
       node:
         y: 38
         x: 474
         height: 85
         width: 140
-  ifft:
+  - name: ifft
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: false
     input:
-      signal: '${graph.mul.output.product}'
+      - name: signal
+        source: '${graph.mul.output.product}'
     meta:
       node:
         y: 34
         x: 665.99994
         height: 96
         width: 140
-  unpad:
+  - name: unpad
     module: unpad
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
       size: 50
     input:
-      padded: '${graph.ifft.output.signal}'
+      - name: padded
+        source: '${graph.ifft.output.signal}'
     meta:
       node:
         y: 361
         x: 864
         height: 151
         width: 140
-  spectrum_engine:
+  - name: spectrum_engine
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       rangeMin: -145.71428
       enableAgc: true
@@ -259,41 +257,43 @@ graph:
       enableScale: true
       axis: 1
     input:
-      buffer: '${graph.ifft.output.signal}'
+      - name: buffer
+        source: '${graph.ifft.output.signal}'
     meta:
       node:
         y: 34.644485
         x: 863.08154
         height: 227.35551
         width: 140
-  overlap_add:
+  - name: overlap_add
     module: overlap_add
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
     input:
-      buffer: '${graph.unpad.output.unpadded}'
-      overlap: '${graph.unpad.output.pad}'
+      - name: buffer
+        source: '${graph.unpad.output.unpadded}'
+      - name: overlap
+        source: '${graph.unpad.output.pad}'
     meta:
       node:
         y: 361
         x: 1086
         height: 118
         width: 140
-  wtf:
+  - name: wtf
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.spectrum_engine.output.buffer}'
+      - name: signal
+        source: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -306,35 +306,34 @@ graph:
         x: 1047
         height: 240.64447
         width: 269
-  fm:
+  - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       sampleRate: 2000000
     input:
-      signal: '${graph.overlap_add.output.buffer}'
+      - name: signal
+        source: '${graph.overlap_add.output.buffer}'
     meta:
       node:
         y: 360
         x: 1299
         height: 96
         width: 126
-  audio:
+  - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       outSampleRate: 48000
       inSampleRate: 2000000
       deviceName: Default
     input:
-      buffer: '${graph.fm.output.signal}'
+      - name: buffer
+        source: '${graph.fm.output.signal}'
     meta:
       node:
         y: 354

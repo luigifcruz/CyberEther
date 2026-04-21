@@ -6,6 +6,7 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/tensor_link.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/provider.hh"
 #include "jetstream/render/base/window.hh"

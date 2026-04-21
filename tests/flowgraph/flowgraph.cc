@@ -1,126 +1,10 @@
 #include <catch2/catch_approx.hpp>
-#include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "flowgraph_fixture.hh"
-#include "jetstream/detail/module_impl.hh"
-#include "jetstream/flowgraph.hh"
-#include "jetstream/logger.hh"
-#include "jetstream/module_context.hh"
-#include "jetstream/registry.hh"
-#include "jetstream/runtime_context_native_cpu.hh"
-#include "jetstream/scheduler_context.hh"
-
-#include "jetstream/domains/dsp/signal_generator/block.hh"
-#include "jetstream/domains/dsp/signal_generator/module.hh"
-#include "jetstream/domains/core/add/block.hh"
+#include "common.hh"
 
 using namespace Jetstream;
-
-namespace {
-
-struct StackDockFlowgraphFixture {
-    U64 order = 0;
-
-    JST_SERDES(order);
-};
-
-struct StackDockSurfaceFixture {
-    std::string block;
-    std::string surface;
-    U64 order = 0;
-
-    JST_SERDES(block, surface, order);
-};
-
-struct StackDockLayoutFixture {
-    std::string direction;
-    F32 ratio = 0.5f;
-    std::vector<StackDockFlowgraphFixture> flowgraphs;
-    std::vector<StackDockSurfaceFixture> surfaces;
-    std::unordered_map<std::string, StackDockLayoutFixture> children;
-
-    JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
-};
-
-struct StackMetaFixture {
-    std::string title;
-    F32 x = 0.0f;
-    F32 y = 0.0f;
-    F32 width = 0.0f;
-    F32 height = 0.0f;
-    std::unordered_map<std::string, StackDockLayoutFixture> layout;
-
-    JST_SERDES(title, x, y, width, height, layout);
-};
-
-constexpr auto kSignalGeneratorTestProvider = "test-alt";
-
-struct SignalGeneratorTestProviderImpl : Module::Impl,
-                                         DynamicConfig<Modules::SignalGenerator>,
-                                         NativeCpuRuntimeContext,
-                                         Scheduler::Context {
-    Result validate() override {
-        if (signalDataType != "F32" && signalDataType != "CF32") {
-            return Result::ERROR;
-        }
-
-        if (bufferSize == 0) {
-            return Result::ERROR;
-        }
-
-        return Result::SUCCESS;
-    }
-
-    Result define() override {
-        return defineInterfaceOutput("signal");
-    }
-
-    Result create() override {
-        JST_CHECK(signal.create(device(), NameToDataType(signalDataType), {bufferSize}));
-        outputs()["signal"].produced(name(), "signal", signal);
-
-        return Result::SUCCESS;
-    }
-
-    Result destroy() override {
-        return Result::SUCCESS;
-    }
-
-    Result reconfigure() override {
-        return Result::RECREATE;
-    }
-
-    Tensor signal;
-};
-
-Result RegisterSignalGeneratorTestProvider() {
-    static const Result result = Registry::RegisterModule(
-        "signal_generator",
-        DeviceType::CPU,
-        RuntimeType::NATIVE,
-        kSignalGeneratorTestProvider,
-        []() -> std::shared_ptr<Module> {
-            const auto impl = std::make_shared<SignalGeneratorTestProviderImpl>();
-            const auto runtimeContext = std::static_pointer_cast<Runtime::Context>(impl);
-            const auto schedulerContext = std::static_pointer_cast<Scheduler::Context>(impl);
-            const auto context = std::make_shared<Module::Context>(runtimeContext, schedulerContext);
-            const auto stagedConfig = std::static_pointer_cast<Module::Config>(impl);
-            const auto candidateConfig = std::static_pointer_cast<Module::Config>(impl->candidate());
-
-            return std::make_shared<Module>(DeviceType::CPU,
-                                            RuntimeType::NATIVE,
-                                            kSignalGeneratorTestProvider,
-                                            impl,
-                                            context,
-                                            stagedConfig,
-                                            candidateConfig);
-        });
-
-    return result;
-}
-
-}  // namespace
+using namespace TestFlowgraph;
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block creation and destruction", "[flowgraph]") {
     SECTION("create single block") {
@@ -982,7 +866,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(!blob.empty());
 
         const std::string yaml(blob.begin(), blob.end());
-        REQUIRE(yaml.starts_with("---\nversion: 1.0.0\n\n"));
+        REQUIRE(yaml.starts_with("---\nversion: 2\n"));
         REQUIRE(yaml.find("stacks:") != std::string::npos);
         REQUIRE(yaml.find("stack_0:") != std::string::npos);
         REQUIRE(yaml.find("title: Stack 0") != std::string::npos);
@@ -1065,9 +949,4 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(inspectorLayout.surfaces.at(0).block == "add1");
         REQUIRE(inspectorLayout.surfaces.at(0).surface == "waterfall");
     }
-}
-
-int main(int argc, char* argv[]) {
-    JST_LOG_SET_DEBUG_LEVEL(0);
-    return Catch::Session().run(argc, argv);
 }

@@ -1,6 +1,7 @@
 #include "module_impl.hh"
 
 #include <cmath>
+#include <numeric>
 
 #include "miniaudio.h"
 

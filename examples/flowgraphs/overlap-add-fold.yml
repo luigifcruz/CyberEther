@@ -1,18 +1,18 @@
 ---
-version: 1.0.0
+version: 2
 
 title: 'Overlap-Add-Fold'
 summary: 'Filter with overlap-add & resample.'
 author: Luigi
 license: MIT
 description: Shows how to filter a signal in the frequency domain with a FIR filter. Uses multiply and add to reduce blocking artifacts. The signal is also folded and resampled.
+
 graph:
-  soapy:
+  - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       bufferMultiplier: 1024
       sampleRate: 2000000
@@ -27,7 +27,7 @@ graph:
         x: 24
         height: 391
         width: 140
-  not22:
+  - name: not22
     module: note
     device: cpu
     runtime: native
@@ -36,7 +36,7 @@ graph:
       content: |-
         # Overlap-Add-Fold Example
         To understand the Overlap-Add section of this flowgraph, please, open the `Overlap-Add` example flowgraph. This is a continuation of that example that adds a `Fold` block for resampling the filtered signal. This decreases the computation necessary by reducing the IFFT size for each station.
-        
+
         ### Suggestion
         The next example flowgraph `Multi-FM` abstracts this whole mechanism in a single `Filter Engine` block. Making it more practical for reuse.
     meta:
@@ -45,61 +45,60 @@ graph:
         x: 843
         height: 287.00003
         width: 460
-  pad_soapy:
+  - name: pad_soapy
     module: pad
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
       size: 100
     input:
-      unpadded: '${graph.soapy.output.signal}'
+      - name: unpadded
+        source: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 320.99997
         x: 217
         height: 129
         width: 140
-  fft_soapy:
+  - name: fft_soapy
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: true
     input:
-      signal: '${graph.pad_soapy.output.padded}'
+      - name: signal
+        source: '${graph.pad_soapy.output.padded}'
     meta:
       node:
         y: 326.99997
         x: 401
         height: 96
         width: 140
-  exp_dims27:
+  - name: exp_dims27
     module: expand_dims
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
     input:
-      buffer: '${graph.fft_soapy.output.signal}'
+      - name: buffer
+        source: '${graph.fft_soapy.output.signal}'
     meta:
       node:
         y: 315.99997
         x: 584
         height: 96.00003
         width: 140
-  flt:
+  - name: flt
     module: filter_taps
     device: cpu
     runtime: native
     provider: generic
-    outputDataType: CF32
     config:
       taps: 101
       heads: 2
@@ -112,146 +111,146 @@ graph:
         x: 24
         height: 239
         width: 140
-  pad_flt:
+  - name: pad_flt
     module: pad
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 1
       size: 7999
     input:
-      unpadded: '${graph.flt.output.coeffs}'
+      - name: unpadded
+        source: '${graph.flt.output.coeffs}'
     meta:
       node:
         y: 24.99997
         x: 216
         height: 128.00003
         width: 140
-  fft_flt:
+  - name: fft_flt
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: true
     input:
-      signal: '${graph.pad_flt.output.padded}'
+      - name: signal
+        source: '${graph.pad_flt.output.padded}'
     meta:
       node:
         y: 19.99997
         x: 409
         height: 95.00003
         width: 140
-  mul:
+  - name: mul
     module: multiply
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     input:
-      b: '${graph.exp_dims27.output.buffer}'
-      a: '${graph.fft_flt.output.signal}'
+      - name: b
+        source: '${graph.exp_dims27.output.buffer}'
+      - name: a
+        source: '${graph.fft_flt.output.signal}'
     meta:
       node:
         y: 18.99997
         x: 815
         height: 84.00003
         width: 140
-  fol36:
+  - name: fol36
     module: fold
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       size: 810
       offset: 0
       axis: 2
     input:
-      buffer: '${graph.mul.output.product}'
+      - name: buffer
+        source: '${graph.mul.output.product}'
     meta:
       node:
         y: 18.99997
         x: 1005
         height: 161.00003
         width: 140
-  ifft:
+  - name: ifft
     module: fft
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       forward: false
     input:
-      signal: '${graph.fol36.output.buffer}'
+      - name: signal
+        source: '${graph.fol36.output.buffer}'
     meta:
       node:
         y: 28.99997
         x: 1195
         height: 95.00003
         width: 140
-  unpad:
+  - name: unpad
     module: unpad
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 2
       size: 10
     input:
-      padded: '${graph.ifft.output.signal}'
+      - name: padded
+        source: '${graph.ifft.output.signal}'
     meta:
       node:
         y: 29.641693
         x: 1381.2487
         height: 150.3583
         width: 140
-  overlap_add:
+  - name: overlap_add
     module: overlap_add
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       axis: 2
     input:
-      overlap: '${graph.unpad.output.pad}'
-      buffer: '${graph.unpad.output.unpadded}'
+      - name: overlap
+        source: '${graph.unpad.output.pad}'
+      - name: buffer
+        source: '${graph.unpad.output.unpadded}'
     meta:
       node:
         y: 39.51596
         x: 1561.3184
         height: 117.48404
         width: 140
-  sli51:
+  - name: sli51
     module: slice
     device: cpu
     runtime: native
     provider: generic
-    dataType: CF32
     config:
       contiguous: true
       slice: '[:, 1, :]'
     input:
-      buffer: '${graph.overlap_add.output.buffer}'
+      - name: buffer
+        source: '${graph.overlap_add.output.buffer}'
     meta:
       node:
         y: 28.862396
         x: 1770.1914
         height: 128.1376
         width: 140
-  spectrum_engine:
+  - name: spectrum_engine
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       rangeMin: -274.28574
       enableAgc: true
@@ -259,41 +258,41 @@ graph:
       enableScale: true
       axis: 1
     input:
-      buffer: '${graph.sli51.output.buffer}'
+      - name: buffer
+        source: '${graph.sli51.output.buffer}'
     meta:
       node:
         y: 189.77023
         x: 1986.9319
         height: 227.22977
         width: 140
-  fm:
+  - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
-    inputDataType: CF32
-    outputDataType: F32
     config:
       sampleRate: 200000
     input:
-      signal: '${graph.sli51.output.buffer}'
+      - name: signal
+        source: '${graph.sli51.output.buffer}'
     meta:
       node:
         y: 25.99997
         x: 1988.0001
         height: 95.00003
         width: 140
-  wtf:
+  - name: wtf
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       interpolate: true
       height: 512
     input:
-      signal: '${graph.spectrum_engine.output.buffer}'
+      - name: signal
+        source: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -306,18 +305,18 @@ graph:
         x: 2194
         height: 281.77023
         width: 218
-  audio:
+  - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
-    dataType: F32
     config:
       outSampleRate: 48000
       inSampleRate: 200000
       deviceName: Default
     input:
-      buffer: '${graph.fm.output.signal}'
+      - name: buffer
+        source: '${graph.fm.output.signal}'
     meta:
       node:
         y: 13.9999695

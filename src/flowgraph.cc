@@ -2,8 +2,6 @@
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
-#include <ryml.hpp>
-#include <ryml_std.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -13,7 +11,6 @@
 #include <queue>
 #include <ranges>
 #include <regex>
-#include <string_view>
 #include <unordered_set>
 
 namespace Jetstream {
@@ -37,12 +34,38 @@ struct BlockState {
 
 using OutputLookup = std::unordered_map<U64, OutputRef>;
 
-std::string NormalizeScalar(const std::string& value) {
-    if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'') {
-        return value.substr(1, value.size() - 2);
-    }
-    return value;
-}
+struct FlowgraphInputDocument {
+    std::string name;
+    std::string source;
+
+    JST_SERDES(name, source);
+};
+
+struct FlowgraphBlockDocument {
+    std::string name;
+    std::string module;
+    DeviceType device = DeviceType::CPU;
+    RuntimeType runtime = RuntimeType::NATIVE;
+    ProviderType provider = "generic";
+    std::optional<Parser::Map> config;
+    std::optional<std::vector<FlowgraphInputDocument>> input;
+    std::optional<std::unordered_map<std::string, Flowgraph::Meta>> meta;
+
+    JST_SERDES(name, module, device, runtime, provider, config, input, meta);
+};
+
+struct FlowgraphDocument {
+    std::string version = "2";
+    std::optional<std::string> title;
+    std::optional<std::string> summary;
+    std::optional<std::string> author;
+    std::optional<std::string> license;
+    std::optional<std::string> description;
+    std::vector<FlowgraphBlockDocument> graph;
+    std::optional<std::unordered_map<std::string, Flowgraph::Meta>> meta;
+
+    JST_SERDES(version, title, summary, author, license, description, graph, meta);
+};
 
 OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
                                const std::unordered_map<std::string, std::shared_ptr<Block>>& blocks) {
@@ -64,211 +87,72 @@ OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
     return lookup;
 }
 
-std::vector<std::string> CollectTensorTypes(const TensorMap& map) {
-    std::vector<std::string> types;
-    types.reserve(map.size());
+std::optional<std::unordered_map<std::string, Flowgraph::Meta>> CompactMetaMap(
+    const std::unordered_map<std::string, Flowgraph::Meta>& meta) {
+    std::unordered_map<std::string, Flowgraph::Meta> compact;
 
-    for (const auto& [_, link] : map) {
-        const auto& typeName = DataTypeToName(link.tensor.dtype());
-
-        if (!typeName.empty()) {
-            types.emplace_back(typeName);
+    for (const auto& [key, value] : meta) {
+        if (!value.empty()) {
+            compact[key] = value;
         }
     }
 
-    std::sort(types.begin(), types.end());
-    types.erase(std::unique(types.begin(), types.end()), types.end());
+    if (compact.empty()) {
+        return std::nullopt;
+    }
 
-    return types;
+    return compact;
 }
 
-Result SerializeConfigSequenceToYaml(const Parser::Sequence& sequence, ryml::NodeRef& node);
-Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node);
-Result DeserializeConfigFromYaml(ryml::ConstNodeRef node, Parser::Map& configMap);
-Result DeserializeConfigSequenceFromYaml(ryml::ConstNodeRef node, Parser::Sequence& sequence);
-
-Result SerializeConfigValueToYaml(const std::any& value, ryml::NodeRef& node) {
-    if (value.type() == typeid(Parser::Map)) {
-        return SerializeConfigToYaml(std::any_cast<const Parser::Map&>(value), node);
+Result MigrateFlowgraphVersion100To200(Parser::Map& root) {
+    if (!root.contains("version") && root.contains("protocolVersion")) {
+        root["version"] = root.at("protocolVersion");
     }
 
-    if (value.type() == typeid(Parser::Sequence)) {
-        return SerializeConfigSequenceToYaml(std::any_cast<const Parser::Sequence&>(value), node);
+    std::string version;
+    JST_CHECK(Parser::Deserialize(root, "version", version));
+
+    if (version != "1.0.0") {
+        return Result::SUCCESS;
     }
 
-    std::string encoded;
-    JST_CHECK(Parser::TypedToString(value, encoded));
-    node << encoded;
+    if (root.contains("graph") && root.at("graph").type() == typeid(Parser::Map)) {
+        const auto& legacyGraph = std::any_cast<const Parser::Map&>(root.at("graph"));
+        Parser::Sequence graph;
+        graph.reserve(legacyGraph.size());
 
-    if (std::count(encoded.begin(), encoded.end(), '\n')) {
-        node |= ryml::VAL_LITERAL;
-    }
+        for (const auto& [name, encodedBlock] : legacyGraph) {
+            if (encodedBlock.type() != typeid(Parser::Map)) {
+                JST_ERROR("[FLOWGRAPH] Block '{}' must serialize to a map.", name);
+                return Result::ERROR;
+            }
 
-    return Result::SUCCESS;
-}
+            Parser::Map block = std::any_cast<const Parser::Map&>(encodedBlock);
 
-Result SerializeConfigSequenceToYaml(const Parser::Sequence& sequence, ryml::NodeRef& node) {
-    node |= ryml::SEQ;
+            if (block.contains("input") && block.at("input").type() == typeid(Parser::Map)) {
+                const auto& legacyInput = std::any_cast<const Parser::Map&>(block.at("input"));
+                Parser::Sequence input;
+                input.reserve(legacyInput.size());
 
-    for (const auto& value : sequence) {
-        auto child = node.append_child();
-        JST_CHECK(SerializeConfigValueToYaml(value, child));
-    }
+                for (const auto& [port, encodedSource] : legacyInput) {
+                    Parser::Map entry;
+                    entry["name"] = port;
+                    entry["source"] = encodedSource;
+                    input.push_back(std::move(entry));
+                }
 
-    return Result::SUCCESS;
-}
+                block["input"] = std::move(input);
+            }
 
-Result SerializeConfigToYaml(const Parser::Map& configMap, ryml::NodeRef& node) {
-    node |= ryml::MAP;
-
-    for (const auto& [key, value] : configMap) {
-        if (key.empty()) {
-            continue;
+            block["name"] = name;
+            graph.push_back(std::move(block));
         }
 
-        std::string encoded;
-        const bool isScalar = value.type() != typeid(Parser::Map) && value.type() != typeid(Parser::Sequence);
-        if (isScalar) {
-            JST_CHECK(Parser::TypedToString(value, encoded));
-        }
-
-        if (isScalar && encoded.empty()) {
-            continue;
-        }
-
-        auto child = node.append_child();
-        child << ryml::key(key);
-        JST_CHECK(SerializeConfigValueToYaml(value, child));
+        root["graph"] = std::move(graph);
     }
 
-    return Result::SUCCESS;
-}
-
-Result DeserializeConfigSequenceFromYaml(ryml::ConstNodeRef node, Parser::Sequence& sequence) {
-    if (!node.is_seq()) {
-        JST_ERROR("[FLOWGRAPH] Config sequence node must be a sequence.");
-        return Result::ERROR;
-    }
-
-    Parser::Sequence decoded;
-    decoded.reserve(node.num_children());
-
-    for (const auto& entry : node.children()) {
-        if (entry.is_map()) {
-            Parser::Map nested;
-            JST_CHECK(DeserializeConfigFromYaml(entry, nested));
-            decoded.push_back(std::move(nested));
-            continue;
-        }
-
-        if (entry.is_seq()) {
-            Parser::Sequence nested;
-            JST_CHECK(DeserializeConfigSequenceFromYaml(entry, nested));
-            decoded.push_back(std::move(nested));
-            continue;
-        }
-
-        std::string value;
-        if (!entry.has_val()) {
-            JST_ERROR("[FLOWGRAPH] Config sequence entries must be scalars, maps, or sequences.");
-            return Result::ERROR;
-        }
-
-        entry >> value;
-        decoded.push_back(NormalizeScalar(value));
-    }
-
-    sequence = std::move(decoded);
-    return Result::SUCCESS;
-}
-
-Result DeserializeConfigFromYaml(ryml::ConstNodeRef node, Parser::Map& configMap) {
-    if (!node.is_map()) {
-        JST_ERROR("[FLOWGRAPH] Config node must be a map.");
-        return Result::ERROR;
-    }
-
-    Parser::Map decoded;
-
-    for (const auto& element : node.children()) {
-        std::string key(element.key().str, element.key().len);
-
-        if (element.is_map()) {
-            Parser::Map nested;
-            JST_CHECK(DeserializeConfigFromYaml(element, nested));
-            decoded[key] = std::move(nested);
-            continue;
-        }
-
-        if (element.is_seq()) {
-            Parser::Sequence sequence;
-            JST_CHECK(DeserializeConfigSequenceFromYaml(element, sequence));
-            decoded[key] = std::move(sequence);
-            continue;
-        }
-
-        std::string value;
-        if (!element.has_val()) {
-            JST_ERROR("[FLOWGRAPH] Config '{}' must be a scalar, map, or sequence.", key);
-            return Result::ERROR;
-        }
-
-        element >> value;
-        decoded[key] = NormalizeScalar(value);
-    }
-
-    configMap = std::move(decoded);
-    return Result::SUCCESS;
-}
-
-void SetScalarNode(ryml::NodeRef& node, const char* key, const std::string& value, bool literalOnNewline = false) {
-    if (value.empty()) {
-        return;
-    }
-
-    auto child = node.append_child();
-    child << ryml::key(key) << value;
-
-    if (literalOnNewline && std::count(value.begin(), value.end(), '\n')) {
-        child |= ryml::VAL_LITERAL;
-    }
-}
-
-Result SerializeMetaToYaml(const std::unordered_map<std::string, Flowgraph::Meta>& meta, ryml::NodeRef& node) {
-    node |= ryml::MAP;
-
-    for (const auto& [key, data] : meta) {
-        if (key.empty() || data.empty()) {
-            continue;
-        }
-
-        auto entryNode = node.append_child();
-        entryNode << ryml::key(key);
-        JST_CHECK(SerializeConfigToYaml(data, entryNode));
-    }
-
-    return Result::SUCCESS;
-}
-
-Result DeserializeMetaFromYaml(ryml::ConstNodeRef node, std::unordered_map<std::string, Flowgraph::Meta>& meta) {
-    if (!node.is_map()) {
-        return Result::ERROR;
-    }
-
-    for (const auto& child : node.children()) {
-        std::string key(child.key().str, child.key().len);
-
-        if (!child.is_map()) {
-            JST_ERROR("[FLOWGRAPH] Meta entry '{}' must be a map.", key);
-            return Result::ERROR;
-        }
-
-        Flowgraph::Meta data;
-        JST_CHECK(DeserializeConfigFromYaml(child, data));
-
-        meta[key] = std::move(data);
-    }
-
+    root["version"] = std::string("2");
+    root.erase("protocolVersion");
     return Result::SUCCESS;
 }
 
@@ -280,26 +164,6 @@ std::optional<OutputRef> ParseGraphReference(const std::string& value) {
     }
 
     return OutputRef{matches[1].str(), matches[2].str()};
-}
-
-Result ReadScalar(const ryml::NodeRef& node, const char* key, std::string& value) {
-    const auto k = ryml::to_csubstr(key);
-
-    value.clear();
-
-    if (!node.has_child(k)) {
-        return Result::SUCCESS;
-    }
-
-    auto child = node[k];
-    if (!child.has_val()) {
-        JST_ERROR("[FLOWGRAPH] Entry '{}' must be a scalar value.", key);
-        return Result::ERROR;
-    }
-
-    child >> value;
-    value = NormalizeScalar(value);
-    return Result::SUCCESS;
 }
 
 }  // namespace
@@ -925,75 +789,43 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.")
 
     std::string yamlText(blob.begin(), blob.end());
-    ryml::Tree tree;
-    try {
-        tree = ryml::parse_in_arena(ryml::to_csubstr(yamlText));
-    } catch (...) {
-        JST_ERROR("[FLOWGRAPH] Failed to parse flowgraph blob.");
+    Parser::Map root;
+    JST_CHECK(Parser::YamlDecode(yamlText, root));
+
+    JST_CHECK(MigrateFlowgraphVersion100To200(root));
+
+    FlowgraphDocument document;
+    JST_CHECK(document.deserialize(root));
+
+    if (document.version != "2") {
+        JST_ERROR("[FLOWGRAPH] Invalid flowgraph version '{}'.", document.version);
         return Result::ERROR;
     }
 
-    auto root = tree.rootref();
-    if (!root.is_map() && root.num_children() > 0) {
-        root = root[0];
+    if (document.title.has_value()) {
+        impl->title = *document.title;
+    }
+    if (document.summary.has_value()) {
+        impl->summary = *document.summary;
+    }
+    if (document.author.has_value()) {
+        impl->author = *document.author;
+    }
+    if (document.license.has_value()) {
+        impl->license = *document.license;
+    }
+    if (document.description.has_value()) {
+        impl->description = *document.description;
     }
 
-    if (!root.is_map()) {
-        JST_ERROR("[FLOWGRAPH] Flowgraph root is not a map.");
-        return Result::ERROR;
+    if (document.meta.has_value()) {
+        for (const auto& [key, data] : *document.meta) {
+            impl->meta[key] = data;
+        }
     }
 
-    std::string version;
-    JST_CHECK(ReadScalar(root, "version", version));
-    if (version.empty()) {
-        JST_CHECK(ReadScalar(root, "protocolVersion", version));
-    }
-    if (!version.empty() && version != "1.0.0") {
-        JST_ERROR("[FLOWGRAPH] Invalid flowgraph version '{}'.", version);
-        return Result::ERROR;
-    }
-
-    std::string title;
-    std::string summary;
-    std::string author;
-    std::string license;
-    std::string description;
-
-    JST_CHECK(ReadScalar(root, "title", title));
-    JST_CHECK(ReadScalar(root, "summary", summary));
-    JST_CHECK(ReadScalar(root, "author", author));
-    JST_CHECK(ReadScalar(root, "license", license));
-    JST_CHECK(ReadScalar(root, "description", description));
-
-    if (!title.empty()) {
-        impl->title = title;
-    }
-    if (!summary.empty()) {
-        impl->summary = summary;
-    }
-    if (!author.empty()) {
-        impl->author = author;
-    }
-    if (!license.empty()) {
-        impl->license = license;
-    }
-    if (!description.empty()) {
-        impl->description = description;
-    }
-
-    if (root.has_child("meta")) {
-        auto metaNode = root["meta"];
-        JST_CHECK(DeserializeMetaFromYaml(metaNode, impl->meta));
-    }
-
-    if (!root.has_child("graph")) {
+    if (document.graph.empty()) {
         return Result::SUCCESS;
-    }
-
-    auto graph = root["graph"];
-    if (!graph.is_map()) {
-        JST_ERROR("[FLOWGRAPH] Graph entry is not a map.");
-        return Result::ERROR;
     }
 
     struct NodeDef {
@@ -1007,119 +839,64 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     };
 
     std::unordered_map<std::string, NodeDef> nodes;
+    std::vector<std::string> nodeOrder;
+    nodeOrder.reserve(document.graph.size());
 
-    for (const auto& blockNode : graph.children()) {
-        if (!blockNode.has_key()) {
+    for (const auto& blockEntry : document.graph) {
+        if (blockEntry.name.empty()) {
             JST_ERROR("[FLOWGRAPH] Block without a name found.");
             return Result::ERROR;
         }
 
-        std::string name(blockNode.key().str, blockNode.key().len);
         NodeDef def;
+        def.type = blockEntry.module;
+        def.device = blockEntry.device;
+        def.runtime = blockEntry.runtime;
+        def.provider = blockEntry.provider;
+        if (blockEntry.config.has_value()) {
+            def.config = *blockEntry.config;
+        }
+        if (blockEntry.meta.has_value()) {
+            def.meta = *blockEntry.meta;
+        }
 
-        if (!blockNode.has_child("module")) {
-            JST_ERROR("[FLOWGRAPH] Block '{}' is missing 'module'.", name);
+        if (def.type.empty()) {
+            JST_ERROR("[FLOWGRAPH] Block '{}' is missing 'module'.", blockEntry.name);
             return Result::ERROR;
         }
-        auto moduleNode = blockNode["module"];
-        if (!moduleNode.has_val()) {
-            JST_ERROR("[FLOWGRAPH] Block '{}' has non-scalar 'module'.", name);
-            return Result::ERROR;
-        }
-        moduleNode >> def.type;
-
-        if (blockNode.has_child("device")) {
-            std::string deviceStr;
-            auto deviceNode = blockNode["device"];
-            if (!deviceNode.has_val()) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' has non-scalar 'device'.", name);
-                return Result::ERROR;
-            }
-            deviceNode >> deviceStr;
-            try {
-                def.device = StringToDevice(deviceStr);
-            } catch (...) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' has invalid device '{}'.", name, deviceStr);
-                return Result::ERROR;
-            }
-        }
-
-        if (blockNode.has_child("runtime")) {
-            std::string runtimeStr;
-            auto runtimeNode = blockNode["runtime"];
-            if (!runtimeNode.has_val()) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' has non-scalar 'runtime'.", name);
-                return Result::ERROR;
-            }
-            runtimeNode >> runtimeStr;
-            def.runtime = StringToRuntime(runtimeStr);
-            if (def.runtime == RuntimeType::NONE) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' has invalid runtime '{}'.", name, runtimeStr);
-                return Result::ERROR;
-            }
-        }
-
-        if (blockNode.has_child("provider")) {
-            auto providerNode = blockNode["provider"];
-            if (!providerNode.has_val()) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' has non-scalar 'provider'.", name);
-                return Result::ERROR;
-            }
-            providerNode >> def.provider;
-        }
-
-        if (blockNode.has_child("config")) {
-            auto cfg = blockNode["config"];
-            if (!cfg.is_map()) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' config must be a map.", name);
-                return Result::ERROR;
-            }
-
-            JST_CHECK(DeserializeConfigFromYaml(cfg, def.config));
-        }
-
-        if (blockNode.has_child("input")) {
-            auto input = blockNode["input"];
-            if (!input.is_map()) {
-                JST_ERROR("[FLOWGRAPH] Block '{}' input must be a map.", name);
-                return Result::ERROR;
-            }
-
-            for (const auto& element : input.children()) {
-                std::string key(element.key().str, element.key().len);
-                std::string value;
-                if (!element.has_val()) {
-                    JST_ERROR("[FLOWGRAPH] Block '{}' input '{}' must be a scalar.", name, key);
-                    return Result::ERROR;
-                }
-                element >> value;
-
-                const auto ref = ParseGraphReference(value);
+        if (blockEntry.input.has_value()) {
+            for (const auto& inputEntry : *blockEntry.input) {
+                const auto ref = ParseGraphReference(inputEntry.source);
                 if (!ref.has_value()) {
-                    JST_ERROR("[FLOWGRAPH] Block '{}' input '{}' has invalid link '{}'.", name, key, value);
+                    JST_ERROR("[FLOWGRAPH] Block '{}' input '{}' has invalid link '{}'.",
+                              blockEntry.name,
+                              inputEntry.name,
+                              inputEntry.source);
                     return Result::ERROR;
                 }
 
-                def.inputs[key] = ref.value();
+                def.inputs[inputEntry.name] = ref.value();
             }
         }
 
-        if (blockNode.has_child("meta")) {
-            auto metaNode = blockNode["meta"];
-            JST_CHECK(DeserializeMetaFromYaml(metaNode, def.meta));
+        if (nodes.contains(blockEntry.name)) {
+            JST_ERROR("[FLOWGRAPH] Duplicate block '{}' found in flowgraph document.", blockEntry.name);
+            return Result::ERROR;
         }
 
-        nodes[name] = std::move(def);
+        nodes[blockEntry.name] = std::move(def);
+        nodeOrder.push_back(blockEntry.name);
     }
 
     std::unordered_map<std::string, size_t> indegree;
     std::unordered_map<std::string, std::vector<std::string>> dependents;
 
-    for (const auto& [name, def] : nodes) {
+    for (const auto& name : nodeOrder) {
         indegree[name] = 0;
     }
 
-    for (const auto& [name, def] : nodes) {
+    for (const auto& name : nodeOrder) {
+        const auto& def = nodes.at(name);
         for (const auto& [_, input] : def.inputs) {
             if (!nodes.contains(input.block) && !impl->blocks.contains(input.block)) {
                 JST_ERROR("[FLOWGRAPH] Block '{}' depends on missing block '{}'.", name, input.block);
@@ -1135,8 +912,8 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     }
 
     std::queue<std::string> ready;
-    for (const auto& [name, degree] : indegree) {
-        if (degree == 0) {
+    for (const auto& name : nodeOrder) {
+        if (indegree.at(name) == 0) {
             ready.push(name);
         }
     }
@@ -1216,117 +993,89 @@ Result Flowgraph::exportToFile(const std::string& path) {
 Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
 
-    ryml::Tree yaml;
-    auto root = yaml.rootref();
-    root |= ryml::MAP;
+    FlowgraphDocument document;
+    document.version = "2";
+    if (!impl->title.empty()) {
+        document.title = impl->title;
+    }
+    if (!impl->summary.empty()) {
+        document.summary = impl->summary;
+    }
+    if (!impl->author.empty()) {
+        document.author = impl->author;
+    }
+    if (!impl->license.empty()) {
+        document.license = impl->license;
+    }
+    if (!impl->description.empty()) {
+        document.description = impl->description;
+    }
+    document.meta = CompactMetaMap(impl->meta);
 
-    root["version"] << "1.0.0";
+    const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
 
-    SetScalarNode(root, "title", impl->title);
-    SetScalarNode(root, "summary", impl->summary);
-    SetScalarNode(root, "author", impl->author);
-    SetScalarNode(root, "license", impl->license);
-    SetScalarNode(root, "description", impl->description, true);
+    for (const auto& name : impl->blockOrder) {
+        const auto& block = impl->blocks.at(name);
+        FlowgraphBlockDocument blockDocument;
 
-    if (!impl->blocks.empty()) {
-        ryml::NodeRef graph = root["graph"];
-        graph |= ryml::MAP;
+        blockDocument.name = name;
+        blockDocument.module = block->config().type();
+        blockDocument.device = block->device();
+        blockDocument.runtime = block->runtime();
+        blockDocument.provider = block->provider();
 
-        const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
-
-        for (const auto& name : impl->blockOrder) {
-            const auto& block = impl->blocks.at(name);
-
-            auto blockNode = graph.append_child();
-            blockNode << ryml::key(name);
-            blockNode |= ryml::MAP;
-
-            blockNode.append_child() << ryml::key("module") << block->config().type();
-            blockNode.append_child() << ryml::key("device") << GetDeviceName(block->device());
-            blockNode.append_child() << ryml::key("runtime") << GetRuntimeName(block->runtime());
-            blockNode.append_child() << ryml::key("provider") << block->provider();
-
-            const auto inputTypes = CollectTensorTypes(block->inputs());
-            const auto outputTypes = CollectTensorTypes(block->outputs());
-
-            const std::string inputType = inputTypes.empty() ? "" : inputTypes.front();
-            const std::string outputType = outputTypes.empty() ? "" : outputTypes.front();
-
-            if (!inputType.empty() && (outputType.empty() || inputType == outputType)) {
-                blockNode.append_child() << ryml::key("dataType") << inputType;
-            } else {
-                if (!inputType.empty()) {
-                    blockNode.append_child() << ryml::key("inputDataType") << inputType;
-                }
-                if (!outputType.empty()) {
-                    blockNode.append_child() << ryml::key("outputDataType") << outputType;
-                }
-            }
-
-            Parser::Map configMap;
-            JST_CHECK(block->config(configMap));
-            if (!configMap.empty()) {
-                auto configNode = blockNode.append_child();
-                configNode << ryml::key("config");
-                JST_CHECK(SerializeConfigToYaml(configMap, configNode));
-            }
-
-            const auto& inputs = block->inputs();
-            if (!inputs.empty()) {
-                auto inputNode = blockNode.append_child();
-                inputNode << ryml::key("input");
-                inputNode |= ryml::MAP;
-
-                for (const auto& [slot, link] : inputs) {
-                    const U64 tensorId = link.tensor.id();
-
-                    std::string producerBlock;
-                    std::string producerPort;
-
-                    if (link.external.has_value()) {
-                        producerBlock = link.external->block;
-                        producerPort = link.external->port;
-                    }
-
-                    if (tensorId != 0 && outputLookup.contains(tensorId)) {
-                        producerBlock = outputLookup.at(tensorId).block;
-                        producerPort = outputLookup.at(tensorId).port;
-                    }
-
-                    if (producerBlock.empty() || producerPort.empty()) {
-                        JST_ERROR("[FLOWGRAPH] Cannot resolve connection for input '{}.{}'.", name, slot);
-                        return Result::ERROR;
-                    }
-
-                    const auto value = jst::fmt::format("${{graph.{}.output.{}}}", producerBlock, producerPort);
-                    inputNode.append_child() << ryml::key(slot) << value;
-                }
-            }
-
-            if (impl->blockMeta.contains(name) && !impl->blockMeta.at(name).empty()) {
-                auto metaNode = blockNode.append_child();
-                metaNode << ryml::key("meta");
-                JST_CHECK(SerializeMetaToYaml(impl->blockMeta.at(name), metaNode));
-            }
+        Parser::Map config;
+        JST_CHECK(block->config(config));
+        if (!config.empty()) {
+            blockDocument.config = std::move(config);
         }
-    }
 
-    if (!impl->meta.empty()) {
-        auto metaNode = root.append_child();
-        metaNode << ryml::key("meta");
-        JST_CHECK(SerializeMetaToYaml(impl->meta, metaNode));
-    }
+        std::vector<FlowgraphInputDocument> inputs;
+        inputs.reserve(block->inputs().size());
 
-    auto emitted = ryml::emitrs_yaml<std::vector<char>>(yaml);
-    std::string yamlText(emitted.begin(), emitted.end());
+        for (const auto& [slot, link] : block->inputs()) {
+            const U64 tensorId = link.tensor.id();
 
-    const auto versionPos = yamlText.find("version: ");
-    if (versionPos != std::string::npos) {
-        const auto newlinePos = yamlText.find('\n', versionPos);
-        if (newlinePos != std::string::npos && newlinePos + 1 < yamlText.size() && yamlText[newlinePos + 1] != '\n') {
-            yamlText.insert(newlinePos + 1, "\n");
+            std::string producerBlock;
+            std::string producerPort;
+
+            if (link.external.has_value()) {
+                producerBlock = link.external->block;
+                producerPort = link.external->port;
+            }
+
+            if (tensorId != 0 && outputLookup.contains(tensorId)) {
+                producerBlock = outputLookup.at(tensorId).block;
+                producerPort = outputLookup.at(tensorId).port;
+            }
+
+            if (producerBlock.empty() || producerPort.empty()) {
+                JST_ERROR("[FLOWGRAPH] Cannot resolve connection for input '{}.{}'.", name, slot);
+                return Result::ERROR;
+            }
+
+            inputs.push_back({slot,
+                              jst::fmt::format("${{graph.{}.output.{}}}",
+                                               producerBlock,
+                                               producerPort)});
         }
+
+        if (!inputs.empty()) {
+            blockDocument.input = std::move(inputs);
+        }
+
+        if (impl->blockMeta.contains(name)) {
+            blockDocument.meta = CompactMetaMap(impl->blockMeta.at(name));
+        }
+
+        document.graph.push_back(std::move(blockDocument));
     }
+
+    Parser::Map root;
+    JST_CHECK(document.serialize(root));
+
+    std::string yamlText;
+    JST_CHECK(Parser::YamlEncode(root, yamlText));
 
     blob.clear();
     const char header[] = {'-', '-', '-', '\n'};

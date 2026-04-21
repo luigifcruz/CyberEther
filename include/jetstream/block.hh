@@ -10,6 +10,7 @@
 #include "jetstream/scheduler.hh"
 #include "jetstream/types.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/tensor_link.hh"
 #include "jetstream/module.hh"
 #include "jetstream/render/base.hh"
 
