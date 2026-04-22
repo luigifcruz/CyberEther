@@ -755,7 +755,9 @@ Result Flowgraph::importFromFile(const std::string& path) {
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
     impl->path = path;
 
-    std::ifstream file(path, std::ios::binary);
+    const auto flowgraphPath = std::filesystem::u8path(path);
+
+    std::ifstream file(flowgraphPath, std::ios::binary);
     if (!file) {
         JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", path);
         return Result::ERROR;
@@ -949,17 +951,19 @@ Result Flowgraph::exportToFile(const std::string& path) {
     std::vector<char> blob;
     JST_CHECK(exportToBlob(blob));
 
-    const auto parent = std::filesystem::path(impl->path).parent_path();
+    const auto flowgraphPath = std::filesystem::u8path(impl->path);
+
+    const auto parent = flowgraphPath.parent_path();
     if (!parent.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
         if (ec) {
-            JST_ERROR("[FLOWGRAPH] Cannot create directory '{}'.", parent.string());
+            JST_ERROR("[FLOWGRAPH] Cannot create parent directory for '{}'.", impl->path);
             return Result::ERROR;
         }
     }
 
-    std::ofstream file(impl->path, std::ios::out | std::ios::binary | std::ios::trunc);
+    std::ofstream file(flowgraphPath, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
         JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", impl->path);
         return Result::ERROR;
