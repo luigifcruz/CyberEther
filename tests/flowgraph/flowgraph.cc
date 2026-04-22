@@ -57,7 +57,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {
 
     SECTION("disconnect blocks") {
         auto result = flowgraph->blockDisconnect("add1", "a");
-        REQUIRE((result == Result::SUCCESS or result == Result::INCOMPLETE));
+        REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
         REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
     }
 
@@ -87,7 +87,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {
     SECTION("connect to nonexistent source port leaves block incomplete") {
         flowgraph->blockDisconnect("add1", "a");
         auto result = flowgraph->blockConnect("add1", "a", "gen1", "nonexistent");
-        REQUIRE((result == Result::SUCCESS or result == Result::INCOMPLETE));
+        REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
         REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
     }
 
@@ -123,7 +123,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Downstream propagation on connect", "[flowgr
 
     SECTION("disconnecting upstream marks downstream incomplete") {
         auto result = flowgraph->blockDisconnect("add1", "a");
-        REQUIRE((result == Result::SUCCESS or result == Result::INCOMPLETE));
+        REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
 
         // add1 should be incomplete, add2 should be incomplete (unresolved input)
         REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
@@ -821,42 +821,47 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
     flowgraph->setAuthor("Test Author");
 
     StackDockLayoutFixture graphLeaf;
-    graphLeaf.flowgraphs.push_back({.order = 0});
+    graphLeaf.flowgraphs = std::vector<StackDockFlowgraphFixture>{{.order = 0}};
 
     StackDockLayoutFixture spectrumLeaf;
-    spectrumLeaf.surfaces.push_back({
+    spectrumLeaf.surfaces = std::vector<StackDockSurfaceFixture>{{
         .block = "add1",
         .surface = "spectrum",
         .order = 0,
-    });
+    }};
 
     StackDockLayoutFixture stackRoot;
     stackRoot.direction = "left";
     stackRoot.ratio = 0.72f;
-    stackRoot.children["primary"] = graphLeaf;
-    stackRoot.children["secondary"] = spectrumLeaf;
+    stackRoot.children = {graphLeaf, spectrumLeaf};
 
     StackDockLayoutFixture inspectorRoot;
-    inspectorRoot.surfaces.push_back({
+    inspectorRoot.surfaces = std::vector<StackDockSurfaceFixture>{{
         .block = "add1",
         .surface = "waterfall",
         .order = 0,
-    });
+    }};
 
-    std::unordered_map<std::string, StackMetaFixture> stackWindows;
-    stackWindows["stack_0"].title = "Stack 0";
-    stackWindows["stack_0"].x = 10.0f;
-    stackWindows["stack_0"].y = 20.0f;
-    stackWindows["stack_0"].width = 500.0f;
-    stackWindows["stack_0"].height = 300.0f;
-    stackWindows["stack_0"].layout["root"] = stackRoot;
+    Parser::Map stackWindows;
 
-    stackWindows["stack_1"].title = "Inspector";
-    stackWindows["stack_1"].x = 30.0f;
-    stackWindows["stack_1"].y = 40.0f;
-    stackWindows["stack_1"].width = 640.0f;
-    stackWindows["stack_1"].height = 360.0f;
-    stackWindows["stack_1"].layout["root"] = inspectorRoot;
+    StackMetaFixture stackZeroMeta;
+    stackZeroMeta.title = "Stack 0";
+    stackZeroMeta.x = 10.0f;
+    stackZeroMeta.y = 20.0f;
+    stackZeroMeta.width = 500.0f;
+    stackZeroMeta.height = 300.0f;
+    stackZeroMeta.layout = stackRoot;
+    REQUIRE(Parser::Serialize(stackWindows, "stack_0", stackZeroMeta) == Result::SUCCESS);
+
+    StackMetaFixture inspectorMeta;
+    inspectorMeta.title = "Inspector";
+    inspectorMeta.x = 30.0f;
+    inspectorMeta.y = 40.0f;
+    inspectorMeta.width = 640.0f;
+    inspectorMeta.height = 360.0f;
+    inspectorMeta.layout = inspectorRoot;
+    REQUIRE(Parser::Serialize(stackWindows, "stack_1", inspectorMeta) == Result::SUCCESS);
+
     REQUIRE(flowgraph->setMeta("stacks", stackWindows) == Result::SUCCESS);
 
     SECTION("export to blob") {
@@ -877,11 +882,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(yaml.find("splitRatio:") == std::string::npos);
         REQUIRE(yaml.find("flowgraphs:") != std::string::npos);
         REQUIRE(yaml.find("surfaces:") != std::string::npos);
+        REQUIRE(yaml.find("direction: ''") == std::string::npos);
+        REQUIRE(yaml.find("ratio: 0\n") == std::string::npos);
         REQUIRE(yaml.find("items:") == std::string::npos);
         REQUIRE(yaml.find("kind:") == std::string::npos);
         REQUIRE(yaml.find("surface:add1:spectrum") == std::string::npos);
         REQUIRE(yaml.find("block: add1") != std::string::npos);
         REQUIRE(yaml.find("surface: spectrum") != std::string::npos);
+        REQUIRE(yaml.find("children:\n          - direction:") == std::string::npos);
         REQUIRE(yaml.find("width: 360") == std::string::npos);
         REQUIRE(yaml.find("width: 140") == std::string::npos);
     }
@@ -909,44 +917,49 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
         REQUIRE(flowgraph->title() == "Test Flowgraph");
         REQUIRE(flowgraph->author() == "Test Author");
 
-        std::unordered_map<std::string, StackMetaFixture> restoredStackWindows;
+        Parser::Map restoredStackWindows;
         REQUIRE(flowgraph->getMeta("stacks", restoredStackWindows) == Result::SUCCESS);
         REQUIRE(restoredStackWindows.size() == 2);
 
-        const auto& stackZero = restoredStackWindows.at("stack_0");
-        const auto& inspector = restoredStackWindows.at("stack_1");
+        StackMetaFixture stackZero;
+        StackMetaFixture inspector;
+        REQUIRE(Parser::Deserialize(restoredStackWindows, "stack_0", stackZero) == Result::SUCCESS);
+        REQUIRE(Parser::Deserialize(restoredStackWindows, "stack_1", inspector) == Result::SUCCESS);
+
         REQUIRE(stackZero.title == "Stack 0");
         REQUIRE(stackZero.x == Catch::Approx(10.0f));
         REQUIRE(stackZero.y == Catch::Approx(20.0f));
         REQUIRE(stackZero.width == Catch::Approx(500.0f));
         REQUIRE(stackZero.height == Catch::Approx(300.0f));
-        REQUIRE(stackZero.layout.size() == 1);
+        REQUIRE(stackZero.layout.has_value());
         REQUIRE(inspector.title == "Inspector");
         REQUIRE(inspector.x == Catch::Approx(30.0f));
         REQUIRE(inspector.y == Catch::Approx(40.0f));
         REQUIRE(inspector.width == Catch::Approx(640.0f));
         REQUIRE(inspector.height == Catch::Approx(360.0f));
-        REQUIRE(inspector.layout.size() == 1);
+        REQUIRE(inspector.layout.has_value());
 
-        const auto& stackRootLayout = stackZero.layout.at("root");
+        const auto& stackRootLayout = *stackZero.layout;
         REQUIRE(stackRootLayout.direction == "left");
         REQUIRE(stackRootLayout.ratio == Catch::Approx(0.72f));
-        REQUIRE(stackRootLayout.children.size() == 2);
-        REQUIRE(stackRootLayout.children.contains("primary"));
-        REQUIRE(stackRootLayout.children.contains("secondary"));
+        REQUIRE(stackRootLayout.children.has_value());
+        REQUIRE(stackRootLayout.children->size() == 2);
 
-        const auto& restoredGraphLeaf = stackRootLayout.children.at("primary");
-        REQUIRE(restoredGraphLeaf.flowgraphs.size() == 1);
-        REQUIRE(restoredGraphLeaf.flowgraphs.at(0).order == 0);
+        const auto& restoredGraphLeaf = stackRootLayout.children->at(0);
+        REQUIRE(restoredGraphLeaf.flowgraphs.has_value());
+        REQUIRE(restoredGraphLeaf.flowgraphs->size() == 1);
+        REQUIRE(restoredGraphLeaf.flowgraphs->at(0).order == 0);
 
-        const auto& restoredSpectrumLeaf = stackRootLayout.children.at("secondary");
-        REQUIRE(restoredSpectrumLeaf.surfaces.size() == 1);
-        REQUIRE(restoredSpectrumLeaf.surfaces.at(0).block == "add1");
-        REQUIRE(restoredSpectrumLeaf.surfaces.at(0).surface == "spectrum");
+        const auto& restoredSpectrumLeaf = stackRootLayout.children->at(1);
+        REQUIRE(restoredSpectrumLeaf.surfaces.has_value());
+        REQUIRE(restoredSpectrumLeaf.surfaces->size() == 1);
+        REQUIRE(restoredSpectrumLeaf.surfaces->at(0).block == "add1");
+        REQUIRE(restoredSpectrumLeaf.surfaces->at(0).surface == "spectrum");
 
-        const auto& inspectorLayout = inspector.layout.at("root");
-        REQUIRE(inspectorLayout.surfaces.size() == 1);
-        REQUIRE(inspectorLayout.surfaces.at(0).block == "add1");
-        REQUIRE(inspectorLayout.surfaces.at(0).surface == "waterfall");
+        const auto& inspectorLayout = *inspector.layout;
+        REQUIRE(inspectorLayout.surfaces.has_value());
+        REQUIRE(inspectorLayout.surfaces->size() == 1);
+        REQUIRE(inspectorLayout.surfaces->at(0).block == "add1");
+        REQUIRE(inspectorLayout.surfaces->at(0).surface == "waterfall");
     }
 }

@@ -1,0 +1,29 @@
+name: Check Dynamic Dependencies
+description: Check ELF, Mach-O, or PE binary dependencies against an allowlist.
+
+inputs:
+  format:
+    description: Target binary format. Supported values are elf, macho, and pe.
+    required: true
+  targets:
+    description: Newline-separated target paths or globs to inspect.
+    required: true
+  allowlist:
+    description: Newline-separated allowlist entries. Blank lines and # comments are ignored.
+    required: true
+  tool-path:
+    description: Optional path to the inspection tool to use instead of readelf, otool, or objdump.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Check dynamic dependencies
+      shell: bash
+      env:
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_TARGETS: ${{ inputs.targets }}
+        INPUT_ALLOWLIST: ${{ inputs.allowlist }}
+        INPUT_TOOL_PATH: ${{ inputs['tool-path'] }}
+      run: bash "$GITHUB_ACTION_PATH/check-dynamic-deps.sh"

@@ -22,7 +22,6 @@ class JETSTREAM_API Flowgraph {
     struct Config {
         SchedulerType scheduler = SchedulerType::SYNCHRONOUS;
     };
-    using Meta = Parser::Map;
     struct Impl;
 
     Flowgraph();
@@ -96,34 +95,34 @@ class JETSTREAM_API Flowgraph {
 
     template<typename T>
     Result getMeta(const std::string& key, T& config, const std::string& block = {}) const {
-        Meta data;
+        Parser::Map data;
         JST_CHECK(getMeta(key, data, block));
 
         if (data.empty()) {
             return Result::SUCCESS;
         }
 
-        Meta encoded;
+        Parser::Map encoded;
         encoded[key] = data;
         return Parser::Deserialize(encoded, key, config);
     }
 
-    Result getMeta(const std::string& key, Meta& data, const std::string& block = {}) const;
+    Result getMeta(const std::string& key, Parser::Map& data, const std::string& block = {}) const;
 
     template<typename T>
     Result setMeta(const std::string& key, const T& config, const std::string& block = {}) {
-        Meta encoded;
+        Parser::Map encoded;
         JST_CHECK(Parser::Serialize(encoded, key, config));
 
-        if (!encoded.contains(key) || encoded.at(key).type() != typeid(Meta)) {
+        if (!encoded.contains(key) || encoded.at(key).type() != typeid(Parser::Map)) {
             JST_ERROR("[FLOWGRAPH] Metadata '{}' must serialize to a map.", key);
             return Result::ERROR;
         }
 
-        return setMeta(key, std::any_cast<const Meta&>(encoded.at(key)), block);
+        return setMeta(key, std::any_cast<const Parser::Map&>(encoded.at(key)), block);
     }
 
-    Result setMeta(const std::string& key, const Meta& data, const std::string& block = {});
+    Result setMeta(const std::string& key, const Parser::Map& data, const std::string& block = {});
 
  private:
     std::shared_ptr<Impl> impl;

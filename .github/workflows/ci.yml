@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manylinux:
+    uses: ./.github/workflows/manylinux-build.yml
+
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+
+  macos:
+    uses: ./.github/workflows/macos-build.yml
+
+  emscripten:
+    uses: ./.github/workflows/emscripten-build.yml
+
+  containers:
+    uses: ./.github/workflows/container-build.yml

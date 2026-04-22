@@ -1,4 +1,5 @@
 deps = []
+all_deps_found = true
 
 if (jst_is_linux or jst_is_macos) and not jst_is_static
     deps += [
@@ -22,8 +23,6 @@ if (jst_is_windows or jst_is_macos or jst_is_linux) and jst_is_static
         dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
 endif
-
-all_deps_found = true
 
 if jst_is_browser
     deps += [

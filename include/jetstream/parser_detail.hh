@@ -5,7 +5,6 @@
 #include <functional>
 #include <optional>
 #include <type_traits>
-#include <unordered_map>
 #include <vector>
 
 #include "jetstream/parser_map.hh"
@@ -32,16 +31,6 @@ template<typename T>
 concept HasStdHash = requires(const std::remove_cvref_t<T>& value) {
     { std::hash<std::remove_cvref_t<T>>{}(value) } -> std::convertible_to<std::size_t>;
 };
-
-template<typename>
-struct is_string_keyed_unordered_map : std::false_type {};
-
-template<typename V, typename Hash, typename KeyEqual, typename Alloc>
-struct is_string_keyed_unordered_map<std::unordered_map<std::string, V, Hash, KeyEqual, Alloc>>
-    : std::bool_constant<!std::is_same_v<V, std::any>> {};
-
-template<typename T>
-concept StringKeyedUnorderedMap = is_string_keyed_unordered_map<std::remove_cvref_t<T>>::value;
 
 template<typename>
 struct is_optional : std::false_type {};

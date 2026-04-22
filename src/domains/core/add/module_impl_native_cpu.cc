@@ -30,15 +30,15 @@ Result AddImplNativeCpu::create() {
 
     // Register compute kernel.
 
-    if ((a.dtype() == DataType::F32) and
-        (b.dtype() == DataType::F32) and
+    if ((a.dtype() == DataType::F32) &&
+        (b.dtype() == DataType::F32) &&
         (c.dtype() == DataType::F32)) {
         kernel = [this]() { return kernelF32(); };
         return Result::SUCCESS;
     }
 
-    if ((a.dtype() == DataType::CF32) and
-        (b.dtype() == DataType::CF32) and
+    if ((a.dtype() == DataType::CF32) &&
+        (b.dtype() == DataType::CF32) &&
         (c.dtype() == DataType::CF32)) {
         kernel = [this]() { return kernelCF32(); };
         return Result::SUCCESS;

@@ -61,7 +61,7 @@ void JST_LOG_COLOR(bool enable) {
 }
 
 jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style& ts) {
-#if defined(JST_OS_IOS) or defined(JST_OS_BROWSER)
+#if defined(JST_OS_IOS) || defined(JST_OS_BROWSER)
     return jst::fmt::text_style();
 #endif
     if (g_color_enabled.load(std::memory_order_acquire)) {

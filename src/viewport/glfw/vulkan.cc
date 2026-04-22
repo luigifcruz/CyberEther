@@ -234,7 +234,7 @@ F32 Implementation::scale(const F32& scale) const {
 
     // This is a X11/Windows fix. If the Framebuffer and Window sizes are the same
     // but the Scale is different than 1, it means HIDPI is necessary.
-    if ((wWidth == fWidth) and (x > 1.0)) {
+    if ((wWidth == fWidth) && (x > 1.0)) {
         return scale * x;
     } else {
         return scale;

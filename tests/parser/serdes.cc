@@ -62,34 +62,6 @@ TEST_CASE("JST_SERDES cascades string-backed nested maps", "[parser][serdes]") {
     REQUIRE(restored.label == "from-yaml");
 }
 
-TEST_CASE("JST_SERDES serializes unordered maps of nested structs", "[parser][serdes]") {
-    MapConfig source;
-    source.presets["alpha"] = {.gain = 3, .enabled = true};
-    source.presets["beta"] = {.gain = 8, .enabled = false};
-
-    Parser::Map data;
-    REQUIRE(source.serialize(data) == Result::SUCCESS);
-    REQUIRE(data.contains("presets"));
-    REQUIRE(data.at("presets").type() == typeid(Parser::Map));
-
-    const auto& presets = std::any_cast<const Parser::Map&>(data.at("presets"));
-    REQUIRE(presets.contains("alpha"));
-    REQUIRE(presets.contains("beta"));
-    REQUIRE(presets.at("alpha").type() == typeid(Parser::Map));
-
-    const auto& alpha = std::any_cast<const Parser::Map&>(presets.at("alpha"));
-    REQUIRE(std::any_cast<U64>(alpha.at("gain")) == 3);
-    REQUIRE(std::any_cast<bool>(alpha.at("enabled")));
-
-    MapConfig restored;
-    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
-    REQUIRE(restored.presets.size() == 2);
-    REQUIRE(restored.presets.at("alpha").gain == 3);
-    REQUIRE(restored.presets.at("alpha").enabled);
-    REQUIRE(restored.presets.at("beta").gain == 8);
-    REQUIRE(!restored.presets.at("beta").enabled);
-}
-
 TEST_CASE("JST_SERDES serializes vectors of nested structs as sequences", "[parser][serdes]") {
     SequenceConfig source;
     source.steps.push_back({.gain = 2, .enabled = true});
@@ -132,23 +104,6 @@ TEST_CASE("JST_SERDES deserializes string-backed sequences of nested structs", "
     REQUIRE(restored.steps.at(0).enabled);
     REQUIRE(restored.steps.at(1).gain == 21);
     REQUIRE(!restored.steps.at(1).enabled);
-}
-
-TEST_CASE("JST_SERDES deserializes string-backed unordered maps of nested structs", "[parser][serdes]") {
-    Parser::Map presets;
-    presets["alpha"] = MakeStringInnerMap(11, true);
-    presets["beta"] = MakeStringInnerMap(5, false);
-
-    Parser::Map data;
-    data["presets"] = presets;
-
-    MapConfig restored;
-    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
-    REQUIRE(restored.presets.size() == 2);
-    REQUIRE(restored.presets.at("alpha").gain == 11);
-    REQUIRE(restored.presets.at("alpha").enabled);
-    REQUIRE(restored.presets.at("beta").gain == 5);
-    REQUIRE(!restored.presets.at("beta").enabled);
 }
 
 TEST_CASE("JST_SERDES omits null optional fields during serialization", "[parser][serdes]") {
@@ -330,18 +285,6 @@ TEST_CASE("Parser::Deserialize reports incompatible types", "[parser][serdes]") 
         data["value"] = U64{7};
         Parser::Sequence decoded;
         REQUIRE(Parser::Deserialize(data, "value", decoded) == Result::ERROR);
-    }
-
-    SECTION("unordered maps reject strings") {
-        data["presets"] = std::string("wrong");
-        MapConfig decoded;
-        REQUIRE(decoded.deserialize(data) == Result::ERROR);
-    }
-
-    SECTION("unordered maps reject non-map values") {
-        data["presets"] = U64{7};
-        MapConfig decoded;
-        REQUIRE(decoded.deserialize(data) == Result::ERROR);
     }
 
     SECTION("vectors of nested types reject strings") {

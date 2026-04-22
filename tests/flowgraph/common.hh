@@ -2,8 +2,8 @@
 #define JETSTREAM_TESTS_FLOWGRAPH_COMMON_HH
 
 #include <memory>
+#include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "flowgraph_fixture.hh"
@@ -43,11 +43,11 @@ struct StackDockSurfaceFixture {
 };
 
 struct StackDockLayoutFixture {
-    std::string direction;
-    F32 ratio = 0.5f;
-    std::vector<StackDockFlowgraphFixture> flowgraphs;
-    std::vector<StackDockSurfaceFixture> surfaces;
-    std::unordered_map<std::string, StackDockLayoutFixture> children;
+    std::optional<std::string> direction;
+    std::optional<F32> ratio;
+    std::optional<std::vector<StackDockFlowgraphFixture>> flowgraphs;
+    std::optional<std::vector<StackDockSurfaceFixture>> surfaces;
+    std::optional<std::vector<StackDockLayoutFixture>> children;
 
     JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
 };
@@ -58,7 +58,7 @@ struct StackMetaFixture {
     F32 y = 0.0f;
     F32 width = 0.0f;
     F32 height = 0.0f;
-    std::unordered_map<std::string, StackDockLayoutFixture> layout;
+    std::optional<StackDockLayoutFixture> layout;
 
     JST_SERDES(title, x, y, width, height, layout);
 };

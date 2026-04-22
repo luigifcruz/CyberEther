@@ -29,7 +29,7 @@ Result RangeImplNativeCpu::create() {
 
     // Register compute kernel.
 
-    if ((input.dtype() == DataType::F32) and
+    if ((input.dtype() == DataType::F32) &&
         (output.dtype() == DataType::F32)) {
         kernel = [this]() { return kernelF32(); };
         return Result::SUCCESS;

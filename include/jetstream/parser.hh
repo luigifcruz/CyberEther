@@ -130,23 +130,6 @@ class JETSTREAM_API Parser {
             }
 
             return std::hash<std::string>{}(encoded);
-        } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
-            std::vector<std::string> keys;
-            keys.reserve(variable.size());
-
-            for (const auto& [key, _] : variable) {
-                keys.push_back(key);
-            }
-
-            std::sort(keys.begin(), keys.end());
-
-            std::size_t seed = variable.size();
-            for (const auto& key : keys) {
-                seed ^= std::hash<std::string>{}(key) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-                seed ^= Hash(variable.at(key)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            }
-
-            return seed;
         } else if constexpr (detail::Vector<ValueType>) {
             std::size_t seed = variable.size();
             for (const auto& entry : variable) {
@@ -177,18 +160,10 @@ class JETSTREAM_API Parser {
             } else {
                 JST_CHECK(Encode(*variable, encoded));
             }
-        } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
-            Map nested;
-            for (const auto& [entryName, entryValue] : variable) {
-                JST_CHECK(Serialize(nested, entryName, entryValue));
-            }
-            encoded = std::move(nested);
         } else if constexpr (detail::Vector<ValueType>) {
             using EntryType = typename ValueType::value_type;
 
-            if constexpr (detail::HasParserSerialize<EntryType> ||
-                          detail::StringKeyedUnorderedMap<EntryType> ||
-                          detail::Vector<EntryType>) {
+            if constexpr (detail::HasParserSerialize<EntryType> || detail::Vector<EntryType>) {
                 Sequence sequence;
                 sequence.reserve(variable.size());
 
@@ -249,30 +224,6 @@ class JETSTREAM_API Parser {
             }
 
             JST_ERROR("[PARSER] Variable '{}' is not of type 'Parser::Sequence'.", name);
-            return Result::ERROR;
-        } else if constexpr (detail::StringKeyedUnorderedMap<ValueType>) {
-            if (encoded.type() == typeid(Map)) {
-                JST_TRACE("Deserializing '{}': Trying to convert nested 'Parser::Map' into unordered map.", name);
-
-                const auto& nested = std::any_cast<const Map&>(encoded);
-                ValueType decoded;
-
-                for (const auto& [entryName, _] : nested) {
-                    typename ValueType::mapped_type entryValue{};
-                    JST_CHECK(Deserialize(nested, entryName, entryValue));
-                    decoded.emplace(entryName, std::move(entryValue));
-                }
-
-                variable = std::move(decoded);
-                return Result::SUCCESS;
-            }
-
-            if (encoded.type() == typeid(std::string)) {
-                JST_ERROR("[PARSER] Variable '{}' cannot be deserialized from a string.", name);
-                return Result::ERROR;
-            }
-
-            JST_ERROR("[PARSER] Variable '{}' is not of type 'Parser::Map'.", name);
             return Result::ERROR;
         } else if constexpr (detail::Vector<ValueType>) {
             using EntryType = typename ValueType::value_type;

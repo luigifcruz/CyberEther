@@ -1,0 +1,91 @@
+name: Windows Build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  SYSTEM_WINDOWS_DLLS: |
+    KERNEL32.dll
+    USER32.dll
+    GDI32.dll
+    SHELL32.dll
+    OLE32.dll
+    WS2_32.dll
+    COMDLG32.dll
+    MSVCRT.dll
+    VULKAN-1.dll
+  VULKAN_VERSION: 1.4.309.0
+  VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
+  VULKAN_SDK: /tmp/wine64-prefix/drive_c/VulkanSDK/1.4.309.0
+  WINEPREFIX: /tmp/wine64-prefix
+  WINEDLLOVERRIDES: mscoree,mshtml=
+
+jobs:
+  bin:
+    runs-on: ubuntu-latest
+    container:
+      image: dockcross/windows-static-x64-posix:20260304-b2fe000@sha256:0447c6fe61731eb4cc473f09a608567ecae391160fd1b72799edc0f39b71155a
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          apt-get update --fix-missing
+          apt-get install -y --no-install-recommends \
+            git wget python3-pip winbind \
+            spirv-cross glslang-tools
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut pyyaml
+
+      - name: Install Vulkan SDK
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/github-home "$WINEPREFIX"
+          export HOME=/tmp/github-home
+          wget -nv -O vulkan-sdk.exe "https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/windows/vulkan-sdk.exe"
+          printf '%s  %s\n' "$VULKAN_SDK_SHA256" vulkan-sdk.exe | sha256sum -c -
+          /usr/lib/wine/wine64 vulkan-sdk.exe --accept-licenses --default-answer --confirm-command install
+          ln -s "${VULKAN_SDK}/Include/" "${VULKAN_SDK}/include"
+          ln -s "${VULKAN_SDK}/Lib/" "${VULKAN_SDK}/lib"
+          ln -s "${VULKAN_SDK}/Lib/vulkan-1.lib" "${VULKAN_SDK}/lib/vulkan.lib"
+
+      - name: Build Windows binary
+        run: |
+          set -euo pipefail
+          rm -rf build
+          meson setup --cross-file meson/crosscompile/windows.ini -Dbuildtype=release build
+          meson compile -C build
+          mkdir -p .dist/artifacts
+          tar -C build -czf .dist/artifacts/cyberether-windows-x86_64.tar.gz cyberether.exe
+
+      - name: Validate Windows binary
+        run: |
+          set -euo pipefail
+          test -f build/cyberether.exe
+
+      - name: Check Windows binary dependencies
+        uses: ./.github/actions/check-dynamic-deps
+        with:
+          format: pe
+          targets: |
+            build/cyberether.exe
+          allowlist: ${{ env.SYSTEM_WINDOWS_DLLS }}
+          tool-path: /usr/src/mxe/usr/bin/x86_64-w64-mingw32.static.posix-objdump
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: cyberether-windows-x86_64
+          path: .dist/artifacts/cyberether-windows-x86_64.tar.gz

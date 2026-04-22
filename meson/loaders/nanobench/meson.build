@@ -1,16 +1,15 @@
-cmake = import('cmake')
+deps = [
+    subproject('nanobench', required: true).get_variable('nanobench_dep'),
+]
 
-opts = cmake.subproject_options()
-opts.add_cmake_defines({
-    'NANOBENCH_BUILD_TESTS': false,
-    'CMAKE_POSITION_INDEPENDENT_CODE': true,
-})
+all_deps_found = true
+foreach x_dep : deps
+    all_deps_found = all_deps_found and x_dep.found()
+endforeach
 
-nanobench_proj = cmake.subproject('nanobench', options: opts, required: true)
-
-if nanobench_proj.found()
+if all_deps_found
     cfg_lst.set('JETSTREAM_LOADER_NANOBENCH_AVAILABLE', true)
-    dep_lst += nanobench_proj.dependency('nanobench')
+    dep_lst += deps
 endif
 
-ldr_lst += {'Nanobench': nanobench_proj.found()}
+ldr_lst += {'Nanobench': all_deps_found}

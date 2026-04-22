@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  manylinux:
+    uses: ./.github/workflows/manylinux-build.yml
+
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+
+  macos:
+    uses: ./.github/workflows/macos-build.yml
+
+  emscripten:
+    uses: ./.github/workflows/emscripten-build.yml
+
+  containers:
+    uses: ./.github/workflows/container-build.yml
+
+  github-release:
+    needs: [manylinux, windows, macos, emscripten]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          pattern: '*manylinux*'
+          path: .dist/artifacts
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-windows-x86_64
+          path: .dist/artifacts
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-macos-arm64
+          path: .dist/artifacts
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-emscripten-wasm32
+          path: .dist/artifacts
+
+      - name: Release
+        uses: softprops/action-gh-release@v2.6.2
+        with:
+          files: .dist/artifacts/*.tar.gz
+
+  publish-containers:
+    name: publish (${{ matrix.arch }})
+    needs: containers
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-ubuntu24-${{ matrix.arch }}
+          path: .dist/images
+
+      - name: Load image
+        run: |
+          set -euo pipefail
+          gzip -dc .dist/images/cyberether-ubuntu24-${{ matrix.arch }}.tar.gz | docker load
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR
+        run: |
+          set -euo pipefail
+          REPO_LOWER="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          TAG_BASE="ghcr.io/${REPO_LOWER}"
+          BASE_TAG="ubuntu24-${{ matrix.arch }}"
+          VERSION_TAG="${GITHUB_REF_NAME}-${BASE_TAG}"
+
+          docker tag local/cyberether:${{ matrix.arch }} "${TAG_BASE}:${BASE_TAG}"
+          docker push "${TAG_BASE}:${BASE_TAG}"
+
+          docker tag local/cyberether:${{ matrix.arch }} "${TAG_BASE}:${VERSION_TAG}"
+          docker push "${TAG_BASE}:${VERSION_TAG}"

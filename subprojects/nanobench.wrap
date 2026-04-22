@@ -3,3 +3,7 @@ directory = nanobench-4.3.11
 source_url = https://github.com/martinus/nanobench/archive/refs/tags/v4.3.11.tar.gz
 source_filename = nanobench-4.3.11.tar.gz
 source_hash = 53a5a913fa695c23546661bf2cd22b299e10a3e994d9ed97daf89b5cada0da70
+patch_directory = nanobench
+
+[provide]
+nanobench = nanobench_dep

@@ -4,7 +4,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "jetstream/parser.hh"
@@ -27,12 +26,6 @@ struct OuterConfig {
     std::string label;
 
     JST_SERDES(inner, label);
-};
-
-struct MapConfig {
-    std::unordered_map<std::string, InnerConfig> presets;
-
-    JST_SERDES(presets);
 };
 
 struct SequenceConfig {

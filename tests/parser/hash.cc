@@ -55,21 +55,6 @@ TEST_CASE("Parser::Hash is order-aware for sequences and order-independent for m
         REQUIRE(Parser::Hash(lhs) != Parser::Hash(rhs));
     }
 
-    SECTION("string-keyed unordered maps ignore insertion order") {
-        std::unordered_map<std::string, U64> lhs;
-        lhs["alpha"] = 1;
-        lhs["beta"] = 2;
-
-        std::unordered_map<std::string, U64> rhs;
-        rhs["beta"] = 2;
-        rhs["alpha"] = 1;
-
-        REQUIRE(Parser::Hash(lhs) == Parser::Hash(rhs));
-
-        rhs["alpha"] = 9;
-        REQUIRE(Parser::Hash(lhs) != Parser::Hash(rhs));
-    }
-
     SECTION("vectors preserve element order") {
         REQUIRE(Parser::Hash(std::vector<U64>{1, 2, 3}) != Parser::Hash(std::vector<U64>{3, 2, 1}));
     }

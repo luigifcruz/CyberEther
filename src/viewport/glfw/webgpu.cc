@@ -130,7 +130,7 @@ Result Implementation::nextDrawable() {
     U64 width = getWindowWidth();
     U64 height = getWindowHeight();
 
-    if (width != swapchainSize.x or height != swapchainSize.y) {
+    if (width != swapchainSize.x || height != swapchainSize.y) {
        swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};
        return Result::RECREATE;
     }
