@@ -139,8 +139,7 @@ graph:
       axis: 1
       size: 7999
     input:
-      - name: unpadded
-        source: '${graph.flt.output.coeffs}'
+      unpadded: '${graph.flt.output.coeffs}'
     meta:
       node:
         y: -5.9999847
@@ -155,8 +154,7 @@ graph:
     config:
       forward: true
     input:
-      - name: signal
-        source: '${graph.pad_flt.output.padded}'
+      signal: '${graph.pad_flt.output.padded}'
     meta:
       node:
         y: -2.9999847
@@ -172,8 +170,7 @@ graph:
       axis: 1
       size: 50
     input:
-      - name: unpadded
-        source: '${graph.soapy.output.signal}'
+      unpadded: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 273
@@ -188,8 +185,7 @@ graph:
     config:
       forward: true
     input:
-      - name: signal
-        source: '${graph.pad_soapy.output.padded}'
+      signal: '${graph.pad_soapy.output.padded}'
     meta:
       node:
         y: 271
@@ -202,10 +198,8 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: a
-        source: '${graph.fft_flt.output.signal}'
-      - name: b
-        source: '${graph.fft_soapy.output.signal}'
+      a: '${graph.fft_flt.output.signal}'
+      b: '${graph.fft_soapy.output.signal}'
     meta:
       node:
         y: 38
@@ -220,8 +214,7 @@ graph:
     config:
       forward: false
     input:
-      - name: signal
-        source: '${graph.mul.output.product}'
+      signal: '${graph.mul.output.product}'
     meta:
       node:
         y: 34
@@ -237,8 +230,7 @@ graph:
       axis: 1
       size: 50
     input:
-      - name: padded
-        source: '${graph.ifft.output.signal}'
+      padded: '${graph.ifft.output.signal}'
     meta:
       node:
         y: 361
@@ -257,8 +249,7 @@ graph:
       enableScale: true
       axis: 1
     input:
-      - name: buffer
-        source: '${graph.ifft.output.signal}'
+      buffer: '${graph.ifft.output.signal}'
     meta:
       node:
         y: 34.644485
@@ -273,10 +264,8 @@ graph:
     config:
       axis: 1
     input:
-      - name: buffer
-        source: '${graph.unpad.output.unpadded}'
-      - name: overlap
-        source: '${graph.unpad.output.pad}'
+      buffer: '${graph.unpad.output.unpadded}'
+      overlap: '${graph.unpad.output.pad}'
     meta:
       node:
         y: 361
@@ -292,8 +281,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.spectrum_engine.output.buffer}'
+      signal: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -314,8 +302,7 @@ graph:
     config:
       sampleRate: 2000000
     input:
-      - name: signal
-        source: '${graph.overlap_add.output.buffer}'
+      signal: '${graph.overlap_add.output.buffer}'
     meta:
       node:
         y: 360
@@ -332,8 +319,7 @@ graph:
       inSampleRate: 2000000
       deviceName: Default
     input:
-      - name: buffer
-        source: '${graph.fm.output.signal}'
+      buffer: '${graph.fm.output.signal}'
     meta:
       node:
         y: 354

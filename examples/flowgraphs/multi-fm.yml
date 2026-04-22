@@ -71,8 +71,7 @@ graph:
       enableScale: true
       axis: 1
     input:
-      - name: buffer
-        source: '${graph.soapy.output.signal}'
+      buffer: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 371
@@ -88,8 +87,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.spe33.output.buffer}'
+      signal: '${graph.spe33.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -114,8 +112,7 @@ graph:
       numberOfVerticalLines: 11
       averaging: 18
     input:
-      - name: signal
-        source: '${graph.spe33.output.buffer}'
+      signal: '${graph.spe33.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 500
@@ -140,8 +137,7 @@ graph:
       bandwidth: 200000
       sampleRate: 2000000
     input:
-      - name: signal
-        source: '${graph.soapy.output.signal}'
+      signal: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 94
@@ -157,8 +153,7 @@ graph:
       contiguous: true
       slice: '[:, 1, :]'
     input:
-      - name: buffer
-        source: '${graph.flt.output.buffer}'
+      buffer: '${graph.flt.output.buffer}'
     meta:
       node:
         y: 546
@@ -177,8 +172,7 @@ graph:
       enableScale: true
       axis: 1
     input:
-      - name: buffer
-        source: '${graph.slice.output.buffer}'
+      buffer: '${graph.slice.output.buffer}'
     meta:
       node:
         y: 554
@@ -194,8 +188,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.spectrum_engine.output.buffer}'
+      signal: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -217,8 +210,7 @@ graph:
       contiguous: true
       slice: '[:, 0, :]'
     input:
-      - name: buffer
-        source: '${graph.flt.output.buffer}'
+      buffer: '${graph.flt.output.buffer}'
     meta:
       node:
         y: 117
@@ -237,8 +229,7 @@ graph:
       enableScale: true
       axis: 1
     input:
-      - name: buffer
-        source: '${graph.sli23.output.buffer}'
+      buffer: '${graph.sli23.output.buffer}'
     meta:
       node:
         y: 253
@@ -253,8 +244,7 @@ graph:
     config:
       sampleRate: 200000
     input:
-      - name: signal
-        source: '${graph.sli23.output.buffer}'
+      signal: '${graph.sli23.output.buffer}'
     meta:
       node:
         y: 92
@@ -270,8 +260,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.spe23.output.buffer}'
+      signal: '${graph.spe23.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -294,8 +283,7 @@ graph:
       inSampleRate: 200000
       deviceName: Default
     input:
-      - name: buffer
-        source: '${graph.fm.output.signal}'
+      buffer: '${graph.fm.output.signal}'
     meta:
       node:
         y: 86

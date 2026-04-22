@@ -32,8 +32,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: signal
-        source: '${graph.soapy.output.signal}'
+      signal: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 50
@@ -49,8 +48,7 @@ graph:
       inSampleRate: 240000
       outSampleRate: 48000
     input:
-      - name: buffer
-        source: '${graph.fm.output.signal}'
+      buffer: '${graph.fm.output.signal}'
     meta:
       node:
         y: 50

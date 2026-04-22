@@ -32,8 +32,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: signal
-        source: '${graph.soapy.output.signal}'
+      signal: '${graph.soapy.output.signal}'
     meta:
       surface_default:
         detachedWidth: 506
@@ -58,8 +57,7 @@ graph:
       enableScale: true
       axis: 1
     input:
-      - name: buffer
-        source: '${graph.soapy.output.signal}'
+      buffer: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 74
@@ -78,8 +76,7 @@ graph:
       numberOfVerticalLines: 11
       averaging: 1
     input:
-      - name: signal
-        source: '${graph.spectrum_engine.output.buffer}'
+      signal: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -101,8 +98,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.spectrum_engine.output.buffer}'
+      signal: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
         detachedWidth: 512

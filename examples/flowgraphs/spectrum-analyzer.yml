@@ -46,8 +46,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: signal
-        source: '${graph.win.output.window}'
+      signal: '${graph.win.output.window}'
     meta:
       node:
         y: 39
@@ -60,10 +59,8 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: a
-        source: '${graph.invert.output.signal}'
-      - name: b
-        source: '${graph.soapy.output.signal}'
+      a: '${graph.invert.output.signal}'
+      b: '${graph.soapy.output.signal}'
     meta:
       node:
         y: 63
@@ -78,8 +75,7 @@ graph:
     config:
       forward: true
     input:
-      - name: signal
-        source: '${graph.multiply.output.product}'
+      signal: '${graph.multiply.output.product}'
     meta:
       node:
         y: 56
@@ -92,8 +88,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: signal
-        source: '${graph.fft.output.signal}'
+      signal: '${graph.fft.output.signal}'
     meta:
       node:
         y: 65
@@ -109,8 +104,7 @@ graph:
       max: 0
       min: -100
     input:
-      - name: signal
-        source: '${graph.amplitude.output.signal}'
+      signal: '${graph.amplitude.output.signal}'
     meta:
       node:
         y: 52
@@ -129,8 +123,7 @@ graph:
       numberOfVerticalLines: 11
       averaging: 1
     input:
-      - name: signal
-        source: '${graph.range.output.signal}'
+      signal: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -152,8 +145,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.range.output.signal}'
+      signal: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 512
