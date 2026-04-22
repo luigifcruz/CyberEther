@@ -47,6 +47,10 @@ if jst_is_browser
     meson.override_dependency('threads', threads_dep)
 endif
 
+if jst_is_windows
+    add_project_arguments('/Zc:preprocessor', language: 'cpp')
+endif
+
 if get_option('native')
     if not jst_is_windows
         add_project_arguments('-march=native', language: 'cpp')
