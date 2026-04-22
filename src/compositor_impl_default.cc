@@ -1363,11 +1363,11 @@ struct StackDockSurfaceMeta {
 };
 
 struct StackDockLayoutMeta {
-    std::string direction;
-    F32 ratio = 0.5f;
-    std::vector<StackDockFlowgraphMeta> flowgraphs;
-    std::vector<StackDockSurfaceMeta> surfaces;
-    std::unordered_map<std::string, StackDockLayoutMeta> children;
+    std::optional<std::string> direction;
+    std::optional<F32> ratio;
+    std::optional<std::vector<StackDockFlowgraphMeta>> flowgraphs;
+    std::optional<std::vector<StackDockSurfaceMeta>> surfaces;
+    std::optional<std::vector<StackDockLayoutMeta>> children;
 
     JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
 };
@@ -1378,7 +1378,7 @@ struct StackMeta {
     F32 y = 0.0f;
     F32 width = 500.0f;
     F32 height = 300.0f;
-    std::unordered_map<std::string, StackDockLayoutMeta> layout;
+    std::optional<StackDockLayoutMeta> layout;
 
     JST_SERDES(title, x, y, width, height, layout);
 };
@@ -5543,7 +5543,7 @@ Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraph
     auto& stackStates = flowgraphStacks[flowgraphId];
     stackStates.clear();
 
-    Flowgraph::Meta serializedStacks;
+    Parser::Map serializedStacks;
     JST_CHECK(flowgraph->getMeta("stacks", serializedStacks));
 
     for (const auto& [stackId, encoded] : serializedStacks) {
@@ -5570,7 +5570,7 @@ Result DefaultCompositor::helperLoadFlowgraphStacks(const std::string& flowgraph
 
         StackWindowState stackState;
         stackState.meta = std::move(stackMeta);
-        stackState.restoreDockLayout = !stackState.meta.layout.empty();
+        stackState.restoreDockLayout = stackState.meta.layout.has_value();
         stackState.dockInMainTabBar = true;
         stackStates[stackId] = std::move(stackState);
     }
@@ -5588,22 +5588,26 @@ Result DefaultCompositor::helperEnsureStackedSurfacesDetached(const std::shared_
     std::set<std::pair<std::string, std::string>> stackedSurfaces;
 
     const auto collectLayoutItems = [&](const auto& self, const StackDockLayoutMeta& layout) -> void {
-        for (const auto& surface : layout.surfaces) {
-            if (surface.block.empty() || surface.surface.empty()) {
-                continue;
-            }
+        if (layout.surfaces.has_value()) {
+            for (const auto& surface : *layout.surfaces) {
+                if (surface.block.empty() || surface.surface.empty()) {
+                    continue;
+                }
 
-            stackedSurfaces.emplace(surface.block, surface.surface);
+                stackedSurfaces.emplace(surface.block, surface.surface);
+            }
         }
 
-        for (const auto& [_, childLayout] : layout.children) {
-            self(self, childLayout);
+        if (layout.children.has_value()) {
+            for (const auto& childLayout : *layout.children) {
+                self(self, childLayout);
+            }
         }
     };
 
     for (const auto& [_, stackState] : stackStates) {
-        for (const auto& [_, layout] : stackState.meta.layout) {
-            collectLayoutItems(collectLayoutItems, layout);
+        if (stackState.meta.layout.has_value()) {
+            collectLayoutItems(collectLayoutItems, *stackState.meta.layout);
         }
     }
 
@@ -5627,7 +5631,7 @@ Result DefaultCompositor::helperSyncFlowgraphStacks(const std::string& flowgraph
         return Result::ERROR;
     }
 
-    std::unordered_map<std::string, StackMeta> serializedStacks;
+    Parser::Map serializedStacks;
 
     if (flowgraphStacks.contains(flowgraphId)) {
         for (auto& [stackId, state] : flowgraphStacks.at(flowgraphId)) {
@@ -5637,10 +5641,11 @@ Result DefaultCompositor::helperSyncFlowgraphStacks(const std::string& flowgraph
 
             JST_CHECK(helperCaptureStackWindowLayout(flowgraphId, state));
 
-            serializedStacks[stackId] = state.meta;
-            if (serializedStacks.at(stackId).title.empty()) {
-                serializedStacks.at(stackId).title = stackId;
+            if (state.meta.title.empty()) {
+                state.meta.title = stackId;
             }
+
+            JST_CHECK(Parser::Serialize(serializedStacks, stackId, state.meta));
         }
     }
 
@@ -5758,10 +5763,9 @@ Result DefaultCompositor::helperCaptureStackWindowLayout(const std::string& flow
             const bool hasPrimary = self(self, primaryChild, primaryLayout);
             const bool hasSecondary = self(self, secondaryChild, secondaryLayout);
 
-            if (hasPrimary && hasSecondary && !out.direction.empty()) {
-                out.ratio = std::clamp(out.ratio, 0.05f, 0.95f);
-                out.children["primary"] = std::move(primaryLayout);
-                out.children["secondary"] = std::move(secondaryLayout);
+            if (hasPrimary && hasSecondary && out.direction.has_value()) {
+                out.ratio = std::clamp(out.ratio.value_or(0.5f), 0.05f, 0.95f);
+                out.children = std::vector<StackDockLayoutMeta>{std::move(primaryLayout), std::move(secondaryLayout)};
                 return true;
             }
 
@@ -5778,8 +5782,6 @@ Result DefaultCompositor::helperCaptureStackWindowLayout(const std::string& flow
 
         std::vector<std::string> orderedItemKeys;
         std::set<std::string> seenItemKeys;
-        out.ratio = 0.0f;
-
         const auto appendWindow = [&](const ImGuiWindow* window) {
             if (!window) {
                 return;
@@ -5813,12 +5815,18 @@ Result DefaultCompositor::helperCaptureStackWindowLayout(const std::string& flow
             itemMeta.order = order++;
 
             if (itemMeta.kind == "flowgraph") {
-                out.flowgraphs.push_back({.order = itemMeta.order});
+                if (!out.flowgraphs.has_value()) {
+                    out.flowgraphs = std::vector<StackDockFlowgraphMeta>{};
+                }
+                out.flowgraphs->push_back({.order = itemMeta.order});
                 continue;
             }
 
             if (itemMeta.kind == "surface" && !itemMeta.block.empty() && !itemMeta.surface.empty()) {
-                out.surfaces.push_back({
+                if (!out.surfaces.has_value()) {
+                    out.surfaces = std::vector<StackDockSurfaceMeta>{};
+                }
+                out.surfaces->push_back({
                     .block = itemMeta.block,
                     .surface = itemMeta.surface,
                     .order = itemMeta.order,
@@ -5826,14 +5834,15 @@ Result DefaultCompositor::helperCaptureStackWindowLayout(const std::string& flow
             }
         }
 
-        return !out.flowgraphs.empty() || !out.surfaces.empty();
+        return (out.flowgraphs.has_value() && !out.flowgraphs->empty()) ||
+               (out.surfaces.has_value() && !out.surfaces->empty());
     };
 
-    stackState.meta.layout.clear();
+    stackState.meta.layout.reset();
 
     StackDockLayoutMeta rootLayout;
     if (captureNode(captureNode, rootNode, rootLayout)) {
-        stackState.meta.layout["root"] = std::move(rootLayout);
+        stackState.meta.layout = std::move(rootLayout);
     }
 
     return Result::SUCCESS;
@@ -5843,17 +5852,10 @@ Result DefaultCompositor::helperRestoreStackWindowLayout(const std::string& flow
                                                          const StackWindowState& stackState,
                                                          const ImVec2& windowPos,
                                                          const ImVec2& windowSize) const {
-    if (!stackState.dockspaceId || stackState.meta.layout.empty()) {
+    if (!stackState.dockspaceId || !stackState.meta.layout.has_value()) {
         return Result::SUCCESS;
     }
-
-    auto rootLayoutIt = stackState.meta.layout.find("root");
-    if (rootLayoutIt == stackState.meta.layout.end()) {
-        rootLayoutIt = stackState.meta.layout.begin();
-        if (rootLayoutIt == stackState.meta.layout.end()) {
-            return Result::SUCCESS;
-        }
-    }
+    const auto& rootLayout = *stackState.meta.layout;
 
     const auto directionFromString = [](const std::string& direction) {
         if (direction == "left") {
@@ -5897,15 +5899,15 @@ Result DefaultCompositor::helperRestoreStackWindowLayout(const std::string& flow
     };
 
     const auto restoreNode = [&](const auto& self, ImGuiID nodeId, const StackDockLayoutMeta& layout) -> void {
-        auto primaryIt = layout.children.find("primary");
-        auto secondaryIt = layout.children.find("secondary");
+        const bool hasPrimary = layout.children.has_value() && layout.children->size() > 0;
+        const bool hasSecondary = layout.children.has_value() && layout.children->size() > 1;
 
-        if (primaryIt != layout.children.end() && secondaryIt != layout.children.end()) {
-            const ImGuiDir dockDirection = directionFromString(layout.direction);
+        if (hasPrimary && hasSecondary) {
+            const ImGuiDir dockDirection = directionFromString(layout.direction.value_or(""));
             if (dockDirection != ImGuiDir_None) {
                 ImGuiID primaryNodeId = 0;
                 ImGuiID secondaryNodeId = 0;
-                const float ratio = (layout.ratio > 0.0f) ? layout.ratio : 0.5f;
+                const float ratio = (layout.ratio.has_value() && *layout.ratio > 0.0f) ? *layout.ratio : 0.5f;
 
                 ImGui::DockBuilderSplitNode(nodeId,
                                             dockDirection,
@@ -5913,55 +5915,55 @@ Result DefaultCompositor::helperRestoreStackWindowLayout(const std::string& flow
                                             &primaryNodeId,
                                             &secondaryNodeId);
 
-                self(self, primaryNodeId, primaryIt->second);
-                self(self, secondaryNodeId, secondaryIt->second);
+                self(self, primaryNodeId, layout.children->at(0));
+                self(self, secondaryNodeId, layout.children->at(1));
                 return;
             }
         }
 
-        if (primaryIt != layout.children.end() && layout.children.size() == 1) {
-            self(self, nodeId, primaryIt->second);
-            return;
-        }
-
-        if (secondaryIt != layout.children.end() && layout.children.size() == 1) {
-            self(self, nodeId, secondaryIt->second);
+        if (hasPrimary && !hasSecondary) {
+            self(self, nodeId, layout.children->at(0));
             return;
         }
 
         std::vector<std::pair<U64, std::string>> orderedWindows;
-        orderedWindows.reserve(layout.flowgraphs.size() + layout.surfaces.size());
+        orderedWindows.reserve((layout.flowgraphs.has_value() ? layout.flowgraphs->size() : 0) +
+                               (layout.surfaces.has_value() ? layout.surfaces->size() : 0));
 
-        for (const auto& flowgraph : layout.flowgraphs) {
-            StackDockItemMeta itemMeta;
-            itemMeta.kind = "flowgraph";
-            itemMeta.order = flowgraph.order;
+        if (layout.flowgraphs.has_value()) {
+            for (const auto& flowgraph : *layout.flowgraphs) {
+                StackDockItemMeta itemMeta;
+                itemMeta.kind = "flowgraph";
+                itemMeta.order = flowgraph.order;
 
-            const auto windowLabel = resolveWindowLabel(itemMeta);
-            if (windowLabel.empty()) {
-                continue;
+                const auto windowLabel = resolveWindowLabel(itemMeta);
+                if (windowLabel.empty()) {
+                    continue;
+                }
+
+                orderedWindows.emplace_back(itemMeta.order, windowLabel);
             }
-
-            orderedWindows.emplace_back(itemMeta.order, windowLabel);
         }
 
-        for (const auto& surface : layout.surfaces) {
-            if (surface.block.empty() || surface.surface.empty()) {
-                continue;
+        if (layout.surfaces.has_value()) {
+            for (const auto& surface : *layout.surfaces) {
+                if (surface.block.empty() || surface.surface.empty()) {
+                    continue;
+                }
+
+                StackDockItemMeta itemMeta;
+                itemMeta.kind = "surface";
+                itemMeta.block = surface.block;
+                itemMeta.surface = surface.surface;
+                itemMeta.order = surface.order;
+
+                const auto windowLabel = resolveWindowLabel(itemMeta);
+                if (windowLabel.empty()) {
+                    continue;
+                }
+
+                orderedWindows.emplace_back(itemMeta.order, windowLabel);
             }
-
-            StackDockItemMeta itemMeta;
-            itemMeta.kind = "surface";
-            itemMeta.block = surface.block;
-            itemMeta.surface = surface.surface;
-            itemMeta.order = surface.order;
-
-            const auto windowLabel = resolveWindowLabel(itemMeta);
-            if (windowLabel.empty()) {
-                continue;
-            }
-
-            orderedWindows.emplace_back(itemMeta.order, windowLabel);
         }
 
         std::sort(orderedWindows.begin(), orderedWindows.end(), [](const auto& lhs, const auto& rhs) {
@@ -5981,7 +5983,7 @@ Result DefaultCompositor::helperRestoreStackWindowLayout(const std::string& flow
     ImGui::DockBuilderAddNode(stackState.dockspaceId, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodePos(stackState.dockspaceId, windowPos);
     ImGui::DockBuilderSetNodeSize(stackState.dockspaceId, windowSize);
-    restoreNode(restoreNode, stackState.dockspaceId, rootLayoutIt->second);
+    restoreNode(restoreNode, stackState.dockspaceId, rootLayout);
     ImGui::DockBuilderFinish(stackState.dockspaceId);
 
     return Result::SUCCESS;

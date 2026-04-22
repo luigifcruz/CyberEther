@@ -1,5 +1,5 @@
 deps = [
-    subproject('glm').get_variable('glm_dep'),
+    subproject('glm', required: true).get_variable('glm_dep'),
 ]
 
 all_deps_found = true

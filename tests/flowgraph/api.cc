@@ -116,13 +116,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph metadata APIs are covered", "[flow
     REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
 
     SECTION("raw metadata round-trips at flowgraph scope") {
-        Flowgraph::Meta source;
+        Parser::Map source;
         source["order"] = U64{7};
         source["label"] = std::string("global");
 
         REQUIRE(flowgraph->setMeta("layout", source) == Result::SUCCESS);
 
-        Flowgraph::Meta restored;
+        Parser::Map restored;
         REQUIRE(flowgraph->getMeta("layout", restored) == Result::SUCCESS);
         REQUIRE(restored.contains("order"));
         REQUIRE(restored.contains("label"));
@@ -154,7 +154,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph metadata APIs are covered", "[flow
     }
 
     SECTION("missing raw metadata returns success with empty output") {
-        Flowgraph::Meta restored;
+        Parser::Map restored;
         REQUIRE(flowgraph->getMeta("missing", restored, "gen1") == Result::SUCCESS);
         REQUIRE(restored.empty());
     }

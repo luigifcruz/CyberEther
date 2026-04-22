@@ -13,4 +13,4 @@ if all_deps_found
     dep_lst += deps
 endif
 
-ldr_lst += {'FMT': all_deps_found}
+ldr_lst += {'fmtlib': all_deps_found}

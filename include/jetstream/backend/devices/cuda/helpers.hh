@@ -3,7 +3,15 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#if defined(__has_include)
+#if __has_include(<cufile.h>)
 #include <cufile.h>
+#define JST_CUDA_HAS_CUFILE 1
+#endif
+#else
+#include <cufile.h>
+#define JST_CUDA_HAS_CUFILE 1
+#endif
 #include <nvrtc.h>
 #include <cufft.h>
 
@@ -33,7 +41,7 @@
 }
 #endif  // JST_CUDA_CHECK_THROW
 
-#ifndef JST_CUFILE_CHECK
+#if defined(JST_CUDA_HAS_CUFILE) && !defined(JST_CUFILE_CHECK)
 #define JST_CUFILE_CHECK(x, callback) { \
     CUfileError_t val = (x); \
     if (val.err != CU_FILE_SUCCESS) { \

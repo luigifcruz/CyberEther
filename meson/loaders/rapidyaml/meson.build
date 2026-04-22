@@ -1,20 +1,15 @@
-cmake = import('cmake')
+deps = [
+    subproject('rapidyaml', required: true).get_variable('ryml_dep'),
+]
 
-opts = cmake.subproject_options()
-opts.add_cmake_defines({
-    'CMAKE_POSITION_INDEPENDENT_CODE': true,
-    'RYML_BUILD_API': false,
-    'RYML_BUILD_TESTS': false,
-    'RYML_BUILD_BENCHMARKS': false,
-    'RYML_BUILD_TOOLS': false,
-    'RYML_INSTALL': false,
-})
+all_deps_found = true
+foreach x_dep : deps
+    all_deps_found = all_deps_found and x_dep.found()
+endforeach
 
-rapidyaml_proj = cmake.subproject('rapidyaml', options: opts, required: true)
-
-if rapidyaml_proj.found()
+if all_deps_found
     cfg_lst.set('JETSTREAM_LOADER_RAPIDYAML_AVAILABLE', true)
-    dep_lst += rapidyaml_proj.dependency('ryml')
+    dep_lst += deps
 endif
 
-ldr_lst += {'RapidYAML': rapidyaml_proj.found()}
+ldr_lst += {'RapidYAML': all_deps_found}

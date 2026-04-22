@@ -22,7 +22,3 @@
 #define IMGUI_IMPL_METAL_CPP
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS  // Necessary for `ImTextureRef(void*)`.
 #define IMGUI_DEFINE_MATH_OPERATORS
-
-#ifndef JST_DEBUG_MODE
-#define IMGUI_DISABLE_DEBUG_TOOLS
-#endif

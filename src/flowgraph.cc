@@ -49,7 +49,7 @@ struct FlowgraphBlockDocument {
     ProviderType provider = "generic";
     std::optional<Parser::Map> config;
     std::optional<std::vector<FlowgraphInputDocument>> input;
-    std::optional<std::unordered_map<std::string, Flowgraph::Meta>> meta;
+    std::optional<Parser::Map> meta;
 
     JST_SERDES(name, module, device, runtime, provider, config, input, meta);
 };
@@ -62,7 +62,7 @@ struct FlowgraphDocument {
     std::optional<std::string> license;
     std::optional<std::string> description;
     std::vector<FlowgraphBlockDocument> graph;
-    std::optional<std::unordered_map<std::string, Flowgraph::Meta>> meta;
+    std::optional<Parser::Map> meta;
 
     JST_SERDES(version, title, summary, author, license, description, graph, meta);
 };
@@ -87,13 +87,17 @@ OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
     return lookup;
 }
 
-std::optional<std::unordered_map<std::string, Flowgraph::Meta>> CompactMetaMap(
-    const std::unordered_map<std::string, Flowgraph::Meta>& meta) {
-    std::unordered_map<std::string, Flowgraph::Meta> compact;
+std::optional<Parser::Map> CompactMetaMap(const Parser::Map& meta) {
+    Parser::Map compact;
 
-    for (const auto& [key, value] : meta) {
+    for (const auto& entry : meta) {
+        if (entry.value.type() != typeid(Parser::Map)) {
+            continue;
+        }
+
+        const auto& value = std::any_cast<const Parser::Map&>(entry.value);
         if (!value.empty()) {
-            compact[key] = value;
+            compact[entry.key] = value;
         }
     }
 
@@ -187,8 +191,8 @@ struct Flowgraph::Impl {
     std::string description;
     std::string path;
 
-    std::unordered_map<std::string, Flowgraph::Meta> meta;
-    std::unordered_map<std::string, std::unordered_map<std::string, Flowgraph::Meta>> blockMeta;
+    Parser::Map meta;
+    std::unordered_map<std::string, Parser::Map> blockMeta;
 
     Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
     std::vector<std::string> collectDownstream(const std::string& name) const;
@@ -425,7 +429,7 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
 
     // Handle downstream blocks that depend on this block.
 
-    if (propagate and impl->edges.contains(name)) {
+    if (propagate && impl->edges.contains(name)) {
         // 1. Collect all downstream blocks (transitive closure).
 
         std::vector<BlockState> downstreamStates;
@@ -819,9 +823,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     }
 
     if (document.meta.has_value()) {
-        for (const auto& [key, data] : *document.meta) {
-            impl->meta[key] = data;
-        }
+        impl->meta = *document.meta;
     }
 
     if (document.graph.empty()) {
@@ -835,7 +837,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         ProviderType provider = "generic";
         Parser::Map config;
         std::unordered_map<std::string, OutputRef> inputs;
-        std::unordered_map<std::string, Flowgraph::Meta> meta;
+        Parser::Map meta;
     };
 
     std::unordered_map<std::string, NodeDef> nodes;
@@ -1162,18 +1164,20 @@ Result Flowgraph::setDescription(const std::string& description) {
     return Result::SUCCESS;
 }
 
-Result Flowgraph::getMeta(const std::string& key, Meta& data, const std::string& block) const {
+Result Flowgraph::getMeta(const std::string& key, Parser::Map& data, const std::string& block) const {
     if (block.empty()) {
-        if (impl->meta.contains(key)) {
-            data = impl->meta.at(key);
+        if (impl->meta.contains(key) && impl->meta.at(key).type() == typeid(Parser::Map)) {
+            data = std::any_cast<const Parser::Map&>(impl->meta.at(key));
         }
-    } else if (impl->blockMeta.contains(block) && impl->blockMeta.at(block).contains(key)) {
-        data = impl->blockMeta.at(block).at(key);
+    } else if (impl->blockMeta.contains(block) &&
+               impl->blockMeta.at(block).contains(key) &&
+               impl->blockMeta.at(block).at(key).type() == typeid(Parser::Map)) {
+        data = std::any_cast<const Parser::Map&>(impl->blockMeta.at(block).at(key));
     }
     return Result::SUCCESS;
 }
 
-Result Flowgraph::setMeta(const std::string& key, const Meta& data, const std::string& block) {
+Result Flowgraph::setMeta(const std::string& key, const Parser::Map& data, const std::string& block) {
     if (block.empty()) {
         impl->meta[key] = data;
     } else {

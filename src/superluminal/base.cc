@@ -22,7 +22,7 @@ struct Superluminal::Impl {
     bool initialized;
     bool running;
 
-    std::atomic_flag computeSync{true};
+    std::atomic_flag computeSync = ATOMIC_FLAG_INIT;
 
     std::thread computeThread;
     std::thread presentThread;
@@ -232,6 +232,7 @@ Result Superluminal::start() {
 
     // Start the compute, present, and input threads.
 
+    impl->computeSync.test_and_set();
     impl->computeThread = std::thread([&]{
         while (impl->instance->computing()) {
             impl->computeSync.wait(true);
@@ -753,11 +754,11 @@ Result Superluminal::Impl::createGraph() {
         if (recipe.buffer.device() != config.preferredDevice) {
             std::string deviceNameStr;
 
-            if ((recipe.buffer.device() == DeviceType::CUDA) and (config.preferredDevice == DeviceType::CPU)) {
+            if ((recipe.buffer.device() == DeviceType::CUDA) && (config.preferredDevice == DeviceType::CPU)) {
                 deviceNameStr = "cuda";
             }
 
-            if ((recipe.buffer.device() == DeviceType::CPU) and (config.preferredDevice == DeviceType::CUDA)) {
+            if ((recipe.buffer.device() == DeviceType::CPU) && (config.preferredDevice == DeviceType::CUDA)) {
                 deviceNameStr = "cuda";
             }
 

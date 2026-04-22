@@ -1,18 +1,23 @@
-deps = [
-    subproject(
-        'cpp-httplib',
-        default_options: [
-            'openssl=enabled',
-            'compile=true'
-        ]
-    ).get_variable('cpp_httplib_dep'),
-]
+deps = []
+all_deps_found = not (jst_is_browser or jst_is_windows)
 
-all_deps_found = true
-foreach x_dep : deps
-    all_deps_found = all_deps_found and x_dep.found()
-endforeach
-all_deps_found = all_deps_found or jst_is_browser
+if all_deps_found
+    deps += [
+        subproject(
+            'cpp-httplib',
+            required: true,
+            default_options: [
+                'tls=auto',
+                'compile=true',
+                'default_library=static'
+            ]
+        ).get_variable('cpp_httplib_dep')
+    ]
+
+    foreach x_dep : deps
+        all_deps_found = all_deps_found and x_dep.found()
+    endforeach
+endif
 
 if all_deps_found
     cfg_lst.set('JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE', true)
