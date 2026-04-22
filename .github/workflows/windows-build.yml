@@ -75,6 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f build/cyberether.exe
+          meson test -C build --print-errorlogs
 
       - name: Check Windows binary dependencies
         uses: ./.github/actions/check-dynamic-deps
