@@ -6908,6 +6908,9 @@ Result DefaultCompositor::renderStacks() {
 
             if (stackState.restoreDockLayout) {
                 JST_CHECK(helperRestoreStackWindowLayout(flowgraphId, stackState, windowPos, windowSize));
+                const std::string stackTitle = stackMeta.title.empty() ? stackId : stackMeta.title;
+                const std::string notification = jst::fmt::format("Restored '{}' from file.", stackTitle);
+                ImGui::InsertNotification({ ImGuiToastType_Info, 3000, notification.c_str() });
                 stackState.restoreDockLayout = false;
             } else if (isDockNew && stackId == "Graph") {
                 ImGuiID dock_id_main;
