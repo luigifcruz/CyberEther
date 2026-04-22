@@ -79,13 +79,27 @@ resolve_tool() {
 
 extract_deps() {
     local target="$1"
+    local tool_name
+
+    tool_name="$(basename "$inspect_tool" | tr '[:upper:]' '[:lower:]')"
 
     case "$format" in
         elf)
             "$inspect_tool" -d "$target" | awk -F'[][]' '/NEEDED/ { print $2 }'
             ;;
         pe)
-            "$inspect_tool" -p "$target" | sed -n 's/^[[:space:]]*DLL Name: //p'
+            if [ "$tool_name" = 'dumpbin' ] || [ "$tool_name" = 'dumpbin.exe' ]; then
+                MSYS2_ARG_CONV_EXCL='/dependents' \
+                    "$inspect_tool" /dependents "$target" | awk '
+                    /^  Image has the following dependencies:/ { deps=1; next }
+                    deps && /^[[:space:]]+[[:graph:]]+\.[Dd][Ll][Ll]$/ {
+                        sub(/^[[:space:]]+/, "", $0)
+                        print
+                    }
+                '
+            else
+                "$inspect_tool" -p "$target" | sed -n 's/^[[:space:]]*DLL Name: //p'
+            fi
             ;;
         macho)
             "$inspect_tool" -L "$target" | awk -v expected="$target:" '
