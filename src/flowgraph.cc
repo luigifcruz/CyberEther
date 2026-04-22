@@ -34,13 +34,6 @@ struct BlockState {
 
 using OutputLookup = std::unordered_map<U64, OutputRef>;
 
-struct FlowgraphInputDocument {
-    std::string name;
-    std::string source;
-
-    JST_SERDES(name, source);
-};
-
 struct FlowgraphBlockDocument {
     std::string name;
     std::string module;
@@ -48,7 +41,7 @@ struct FlowgraphBlockDocument {
     RuntimeType runtime = RuntimeType::NATIVE;
     ProviderType provider = "generic";
     std::optional<Parser::Map> config;
-    std::optional<std::vector<FlowgraphInputDocument>> input;
+    std::optional<Parser::Map> input;
     std::optional<Parser::Map> meta;
 
     JST_SERDES(name, module, device, runtime, provider, config, input, meta);
@@ -132,21 +125,6 @@ Result MigrateFlowgraphVersion100To200(Parser::Map& root) {
             }
 
             Parser::Map block = std::any_cast<const Parser::Map&>(encodedBlock);
-
-            if (block.contains("input") && block.at("input").type() == typeid(Parser::Map)) {
-                const auto& legacyInput = std::any_cast<const Parser::Map&>(block.at("input"));
-                Parser::Sequence input;
-                input.reserve(legacyInput.size());
-
-                for (const auto& [port, encodedSource] : legacyInput) {
-                    Parser::Map entry;
-                    entry["name"] = port;
-                    entry["source"] = encodedSource;
-                    input.push_back(std::move(entry));
-                }
-
-                block["input"] = std::move(input);
-            }
 
             block["name"] = name;
             graph.push_back(std::move(block));
@@ -867,17 +845,18 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
             return Result::ERROR;
         }
         if (blockEntry.input.has_value()) {
-            for (const auto& inputEntry : *blockEntry.input) {
-                const auto ref = ParseGraphReference(inputEntry.source);
+            for (const auto& [slot, encodedSource] : *blockEntry.input) {
+                const auto& source = std::any_cast<const std::string&>(encodedSource);
+                const auto ref = ParseGraphReference(source);
                 if (!ref.has_value()) {
                     JST_ERROR("[FLOWGRAPH] Block '{}' input '{}' has invalid link '{}'.",
                               blockEntry.name,
-                              inputEntry.name,
-                              inputEntry.source);
+                              slot,
+                              source);
                     return Result::ERROR;
                 }
 
-                def.inputs[inputEntry.name] = ref.value();
+                def.inputs[slot] = ref.value();
             }
         }
 
@@ -1032,8 +1011,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
             blockDocument.config = std::move(config);
         }
 
-        std::vector<FlowgraphInputDocument> inputs;
-        inputs.reserve(block->inputs().size());
+        Parser::Map inputs;
 
         for (const auto& [slot, link] : block->inputs()) {
             const U64 tensorId = link.tensor.id();
@@ -1056,10 +1034,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
                 return Result::ERROR;
             }
 
-            inputs.push_back({slot,
-                              jst::fmt::format("${{graph.{}.output.{}}}",
-                                               producerBlock,
-                                               producerPort)});
+            inputs[slot] = jst::fmt::format("${{graph.{}.output.{}}}",  producerBlock, producerPort);
         }
 
         if (!inputs.empty()) {

@@ -58,10 +58,8 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: a
-        source: '${graph.signal_generator.output.signal}'
-      - name: b
-        source: '${graph.signal_generator_1.output.signal}'
+      a: '${graph.signal_generator.output.signal}'
+      b: '${graph.signal_generator_1.output.signal}'
     meta:
       node:
         y: 211
@@ -74,8 +72,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: signal
-        source: '${graph.add.output.sum}'
+      signal: '${graph.add.output.sum}'
     meta:
       node:
         y: 227
@@ -90,8 +87,7 @@ graph:
     config:
       forward: true
     input:
-      - name: signal
-        source: '${graph.invert.output.signal}'
+      signal: '${graph.invert.output.signal}'
     meta:
       node:
         y: 237
@@ -104,8 +100,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      - name: signal
-        source: '${graph.fft.output.signal}'
+      signal: '${graph.fft.output.signal}'
     meta:
       node:
         y: 243
@@ -121,8 +116,7 @@ graph:
       max: 0
       min: -90.71429
     input:
-      - name: signal
-        source: '${graph.amplitude.output.signal}'
+      signal: '${graph.amplitude.output.signal}'
     meta:
       node:
         y: 236
@@ -138,8 +132,7 @@ graph:
       interpolate: true
       height: 512
     input:
-      - name: signal
-        source: '${graph.range.output.signal}'
+      signal: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 512
@@ -164,8 +157,7 @@ graph:
       numberOfVerticalLines: 11
       averaging: 1
     input:
-      - name: signal
-        source: '${graph.range.output.signal}'
+      signal: '${graph.range.output.signal}'
     meta:
       surface_default:
         detachedWidth: 910
