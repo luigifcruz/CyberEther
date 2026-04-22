@@ -12,6 +12,33 @@
 
 namespace Jetstream::Platform {
 
+namespace {
+
+Result ResolveAppPath(const NSSearchPathDirectory& directory,
+                      NSString* suffix,
+                      std::string& path) {
+    
+    NSArray<NSString*>* paths = NSSearchPathForDirectoriesInDomains(directory, NSUserDomainMask, YES);
+    if ([paths count] == 0) {
+        JST_ERROR("Cannot resolve application path.");
+        return Result::ERROR;
+    }
+
+    NSString* resolvedPath = [[paths objectAtIndex:0] stringByAppendingPathComponent:suffix];
+    path = std::string([resolvedPath UTF8String]);
+    return Result::SUCCESS;
+}
+
+}  // namespace
+
+Result ConfigPath(std::string& path) {
+    return ResolveAppPath(NSApplicationSupportDirectory, @"CyberEther", path);
+}
+
+Result CachePath(std::string& path) {
+    return ResolveAppPath(NSCachesDirectory, @"CyberEther", path);
+}
+
 Result OpenUrl(const std::string& url) {
     NSString* nsUrl = [NSString stringWithUTF8String:url.c_str()];
     NSURL* urlObj = [NSURL URLWithString:nsUrl];
