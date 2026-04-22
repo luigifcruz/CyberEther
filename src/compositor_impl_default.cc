@@ -6884,6 +6884,7 @@ Result DefaultCompositor::renderStacks() {
             ImGui::Begin(stackWindowLabel.c_str(), &enabled, stackWindowFlags);
             ImGui::PopStyleVar();
 
+            const bool dockedIntoMainTabBar = stackState.dockInMainTabBar;
             if (stackState.dockInMainTabBar) {
                 ImGui::DockBuilderDockWindow(stackWindowLabel.c_str(), mainDockspaceID);
                 ImGui::DockBuilderFinish(mainDockspaceID);
@@ -6907,11 +6908,13 @@ Result DefaultCompositor::renderStacks() {
             ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
             if (stackState.restoreDockLayout) {
-                JST_CHECK(helperRestoreStackWindowLayout(flowgraphId, stackState, windowPos, windowSize));
-                const std::string stackTitle = stackMeta.title.empty() ? stackId : stackMeta.title;
-                const std::string notification = jst::fmt::format("Restored '{}' from file.", stackTitle);
-                ImGui::InsertNotification({ ImGuiToastType_Info, 3000, notification.c_str() });
-                stackState.restoreDockLayout = false;
+                if (!dockedIntoMainTabBar && !isDockNew) {
+                    JST_CHECK(helperRestoreStackWindowLayout(flowgraphId, stackState, windowPos, windowSize));
+                    const std::string stackTitle = stackMeta.title.empty() ? stackId : stackMeta.title;
+                    const std::string notification = jst::fmt::format("Restored '{}' from file.", stackTitle);
+                    ImGui::InsertNotification({ ImGuiToastType_Info, 3000, notification.c_str() });
+                    stackState.restoreDockLayout = false;
+                }
             } else if (isDockNew && stackId == "Graph") {
                 ImGuiID dock_id_main;
 
