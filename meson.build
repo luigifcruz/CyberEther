@@ -48,7 +48,9 @@ if jst_is_browser
 endif
 
 if get_option('native')
-    add_project_arguments('-march=native', language: 'cpp')
+    if not jst_is_windows
+        add_project_arguments('-march=native', language: 'cpp')
+    endif
 endif
 
 #
