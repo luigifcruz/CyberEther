@@ -11,7 +11,6 @@
 #include <unordered_map>
 
 #include "jetstream/logger.hh"
-#include "jetstream/memory/macros.hh"
 
 namespace Jetstream {
 
