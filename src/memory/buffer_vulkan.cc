@@ -1,7 +1,6 @@
 #include "buffer_backend.hh"
 
 #include <cstring>
-#include <unistd.h>
 
 #include "jetstream/backend/base.hh"
 #include "jetstream/backend/devices/vulkan/base.hh"
@@ -62,10 +61,6 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
 
         // Create buffer object.
 
-        VkExternalMemoryBufferCreateInfo extBufferCreateInfo = {};
-        extBufferCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
-        extBufferCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = JST_PAGE_ALIGNED_SIZE(bytes);
@@ -73,7 +68,16 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
                            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.pNext = canExport ? &extBufferCreateInfo : nullptr;
+        bufferInfo.pNext = nullptr;
+
+#if !defined(JST_OS_WINDOWS)
+        VkExternalMemoryBufferCreateInfo extBufferCreateInfo = {};
+        if (canExport) {
+            extBufferCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+            extBufferCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+            bufferInfo.pNext = &extBufferCreateInfo;
+        }
+#endif
 
         JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &_buffer), [&]{
             JST_ERROR("[MEMORY:BUFFER:VULKAN] Failed to create buffer.");
@@ -106,17 +110,22 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             JST_TRACE("[MEMORY:BUFFER:VULKAN] Using device local memory (DL).");
         }
 
-        VkExportMemoryAllocateInfo exportInfo = {};
-        exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-        exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-
         VkMemoryAllocateInfo memoryAllocateInfo = {};
         memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
         memoryAllocateInfo.memoryTypeIndex = Jetstream::Backend::FindMemoryType(physicalDevice,
                                                                      memoryRequirements.memoryTypeBits,
                                                                      memoryProperties);
-        memoryAllocateInfo.pNext = canExport ? &exportInfo : nullptr;
+        memoryAllocateInfo.pNext = nullptr;
+
+#if !defined(JST_OS_WINDOWS)
+        VkExportMemoryAllocateInfo exportInfo = {};
+        if (canExport) {
+            exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+            exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+            memoryAllocateInfo.pNext = &exportInfo;
+        }
+#endif
 
         JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &_memory), [&]{
             JST_ERROR("[MEMORY:BUFFER:VULKAN] Failed to allocate buffer memory.");
@@ -165,7 +174,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             return Result::ERROR;
         }
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE) && !defined(JST_OS_WINDOWS)
         if (source.device() == DeviceType::CUDA) {
             JST_TRACE("[MEMORY:BUFFER:VULKAN] Importing CUDA buffer.");
 
