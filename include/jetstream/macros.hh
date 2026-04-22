@@ -5,7 +5,6 @@
 #include <exception>
 #include <thread>
 
-#include "jetstream/memory/macros.hh"
 #include "jetstream/config.hh"
 
 //
@@ -13,11 +12,24 @@
 //
 
 #ifndef JETSTREAM_API
+// TODO: Add support for DLL export if needed.
+#if defined(JST_IS_STATIC) || defined(JST_OS_WINDOWS)
+#define JETSTREAM_API
+#elif defined(__GNUC__) || defined(__clang__)
 #define JETSTREAM_API __attribute__((visibility("default")))
+#else
+#define JETSTREAM_API
+#endif
 #endif  // JETSTREAM_API
 
 #ifndef JETSTREAM_HIDDEN
+#if defined(JST_IS_STATIC) || defined(JST_OS_WINDOWS)
+#define JETSTREAM_HIDDEN
+#elif defined(__GNUC__) || defined(__clang__)
 #define JETSTREAM_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define JETSTREAM_HIDDEN
+#endif
 #endif  // JETSTREAM_HIDDEN
 
 //
