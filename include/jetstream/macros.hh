@@ -32,6 +32,16 @@
 #endif
 #endif  // JETSTREAM_HIDDEN
 
+#ifndef JST_INLINE
+#if defined(_MSC_VER)
+#define JST_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define JST_INLINE inline __attribute__((always_inline))
+#else
+#define JST_INLINE inline
+#endif
+#endif  // JST_INLINE
+
 //
 // Check macros.
 //
