@@ -6,8 +6,8 @@
 
 using namespace Jetstream;
 
-TEST_CASE_METHOD(FlowgraphFixture, "Cast block reports error for unsupported source type",
-                 "[modules][cast][block]") {
+TEST_CASE_METHOD(FlowgraphFixture, "Cast block bypasses matching source type",
+                  "[modules][cast][block]") {
     Blocks::Window source;
     REQUIRE(flowgraph->blockCreate("cast_src", source, {}) == Result::SUCCESS);
 
@@ -17,7 +17,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block reports error for unsupported sou
     Blocks::Cast config;
     config.outputType = "CF32";
     REQUIRE(flowgraph->blockCreate("cast_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("cast_block")->state() == Block::State::Errored);
+
+    const auto& castBlock = flowgraph->blockList().at("cast_block");
+    REQUIRE(castBlock->state() == Block::State::Created);
+    REQUIRE(castBlock->outputs().at("buffer").tensor.dtype() == DataType::CF32);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Cast block rejects invalid output type",
