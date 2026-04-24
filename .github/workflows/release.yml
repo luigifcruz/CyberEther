@@ -8,8 +8,11 @@ permissions:
   contents: read
 
 jobs:
-  manylinux:
-    uses: ./.github/workflows/manylinux-build.yml
+  linux:
+    uses: ./.github/workflows/linux-build.yml
+
+  wheel:
+    uses: ./.github/workflows/wheel-build.yml
 
   windows:
     uses: ./.github/workflows/windows-build.yml
@@ -24,7 +27,7 @@ jobs:
     uses: ./.github/workflows/container-build.yml
 
   github-release:
-    needs: [manylinux, windows, macos, emscripten]
+    needs: [linux, wheel, windows, macos, emscripten]
     runs-on: ubuntu-latest
     permissions:
       contents: write

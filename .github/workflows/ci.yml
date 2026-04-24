@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  manylinux:
-    uses: ./.github/workflows/manylinux-build.yml
+  linux:
+    uses: ./.github/workflows/linux-build.yml
 
   windows:
     uses: ./.github/workflows/windows-build.yml

@@ -391,8 +391,13 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
     }
 
+#if defined(JST_OS_WINDOWS)
+    cache.canImportDeviceMemory = false;
+    cache.canExportDeviceMemory = false;
+#else
     cache.canImportDeviceMemory = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
     cache.canExportDeviceMemory = supportedDeviceExtensions.contains(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+#endif
     cache.canImportHostMemory = supportedDeviceExtensions.contains(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
 
     // Create logical device.
