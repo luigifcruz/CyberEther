@@ -161,7 +161,6 @@ endif
 limesuite_lib = library(
   'LimeSuite',
   limesuite_sources,
-  limesuite_extra_objects,
   builtin_connections,
   version_info,
   system_resources,
@@ -169,6 +168,7 @@ limesuite_lib = library(
   cpp_args: private_cpp_args,
   include_directories: limesuite_inc,
   dependencies: limesuite_deps,
+  objects: limesuite_extra_objects,
   install: true,
 )
 
