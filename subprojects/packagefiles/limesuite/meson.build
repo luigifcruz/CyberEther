@@ -2,9 +2,12 @@ project('limesuite', ['c', 'cpp'], version: '23.11.0', default_options: ['cpp_st
 
 private_c_args = []
 private_cpp_args = []
+usb_transport_cpp_args = []
 
-if target_machine.system().startswith('windows') or \
-   target_machine.system() == 'darwin' or \
+if target_machine.system().startswith('windows')
+  usb_transport_cpp_args += ['-D__unix__=1']
+  private_cpp_args += ['-D_CRT_SECURE_NO_WARNINGS']
+elif target_machine.system() == 'darwin' or \
    target_machine.system() == 'emscripten'
   # Force the libusb-backed transport paths for cross-platform static builds.
   private_c_args += ['-D__unix__=1']
@@ -26,6 +29,10 @@ atomic_dep = cpp.find_library('atomic', required: false)
 limesuite_deps = [thread_dep, usb_dep]
 if atomic_dep.found()
   limesuite_deps += [atomic_dep]
+endif
+
+if target_machine.system().startswith('windows')
+  limesuite_deps += [cpp.find_library('shell32', required: true)]
 endif
 
 version_conf = configuration_data()
@@ -119,10 +126,6 @@ limesuite_sources = files(
   'src/FPGA_common/FPGA_Q.cpp',
   'src/windowFunction.cpp',
   'src/threadHelper/threadHelper.cpp',
-  'src/ConnectionFX3/ConnectionFX3Entry.cpp',
-  'src/ConnectionFX3/ConnectionFX3.cpp',
-  'src/ConnectionFTDI/ConnectionFT601Entry.cpp',
-  'src/ConnectionFTDI/ConnectionFT601.cpp',
   'src/GFIR/corrections.c',
   'src/GFIR/gfir_lms.c',
   'src/GFIR/lms.c',
@@ -130,9 +133,31 @@ limesuite_sources = files(
   'src/GFIR/rounding.c',
 )
 
+limesuite_usb_sources = files(
+  'src/ConnectionFX3/ConnectionFX3Entry.cpp',
+  'src/ConnectionFX3/ConnectionFX3.cpp',
+  'src/ConnectionFTDI/ConnectionFT601Entry.cpp',
+  'src/ConnectionFTDI/ConnectionFT601.cpp',
+)
+
+limesuite_extra_objects = []
+if target_machine.system().startswith('windows')
+  limesuite_usb_lib = static_library(
+    'limesuite_usb_connections',
+    limesuite_usb_sources,
+    cpp_args: private_cpp_args + usb_transport_cpp_args,
+    include_directories: limesuite_inc,
+    dependencies: limesuite_deps,
+  )
+  limesuite_extra_objects += limesuite_usb_lib.extract_all_objects()
+else
+  limesuite_sources += limesuite_usb_sources
+endif
+
 limesuite_lib = library(
   'LimeSuite',
   limesuite_sources,
+  limesuite_extra_objects,
   builtin_connections,
   version_info,
   system_resources,

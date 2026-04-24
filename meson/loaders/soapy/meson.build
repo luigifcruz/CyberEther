@@ -31,6 +31,7 @@ if jst_is_windows and jst_is_static
     ]
     whole_dep_lst += [
         dependency('soapyrtlsdr', required: true).as_link_whole(),
+        dependency('soapylms7', required: true).as_link_whole(),
     ]
 endif
 
