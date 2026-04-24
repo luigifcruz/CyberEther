@@ -30,6 +30,7 @@ static DeviceList ListAvailableDevices(const std::string& filter) {
 }
 
 struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
+    Result validate() override;
     Result configure() override;
     Result define() override;
     Result create() override;
@@ -40,15 +41,50 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     std::string deviceDropdown;
 };
 
+Result SoapyImpl::validate() {
+    const auto& config = *candidate();
+
+    if (config.numberOfBatches == 0) {
+        JST_ERROR("[BLOCK_SOAPY] Number of batches cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (config.numberOfTimeSamples == 0) {
+        JST_ERROR("[BLOCK_SOAPY] Number of time samples cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (config.bufferMultiplier == 0) {
+        JST_ERROR("[BLOCK_SOAPY] Buffer multiplier cannot be zero.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result SoapyImpl::configure() {
     std::string resolvedDeviceString;
     const auto availableDeviceList = ListAvailableDevices(hintString);
+    const auto selectFirstAvailable = [&](const DeviceList& devices) -> bool {
+        if (devices.empty()) {
+            return false;
+        }
+
+        const auto& [label, device] = *devices.begin();
+        deviceString = label;
+        resolvedDeviceString = SoapySDR::KwargsToString(device);
+        return true;
+    };
 
     if (const auto it = availableDeviceList.find(deviceString); it != availableDeviceList.end()) {
         resolvedDeviceString = SoapySDR::KwargsToString(it->second);
+    } else if (!deviceString.empty()) {
+        const auto explicitDeviceList = ListAvailableDevices(deviceString);
+        if (!selectFirstAvailable(explicitDeviceList)) {
+            selectFirstAvailable(availableDeviceList);
+        }
     } else if (!availableDeviceList.empty()) {
-        const auto& [_, device] = *availableDeviceList.begin();
-        resolvedDeviceString = SoapySDR::KwargsToString(device);
+        selectFirstAvailable(availableDeviceList);
     }
 
     moduleConfig->deviceString = resolvedDeviceString;

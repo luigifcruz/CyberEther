@@ -17,6 +17,7 @@ struct CastImpl : public Module::Impl, public DynamicConfig<Cast> {
     Tensor output;
     DataType outputDtype = DataType::CF32;
     F32 scaler = 1.0f;
+    bool bypass = false;
 };
 
 }  // namespace Jetstream::Modules

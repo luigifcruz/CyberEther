@@ -18,7 +18,6 @@ struct CastImplNativeCpu : public CastImpl,
 
  private:
     // Real -> F32 kernels.
-    Result kernelF32ToF32();
     Result kernelI8ToF32();
     Result kernelU8ToF32();
     Result kernelI16ToF32();
@@ -40,14 +39,13 @@ struct CastImplNativeCpu : public CastImpl,
 Result CastImplNativeCpu::create() {
     JST_CHECK(CastImpl::create());
 
+    if (bypass) {
+        return Result::SUCCESS;
+    }
+
     // Dispatch kernel based on input/output dtype pair.
 
     if (outputDtype == DataType::F32) {
-        if (input.dtype() == DataType::F32) {
-            kernel = [this]() { return kernelF32ToF32(); };
-            return Result::SUCCESS;
-        }
-
         if (input.dtype() == DataType::I8) {
             kernel = [this]() { return kernelI8ToF32(); };
             return Result::SUCCESS;
@@ -117,15 +115,11 @@ Result CastImplNativeCpu::create() {
 }
 
 Result CastImplNativeCpu::computeSubmit() {
-    return kernel();
-}
+    if (bypass) {
+        return Result::SUCCESS;
+    }
 
-Result CastImplNativeCpu::kernelF32ToF32() {
-    return AutomaticIterator<const F32, F32>(
-        [](const auto& in, auto& out) {
-            out = in;
-        },
-    input, output);
+    return kernel();
 }
 
 Result CastImplNativeCpu::kernelI8ToF32() {
