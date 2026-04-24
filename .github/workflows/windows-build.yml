@@ -71,7 +71,7 @@ jobs:
             Remove-Item -Recurse -Force build
           }
 
-          meson setup --vsenv -Dbuildtype=release -Ddefault_library=static -Db_vscrt=static_from_buildtype -Dtests=false -Dexamples=false build
+          meson setup --vsenv -Dbuildtype=release -Ddefault_library=static -Db_vscrt=static_from_buildtype -Dtests=true -Dexamples=false build
           meson compile -C build
 
           New-Item -ItemType Directory -Force -Path .dist/artifacts | Out-Null
@@ -82,6 +82,8 @@ jobs:
           if (!(Test-Path build/cyberether.exe)) {
             throw 'cyberether.exe was not produced.'
           }
+
+          meson test -C build --print-errorlogs
 
       - name: Check Windows binary dependencies
         uses: ./.github/actions/check-dynamic-deps

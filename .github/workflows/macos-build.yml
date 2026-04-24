@@ -53,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f build/cyberether
-          meson test -C build parser flowgraph --print-errorlogs
+          meson test -C build --print-errorlogs
 
       - name: Check binary dynamic dependencies
         uses: ./.github/actions/check-dynamic-deps
