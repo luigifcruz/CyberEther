@@ -3,7 +3,9 @@ project('limesuite', ['c', 'cpp'], version: '23.11.0', default_options: ['cpp_st
 private_c_args = []
 private_cpp_args = []
 
-if target_machine.system().startswith('windows') or target_machine.system() == 'emscripten'
+if target_machine.system().startswith('windows') or \
+   target_machine.system() == 'darwin' or \
+   target_machine.system() == 'emscripten'
   # Force the libusb-backed transport paths for cross-platform static builds.
   private_c_args += ['-D__unix__=1']
   private_cpp_args += ['-D__unix__=1']
