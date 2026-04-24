@@ -3,10 +3,15 @@ project('limesuite', ['c', 'cpp'], version: '23.11.0', default_options: ['cpp_st
 private_c_args = []
 private_cpp_args = []
 usb_transport_cpp_args = []
+cpp = meson.get_compiler('cpp')
 
 if target_machine.system().startswith('windows')
-  usb_transport_cpp_args += ['-D__unix__=1']
   private_cpp_args += ['-D_CRT_SECURE_NO_WARNINGS']
+  usb_transport_cpp_args += ['-D__unix__=1']
+
+  if cpp.get_id() == 'msvc' or cpp.get_id() == 'clang-cl'
+    private_cpp_args += ['/FIchrono']
+  endif
 elif target_machine.system() == 'darwin' or \
    target_machine.system() == 'emscripten'
   # Force the libusb-backed transport paths for cross-platform static builds.
@@ -23,7 +28,6 @@ else
   usb_dep = dependency('libusb-1.0', required: true)
 endif
 
-cpp = meson.get_compiler('cpp')
 atomic_dep = cpp.find_library('atomic', required: false)
 
 limesuite_deps = [thread_dep, usb_dep]
