@@ -14,6 +14,9 @@
 #include <vulkan/vulkan_wayland.h>
 #endif
 #if defined(JST_OS_WINDOWS)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #undef ERROR

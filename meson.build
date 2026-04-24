@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.2.0',  # [VERSION HOOK]
+    version: '1.3.0',  # [VERSION HOOK]
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
@@ -47,8 +47,14 @@ if jst_is_browser
     meson.override_dependency('threads', threads_dep)
 endif
 
+if jst_is_windows
+    add_project_arguments('/Zc:preprocessor', language: 'cpp')
+endif
+
 if get_option('native')
-    add_project_arguments('-march=native', language: 'cpp')
+    if not jst_is_windows
+        add_project_arguments('-march=native', language: 'cpp')
+    endif
 endif
 
 #

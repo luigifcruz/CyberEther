@@ -1,0 +1,106 @@
+name: Wheel Build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  SYSTEM_SHARED_LIBS: |
+    libc.so.6
+    libm.so.6
+    libstdc++.so.6
+    libgcc_s.so.1
+    libpthread.so.0
+    libdl.so.2
+    librt.so.1
+    ld-linux-x86-64.so.2
+    ld-linux-aarch64.so.1
+    libvulkan.so.1
+    libz.so.1
+    libjetstream.so
+    libX11.so.6
+    libXrandr.so.2
+    libXi.so.6
+    libXinerama.so.1
+    libXcursor.so.1
+    libxkbcommon.so.0
+    libwayland-client.so.0
+    libwayland-cursor.so.0
+    libwayland-egl.so.1
+
+jobs:
+  wheel:
+    name: wheel (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            image: quay.io/pypa/manylinux_2_34_x86_64@sha256:40eab5671867fade46e06d5e6f22269335e396a5fcd2e11973ff8bce0ed004de
+            runner: ubuntu-latest
+          - arch: aarch64
+            image: quay.io/pypa/manylinux_2_34_aarch64@sha256:b1d54ba07caa4f3c2144d24d179f006fac7bccd76323ea0673634243bf2aabd5
+            runner: ubuntu-24.04-arm
+    container:
+      image: ${{ matrix.image }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PATH: /opt/python/cp312-cp312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          dnf install -y \
+            git gcc-c++ glslang openssl-devel \
+            wayland-devel libxkbcommon-devel \
+            libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
+            vulkan-loader-devel pkgconf-pkg-config
+          dnf clean all
+
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --break-system-packages meson ninja numpy mapbox_earcut meson-python auditwheel pyyaml
+
+      - name: Build wheel
+        run: |
+          set -euo pipefail
+          rm -rf .dist/wheels .dist/python
+          mkdir -p .dist/wheels/repaired .dist/artifacts
+          python -m pip wheel . \
+            --no-deps --no-build-isolation --wheel-dir .dist/wheels \
+            --config-settings=setup-args=-Dpython=true \
+            --config-settings=setup-args=-Dwheel=true \
+            --config-settings=setup-args=-Dbuildtype=release \
+            --config-settings=setup-args=-Dtests=false \
+            --config-settings=setup-args=-Dexamples=false
+          auditwheel repair .dist/wheels/*.whl -w .dist/wheels/repaired
+          cd .dist/wheels/repaired
+          tar -czf ../../artifacts/superluminal-manylinux-${ARCH}-wheel.tar.gz ./*.whl
+
+      - name: Validate wheel
+        run: |
+          set -euo pipefail
+          rm -rf .dist/wheel-check && mkdir -p .dist/wheel-check
+          python -m zipfile -e .dist/wheels/repaired/*.whl .dist/wheel-check
+
+      - name: Check wheel dynamic dependencies
+        uses: ./.github/actions/check-dynamic-deps
+        with:
+          format: elf
+          targets: |
+            .dist/wheel-check/superluminal/_impl*.so
+          allowlist: ${{ env.SYSTEM_SHARED_LIBS }}
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: superluminal-wheel-manylinux-${{ matrix.arch }}
+          path: .dist/artifacts/superluminal-manylinux-${{ matrix.arch }}-wheel.tar.gz

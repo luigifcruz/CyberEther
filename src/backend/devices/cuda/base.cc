@@ -91,15 +91,18 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     {
         int query = 0;
 
-        // TODO: Find a valid attribute for this.
-        cache.canImportDeviceMemory = true;
+        cache.canImportDeviceMemory = false;
+        cache.canExportDeviceMemory = false;
 
+#if !defined(JST_OS_WINDOWS)
         JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query,
                                                   CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR_SUPPORTED,
                                                   device), [&]{
             JST_FATAL("[CUDA] Cannot get device attribute: {}", err);
         });
+        cache.canImportDeviceMemory = query;
         cache.canExportDeviceMemory = query;
+#endif
 
         JST_CUDA_CHECK_THROW(cuDeviceGetAttribute(&query,
                                                   CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM,

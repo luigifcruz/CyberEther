@@ -2,8 +2,6 @@
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 
-#include <unistd.h>
-
 #include "jetstream/backend/base.hh"
 #include "jetstream/backend/devices/cuda/helpers.hh"
 #include "jetstream/logger.hh"
@@ -56,6 +54,7 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
             allocationKind = AllocationKind::Managed;
             hostAccessibleFlag = true;
             locationState = Location::Unified;
+#if !defined(JST_OS_WINDOWS)
         } else if (state->canExportDeviceMemory()) {
             CUmemAllocationProp allocationProp = {};
             allocationProp.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -97,6 +96,7 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
             allocationKind = AllocationKind::VirtualMemory;
             hostAccessibleFlag = false;
             locationState = Location::Device;
+#endif
         } else {
             allocBytes = JST_PAGE_ALIGNED_SIZE(bytes);
             JST_CUDA_CHECK(cudaMalloc(&buffer, allocBytes), [&] {
@@ -189,7 +189,7 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
             return Result::SUCCESS;
         }
 
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE) && !defined(JST_OS_WINDOWS)
         if (source.device() == DeviceType::Vulkan) {
             if (!state->canImportDeviceMemory()) {
                 JST_ERROR("[MEMORY:BUFFER:CUDA] CUDA cannot import device memory.");
@@ -326,7 +326,7 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
     }
 
     void destroy() override {
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE) && !defined(JST_OS_WINDOWS)
         if (allocationKind == AllocationKind::ImportedVulkan) {
             if (externalMemory != nullptr) {
                 cuDestroyExternalMemory(externalMemory);
@@ -390,7 +390,7 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
     CUdeviceptr devicePtr = 0;
     CUmemGenericAllocationHandle allocHandle = 0;
 
-#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE) && !defined(JST_OS_WINDOWS)
     CUexternalMemory externalMemory = nullptr;
     int importedFd = -1;
 #endif

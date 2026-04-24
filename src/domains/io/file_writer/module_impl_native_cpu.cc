@@ -47,34 +47,31 @@ Result FileWriterImplNativeCpu::computeSubmit() {
     const U64 bytesToWrite = input.sizeBytes();
     const std::streampos previousPosition = dataFile.tellp();
     if (previousPosition == std::streampos(-1)) {
-        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.",
-                  filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.", filepath);
         return Result::ERROR;
     }
 
     dataFile.write(reinterpret_cast<const char*>(input.data()), bytesToWrite);
     if (!dataFile.good()) {
-        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed writing to '{}'.", filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed writing to '{}'.", filepath);
         return Result::ERROR;
     }
 
     dataFile.flush();
     if (!dataFile.good()) {
-        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed flushing '{}'.", filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed flushing '{}'.", filepath);
         return Result::ERROR;
     }
 
     const std::streampos currentPosition = dataFile.tellp();
     if (currentPosition == std::streampos(-1)) {
-        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.",
-                  filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Failed to query '{}' write position.", filepath);
         return Result::ERROR;
     }
 
     const std::streamoff committedBytes = currentPosition - previousPosition;
     if (committedBytes < 0) {
-        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Invalid committed byte count for '{}'.",
-                  filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER_NATIVE_CPU] Invalid committed byte count for '{}'.", filepath);
         return Result::ERROR;
     }
 

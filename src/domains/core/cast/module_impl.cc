@@ -28,6 +28,12 @@ Result CastImpl::create() {
 
     input = inputs().at("buffer").tensor;
     outputDtype = NameToDataType(outputType);
+    bypass = input.dtype() == outputDtype;
+
+    if (bypass) {
+        outputs()["buffer"].produced(name(), "buffer", input);
+        return Result::SUCCESS;
+    }
 
     // Configure default scaler based on input type.
 

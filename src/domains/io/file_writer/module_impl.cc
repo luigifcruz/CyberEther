@@ -28,7 +28,7 @@ Result FileWriterImpl::create() {
     lastMeasurementTime = std::chrono::steady_clock::now();
 
     if (!filepath.empty()) {
-        filePath = std::filesystem::path(filepath);
+        filePath = std::filesystem::u8path(filepath);
 
         std::error_code ec;
         if (std::filesystem::exists(filePath, ec) && !ec) {
@@ -50,26 +50,24 @@ Result FileWriterImpl::create() {
 
     auto parentPath = filePath.parent_path();
     if (!parentPath.empty() && !std::filesystem::exists(parentPath)) {
-        JST_WARN("[MODULE_FILE_WRITER] Parent directory '{}' does not exist.", parentPath.string());
+        JST_WARN("[MODULE_FILE_WRITER] Parent directory for '{}' does not exist.", filepath);
         return Result::INCOMPLETE;
     }
 
     if (std::filesystem::exists(filePath) && !overwrite) {
-        JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.",
-                  filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", filepath);
         return Result::ERROR;
     }
 
     dataFile.open(filePath, std::ios::out | std::ios::binary);
     if (!dataFile.is_open()) {
-        JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.",
-                  filePath.string());
+        JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.", filepath);
         return Result::ERROR;
     }
 
     bytesWritten.publish(0);
 
-    JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", filePath.string());
+    JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", filepath);
 
     return Result::SUCCESS;
 }
@@ -77,9 +75,7 @@ Result FileWriterImpl::create() {
 Result FileWriterImpl::destroy() {
     if (dataFile.is_open()) {
         dataFile.close();
-        JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
-                 filePath.string(),
-                 bytesWritten.get());
+        JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).", filepath, bytesWritten.get());
     }
 
     currentBandwidth.publish(0.0f);

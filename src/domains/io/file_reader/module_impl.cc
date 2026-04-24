@@ -55,28 +55,28 @@ Result FileReaderImpl::create() {
         return Result::INCOMPLETE;
     }
 
-    filePath = std::filesystem::path(filepath);
+    filePath = std::filesystem::u8path(filepath);
 
     if (!std::filesystem::exists(filePath)) {
-        JST_WARN("[MODULE_FILE_READER] File '{}' does not exist.", filePath.string());
+        JST_WARN("[MODULE_FILE_READER] File '{}' does not exist.", filepath);
         return Result::INCOMPLETE;
     }
 
     std::error_code ec;
     const U64 inputFileSize = std::filesystem::file_size(filePath, ec);
     if (ec) {
-        JST_WARN("[MODULE_FILE_READER] Failed to get file size for '{}'.", filePath.string());
+        JST_WARN("[MODULE_FILE_READER] Failed to get file size for '{}'.", filepath);
         return Result::INCOMPLETE;
     }
     fileSize.publish(inputFileSize);
 
     dataFile.open(filePath, std::ios::in | std::ios::binary);
     if (!dataFile.is_open()) {
-        JST_WARN("[MODULE_FILE_READER] Failed to open '{}' for reading.", filePath.string());
+        JST_WARN("[MODULE_FILE_READER] Failed to open '{}' for reading.", filepath);
         return Result::INCOMPLETE;
     }
 
-    JST_INFO("[MODULE_FILE_READER] Opened '{}' ({} bytes).", filePath.string(), fileSize.get());
+    JST_INFO("[MODULE_FILE_READER] Opened '{}' ({} bytes).", filepath, fileSize.get());
 
     return Result::SUCCESS;
 }

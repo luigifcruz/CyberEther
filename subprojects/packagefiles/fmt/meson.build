@@ -5,11 +5,11 @@ project(
   default_options: ['cpp_std=c++14'],
 )
 
-bash = find_program('bash')
-script = files('patch.sh')
+py = import('python').find_installation(required: true)
+script = files('patch.py')
 
 run_command(
-  bash, script[0], meson.source_root() / 'subprojects/fmt-11.2.0/include/fmt',
+  py, script[0], meson.current_source_dir() / 'include/fmt',
   check: true
 )
 

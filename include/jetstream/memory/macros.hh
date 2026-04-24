@@ -1,19 +1,42 @@
 #ifndef JETSTREAM_MEMORY_MACROS_HH
 #define JETSTREAM_MEMORY_MACROS_HH
 
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 
-#include "jetstream/macros.hh"
+#include "jetstream/config.hh"
+
+#if defined(JST_OS_WINDOWS)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#undef ERROR
+#undef FATAL
+#else
+#include <unistd.h>
+#endif
+
+namespace Jetstream::detail {
+
+inline std::size_t SystemPageSize() {
+#if defined(JST_OS_WINDOWS)
+    SYSTEM_INFO info{};
+    GetSystemInfo(&info);
+    return static_cast<std::size_t>(info.dwPageSize);
+#else
+    return static_cast<std::size_t>(getpagesize());
+#endif
+}
+
+}  // namespace Jetstream::detail
 
 #ifndef JST_PAGESIZE
-#ifdef JST_OS_WINDOWS
-// TODO: Implement JST_PAGESIZE() for Windows.
-#define JST_PAGESIZE() 4096
-#else
-#define JST_PAGESIZE() getpagesize()
-#endif
+#define JST_PAGESIZE() ::Jetstream::detail::SystemPageSize()
 #endif
 
 #ifndef JST_ROUND_UP

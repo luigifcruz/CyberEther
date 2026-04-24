@@ -3,7 +3,7 @@ deps = [
     py.dependency()
 ]
 
-if get_option('buildtype') == 'debugoptimized'
+if get_option('buildtype') == 'debugoptimized' and not jst_is_windows
     run_command(
         find_program('bash'),
         '-c',

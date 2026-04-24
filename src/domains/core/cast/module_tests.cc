@@ -7,8 +7,16 @@
 
 using namespace Jetstream;
 
+namespace {
+
+auto CastImplementations() {
+    return Registry::ListAvailableModules("cast", DeviceType::CPU);
+}
+
+}  // namespace
+
 TEST_CASE("Cast Module - CI8 to CF32", "[modules][cast][CI8]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -51,7 +59,7 @@ TEST_CASE("Cast Module - CI8 to CF32", "[modules][cast][CI8]") {
 }
 
 TEST_CASE("Cast Module - F32 to F32", "[modules][cast][F32]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -82,8 +90,44 @@ TEST_CASE("Cast Module - F32 to F32", "[modules][cast][F32]") {
     }
 }
 
+TEST_CASE("Cast Module - CF32 bypass", "[modules][cast][CF32][bypass]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CF32";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({3});
+            input.at(0) = {1.0f, -2.0f};
+            input.at(1) = {-3.0f, 4.0f};
+            input.at(2) = {0.0f, 0.5f};
+
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+
+            REQUIRE(out.dtype() == DataType::CF32);
+            REQUIRE_THAT(out.at<CF32>(0).real(),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(0).imag(),
+                         Catch::Matchers::WithinAbs(-2.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(1).real(),
+                         Catch::Matchers::WithinAbs(-3.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(1).imag(),
+                         Catch::Matchers::WithinAbs(4.0f, 1e-6f));
+        }
+    }
+}
+
 TEST_CASE("Cast Module - I8 to F32", "[modules][cast][I8]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -115,7 +159,7 @@ TEST_CASE("Cast Module - I8 to F32", "[modules][cast][I8]") {
 }
 
 TEST_CASE("Cast Module - U8 to F32", "[modules][cast][U8]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -147,7 +191,7 @@ TEST_CASE("Cast Module - U8 to F32", "[modules][cast][U8]") {
 }
 
 TEST_CASE("Cast Module - CI16 to CF32", "[modules][cast][CI16]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -183,7 +227,7 @@ TEST_CASE("Cast Module - CI16 to CF32", "[modules][cast][CI16]") {
 }
 
 TEST_CASE("Cast Module - I16 to F32", "[modules][cast][I16]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -215,7 +259,7 @@ TEST_CASE("Cast Module - I16 to F32", "[modules][cast][I16]") {
 }
 
 TEST_CASE("Cast Module - U16 to F32", "[modules][cast][U16]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -246,7 +290,7 @@ TEST_CASE("Cast Module - U16 to F32", "[modules][cast][U16]") {
 }
 
 TEST_CASE("Cast Module - I32 to F32", "[modules][cast][I32]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -277,7 +321,7 @@ TEST_CASE("Cast Module - I32 to F32", "[modules][cast][I32]") {
 }
 
 TEST_CASE("Cast Module - U32 to F32", "[modules][cast][U32]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -308,7 +352,7 @@ TEST_CASE("Cast Module - U32 to F32", "[modules][cast][U32]") {
 }
 
 TEST_CASE("Cast Module - CI32 to CF32", "[modules][cast][CI32]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -339,7 +383,7 @@ TEST_CASE("Cast Module - CI32 to CF32", "[modules][cast][CI32]") {
 }
 
 TEST_CASE("Cast Module - CU8 to CF32", "[modules][cast][CU8]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -375,7 +419,7 @@ TEST_CASE("Cast Module - CU8 to CF32", "[modules][cast][CU8]") {
 }
 
 TEST_CASE("Cast Module - CU16 to CF32", "[modules][cast][CU16]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -408,7 +452,7 @@ TEST_CASE("Cast Module - CU16 to CF32", "[modules][cast][CU16]") {
 }
 
 TEST_CASE("Cast Module - CU32 to CF32", "[modules][cast][CU32]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -439,7 +483,7 @@ TEST_CASE("Cast Module - CU32 to CF32", "[modules][cast][CU32]") {
 }
 
 TEST_CASE("Cast Module - 2D Tensor CI8", "[modules][cast][CI8][2d]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -476,7 +520,7 @@ TEST_CASE("Cast Module - 2D Tensor CI8", "[modules][cast][CI8][2d]") {
 }
 
 TEST_CASE("Cast Module - Invalid Output Type", "[modules][cast][error]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -499,7 +543,7 @@ TEST_CASE("Cast Module - Invalid Output Type", "[modules][cast][error]") {
 
 TEST_CASE("Cast Module rejects unsupported real to CF32 conversion",
           "[modules][cast][error][real]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -522,7 +566,7 @@ TEST_CASE("Cast Module rejects unsupported real to CF32 conversion",
 
 TEST_CASE("Cast Module rejects unsupported complex to F32 conversion",
           "[modules][cast][error][complex]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
@@ -545,7 +589,7 @@ TEST_CASE("Cast Module rejects unsupported complex to F32 conversion",
 
 TEST_CASE("Cast Module rejects unsupported CF32 to F32 conversion",
           "[modules][cast][error][cf32]") {
-    auto implementations = Registry::ListAvailableModules("cast");
+    auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {

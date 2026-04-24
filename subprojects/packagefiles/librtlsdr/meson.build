@@ -5,6 +5,11 @@ interface_cpp_args = []
 private_cpp_args += []
 interface_cpp_args += []
 
+if target_machine.system().startswith('windows')
+  private_cpp_args += ['-Drtlsdr_STATIC']
+  interface_cpp_args += ['-Drtlsdr_STATIC']
+endif
+
 if target_machine.system() == 'emscripten'
   dep_lst = [
     dependency('libusb-browser', required: true),
@@ -33,6 +38,7 @@ librtlsdr_lib = library(
   'src/tuner_r82xx.c',
   'src/convenience/convenience.c',
   'src/getopt/getopt.c',
+  c_args: private_cpp_args,
   cpp_args: private_cpp_args,
   include_directories: ['include'],
   dependencies: dep_lst,
