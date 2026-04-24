@@ -20,6 +20,3 @@ jobs:
 
   emscripten:
     uses: ./.github/workflows/emscripten-build.yml
-
-  containers:
-    uses: ./.github/workflows/container-build.yml
