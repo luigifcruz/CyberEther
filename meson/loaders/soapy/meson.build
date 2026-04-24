@@ -20,6 +20,7 @@ if (jst_is_windows or jst_is_macos or jst_is_linux) and jst_is_static
     ]
     whole_dep_lst += [
         dependency('soapyairspy', required: true).as_link_whole(),
+        dependency('soapylms7', required: true).as_link_whole(),
         dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
 endif
@@ -30,6 +31,7 @@ if jst_is_browser
     ]
     whole_dep_lst += [
         dependency('soapyairspy', required: true).as_link_whole(),
+        dependency('soapylms7', required: true).as_link_whole(),
         dependency('soapyrtlsdr', required: true).as_link_whole(),
     ]
 endif

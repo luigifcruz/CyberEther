@@ -1,0 +1,10 @@
+[wrap-file]
+directory = LimeSuite-23.11.0
+source_url = https://github.com/myriadrf/LimeSuite/archive/refs/tags/v23.11.0.tar.gz
+source_filename = LimeSuite-23.11.0.tar.gz
+source_hash = fd8a448b92bc5ee4012f0ba58785f3c7e0a4d342b24e26275318802dfe00eb33
+patch_directory = limesuite
+
+[provide]
+limesuite = limesuite_dep
+soapylms7 = soapylms7_dep
