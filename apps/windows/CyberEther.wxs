@@ -1,0 +1,44 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="CyberEther"
+    Manufacturer="Luigi Cruz"
+    Version="$(var.Version)"
+    UpgradeCode="8A948CF1-C8E8-4C66-9B89-F67F7614D556"
+    Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of CyberEther is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="CyberEther">
+        <Component Id="CyberEtherExecutable" Guid="A3A466F2-318F-40E3-8B3B-B87368E7557C">
+          <File Id="CyberEtherExe" Source="$(var.SourceDir)\cyberether.exe" KeyPath="yes" />
+        </Component>
+        <Component Id="CyberEtherLicense" Guid="D8FEB09D-90EC-4A4D-9DB3-81956C9E4979">
+          <File Id="CyberEtherLicenseFile" Source="$(var.SourceDir)\LICENSE.txt" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="CyberEther">
+        <Component Id="CyberEtherStartMenuShortcut" Guid="0B45C7F7-1614-4DE2-A450-DDB97B92D0F4">
+          <Shortcut
+            Id="CyberEtherApplicationStartMenuShortcut"
+            Name="CyberEther"
+            Description="Launch CyberEther"
+            Target="[INSTALLFOLDER]cyberether.exe"
+            WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\CyberEther" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="DefaultFeature" Title="CyberEther" Level="1">
+      <ComponentRef Id="CyberEtherExecutable" />
+      <ComponentRef Id="CyberEtherLicense" />
+      <ComponentRef Id="CyberEtherStartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>

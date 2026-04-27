@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CyberEther">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="440" x2="440" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.5" stop-color="#16276c"/>
+      <stop offset="1" stop-color="#31d7ff"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="172" y1="420" x2="340" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff275"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M365 60 134 284h99l-82 168 229-224h-98L365 60Z" fill="url(#bolt)"/>
+  <path d="M92 330c57 55 147 76 231 43" fill="none" stroke="#7cf7ff" stroke-width="24" stroke-linecap="round" opacity="0.75"/>
+  <path d="M121 159c69-45 163-48 241-3" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
+</svg>

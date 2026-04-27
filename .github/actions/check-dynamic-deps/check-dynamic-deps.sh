@@ -79,13 +79,36 @@ resolve_tool() {
 
 extract_deps() {
     local target="$1"
+    local inspect_tool_name
 
     case "$format" in
         elf)
             "$inspect_tool" -d "$target" | awk -F'[][]' '/NEEDED/ { print $2 }'
             ;;
         pe)
-            "$inspect_tool" -p "$target" | sed -n 's/^[[:space:]]*DLL Name: //p'
+            inspect_tool_name="$(basename "$inspect_tool" | tr '[:upper:]' '[:lower:]')"
+            case "$inspect_tool_name" in
+                dumpbin|dumpbin.exe)
+                    "$inspect_tool" //DEPENDENTS "$target" | awk '
+                        /Image has the following dependencies:/ { in_deps = 1; next }
+                        in_deps && NF == 0 { if (seen) exit; next }
+                        in_deps {
+                            dep = $0
+                            sub(/^[[:space:]]+/, "", dep)
+                            sub(/[[:space:]]+$/, "", dep)
+                            if (dep ~ /^[A-Za-z0-9_.-]+\.dll$/) {
+                                print dep
+                                seen = 1
+                            } else if (seen) {
+                                exit
+                            }
+                        }
+                    '
+                    ;;
+                *)
+                    "$inspect_tool" -p "$target" | sed -n 's/^[[:space:]]*DLL Name: //p'
+                    ;;
+            esac
             ;;
         macho)
             "$inspect_tool" -L "$target" | awk -v expected="$target:" '

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.luigifcruz.CyberEther</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>CyberEther</name>
+  <summary>GPU-accelerated signal processing and visualization</summary>
+  <description>
+    <p>
+      CyberEther is a native, multi-platform GPU-accelerated application for
+      real-time signal visualization, software-defined radio workflows, and
+      compute-intensive pipelines.
+    </p>
+  </description>
+  <launchable type="desktop-id">cyberether.desktop</launchable>
+  <provides>
+    <binary>cyberether</binary>
+  </provides>
+  <url type="homepage">https://cyberether.org</url>
+  <url type="bugtracker">https://github.com/luigifcruz/CyberEther/issues</url>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

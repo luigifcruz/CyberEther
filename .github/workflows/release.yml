@@ -50,10 +50,21 @@ jobs:
           name: cyberether-emscripten-wasm32
           path: .dist/artifacts
 
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd .dist/artifacts
+          shopt -s nullglob
+          for file in *; do
+            if [ -f "$file" ] && [ "$file" != SHA256SUMS ]; then
+              sha256sum "$file"
+            fi
+          done > SHA256SUMS
+
       - name: Release
         uses: softprops/action-gh-release@v2.6.2
         with:
-          files: .dist/artifacts/*.tar.gz
+          files: .dist/artifacts/*
 
   publish-containers:
     name: publish (${{ matrix.arch }})

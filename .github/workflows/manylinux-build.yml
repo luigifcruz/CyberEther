@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y \
-            git gcc-c++ glslang openssl-devel \
+            git wget gcc-c++ glslang openssl-devel \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
             vulkan-loader-devel pkgconf-pkg-config
@@ -136,7 +136,7 @@ jobs:
             git gcc-c++ glslang openssl-devel \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
-            vulkan-loader-devel pkgconf-pkg-config
+            vulkan-loader-devel pkgconf-pkg-config rpm-build
           dnf clean all
 
       - name: Install Python dependencies
@@ -166,14 +166,34 @@ jobs:
             /opt/cyberether/bin/cyberether
           allowlist: ${{ env.SYSTEM_SHARED_LIBS }}
 
-      - name: Package binary
+      - name: Install AppImage tool
         run: |
           set -euo pipefail
-          mkdir -p .dist/artifacts .dist/bin
-          cp /opt/cyberether/bin/cyberether .dist/bin/cyberether
-          tar -C .dist/bin -czf .dist/artifacts/cyberether-manylinux-${ARCH}.tar.gz cyberether
+          case "${ARCH}" in
+            x86_64) appimage_arch=x86_64 ;;
+            aarch64) appimage_arch=aarch64 ;;
+            *) appimage_arch="${ARCH}" ;;
+          esac
+
+          mkdir -p .dist/tools
+          if wget -nv -O .dist/tools/appimagetool \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${appimage_arch}.AppImage"; then
+            chmod 755 .dist/tools/appimagetool
+            printf 'APPIMAGETOOL=%s/.dist/tools/appimagetool\n' "$PWD" >> "$GITHUB_ENV"
+            printf 'APPIMAGE_EXTRACT_AND_RUN=1\n' >> "$GITHUB_ENV"
+          else
+            printf 'AppImage tool is unavailable for %s; AppImage creation will be skipped.\n' "${ARCH}" >&2
+          fi
+
+      - name: Package Linux release
+        run: |
+          set -euo pipefail
+          apps/linux/package.sh \
+            --binary /opt/cyberether/bin/cyberether \
+            --output .dist/artifacts \
+            --arch "${ARCH}"
 
       - uses: actions/upload-artifact@v4.6.2
         with:
           name: cyberether-bin-manylinux-${{ matrix.arch }}
-          path: .dist/artifacts/cyberether-manylinux-${{ matrix.arch }}.tar.gz
+          path: .dist/artifacts/*

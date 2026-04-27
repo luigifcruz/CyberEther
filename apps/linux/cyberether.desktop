@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CyberEther
+Comment=GPU-accelerated signal processing and visualization
+Exec=cyberether %F
+Icon=cyberether
+Terminal=false
+Categories=Science;DataVisualization;AudioVideo;Network;
+StartupWMClass=CyberEther

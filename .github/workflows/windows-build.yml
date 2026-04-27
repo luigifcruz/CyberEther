@@ -7,74 +7,85 @@ permissions:
   contents: read
 
 env:
-  DEBIAN_FRONTEND: noninteractive
   SYSTEM_WINDOWS_DLLS: |
     KERNEL32.dll
     USER32.dll
     GDI32.dll
     SHELL32.dll
     OLE32.dll
+    OLEAUT32.dll
     WS2_32.dll
     COMDLG32.dll
-    MSVCRT.dll
+    COMCTL32.dll
+    ADVAPI32.dll
+    RPCRT4.dll
+    SHLWAPI.dll
+    IMM32.dll
     VULKAN-1.dll
   VULKAN_VERSION: 1.4.309.0
   VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
-  VULKAN_SDK: /tmp/wine64-prefix/drive_c/VulkanSDK/1.4.309.0
-  WINEPREFIX: /tmp/wine64-prefix
-  WINEDLLOVERRIDES: mscoree,mshtml=
 
 jobs:
   bin:
-    runs-on: ubuntu-latest
-    container:
-      image: dockcross/windows-static-x64-posix:20260304-b2fe000@sha256:0447c6fe61731eb4cc473f09a608567ecae391160fd1b72799edc0f39b71155a
+    runs-on: windows-latest
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4.3.1
 
-      - name: Install system dependencies
-        run: |
-          set -euo pipefail
-          apt-get update --fix-missing
-          apt-get install -y --no-install-recommends \
-            git wget python3-pip winbind \
-            spirv-cross glslang-tools
-          apt-get clean
-          rm -rf /var/lib/apt/lists/*
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Python dependencies
         run: |
-          set -euo pipefail
-          python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut pyyaml
+          python -m pip install --upgrade pip
+          python -m pip install meson ninja numpy mapbox_earcut pyyaml
+
+      - name: Install WiX
+        run: |
+          dotnet tool install --global wix
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          wix --version
 
       - name: Install Vulkan SDK
         run: |
-          set -euo pipefail
-          mkdir -p /tmp/github-home "$WINEPREFIX"
-          export HOME=/tmp/github-home
-          wget -nv -O vulkan-sdk.exe "https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/windows/vulkan-sdk.exe"
-          printf '%s  %s\n' "$VULKAN_SDK_SHA256" vulkan-sdk.exe | sha256sum -c -
-          /usr/lib/wine/wine64 vulkan-sdk.exe --accept-licenses --default-answer --confirm-command install
-          ln -s "${VULKAN_SDK}/Include/" "${VULKAN_SDK}/include"
-          ln -s "${VULKAN_SDK}/Lib/" "${VULKAN_SDK}/lib"
-          ln -s "${VULKAN_SDK}/Lib/vulkan-1.lib" "${VULKAN_SDK}/lib/vulkan.lib"
+          $installerPath = Join-Path $pwd 'vulkan-sdk.exe'
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkan-sdk.exe" -OutFile $installerPath
+
+          $sha = (Get-FileHash -Path $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha -ne $env:VULKAN_SDK_SHA256) {
+            throw "Unexpected Vulkan SDK SHA256: $sha"
+          }
+
+          Start-Process -FilePath $installerPath -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait
+
+          $sdkRoot = "C:\VulkanSDK\$env:VULKAN_VERSION"
+          if (!(Test-Path $sdkRoot)) {
+            throw "Vulkan SDK was not installed to $sdkRoot"
+          }
+
+          "VULKAN_SDK=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$sdkRoot\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build Windows binary
         run: |
-          set -euo pipefail
-          rm -rf build
-          meson setup --cross-file meson/crosscompile/windows.ini -Dbuildtype=release build
+          if (Test-Path build) {
+            Remove-Item -Recurse -Force build
+          }
+
+          meson setup --vsenv -Dbuildtype=release -Ddefault_library=static -Db_vscrt=static_from_buildtype -Dtests=false -Dexamples=false build
           meson compile -C build
-          mkdir -p .dist/artifacts
-          tar -C build -czf .dist/artifacts/cyberether-windows-x86_64.tar.gz cyberether.exe
 
       - name: Validate Windows binary
         run: |
-          set -euo pipefail
-          test -f build/cyberether.exe
+          if (!(Test-Path build/cyberether.exe)) {
+            throw 'cyberether.exe was not produced.'
+          }
 
       - name: Check Windows binary dependencies
         uses: ./.github/actions/check-dynamic-deps
@@ -83,9 +94,13 @@ jobs:
           targets: |
             build/cyberether.exe
           allowlist: ${{ env.SYSTEM_WINDOWS_DLLS }}
-          tool-path: /usr/src/mxe/usr/bin/x86_64-w64-mingw32.static.posix-objdump
+          tool-path: dumpbin
+
+      - name: Package Windows release
+        run: |
+          .\apps\windows\package.ps1 -Binary build\cyberether.exe -OutputDir .dist\artifacts -Arch x86_64
 
       - uses: actions/upload-artifact@v4.6.2
         with:
           name: cyberether-windows-x86_64
-          path: .dist/artifacts/cyberether-windows-x86_64.tar.gz
+          path: .dist/artifacts/*

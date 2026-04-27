@@ -63,14 +63,15 @@ jobs:
             build/cyberether
           allowlist: ${{ env.SYSTEM_MACOS_DYLIBS }}
 
-      - name: Package binary
+      - name: Package macOS release
         run: |
           set -euo pipefail
-          mkdir -p .dist/artifacts .dist/bin
-          cp build/cyberether .dist/bin/
-          tar -C .dist/bin -czf .dist/artifacts/cyberether-macos-arm64.tar.gz cyberether
+          apps/macos/package.sh \
+            --binary build/cyberether \
+            --output .dist/artifacts \
+            --arch arm64
 
       - uses: actions/upload-artifact@v4.6.2
         with:
           name: cyberether-macos-arm64
-          path: .dist/artifacts/cyberether-macos-arm64.tar.gz
+          path: .dist/artifacts/*
