@@ -36,6 +36,11 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
+Extent2D<F32> Implementation::displaySize() const {
+    return {static_cast<F32>(swapchain->drawableSize().x / 2.0),
+            static_cast<F32>(swapchain->drawableSize().y / 2.0)};
+}
+
 F32 Implementation::scale(const F32& scale) const {
     return scale;
 }

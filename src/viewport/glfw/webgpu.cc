@@ -115,6 +115,10 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
+Extent2D<F32> Implementation::displaySize() const {
+    return {static_cast<F32>(getWindowWidth()), static_cast<F32>(getWindowHeight())};
+}
+
 F32 Implementation::scale(const F32& scale) const {
     // No scaling needed. ImGui was modified to handle HiDPI.
     return scale;

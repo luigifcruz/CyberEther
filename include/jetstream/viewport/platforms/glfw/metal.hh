@@ -31,6 +31,7 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
 
     Result createImgui();
     Result destroyImgui();
+    Extent2D<F32> displaySize() const;
     F32 scale(const F32& scale) const;
 
     void* nextDrawable();
