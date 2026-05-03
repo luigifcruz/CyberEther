@@ -382,7 +382,6 @@ Result AdsbImpl::createPresent() {
         .id = "default",
         .size = mapInteraction.viewSize,
         .surface = framebufferTexture,
-        .forwardMouseEvents = true,
     }));
 
     return Result::SUCCESS;

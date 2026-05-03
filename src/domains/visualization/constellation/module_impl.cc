@@ -128,7 +128,6 @@ Result ConstellationImpl::createPresent() {
         .id = "default",
         .size = interaction.viewSize,
         .surface = framebufferTexture,
-        .forwardMouseEvents = true,
     }));
 
     return Result::SUCCESS;

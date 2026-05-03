@@ -28,41 +28,6 @@ struct SimpleMetaFixture {
     JST_SERDES(order, label);
 };
 
-struct StackDockFlowgraphFixture {
-    U64 order = 0;
-
-    JST_SERDES(order);
-};
-
-struct StackDockSurfaceFixture {
-    std::string block;
-    std::string surface;
-    U64 order = 0;
-
-    JST_SERDES(block, surface, order);
-};
-
-struct StackDockLayoutFixture {
-    std::optional<std::string> direction;
-    std::optional<F32> ratio;
-    std::optional<std::vector<StackDockFlowgraphFixture>> flowgraphs;
-    std::optional<std::vector<StackDockSurfaceFixture>> surfaces;
-    std::optional<std::vector<StackDockLayoutFixture>> children;
-
-    JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
-};
-
-struct StackMetaFixture {
-    std::string title;
-    F32 x = 0.0f;
-    F32 y = 0.0f;
-    F32 width = 0.0f;
-    F32 height = 0.0f;
-    std::optional<StackDockLayoutFixture> layout;
-
-    JST_SERDES(title, x, y, width, height, layout);
-};
-
 inline constexpr auto kSignalGeneratorTestProvider = "test-alt";
 
 struct SignalGeneratorTestProviderImpl : Module::Impl,

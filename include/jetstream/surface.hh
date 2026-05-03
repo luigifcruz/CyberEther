@@ -19,7 +19,6 @@ struct JETSTREAM_API SurfaceManifest {
     std::string id;
     Extent2D<U64> size;
     std::shared_ptr<const Render::Texture> surface;
-    bool forwardMouseEvents = false;
 };
 
 //
