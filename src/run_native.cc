@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <thread>
 
-#include "jetstream/app.hh"
+#include "jetstream/run.hh"
 #include "jetstream/config.hh"
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
@@ -83,7 +83,7 @@ enum class CommandType {
     Benchmark,
 };
 
-int RunAppNative(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
+int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
     CommandType command = CommandType::Run;
 
     Instance::Config config = {

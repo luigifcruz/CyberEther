@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <thread>
 
-#include "jetstream/app.hh"
+#include "jetstream/run.hh"
 #include "jetstream/config.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/backend/base.hh"
@@ -17,7 +17,7 @@ static std::atomic<int> code{0};
 static std::shared_ptr<Instance> instance;
 static std::thread computeThread;
 
-int RunAppBrowser() {
+int Run() {
     JST_INFO("[CYBERETHER] Running browser app.");
 
     std::thread([] {
@@ -89,7 +89,7 @@ int RunAppBrowser() {
         if (res != Result::SUCCESS && res != Result::RELOAD) {
             code.store(-1);
             (void)instance->stop();
-            StopAppBrowser();
+            Stop();
         }
     };
 
@@ -98,7 +98,7 @@ int RunAppBrowser() {
     return 0;
 }
 
-int StopAppBrowser() {
+int Stop() {
     if (!instance) {
         return 0;
     }
