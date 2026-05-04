@@ -43,6 +43,11 @@ struct DefaultFlowgraphPresenter {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    DefaultFlowgraphPresenter(DefaultCompositorState& state,
+                              DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     FlowgraphExamplesView::Config buildFlowgraphExamples() const {
         const auto enqueue = callbacks.enqueueMail;
         std::vector<FlowgraphExamplesView::Example> examples;

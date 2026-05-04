@@ -22,6 +22,11 @@ struct DefaultWorkbenchPresenter {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    DefaultWorkbenchPresenter(DefaultCompositorState& state,
+                              DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     InfoHudView::Config buildInfoHud() const {
         return InfoHudView::Config{
             .visible = state.interface.infoPanelEnabled,

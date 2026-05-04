@@ -18,6 +18,11 @@ struct DefaultRemotePresenter {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    DefaultRemotePresenter(DefaultCompositorState& state,
+                           DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     RemoteView::Config build() const {
         const auto enqueue = callbacks.enqueueMail;
         const bool isStarted = state.remote.started;

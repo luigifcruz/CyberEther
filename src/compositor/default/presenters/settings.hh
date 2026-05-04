@@ -22,6 +22,11 @@ struct DefaultSettingsPresenter {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    DefaultSettingsPresenter(DefaultCompositorState& state,
+                             DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     std::vector<AboutInfoTable::Config> buildAboutTables() const {
         std::vector<AboutInfoTable::Config> tables;
         tables.push_back({

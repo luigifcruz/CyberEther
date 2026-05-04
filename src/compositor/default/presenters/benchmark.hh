@@ -12,6 +12,11 @@ struct DefaultBenchmarkPresenter {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    DefaultBenchmarkPresenter(DefaultCompositorState& state,
+                              DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     BenchmarkView::Config build() const {
         const auto enqueue = callbacks.enqueueMail;
         return BenchmarkView::Config{
