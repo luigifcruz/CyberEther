@@ -29,6 +29,11 @@ struct WorkbenchActions {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    WorkbenchActions(DefaultCompositorState& state,
+                     DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     Result handle(const MailApplyTheme& msg) {
         if (!themes.contains(msg.themeKey)) {
             Sakura::Notify(Sakura::NotificationType::Error,

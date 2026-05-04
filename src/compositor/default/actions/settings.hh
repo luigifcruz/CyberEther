@@ -29,6 +29,11 @@ struct SettingsActions {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    SettingsActions(DefaultCompositorState& state,
+                    DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     Result handle(const MailSetInfoPanelEnabled& msg) {
         state.interface.infoPanelEnabled = msg.value;
 

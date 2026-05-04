@@ -50,6 +50,11 @@ struct FlowgraphActions {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    FlowgraphActions(DefaultCompositorState& state,
+                     DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     Result handle(const MailNewFlowgraph&) {
         auto inst = state.system.instance;
         auto name = GenerateRandomFlowgraphName();

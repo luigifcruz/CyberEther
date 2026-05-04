@@ -18,6 +18,11 @@ struct BenchmarkActions {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    BenchmarkActions(DefaultCompositorState& state,
+                     DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     Result handle(const MailRunBenchmark&) {
         if (state.benchmark.running) {
             return Result::SUCCESS;

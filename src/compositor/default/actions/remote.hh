@@ -26,6 +26,11 @@ struct RemoteActions {
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
 
+    RemoteActions(DefaultCompositorState& state,
+                  DefaultCompositorCallbacks& callbacks) :
+        state(state),
+        callbacks(callbacks) {}
+
     Result handle(const MailStartRemote& msg) {
         const Result result = state.system.instance->remote()->create(msg.config);
         if (result == Result::SUCCESS) {
