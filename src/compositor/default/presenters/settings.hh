@@ -139,12 +139,24 @@ struct DefaultSettingsPresenter {
             .general = {
                 .themes = BuildThemeKeys(),
                 .currentThemeKey = state.sakura.themeKey,
-                .interfaceScale = state.system.render->scalingFactor(),
-                .renderer = GetDevicePrettyName(state.system.render->device()),
+                .interfaceScale = state.graphics.scale,
+                .renderer = state.graphics.device.has_value()
+                    ? GetDevicePrettyName(state.graphics.device.value())
+                    : GetDevicePrettyName(state.system.render->device()),
+                .framerate = state.graphics.framerate,
                 .infoPanelEnabled = state.interface.infoPanelEnabled,
                 .backgroundParticles = state.interface.backgroundParticles,
                 .onThemeChange = [enqueue](const std::string& themeKey) {
                     enqueue(MailApplyTheme{themeKey});
+                },
+                .onInterfaceScaleChange = [enqueue](F32 value) {
+                    enqueue(MailSetGraphicsScale{.value = value});
+                },
+                .onRendererChange = [enqueue](DeviceType value) {
+                    enqueue(MailSetGraphicsDevice{.value = value});
+                },
+                .onFramerateChange = [enqueue](U64 value) {
+                    enqueue(MailSetGraphicsFramerate{.value = value});
                 },
                 .onInfoPanelChange = [enqueue](bool value) {
                     enqueue(MailSetInfoPanelEnabled{.value = value});

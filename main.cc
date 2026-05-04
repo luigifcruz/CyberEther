@@ -1,4 +1,4 @@
-#include "jetstream/app.hh"
+#include "jetstream/run.hh"
 
 using namespace Jetstream;
 
@@ -11,7 +11,7 @@ extern "C" void CyberEtherPluginDestroy(Instance* instance) __attribute__((weak)
 extern "C" {
 EMSCRIPTEN_KEEPALIVE
 void cyberether_shutdown() {
-    (void)StopAppBrowser();
+    (void)Stop();
 }
 }
 #endif
@@ -21,13 +21,13 @@ int main(int argc, char* argv[]) {
 #if defined(JST_OS_BROWSER)
         (void)argc;
         (void)argv;
-        return RunAppBrowser();
+        return Run();
 #endif
 #if defined(JST_OS_LINUX)
-        return RunAppNative(argc, argv, CyberEtherPluginCreate, CyberEtherPluginDestroy);
+        return Run(argc, argv, CyberEtherPluginCreate, CyberEtherPluginDestroy);
 #endif
 #if defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)
-        return RunAppNative(argc, argv);
+        return Run(argc, argv);
 #endif
     } catch (const Result& status) {
         JST_ERROR("[CYBERETHER] Exception: {}", status);

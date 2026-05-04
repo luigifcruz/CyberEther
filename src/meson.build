@@ -9,13 +9,13 @@ subdir('compositor')
 subdir('superluminal')
 
 if jst_is_browser
-    src_lst += files('app_browser.cc')
+    src_lst += files('run_browser.cc')
 endif
 
 if jst_is_linux or \
    jst_is_macos or \
    jst_is_windows
-    src_lst += files('app_native.cc')
+    src_lst += files('run_native.cc')
 endif
 
 src_lst += files([

@@ -12,6 +12,8 @@
 #include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/instance_remote.hh"
+#include "jetstream/settings.hh"
 
 #include <chrono>
 #include <deque>
@@ -42,6 +44,40 @@ Result DefaultCompositor::create() {
     state.system.instance = instance;
     state.system.render = render;
     state.system.viewport = viewport;
+
+    Settings settings;
+    JST_CHECK(Settings::Get(settings));
+
+    state.sakura.themeKey = themes.contains(settings.interface.themeKey)
+        ? settings.interface.themeKey
+        : "Dark";
+    state.graphics.device = settings.graphics.device;
+    state.graphics.scale = settings.graphics.scale;
+    state.graphics.framerate = settings.graphics.framerate;
+    state.interface.infoPanelEnabled = settings.interface.infoPanelEnabled;
+    state.interface.backgroundParticles = settings.interface.backgroundParticles;
+    state.debug.logLevel = settings.developer.logLevel;
+    state.debug.latencyEnabled = settings.developer.latencyEnabled;
+    state.debug.runtimeMetricsEnabled = settings.developer.runtimeMetricsEnabled;
+    state.remote.brokerUrl = settings.remote.brokerUrl;
+    state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
+    state.remote.framerate = static_cast<U32>(settings.remote.framerate);
+
+    try {
+        state.remote.codec = StringToRemoteCodec(settings.remote.codec);
+    } catch (const Result&) {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote codec '{}'. Using default.",
+                 settings.remote.codec);
+    }
+
+    try {
+        state.remote.encoder = StringToRemoteEncoder(settings.remote.encoder);
+    } catch (const Result&) {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote encoder '{}'. Using default.",
+                 settings.remote.encoder);
+    }
+
+    JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
 
     // Setup theme
 

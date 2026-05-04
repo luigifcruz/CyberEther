@@ -5,7 +5,9 @@
 #include "../model/messages.hh"
 #include "../model/state.hh"
 
+#include "jetstream/instance_remote.hh"
 #include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/settings.hh"
 
 #include <tuple>
 
@@ -55,26 +57,56 @@ struct RemoteActions {
 
     Result handle(const MailSetRemoteBrokerUrl& msg) {
         state.remote.brokerUrl = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.remote.brokerUrl = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteCodec& msg) {
         state.remote.codec = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.remote.codec = GetRemoteCodecName(msg.value);
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteFramerate& msg) {
         state.remote.framerate = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.remote.framerate = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteEncoder& msg) {
         state.remote.encoder = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.remote.encoder = GetRemoteEncoderName(msg.value);
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteAutoJoinSessions& msg) {
         state.remote.autoJoinSessions = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.remote.autoJoinSessions = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 };

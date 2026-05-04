@@ -43,6 +43,12 @@ struct DefaultCompositorState {
         std::optional<std::string> pendingFocusedFlowgraph;
     };
 
+    struct GraphicsState {
+        std::optional<DeviceType> device;
+        F32 scale = 1.0f;
+        U64 framerate = 60;
+    };
+
     struct SettingsState {
         enum class Section : I32 {
             General = 0,
@@ -125,6 +131,7 @@ struct DefaultCompositorState {
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
+    GraphicsState graphics;
     SettingsState settings;
     ModalState modal;
     DebugState debug;

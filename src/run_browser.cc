@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <thread>
 
-#include "jetstream/app.hh"
+#include "jetstream/run.hh"
 #include "jetstream/config.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/backend/base.hh"
@@ -14,20 +14,12 @@
 namespace Jetstream {
 
 static std::atomic<int> code{0};
+static std::atomic<int> storageStatus{0};
 static std::shared_ptr<Instance> instance;
 static std::thread computeThread;
 
-int RunAppBrowser() {
-    JST_INFO("[CYBERETHER] Running browser app.");
-
-    std::thread([] {
-        backend_t opfs = wasmfs_create_opfs_backend();
-        int ret = wasmfs_create_directory("/storage", 0777, opfs);
-        JST_DEBUG("OPFS mount on /storage: {}", ret == 0 ? "OK" : "FAILED");
-    }).detach();
-
+static Result Start() {
     instance = std::make_shared<Instance>();
-    code.store(0);
 
     Instance::Config config = {
         .compositor = CompositorType::DEFAULT,
@@ -35,13 +27,13 @@ int RunAppBrowser() {
 
     if (instance->create(config) != Result::SUCCESS) {
         instance.reset();
-        return -1;
+        return Result::ERROR;
     }
 
     if (instance->start() != Result::SUCCESS) {
         (void)instance->destroy();
         instance.reset();
-        return -1;
+        return Result::ERROR;
     }
 
     computeThread = std::thread([&]{
@@ -89,18 +81,49 @@ int RunAppBrowser() {
         if (res != Result::SUCCESS && res != Result::RELOAD) {
             code.store(-1);
             (void)instance->stop();
-            StopAppBrowser();
+            Stop();
         }
     };
 
-    emscripten_set_main_loop_arg(graphicalThreadLoop, instance.get(), 0, 1);
+    emscripten_set_main_loop_arg(graphicalThreadLoop, instance.get(), 0, 0);
+
+    return Result::SUCCESS;
+}
+
+static void StorageLoop() {
+    const int status = storageStatus.load();
+    if (status == 0) {
+        return;
+    }
+
+    emscripten_cancel_main_loop();
+
+    if (status < 0 || Start() != Result::SUCCESS) {
+        code.store(-1);
+    }
+}
+
+int Run() {
+    JST_INFO("[CYBERETHER] Running browser app.");
+
+    code.store(0);
+    storageStatus.store(0);
+
+    std::thread([] {
+        backend_t opfs = wasmfs_create_opfs_backend();
+        int ret = wasmfs_create_directory("/storage", 0777, opfs);
+        JST_DEBUG("OPFS mount on /storage: {}", ret == 0 ? "OK" : "FAILED");
+        storageStatus.store(ret == 0 ? 1 : -1);
+    }).detach();
+
+    emscripten_set_main_loop(StorageLoop, 0, 1);
 
     return 0;
 }
 
-int StopAppBrowser() {
+int Stop() {
     if (!instance) {
-        return 0;
+        return code.load();
     }
 
     JST_INFO("[CYBERETHER] Stopping app browser.");

@@ -2,47 +2,48 @@
 
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 
 #include "jetstream/platform.hh"
 
 namespace Jetstream {
 
-namespace {
+struct Settings::Impl {
+    static constexpr const char* Filename = "settings.yaml";
 
-constexpr const char* SettingsFilename = "settings.yaml";
+    static Impl& Instance();
+    static Result ResolvePath(std::filesystem::path& path);
+    static std::filesystem::path ResolveTempPath(const std::filesystem::path& path);
+    static Result LoadFile(const std::filesystem::path& path, Settings& settings);
+    static Result SaveFile(const std::filesystem::path& path, const Settings& settings);
 
-Result ValidateKey(const std::string& key) {
-    if (key.empty()) {
-        JST_ERROR("[SETTINGS] Setting key must not be empty.");
-        return Result::ERROR;
-    }
+    std::mutex mutex;
+    bool loaded = false;
+    std::filesystem::path path;
+    Settings settings;
+};
 
-    return Result::SUCCESS;
+Settings::Impl& Settings::Impl::Instance() {
+    static Impl impl;
+    return impl;
 }
 
-Result ResolveSettingsPath(std::filesystem::path& path) {
+Result Settings::Impl::ResolvePath(std::filesystem::path& path) {
     std::string configPath;
     JST_CHECK(Platform::ConfigPath(configPath));
 
-    path = std::filesystem::u8path(configPath) / SettingsFilename;
+    path = std::filesystem::u8path(configPath) / Filename;
     return Result::SUCCESS;
 }
 
-std::filesystem::path ResolveTempSettingsPath(const std::filesystem::path& path) {
+std::filesystem::path Settings::Impl::ResolveTempPath(const std::filesystem::path& path) {
     auto tempPath = path;
     tempPath += ".tmp";
     return tempPath;
 }
 
-}  // namespace
-
-Result Settings::LoadData(const std::string& key, Parser::Map& data) {
-    JST_CHECK(ValidateKey(key));
-
-    data.clear();
-
-    std::filesystem::path path;
-    JST_CHECK(ResolveSettingsPath(path));
+Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& settings) {
+    settings = {};
 
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
@@ -64,26 +65,12 @@ Result Settings::LoadData(const std::string& key, Parser::Map& data) {
     const std::string yaml((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
-    return Parser::YamlDecode(yaml, data);
+    Parser::Map data;
+    JST_CHECK(Parser::YamlDecode(yaml, data));
+    return settings.deserialize(data);
 }
 
-Result Settings::SaveData(const std::string& key, const Parser::Map& data) {
-    JST_CHECK(ValidateKey(key));
-
-    std::filesystem::path path;
-    JST_CHECK(ResolveSettingsPath(path));
-
-    if (data.empty()) {
-        std::error_code ec;
-        (void)std::filesystem::remove(path, ec);
-        if (ec) {
-            JST_ERROR("[SETTINGS] Failed to remove settings file '{}'.", path.string());
-            return Result::ERROR;
-        }
-
-        return Result::SUCCESS;
-    }
-
+Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Settings& settings) {
     const auto parent = path.parent_path();
     if (!parent.empty()) {
         std::error_code ec;
@@ -94,10 +81,13 @@ Result Settings::SaveData(const std::string& key, const Parser::Map& data) {
         }
     }
 
+    Parser::Map data;
+    JST_CHECK(settings.serialize(data));
+
     std::string yaml;
     JST_CHECK(Parser::YamlEncode(data, yaml));
 
-    const auto tempPath = ResolveTempSettingsPath(path);
+    const auto tempPath = ResolveTempPath(path);
 
     std::ofstream file(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
@@ -138,16 +128,37 @@ Result Settings::SaveData(const std::string& key, const Parser::Map& data) {
     return Result::SUCCESS;
 }
 
-Result Settings::Erase(const std::string& key) {
-    Parser::Map data;
-    JST_CHECK(LoadData(key, data));
+Result Settings::Get(Settings& settings) {
+    std::filesystem::path path;
+    JST_CHECK(Impl::ResolvePath(path));
 
-    if (!data.contains(key)) {
-        return Result::SUCCESS;
+    Impl& impl = Impl::Instance();
+    std::lock_guard lock(impl.mutex);
+    if (!impl.loaded || impl.path != path) {
+        JST_CHECK(Impl::LoadFile(path, impl.settings));
+        impl.loaded = true;
+        impl.path = path;
     }
 
-    data.erase(key);
-    return SaveData(key, data);
+    settings = impl.settings;
+    return Result::SUCCESS;
+}
+
+Result Settings::Set(const Settings& settings, bool persist) {
+    std::filesystem::path path;
+    JST_CHECK(Impl::ResolvePath(path));
+
+    Impl& impl = Impl::Instance();
+    std::lock_guard lock(impl.mutex);
+    impl.settings = settings;
+    impl.loaded = true;
+    impl.path = path;
+
+    if (persist) {
+        JST_CHECK(Impl::SaveFile(path, impl.settings));
+    }
+
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

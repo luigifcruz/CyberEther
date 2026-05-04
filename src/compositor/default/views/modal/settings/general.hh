@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_GENERAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_GENERAL_HH
 
+#include "jetstream/memory/types.hh"
 #include "jetstream/render/sakura/sakura.hh"
 
 #include <functional>
@@ -15,21 +16,22 @@ struct GeneralSettingsPanel : public Sakura::Component {
         std::string currentThemeKey;
         F32 interfaceScale = 1.0f;
         std::string renderer;
+        U64 framerate = 60;
         bool infoPanelEnabled = false;
         bool backgroundParticles = false;
         std::function<void(const std::string&)> onThemeChange;
+        std::function<void(F32)> onInterfaceScaleChange;
+        std::function<void(DeviceType)> onRendererChange;
+        std::function<void(U64)> onFramerateChange;
         std::function<void(bool)> onInfoPanelChange;
         std::function<void(bool)> onBackgroundParticlesChange;
     };
 
     void update(Config config) {
         this->config = std::move(config);
-        if (renderer.empty()) {
-            renderer = this->config.renderer.empty() ? "Metal" : this->config.renderer;
-        }
-        if (interfaceScalePreview <= 0.0f) {
-            interfaceScalePreview = this->config.interfaceScale;
-        }
+        renderer = this->config.renderer.empty() ? "Metal" : this->config.renderer;
+        interfaceScalePreview = this->config.interfaceScale;
+        frameRateLimit = framerateLabel(this->config.framerate);
 
         title.update({
             .id = "GeneralTitle",
@@ -68,7 +70,7 @@ struct GeneralSettingsPanel : public Sakura::Component {
         scaleField.update({
             .id = "ScaleField",
             .label = "Interface Scale",
-            .description = "Scale follows the active render backend and display DPI.",
+            .description = "Changing the interface scale requires restarting CyberEther.",
         });
 
         scaleSlider.update({
@@ -79,6 +81,9 @@ struct GeneralSettingsPanel : public Sakura::Component {
             .format = "%.2fx",
             .onChange = [this](F32 value) {
                 interfaceScalePreview = value;
+                if (this->config.onInterfaceScaleChange) {
+                    this->config.onInterfaceScaleChange(value);
+                }
             },
         });
 
@@ -98,19 +103,21 @@ struct GeneralSettingsPanel : public Sakura::Component {
             .value = renderer,
             .onChange = [this](const std::string& value) {
                 renderer = value;
+                if (this->config.onRendererChange) {
+                    this->config.onRendererChange(rendererValue(value));
+                }
             },
         });
 
         frameRateField.update({
             .id = "FrameRateField",
             .label = "Frame Rate Limit",
-            .description = "Cap the maximum rendering frame rate.",
+            .description = "Changing the frame rate limit requires restarting CyberEther.",
         });
 
         frameRateCombo.update({
             .id = "##framerate",
             .options = {
-                "Auto",
                 "5 FPS",
                 "10 FPS",
                 "15 FPS",
@@ -122,6 +129,9 @@ struct GeneralSettingsPanel : public Sakura::Component {
             .value = frameRateLimit,
             .onChange = [this](const std::string& value) {
                 frameRateLimit = value;
+                if (this->config.onFramerateChange) {
+                    this->config.onFramerateChange(framerateValue(value));
+                }
             },
         });
 
@@ -190,6 +200,37 @@ struct GeneralSettingsPanel : public Sakura::Component {
     }
 
  private:
+    static DeviceType rendererValue(const std::string& label) {
+        if (label == "Metal") return DeviceType::Metal;
+        if (label == "Vulkan") return DeviceType::Vulkan;
+        if (label == "WebGPU") return DeviceType::WebGPU;
+        return DeviceType::None;
+    }
+
+    static std::string framerateLabel(U64 framerate) {
+        switch (framerate) {
+            case 5: return "5 FPS";
+            case 10: return "10 FPS";
+            case 15: return "15 FPS";
+            case 30: return "30 FPS";
+            case 60: return "60 FPS";
+            case 120: return "120 FPS";
+            case 240: return "240 FPS";
+        }
+        return "60 FPS";
+    }
+
+    static U64 framerateValue(const std::string& label) {
+        if (label == "5 FPS") return 5;
+        if (label == "10 FPS") return 10;
+        if (label == "15 FPS") return 15;
+        if (label == "30 FPS") return 30;
+        if (label == "60 FPS") return 60;
+        if (label == "120 FPS") return 120;
+        if (label == "240 FPS") return 240;
+        return 60;
+    }
+
     Config config;
     Sakura::Text title;
     Sakura::Text description;
