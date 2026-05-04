@@ -30,10 +30,10 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
 Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     Instance::Remote::Config config = {
         .broker = settings.remote.brokerUrl,
-        .codec = StringToRemoteCodec(settings.remote.codec),
-        .encoder = StringToRemoteEncoder(settings.remote.encoder),
         .autoJoinSessions = settings.remote.autoJoinSessions,
         .framerate = static_cast<U32>(settings.remote.framerate),
+        .encoder = StringToRemoteEncoder(settings.remote.encoder),
+        .codec = StringToRemoteCodec(settings.remote.codec),
     };
 
     return config;
