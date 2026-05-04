@@ -89,6 +89,18 @@ struct MailSetBackgroundParticles {
     bool value = false;
 };
 
+struct MailSetGraphicsScale {
+    F32 value = 1.0f;
+};
+
+struct MailSetGraphicsDevice {
+    DeviceType value = DeviceType::None;
+};
+
+struct MailSetGraphicsFramerate {
+    U64 value = 60;
+};
+
 struct MailSetDebugLatencyEnabled {
     bool value = false;
 };
@@ -266,6 +278,9 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailQuit,
                           MailSetInfoPanelEnabled,
                           MailSetBackgroundParticles,
+                          MailSetGraphicsScale,
+                          MailSetGraphicsDevice,
+                          MailSetGraphicsFramerate,
                           MailSetDebugLatencyEnabled,
                           MailSetDebugRuntimeMetricsEnabled,
                           MailSetDebugLogLevel,

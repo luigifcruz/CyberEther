@@ -4,10 +4,10 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
-
-#include "jetstream/render/sakura/sakura.hh"
 #include "../themes.hh"
 
+#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
 #include <cstdlib>
@@ -43,6 +43,11 @@ struct WorkbenchActions {
             .palette = &state.sakura.colorMap,
             .render = state.system.render.get(),
         });
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.interface.themeKey = state.sakura.themeKey;
+        JST_CHECK(Settings::Set(settings));
 
         return Result::SUCCESS;
     }

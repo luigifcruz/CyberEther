@@ -14,6 +14,31 @@ namespace Jetstream {
 
 namespace {
 
+Instance::Config BuildInstanceConfig(const Settings& settings) {
+    Instance::Config config = {
+        .device = settings.graphics.device,
+        .compositor = CompositorType::DEFAULT,
+        .headless = settings.graphics.headless,
+        .size = {settings.graphics.size.width, settings.graphics.size.height},
+        .scale = settings.graphics.scale,
+        .framerate = settings.graphics.framerate,
+    };
+
+    return config;
+}
+
+Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
+    Instance::Remote::Config config = {
+        .broker = settings.remote.brokerUrl,
+        .codec = StringToRemoteCodec(settings.remote.codec),
+        .encoder = StringToRemoteEncoder(settings.remote.encoder),
+        .autoJoinSessions = settings.remote.autoJoinSessions,
+        .framerate = static_cast<U32>(settings.remote.framerate),
+    };
+
+    return config;
+}
+
 std::string RemoteCodecOptionsString() {
     std::string options;
 
@@ -86,13 +111,16 @@ enum class CommandType {
 int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
     CommandType command = CommandType::Run;
 
-    Instance::Config config = {
-        .compositor = CompositorType::DEFAULT,
-    };
-    Instance::Remote::Config remoteConfig;
+    Settings settings;
+    if (Settings::Get(settings) != Result::SUCCESS) {
+        JST_WARN("[CYBERETHER] Failed to load settings. Using defaults.");
+        settings = {};
+        (void)Settings::Set(settings, false);
+    }
+
+    JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
 
     std::string flowgraphPath;
-    std::string benchmarkFormat = "markdown";
 
     std::shared_ptr<Instance> instance;
     std::shared_ptr<Flowgraph> flowgraph;
@@ -139,12 +167,14 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         }
 
         if (arg == "-v") {
-            JST_LOG_SET_DEBUG_LEVEL(std::max(_JST_LOG_DEBUG_LEVEL(), 3));
+            settings.developer.logLevel = 3;
+            JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
             continue;
         }
 
         if (arg == "-vv") {
-            JST_LOG_SET_DEBUG_LEVEL(std::max(_JST_LOG_DEBUG_LEVEL(), 4));
+            settings.developer.logLevel = 4;
+            JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
             continue;
         }
 
@@ -152,7 +182,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         if (arg == "--device") {
             if (i + 1 < argc) {
-                config.device = StringToDevice(argv[++i]);
+                settings.graphics.device = StringToDevice(argv[++i]);
             }
             continue;
         }
@@ -165,7 +195,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         }
 
         if (arg == "--headless") {
-            config.headless = true;
+            settings.graphics.headless = true;
             continue;
         }
 
@@ -174,8 +204,8 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
                 std::string sizeStr = argv[++i];
                 size_t xPos = sizeStr.find('x');
                 if (xPos != std::string::npos) {
-                    config.size.x = std::stoull(sizeStr.substr(0, xPos));
-                    config.size.y = std::stoull(sizeStr.substr(xPos + 1));
+                    settings.graphics.size.width = std::stoull(sizeStr.substr(0, xPos));
+                    settings.graphics.size.height = std::stoull(sizeStr.substr(xPos + 1));
                 }
             }
             continue;
@@ -183,14 +213,14 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         if (arg == "--scale") {
             if (i + 1 < argc) {
-                config.scale = std::stof(argv[++i]);
+                settings.graphics.scale = std::stof(argv[++i]);
             }
             continue;
         }
 
         if (arg == "--framerate") {
             if (i + 1 < argc) {
-                config.framerate = std::stoull(argv[++i]);
+                settings.graphics.framerate = std::stoull(argv[++i]);
             }
             continue;
         }
@@ -207,14 +237,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
                         return -1;
                     }
 
-                    benchmarkFormat = argv[++i];
-                    if (benchmarkFormat != "markdown" && benchmarkFormat != "json" && benchmarkFormat != "csv") {
-                        jst::fmt::print(stderr,
-                                        "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
-                                        benchmarkFormat);
-                        printUsage(argv[0]);
-                        return -1;
-                    }
+                    settings.benchmark.format = argv[++i];
                     continue;
                 }
                 break;
@@ -222,7 +245,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             case CommandType::Remote:
                 if (arg == "--endpoint") {
                     if (i + 1 < argc) {
-                        remoteConfig.broker = argv[++i];
+                        settings.remote.brokerUrl = argv[++i];
                     }
                     continue;
                 }
@@ -231,7 +254,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
                     if (i + 1 < argc) {
                         const std::string codec = argv[++i];
                         try {
-                            remoteConfig.codec = StringToRemoteCodec(codec);
+                            settings.remote.codec = GetRemoteCodecName(StringToRemoteCodec(codec));
                         } catch (const Result&) {
                             jst::fmt::print(stderr,
                                             "Invalid value for --codec: '{}'. Expected one of: {}.\n\n",
@@ -254,7 +277,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
                     if (i + 1 < argc) {
                         const std::string enc = argv[++i];
                         try {
-                            remoteConfig.encoder = StringToRemoteEncoder(enc);
+                            settings.remote.encoder = GetRemoteEncoderName(StringToRemoteEncoder(enc));
                         } catch (const Result&) {
                             jst::fmt::print(stderr,
                                             "Invalid value for --encoder: '{}'. Expected one of: {}.\n\n",
@@ -274,7 +297,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
                 }
 
                 if (arg == "--auto-join") {
-                    remoteConfig.autoJoinSessions = true;
+                    settings.remote.autoJoinSessions = true;
                     continue;
                 }
                 break;
@@ -307,7 +330,17 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     //
 
     if (command == CommandType::Benchmark) {
-        Benchmark::Run(benchmarkFormat);
+        if (settings.benchmark.format != "markdown" &&
+            settings.benchmark.format != "json" &&
+            settings.benchmark.format != "csv") {
+            jst::fmt::print(stderr,
+                            "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
+                            settings.benchmark.format);
+            printUsage(argv[0]);
+            return -1;
+        }
+
+        Benchmark::Run(settings.benchmark.format);
         return 0;
     }
 
@@ -316,6 +349,22 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     //
 
     if (command == CommandType::Run || command == CommandType::Remote) {
+        Instance::Remote::Config remoteConfig;
+        if (command == CommandType::Remote) {
+            try {
+                remoteConfig = BuildRemoteConfig(settings);
+            } catch (const Result&) {
+                printUsage(argv[0]);
+                return -1;
+            }
+        }
+
+        const Instance::Config config = BuildInstanceConfig(settings);
+
+        if (Settings::Set(settings, false) != Result::SUCCESS) {
+            return -1;
+        }
+
         instance = std::make_shared<Instance>();
 
         if (instance->create(config) != Result::SUCCESS) {
