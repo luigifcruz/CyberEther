@@ -23,8 +23,8 @@ struct FlowgraphToolbar : public Sakura::Component {
         overlay.update({
             .id = this->config.id + ":overlay",
             .size = toolbarSize,
-            .anchor = Sakura::Overlay::Anchor::TopRight,
-            .offset = {-12.0f, 12.0f},
+            .anchor = Sakura::Overlay::Anchor::TopCenter,
+            .offset = {0.0f, 12.0f},
             .inputs = true,
         });
         card.update({
