@@ -15,6 +15,7 @@ struct Overlay : public Component {
 
     enum class Anchor {
         TopLeft,
+        TopCenter,
         TopRight,
         BottomLeft,
         BottomRight,

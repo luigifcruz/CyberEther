@@ -13,6 +13,8 @@ struct Overlay::Impl {
         switch (config.anchor) {
             case Anchor::TopLeft:
                 return origin;
+            case Anchor::TopCenter:
+                return {origin.x + (available.x - size.x) * 0.5f, origin.y};
             case Anchor::TopRight:
                 return {origin.x + available.x - size.x, origin.y};
             case Anchor::BottomLeft:
