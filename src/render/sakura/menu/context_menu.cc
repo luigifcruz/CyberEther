@@ -29,7 +29,13 @@ void ContextMenu::render(const Context& ctx, Child child) {
 
     if (!impl.opening) {
         ImGui::OpenPopup(config.id.c_str());
-        ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Always);
+        if (config.position == ContextMenu::Position::ViewportCenter) {
+            ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                                    ImGuiCond_Always,
+                                    ImVec2(0.5f, 0.5f));
+        } else {
+            ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Always);
+        }
         impl.opening = true;
     }
 

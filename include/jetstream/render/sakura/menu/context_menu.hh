@@ -14,12 +14,18 @@ namespace Jetstream::Sakura {
 struct ContextMenu : public Component {
     using Child = std::function<void(const Context&)>;
 
+    enum class Position {
+        Mouse,
+        ViewportCenter,
+    };
+
     struct Config {
         std::string id;
         std::optional<Extent2D<F32>> size;
         std::optional<Extent2D<F32>> padding;
         std::optional<F32> rounding;
         std::optional<F32> borderSize;
+        Position position = Position::Mouse;
         std::function<void()> onClose;
     };
 
