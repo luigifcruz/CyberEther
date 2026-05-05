@@ -294,7 +294,7 @@ struct Runtime::Impl {
 
         style._MainScale                        = 1.0f;
         style.WindowPadding                     = ImVec2(12.00f, 12.00f);
-        style.FramePadding                      = ImVec2(12.00f, 4.00f);
+        style.FramePadding                      = ImVec2(12.00f, 5.00f);
         style.ItemSpacing                       = ImVec2(8.00f, 8.00f);
         style.ItemInnerSpacing                  = ImVec2(8.00f, 6.00f);
         style.TouchExtraPadding                 = ImVec2(0.00f, 0.00f);
