@@ -10,6 +10,7 @@ struct SqueezeDims : public Block::Config {
     U64 axis = 0;
 
     JST_BLOCK_TYPE(squeeze_dims);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(axis);
     JST_BLOCK_DESCRIPTION(
         "Squeeze Dims",

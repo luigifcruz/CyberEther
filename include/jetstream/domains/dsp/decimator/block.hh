@@ -10,6 +10,7 @@ struct Decimator : public Block::Config {
     U64 ratio = 4;
 
     JST_BLOCK_TYPE(decimator);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(axis, ratio);
     JST_BLOCK_DESCRIPTION(
         "Decimator",

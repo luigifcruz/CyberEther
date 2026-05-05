@@ -13,6 +13,7 @@ struct Lineplot : public Block::Config {
     F32 thickness = 1.0f;
 
     JST_BLOCK_TYPE(lineplot);
+    JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_PARAMS(averaging, decimation, numberOfVerticalLines, numberOfHorizontalLines, thickness);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",

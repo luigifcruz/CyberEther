@@ -20,6 +20,7 @@ struct SignalGenerator : public Block::Config {
     U64 bufferSize = 8192;
 
     JST_BLOCK_TYPE(signal_generator);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(signalType, signalDataType, sampleRate, frequency, amplitude, phase, dcOffset,
                      noiseVariance, chirpStartFreq, chirpEndFreq, chirpDuration,
                      bufferSize);

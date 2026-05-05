@@ -10,6 +10,7 @@ struct ExpandDims : public Block::Config {
     U64 axis = 0;
 
     JST_BLOCK_TYPE(expand_dims);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(axis);
     JST_BLOCK_DESCRIPTION(
         "Expand Dims",

@@ -14,6 +14,7 @@ struct PskDemod : public Block::Config {
     F32 dampingFactor = 0.707f;
 
     JST_BLOCK_TYPE(psk_demod);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(pskType, sampleRate, symbolRate, frequencyLoopBandwidth,
                      timingLoopBandwidth, dampingFactor);
     JST_BLOCK_DESCRIPTION(

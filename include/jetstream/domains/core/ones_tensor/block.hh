@@ -13,6 +13,7 @@ struct OnesTensor : public Block::Config {
     std::string dataType = "F32";
 
     JST_BLOCK_TYPE(ones_tensor);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(shape, dataType);
     JST_BLOCK_DESCRIPTION(
         "Ones Tensor",

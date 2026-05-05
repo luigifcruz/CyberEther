@@ -279,6 +279,8 @@ struct DefaultFlowgraphPresenter {
                 .type = entry.type,
                 .title = entry.title,
                 .summary = entry.summary,
+                .description = entry.description,
+                .category = entry.domain,
                 .device = device,
                 .runtime = runtime,
                 .provider = provider,

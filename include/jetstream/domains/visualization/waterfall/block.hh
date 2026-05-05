@@ -10,6 +10,7 @@ struct Waterfall : public Block::Config {
     bool interpolate = true;
 
     JST_BLOCK_TYPE(waterfall);
+    JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_PARAMS(height, interpolate);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",

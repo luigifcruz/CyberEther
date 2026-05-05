@@ -12,6 +12,7 @@ struct Audio : public Block::Config {
     F32 volume = 1.0f;
 
     JST_BLOCK_TYPE(audio);
+    JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(deviceName, inSampleRate, outSampleRate, volume);
     JST_BLOCK_DESCRIPTION(
         "Audio",

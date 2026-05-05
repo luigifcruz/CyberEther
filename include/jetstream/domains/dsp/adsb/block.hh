@@ -7,6 +7,7 @@ namespace Jetstream::Blocks {
 
 struct Adsb : public Block::Config {
     JST_BLOCK_TYPE(adsb);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "ADS-B Decoder",

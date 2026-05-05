@@ -11,6 +11,7 @@ struct Permutation : public Block::Config {
     std::vector<U64> permutation = {0};
 
     JST_BLOCK_TYPE(permutation);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(permutation);
     JST_BLOCK_DESCRIPTION(
         "Permutation",

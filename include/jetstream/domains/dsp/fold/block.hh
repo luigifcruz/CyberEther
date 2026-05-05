@@ -11,6 +11,7 @@ struct Fold : public Block::Config {
     U64 size = 0;
 
     JST_BLOCK_TYPE(fold);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(axis, offset, size);
     JST_BLOCK_DESCRIPTION(
         "Fold",
