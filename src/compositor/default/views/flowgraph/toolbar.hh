@@ -73,7 +73,7 @@ struct FlowgraphToolbar : public Sakura::Component {
     }
 
  private:
-    static constexpr Extent2D<F32> toolbarSize = {305.0f, 46.0f};
+    static constexpr Extent2D<F32> toolbarSize = {306.0f, 46.0f};
 
     Config config;
     Sakura::Overlay overlay;
