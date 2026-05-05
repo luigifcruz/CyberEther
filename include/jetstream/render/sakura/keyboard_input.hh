@@ -15,6 +15,7 @@ struct KeyboardInput : public Component {
         Down,
         Up,
         Submit,
+        Escape,
         N,
         O,
         S,

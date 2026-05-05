@@ -26,6 +26,7 @@ struct KeyboardInput::Impl {
             case Key::Submit:
                 return ImGui::IsKeyPressed(ImGuiKey_Enter, config.repeat) ||
                        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, config.repeat);
+            case Key::Escape: return ImGui::IsKeyPressed(ImGuiKey_Escape, config.repeat);
             case Key::N: return ImGui::IsKeyPressed(ImGuiKey_N, config.repeat);
             case Key::O: return ImGui::IsKeyPressed(ImGuiKey_O, config.repeat);
             case Key::S: return ImGui::IsKeyPressed(ImGuiKey_S, config.repeat);
