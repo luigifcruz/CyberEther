@@ -26,7 +26,7 @@ struct FlowgraphExampleCell : public Sakura::Component {
             .id = this->config.id + "Div",
             .padding = 12.0f,
             .rounding = 8.0f,
-            .border = false,
+            .border = true,
             .scrollbar = false,
             .mouseScroll = false,
             .onClick = [this]() {
@@ -92,6 +92,7 @@ struct FlowgraphExamplesView : public Sakura::Component {
             .id = "FlowgraphExamplesGrid",
             .columns = 2,
             .size = {0.0f, 300.0f},
+            .cellPadding = {4.0f, 4.0f},
         });
         exampleCells.resize(this->config.examples.size());
         for (U64 i = 0; i < exampleCells.size(); ++i) {
