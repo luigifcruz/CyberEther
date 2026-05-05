@@ -41,6 +41,13 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"action_btn", {0.20f, 0.47f, 0.96f, 1.0f}},
             {"action_btn_hovered", {0.25f, 0.52f, 0.99f, 1.0f}},
             {"action_btn_active", {0.15f, 0.35f, 0.85f, 1.0f}},
+            {"action_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
+            {"action_btn_outline", {0.35f, 0.65f, 1.00f, 0.85f}},
+            {"destructive_btn", {0.60f, 0.00f, 0.00f, 1.0f}},
+            {"destructive_btn_hovered", {0.70f, 0.00f, 0.00f, 1.0f}},
+            {"destructive_btn_active", {0.50f, 0.00f, 0.00f, 1.0f}},
+            {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
+            {"destructive_btn_outline", {0.86f, 0.24f, 0.24f, 1.0f}},
 
             // Text Colors
             {"text_primary", {0.90f, 0.90f, 0.90f, 1.00f}},
@@ -70,6 +77,8 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"button", {0.10f, 0.10f, 0.10f, 1.00f}},
             {"button_hovered", {0.12f, 0.12f, 0.12f, 1.00f}},
             {"button_active", {0.14f, 0.14f, 0.14f, 1.00f}},
+            {"button_text", {0.90f, 0.90f, 0.90f, 1.00f}},
+            {"button_outline", {0.18f, 0.18f, 0.18f, 0.75f}},
 
             // Header Colors
             {"header", {0.10f, 0.10f, 0.10f, 0.80f}},
@@ -171,6 +180,13 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"action_btn", {0.20f, 0.47f, 0.96f, 1.0f}},
             {"action_btn_hovered", {0.25f, 0.52f, 0.99f, 1.0f}},
             {"action_btn_active", {0.15f, 0.35f, 0.85f, 1.0f}},
+            {"action_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
+            {"action_btn_outline", {0.15f, 0.35f, 0.85f, 0.85f}},
+            {"destructive_btn", {0.54f, 0.09f, 0.09f, 1.0f}},
+            {"destructive_btn_hovered", {0.63f, 0.11f, 0.11f, 1.0f}},
+            {"destructive_btn_active", {0.45f, 0.08f, 0.08f, 1.0f}},
+            {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
+            {"destructive_btn_outline", {0.90f, 0.15f, 0.15f, 1.0f}},
 
             // Text Colors
             {"text_primary", {0.12f, 0.12f, 0.14f, 1.00f}},
@@ -200,6 +216,8 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"button", {0.90f, 0.90f, 0.91f, 1.00f}},
             {"button_hovered", {0.85f, 0.85f, 0.86f, 0.80f}},
             {"button_active", {0.80f, 0.80f, 0.81f, 0.80f}},
+            {"button_text", {0.12f, 0.12f, 0.14f, 1.00f}},
+            {"button_outline", {0.78f, 0.78f, 0.80f, 0.75f}},
 
             // Header Colors
             {"header", {0.90f, 0.90f, 0.91f, 0.80f}},

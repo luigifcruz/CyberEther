@@ -27,26 +27,41 @@ void Button::render(const Context& ctx) const {
     ImGui::PushID(config.id.c_str());
 
     I32 styleColorCount = 0;
+    const char* defaultColorKey = "button";
+    const char* defaultHoveredColorKey = "button_hovered";
+    const char* defaultActiveColorKey = "button_active";
+    const char* defaultTextColorKey = "button_text";
+    const char* defaultBorderColorKey = "button_outline";
+    if (config.variant == Variant::Action) {
+        defaultColorKey = "action_btn";
+        defaultHoveredColorKey = "action_btn_hovered";
+        defaultActiveColorKey = "action_btn_active";
+        defaultTextColorKey = "action_btn_text";
+        defaultBorderColorKey = "action_btn_outline";
+    } else if (config.variant == Variant::Destructive) {
+        defaultColorKey = "destructive_btn";
+        defaultHoveredColorKey = "destructive_btn_hovered";
+        defaultActiveColorKey = "destructive_btn_active";
+        defaultTextColorKey = "destructive_btn_text";
+        defaultBorderColorKey = "destructive_btn_outline";
+    }
+
     const bool customColors = !config.colorKey.empty() ||
                               !config.hoveredColorKey.empty() ||
                               !config.activeColorKey.empty();
-    if (config.variant == Variant::Action || customColors) {
-        ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, config.colorKey.empty() ? "action_btn" : config.colorKey));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, config.hoveredColorKey.empty() ? "action_btn_hovered" : config.hoveredColorKey));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Private::ImColor(ctx, config.activeColorKey.empty() ? "action_btn_active" : config.activeColorKey));
-        styleColorCount += 3;
-    } else if (config.variant == Variant::Destructive) {
-        const ImVec4 error = Private::ImColor(ctx, "error_red", ImVec4(1.00f, 0.00f, 0.00f, 1.00f));
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(error.x * 0.60f, error.y * 0.60f, error.z * 0.60f, error.w));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(error.x * 0.70f, error.y * 0.70f, error.z * 0.70f, error.w));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(error.x * 0.50f, error.y * 0.50f, error.z * 0.50f, error.w));
+    if (config.variant != Variant::Default || customColors) {
+        ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, config.colorKey.empty() ? defaultColorKey : config.colorKey));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, config.hoveredColorKey.empty() ? defaultHoveredColorKey : config.hoveredColorKey));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Private::ImColor(ctx, config.activeColorKey.empty() ? defaultActiveColorKey : config.activeColorKey));
         styleColorCount += 3;
     }
 
-    if (!config.textColorKey.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, config.textColorKey));
-        styleColorCount += 1;
-    }
+    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, config.textColorKey.empty() ? defaultTextColorKey : config.textColorKey));
+    styleColorCount += 1;
+
+    ImGui::PushStyleColor(ImGuiCol_Border, Private::ImColor(ctx, config.borderColorKey.empty() ? defaultBorderColorKey : config.borderColorKey));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, Scale(ctx, 1.0f));
+    styleColorCount += 1;
 
     if (config.disabled) {
         ImGui::BeginDisabled();
@@ -61,6 +76,8 @@ void Button::render(const Context& ctx) const {
     if (config.disabled) {
         ImGui::EndDisabled();
     }
+
+    ImGui::PopStyleVar();
 
     if (styleColorCount > 0) {
         ImGui::PopStyleColor(styleColorCount);

@@ -26,6 +26,7 @@ struct Button : public Component {
         std::string colorKey;
         std::string hoveredColorKey;
         std::string activeColorKey;
+        std::string borderColorKey;
         std::string textColorKey;
         std::function<void()> onClick;
     };
