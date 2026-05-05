@@ -237,6 +237,7 @@ struct Runtime::Impl {
         colors[ImGuiCol_Text]                      = color("text_primary");
         colors[ImGuiCol_TextDisabled]              = color("text_secondary");
         colors[ImGuiCol_TextSelectedBg]            = color("text_selected_bg");
+        colors[ImGuiCol_InputTextCursor]           = color("text_primary");
         colors[ImGuiCol_WindowBg]                  = color("background");
         colors[ImGuiCol_PopupBg]                   = color("popup_bg");
         colors[ImGuiCol_ModalWindowDimBg]          = color("modal_dim");
