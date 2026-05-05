@@ -197,9 +197,9 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"scrollbar_grab_active", {0.45f, 0.45f, 0.47f, 0.80f}},
 
             // Button Colors
-            {"button", {0.86f, 0.86f, 0.88f, 1.00f}},
-            {"button_hovered", {0.82f, 0.82f, 0.84f, 1.00f}},
-            {"button_active", {0.78f, 0.78f, 0.80f, 1.00f}},
+            {"button", {0.90f, 0.90f, 0.91f, 1.00f}},
+            {"button_hovered", {0.85f, 0.85f, 0.86f, 0.80f}},
+            {"button_active", {0.80f, 0.80f, 0.81f, 0.80f}},
 
             // Header Colors
             {"header", {0.90f, 0.90f, 0.91f, 0.80f}},
