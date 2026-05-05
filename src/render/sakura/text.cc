@@ -16,7 +16,7 @@ struct Text::Impl {
             case Tone::Primary: return "text_primary";
             case Tone::Secondary: return "text_secondary";
             case Tone::Disabled: return "text_disabled";
-            case Tone::Accent: return "accent_color";
+            case Tone::Accent: return "cyber_blue";
             case Tone::Success: return "success_green";
             case Tone::Warning: return "warning_yellow";
         }
