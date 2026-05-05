@@ -22,7 +22,7 @@ struct InfoHudView : public Sakura::Component {
             .id = "Info HUD",
             .anchor = Sakura::Hud::Anchor::BottomLeft,
             .padding = 16.0f,
-            .backgroundAlpha = 0.35f,
+            .backgroundColorKey = "info_hud_background",
         });
         row.update({
             .id = "InfoHudRow",

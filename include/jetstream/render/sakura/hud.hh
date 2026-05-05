@@ -32,9 +32,7 @@ struct Hud : public Component {
         std::optional<F32> borderSize;
         std::optional<F32> rounding;
         std::string backgroundColorKey = "background";
-        F32 backgroundAlpha = 1.0f;
         std::string borderColorKey = "border";
-        F32 borderAlpha = -1.0f;
         std::function<void()> onClick;
     };
 

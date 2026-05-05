@@ -36,6 +36,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"popup_bg", {0.06f, 0.06f, 0.06f, 1.0f}},
             {"modal_dim", {0.00f, 0.00f, 0.00f, 0.60f}},
             {"notification_bg", {0.08f, 0.08f, 0.08f, 0.90f}},
+            {"transparent", {0.00f, 0.00f, 0.00f, 0.00f}},
+            {"info_hud_background", {0.00f, 0.00f, 0.00f, 0.35f}},
+            {"remote_hud_background", {0.00f, 1.00f, 0.00f, 0.08f}},
+            {"remote_hud_border", {0.00f, 1.00f, 0.00f, 0.25f}},
 
             // Button Colors
             {"action_btn", {0.20f, 0.47f, 0.96f, 1.0f}},
@@ -175,6 +179,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"popup_bg", {0.96f, 0.96f, 0.97f, 1.0f}},
             {"modal_dim", {0.00f, 0.00f, 0.00f, 0.35f}},
             {"notification_bg", {0.96f, 0.96f, 0.97f, 0.90f}},
+            {"transparent", {0.00f, 0.00f, 0.00f, 0.00f}},
+            {"info_hud_background", {0.97f, 0.97f, 0.98f, 0.82f}},
+            {"remote_hud_background", {0.00f, 0.60f, 0.00f, 0.08f}},
+            {"remote_hud_border", {0.00f, 0.60f, 0.00f, 0.25f}},
 
             // Button Colors
             {"action_btn", {0.20f, 0.47f, 0.96f, 1.0f}},

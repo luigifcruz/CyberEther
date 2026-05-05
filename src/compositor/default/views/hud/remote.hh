@@ -26,10 +26,8 @@ struct RemoteHudView : public Sakura::Component {
             .clickable = true,
             .windowPadding = Extent2D<F32>{10.0f, 10.0f},
             .borderSize = 1.0f,
-            .backgroundColorKey = "success_green",
-            .backgroundAlpha = 0.08f,
-            .borderColorKey = "success_green",
-            .borderAlpha = 0.25f,
+            .backgroundColorKey = "remote_hud_background",
+            .borderColorKey = "remote_hud_border",
             .onClick = [this]() {
                 if (this->config.onOpen) {
                     this->config.onOpen();

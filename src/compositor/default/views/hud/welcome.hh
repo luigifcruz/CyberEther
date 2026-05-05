@@ -140,8 +140,8 @@ struct WelcomeHudView : public Sakura::Component {
             .size = Extent2D<F32>{560.0f, 0.0f},
             .windowPadding = Extent2D<F32>{2.0f, 0.0f},
             .borderSize = 0.0f,
-            .backgroundAlpha = 0.0f,
-            .borderAlpha = 0.0f,
+            .backgroundColorKey = "transparent",
+            .borderColorKey = "transparent",
         });
         title.update({
             .title = "CyberEther",

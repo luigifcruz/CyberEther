@@ -59,15 +59,11 @@ void Hud::render(const Context& ctx, Child child) const {
     I32 styleColorCount = 0;
     I32 styleVarCount = 0;
     ImVec4 backgroundColor = Private::ImColor(ctx, config.backgroundColorKey);
-    backgroundColor.w = config.backgroundAlpha;
     ImGui::PushStyleColor(ImGuiCol_WindowBg, backgroundColor);
     ImGui::PushStyleColor(ImGuiCol_PopupBg, backgroundColor);
     styleColorCount += 2;
 
     ImVec4 borderColor = Private::ImColor(ctx, config.borderColorKey);
-    if (config.borderAlpha >= 0.0f) {
-        borderColor.w = config.borderAlpha;
-    }
     ImGui::PushStyleColor(ImGuiCol_Border, borderColor);
     styleColorCount += 1;
     if (config.windowPadding.has_value()) {

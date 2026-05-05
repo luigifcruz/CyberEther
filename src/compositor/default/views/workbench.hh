@@ -42,8 +42,8 @@ struct WorkbenchView : public Sakura::Component {
             filePendingHud.update({
                 .id = "file-pending",
                 .anchor = Sakura::Hud::Anchor::Center,
-                .backgroundAlpha = 0.0f,
-                .borderAlpha = 0.0f,
+                .backgroundColorKey = "transparent",
+                .borderColorKey = "transparent",
             });
             filePendingText.update({
                 .id = "file-pending-text",
