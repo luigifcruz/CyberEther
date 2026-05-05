@@ -24,7 +24,7 @@ struct FlowgraphExampleCell : public Sakura::Component {
 
         div.update({
             .id = this->config.id + "Div",
-            .padding = 12.0f,
+            .padding = 11.0f,
             .rounding = 8.0f,
             .border = true,
             .scrollbar = false,
