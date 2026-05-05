@@ -42,11 +42,11 @@ void Window::render(const Context& ctx, Child content) {
 
     bool nextOpen = true;
     const bool expanded = ImGui::Begin(impl.windowId.c_str(), &nextOpen);
+    if (styleVarCount > 0) {
+        ImGui::PopStyleVar(styleVarCount);
+    }
     if (!nextOpen) {
         ImGui::End();
-        if (styleVarCount > 0) {
-            ImGui::PopStyleVar(styleVarCount);
-        }
         if (impl.open) {
             if (config.onClose) {
                 config.onClose();
@@ -66,9 +66,6 @@ void Window::render(const Context& ctx, Child content) {
         content(ctx);
     }
     ImGui::End();
-    if (styleVarCount > 0) {
-        ImGui::PopStyleVar(styleVarCount);
-    }
 }
 
 }  // namespace Jetstream::Sakura

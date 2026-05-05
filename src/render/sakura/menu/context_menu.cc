@@ -50,7 +50,12 @@ void ContextMenu::render(const Context& ctx, Child child) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, Scale(ctx, *config.borderSize));
         ++styleVarCount;
     }
-    if (ImGui::BeginPopup(config.id.c_str())) {
+    const bool open = ImGui::BeginPopup(config.id.c_str());
+    if (styleVarCount > 0) {
+        ImGui::PopStyleVar(styleVarCount);
+    }
+
+    if (open) {
         impl.visible = true;
         if (child) {
             child(ctx);
@@ -64,10 +69,6 @@ void ContextMenu::render(const Context& ctx, Child child) {
         }
     } else {
         impl.opening = false;
-    }
-
-    if (styleVarCount > 0) {
-        ImGui::PopStyleVar(styleVarCount);
     }
 }
 

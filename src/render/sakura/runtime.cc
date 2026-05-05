@@ -291,7 +291,7 @@ struct Runtime::Impl {
         colors[ImGuiCol_NavWindowingHighlight]     = color("nav_windowing_highlight");
         colors[ImGuiCol_NavWindowingDimBg]         = color("nav_windowing_dim_bg");
 
-        style._MainScale                       = 1.0f;
+        style._MainScale                        = 1.0f;
         style.WindowPadding                     = ImVec2(12.00f, 12.00f);
         style.FramePadding                      = ImVec2(12.00f, 4.00f);
         style.ItemSpacing                       = ImVec2(8.00f, 8.00f);

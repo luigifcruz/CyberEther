@@ -47,9 +47,9 @@ void Dockspace(const DockspaceConfig& config) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::Begin(config.windowTitle, nullptr, windowFlags);
+    ImGui::PopStyleVar(3);
     ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), dockFlags);
     ImGui::End();
-    ImGui::PopStyleVar(3);
 }
 
 }  // namespace Jetstream::Sakura

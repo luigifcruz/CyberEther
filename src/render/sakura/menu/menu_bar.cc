@@ -28,9 +28,10 @@ void MenuBar::render(const Context& ctx, Child child) const {
     const F32 paddingY = style.FramePadding.y * config.heightScale;
 
     ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, paddingY));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     if (ImGui::BeginMainMenuBar()) {
+        ImGui::PopStyleVar();
         if (child) {
             child(ctx);
         }
@@ -38,8 +39,10 @@ void MenuBar::render(const Context& ctx, Child child) const {
             config.onHeight(Unscale(ctx, ImGui::GetWindowSize().y));
         }
         ImGui::EndMainMenuBar();
+    } else {
+        ImGui::PopStyleVar();
     }
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar();
     ImGui::PopID();
 }
 

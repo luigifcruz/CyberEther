@@ -40,6 +40,7 @@ void NodeEditor::render(const Context& ctx, Child child) const {
     const ImVec2 editorCenter(editorMin.x + editorSize.x * 0.5f,
                               editorMin.y + editorSize.y * 0.5f);
     ImNodes::BeginNodeEditor();
+    ImGui::PopStyleVar();
     if (child) {
         child(ctx);
     }
@@ -138,7 +139,6 @@ void NodeEditor::render(const Context& ctx, Child child) const {
         }
     }
 
-    ImGui::PopStyleVar();
     ImGui::PopFont();
     ImGui::PopID();
     ImNodes::SetCurrentContext(previousContext);

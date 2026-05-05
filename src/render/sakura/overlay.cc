@@ -94,11 +94,13 @@ void Overlay::render(const Context& ctx, Child child) const {
     ImGui::SetCursorScreenPos(Private::ToImVec2(position));
     const F32 clipSlack = std::ceil(Scale(ctx, 2.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    if (ImGui::BeginChild("content", ImVec2(size.x + clipSlack, size.y + clipSlack), ImGuiChildFlags_None, windowFlags)) {
+    const bool visible = ImGui::BeginChild("content", ImVec2(size.x + clipSlack, size.y + clipSlack), ImGuiChildFlags_None, windowFlags);
+    ImGui::PopStyleVar();
+
+    if (visible) {
         child(ctx);
     }
     ImGui::EndChild();
-    ImGui::PopStyleVar();
     ImGui::PopID();
 
     parentWindow = ImGui::GetCurrentWindow();

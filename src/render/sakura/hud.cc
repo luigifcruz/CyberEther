@@ -93,6 +93,13 @@ void Hud::render(const Context& ctx, Child child) const {
     flags |= ImGuiWindowFlags_Tooltip;
 
     const bool visible = ImGui::Begin(config.id.c_str(), nullptr, flags);
+    if (styleVarCount > 0) {
+        ImGui::PopStyleVar(styleVarCount);
+    }
+    if (styleColorCount > 0) {
+        ImGui::PopStyleColor(styleColorCount);
+    }
+
     if (visible && child) {
         child(ctx);
         const bool hovered = ImGui::IsWindowHovered();
@@ -105,13 +112,6 @@ void Hud::render(const Context& ctx, Child child) const {
         }
     }
     ImGui::End();
-
-    if (styleVarCount > 0) {
-        ImGui::PopStyleVar(styleVarCount);
-    }
-    if (styleColorCount > 0) {
-        ImGui::PopStyleColor(styleColorCount);
-    }
 }
 
 }  // namespace Jetstream::Sakura
