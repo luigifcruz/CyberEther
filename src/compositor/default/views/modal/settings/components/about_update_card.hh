@@ -29,7 +29,7 @@ struct AboutUpdateCard : public Sakura::Component {
             .id = "AboutUpdateDiv",
             .padding = 16.0f,
             .rounding = 8.0f,
-            .border = false,
+            .border = true,
             .scrollbar = false,
             .mouseScroll = false,
         });
