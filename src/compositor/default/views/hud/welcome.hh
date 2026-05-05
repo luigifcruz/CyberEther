@@ -159,9 +159,17 @@ struct WelcomeHudView : public Sakura::Component {
             .size = {560.0f, 42.0f},
             .cellPadding = {4.0f, 2.0f},
         });
-        spacing.update({
+        welcomeSpacing.update({
             .id = "WelcomeSpacing",
-            .lines = 3,
+            .lines = 4,
+        });
+        buttonSpacing.update({
+            .id = "WelcomeButtonSpacing",
+            .lines = 1,
+        });
+        versionSpacing.update({
+            .id = "WelcomeVersionSpacing",
+            .lines = 1,
         });
         newCell.update({
             .id = "WelcomeNewCard",
@@ -238,20 +246,20 @@ struct WelcomeHudView : public Sakura::Component {
 
         hud.render(ctx, [this](const Sakura::Context& ctx) {
             title.render(ctx);
-            spacing.render(ctx);
+            welcomeSpacing.render(ctx);
             actions.render(ctx, {
                 [this](const Sakura::Context& ctx) { newCell.render(ctx); },
                 [this](const Sakura::Context& ctx) { openCell.render(ctx); },
                 [this](const Sakura::Context& ctx) { examplesCell.render(ctx); },
             });
-            spacing.render(ctx);
+            buttonSpacing.render(ctx);
             links.render(ctx, {
                 [this](const Sakura::Context& ctx) { websiteButton.render(ctx); },
                 [this](const Sakura::Context& ctx) { docsButton.render(ctx); },
                 [this](const Sakura::Context& ctx) { settingsButton.render(ctx); },
                 [this](const Sakura::Context& ctx) { aboutButton.render(ctx); },
             });
-            spacing.render(ctx);
+            versionSpacing.render(ctx);
             version.render(ctx);
         });
     }
@@ -262,7 +270,9 @@ struct WelcomeHudView : public Sakura::Component {
     WelcomeHudTitle title;
     Sakura::Grid actions;
     Sakura::Grid links;
-    Sakura::Spacing spacing;
+    Sakura::Spacing welcomeSpacing;
+    Sakura::Spacing buttonSpacing;
+    Sakura::Spacing versionSpacing;
     WelcomeHudCell newCell;
     WelcomeHudCell openCell;
     WelcomeHudCell examplesCell;
