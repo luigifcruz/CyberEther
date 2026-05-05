@@ -67,10 +67,18 @@ void Button::render(const Context& ctx) const {
         ImGui::BeginDisabled();
     }
 
+    if (config.textScale != 1.0f) {
+        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * config.textScale);
+    }
+
     if (ImGui::Button(config.str.c_str(), Private::ToImVec2(Scale(ctx, config.size)))) {
         if (config.onClick) {
             config.onClick();
         }
+    }
+
+    if (config.textScale != 1.0f) {
+        ImGui::PopFont();
     }
 
     if (config.disabled) {

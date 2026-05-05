@@ -28,6 +28,7 @@ struct Button : public Component {
         std::string activeColorKey;
         std::string borderColorKey;
         std::string textColorKey;
+        F32 textScale = 1.0f;
         std::function<void()> onClick;
     };
 
