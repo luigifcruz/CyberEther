@@ -21,10 +21,22 @@ bool SurfaceView::update(Config config) {
     return true;
 }
 
-SurfaceView::Result SurfaceView::render(const Context& ctx) const {
+void SurfaceView::render(const Context& ctx) const {
     const auto& config = this->impl->config;
 
-    Result result;
+    struct RenderState {
+        bool hovered = false;
+        bool detachClicked = false;
+        bool leftClicked = false;
+        bool rightClicked = false;
+        bool leftReleased = false;
+        bool rightReleased = false;
+        bool scrolled = false;
+        Extent2D<F32> normalizedMouse = {0.0f, 0.0f};
+        Extent2D<F32> scroll = {0.0f, 0.0f};
+    };
+
+    RenderState state;
     Extent2D<F32> displaySize = Scale(ctx, config.size);
     const Extent2D<F32> available = Private::ToExtent2D(ImGui::GetContentRegionAvail());
     if (displaySize.x <= 0.0f) {
@@ -43,7 +55,7 @@ SurfaceView::Result SurfaceView::render(const Context& ctx) const {
         }
     }
     if (size.x <= 0.0f || size.y <= 0.0f) {
-        return result;
+        return;
     }
     const auto resolvedResize = ResolveSurfaceResize(ctx, size);
     if (config.onSize && resolvedResize.has_value()) {
@@ -59,12 +71,12 @@ SurfaceView::Result SurfaceView::render(const Context& ctx) const {
 
     const U64 texture = config.onResolveTexture ? config.onResolveTexture() : config.texture;
     if (texture == 0) {
-        return result;
+        return;
     }
 
     const ImTextureRef textureRef(static_cast<ImTextureID>(texture));
     if (textureRef.GetTexID() == ImTextureID_Invalid) {
-        return result;
+        return;
     }
 
     const ImVec2 surfaceSize = Private::ToImVec2(displaySize);
@@ -80,22 +92,22 @@ SurfaceView::Result SurfaceView::render(const Context& ctx) const {
                                                 rounding);
 
     ImGui::InvisibleButton(config.id.c_str(), surfaceSize);
-    result.hovered = ImGui::IsItemHovered();
-    if (result.hovered) {
+    state.hovered = ImGui::IsItemHovered();
+    if (state.hovered) {
         const ImVec2 mousePos = ImGui::GetMousePos();
-        result.normalizedMouse = {(mousePos.x - cursorPos.x) / surfaceSize.x,
-                                  (mousePos.y - cursorPos.y) / surfaceSize.y};
-        result.leftClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        result.rightClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-        result.leftReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
-        result.rightReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Right);
+        state.normalizedMouse = {(mousePos.x - cursorPos.x) / surfaceSize.x,
+                                 (mousePos.y - cursorPos.y) / surfaceSize.y};
+        state.leftClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        state.rightClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        state.leftReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+        state.rightReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Right);
 
         const ImGuiIO& io = ImGui::GetIO();
-        result.scrolled = io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
-        result.scroll = {io.MouseWheelH, io.MouseWheel};
+        state.scrolled = io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+        state.scroll = {io.MouseWheelH, io.MouseWheel};
     }
 
-    if (config.detachOverlay && result.hovered) {
+    if (config.detachOverlay && state.hovered) {
         const F32 buttonSize = Scale(ctx, 24.0f);
         const F32 buttonPadding = Scale(ctx, 8.0f);
         const ImVec2 buttonPos(cursorEnd.x - buttonSize - buttonPadding, cursorPos.y + buttonPadding);
@@ -107,7 +119,7 @@ SurfaceView::Result SurfaceView::render(const Context& ctx) const {
         ImU32 buttonColor = IM_COL32(30, 30, 30, 200);
         if (buttonHovered) {
             buttonColor = IM_COL32(60, 60, 60, 230);
-            result.detachClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            state.detachClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         }
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -120,32 +132,32 @@ SurfaceView::Result SurfaceView::render(const Context& ctx) const {
         drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), icon);
     }
 
-    if (result.hovered && config.onMouse) {
+    if (state.hovered && config.onMouse) {
         MouseEvent event{};
-        event.position = result.normalizedMouse;
+        event.position = state.normalizedMouse;
         event.scroll = {0.0f, 0.0f};
 
-        if (result.leftClicked) {
+        if (state.leftClicked) {
             event.type = MouseEventType::Click;
             event.button = MouseButton::Left;
             config.onMouse(event);
-        } else if (result.rightClicked) {
+        } else if (state.rightClicked) {
             event.type = MouseEventType::Click;
             event.button = MouseButton::Right;
             config.onMouse(event);
-        } else if (result.leftReleased) {
+        } else if (state.leftReleased) {
             event.type = MouseEventType::Release;
             event.button = MouseButton::Left;
             config.onMouse(event);
-        } else if (result.rightReleased) {
+        } else if (state.rightReleased) {
             event.type = MouseEventType::Release;
             event.button = MouseButton::Right;
             config.onMouse(event);
         }
 
-        if (result.scrolled) {
+        if (state.scrolled) {
             event.type = MouseEventType::Scroll;
-            event.scroll = result.scroll;
+            event.scroll = state.scroll;
             config.onMouse(event);
         }
 
@@ -153,11 +165,9 @@ SurfaceView::Result SurfaceView::render(const Context& ctx) const {
         config.onMouse(event);
     }
 
-    if (result.detachClicked && config.onDetach) {
+    if (state.detachClicked && config.onDetach) {
         config.onDetach();
     }
-
-    return result;
 }
 
 }  // namespace Jetstream::Sakura

@@ -27,18 +27,6 @@ struct SurfaceView : public Component {
         std::function<void()> onDetach;
     };
 
-    struct Result {
-        bool hovered = false;
-        bool detachClicked = false;
-        bool leftClicked = false;
-        bool rightClicked = false;
-        bool leftReleased = false;
-        bool rightReleased = false;
-        bool scrolled = false;
-        Extent2D<F32> normalizedMouse = {0.0f, 0.0f};
-        Extent2D<F32> scroll = {0.0f, 0.0f};
-    };
-
     SurfaceView();
     ~SurfaceView();
 
@@ -49,7 +37,7 @@ struct SurfaceView : public Component {
     SurfaceView& operator=(const SurfaceView&) = delete;
 
     bool update(Config config);
-    Result render(const Context& ctx) const;
+    void render(const Context& ctx) const;
 
  private:
     struct Impl;
