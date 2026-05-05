@@ -71,7 +71,11 @@ void Button::render(const Context& ctx) const {
         ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * config.textScale);
     }
 
-    if (ImGui::Button(config.str.c_str(), Private::ToImVec2(Scale(ctx, config.size)))) {
+    const bool pressed = ImGui::Button(config.str.c_str(), Private::ToImVec2(Scale(ctx, config.size)));
+    if (!config.disabled && ImGui::IsItemHovered()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+    if (pressed) {
         if (config.onClick) {
             config.onClick();
         }
