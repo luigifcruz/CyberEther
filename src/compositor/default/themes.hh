@@ -230,9 +230,9 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"separator_active", {0.60f, 0.60f, 0.62f, 1.00f}},
 
             // Resize Grip Colors
-            {"resize_grip", {0.75f, 0.75f, 0.77f, 0.60f}},
-            {"resize_grip_hovered", {0.65f, 0.65f, 0.67f, 0.80f}},
-            {"resize_grip_active", {0.55f, 0.55f, 0.57f, 1.00f}},
+            {"resize_grip", {0.43f, 0.43f, 0.46f, 0.55f}},
+            {"resize_grip_hovered", {0.38f, 0.38f, 0.41f, 0.70f}},
+            {"resize_grip_active", {0.32f, 0.32f, 0.35f, 0.85f}},
 
             // Tab Colors
             {"tab", {0.92f, 0.92f, 0.93f, 0.95f}},
