@@ -18,7 +18,8 @@ ImGuiWindowFlags DefaultWindowFlags() {
 }
 
 ImGuiDockNodeFlags DefaultDockFlags() {
-    return ImGuiDockNodeFlags_PassthruCentralNode;
+    return ImGuiDockNodeFlags_PassthruCentralNode |
+           ImGuiDockNodeFlags_NoWindowMenuButton;
 }
 
 }  // namespace
