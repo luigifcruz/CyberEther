@@ -77,6 +77,7 @@ struct FlowgraphBlockPicker : public Sakura::Component {
             .hint = "Search blocks...",
             .submit = Sakura::TextInput::Submit::OnEdit,
             .focus = true,
+            .focusOutline = false,
             .onChange = [this](const std::string& value) {
                 if (this->config.onSearchChange) {
                     this->config.onSearchChange(value);
