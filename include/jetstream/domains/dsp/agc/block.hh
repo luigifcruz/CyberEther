@@ -7,6 +7,7 @@ namespace Jetstream::Blocks {
 
 struct Agc : public Block::Config {
     JST_BLOCK_TYPE(agc);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "AGC",

@@ -110,6 +110,9 @@ class Window {
         return _scalingFactor;
     }
 
+    Extent2D<F32> framebufferScale() const;
+    Extent2D<U64> framebufferSize(const Extent2D<F32>& displaySize) const;
+
     bool hasFont(const std::string& name) const;
     Result addFont(const std::string& name, const std::shared_ptr<Components::Font>& font);
     Result removeFont(const std::string& name);

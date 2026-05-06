@@ -4,6 +4,10 @@ namespace Jetstream::Viewport {
 
 Generic::Generic(const Config& config) : config(config) {}
 
+Extent2D<F32> Generic::displaySize() const {
+    return {static_cast<F32>(config.size.x), static_cast<F32>(config.size.y)};
+}
+
 Result Generic::addMousePosEvent(F32 x, F32 y) {
     ImGui::GetIO().AddMousePosEvent(x, y);
 

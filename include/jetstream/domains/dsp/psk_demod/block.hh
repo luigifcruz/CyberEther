@@ -14,11 +14,12 @@ struct PskDemod : public Block::Config {
     F32 dampingFactor = 0.707f;
 
     JST_BLOCK_TYPE(psk_demod);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(pskType, sampleRate, symbolRate, frequencyLoopBandwidth,
                      timingLoopBandwidth, dampingFactor);
     JST_BLOCK_DESCRIPTION(
         "PSK Demodulator",
-        "Demodulates PSK signals with automatic frequency and timing recovery.",
+        "Demodulates PSK signals with carrier and timing recovery.",
         "# PSK Demodulator\n"
         "The PSK Demod block demodulates Phase Shift Keying signals (BPSK, QPSK, 8-PSK) from "
         "complex I/Q data streams. It performs carrier frequency recovery using a Costas loop, "

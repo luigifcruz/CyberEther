@@ -21,6 +21,22 @@ struct TestContext::Impl {
 
     std::shared_ptr<Module> module;
     std::unique_ptr<Runtime> runtime;
+
+    ~Impl() {
+        cleanup();
+    }
+
+    void cleanup() {
+        if (runtime) {
+            (void)runtime->destroy();
+            runtime.reset();
+        }
+
+        if (module) {
+            (void)module->destroy();
+            module.reset();
+        }
+    }
 };
 
 TestContext::TestContext(const std::string& moduleType,
@@ -48,6 +64,8 @@ void TestContext::setConfig(const Module::Config& config) {
 }
 
 Result TestContext::run() {
+    pimpl->cleanup();
+
     JST_CHECK(Registry::BuildModule(
         pimpl->moduleType,
         pimpl->deviceType,
@@ -70,6 +88,7 @@ Result TestContext::run() {
     auto createResult = pimpl->module->create("test", pimpl->config, deviceInputs);
     if (createResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to create module: {}", pimpl->moduleType);
+        pimpl->cleanup();
         return createResult;
     }
 
@@ -77,6 +96,7 @@ Result TestContext::run() {
     auto runtimeCreateResult = pimpl->runtime->create({{"test", pimpl->module}});
     if (runtimeCreateResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to create runtime: {}", pimpl->moduleType);
+        pimpl->cleanup();
         return runtimeCreateResult;
     }
 
@@ -84,6 +104,7 @@ Result TestContext::run() {
     auto computeResult = pimpl->runtime->compute({}, skippedModules);
     if (computeResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to run compute: {}", pimpl->moduleType);
+        pimpl->cleanup();
         return computeResult;
     }
 
@@ -94,6 +115,8 @@ Result TestContext::run() {
             pimpl->cpuOutputs[name] = Tensor(DeviceType::CPU, entry.tensor);
         }
     }
+
+    pimpl->cleanup();
 
     return Result::SUCCESS;
 }

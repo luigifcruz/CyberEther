@@ -38,6 +38,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
 
     Result createImgui();
     Result destroyImgui();
+    Extent2D<F32> displaySize() const;
     F32 scale(const F32& scale) const;
 
     Result createSwapchain();

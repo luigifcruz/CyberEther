@@ -21,7 +21,7 @@ class TextureImp<DeviceType::Vulkan> : public Texture {
     Result fillRow(const U64& y, const U64& height) override;
 
     uint64_t raw() const override {
-        return (uint64_t)(void*)descriptorSet;
+        return descriptorSet ? (uint64_t)(void*)descriptorSet : 0;
     }
 
  protected:
@@ -50,14 +50,14 @@ class TextureImp<DeviceType::Vulkan> : public Texture {
     static U64 GetPixelByteSize(const VkFormat&);
 
  private:
-    VkImage texture;
-    VkImageView imageView;
-    VkSampler sampler;
-    VkDescriptorSet descriptorSet;
-    VkDescriptorSetLayout descriptorSetLayout;
+    VkImage texture = VK_NULL_HANDLE;
+    VkImageView imageView = VK_NULL_HANDLE;
+    VkSampler sampler = VK_NULL_HANDLE;
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VkFormat pixelFormat;
-    VkDeviceMemory memory;
-    VkExtent2D extent;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkExtent2D extent = {};
 
     friend class SurfaceImp<DeviceType::Vulkan>;
     friend class ProgramImp<DeviceType::Vulkan>;

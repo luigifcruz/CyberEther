@@ -12,6 +12,7 @@ struct FileWriter : public Block::Config {
     bool recording = false;
 
     JST_BLOCK_TYPE(file_writer);
+    JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(filepath, fileFormat, overwrite, recording);
     JST_BLOCK_DESCRIPTION(
         "File Writer",

@@ -9,6 +9,7 @@ struct OverlapAdd : public Block::Config {
     U64 axis = 0;
 
     JST_BLOCK_TYPE(overlap_add);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(axis);
     JST_BLOCK_DESCRIPTION(
         "Overlap Add",

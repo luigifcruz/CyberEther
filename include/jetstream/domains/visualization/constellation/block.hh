@@ -7,6 +7,7 @@ namespace Jetstream::Blocks {
 
 struct Constellation : public Block::Config {
     JST_BLOCK_TYPE(constellation);
+    JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Constellation",

@@ -10,10 +10,11 @@ struct Waterfall : public Block::Config {
     bool interpolate = true;
 
     JST_BLOCK_TYPE(waterfall);
+    JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_PARAMS(height, interpolate);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",
-        "Displays frequency spectrum data as a scrolling waterfall visualization.",
+        "Shows frequency spectrum over time as a scrolling waterfall.",
         "# Waterfall\n"
         "The Waterfall block provides a time-frequency visualization where signal "
         "amplitude is represented using colors. New data appears at the top and "

@@ -13,6 +13,7 @@ struct Websocket : public Block::Config {
     U64 bufferMultiplier = 4;
 
     JST_BLOCK_TYPE(websocket);
+    JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(url, dataType, numberOfBatches, numberOfTimeSamples,
                      bufferMultiplier);
     JST_BLOCK_DESCRIPTION(

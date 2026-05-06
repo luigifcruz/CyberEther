@@ -21,7 +21,7 @@ class TextureImp<DeviceType::Metal> : public Texture {
     Result fillRow(const U64& y, const U64& height) override;
 
     uint64_t raw() const override {
-        return (uint64_t)(void*)texture;
+        return texture ? (uint64_t)(void*)texture : 0;
     }
 
  protected:
@@ -44,7 +44,7 @@ class TextureImp<DeviceType::Metal> : public Texture {
  private:
     MTL::Texture* texture = nullptr;
     MTL::PixelFormat pixelFormat;
-    MTL::SamplerState* samplerState;
+    MTL::SamplerState* samplerState = nullptr;
 
     friend class SurfaceImp<DeviceType::Metal>;
     friend class ProgramImp<DeviceType::Metal>;

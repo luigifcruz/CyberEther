@@ -13,15 +13,7 @@ Result NoteImpl::define() {
     JST_CHECK(defineInterfaceConfig("content",
                                     "Content",
                                     "Markdown text to display.",
-                                    "multiline:collapsible"));
-
-    JST_CHECK(defineInterfaceMetric("note",
-                                    "",
-                                    "Rendered markdown content.",
-                                    "markdown",
-        [this]() -> std::any {
-            return content;
-        }));
+                                    "markdown"));
 
     return Result::SUCCESS;
 }

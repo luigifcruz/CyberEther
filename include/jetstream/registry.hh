@@ -32,6 +32,7 @@ class JETSTREAM_API Registry {
 
     struct BlockRegistration {
         std::string type;
+        std::string domain;
         std::string title;
         std::string summary;
         std::string description;
@@ -52,6 +53,7 @@ class JETSTREAM_API Registry {
                                   const ProviderType& provider,
                                   ModuleFactory factory);
     static Result RegisterBlock(const std::string& type,
+                                const std::string& domain,
                                 const std::string& title,
                                 const std::string& summary,
                                 const std::string& description,
@@ -134,6 +136,7 @@ Result RegisterBlockType() {
 
     return ::Jetstream::Registry::RegisterBlock(
         block->type(),
+        block->domain(),
         block->title(),
         block->summary(),
         block->description(),
