@@ -16,13 +16,13 @@
 namespace Jetstream {
 
 struct FlowgraphBlockPicker : public Sakura::Component {
-    struct BlockOption {
-        struct DeviceOption {
-            DeviceType device = DeviceType::CPU;
-            RuntimeType runtime = RuntimeType::NATIVE;
-            ProviderType provider = "generic";
-        };
+    struct DeviceOption {
+        DeviceType device = DeviceType::CPU;
+        RuntimeType runtime = RuntimeType::NATIVE;
+        ProviderType provider = "generic";
+    };
 
+    struct BlockOption {
         std::string type;
         std::string title;
         std::string summary;

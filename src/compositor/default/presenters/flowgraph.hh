@@ -267,7 +267,7 @@ struct DefaultFlowgraphPresenter {
             DeviceType device = DeviceType::CPU;
             RuntimeType runtime = RuntimeType::NATIVE;
             ProviderType provider = "generic";
-            std::vector<FlowgraphBlockPicker::BlockOption::DeviceOption> devices;
+            std::vector<FlowgraphBlockPicker::DeviceOption> devices;
 
             const auto modules = Registry::ListAvailableModules(entry.type);
             if (!modules.empty()) {
