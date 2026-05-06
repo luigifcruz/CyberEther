@@ -54,8 +54,8 @@ struct FlowgraphToolbar : public Sakura::Component {
         });
         addBlockButton.update({
             .id = this->config.id + ":add-block",
-            .str = ICON_FA_CUBE " Add Block",
-            .size = {110.0f, 34.0f},
+            .str = ICON_FA_CUBE " Blocks",
+            .size = {90.0f, 34.0f},
             .onClick = this->config.onAddBlock,
         });
     }
@@ -73,7 +73,7 @@ struct FlowgraphToolbar : public Sakura::Component {
     }
 
  private:
-    static constexpr Extent2D<F32> toolbarSize = {306.0f, 46.0f};
+    static constexpr Extent2D<F32> toolbarSize = {286.0f, 46.0f};
 
     Config config;
     Sakura::Overlay overlay;
