@@ -122,8 +122,8 @@ struct FlowgraphEditor : public Sakura::Component {
             .onCreateBlock = [this](const std::string& moduleId,
                                     Extent2D<F32> gridPosition,
                                     DeviceType device,
-                                     RuntimeType runtime,
-                                     ProviderType provider) {
+                                    RuntimeType runtime,
+                                    ProviderType provider) {
                 suppressEditorDoubleClick = true;
                 if (this->config.onCreateBlock) {
                     this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);

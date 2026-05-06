@@ -22,7 +22,6 @@ bool TextInput::update(Config config) {
 }
 
 void TextInput::render(const Context& ctx) const {
-    (void)ctx;
     const auto& config = this->impl->config;
 
     std::string value = config.value;
@@ -33,12 +32,18 @@ void TextInput::render(const Context& ctx) const {
     }
 
     bool changed = false;
+    if (!config.focusOutline) {
+        ImGui::PushStyleColor(ImGuiCol_NavCursor, Private::ImColor(ctx, "transparent"));
+    }
     const ImGuiInputTextFlags flags = config.submit == Submit::OnEdit ? ImGuiInputTextFlags_None
                                                                        : ImGuiInputTextFlags_EnterReturnsTrue;
     if (config.hint.empty()) {
         changed = ImGui::InputText("##input", &value, flags);
     } else {
         changed = ImGui::InputTextWithHint("##input", config.hint.c_str(), &value, flags);
+    }
+    if (!config.focusOutline) {
+        ImGui::PopStyleColor();
     }
     if (config.submit == Submit::OnCommit && ImGui::IsItemDeactivatedAfterEdit()) {
         changed = true;

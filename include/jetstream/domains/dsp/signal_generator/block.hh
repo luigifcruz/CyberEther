@@ -26,7 +26,7 @@ struct SignalGenerator : public Block::Config {
                      bufferSize);
     JST_BLOCK_DESCRIPTION(
         "Signal Generator",
-        "Generates various types of signals including sine, square, triangle, sawtooth, noise, and chirp.",
+        "Generates synthetic waveforms, noise, and chirps.",
         "# Signal Generator\n"
         "The Signal Generator block creates synthetic signals for testing and simulation purposes. "
         "It supports multiple waveform types with configurable parameters for frequency, amplitude, "

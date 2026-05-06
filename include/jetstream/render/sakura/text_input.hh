@@ -22,6 +22,7 @@ struct TextInput : public Component {
         std::string hint;
         Submit submit = Submit::OnEnter;
         bool focus = false;
+        bool focusOutline = true;
         std::function<void(const std::string&)> onChange;
     };
 

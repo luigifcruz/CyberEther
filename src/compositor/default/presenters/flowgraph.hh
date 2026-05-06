@@ -267,12 +267,31 @@ struct DefaultFlowgraphPresenter {
             DeviceType device = DeviceType::CPU;
             RuntimeType runtime = RuntimeType::NATIVE;
             ProviderType provider = "generic";
+            std::vector<FlowgraphBlockPicker::DeviceOption> devices;
 
             const auto modules = Registry::ListAvailableModules(entry.type);
             if (!modules.empty()) {
                 device = modules.front().device;
                 runtime = modules.front().runtime;
                 provider = modules.front().provider;
+                for (const auto& module : modules) {
+                    const auto duplicate = std::find_if(devices.begin(), devices.end(), [&](const auto& option) {
+                        return option.device == module.device;
+                    });
+                    if (duplicate == devices.end()) {
+                        devices.push_back({
+                            .device = module.device,
+                            .runtime = module.runtime,
+                            .provider = module.provider,
+                        });
+                    }
+                }
+            } else {
+                devices.push_back({
+                    .device = device,
+                    .runtime = runtime,
+                    .provider = provider,
+                });
             }
 
             options.push_back({
@@ -281,6 +300,7 @@ struct DefaultFlowgraphPresenter {
                 .summary = entry.summary,
                 .description = entry.description,
                 .category = entry.domain,
+                .devices = std::move(devices),
                 .device = device,
                 .runtime = runtime,
                 .provider = provider,
