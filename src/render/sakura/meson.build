@@ -1,5 +1,6 @@
 src_lst += files([
     'color.cc',
+    'clipboard.cc',
     'context.cc',
     'runtime.cc',
     'notification.cc',

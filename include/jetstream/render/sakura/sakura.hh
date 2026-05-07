@@ -2,6 +2,7 @@
 
 #include <jetstream/render/sakura/button.hh>
 #include <jetstream/render/sakura/checkbox.hh>
+#include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/code_editor.hh>
 #include <jetstream/render/sakura/color.hh>
 #include <jetstream/render/sakura/combo.hh>
