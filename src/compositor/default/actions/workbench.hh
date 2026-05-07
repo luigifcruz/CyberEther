@@ -6,7 +6,6 @@
 #include "../model/state.hh"
 #include "../themes.hh"
 
-#include "jetstream/render/sakura/sakura.hh"
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
@@ -36,9 +35,9 @@ struct WorkbenchActions {
 
     Result handle(const MailApplyTheme& msg) {
         if (!themes.contains(msg.themeKey)) {
-            Sakura::Notify(Sakura::NotificationType::Error,
-                           5000,
-                           "Cannot apply theme because it doesn't exist.");
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Cannot apply theme because it doesn't exist.");
             return Result::SUCCESS;
         }
 
@@ -63,7 +62,7 @@ struct WorkbenchActions {
         if (msg.settings.has_value()) {
             state.settings.section = msg.settings.value();
         }
-        if (msg.content != DefaultCompositorState::ModalState::Content::RenameBlock) {
+        if (msg.content != ModalContent::RenameBlock) {
             state.modal.renameBlockOldName.reset();
         }
         return Result::SUCCESS;
@@ -77,27 +76,27 @@ struct WorkbenchActions {
     }
 
     Result handle(const MailNotify& msg) {
-        Sakura::Notify(msg.type, msg.durationMs, msg.message);
+        callbacks.notify(msg.type, msg.durationMs, msg.message);
         return Result::SUCCESS;
     }
 
     Result handle(const MailNotifyResult& msg) {
-        Sakura::NotifyResultClean(msg.result, msg.message);
+        callbacks.notifyResult(msg.result, msg.message);
         return Result::SUCCESS;
     }
 
     Result handle(const MailOpenUrl& msg) {
         const Result result = Platform::OpenUrl(msg.url);
         if (msg.notifyResult) {
-            Sakura::NotifyResultClean(result);
+            callbacks.notifyResult(result, "");
         }
         return Result::SUCCESS;
     }
 
     Result handle(const MailCopyText& msg) {
-        ImGui::SetClipboardText(msg.value.c_str());
+        callbacks.setClipboardText(msg.value);
         const std::string notification = msg.label + " copied to clipboard.";
-        Sakura::Notify(Sakura::NotificationType::Info, 3000, notification);
+        callbacks.notify(Sakura::ToastType::Info, 3000, notification);
         return Result::SUCCESS;
     }
 

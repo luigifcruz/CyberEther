@@ -11,6 +11,8 @@
 #include "jetstream/render/sakura/sakura.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
+#include "ui.hh"
+
 #include <future>
 #include <memory>
 #include <optional>
@@ -50,30 +52,11 @@ struct DefaultCompositorState {
     };
 
     struct SettingsState {
-        enum class Section : I32 {
-            General = 0,
-            Remote,
-            Developer,
-            About,
-            Legal,
-        };
-
-        Section section = Section::General;
+        SettingsSection section = SettingsSection::General;
     };
 
     struct ModalState {
-        enum class Content : I32 {
-            About = 0,
-            FlowgraphExamples,
-            FlowgraphInfo,
-            FlowgraphClose,
-            RenameBlock,
-            Benchmark,
-            RemoteStreaming,
-            Settings,
-        };
-
-        std::optional<Content> content;
+        std::optional<ModalContent> content;
         std::optional<std::string> flowgraph;
         std::optional<std::string> renameBlockOldName;
     };

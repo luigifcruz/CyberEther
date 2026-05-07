@@ -2,12 +2,12 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_MESSAGES_HH
 
 #include "meta.hh"
-#include "state.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "ui.hh"
 
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/render/sakura/toast.hh"
 #include "jetstream/types.hh"
 
 #include <deque>
@@ -47,19 +47,19 @@ struct MailApplyTheme {
 };
 
 struct MailOpenModal {
-    DefaultCompositorState::ModalState::Content content;
-    std::optional<DefaultCompositorState::SettingsState::Section> settings;
+    ModalContent content;
+    std::optional<SettingsSection> settings;
     std::optional<std::string> flowgraph;
 };
 
 struct MailSetSettingsSection {
-    DefaultCompositorState::SettingsState::Section section = DefaultCompositorState::SettingsState::Section::General;
+    SettingsSection section = SettingsSection::General;
 };
 
 struct MailCloseModal {};
 
 struct MailNotify {
-    Sakura::NotificationType type;
+    Sakura::ToastType type;
     I32 durationMs = 0;
     std::string message;
 };

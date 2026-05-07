@@ -1,44 +1,37 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_REMOTE_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_REMOTE_HH
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_REMOTE_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_REMOTE_HH
 
-#include "../model/callbacks.hh"
-#include "../model/messages.hh"
-#include "../model/state.hh"
-#include "../views/modal/remote.hh"
+#include "../context.hh"
+
+#include "../../model/messages.hh"
+#include "../../views/modal/remote.hh"
 
 #include <string>
 #include <vector>
 
 namespace Jetstream {
 
-struct DefaultRemotePresenter {
-    using ModalContent = DefaultCompositorState::ModalState::Content;
-    using SettingsSection = DefaultCompositorState::SettingsState::Section;
+struct RemoteStreamingModalPresenter {
+    const PresenterContext& context;
 
-    DefaultCompositorState& state;
-    DefaultCompositorCallbacks& callbacks;
-
-    DefaultRemotePresenter(DefaultCompositorState& state,
-                           DefaultCompositorCallbacks& callbacks) :
-        state(state),
-        callbacks(callbacks) {}
+    explicit RemoteStreamingModalPresenter(const PresenterContext& context) : context(context) {}
 
     RemoteView::Config build() const {
-        const auto enqueue = callbacks.enqueueMail;
-        const bool isStarted = state.remote.started;
-        const std::string remoteBrokerUrl = state.remote.brokerUrl;
-        const auto remoteCodec = state.remote.codec;
-        const auto remoteEncoder = state.remote.encoder;
-        const bool remoteAutoJoinSessions = state.remote.autoJoinSessions;
-        const U32 remoteFramerate = state.remote.framerate;
+        const auto enqueue = context.callbacks.enqueueMail;
+        const bool isStarted = context.state.remote.started;
+        const std::string remoteBrokerUrl = context.state.remote.brokerUrl;
+        const auto remoteCodec = context.state.remote.codec;
+        const auto remoteEncoder = context.state.remote.encoder;
+        const bool remoteAutoJoinSessions = context.state.remote.autoJoinSessions;
+        const U32 remoteFramerate = context.state.remote.framerate;
 
         return RemoteView::Config{
             .started = isStarted,
-            .inviteUrl = isStarted ? state.remote.inviteUrl : "",
-            .roomId = isStarted ? state.remote.roomId : "",
-            .accessToken = isStarted ? state.remote.accessToken : "",
-            .clients = isStarted ? state.remote.clients : std::vector<Instance::Remote::ClientInfo>{},
-            .waitlist = isStarted ? state.remote.waitlist : std::vector<std::string>{},
+            .inviteUrl = isStarted ? context.state.remote.inviteUrl : "",
+            .roomId = isStarted ? context.state.remote.roomId : "",
+            .accessToken = isStarted ? context.state.remote.accessToken : "",
+            .clients = isStarted ? context.state.remote.clients : std::vector<Instance::Remote::ClientInfo>{},
+            .waitlist = isStarted ? context.state.remote.waitlist : std::vector<std::string>{},
             .onStart = [enqueue,
                         remoteBrokerUrl,
                         remoteCodec,
@@ -74,4 +67,4 @@ struct DefaultRemotePresenter {
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_REMOTE_HH
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_REMOTE_HH

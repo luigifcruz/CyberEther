@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_BASE_HH
 
 #include "../../components/modal_header.hh"
-#include "../../../model/state.hh"
+#include "../../../model/ui.hh"
 #include "about.hh"
 #include "developer.hh"
 #include "general.hh"
@@ -16,11 +16,9 @@
 namespace Jetstream {
 
 struct SettingsView : public Sakura::Component {
-    using Section = DefaultCompositorState::SettingsState::Section;
-
     struct Config {
-        Section section = Section::General;
-        std::function<void(Section)> onSectionChange;
+        SettingsSection section = SettingsSection::General;
+        std::function<void(SettingsSection)> onSectionChange;
         GeneralSettingsPanel::Config general;
         RemoteSettingsPanel::Config remote;
         DeveloperSettingsPanel::Config developer;
@@ -60,46 +58,46 @@ struct SettingsView : public Sakura::Component {
             .items = {
                 {
                     .label = ICON_FA_DESKTOP " General",
-                    .selected = this->config.section == Section::General,
+                    .selected = this->config.section == SettingsSection::General,
                     .onSelect = [this]() {
                         if (this->config.onSectionChange) {
-                            this->config.onSectionChange(Section::General);
+                            this->config.onSectionChange(SettingsSection::General);
                         }
                     },
                 },
                 {
                     .label = ICON_FA_TOWER_BROADCAST " Remote",
-                    .selected = this->config.section == Section::Remote,
+                    .selected = this->config.section == SettingsSection::Remote,
                     .onSelect = [this]() {
                         if (this->config.onSectionChange) {
-                            this->config.onSectionChange(Section::Remote);
+                            this->config.onSectionChange(SettingsSection::Remote);
                         }
                     },
                 },
                 {
                     .label = ICON_FA_FLASK " Developer",
-                    .selected = this->config.section == Section::Developer,
+                    .selected = this->config.section == SettingsSection::Developer,
                     .onSelect = [this]() {
                         if (this->config.onSectionChange) {
-                            this->config.onSectionChange(Section::Developer);
+                            this->config.onSectionChange(SettingsSection::Developer);
                         }
                     },
                 },
                 {
                     .label = ICON_FA_CIRCLE_INFO " About",
-                    .selected = this->config.section == Section::About,
+                    .selected = this->config.section == SettingsSection::About,
                     .onSelect = [this]() {
                         if (this->config.onSectionChange) {
-                            this->config.onSectionChange(Section::About);
+                            this->config.onSectionChange(SettingsSection::About);
                         }
                     },
                 },
                 {
                     .label = ICON_FA_SCALE_BALANCED " Legal",
-                    .selected = this->config.section == Section::Legal,
+                    .selected = this->config.section == SettingsSection::Legal,
                     .onSelect = [this]() {
                         if (this->config.onSectionChange) {
-                            this->config.onSectionChange(Section::Legal);
+                            this->config.onSectionChange(SettingsSection::Legal);
                         }
                     },
                 },
@@ -124,19 +122,19 @@ struct SettingsView : public Sakura::Component {
             [this](const Sakura::Context& ctx) {
                 editorDiv.render(ctx, [this](const Sakura::Context& ctx) {
                     switch (config.section) {
-                        case Section::General:
+                        case SettingsSection::General:
                             general.render(ctx);
                             break;
-                        case Section::Remote:
+                        case SettingsSection::Remote:
                             remote.render(ctx);
                             break;
-                        case Section::Developer:
+                        case SettingsSection::Developer:
                             developer.render(ctx);
                             break;
-                        case Section::About:
+                        case SettingsSection::About:
                             about.render(ctx);
                             break;
-                        case Section::Legal:
+                        case SettingsSection::Legal:
                             legal.render(ctx);
                             break;
                     }

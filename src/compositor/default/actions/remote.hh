@@ -6,7 +6,6 @@
 #include "../model/state.hh"
 
 #include "jetstream/instance_remote.hh"
-#include "jetstream/render/sakura/sakura.hh"
 #include "jetstream/settings.hh"
 
 #include <tuple>
@@ -34,9 +33,9 @@ struct RemoteActions {
     Result handle(const MailStartRemote& msg) {
         const Result result = state.system.instance->remote()->create(msg.config);
         if (result == Result::SUCCESS) {
-            Sakura::Notify(Sakura::NotificationType::Success, 5000, "Remote streaming started.");
+            callbacks.notify(Sakura::ToastType::Success, 5000, "Remote streaming started.");
         } else {
-            Sakura::Notify(Sakura::NotificationType::Error, 5000, "Failed to start remote streaming.");
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to start remote streaming.");
         }
 
         return Result::SUCCESS;
@@ -44,7 +43,7 @@ struct RemoteActions {
 
     Result handle(const MailStopRemote&) {
         if (state.system.instance->remote()->destroy() == Result::SUCCESS) {
-            Sakura::Notify(Sakura::NotificationType::Info, 5000, "Remote streaming stopped.");
+            callbacks.notify(Sakura::ToastType::Info, 5000, "Remote streaming stopped.");
         }
 
         return Result::SUCCESS;
@@ -52,9 +51,9 @@ struct RemoteActions {
 
     Result handle(const MailApproveRemoteClient& msg) {
         if (state.system.instance->remote()->approveClient(msg.code) == Result::SUCCESS) {
-            Sakura::Notify(Sakura::NotificationType::Success, 3000, "Client approved.");
+            callbacks.notify(Sakura::ToastType::Success, 3000, "Client approved.");
         } else {
-            Sakura::Notify(Sakura::NotificationType::Error, 3000, "Failed to approve client.");
+            callbacks.notify(Sakura::ToastType::Error, 3000, "Failed to approve client.");
         }
 
         return Result::SUCCESS;

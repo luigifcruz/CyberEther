@@ -17,8 +17,6 @@
 namespace Jetstream {
 
 struct FlowgraphEditor : public Sakura::Component {
-    using Block = FlowgraphNode::BlockData;
-
     struct Config {
         std::string id;
         std::string contextId;
@@ -33,7 +31,7 @@ struct FlowgraphEditor : public Sakura::Component {
         std::string license;
         std::string description;
         std::string path;
-        std::vector<Block> graph;
+        std::vector<FlowgraphNode::BlockData> graph;
 
         std::function<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
         std::function<void(const std::string&)> onCopyBlock;
@@ -137,15 +135,15 @@ struct FlowgraphEditor : public Sakura::Component {
         blockPickerWasOpen = blockPickerOpen;
 
         for (const auto& block : this->config.graph) {
-            if (block.state == Jetstream::Block::State::Destroying ||
-                block.state == Jetstream::Block::State::Destroyed) {
+            if (block.state == Block::State::Destroying ||
+                block.state == Block::State::Destroyed) {
                 continue;
             }
 
             const std::string nodeId = FlowgraphNodeId(block.name);
             nodeIdToBlockName[nodeId] = block.name;
 
-            Block nodeBlock = block;
+            FlowgraphNode::BlockData nodeBlock = block;
             auto onReconfigureBlock = this->config.onReconfigureBlock;
             for (auto& input : nodeBlock.inputs) {
                 pinIdToInfo[nodeId][pinKey(FlowgraphPinId(input.port.id), true)] = {block.name, input.port.id, true};

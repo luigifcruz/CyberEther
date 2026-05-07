@@ -3,7 +3,6 @@
 
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
-#include "jetstream/render/sakura/sakura.hh"
 #include "../model/state.hh"
 
 #include "jetstream/block.hh"
@@ -81,12 +80,12 @@ struct FlowgraphActions {
 
     Result handle(const MailOpenFlowgraphPath& msg) {
         if (msg.path.empty()) {
-            Sakura::Notify(Sakura::NotificationType::Error, 5000, "Cannot open flowgraph due to empty path.");
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot open flowgraph due to empty path.");
             return Result::SUCCESS;
         }
 
         if (!std::filesystem::exists(msg.path)) {
-            Sakura::Notify(Sakura::NotificationType::Error, 5000, "The selected file does not exist.");
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected file does not exist.");
             return Result::SUCCESS;
         }
 
@@ -128,9 +127,9 @@ struct FlowgraphActions {
 
     Result handle(const MailSaveFlowgraph& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
-            Sakura::Notify(Sakura::NotificationType::Error,
-                           5000,
-                           "Cannot save flowgraph because it doesn't exist.");
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Cannot save flowgraph because it doesn't exist.");
             return Result::SUCCESS;
         }
 
@@ -157,15 +156,15 @@ struct FlowgraphActions {
 
     Result handle(const MailCloseFlowgraph& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
-            Sakura::Notify(Sakura::NotificationType::Error,
-                           5000,
-                           "Cannot close flowgraph because it doesn't exist.");
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Cannot close flowgraph because it doesn't exist.");
             return Result::SUCCESS;
         }
 
         if (!msg.force && state.flowgraph.items.at(msg.flowgraph)->path().empty()) {
             state.modal.flowgraph = msg.flowgraph;
-            state.modal.content = DefaultCompositorState::ModalState::Content::FlowgraphClose;
+            state.modal.content = ModalContent::FlowgraphClose;
             return Result::SUCCESS;
         }
 
@@ -184,13 +183,13 @@ struct FlowgraphActions {
         bool validFile = true;
         if (msg.path.empty()) {
             JST_ERROR("[FLOWGRAPH] Filename is empty.");
-            Sakura::NotifyResultClean(Result::ERROR);
+            callbacks.notifyResult(Result::ERROR, "");
             validFile = false;
         } else {
             const std::regex filenamePattern("^.+\\.ya?ml$");
             if (!std::regex_match(msg.path, filenamePattern)) {
                 JST_ERROR("[FLOWGRAPH] Invalid filename '{}'.", msg.path);
-                Sakura::NotifyResultClean(Result::ERROR);
+                callbacks.notifyResult(Result::ERROR, "");
                 validFile = false;
             }
         }
@@ -216,7 +215,7 @@ struct FlowgraphActions {
             ? Platform::SaveFile(path, callback)
             : Platform::PickFile(path, msg.extensions, callback);
         if (result != Result::SUCCESS && !Platform::IsFilePending()) {
-            Sakura::NotifyResultClean(result);
+            callbacks.notifyResult(result, "");
         }
 
         return Result::SUCCESS;
@@ -458,7 +457,7 @@ struct FlowgraphActions {
         flowgraph->blockConfig(msg.blockId, state.clipboard.config);
         state.clipboard.hasData = true;
 
-        Sakura::Notify(Sakura::NotificationType::Info, 3000, "Block copied to clipboard.");
+        callbacks.notify(Sakura::ToastType::Info, 3000, "Block copied to clipboard.");
 
         return Result::SUCCESS;
     }
@@ -470,7 +469,7 @@ struct FlowgraphActions {
         }
 
         if (!state.clipboard.hasData) {
-            Sakura::Notify(Sakura::NotificationType::Warning, 3000, "Clipboard is empty.");
+            callbacks.notify(Sakura::ToastType::Warning, 3000, "Clipboard is empty.");
             return Result::SUCCESS;
         }
 

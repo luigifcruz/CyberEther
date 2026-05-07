@@ -26,17 +26,26 @@
 
 namespace Jetstream {
 
-DefaultCompositor::DefaultCompositor()
-    : callbacks{
-          .enqueueMail = [this](Mail&& mail) {
-              enqueue(std::move(mail));
-          },
-          .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
-              Compositor::Impl::enqueue(std::move(fn), silent);
-          },
-      },
-      actions(state, callbacks),
-      presenters(state, callbacks) {}
+DefaultCompositor::DefaultCompositor() :
+    callbacks{
+        .enqueueMail = [this](Mail&& mail) {
+            enqueue(std::move(mail));
+        },
+        .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
+            Compositor::Impl::enqueue(std::move(fn), silent);
+        },
+        .notify = [](Sakura::ToastType type, I32 durationMs, const std::string& message) {
+            Sakura::PushToast(type, durationMs, message);
+        },
+        .notifyResult = [](Result result, const std::string& message) {
+            Sakura::PushToastResult(result, message);
+        },
+        .setClipboardText = [](const std::string& value) {
+            Sakura::SetClipboardText(value);
+        },
+    },
+    actions(state, callbacks),
+    presenters(state, callbacks) {}
 
 Result DefaultCompositor::create() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Creating compositor.");
@@ -156,7 +165,7 @@ Result DefaultCompositor::poll() {
         if (completed.silent) {
             continue;
         }
-        Sakura::NotifyResultClean(completed.result, completed.message);
+        callbacks.notifyResult(completed.result, completed.message);
     }
 
     // Update the state snapshots used by presenters.
@@ -204,8 +213,8 @@ void DefaultCompositor::updateWorkbenchState() {
         return;
     }
 
-    if (state.modal.content == DefaultCompositorState::ModalState::Content::FlowgraphInfo ||
-        state.modal.content == DefaultCompositorState::ModalState::Content::FlowgraphClose) {
+    if (state.modal.content == ModalContent::FlowgraphInfo ||
+        state.modal.content == ModalContent::FlowgraphClose) {
         const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
             ? state.modal.flowgraph
             : state.interface.focusedFlowgraph;
@@ -216,7 +225,7 @@ void DefaultCompositor::updateWorkbenchState() {
         return;
     }
 
-    if (state.modal.content == DefaultCompositorState::ModalState::Content::RenameBlock &&
+    if (state.modal.content == ModalContent::RenameBlock &&
         (!state.interface.focusedFlowgraph.has_value() || !state.modal.renameBlockOldName.has_value())) {
         state.modal.content.reset();
         state.modal.renameBlockOldName.reset();

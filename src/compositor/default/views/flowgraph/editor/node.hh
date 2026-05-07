@@ -87,7 +87,7 @@ struct FlowgraphNode : public Sakura::Component {
         DeviceType device = DeviceType::CPU;
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
-        Jetstream::Block::State state = Jetstream::Block::State::None;
+        Block::State state = Block::State::None;
         std::string diagnostic;
         Parser::Map config;
         std::optional<Layout> layout;
@@ -121,10 +121,10 @@ struct FlowgraphNode : public Sakura::Component {
 
     void update(Config config) {
         this->config = std::move(config);
-        const auto nodeState = this->config.block.state == Jetstream::Block::State::Errored
+        const auto nodeState = this->config.block.state == Block::State::Errored
             ? Sakura::Node::State::Error
-            : (this->config.block.state == Jetstream::Block::State::Creating ||
-               this->config.block.state == Jetstream::Block::State::Incomplete)
+            : (this->config.block.state == Block::State::Creating ||
+               this->config.block.state == Block::State::Incomplete)
                 ? Sakura::Node::State::Pending
                 : Sakura::Node::State::Normal;
         if (dimensions.x <= 0.0f) {
@@ -353,7 +353,7 @@ struct FlowgraphNode : public Sakura::Component {
                 pin.render(ctx);
             }
 
-            if (config.block.state == Jetstream::Block::State::Creating) {
+            if (config.block.state == Block::State::Creating) {
                 loadingBar.render(ctx);
                 return;
             }
