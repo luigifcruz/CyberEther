@@ -3,7 +3,7 @@ src_lst += files([
     'clipboard.cc',
     'context.cc',
     'runtime.cc',
-    'notification.cc',
+    'toast.cc',
     'surface_size.cc',
     'component.cc',
     'vstack.cc',

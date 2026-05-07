@@ -6,7 +6,7 @@
 
 namespace Jetstream::Sakura {
 
-enum class NotificationType {
+enum class ToastType {
     Info,
     Success,
     Warning,
@@ -14,7 +14,7 @@ enum class NotificationType {
 };
 
 std::string CleanUserMessage(std::string message);
-void Notify(NotificationType type, I32 durationMs, const std::string& message);
-void NotifyResultClean(Result value, const std::string& message = "");
+void PushToast(ToastType type, I32 durationMs, const std::string& message);
+void PushToastResult(Result value, const std::string& message = "");
 
 }  // namespace Jetstream::Sakura

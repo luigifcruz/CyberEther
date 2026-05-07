@@ -20,7 +20,6 @@
 #include <jetstream/render/sakura/modal.hh>
 #include <jetstream/render/sakura/navigation_item.hh>
 #include <jetstream/render/sakura/navigation_list.hh>
-#include <jetstream/render/sakura/notification.hh>
 #include <jetstream/render/sakura/notifications.hh>
 #include <jetstream/render/sakura/overlay.hh>
 #include <jetstream/render/sakura/progress_bar.hh>
@@ -38,6 +37,7 @@
 #include <jetstream/render/sakura/text.hh>
 #include <jetstream/render/sakura/text_area.hh>
 #include <jetstream/render/sakura/text_input.hh>
+#include <jetstream/render/sakura/toast.hh>
 #include <jetstream/render/sakura/tooltip.hh>
 #include <jetstream/render/sakura/vstack.hh>
 #include <jetstream/render/sakura/window.hh>
