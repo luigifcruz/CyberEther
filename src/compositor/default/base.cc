@@ -4,13 +4,11 @@
 #include "presenters/base.hh"
 #include "themes.hh"
 
-#include "resources/flowgraphs/base.hh"
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
 #include "resources/fonts/compressed_fa.hh"
 
 #include "jetstream/platform.hh"
-#include "jetstream/registry.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/settings.hh"
@@ -91,20 +89,6 @@ Result DefaultCompositor::create() {
     // Setup theme
 
     state.sakura.colorMap = themes.at(state.sakura.themeKey);
-
-    // Load example flowgraphs.
-
-    std::vector<Registry::FlowgraphRegistration> manifest;
-    const auto res = Resources::GetDefaultManifest(manifest);
-    if (res == Result::SUCCESS) {
-        for (const auto& entry : manifest) {
-            if (Registry::RegisterFlowgraph(entry.key, entry) != Result::SUCCESS) {
-                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to register flowgraph '{}'.", entry.key);
-            }
-        }
-    } else {
-        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to load default flowgraph manifest.");
-    }
 
     // Setup Sakura runtime.
 

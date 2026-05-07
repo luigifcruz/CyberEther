@@ -149,6 +149,17 @@ Result RegisterBlockType() {
     );
 }
 
+inline Result RegisterExampleFlowgraph(const std::string& key,
+                                       const std::string& title,
+                                       const std::string& summary,
+                                       const std::string& description,
+                                       const std::string& content) {
+    return ::Jetstream::Registry::RegisterFlowgraph(
+        key,
+        {key, title, summary, description, content}
+    );
+}
+
 }  // namespace Jetstream::detail
 
 #define JST_DETAIL_CONCAT_IMPL(x, y) x##y
@@ -175,5 +186,17 @@ Result RegisterBlockType() {
 
 #define JST_REGISTER_BLOCK(impl_type) \
     JST_DETAIL_REGISTER_BLOCK(impl_type, __COUNTER__)
+
+#define JST_DETAIL_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val, id) \
+    namespace { \
+    [[maybe_unused]] const auto JST_DETAIL_CONCAT(__jst_register_example_, id) = \
+        ::Jetstream::detail::MakeStaticRegistrar([]() { \
+            return ::Jetstream::detail::RegisterExampleFlowgraph( \
+                key_val, title_val, summary_val, description_val, content_val); \
+        }); \
+    }
+
+#define JST_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val) \
+    JST_DETAIL_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val, __COUNTER__)
 
 #endif  // JETSTREAM_REGISTRY_HH
