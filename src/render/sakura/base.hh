@@ -67,14 +67,6 @@ inline MarkdownConfigHandle ToMarkdownConfigHandle(const ImGui::MarkdownConfig* 
     return {config};
 }
 
-inline ImNodesContext* NativeNodeContext(const NodeContextHandle handle) {
-    return static_cast<ImNodesContext*>(handle.native);
-}
-
-inline NodeContextHandle ToNodeContextHandle(ImNodesContext* context) {
-    return {context};
-}
-
 inline ImVec4 ImColor(const Context& ctx, const std::string& key, const ImVec4& fallback) {
     return ToImVec4(Sakura::ResolveColor(ctx, key, ToColor(fallback)));
 }

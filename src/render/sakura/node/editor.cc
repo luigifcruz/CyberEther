@@ -5,7 +5,56 @@
 namespace Jetstream::Sakura {
 
 struct NodeEditor::Impl {
+    Impl() {
+        nodeContext = ImNodes::CreateContext();
+    }
+
+    ~Impl() {
+        if (!nodeContext) {
+            return;
+        }
+        if (ImNodes::GetCurrentContext() == nodeContext) {
+            ImNodes::SetCurrentContext(nullptr);
+        }
+        ImNodes::DestroyContext(nodeContext);
+    }
+
+    void applyImNodesStyle(const Context& ctx) const {
+        const auto color = [&](const std::string& key) {
+            return ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, key));
+        };
+
+        auto& colors = ImNodes::GetStyle().Colors;
+        colors[ImNodesCol_NodeBackground]         = color("node_background");
+        colors[ImNodesCol_NodeBackgroundHovered]  = color("node_background");
+        colors[ImNodesCol_NodeBackgroundSelected] = color("node_background");
+        colors[ImNodesCol_NodeOutline]            = color("node_outline");
+        colors[ImNodesCol_TitleBar]               = color("node_title_bar");
+        colors[ImNodesCol_TitleBarHovered]        = color("node_title_bar");
+        colors[ImNodesCol_TitleBarSelected]       = color("node_title_bar");
+        colors[ImNodesCol_Pin]                    = color("node_pin");
+        colors[ImNodesCol_PinHovered]             = color("node_pin");
+        colors[ImNodesCol_Link]                   = color("node_link");
+        colors[ImNodesCol_LinkHovered]            = color("node_link");
+        colors[ImNodesCol_LinkSelected]           = color("node_link");
+        colors[ImNodesCol_GridLine]               = color("grid_line");
+        colors[ImNodesCol_GridBackground]         = color("grid_background");
+
+        const F32 scale = ScalingFactor(ctx);
+        auto& style = ImNodes::GetStyle();
+        style.NodePadding               = ImVec2(8.0f * scale, 8.0f * scale);
+        style.PinCircleRadius           = 4.0f  * scale;
+        style.GridSpacing               = 23.0f * scale;
+        style.NodeBorderThickness       = 2.0f  * scale;
+        style.NodeCornerRounding        = 12.0f * scale;
+        style.LinkThickness             = 1.5f  * scale;
+        style.PinLineThickness          = 1.0f  * scale;
+        style.LinkLineSegmentsPerLength = 0.2f  / scale;
+        style.MiniMapOffset             = ImVec2(8.0f * scale, 8.0f * scale);
+    }
+
     Config config;
+    ImNodesContext* nodeContext = nullptr;
 };
 
 NodeEditor::NodeEditor() {
@@ -23,14 +72,13 @@ bool NodeEditor::update(Config config) {
 
 void NodeEditor::render(const Context& ctx, Child child) const {
     const auto& config = this->impl->config;
-
-    ImNodesContext* nodeContext = Private::NativeNodeContext(ctx.nodeContext(config.contextId));
-    if (!nodeContext) {
+    if (!this->impl->nodeContext) {
         return;
     }
 
     const auto previousContext = ImNodes::GetCurrentContext();
-    ImNodes::SetCurrentContext(nodeContext);
+    ImNodes::SetCurrentContext(this->impl->nodeContext);
+    this->impl->applyImNodesStyle(ctx);
     Private::ClearNodeEditorRegistries();
     ImGui::PushID(config.id.c_str());
     ImGui::PushFont(ImGui::GetFont(), ImGui::GetStyle().FontSizeBase * config.fontScale);

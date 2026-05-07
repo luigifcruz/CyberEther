@@ -35,7 +35,6 @@ struct FlowgraphEditorPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         FlowgraphEditor::Config config{
             .id = flowgraphId,
-            .contextId = flowgraphId,
             .clipboardHasData = context.state.clipboard.hasData,
             .debugRuntimeMetricsEnabled = context.state.debug.runtimeMetricsEnabled,
             .blockOptions = catalog.buildBlockCatalog(),

@@ -5,10 +5,6 @@
 namespace Jetstream::Sakura {
 
 struct Runtime::Impl {
-    ~Impl() {
-        destroyNodeContexts();
-    }
-
     void create(FontConfig fontConfig) {
         this->fontConfig = fontConfig;
         loadFonts();
@@ -18,7 +14,6 @@ struct Runtime::Impl {
     void update(Config config) {
         this->config = std::move(config);
         applyImGuiStyle();
-        applyImNodesStyle();
         setupMarkdown();
     }
 
@@ -28,40 +23,7 @@ struct Runtime::Impl {
             .render = config.render,
             .fonts = fonts,
             .markdownConfig = Private::ToMarkdownConfigHandle(&markdownConfig),
-            .nodeContextResolver = [this](const std::string& id) {
-                return Private::ToNodeContextHandle(nodeContext(id));
-            },
         };
-    }
-
-    void syncNodeContexts(const std::vector<std::string>& ids) {
-        for (const auto& id : ids) {
-            if (!nodeContexts.contains(id)) {
-                nodeContexts[id] = ImNodes::CreateContext();
-                applyImNodesStyle(nodeContexts[id]);
-            }
-        }
-
-        if (nodeContexts.size() != ids.size()) {
-            std::vector<std::string> staleIds;
-            for (const auto& [id, _] : nodeContexts) {
-                if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
-                    staleIds.push_back(id);
-                }
-            }
-            for (const auto& id : staleIds) {
-                ImNodes::DestroyContext(nodeContexts[id]);
-                nodeContexts.erase(id);
-            }
-        }
-    }
-
-    ImNodesContext* nodeContext(const std::string& id) const {
-        const auto it = nodeContexts.find(id);
-        if (it == nodeContexts.end()) {
-            return nullptr;
-        }
-        return it->second;
     }
 
     const Palette& activePalette() const {
@@ -336,63 +298,10 @@ struct Runtime::Impl {
         style.ScaleAllSizes(scalingFactor());
     }
 
-    void applyImNodesStyle() const {
-        for (const auto& [_, context] : nodeContexts) {
-            applyImNodesStyle(context);
-        }
-    }
-
-    void applyImNodesStyle(ImNodesContext* context) const {
-        if (!config.palette || !context) {
-            return;
-        }
-
-        const auto previousContext = ImNodes::GetCurrentContext();
-        ImNodes::SetCurrentContext(context);
-
-        auto& colors = ImNodes::GetStyle().Colors;
-        colors[ImNodesCol_NodeBackground]         = ImGui::ColorConvertFloat4ToU32(color("node_background"));
-        colors[ImNodesCol_NodeBackgroundHovered]  = ImGui::ColorConvertFloat4ToU32(color("node_background"));
-        colors[ImNodesCol_NodeBackgroundSelected] = ImGui::ColorConvertFloat4ToU32(color("node_background"));
-        colors[ImNodesCol_NodeOutline]            = ImGui::ColorConvertFloat4ToU32(color("node_outline"));
-        colors[ImNodesCol_TitleBar]               = ImGui::ColorConvertFloat4ToU32(color("node_title_bar"));
-        colors[ImNodesCol_TitleBarHovered]        = ImGui::ColorConvertFloat4ToU32(color("node_title_bar"));
-        colors[ImNodesCol_TitleBarSelected]       = ImGui::ColorConvertFloat4ToU32(color("node_title_bar"));
-        colors[ImNodesCol_Pin]                    = ImGui::ColorConvertFloat4ToU32(color("node_pin"));
-        colors[ImNodesCol_PinHovered]             = ImGui::ColorConvertFloat4ToU32(color("node_pin"));
-        colors[ImNodesCol_Link]                   = ImGui::ColorConvertFloat4ToU32(color("node_link"));
-        colors[ImNodesCol_LinkHovered]            = ImGui::ColorConvertFloat4ToU32(color("node_link"));
-        colors[ImNodesCol_LinkSelected]           = ImGui::ColorConvertFloat4ToU32(color("node_link"));
-        colors[ImNodesCol_GridLine]               = ImGui::ColorConvertFloat4ToU32(color("grid_line"));
-        colors[ImNodesCol_GridBackground]         = ImGui::ColorConvertFloat4ToU32(color("grid_background"));
-
-        const F32 scale = scalingFactor();
-        auto& style = ImNodes::GetStyle();
-        style.NodePadding               = ImVec2(8.0f * scale,  8.0f * scale);
-        style.PinCircleRadius           = 4.0f  * scale;
-        style.GridSpacing               = 23.0f * scale;
-        style.NodeBorderThickness       = 2.0f  * scale;
-        style.NodeCornerRounding        = 12.0f * scale;
-        style.LinkThickness             = 1.5f  * scale;
-        style.PinLineThickness          = 1.0f  * scale;
-        style.LinkLineSegmentsPerLength = 0.2f  / scale;
-        style.MiniMapOffset             = ImVec2(8.0f * scale, 8.0f * scale);
-
-        ImNodes::SetCurrentContext(previousContext);
-    }
-
-    void destroyNodeContexts() {
-        for (const auto& [_, context] : nodeContexts) {
-            ImNodes::DestroyContext(context);
-        }
-        nodeContexts.clear();
-    }
-
     FontConfig fontConfig;
     Config config;
     Fonts fonts;
     ImGui::MarkdownConfig markdownConfig;
-    std::unordered_map<std::string, ImNodesContext*> nodeContexts;
 };
 
 Runtime::Runtime() {
@@ -417,10 +326,6 @@ void Runtime::update(Config config) {
 
 Context Runtime::context() {
     return this->impl->context();
-}
-
-void Runtime::syncNodeContexts(const std::vector<std::string>& ids) {
-    this->impl->syncNodeContexts(ids);
 }
 
 }  // namespace Jetstream::Sakura

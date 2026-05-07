@@ -4,8 +4,6 @@
 #include <jetstream/render/sakura/context.hh>
 
 #include <memory>
-#include <string>
-#include <vector>
 
 namespace Jetstream::Render {
 
@@ -47,7 +45,6 @@ struct Runtime {
     void create(FontConfig fontConfig);
     void update(Config config);
     Context context();
-    void syncNodeContexts(const std::vector<std::string>& ids);
 
  private:
     struct Impl;

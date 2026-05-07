@@ -19,7 +19,6 @@ namespace Jetstream {
 struct FlowgraphEditor : public Sakura::Component {
     struct Config {
         std::string id;
-        std::string contextId;
         bool clipboardHasData = false;
         bool debugRuntimeMetricsEnabled = false;
         bool openBlockPicker = false;
@@ -58,7 +57,6 @@ struct FlowgraphEditor : public Sakura::Component {
 
         nodeEditor.update({
             .id = this->config.id + "editor",
-            .contextId = this->config.contextId,
             .pasteEnabled = this->config.clipboardHasData,
             .onEditorContextMenu = [this](Extent2D<F32> gridPosition, Extent2D<F32>) {
                 flowgraphContextMenuGridPos = gridPosition;
@@ -283,10 +281,6 @@ struct FlowgraphEditor : public Sakura::Component {
     }
 
     void render(const Sakura::Context& ctx) {
-        if (!ctx.nodeContext(config.contextId).native) {
-            return;
-        }
-
         nodeEditor.render(ctx, [this](const Sakura::Context& ctx) {
             for (const auto& nodeViewId : nodeViewIds) {
                 nodeViews.at(nodeViewId).render(ctx);

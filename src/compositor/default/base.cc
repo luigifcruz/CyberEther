@@ -48,24 +48,44 @@ DefaultCompositor::DefaultCompositor() :
 Result DefaultCompositor::create() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Creating compositor.");
 
+    // Bind compositor-owned runtime services.
+
     state.system.instance = instance;
     state.system.render = render;
     state.system.viewport = viewport;
 
+    // Load persisted application settings.
+
     Settings settings;
     JST_CHECK(Settings::Get(settings));
+
+    // Restore Sakura theme state.
 
     state.sakura.themeKey = themes.contains(settings.interface.themeKey)
         ? settings.interface.themeKey
         : "Dark";
+    state.sakura.colorMap = themes.at(state.sakura.themeKey);
+
+    // Restore graphics preferences.
+
     state.graphics.device = settings.graphics.device;
     state.graphics.scale = settings.graphics.scale;
     state.graphics.framerate = settings.graphics.framerate;
+
+    // Restore interface preferences.
+
     state.interface.infoPanelEnabled = settings.interface.infoPanelEnabled;
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
+
+    // Restore debug preferences.
+
     state.debug.logLevel = settings.developer.logLevel;
     state.debug.latencyEnabled = settings.developer.latencyEnabled;
     state.debug.runtimeMetricsEnabled = settings.developer.runtimeMetricsEnabled;
+    JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
+
+    // Restore remote streaming preferences.
+
     state.remote.brokerUrl = settings.remote.brokerUrl;
     state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
     state.remote.framerate = static_cast<U32>(settings.remote.framerate);
@@ -84,26 +104,32 @@ Result DefaultCompositor::create() {
                  settings.remote.encoder);
     }
 
-    JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
-
-    // Setup theme
-
-    state.sakura.colorMap = themes.at(state.sakura.themeKey);
-
-    // Setup Sakura runtime.
+    // Initialize Sakura rendering resources.
 
     state.sakura.runtime.update({
         .palette = &state.sakura.colorMap,
         .render = state.system.render.get(),
     });
     state.sakura.runtime.create({
-        .body = {.data = jbmm_compressed_data, .size = jbmm_compressed_size},
-        .bold = {.data = jbmb_compressed_data, .size = jbmb_compressed_size},
-        .iconRegular = {.data = far_compressed_data, .size = far_compressed_size},
-        .iconSolid = {.data = fas_compressed_data, .size = fas_compressed_size},
+        .body = {
+            .data = jbmm_compressed_data,
+            .size = jbmm_compressed_size,
+        },
+        .bold = {
+            .data = jbmb_compressed_data,
+            .size = jbmb_compressed_size,
+        },
+        .iconRegular = {
+            .data = far_compressed_data,
+            .size = far_compressed_size,
+        },
+        .iconSolid = {
+            .data = fas_compressed_data,
+            .size = fas_compressed_size,
+        },
     });
 
-    // Prime the workbench without polling the instance before it is created.
+    // Prime the initial workbench view state.
 
     workbench.update(presenters.build());
 
@@ -123,14 +149,6 @@ Result DefaultCompositor::poll() {
     // Refresh the action-visible flowgraph list for this poll tick.
 
     JST_CHECK(state.system.instance->flowgraphList(state.flowgraph.items));
-
-    // Snapshot flowgraph IDs for render-side node context sync.
-
-    flowgraphIds.clear();
-    flowgraphIds.reserve(state.flowgraph.items.size());
-    for (const auto& [flowgraphId, _] : state.flowgraph.items) {
-        flowgraphIds.push_back(flowgraphId);
-    }
 
     // Dispatch the mail tree after snapshots are refreshed.
 
@@ -167,7 +185,6 @@ Result DefaultCompositor::poll() {
 }
 
 Result DefaultCompositor::present() {
-    state.sakura.runtime.syncNodeContexts(flowgraphIds);
     state.sakura.runtime.update({
         .palette = &state.sakura.colorMap,
         .render = state.system.render.get(),

@@ -11,7 +11,6 @@
 
 #include <deque>
 #include <string>
-#include <vector>
 
 namespace Jetstream {
 
@@ -32,7 +31,6 @@ class DefaultCompositor : public Compositor::Impl {
     DefaultPresenterRegistry presenters;
 
     std::deque<Mail> pendingMail;
-    std::vector<std::string> flowgraphIds;
     WorkbenchView workbench;
 
     void enqueue(Mail&& mail);

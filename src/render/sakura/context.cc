@@ -4,10 +4,6 @@
 
 namespace Jetstream::Sakura {
 
-NodeContextHandle Context::nodeContext(const std::string& id) const {
-    return nodeContextResolver ? nodeContextResolver(id) : NodeContextHandle{};
-}
-
 const Render::Window& RenderWindow(const Context& ctx) {
     if (!ctx.render) {
         JST_FATAL("Sakura::Context is missing render window.");

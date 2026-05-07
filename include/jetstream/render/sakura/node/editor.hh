@@ -18,7 +18,6 @@ struct NodeEditor : public Component {
 
     struct Config {
         std::string id;
-        std::string contextId;
         F32 fontScale = 0.90f;
         F32 childRounding = 12.0f;
         bool pasteEnabled = false;

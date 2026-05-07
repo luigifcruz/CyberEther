@@ -4,7 +4,6 @@
 #include <jetstream/types.hh>
 
 #include <functional>
-#include <string>
 
 namespace Jetstream::Render {
 
@@ -29,18 +28,11 @@ struct MarkdownConfigHandle {
     const void* native = nullptr;
 };
 
-struct NodeContextHandle {
-    void* native = nullptr;
-};
-
 struct Context {
     std::reference_wrapper<const Palette> palette = EmptyPalette();
     const Render::Window* render = nullptr;
     Fonts fonts;
     MarkdownConfigHandle markdownConfig;
-    std::function<NodeContextHandle(const std::string&)> nodeContextResolver;
-
-    NodeContextHandle nodeContext(const std::string& id) const;
 };
 
 const Render::Window& RenderWindow(const Context& ctx);
