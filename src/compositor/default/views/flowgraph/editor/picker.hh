@@ -119,18 +119,18 @@ struct FlowgraphBlockPicker : public Sakura::Component {
             .padding = 0.0f,
             .rounding = 0.0f,
             .border = false,
-            .colorKey = "transparent",
             .scrollbar = true,
             .mouseScroll = true,
+            .colorKey = "transparent",
         });
 
         rightPanel.update({
             .id = this->config.id + ":right",
             .padding = 0.0f,
             .border = false,
-            .colorKey = "transparent",
             .scrollbar = true,
             .mouseScroll = true,
+            .colorKey = "transparent",
         });
 
         documentationPanel.update({
@@ -138,10 +138,10 @@ struct FlowgraphBlockPicker : public Sakura::Component {
             .padding = 10.0f,
             .rounding = 10.0f,
             .border = true,
-            .borderColorKey = "border",
-            .colorKey = "card",
             .scrollbar = false,
             .mouseScroll = false,
+            .colorKey = "card",
+            .borderColorKey = "border",
         });
 
         rightColumnLayout.update({
@@ -153,10 +153,10 @@ struct FlowgraphBlockPicker : public Sakura::Component {
             .padding = 10.0f,
             .rounding = 10.0f,
             .border = true,
-            .borderColorKey = "border",
-            .colorKey = "card",
             .scrollbar = false,
             .mouseScroll = false,
+            .colorKey = "card",
+            .borderColorKey = "border",
         });
         overviewLayout.update({.id = this->config.id + ":overview-layout", .spacing = 0.0f});
         deviceRow.update({.id = this->config.id + ":devices", .spacing = 2.0f});
