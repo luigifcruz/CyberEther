@@ -89,6 +89,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("writer")->state() == Block::State::Created);
 
+    REQUIRE(flowgraph->blockDestroy("writer", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
+
     Cleanup(inputPath);
     Cleanup(outputPath);
 }
@@ -129,6 +132,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     update["recording"] = std::string("false");
     REQUIRE(flowgraph->blockReconfigure("writer", update) == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("writer")->state() == Block::State::Created);
+
+    REQUIRE(flowgraph->blockDestroy("writer", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
 
     Cleanup(inputPath);
     Cleanup(outputPath);
