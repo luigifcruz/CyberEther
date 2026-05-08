@@ -18,12 +18,12 @@ namespace Jetstream {
 struct SettingsView : public Sakura::Component {
     struct Config {
         SettingsSection section = SettingsSection::General;
-        std::function<void(SettingsSection)> onSectionChange;
         GeneralSettingsPanel::Config general;
         RemoteSettingsPanel::Config remote;
         DeveloperSettingsPanel::Config developer;
         AboutSettingsPanel::Config about;
         LegalSettingsPanel::Config legal;
+        std::function<void(SettingsSection)> onSectionChange;
     };
 
     void update(Config config) {

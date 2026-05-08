@@ -261,14 +261,14 @@ struct FlowgraphNode : public Sakura::Component {
             const auto texture = surface.texture;
             attachedSurfaces[i].update({
                 .id = surface.id,
-                .onResolveTexture = [texture]() {
-                    return texture ? texture->raw() : 0;
-                },
                 .size = {0.0f, 0.0f},
                 .rounding = surface.rounding,
                 .detachOverlay = true,
                 .aspectRatioSize = surface.aspectRatioSize,
                 .aspectLock = Sakura::SurfaceView::AspectLock::X,
+                .onResolveTexture = [texture]() {
+                    return texture ? texture->raw() : 0;
+                },
                 .onSize = surface.onAttachedSize,
                 .onDetach = [this, i]() {
                     if (i < detachedSurfaceStates.size()) {

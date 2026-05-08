@@ -16,8 +16,8 @@ struct FlowgraphDetachedSurface : public Sakura::Component {
         std::string id;
         std::string title;
         std::string name;
-        std::function<U64()> onResolveTexture;
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
+        std::function<U64()> onResolveTexture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
         std::function<void(MouseEvent)> onMouse;
         std::function<void()> onClose;
@@ -33,8 +33,8 @@ struct FlowgraphDetachedSurface : public Sakura::Component {
         });
         surface.update({
             .id = this->config.id + ":surface",
-            .onResolveTexture = this->config.onResolveTexture,
             .size = {0.0f, 0.0f},
+            .onResolveTexture = this->config.onResolveTexture,
             .onSize = this->config.onSize,
             .onMouse = this->config.onMouse,
         });

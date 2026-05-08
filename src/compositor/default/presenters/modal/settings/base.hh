@@ -33,14 +33,14 @@ struct SettingsModalPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         SettingsView::Config config;
         config.section = context.state.settings.section;
-        config.onSectionChange = [enqueue](SettingsSection section) {
-            enqueue(MailSetSettingsSection{.section = section});
-        };
         config.general = general.build();
         config.remote = remote.build();
         config.developer = developer.build();
         config.about = about.build();
         config.legal = legal.build();
+        config.onSectionChange = [enqueue](SettingsSection section) {
+            enqueue(MailSetSettingsSection{.section = section});
+        };
         return config;
     }
 };

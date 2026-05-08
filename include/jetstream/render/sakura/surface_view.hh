@@ -24,12 +24,12 @@ struct SurfaceView : public Component {
     struct Config {
         std::string id;
         U64 texture = 0;
-        std::function<U64()> onResolveTexture;
         Extent2D<F32> size = {0.0f, 0.0f};
         F32 rounding = 0.0f;
         bool detachOverlay = false;
         std::optional<Extent2D<F32>> aspectRatioSize;
         AspectLock aspectLock = AspectLock::None;
+        std::function<U64()> onResolveTexture;
         std::function<void(const SurfaceResize&)> onSize;
         std::function<void(MouseEvent)> onMouse;
         std::function<void()> onDetach;
