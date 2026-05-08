@@ -29,6 +29,8 @@ struct FlowgraphDetachedSurface : public Sakura::Component {
             .id = this->config.id,
             .title = this->config.title + " (" + this->config.name + ")",
             .size = this->config.logicalSize,
+            .padding = Extent2D<F32>{4.0f, 4.0f},
+            .backgroundColor = Sakura::Color{0.0f, 0.0f, 0.0f, 1.0f},
             .onClose = this->config.onClose,
         });
         surface.update({
