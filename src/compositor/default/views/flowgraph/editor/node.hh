@@ -158,7 +158,13 @@ struct FlowgraphNode : public Sakura::Component {
 
         if (hasSurfaces) {
             if (dimensions.y <= 0.0f) {
-                dimensions.y = block.surfaces.front().logicalSize.y;
+                const auto& surface = block.surfaces.front();
+                if (surface.aspectRatioSize.has_value()) {
+                    dimensions.x = surface.aspectRatioSize->x;
+                    dimensions.y = surface.aspectRatioSize->y;
+                } else {
+                    dimensions.y = surface.logicalSize.y;
+                }
             }
         } else if (!isPending) {
             dimensions.y = 0.0f;
@@ -178,10 +184,10 @@ struct FlowgraphNode : public Sakura::Component {
             .onContextMenu = [this]() {
                 menuOpen = true;
             },
-            .onGeometryChange = [this, allSurfacesDetached](Extent2D<F32> gridPosition,
-                                                            Extent2D<F32> screenPosition,
-                                                            Extent2D<F32> dimensions,
-                                                            Extent2D<F32> contentDimensions) {
+            .onGeometryChange = [this, hasSurfaces, allSurfacesDetached](Extent2D<F32> gridPosition,
+                                                                         Extent2D<F32> screenPosition,
+                                                                         Extent2D<F32> dimensions,
+                                                                         Extent2D<F32> contentDimensions) {
                 geometry = {
                     .gridPosition = gridPosition,
                     .screenPosition = screenPosition,
@@ -189,7 +195,7 @@ struct FlowgraphNode : public Sakura::Component {
                 };
 
                 this->dimensions.x = contentDimensions.x;
-                if (!allSurfacesDetached) {
+                if (hasSurfaces && !allSurfacesDetached) {
                     this->dimensions.y = contentDimensions.y;
                 }
                 if (this->config.onLayout) {

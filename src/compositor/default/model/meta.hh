@@ -15,8 +15,8 @@ struct NodeMeta {
 };
 
 struct SurfaceMeta {
-    U64 attachedWidth = 512;
-    U64 attachedHeight = 512;
+    U64 attachedWidth = 256;
+    U64 attachedHeight = 256;
     U64 detachedWidth = 512;
     U64 detachedHeight = 512;
 
