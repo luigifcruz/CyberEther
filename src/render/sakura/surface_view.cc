@@ -2,10 +2,73 @@
 
 #include "base.hh"
 
+#include <cmath>
+
 namespace Jetstream::Sakura {
+
+namespace {
+
+bool SameSurfaceResize(const SurfaceResize& lhs, const SurfaceResize& rhs) {
+    return lhs.logicalSize.x == rhs.logicalSize.x &&
+           lhs.logicalSize.y == rhs.logicalSize.y &&
+           lhs.framebufferSize.x == rhs.framebufferSize.x &&
+           lhs.framebufferSize.y == rhs.framebufferSize.y &&
+           std::abs(lhs.scale - rhs.scale) <= 1e-6f;
+}
+
+Extent2D<F32> ResolveSurfaceLogicalDrawSize(const SurfaceView::Config& config,
+                                            const Extent2D<F32>& available) {
+    Extent2D<F32> size = config.size;
+    if (size.x <= 0.0f) {
+        size.x = available.x;
+    }
+    if (size.y <= 0.0f) {
+        size.y = available.y;
+    }
+    if (size.x <= 0.0f || size.y <= 0.0f) {
+        return {0.0f, 0.0f};
+    }
+
+    if (!config.aspectRatioSize.has_value() ||
+        config.aspectRatioSize->x <= 0.0f ||
+        config.aspectRatioSize->y <= 0.0f ||
+        config.aspectLock == SurfaceView::AspectLock::None) {
+        return size;
+    }
+
+    const auto& aspect = *config.aspectRatioSize;
+    switch (config.aspectLock) {
+        case SurfaceView::AspectLock::X:
+            size.y = size.x * aspect.y / aspect.x;
+            break;
+        case SurfaceView::AspectLock::Y:
+            size.x = size.y * aspect.x / aspect.y;
+            break;
+        case SurfaceView::AspectLock::XY: {
+            const F32 heightFromWidth = size.x * aspect.y / aspect.x;
+            if (heightFromWidth <= size.y) {
+                size.y = heightFromWidth;
+            } else {
+                size.x = size.y * aspect.x / aspect.y;
+            }
+            break;
+        }
+        case SurfaceView::AspectLock::None:
+            break;
+    }
+
+    if (size.x <= 0.0f || size.y <= 0.0f) {
+        return {0.0f, 0.0f};
+    }
+    return size;
+}
+
+}  // namespace
 
 struct SurfaceView::Impl {
     Config config;
+    std::optional<SurfaceResize> lastEmittedResize;
+    int lastRenderedFrame = -1;
 };
 
 SurfaceView::SurfaceView() {
@@ -17,12 +80,20 @@ SurfaceView::SurfaceView(SurfaceView&&) noexcept = default;
 SurfaceView& SurfaceView::operator=(SurfaceView&&) noexcept = default;
 
 bool SurfaceView::update(Config config) {
+    if (this->impl->config.id != config.id) {
+        this->impl->lastEmittedResize.reset();
+    }
     this->impl->config = std::move(config);
     return true;
 }
 
 void SurfaceView::render(const Context& ctx) const {
-    const auto& config = this->impl->config;
+    const auto& config = impl->config;
+    const int frame = ImGui::GetFrameCount();
+    if (impl->lastRenderedFrame >= 0 && frame > impl->lastRenderedFrame + 1) {
+        impl->lastEmittedResize.reset();
+    }
+    impl->lastRenderedFrame = frame;
 
     struct RenderState {
         bool hovered = false;
@@ -37,37 +108,18 @@ void SurfaceView::render(const Context& ctx) const {
     };
 
     RenderState state;
-    Extent2D<F32> displaySize = Scale(ctx, config.size);
-    const Extent2D<F32> available = Private::ToExtent2D(ImGui::GetContentRegionAvail());
-    if (displaySize.x <= 0.0f) {
-        displaySize.x = available.x;
-    }
-    if (displaySize.y <= 0.0f) {
-        displaySize.y = available.y;
-    }
-
-    const Extent2D<F32> availableLogicalSize = Unscale(ctx, displaySize);
-    Extent2D<F32> size = availableLogicalSize;
-    if (config.aspectRatioSize.has_value() && config.aspectRatioSize->x > 0.0f && config.aspectRatioSize->y > 0.0f) {
-        const F32 aspectHeight = size.x * config.aspectRatioSize->y / config.aspectRatioSize->x;
-        if (aspectHeight > 0.0f && aspectHeight < size.y) {
-            size.y = aspectHeight;
-        }
-    }
-    if (size.x <= 0.0f || size.y <= 0.0f) {
+    const Extent2D<F32> available = Unscale(ctx, Private::ToExtent2D(ImGui::GetContentRegionAvail()));
+    const Extent2D<F32> logicalDrawSize = ResolveSurfaceLogicalDrawSize(config, available);
+    if (logicalDrawSize.x <= 0.0f || logicalDrawSize.y <= 0.0f) {
         return;
     }
-    const auto resolvedResize = ResolveSurfaceResize(ctx, size);
-    if (config.onSize && resolvedResize.has_value()) {
-        config.onSize({
-            .availableLogicalSize = availableLogicalSize,
-            .resolvedLogicalSize = size,
-            .logicalSize = resolvedResize->logicalSize,
-            .framebufferSize = resolvedResize->framebufferSize,
-            .scale = resolvedResize->scale,
-        });
+    const auto resolvedResize = ResolveSurfaceResize(ctx, logicalDrawSize);
+    if (resolvedResize.has_value() && config.onSize &&
+        (!impl->lastEmittedResize.has_value() || !SameSurfaceResize(*impl->lastEmittedResize, *resolvedResize))) {
+        impl->lastEmittedResize = *resolvedResize;
+        config.onSize(*resolvedResize);
     }
-    displaySize = Scale(ctx, size);
+    const Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
 
     const U64 texture = config.onResolveTexture ? config.onResolveTexture() : config.texture;
     if (texture == 0) {

@@ -247,17 +247,24 @@ struct MailSurfaceMouse {
     MouseEvent event;
 };
 
+enum class SurfacePlacement {
+    Attached,
+    Detached,
+};
+
+struct SurfaceResizePayload {
+    Extent2D<U64> logicalSize = {0, 0};
+    Extent2D<U64> framebufferSize = {0, 0};
+    F32 scale = 1.0f;
+};
+
 struct MailResizeSurface {
     std::shared_ptr<Module::Surface> surface;
     std::string flowgraph;
     std::string block;
     std::string metaKey;
-    U64 width = 0;
-    U64 height = 0;
-    F32 scale = 1.0f;
-    bool detachedSurface = false;
-    std::optional<Extent2D<U64>> attached;
-    std::optional<Extent2D<U64>> detached;
+    SurfacePlacement placement = SurfacePlacement::Attached;
+    SurfaceResizePayload resize;
 };
 
 using Mail = std::variant<MailNewFlowgraph,

@@ -20,11 +20,10 @@ NodeMarkdown::NodeMarkdown(NodeMarkdown&&) noexcept = default;
 NodeMarkdown& NodeMarkdown::operator=(NodeMarkdown&&) noexcept = default;
 
 bool NodeMarkdown::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.markdown.update({
-        .id = impl.config.id,
-        .value = impl.config.value,
+    impl->config = std::move(config);
+    impl->markdown.update({
+        .id = impl->config.id,
+        .value = impl->config.value,
     });
     return true;
 }

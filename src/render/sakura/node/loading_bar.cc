@@ -28,11 +28,10 @@ bool NodeLoadingBar::update(Config config) {
 }
 
 void NodeLoadingBar::render(const Context& ctx) const {
-    const auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     ImGui::PushID(config.id.c_str());
-    impl.spacing.render(ctx);
+    impl->spacing.render(ctx);
 
     const F32 width = ImGui::GetContentRegionAvail().x;
     const F32 height = Scale(ctx, config.height);
@@ -58,7 +57,7 @@ void NodeLoadingBar::render(const Context& ctx) const {
         }
     }
     ImGui::Dummy(ImVec2(width, height));
-    impl.spacing.render(ctx);
+    impl->spacing.render(ctx);
     ImGui::PopID();
 }
 

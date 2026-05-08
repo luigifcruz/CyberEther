@@ -23,20 +23,19 @@ NodePin::NodePin(NodePin&&) noexcept = default;
 NodePin& NodePin::operator=(NodePin&&) noexcept = default;
 
 bool NodePin::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    const std::string id = "NodePin" + impl.config.id;
-    impl.label.update({
+    impl->config = std::move(config);
+    const std::string id = "NodePin" + impl->config.id;
+    impl->label.update({
         .id = id + "Label",
-        .str = impl.config.label,
-        .align = impl.config.direction == Direction::Output ? Text::Align::Right : Text::Align::Left,
+        .str = impl->config.label,
+        .align = impl->config.direction == Direction::Output ? Text::Align::Right : Text::Align::Left,
     });
-    impl.help.update({
+    impl->help.update({
         .id = id + "Help",
-        .str = impl.config.help,
+        .str = impl->config.help,
         .wrapped = true,
     });
-    impl.helpTooltip.update({
+    impl->helpTooltip.update({
         .id = id + "HelpTooltip",
         .wrapWidth = 560.0f,
     });
@@ -44,13 +43,12 @@ bool NodePin::update(Config config) {
 }
 
 void NodePin::render(const Context& ctx) const {
-    const auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     const auto renderLabel = [&]() {
-        impl.label.render(ctx);
+        impl->label.render(ctx);
         if (!config.help.empty()) {
-            impl.helpTooltip.render(ctx, [this](const Context& ctx) {
+            impl->helpTooltip.render(ctx, [this](const Context& ctx) {
                 this->impl->help.render(ctx);
             });
         }

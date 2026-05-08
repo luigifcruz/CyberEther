@@ -25,31 +25,29 @@ NodeField::NodeField(NodeField&&) noexcept = default;
 NodeField& NodeField::operator=(NodeField&&) noexcept = default;
 
 bool NodeField::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.label.update({
-        .id = impl.config.id + "Label",
-        .str = impl.config.label,
+    impl->config = std::move(config);
+    impl->label.update({
+        .id = impl->config.id + "Label",
+        .str = impl->config.label,
         .tone = Text::Tone::Secondary,
         .scale = 0.75f,
     });
-    impl.helpTooltip.update({
-        .id = impl.config.id + "HelpTooltip",
+    impl->helpTooltip.update({
+        .id = impl->config.id + "HelpTooltip",
     });
-    impl.helpText.update({
-        .id = impl.config.id + "HelpText",
-        .str = impl.config.help,
+    impl->helpText.update({
+        .id = impl->config.id + "HelpText",
+        .str = impl->config.help,
         .wrapped = true,
     });
-    impl.divider.update({
-        .id = impl.config.id + "Divider",
+    impl->divider.update({
+        .id = impl->config.id + "Divider",
     });
     return true;
 }
 
 void NodeField::render(const Context& ctx, Child child) const {
-    const auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     if (config.title && !config.label.empty()) {
         if (config.background) {
@@ -64,9 +62,9 @@ void NodeField::render(const Context& ctx, Child child) const {
                                                       ImGui::GetStyle().FrameRounding);
         }
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Scale(ctx, 6.0f));
-        impl.label.render(ctx);
+        impl->label.render(ctx);
         if (!config.help.empty()) {
-            impl.helpTooltip.render(ctx, [this](const Context& ctx) {
+            impl->helpTooltip.render(ctx, [this](const Context& ctx) {
                 this->impl->helpText.render(ctx);
             });
         }
@@ -82,7 +80,7 @@ void NodeField::render(const Context& ctx, Child child) const {
     }
 
     if (config.divider) {
-        impl.divider.render(ctx);
+        impl->divider.render(ctx);
     }
 }
 

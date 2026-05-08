@@ -20,16 +20,15 @@ NodeLabel::NodeLabel(NodeLabel&&) noexcept = default;
 NodeLabel& NodeLabel::operator=(NodeLabel&&) noexcept = default;
 
 bool NodeLabel::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.label.update({
-        .id = impl.config.id,
-        .str = impl.config.str,
-        .font = impl.config.font,
-        .tone = impl.config.tone,
-        .align = impl.config.align,
-        .wrapped = impl.config.wrapped,
-        .scale = impl.config.scale,
+    impl->config = std::move(config);
+    impl->label.update({
+        .id = impl->config.id,
+        .str = impl->config.str,
+        .font = impl->config.font,
+        .tone = impl->config.tone,
+        .align = impl->config.align,
+        .wrapped = impl->config.wrapped,
+        .scale = impl->config.scale,
     });
     return true;
 }

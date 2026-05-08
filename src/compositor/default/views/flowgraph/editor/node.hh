@@ -10,8 +10,6 @@
 #include "jetstream/block.hh"
 #include "jetstream/render/base/texture.hh"
 
-#include <algorithm>
-#include <cmath>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -59,8 +57,8 @@ struct FlowgraphNode : public Sakura::Component {
         F32 rounding = 0.0f;
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
         std::optional<Extent2D<F32>> aspectRatioSize;
-        std::function<void(const Sakura::SurfaceSize&)> onAttachedSize;
-        std::function<void(const Sakura::SurfaceSize&)> onDetachedSize;
+        std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        std::function<void(const Sakura::SurfaceResize&)> onDetachedSize;
         std::function<void(MouseEvent)> onMouse;
     };
 
@@ -121,18 +119,32 @@ struct FlowgraphNode : public Sakura::Component {
 
     void update(Config config) {
         this->config = std::move(config);
-        const auto nodeState = this->config.block.state == Block::State::Errored
+        const auto& block = this->config.block;
+        const U64 surfaceCount = block.surfaces.size();
+        const bool hasSurfaces = surfaceCount > 0;
+        const bool isPending = block.state == Block::State::Creating ||
+                               block.state == Block::State::Incomplete;
+        const auto nodeState = block.state == Block::State::Errored
             ? Sakura::Node::State::Error
-            : (this->config.block.state == Block::State::Creating ||
-               this->config.block.state == Block::State::Incomplete)
-                ? Sakura::Node::State::Pending
-                : Sakura::Node::State::Normal;
+            : isPending ? Sakura::Node::State::Pending : Sakura::Node::State::Normal;
+        if (surfaceCount > 0 || !isPending) {
+            detachedSurfaceStates.resize(surfaceCount, false);
+        }
+
+        bool allSurfacesDetached = hasSurfaces;
+        for (U64 i = 0; i < surfaceCount; ++i) {
+            if (!detachedSurfaceStates[i]) {
+                allSurfacesDetached = false;
+                break;
+            }
+        }
+
         if (dimensions.x <= 0.0f) {
             dimensions.x = 140.0f;
         }
 
-        if (this->config.block.layout.has_value()) {
-            const auto& layout = this->config.block.layout.value();
+        if (block.layout.has_value()) {
+            const auto& layout = block.layout.value();
             gridPosition = Extent2D<F32>{layout.x, layout.y};
             if (layout.width > 0.0f) {
                 dimensions.x = layout.width;
@@ -144,25 +156,29 @@ struct FlowgraphNode : public Sakura::Component {
             gridPosition.reset();
         }
 
-        const bool hasSurfaces = !this->config.block.surfaces.empty();
-        const bool isReloading = nodeState == Sakura::Node::State::Pending;
-        if (!hasSurfaces && !isReloading) {
+        if (hasSurfaces) {
+            if (dimensions.y <= 0.0f) {
+                dimensions.y = block.surfaces.front().logicalSize.y;
+            }
+        } else if (!isPending) {
             dimensions.y = 0.0f;
-        } else if (hasSurfaces && dimensions.y <= 0.0f) {
-            dimensions.y = this->config.block.surfaces.front().logicalSize.y;
         }
 
-        const Extent2D<F32> requestedDimensions = dimensions;
+        Extent2D<F32> nodeDimensions = dimensions;
+        if (allSurfacesDetached) {
+            nodeDimensions.y = 0.0f;
+        }
+
         node.update({
             .id = FlowgraphNodeId(this->config.id),
             .state = nodeState,
-            .verticalResize = !this->config.block.surfaces.empty(),
-            .dimensions = dimensions,
+            .verticalResize = hasSurfaces && !allSurfacesDetached,
+            .dimensions = nodeDimensions,
             .gridPosition = gridPosition,
             .onContextMenu = [this]() {
                 menuOpen = true;
             },
-            .onGeometryChange = [this, requestedDimensions](Extent2D<F32> gridPosition,
+            .onGeometryChange = [this, allSurfacesDetached](Extent2D<F32> gridPosition,
                                                             Extent2D<F32> screenPosition,
                                                             Extent2D<F32> dimensions,
                                                             Extent2D<F32> contentDimensions) {
@@ -172,29 +188,30 @@ struct FlowgraphNode : public Sakura::Component {
                     .dimensions = dimensions,
                 };
 
-                if (std::abs(contentDimensions.x - requestedDimensions.x) > 0.5f ||
-                    std::abs(contentDimensions.y - requestedDimensions.y) > 0.5f) {
-                    this->dimensions = contentDimensions;
+                this->dimensions.x = contentDimensions.x;
+                if (!allSurfacesDetached) {
+                    this->dimensions.y = contentDimensions.y;
                 }
-
-                emitLayout({gridPosition.x,
-                            gridPosition.y,
-                            this->dimensions.x,
-                            this->dimensions.y});
+                if (this->config.onLayout) {
+                    this->config.onLayout(gridPosition.x,
+                                          gridPosition.y,
+                                          this->dimensions.x,
+                                          this->dimensions.y);
+                }
             },
         });
         title.update({
-            .title = this->config.block.title,
+            .title = block.title,
             .diagnostic = {
-                .state = this->config.block.diagnostic.empty() ? Sakura::Node::State::Normal : nodeState,
-                .message = this->config.block.diagnostic,
+                .state = block.diagnostic.empty() ? Sakura::Node::State::Normal : nodeState,
+                .message = block.diagnostic,
             },
         });
-        subtitle.update({.text = this->config.block.name});
+        subtitle.update({.text = block.name});
         loadingBar.update({.id = this->config.id + "Loading"});
         metricsSpacing.update({.id = this->config.id + "MetricsSpacing"});
         runtimeOverlay.update({
-            .lines = this->config.block.runtimeMetrics,
+            .lines = block.runtimeMetrics,
             .onResolveGeometry = [this]() -> std::optional<Sakura::NodeRuntimeOverlay::Geometry> {
                 if (!geometry.has_value()) {
                     return std::nullopt;
@@ -207,9 +224,9 @@ struct FlowgraphNode : public Sakura::Component {
             },
         });
 
-        pins.resize(this->config.block.inputs.size() + this->config.block.outputs.size());
+        pins.resize(block.inputs.size() + block.outputs.size());
         U64 pinIndex = 0;
-        for (const auto& input : this->config.block.inputs) {
+        for (const auto& input : block.inputs) {
             pins[pinIndex++].update({
                 .id = FlowgraphPinId(input.port.id),
                 .direction = Sakura::NodePin::Direction::Input,
@@ -218,7 +235,7 @@ struct FlowgraphNode : public Sakura::Component {
                 .enableDetach = true,
             });
         }
-        for (const auto& output : this->config.block.outputs) {
+        for (const auto& output : block.outputs) {
             pins[pinIndex++].update({
                 .id = FlowgraphPinId(output.port.id),
                 .direction = Sakura::NodePin::Direction::Output,
@@ -227,44 +244,32 @@ struct FlowgraphNode : public Sakura::Component {
             });
         }
 
-        metrics.resize(this->config.block.metrics.size());
+        metrics.resize(block.metrics.size());
         for (U64 i = 0; i < metrics.size(); ++i) {
-            metrics[i].update(this->config.block.metrics[i]);
+            metrics[i].update(block.metrics[i]);
         }
 
-        fields.resize(this->config.block.configFields.size());
+        fields.resize(block.configFields.size());
         for (U64 i = 0; i < fields.size(); ++i) {
-            fields[i].update(this->config.block.configFields[i]);
+            fields[i].update(block.configFields[i]);
         }
 
-        attachedSurfaces.resize(this->config.block.surfaces.size());
-        detachedSurfaces.resize(this->config.block.surfaces.size());
-        detachedSurfaceStates.resize(this->config.block.surfaces.size(), false);
-        lastSurfaceSizes.resize(this->config.block.surfaces.size());
-        for (U64 i = 0; i < attachedSurfaces.size(); ++i) {
-            const auto texture = this->config.block.surfaces[i].texture;
-            const void* surfaceIdentity = texture.get();
-            auto onAttachedSize = this->config.block.surfaces[i].onAttachedSize;
-            auto onDetachedSize = this->config.block.surfaces[i].onDetachedSize;
+        attachedSurfaces.resize(surfaceCount);
+        detachedSurfaces.resize(surfaceCount);
+        for (U64 i = 0; i < surfaceCount; ++i) {
+            const auto& surface = block.surfaces[i];
+            const auto texture = surface.texture;
             attachedSurfaces[i].update({
-                .id = this->config.block.surfaces[i].id,
+                .id = surface.id,
                 .onResolveTexture = [texture]() {
                     return texture ? texture->raw() : 0;
                 },
                 .size = {0.0f, 0.0f},
-                .rounding = this->config.block.surfaces[i].rounding,
+                .rounding = surface.rounding,
                 .detachOverlay = true,
-                .aspectRatioSize = this->config.block.surfaces[i].aspectRatioSize,
-                .onSize = [this, i, onAttachedSize, surfaceIdentity](const Sakura::SurfaceSize& size) mutable {
-                    if (size.resolvedLogicalSize.y > 0.0f && size.resolvedLogicalSize.y < size.availableLogicalSize.y) {
-                        dimensions.y = std::max(0.0f,
-                                                dimensions.y - size.availableLogicalSize.y + size.resolvedLogicalSize.y);
-                    }
-
-                    if (onAttachedSize && consumeSurfaceSize(i, size, false, surfaceIdentity)) {
-                        onAttachedSize(size);
-                    }
-                },
+                .aspectRatioSize = surface.aspectRatioSize,
+                .aspectLock = Sakura::SurfaceView::AspectLock::X,
+                .onSize = surface.onAttachedSize,
                 .onDetach = [this, i]() {
                     if (i < detachedSurfaceStates.size()) {
                         detachedSurfaceStates[i] = true;
@@ -272,19 +277,15 @@ struct FlowgraphNode : public Sakura::Component {
                 },
             });
             detachedSurfaces[i].update({
-                .id = this->config.block.surfaces[i].id + ":detached",
-                .title = this->config.block.title,
-                .name = this->config.block.name,
+                .id = surface.id + ":detached",
+                .title = block.title,
+                .name = block.name,
                 .onResolveTexture = [texture]() {
                     return texture ? texture->raw() : 0;
                 },
-                .logicalSize = this->config.block.surfaces[i].logicalSize,
-                .onSize = [this, i, onDetachedSize, surfaceIdentity](const Sakura::SurfaceSize& size) mutable {
-                    if (onDetachedSize && consumeSurfaceSize(i, size, true, surfaceIdentity)) {
-                        onDetachedSize(size);
-                    }
-                },
-                .onMouse = this->config.block.surfaces[i].onMouse,
+                .logicalSize = surface.logicalSize,
+                .onSize = surface.onDetachedSize,
+                .onMouse = surface.onMouse,
                 .onClose = [this, i]() {
                     if (i < detachedSurfaceStates.size()) {
                         detachedSurfaceStates[i] = false;
@@ -294,8 +295,8 @@ struct FlowgraphNode : public Sakura::Component {
         }
 
         deviceOptions.clear();
-        deviceOptions.reserve(this->config.block.deviceOptions.size());
-        for (const auto& device : this->config.block.deviceOptions) {
+        deviceOptions.reserve(block.deviceOptions.size());
+        for (const auto& device : block.deviceOptions) {
             deviceOptions.push_back({
                 .label = device.label,
                 .selected = device.selected,
@@ -309,7 +310,14 @@ struct FlowgraphNode : public Sakura::Component {
             .onCopy = this->config.onCopy,
             .onPaste = [this]() {
                 if (this->config.onPaste) {
-                    this->config.onPaste(pasteGridPosition({50.0f, 50.0f}));
+                    Extent2D<F32> pastePosition = {50.0f, 50.0f};
+                    if (geometry.has_value()) {
+                        pastePosition = {
+                            geometry->gridPosition.x + pastePosition.x,
+                            geometry->gridPosition.y + pastePosition.y,
+                        };
+                    }
+                    this->config.onPaste(pastePosition);
                 }
             },
             .onReload = this->config.onReload,
@@ -335,9 +343,9 @@ struct FlowgraphNode : public Sakura::Component {
         });
         documentation.update({
             .id = this->config.id + ":documentation",
-            .title = this->config.block.title,
-            .name = this->config.block.name,
-            .value = this->config.block.documentation,
+            .title = block.title,
+            .name = block.name,
+            .value = block.documentation,
             .onClose = [this]() {
                 documentationOpen = false;
             },
@@ -394,81 +402,6 @@ struct FlowgraphNode : public Sakura::Component {
     }
 
  private:
-    struct SurfaceSizeRecord {
-        Sakura::SurfaceResize resize;
-        bool detached = false;
-        const void* source = nullptr;
-    };
-
-    struct LayoutRecord {
-        F32 x = 0.0f;
-        F32 y = 0.0f;
-        F32 width = 0.0f;
-        F32 height = 0.0f;
-    };
-
-    void emitLayout(LayoutRecord layout) {
-        if (lastLayout.has_value()) {
-            const auto& last = *lastLayout;
-            if (std::abs(last.x - layout.x) <= 0.5f &&
-                std::abs(last.y - layout.y) <= 0.5f &&
-                std::abs(last.width - layout.width) <= 0.5f &&
-                std::abs(last.height - layout.height) <= 0.5f) {
-                return;
-            }
-        }
-
-        lastLayout = layout;
-        if (config.onLayout) {
-            config.onLayout(layout.x, layout.y, layout.width, layout.height);
-        }
-    }
-
-    bool consumeSurfaceSize(const U64 index,
-                            const Sakura::SurfaceSize& size,
-                            const bool detached,
-                            const void* source) {
-        if (index >= lastSurfaceSizes.size()) {
-            return false;
-        }
-
-        const Sakura::SurfaceResize resize{
-            .logicalSize = size.logicalSize,
-            .framebufferSize = size.framebufferSize,
-            .scale = size.scale,
-        };
-
-        if (lastSurfaceSizes[index].has_value()) {
-            const auto& last = *lastSurfaceSizes[index];
-            if (last.source == source && last.detached == detached &&
-                last.resize.logicalSize.x == resize.logicalSize.x &&
-                last.resize.logicalSize.y == resize.logicalSize.y &&
-                last.resize.framebufferSize.x == resize.framebufferSize.x &&
-                last.resize.framebufferSize.y == resize.framebufferSize.y &&
-                std::abs(last.resize.scale - resize.scale) <= 1e-6f) {
-                return false;
-            }
-        }
-
-        lastSurfaceSizes[index] = SurfaceSizeRecord{
-            .resize = resize,
-            .detached = detached,
-            .source = source,
-        };
-        return true;
-    }
-
-    Extent2D<F32> pasteGridPosition(const Extent2D<F32>& offset) const {
-        if (!geometry.has_value()) {
-            return offset;
-        }
-
-        return {
-            geometry->gridPosition.x + offset.x,
-            geometry->gridPosition.y + offset.y,
-        };
-    }
-
     Config config;
     Extent2D<F32> dimensions = {140.0f, 0.0f};
     std::optional<Extent2D<F32>> gridPosition;
@@ -485,8 +418,6 @@ struct FlowgraphNode : public Sakura::Component {
     std::vector<Sakura::SurfaceView> attachedSurfaces;
     std::vector<FlowgraphDetachedSurface> detachedSurfaces;
     std::vector<bool> detachedSurfaceStates;
-    std::vector<std::optional<SurfaceSizeRecord>> lastSurfaceSizes;
-    std::optional<LayoutRecord> lastLayout;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;
     FlowgraphNodeDocumentation documentation;

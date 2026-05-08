@@ -20,14 +20,13 @@ NodeTable::NodeTable(NodeTable&&) noexcept = default;
 NodeTable& NodeTable::operator=(NodeTable&&) noexcept = default;
 
 bool NodeTable::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.table.update({
-        .id = impl.config.id,
-        .columns = impl.config.columns,
-        .rows = impl.config.rows,
-        .fixedColumnWidths = impl.config.fixedColumnWidths,
-        .showHeaders = impl.config.showHeaders,
+    impl->config = std::move(config);
+    impl->table.update({
+        .id = impl->config.id,
+        .columns = impl->config.columns,
+        .rows = impl->config.rows,
+        .fixedColumnWidths = impl->config.fixedColumnWidths,
+        .showHeaders = impl->config.showHeaders,
     });
     return true;
 }

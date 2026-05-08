@@ -20,13 +20,12 @@ NodeProgressBar::NodeProgressBar(NodeProgressBar&&) noexcept = default;
 NodeProgressBar& NodeProgressBar::operator=(NodeProgressBar&&) noexcept = default;
 
 bool NodeProgressBar::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.progress.update({
-        .id = impl.config.id,
-        .value = impl.config.value,
-        .overlay = impl.config.overlay,
-        .size = impl.config.size,
+    impl->config = std::move(config);
+    impl->progress.update({
+        .id = impl->config.id,
+        .value = impl->config.value,
+        .overlay = impl->config.overlay,
+        .size = impl->config.size,
         .colorKey = "action_btn",
     });
     return true;

@@ -534,26 +534,26 @@ struct FlowgraphActions {
         }
 
         if (!msg.flowgraph.empty() && !msg.block.empty() && !msg.metaKey.empty() &&
-            (msg.attached.has_value() || msg.detached.has_value()) && state.flowgraph.items.contains(msg.flowgraph)) {
+            state.flowgraph.items.contains(msg.flowgraph)) {
             SurfaceMeta surfaceMeta;
             auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
             flowgraph->getMeta(msg.metaKey, surfaceMeta, msg.block);
-            if (msg.attached.has_value()) {
-                surfaceMeta.attachedWidth = msg.attached->x;
-                surfaceMeta.attachedHeight = msg.attached->y;
-            }
-            if (msg.detached.has_value()) {
-                surfaceMeta.detachedWidth = msg.detached->x;
-                surfaceMeta.detachedHeight = msg.detached->y;
+            if (msg.placement == SurfacePlacement::Attached) {
+                surfaceMeta.attachedWidth = msg.resize.logicalSize.x;
+                surfaceMeta.attachedHeight = msg.resize.logicalSize.y;
+            } else {
+                surfaceMeta.detachedWidth = msg.resize.logicalSize.x;
+                surfaceMeta.detachedHeight = msg.resize.logicalSize.y;
             }
             flowgraph->setMeta(msg.metaKey, surfaceMeta, msg.block);
         }
 
-        const auto& bg = state.sakura.colorMap.at(msg.detachedSurface ? "background" : "node_background");
+        const bool detached = msg.placement == SurfacePlacement::Detached;
+        const auto& bg = state.sakura.colorMap.at(detached ? "background" : "node_background");
         SurfaceEvent event;
         event.type = SurfaceEventType::Resize;
-        event.size = {msg.width, msg.height};
-        event.scale = msg.scale;
+        event.size = msg.resize.framebufferSize;
+        event.scale = msg.resize.scale;
         event.backgroundColor = {bg.x, bg.y, bg.z, bg.w};
         msg.surface->pushSurfaceEvent(event);
 

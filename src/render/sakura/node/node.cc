@@ -2,26 +2,28 @@
 
 #include "base.hh"
 
+#include <cmath>
+
 namespace Jetstream::Sakura {
 
 struct Node::Impl {
+    struct GeometryRecord {
+        Extent2D<F32> gridPosition;
+        Extent2D<F32> screenPosition;
+        Extent2D<F32> outerDimensions;
+        Extent2D<F32> contentDimensions;
+    };
+
     Config config;
     std::optional<Extent2D<F32>> appliedGridPosition;
+    std::optional<GeometryRecord> lastEmittedGeometry;
     F32 appliedGridPositionScale = 0.0f;
+    ImVec2 contentSize = ImVec2(0.0f, 0.0f);
+    ImVec2 requestedContentSize = ImVec2(0.0f, 0.0f);
+    F32 contentSizeScale = 0.0f;
+    bool hasContentSize = false;
+    bool hasRequestedContentSize = false;
     int lastRenderedFrame = -1;
-
-    bool shouldApplyGridPosition(const Context& ctx, const Extent2D<F32>& position) const {
-        if (lastRenderedFrame >= 0 && ImGui::GetFrameCount() > lastRenderedFrame + 1) {
-            return true;
-        }
-        if (!appliedGridPosition.has_value()) {
-            return true;
-        }
-        if (appliedGridPositionScale != ScalingFactor(ctx)) {
-            return true;
-        }
-        return appliedGridPosition->x != position.x || appliedGridPosition->y != position.y;
-    }
 };
 
 Node::Node() {
@@ -33,29 +35,56 @@ Node::Node(Node&&) noexcept = default;
 Node& Node::operator=(Node&&) noexcept = default;
 
 bool Node::update(Config config) {
+    if (this->impl->config.id != config.id) {
+        this->impl->contentSize = ImVec2(0.0f, 0.0f);
+        this->impl->requestedContentSize = ImVec2(0.0f, 0.0f);
+        this->impl->contentSizeScale = 0.0f;
+        this->impl->hasContentSize = false;
+        this->impl->hasRequestedContentSize = false;
+        this->impl->lastEmittedGeometry.reset();
+    }
     this->impl->config = std::move(config);
     return true;
 }
 
 void Node::render(const Context& ctx, Child child) const {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     Private::RegisterNodeEditorNode(config.id);
     const int imNodesId = Private::NodeEditorObjectId(config.id);
 
-    if (config.gridPosition.has_value() && impl.shouldApplyGridPosition(ctx, config.gridPosition.value())) {
-        ImNodes::SetNodeGridSpacePos(imNodesId, Private::ToImVec2(Scale(ctx, *config.gridPosition)));
-        impl.appliedGridPosition = config.gridPosition;
-        impl.appliedGridPositionScale = ScalingFactor(ctx);
+    if (config.gridPosition.has_value()) {
+        const bool shouldApplyGridPosition =
+            (impl->lastRenderedFrame >= 0 && ImGui::GetFrameCount() > impl->lastRenderedFrame + 1) ||
+            !impl->appliedGridPosition.has_value() ||
+            impl->appliedGridPositionScale != ScalingFactor(ctx) ||
+            impl->appliedGridPosition->x != config.gridPosition->x ||
+            impl->appliedGridPosition->y != config.gridPosition->y;
+        if (shouldApplyGridPosition) {
+            ImNodes::SetNodeGridSpacePos(imNodesId, Private::ToImVec2(Scale(ctx, *config.gridPosition)));
+            impl->appliedGridPosition = config.gridPosition;
+            impl->appliedGridPositionScale = ScalingFactor(ctx);
+        }
     } else if (!config.gridPosition.has_value()) {
-        impl.appliedGridPosition.reset();
-        impl.appliedGridPositionScale = 0.0f;
+        impl->appliedGridPosition.reset();
+        impl->appliedGridPositionScale = 0.0f;
     }
 
     ImNodes::SetNodeVerticalResizeEnabled(imNodesId, config.verticalResize);
-    ImVec2 contentSize = Private::ToImVec2(Scale(ctx, config.dimensions));
-    ImNodes::SetNodeDimensions(imNodesId, contentSize);
+    const ImVec2 requestedContentSize = Private::ToImVec2(Scale(ctx, config.dimensions));
+    if (!impl->hasContentSize || !impl->hasRequestedContentSize ||
+        impl->contentSizeScale != ScalingFactor(ctx) ||
+        impl->requestedContentSize.x != requestedContentSize.x ||
+        impl->requestedContentSize.y != requestedContentSize.y) {
+        impl->contentSize = requestedContentSize;
+    }
+    impl->requestedContentSize = requestedContentSize;
+    impl->contentSizeScale = ScalingFactor(ctx);
+    impl->hasContentSize = true;
+    impl->hasRequestedContentSize = true;
+    // Keep this storage alive through EndNodeEditor(); ImNodes writes manual resize results after
+    // the node body has rendered, and the resolved size is reported on the following frame.
+    ImNodes::SetNodeDimensions(imNodesId, impl->contentSize);
 
     if (config.state != State::Normal) {
         const ImU32 stateColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, config.state == State::Error ? "node_outline_error"
@@ -73,11 +102,32 @@ void Node::render(const Context& ctx, Child child) const {
     Private::NodeEditorNodeStack().pop_back();
     ImNodes::EndNode();
 
+    const Impl::GeometryRecord geometryRecord{
+        .gridPosition = Unscale(ctx, Private::ToExtent2D(ImNodes::GetNodeGridSpacePos(imNodesId))),
+        .screenPosition = Private::ToExtent2D(ImNodes::GetNodeScreenSpacePos(imNodesId)),
+        .outerDimensions = Private::ToExtent2D(ImNodes::GetNodeDimensions(imNodesId)),
+        .contentDimensions = Unscale(ctx, Private::ToExtent2D(impl->contentSize)),
+    };
     if (config.onGeometryChange) {
-        config.onGeometryChange(Unscale(ctx, Private::ToExtent2D(ImNodes::GetNodeGridSpacePos(imNodesId))),
-                                Private::ToExtent2D(ImNodes::GetNodeScreenSpacePos(imNodesId)),
-                                Private::ToExtent2D(ImNodes::GetNodeDimensions(imNodesId)),
-                                Unscale(ctx, Private::ToExtent2D(contentSize)));
+        bool geometryChanged = !impl->lastEmittedGeometry.has_value();
+        if (!geometryChanged) {
+            const auto& last = *impl->lastEmittedGeometry;
+            geometryChanged = !(std::abs(last.gridPosition.x - geometryRecord.gridPosition.x) <= 0.5f &&
+                                std::abs(last.gridPosition.y - geometryRecord.gridPosition.y) <= 0.5f &&
+                                std::abs(last.screenPosition.x - geometryRecord.screenPosition.x) <= 0.5f &&
+                                std::abs(last.screenPosition.y - geometryRecord.screenPosition.y) <= 0.5f &&
+                                std::abs(last.outerDimensions.x - geometryRecord.outerDimensions.x) <= 0.5f &&
+                                std::abs(last.outerDimensions.y - geometryRecord.outerDimensions.y) <= 0.5f &&
+                                std::abs(last.contentDimensions.x - geometryRecord.contentDimensions.x) <= 0.5f &&
+                                std::abs(last.contentDimensions.y - geometryRecord.contentDimensions.y) <= 0.5f);
+        }
+        if (geometryChanged) {
+            impl->lastEmittedGeometry = geometryRecord;
+            config.onGeometryChange(geometryRecord.gridPosition,
+                                    geometryRecord.screenPosition,
+                                    geometryRecord.outerDimensions,
+                                    geometryRecord.contentDimensions);
+        }
     }
 
     if (config.onContextMenu && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
@@ -97,7 +147,7 @@ void Node::render(const Context& ctx, Child child) const {
         ImNodes::PopColorStyle();
     }
 
-    impl.lastRenderedFrame = ImGui::GetFrameCount();
+    impl->lastRenderedFrame = ImGui::GetFrameCount();
 }
 
 }  // namespace Jetstream::Sakura

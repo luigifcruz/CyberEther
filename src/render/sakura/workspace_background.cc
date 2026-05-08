@@ -37,8 +37,7 @@ bool WorkspaceBackground::update(Config config) {
 }
 
 void WorkspaceBackground::render(const Context& ctx) {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImDrawList* drawList = ImGui::GetBackgroundDrawList();
@@ -59,25 +58,25 @@ void WorkspaceBackground::render(const Context& ctx) {
         return;
     }
 
-    const bool areaChanged = impl.previousAreaPos != areaPos || impl.previousAreaSize != areaSize;
+    const bool areaChanged = impl->previousAreaPos != areaPos || impl->previousAreaSize != areaSize;
     const std::size_t particleCount = static_cast<std::size_t>(config.particleCount);
-    if (impl.particles.size() != particleCount || areaChanged) {
-        impl.particles.clear();
-        impl.particles.reserve(particleCount);
-        impl.previousAreaPos = areaPos;
-        impl.previousAreaSize = areaSize;
+    if (impl->particles.size() != particleCount || areaChanged) {
+        impl->particles.clear();
+        impl->particles.reserve(particleCount);
+        impl->previousAreaPos = areaPos;
+        impl->previousAreaSize = areaSize;
 
         std::uniform_real_distribution<F32> unit(0.0f, 1.0f);
         for (std::size_t i = 0; i < particleCount; ++i) {
-            impl.particles.push_back({
+            impl->particles.push_back({
                 .position = {
-                    areaPos.x + unit(impl.randomGenerator) * areaSize.x,
-                    areaPos.y + unit(impl.randomGenerator) * areaSize.y,
+                    areaPos.x + unit(impl->randomGenerator) * areaSize.x,
+                    areaPos.y + unit(impl->randomGenerator) * areaSize.y,
                 },
-                .velocity = 10.0f + unit(impl.randomGenerator) * 30.0f,
-                .radius = 1.0f + unit(impl.randomGenerator) * 2.5f,
-                .alpha = 0.15f + unit(impl.randomGenerator) * 0.25f,
-                .phase = unit(impl.randomGenerator) * 6.28318f,
+                .velocity = 10.0f + unit(impl->randomGenerator) * 30.0f,
+                .radius = 1.0f + unit(impl->randomGenerator) * 2.5f,
+                .alpha = 0.15f + unit(impl->randomGenerator) * 0.25f,
+                .phase = unit(impl->randomGenerator) * 6.28318f,
             });
         }
     }
@@ -88,7 +87,7 @@ void WorkspaceBackground::render(const Context& ctx) {
     std::uniform_real_distribution<F32> unit(0.0f, 1.0f);
 
     ImGui::PushID(config.id.c_str());
-    for (auto& particle : impl.particles) {
+    for (auto& particle : impl->particles) {
         particle.position.x += particle.velocity * 0.15f * deltaTime * ScalingFactor(ctx);
         particle.position.y -= particle.velocity * deltaTime * ScalingFactor(ctx);
 
@@ -97,7 +96,7 @@ void WorkspaceBackground::render(const Context& ctx) {
 
         if (renderPos.y < areaPos.y - Scale(ctx, 10.0f)) {
             particle.position.y = areaPos.y + areaSize.y + Scale(ctx, 10.0f);
-            particle.position.x = areaPos.x + unit(impl.randomGenerator) * areaSize.x;
+            particle.position.x = areaPos.x + unit(impl->randomGenerator) * areaSize.x;
         }
         if (renderPos.x > areaPos.x + areaSize.x + Scale(ctx, 10.0f)) {
             particle.position.x = areaPos.x - Scale(ctx, 10.0f);

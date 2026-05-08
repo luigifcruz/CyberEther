@@ -20,13 +20,12 @@ NodeCombo::NodeCombo(NodeCombo&&) noexcept = default;
 NodeCombo& NodeCombo::operator=(NodeCombo&&) noexcept = default;
 
 bool NodeCombo::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.combo.update({
-        .id = impl.config.id,
-        .options = impl.config.options,
-        .value = impl.config.value,
-        .onChange = impl.config.onChange,
+    impl->config = std::move(config);
+    impl->combo.update({
+        .id = impl->config.id,
+        .options = impl->config.options,
+        .value = impl->config.value,
+        .onChange = impl->config.onChange,
     });
     return true;
 }

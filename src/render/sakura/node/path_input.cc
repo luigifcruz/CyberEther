@@ -22,22 +22,20 @@ NodePathInput::NodePathInput(NodePathInput&&) noexcept = default;
 NodePathInput& NodePathInput::operator=(NodePathInput&&) noexcept = default;
 
 bool NodePathInput::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.pathTooltip.update({
-        .id = impl.config.id + "Tooltip",
+    impl->config = std::move(config);
+    impl->pathTooltip.update({
+        .id = impl->config.id + "Tooltip",
     });
-    impl.pathTooltipText.update({
-        .id = impl.config.id + "TooltipText",
-        .str = impl.config.value,
+    impl->pathTooltipText.update({
+        .id = impl->config.id + "TooltipText",
+        .str = impl->config.value,
         .wrapped = true,
     });
     return true;
 }
 
 void NodePathInput::render(const Context& ctx) const {
-    const auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     const ImU32 bgColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card"));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
@@ -66,7 +64,7 @@ void NodePathInput::render(const Context& ctx) const {
         }
     }
     if (!config.value.empty()) {
-        impl.pathTooltip.render(ctx, [this](const Context& ctx) {
+        impl->pathTooltip.render(ctx, [this](const Context& ctx) {
             this->impl->pathTooltipText.render(ctx);
         });
     }
@@ -90,7 +88,7 @@ void NodePathInput::render(const Context& ctx) const {
                                         ImGui::GetColorU32(ImGuiCol_Text),
                                         ICON_FA_FOLDER_OPEN);
     if (!config.value.empty()) {
-        impl.pathTooltip.render(ctx, [this](const Context& ctx) {
+        impl->pathTooltip.render(ctx, [this](const Context& ctx) {
             this->impl->pathTooltipText.render(ctx);
         });
     }

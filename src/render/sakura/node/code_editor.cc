@@ -20,14 +20,13 @@ NodeCodeEditor::NodeCodeEditor(NodeCodeEditor&&) noexcept = default;
 NodeCodeEditor& NodeCodeEditor::operator=(NodeCodeEditor&&) noexcept = default;
 
 bool NodeCodeEditor::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.editor.update({
-        .id = impl.config.id,
-        .value = impl.config.value,
-        .collapsible = impl.config.collapsible,
+    impl->config = std::move(config);
+    impl->editor.update({
+        .id = impl->config.id,
+        .value = impl->config.value,
+        .collapsible = impl->config.collapsible,
         .size = {0.0f, 200.0f},
-        .onChange = impl.config.onChange,
+        .onChange = impl->config.onChange,
     });
     return true;
 }

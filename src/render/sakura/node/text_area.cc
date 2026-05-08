@@ -20,14 +20,13 @@ NodeTextArea::NodeTextArea(NodeTextArea&&) noexcept = default;
 NodeTextArea& NodeTextArea::operator=(NodeTextArea&&) noexcept = default;
 
 bool NodeTextArea::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.input.update({
-        .id = impl.config.id,
-        .value = impl.config.value,
+    impl->config = std::move(config);
+    impl->input.update({
+        .id = impl->config.id,
+        .value = impl->config.value,
         .size = {0.0f, 80.0f},
         .submit = TextArea::Submit::OnEdit,
-        .onChange = impl.config.onChange,
+        .onChange = impl->config.onChange,
     });
     return true;
 }

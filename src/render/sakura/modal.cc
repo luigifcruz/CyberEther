@@ -24,14 +24,13 @@ Modal::Modal(Modal&&) noexcept = default;
 Modal& Modal::operator=(Modal&&) noexcept = default;
 
 bool Modal::update(Config config) {
-    auto& impl = *this->impl;
-    impl.modalId = config.id.empty() ? "##sakura_test_modal" : config.id;
-    impl.config = std::move(config);
-    impl.footerDivider.update({
-        .id = impl.modalId + "FooterDivider",
+    impl->modalId = config.id.empty() ? "##sakura_test_modal" : config.id;
+    impl->config = std::move(config);
+    impl->footerDivider.update({
+        .id = impl->modalId + "FooterDivider",
     });
-    impl.closeButton.update({
-        .id = impl.modalId + "Close",
+    impl->closeButton.update({
+        .id = impl->modalId + "Close",
         .str = "Close",
         .size = {-1.0f, 40.0f},
         .onClick = []() {
@@ -42,10 +41,9 @@ bool Modal::update(Config config) {
 }
 
 void Modal::render(const Context& ctx, Child child) {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
-    ImGui::OpenPopup(impl.modalId.c_str());
+    ImGui::OpenPopup(impl->modalId.c_str());
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
                             ImGuiCond_Always,
@@ -61,28 +59,28 @@ void Modal::render(const Context& ctx, Child child) {
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
     }
 
-    if (!ImGui::BeginPopupModal(impl.modalId.c_str(), nullptr, flags)) {
-        if (impl.visible) {
+    if (!ImGui::BeginPopupModal(impl->modalId.c_str(), nullptr, flags)) {
+        if (impl->visible) {
             if (config.onClose) {
                 config.onClose();
             }
-            impl.visible = false;
+            impl->visible = false;
         }
         return;
     }
 
-    if (!impl.visible) {
+    if (!impl->visible) {
         if (config.onOpen) {
             config.onOpen();
         }
-        impl.visible = true;
+        impl->visible = true;
     }
 
     if (child) {
         child(ctx);
     }
-    impl.footerDivider.render(ctx);
-    impl.closeButton.render(ctx);
+    impl->footerDivider.render(ctx);
+    impl->closeButton.render(ctx);
 
     ImGui::SetItemDefaultFocus();
     if (config.minWidth > 0.0f) {
@@ -90,12 +88,12 @@ void Modal::render(const Context& ctx, Child child) {
     }
     ImGui::EndPopup();
 
-    const bool modalOpen = ImGui::IsPopupOpen(impl.modalId.c_str());
-    if (impl.visible && !modalOpen) {
+    const bool modalOpen = ImGui::IsPopupOpen(impl->modalId.c_str());
+    if (impl->visible && !modalOpen) {
         if (config.onClose) {
             config.onClose();
         }
-        impl.visible = false;
+        impl->visible = false;
     }
 }
 

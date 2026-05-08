@@ -20,13 +20,12 @@ NodeTextInput::NodeTextInput(NodeTextInput&&) noexcept = default;
 NodeTextInput& NodeTextInput::operator=(NodeTextInput&&) noexcept = default;
 
 bool NodeTextInput::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.input.update({
-        .id = impl.config.id,
-        .value = impl.config.value,
-        .submit = impl.config.submit,
-        .onChange = impl.config.onChange,
+    impl->config = std::move(config);
+    impl->input.update({
+        .id = impl->config.id,
+        .value = impl->config.value,
+        .submit = impl->config.submit,
+        .onChange = impl->config.onChange,
     });
     return true;
 }

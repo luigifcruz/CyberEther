@@ -25,8 +25,7 @@ bool Window::update(Config config) {
 }
 
 void Window::render(const Context& ctx, Child content) {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     if (config.dockId.has_value() && *config.dockId != 0) {
         ImGui::SetNextWindowDockID(static_cast<ImGuiID>(*config.dockId), ImGuiCond_FirstUseEver);
@@ -41,26 +40,26 @@ void Window::render(const Context& ctx, Child content) {
     }
 
     bool nextOpen = true;
-    const bool expanded = ImGui::Begin(impl.windowId.c_str(), &nextOpen);
+    const bool expanded = ImGui::Begin(impl->windowId.c_str(), &nextOpen);
     if (styleVarCount > 0) {
         ImGui::PopStyleVar(styleVarCount);
     }
     if (!nextOpen) {
         ImGui::End();
-        if (impl.open) {
+        if (impl->open) {
             if (config.onClose) {
                 config.onClose();
             }
-            impl.open = false;
+            impl->open = false;
         }
         return;
     }
 
-    if (!impl.open) {
+    if (!impl->open) {
         if (config.onOpen) {
             config.onOpen();
         }
-        impl.open = true;
+        impl->open = true;
     }
     if (expanded && content) {
         content(ctx);

@@ -24,10 +24,9 @@ bool ContextMenu::update(Config config) {
 }
 
 void ContextMenu::render(const Context& ctx, Child child) {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
-    if (!impl.opening) {
+    if (!impl->opening) {
         ImGui::OpenPopup(config.id.c_str());
         if (config.position == ContextMenu::Position::ViewportCenter) {
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
@@ -36,7 +35,7 @@ void ContextMenu::render(const Context& ctx, Child child) {
         } else {
             ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Always);
         }
-        impl.opening = true;
+        impl->opening = true;
     }
 
     if (config.size.has_value()) {
@@ -62,19 +61,19 @@ void ContextMenu::render(const Context& ctx, Child child) {
     }
 
     if (open) {
-        impl.visible = true;
+        impl->visible = true;
         if (child) {
             child(ctx);
         }
         ImGui::EndPopup();
-    } else if (impl.visible) {
-        impl.visible = false;
-        impl.opening = false;
+    } else if (impl->visible) {
+        impl->visible = false;
+        impl->opening = false;
         if (config.onClose) {
             config.onClose();
         }
     } else {
-        impl.opening = false;
+        impl->opening = false;
     }
 }
 

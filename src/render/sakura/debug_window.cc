@@ -24,8 +24,7 @@ bool DebugWindow::update(Config config) {
 }
 
 void DebugWindow::render(const Context& ctx) {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     if (!config.visible) {
         return;
@@ -33,17 +32,17 @@ void DebugWindow::render(const Context& ctx) {
 
     const ImGuiIO& io = ImGui::GetIO();
     const Extent2D<F32> size = Scale(ctx, config.size);
-    impl.positionX += impl.directionX;
+    impl->positionX += impl->directionX;
 
-    if (impl.positionX > io.DisplaySize.x - size.x) {
-        impl.directionX = -impl.directionX;
+    if (impl->positionX > io.DisplaySize.x - size.x) {
+        impl->directionX = -impl->directionX;
     }
-    if (impl.positionX < 0.0f) {
-        impl.directionX = -impl.directionX;
+    if (impl->positionX < 0.0f) {
+        impl->directionX = -impl->directionX;
     }
 
     const std::string windowId = config.title + "###" + config.id;
-    ImGui::SetNextWindowPos(ImVec2(impl.positionX, (io.DisplaySize.y * config.verticalRatio) - (size.y * 0.5f)),
+    ImGui::SetNextWindowPos(ImVec2(impl->positionX, (io.DisplaySize.y * config.verticalRatio) - (size.y * 0.5f)),
                             ImGuiCond_Always);
     ImGui::SetNextWindowSize(Private::ToImVec2(size), ImGuiCond_Always);
 

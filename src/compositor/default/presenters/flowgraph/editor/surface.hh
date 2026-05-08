@@ -60,34 +60,36 @@ struct FlowgraphSurfacePresenter {
                                        surface,
                                        flowgraphId,
                                        surfaceMetaKey,
-                                       blockName](const Sakura::SurfaceSize& size) {
+                                       blockName](const Sakura::SurfaceResize& resize) {
                         enqueue(MailResizeSurface{
                             .surface = surface,
                             .flowgraph = flowgraphId,
                             .block = blockName,
                             .metaKey = surfaceMetaKey,
-                            .width = size.framebufferSize.x,
-                            .height = size.framebufferSize.y,
-                            .scale = size.scale,
-                            .detachedSurface = false,
-                            .attached = size.logicalSize,
+                            .placement = SurfacePlacement::Attached,
+                            .resize = {
+                                .logicalSize = resize.logicalSize,
+                                .framebufferSize = resize.framebufferSize,
+                                .scale = resize.scale,
+                            },
                         });
                     },
                     .onDetachedSize = [enqueue,
                                        surface,
                                        flowgraphId,
                                        surfaceMetaKey,
-                                       blockName](const Sakura::SurfaceSize& size) {
+                                       blockName](const Sakura::SurfaceResize& resize) {
                         enqueue(MailResizeSurface{
                             .surface = surface,
                             .flowgraph = flowgraphId,
                             .block = blockName,
                             .metaKey = surfaceMetaKey,
-                            .width = size.framebufferSize.x,
-                            .height = size.framebufferSize.y,
-                            .scale = size.scale,
-                            .detachedSurface = true,
-                            .detached = size.logicalSize,
+                            .placement = SurfacePlacement::Detached,
+                            .resize = {
+                                .logicalSize = resize.logicalSize,
+                                .framebufferSize = resize.framebufferSize,
+                                .scale = resize.scale,
+                            },
                         });
                     },
                     .onMouse = [enqueue, surface](MouseEvent event) {

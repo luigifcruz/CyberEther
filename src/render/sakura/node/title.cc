@@ -35,50 +35,48 @@ NodeTitle::NodeTitle(NodeTitle&&) noexcept = default;
 NodeTitle& NodeTitle::operator=(NodeTitle&&) noexcept = default;
 
 bool NodeTitle::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    const std::string id = "NodeTitle" + impl.config.title;
-    impl.title.update({
+    impl->config = std::move(config);
+    const std::string id = "NodeTitle" + impl->config.title;
+    impl->title.update({
         .id = id + "Text",
-        .str = impl.config.title,
+        .str = impl->config.title,
         .align = Text::Align::Center,
-        .scale = impl.config.titleScale,
+        .scale = impl->config.titleScale,
     });
-    impl.diagnosticIcon.update({
+    impl->diagnosticIcon.update({
         .id = id + "DiagnosticIcon",
         .str = ICON_FA_SKULL,
-        .colorKey = impl.diagnosticColorKey(),
+        .colorKey = impl->diagnosticColorKey(),
     });
-    impl.diagnosticHeader.update({
+    impl->diagnosticHeader.update({
         .id = id + "DiagnosticHeader",
         .spacing = 4.0f,
     });
-    impl.diagnosticHeaderIcon.update({
+    impl->diagnosticHeaderIcon.update({
         .id = id + "DiagnosticHeaderIcon",
         .str = ICON_FA_TRIANGLE_EXCLAMATION,
-        .colorKey = impl.diagnosticColorKey(),
+        .colorKey = impl->diagnosticColorKey(),
     });
-    impl.diagnosticHeaderLabel.update({
+    impl->diagnosticHeaderLabel.update({
         .id = id + "DiagnosticHeaderLabel",
         .str = "Diagnostic",
     });
-    impl.diagnosticDivider.update({
+    impl->diagnosticDivider.update({
         .id = id + "DiagnosticDivider",
         .spacing = 0.0f,
     });
-    impl.diagnosticTooltip.update({
+    impl->diagnosticTooltip.update({
         .id = id + "DiagnosticTooltip",
     });
-    impl.diagnosticMessage.update({
+    impl->diagnosticMessage.update({
         .id = id + "DiagnosticMessage",
-        .str = impl.config.diagnostic.message,
+        .str = impl->config.diagnostic.message,
     });
     return true;
 }
 
 void NodeTitle::render(const Context& ctx) const {
-    const auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     ImNodes::BeginNodeTitleBar();
 
@@ -86,20 +84,19 @@ void NodeTitle::render(const Context& ctx) const {
     const F32 titleStartX = ImGui::GetCursorPosX();
     const F32 availWidth = ImGui::GetContentRegionAvail().x;
 
-    impl.title.render(ctx);
+    impl->title.render(ctx);
 
     if (hasDiagnostic) {
         ImGui::SameLine();
         ImGui::SetCursorPosX(titleStartX + availWidth - ImGui::CalcTextSize(ICON_FA_SKULL).x);
-        impl.diagnosticIcon.render(ctx);
-        impl.diagnosticTooltip.render(ctx, [this](const Context& ctx) {
-            const auto& impl = *this->impl;
-            impl.diagnosticHeader.render(ctx, {
+        impl->diagnosticIcon.render(ctx);
+        impl->diagnosticTooltip.render(ctx, [this](const Context& ctx) {
+            impl->diagnosticHeader.render(ctx, {
                 [this](const Context& ctx) { this->impl->diagnosticHeaderIcon.render(ctx); },
                 [this](const Context& ctx) { this->impl->diagnosticHeaderLabel.render(ctx); },
             });
-            impl.diagnosticDivider.render(ctx);
-            impl.diagnosticMessage.render(ctx);
+            impl->diagnosticDivider.render(ctx);
+            impl->diagnosticMessage.render(ctx);
         });
     }
 

@@ -21,10 +21,9 @@ NodeLink::NodeLink(NodeLink&&) noexcept = default;
 NodeLink& NodeLink::operator=(NodeLink&&) noexcept = default;
 
 bool NodeLink::update(Config config) {
-    auto& impl = *this->impl;
-    impl.config = std::move(config);
-    impl.linkTooltip.update({
-        .id = impl.config.id + ":tooltip",
+    impl->config = std::move(config);
+    impl->linkTooltip.update({
+        .id = impl->config.id + ":tooltip",
         .wrapWidth = 420.0f,
         .delayed = false,
         .visible = true,
@@ -33,8 +32,7 @@ bool NodeLink::update(Config config) {
 }
 
 void NodeLink::render(const Context& ctx, Child tooltip) const {
-    auto& impl = *this->impl;
-    const auto& config = impl.config;
+    const auto& config = impl->config;
 
     Private::RegisterNodeEditorLink(config.id);
     Private::RegisterNodeEditorLinkHover(config.id, [this](const bool nextHovered) {
@@ -43,7 +41,7 @@ void NodeLink::render(const Context& ctx, Child tooltip) const {
             this->impl->config.onHover(nextHovered);
         }
     });
-    if (!config.unresolved && impl.hovered && tooltip) {
+    if (!config.unresolved && impl->hovered && tooltip) {
         Private::RegisterNodeEditorLinkTooltip(config.id, [this, tooltip = std::move(tooltip)](const Context& ctx) {
             this->impl->linkTooltip.render(ctx, tooltip);
         });
