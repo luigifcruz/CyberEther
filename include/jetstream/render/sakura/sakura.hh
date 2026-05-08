@@ -11,7 +11,9 @@
 #include <jetstream/render/sakura/debug_window.hh>
 #include <jetstream/render/sakura/div.hh>
 #include <jetstream/render/sakura/divider.hh>
+#include <jetstream/render/sakura/dock_layout.hh>
 #include <jetstream/render/sakura/dockspace.hh>
+#include <jetstream/render/sakura/dockspace_window.hh>
 #include <jetstream/render/sakura/grid.hh>
 #include <jetstream/render/sakura/hstack.hh>
 #include <jetstream/render/sakura/hud.hh>

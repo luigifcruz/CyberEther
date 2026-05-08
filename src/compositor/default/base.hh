@@ -41,6 +41,7 @@ class DefaultCompositor : public Compositor::Impl {
     void updateFilePendingState();
     void updateBenchmarkState();
     void updateRemoteState();
+    void updateStacksState();
 };
 
 }  // namespace Jetstream

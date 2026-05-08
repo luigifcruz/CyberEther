@@ -41,6 +41,8 @@ src_lst += files([
     'surface_view.cc',
     'workspace_background.cc',
     'dockspace.cc',
+    'dock_layout.cc',
+    'dockspace_window.cc',
 ])
 
 subdir('menu')

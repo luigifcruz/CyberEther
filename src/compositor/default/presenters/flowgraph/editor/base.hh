@@ -28,7 +28,7 @@ struct FlowgraphEditorPresenter {
     FlowgraphNodePresenter node;
 
     explicit FlowgraphEditorPresenter(const PresenterContext& context) : context(context),
-                                                                         node(context) {}
+                                                                          node(context) {}
 
     FlowgraphEditor::Config build(const std::string& flowgraphId,
                                   const std::shared_ptr<Flowgraph>& flowgraph) const {

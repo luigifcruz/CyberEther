@@ -5,7 +5,6 @@
 #include "documentation.hh"
 #include "menu.hh"
 #include "metrics/base.hh"
-#include "surface.hh"
 
 #include "jetstream/block.hh"
 #include "jetstream/render/base/texture.hh"
@@ -57,6 +56,8 @@ struct FlowgraphNode : public Sakura::Component {
         F32 rounding = 0.0f;
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
         std::optional<Extent2D<F32>> aspectRatioSize;
+        bool detached = false;
+        std::function<void()> onDetach;
         std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
         std::function<void(const Sakura::SurfaceResize&)> onDetachedSize;
         std::function<void(MouseEvent)> onMouse;
@@ -127,13 +128,10 @@ struct FlowgraphNode : public Sakura::Component {
         const auto nodeState = block.state == Block::State::Errored
             ? Sakura::Node::State::Error
             : isPending ? Sakura::Node::State::Pending : Sakura::Node::State::Normal;
-        if (surfaceCount > 0 || !isPending) {
-            detachedSurfaceStates.resize(surfaceCount, false);
-        }
 
         bool allSurfacesDetached = hasSurfaces;
-        for (U64 i = 0; i < surfaceCount; ++i) {
-            if (!detachedSurfaceStates[i]) {
+        for (const auto& surface : block.surfaces) {
+            if (!surface.detached) {
                 allSurfacesDetached = false;
                 break;
             }
@@ -158,12 +156,20 @@ struct FlowgraphNode : public Sakura::Component {
 
         if (hasSurfaces) {
             if (dimensions.y <= 0.0f) {
-                const auto& surface = block.surfaces.front();
-                if (surface.aspectRatioSize.has_value()) {
-                    dimensions.x = surface.aspectRatioSize->x;
-                    dimensions.y = surface.aspectRatioSize->y;
-                } else {
-                    dimensions.y = surface.logicalSize.y;
+                const Surface* firstAttachedSurface = nullptr;
+                for (const auto& surface : block.surfaces) {
+                    if (!surface.detached) {
+                        firstAttachedSurface = &surface;
+                        break;
+                    }
+                }
+                if (firstAttachedSurface) {
+                    if (firstAttachedSurface->aspectRatioSize.has_value()) {
+                        dimensions.x = firstAttachedSurface->aspectRatioSize->x;
+                        dimensions.y = firstAttachedSurface->aspectRatioSize->y;
+                    } else {
+                        dimensions.y = firstAttachedSurface->logicalSize.y;
+                    }
                 }
             }
         } else if (!isPending) {
@@ -261,7 +267,6 @@ struct FlowgraphNode : public Sakura::Component {
         }
 
         attachedSurfaces.resize(surfaceCount);
-        detachedSurfaces.resize(surfaceCount);
         for (U64 i = 0; i < surfaceCount; ++i) {
             const auto& surface = block.surfaces[i];
             const auto texture = surface.texture;
@@ -276,27 +281,7 @@ struct FlowgraphNode : public Sakura::Component {
                     return texture ? texture->raw() : 0;
                 },
                 .onSize = surface.onAttachedSize,
-                .onDetach = [this, i]() {
-                    if (i < detachedSurfaceStates.size()) {
-                        detachedSurfaceStates[i] = true;
-                    }
-                },
-            });
-            detachedSurfaces[i].update({
-                .id = surface.id + ":detached",
-                .title = block.title,
-                .name = block.name,
-                .logicalSize = surface.logicalSize,
-                .onResolveTexture = [texture]() {
-                    return texture ? texture->raw() : 0;
-                },
-                .onSize = surface.onDetachedSize,
-                .onMouse = surface.onMouse,
-                .onClose = [this, i]() {
-                    if (i < detachedSurfaceStates.size()) {
-                        detachedSurfaceStates[i] = false;
-                    }
-                },
+                .onDetach = surface.onDetach,
             });
         }
 
@@ -384,7 +369,7 @@ struct FlowgraphNode : public Sakura::Component {
             }
 
             for (U64 i = 0; i < attachedSurfaces.size(); ++i) {
-                if (i < detachedSurfaceStates.size() && detachedSurfaceStates[i]) {
+                if (i < config.block.surfaces.size() && config.block.surfaces[i].detached) {
                     continue;
                 }
                 attachedSurfaces[i].render(ctx);
@@ -396,11 +381,6 @@ struct FlowgraphNode : public Sakura::Component {
         }
         if (documentationOpen) {
             documentation.render(ctx);
-        }
-        for (U64 i = 0; i < detachedSurfaces.size(); ++i) {
-            if (i < detachedSurfaceStates.size() && detachedSurfaceStates[i]) {
-                detachedSurfaces[i].render(ctx);
-            }
         }
         if (config.runtimeMetricsEnabled) {
             runtimeOverlay.render(ctx);
@@ -422,8 +402,6 @@ struct FlowgraphNode : public Sakura::Component {
     std::vector<FlowgraphMetricInstance> metrics;
     std::vector<FlowgraphConfigFieldInstance> fields;
     std::vector<Sakura::SurfaceView> attachedSurfaces;
-    std::vector<FlowgraphDetachedSurface> detachedSurfaces;
-    std::vector<bool> detachedSurfaceStates;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;
     FlowgraphNodeDocumentation documentation;

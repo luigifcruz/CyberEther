@@ -3,11 +3,15 @@
 
 #include "../components/hint_overlay.hh"
 #include "editor/base.hh"
+#include "surface.hh"
+#include "stack.hh"
 #include "toolbar.hh"
 
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -19,9 +23,12 @@ struct FlowgraphWindow : public Sakura::Component {
         std::string title;
         std::optional<U64> dockId;
         FlowgraphEditor::Config editor;
+        std::vector<FlowgraphStackWindow::Config> stacks;
+        std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
         bool empty = false;
         std::function<void()> onSave;
         std::function<void()> onClose;
+        std::function<void()> onCreateStack;
     };
 
     void update(Config config) {
@@ -55,8 +62,49 @@ struct FlowgraphWindow : public Sakura::Component {
             .onAddBlock = [this]() {
                 openBlockPickerRequest = true;
             },
+            .onCreateStack = this->config.onCreateStack,
         });
         editor.update(std::move(editorConfig));
+
+        // Update stack windows.
+
+        stackOrder.clear();
+        std::unordered_set<std::string> activeStacks;
+        for (auto& stackConfig : this->config.stacks) {
+            stackOrder.push_back(stackConfig.id);
+            activeStacks.insert(stackConfig.id);
+            stackWindows[stackConfig.id].update(std::move(stackConfig));
+        }
+
+        std::vector<std::string> staleStacks;
+        for (const auto& [stackId, _] : stackWindows) {
+            if (!activeStacks.contains(stackId)) {
+                staleStacks.push_back(stackId);
+            }
+        }
+        for (const auto& stackId : staleStacks) {
+            stackWindows.erase(stackId);
+        }
+
+        // Update detached surface windows.
+
+        detachedSurfaceOrder.clear();
+        std::unordered_set<std::string> activeSurfaces;
+        for (auto& surfaceConfig : this->config.detachedSurfaces) {
+            detachedSurfaceOrder.push_back(surfaceConfig.id);
+            activeSurfaces.insert(surfaceConfig.id);
+            detachedSurfaceWindows[surfaceConfig.id].update(std::move(surfaceConfig));
+        }
+
+        std::vector<std::string> staleSurfaces;
+        for (const auto& [surfaceId, _] : detachedSurfaceWindows) {
+            if (!activeSurfaces.contains(surfaceId)) {
+                staleSurfaces.push_back(surfaceId);
+            }
+        }
+        for (const auto& surfaceId : staleSurfaces) {
+            detachedSurfaceWindows.erase(surfaceId);
+        }
 
         if (this->config.empty) {
             hint.update({
@@ -81,6 +129,16 @@ struct FlowgraphWindow : public Sakura::Component {
             }
             toolbar.render(ctx);
         });
+        for (const auto& stackId : stackOrder) {
+            if (stackWindows.contains(stackId)) {
+                stackWindows.at(stackId).render(ctx);
+            }
+        }
+        for (const auto& surfaceId : detachedSurfaceOrder) {
+            if (detachedSurfaceWindows.contains(surfaceId)) {
+                detachedSurfaceWindows.at(surfaceId).render(ctx);
+            }
+        }
     }
 
  private:
@@ -89,6 +147,10 @@ struct FlowgraphWindow : public Sakura::Component {
     FlowgraphToolbar toolbar;
     FlowgraphEditor editor;
     HintOverlay hint;
+    std::vector<std::string> stackOrder;
+    std::unordered_map<std::string, FlowgraphStackWindow> stackWindows;
+    std::vector<std::string> detachedSurfaceOrder;
+    std::unordered_map<std::string, FlowgraphDetachedSurface> detachedSurfaceWindows;
     bool openBlockPickerRequest = false;
 };
 

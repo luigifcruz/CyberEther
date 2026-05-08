@@ -232,6 +232,37 @@ struct MailSetNodeMeta {
     NodeMeta meta;
 };
 
+struct MailCreateStack {
+    std::string flowgraph;
+};
+
+struct MailDeleteStack {
+    std::string flowgraph;
+    std::string stackId;
+};
+
+struct MailSetStackGeometry {
+    std::string flowgraph;
+    std::string stackId;
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 0.0f;
+    F32 height = 0.0f;
+};
+
+struct MailSetStackLayout {
+    std::string flowgraph;
+    std::string stackId;
+    std::optional<StackDockLayoutMeta> layout;
+};
+
+struct MailSetSurfaceDetached {
+    std::string flowgraph;
+    std::string block;
+    std::string surface;
+    bool detached = false;
+};
+
 struct MailStartRemote {
     Instance::Remote::Config config;
 };
@@ -313,6 +344,11 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
+                          MailCreateStack,
+                          MailDeleteStack,
+                          MailSetStackGeometry,
+                          MailSetStackLayout,
+                          MailSetSurfaceDetached,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,

@@ -12,6 +12,7 @@
 #include "jetstream/viewport/adapters/generic.hh"
 
 #include "ui.hh"
+#include "meta.hh"
 
 #include <future>
 #include <memory>
@@ -74,7 +75,14 @@ struct DefaultCompositorState {
     };
 
     struct FlowgraphState {
+        struct StackWindowState {
+            StackMeta meta;
+            bool restoreDockLayout = false;
+            bool dockInMainDockspace = true;
+        };
+
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;
+        std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> stacks;
     };
 
     struct ClipboardState {

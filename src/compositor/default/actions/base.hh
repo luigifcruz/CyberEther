@@ -5,6 +5,7 @@
 #include "flowgraph.hh"
 #include "remote.hh"
 #include "settings.hh"
+#include "stacks.hh"
 #include "workbench.hh"
 
 #include "jetstream/logger.hh"
@@ -24,6 +25,7 @@ class DefaultActions {
         benchmark = std::make_shared<BenchmarkActions>(state, callbacks);
         remote = std::make_shared<RemoteActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
+        stacks = std::make_shared<StackActions>(state, callbacks);
     }
 
     Result handle(const Mail& mail) {
@@ -41,6 +43,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*flowgraph, mail, result)) {
+            return result;
+        }
+        if (Handle(*stacks, mail, result)) {
             return result;
         }
 
@@ -70,6 +75,7 @@ class DefaultActions {
     std::shared_ptr<FlowgraphActions> flowgraph;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<SettingsActions> settings;
+    std::shared_ptr<StackActions> stacks;
     std::shared_ptr<WorkbenchActions> workbench;
 };
 

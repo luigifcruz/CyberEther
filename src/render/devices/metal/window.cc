@@ -70,6 +70,7 @@ Result Implementation::createImgui() {
 
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
+    io->IniFilename = nullptr;
 
 #ifndef JST_OS_IOS
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;

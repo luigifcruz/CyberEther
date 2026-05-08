@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_WORKBENCH_HH
 
 #include "context.hh"
-#include "flowgraph/area.hh"
+#include "flowgraph/window.hh"
 #include "hud/info.hh"
 #include "hud/remote.hh"
 #include "hud/welcome.hh"
@@ -19,7 +19,7 @@ struct WorkbenchPresenter {
     WelcomeHudPresenter welcomeHud;
     InfoHudPresenter infoHud;
     RemoteHudPresenter remoteHud;
-    FlowgraphAreaPresenter flowgraphArea;
+    FlowgraphWindowPresenter flowgraphWindow;
     ModalPresenter modal;
 
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
@@ -27,7 +27,7 @@ struct WorkbenchPresenter {
                                                                    welcomeHud(context),
                                                                    infoHud(context),
                                                                    remoteHud(context),
-                                                                   flowgraphArea(context),
+                                                                   flowgraphWindow(context),
                                                                    modal(context) {}
 
     WorkbenchView::Config build() const {
@@ -39,7 +39,10 @@ struct WorkbenchPresenter {
         config.welcomeHud = welcomeHud.build();
         config.infoHud = infoHud.build();
         config.remoteHud = remoteHud.build();
-        config.flowgraphs = flowgraphArea.build();
+        config.flowgraphs.reserve(context.state.flowgraph.items.size());
+        for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
+            config.flowgraphs.push_back(flowgraphWindow.build(flowgraphId, flowgraph));
+        }
         config.modal = modal.build();
         return config;
     }

@@ -56,8 +56,17 @@ struct FlowgraphSurfacePresenter {
                         static_cast<F32>(surfaceMeta.detachedHeight),
                     },
                     .aspectRatioSize = aspectRatioSize,
+                    .detached = surfaceMeta.detached,
+                    .onDetach = [enqueue, flowgraphId, blockName, surfaceId = manifest.id]() {
+                        enqueue(MailSetSurfaceDetached{
+                            .flowgraph = flowgraphId,
+                            .block = blockName,
+                            .surface = surfaceId,
+                            .detached = true,
+                        });
+                    },
                     .onAttachedSize = [enqueue,
-                                       surface,
+                                        surface,
                                        flowgraphId,
                                        surfaceMetaKey,
                                        blockName](const Sakura::SurfaceResize& resize) {
