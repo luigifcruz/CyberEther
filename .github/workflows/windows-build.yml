@@ -22,6 +22,7 @@ env:
     SHLWAPI.dll
     IMM32.dll
     VULKAN-1.dll
+    api-ms-win-core-synch-l1-2-0.dll
   VULKAN_VERSION: 1.4.309.0
   VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
 
