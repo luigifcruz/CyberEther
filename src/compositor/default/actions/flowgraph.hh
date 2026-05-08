@@ -548,13 +548,11 @@ struct FlowgraphActions {
             flowgraph->setMeta(msg.metaKey, surfaceMeta, msg.block);
         }
 
-        const bool detached = msg.placement == SurfacePlacement::Detached;
-        const auto& bg = state.sakura.colorMap.at(detached ? "background" : "node_background");
         SurfaceEvent event;
         event.type = SurfaceEventType::Resize;
         event.size = msg.resize.framebufferSize;
         event.scale = msg.resize.scale;
-        event.backgroundColor = {bg.x, bg.y, bg.z, bg.w};
+        event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
         msg.surface->pushSurfaceEvent(event);
 
         return Result::SUCCESS;
