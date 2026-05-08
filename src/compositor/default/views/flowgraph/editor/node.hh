@@ -280,10 +280,10 @@ struct FlowgraphNode : public Sakura::Component {
                 .id = surface.id + ":detached",
                 .title = block.title,
                 .name = block.name,
+                .logicalSize = surface.logicalSize,
                 .onResolveTexture = [texture]() {
                     return texture ? texture->raw() : 0;
                 },
-                .logicalSize = surface.logicalSize,
                 .onSize = surface.onDetachedSize,
                 .onMouse = surface.onMouse,
                 .onClose = [this, i]() {
