@@ -61,7 +61,7 @@ struct WelcomeHudCell : public Sakura::Component {
         card.update({
             .id = this->config.id,
             .size = {176.0f, 118.0f},
-            .padding = 22.0f,
+            .padding = 20.0f,
             .rounding = 16.0f,
             .border = true,
             .scrollbar = false,
