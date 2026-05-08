@@ -18,6 +18,7 @@ struct Soapy : public Block::Config {
     U64 bufferMultiplier = 4;
 
     JST_BLOCK_TYPE(soapy);
+    JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(hintString, deviceString, streamString, frequency, frequencyStep,
                      sampleRate, automaticGain, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);

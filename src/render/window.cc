@@ -253,6 +253,17 @@ void Window::updateScalingFactor(const Viewport::Generic& viewport) {
     _previousScalingFactor = _scalingFactor;
 }
 
+Extent2D<F32> Window::framebufferScale() const {
+    const auto scale = ImGui::GetIO().DisplayFramebufferScale;
+    return {scale.x, scale.y};
+}
+
+Extent2D<U64> Window::framebufferSize(const Extent2D<F32>& displaySize) const {
+    const auto scale = framebufferScale();
+    return {static_cast<U64>(displaySize.x * scale.x),
+            static_cast<U64>(displaySize.y * scale.y)};
+}
+
 Result Window::bind(const std::shared_ptr<Components::Generic>& component) {
     // Call create on the component.
     JST_CHECK(component->create(this));

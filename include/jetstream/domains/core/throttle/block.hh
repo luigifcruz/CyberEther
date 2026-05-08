@@ -10,6 +10,7 @@ struct Throttle : public Block::Config {
     U64 intervalMs = 100;
 
     JST_BLOCK_TYPE(throttle);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(intervalMs);
     JST_BLOCK_DESCRIPTION(
         "Throttle",

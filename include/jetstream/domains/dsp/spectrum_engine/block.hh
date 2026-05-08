@@ -13,10 +13,11 @@ struct SpectrumEngine : public Block::Config {
     F32 rangeMax = 0.0f;
 
     JST_BLOCK_TYPE(spectrum_engine);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(axis, enableAgc, enableScale, rangeMin, rangeMax);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Engine",
-        "Computes the spectrum using windowing, FFT, and optional AGC/scaling.",
+        "Computes spectra with windowing, FFT, and optional scaling.",
         "# Spectrum Engine\n"
         "The Spectrum Engine block computes the frequency spectrum of the input "
         "signal through a configurable processing chain. It applies a Blackman "

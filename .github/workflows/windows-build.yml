@@ -22,6 +22,7 @@ env:
     SHLWAPI.dll
     IMM32.dll
     VULKAN-1.dll
+    api-ms-win-core-synch-l1-2-0.dll
   VULKAN_VERSION: 1.4.309.0
   VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
 
@@ -84,6 +85,16 @@ jobs:
           }
 
           meson test -C build --print-errorlogs
+
+      - name: Upload Meson test logs
+        if: failure()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: windows-meson-test-logs
+          path: |
+            build/meson-logs/testlog.txt
+            build/meson-logs/testlog.json
+          if-no-files-found: ignore
 
       - name: Check Windows binary dependencies
         uses: ./.github/actions/check-dynamic-deps

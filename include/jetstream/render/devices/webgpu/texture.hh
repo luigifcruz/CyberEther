@@ -21,7 +21,7 @@ class TextureImp<DeviceType::WebGPU> : public Texture {
     Result fillRow(const U64& y, const U64& height) override;
 
     uint64_t raw() const override {
-        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(textureView));
+        return textureView ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(textureView)) : 0;
     }
 
  protected:
@@ -54,9 +54,9 @@ class TextureImp<DeviceType::WebGPU> : public Texture {
     static U64 GetPixelByteSize(const WGPUTextureFormat&);
 
  private:
-    WGPUTexture texture;
-    WGPUTextureView textureView;
-    WGPUSampler sampler;
+    WGPUTexture texture = nullptr;
+    WGPUTextureView textureView = nullptr;
+    WGPUSampler sampler = nullptr;
     WGPUTextureFormat textureFormat;
     WGPUSamplerBindingLayout samplerBindingLayout;
     WGPUTextureBindingLayout textureBindingLayout;

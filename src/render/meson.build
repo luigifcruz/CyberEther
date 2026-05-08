@@ -4,4 +4,5 @@ src_lst += files([
 
 subdir('components')
 subdir('devices')
+subdir('sakura')
 subdir('tools')

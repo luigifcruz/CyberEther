@@ -46,8 +46,15 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[METAL] Destroying texture.");
 
-    samplerState->release();
-    texture->release();
+    if (samplerState) {
+        samplerState->release();
+        samplerState = nullptr;
+    }
+
+    if (texture) {
+        texture->release();
+        texture = nullptr;
+    }
 
     return Result::SUCCESS;
 }

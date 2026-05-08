@@ -10,6 +10,7 @@ struct MultiplyConstant : public Block::Config {
     F32 constant = 1.0f;
 
     JST_BLOCK_TYPE(multiply_constant);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(constant);
     JST_BLOCK_DESCRIPTION(
         "Multiply Constant",

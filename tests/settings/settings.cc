@@ -89,37 +89,6 @@ struct TempPathRoot {
     std::filesystem::path root;
 };
 
-struct WindowConfig {
-    U64 width = 0;
-    U64 height = 0;
-
-    JST_SERDES(width, height);
-};
-
-struct MainAppConfig {
-    U64 gain = 0;
-    bool enabled = false;
-    WindowConfig window;
-
-    JST_SERDES(gain, enabled, window);
-};
-
-struct RemoteConfig {
-    std::string broker;
-    U64 framerate = 0;
-
-    JST_SERDES(broker, framerate);
-};
-
-std::string ReadFile(const std::filesystem::path& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return {};
-    }
-
-    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-}
-
 struct SettingsSandbox {
     explicit SettingsSandbox(const std::string& label) {
 #if defined(JST_OS_LINUX)
@@ -136,7 +105,7 @@ struct SettingsSandbox {
         appDataEnv = std::make_unique<ScopedWideEnvVar>(L"APPDATA");
 
         if (!appDataEnv->set((tempRoot->root / "AppData" /
-                              std::filesystem::path(L"Roaming-\u00dcnicode")).wstring())) {
+                              std::filesystem::path(L"Roaming-Unicode")).wstring())) {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #elif defined(JST_OS_MAC)
@@ -175,104 +144,99 @@ struct SettingsSandbox {
 #endif
 };
 
+std::string ReadFile(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return {};
+    }
+
+    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+
+void WriteFile(const std::filesystem::path& path, const std::string& content) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!file) {
+        throw std::runtime_error("failed to create settings file");
+    }
+
+    file.write(content.data(), static_cast<std::streamsize>(content.size()));
+}
+
 }  // namespace
 
-TEST_CASE("Settings leaves missing values untouched", "[settings]") {
+TEST_CASE("Settings returns defaults when file is missing", "[settings]") {
     SettingsSandbox sandbox("missing");
 
-    MainAppConfig config;
-    config.gain = 19;
-    config.enabled = true;
-    config.window.width = 1280;
-    config.window.height = 720;
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
 
-    REQUIRE(Settings::Load("mainappconf", config) == Result::SUCCESS);
-    REQUIRE(config.gain == 19);
-    REQUIRE(config.enabled);
-    REQUIRE(config.window.width == 1280);
-    REQUIRE(config.window.height == 720);
+    REQUIRE(settings.graphics.size.width == 1920);
+    REQUIRE(settings.graphics.size.height == 1080);
+    REQUIRE(settings.interface.themeKey == "Dark");
+    REQUIRE(settings.interface.infoPanelEnabled);
+    REQUIRE(settings.remote.brokerUrl == "https://cyberether.org");
     REQUIRE(!std::filesystem::exists(sandbox.path));
 }
 
-TEST_CASE("Settings round-trip serialized structs through YAML", "[settings]") {
+TEST_CASE("Settings persists root YAML", "[settings]") {
     SettingsSandbox sandbox("roundtrip");
 
-    MainAppConfig source;
-    source.gain = 42;
-    source.enabled = true;
-    source.window.width = 1920;
-    source.window.height = 1080;
+    Settings settings;
+    settings.graphics.size.width = 1280;
+    settings.graphics.size.height = 720;
+    settings.interface.themeKey = "Light";
+    settings.remote.brokerUrl = "https://example.com";
+    settings.remote.autoJoinSessions = true;
 
-    REQUIRE(Settings::Save("mainappconf", source) == Result::SUCCESS);
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
     REQUIRE(std::filesystem::exists(sandbox.path));
 
-    MainAppConfig restored;
-    REQUIRE(Settings::Load("mainappconf", restored) == Result::SUCCESS);
-    REQUIRE(restored.gain == 42);
-    REQUIRE(restored.enabled);
-    REQUIRE(restored.window.width == 1920);
-    REQUIRE(restored.window.height == 1080);
-
     const auto yaml = ReadFile(sandbox.path);
-    REQUIRE(yaml.find("mainappconf:") != std::string::npos);
-    REQUIRE(yaml.find("gain: 42") != std::string::npos);
-    REQUIRE(yaml.find("window:") != std::string::npos);
+    REQUIRE(yaml.find("graphics:") != std::string::npos);
+    REQUIRE(yaml.find("interface:") != std::string::npos);
+    REQUIRE(yaml.find("remote:") != std::string::npos);
+    REQUIRE(yaml.find("themeKey: Light") != std::string::npos);
+    REQUIRE(yaml.find("brokerUrl:") != std::string::npos);
+    REQUIRE(yaml.find("https://example.com") != std::string::npos);
 }
 
-TEST_CASE("Settings rejects empty keys", "[settings]") {
-    SettingsSandbox sandbox("empty-key");
+TEST_CASE("Settings loads existing YAML", "[settings]") {
+    SettingsSandbox sandbox("existing");
 
-    MainAppConfig config;
-    config.gain = 42;
-    config.enabled = true;
+    WriteFile(sandbox.path,
+              "interface:\n"
+              "  themeKey: Solarized\n"
+              "  infoPanelEnabled: false\n"
+              "remote:\n"
+              "  brokerUrl: https://example.net\n"
+              "  autoJoinSessions: true\n"
+              "developer:\n"
+              "  logLevel: 4\n");
 
-    REQUIRE(Settings::Save("", config) == Result::ERROR);
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
 
-    config.gain = 99;
-    REQUIRE(Settings::Load("", config) == Result::ERROR);
-    REQUIRE(config.gain == 99);
-
-    REQUIRE(Settings::Erase("") == Result::ERROR);
-    REQUIRE(!std::filesystem::exists(sandbox.path));
+    REQUIRE(settings.interface.themeKey == "Solarized");
+    REQUIRE(!settings.interface.infoPanelEnabled);
+    REQUIRE(settings.remote.brokerUrl == "https://example.net");
+    REQUIRE(settings.remote.autoJoinSessions);
+    REQUIRE(settings.developer.logLevel == 4);
+    REQUIRE(settings.graphics.framerate == 60);
 }
 
-TEST_CASE("Settings preserves unrelated keys and erases targeted entries", "[settings]") {
-    SettingsSandbox sandbox("merge-erase");
+TEST_CASE("Settings can update memory without persisting", "[settings]") {
+    SettingsSandbox sandbox("memory-only");
 
-    MainAppConfig mainConfig;
-    mainConfig.gain = 7;
-    mainConfig.enabled = false;
-    mainConfig.window.width = 800;
-    mainConfig.window.height = 600;
+    Settings settings;
+    settings.interface.themeKey = "Transient";
+    settings.developer.runtimeMetricsEnabled = true;
 
-    RemoteConfig remoteConfig;
-    remoteConfig.broker = "https://cyberether.org";
-    remoteConfig.framerate = 30;
-
-    REQUIRE(Settings::Save("mainappconf", mainConfig) == Result::SUCCESS);
-    REQUIRE(Settings::Save("remote", remoteConfig) == Result::SUCCESS);
-
-    mainConfig.gain = 11;
-    mainConfig.window.width = 1440;
-    REQUIRE(Settings::Save("mainappconf", mainConfig) == Result::SUCCESS);
-
-    RemoteConfig restoredRemote;
-    REQUIRE(Settings::Load("remote", restoredRemote) == Result::SUCCESS);
-    REQUIRE(restoredRemote.broker == "https://cyberether.org");
-    REQUIRE(restoredRemote.framerate == 30);
-
-    REQUIRE(Settings::Erase("mainappconf") == Result::SUCCESS);
-
-    MainAppConfig missing;
-    missing.gain = 99;
-    REQUIRE(Settings::Load("mainappconf", missing) == Result::SUCCESS);
-    REQUIRE(missing.gain == 99);
-
-    restoredRemote = {};
-    REQUIRE(Settings::Load("remote", restoredRemote) == Result::SUCCESS);
-    REQUIRE(restoredRemote.broker == "https://cyberether.org");
-    REQUIRE(restoredRemote.framerate == 30);
-
-    REQUIRE(Settings::Erase("remote") == Result::SUCCESS);
+    REQUIRE(Settings::Set(settings, false) == Result::SUCCESS);
     REQUIRE(!std::filesystem::exists(sandbox.path));
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    REQUIRE(restored.interface.themeKey == "Transient");
+    REQUIRE(restored.developer.runtimeMetricsEnabled);
 }

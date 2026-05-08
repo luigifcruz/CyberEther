@@ -7,6 +7,7 @@ namespace Jetstream::Blocks {
 
 struct FilterEngine : public Block::Config {
     JST_BLOCK_TYPE(filter_engine);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Filter Engine",

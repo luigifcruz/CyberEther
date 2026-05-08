@@ -10,6 +10,7 @@ struct Duplicate : public Block::Config {
     bool hostAccessible = true;
 
     JST_BLOCK_TYPE(duplicate);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(hostAccessible, outputDevice);
     JST_BLOCK_DESCRIPTION(
         "Duplicate",

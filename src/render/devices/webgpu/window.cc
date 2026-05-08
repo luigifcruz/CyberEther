@@ -61,6 +61,7 @@ Result Implementation::createImgui() {
 
     io = &ImGui::GetIO();
     style = &ImGui::GetStyle();
+    io->IniFilename = nullptr;
 
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;

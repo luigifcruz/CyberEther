@@ -12,6 +12,7 @@ struct Reshape : public Block::Config {
     bool contiguous = false;
 
     JST_BLOCK_TYPE(reshape);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(shape, contiguous);
     JST_BLOCK_DESCRIPTION(
         "Reshape",

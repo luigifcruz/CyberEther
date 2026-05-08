@@ -89,6 +89,14 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
+Extent2D<F32> Implementation::displaySize() const {
+    int width = 0;
+    int height = 0;
+    glfwGetWindowSize(window, &width, &height);
+
+    return {static_cast<F32>(width), static_cast<F32>(height)};
+}
+
 F32 Implementation::scale(const F32& scale) const {
     // Scaling is handled gracefully by macOS/iOS.
     return scale;

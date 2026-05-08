@@ -9,6 +9,7 @@ struct Note : public Block::Config {
     std::string content = "# Note\nWrite your **markdown** here.";
 
     JST_BLOCK_TYPE(note);
+    JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_PARAMS(content);
     JST_BLOCK_DESCRIPTION(
         "Note",

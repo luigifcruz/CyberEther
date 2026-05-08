@@ -7,6 +7,7 @@ namespace Jetstream::Blocks {
 
 struct Add : public Block::Config {
     JST_BLOCK_TYPE(add);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Add",

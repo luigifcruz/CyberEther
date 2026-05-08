@@ -53,6 +53,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(out.rank() == 1);
     REQUIRE(out.shape(0) == 4);
 
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
+
     Cleanup(path);
 }
 
@@ -93,6 +95,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const Tensor& out = flowgraph->blockList().at("reader")
                             ->outputs().at("signal").tensor;
     REQUIRE(out.shape(0) == 2);
+
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
 
     Cleanup(path);
 }

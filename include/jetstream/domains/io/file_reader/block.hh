@@ -14,6 +14,7 @@ struct FileReader : public Block::Config {
     bool playing = true;
 
     JST_BLOCK_TYPE(file_reader);
+    JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(filepath, fileFormat, dataType, batchSize, loop, playing);
     JST_BLOCK_DESCRIPTION(
         "File Reader",

@@ -222,6 +222,14 @@ Result Implementation::createImgui() {
     return Result::SUCCESS;
 }
 
+Extent2D<F32> Implementation::displaySize() const {
+    I32 width = 0;
+    I32 height = 0;
+    glfwGetWindowSize(window, &width, &height);
+
+    return {static_cast<F32>(width), static_cast<F32>(height)};
+}
+
 F32 Implementation::scale(const F32& scale) const {
     I32 wWidth, wHeight;
     glfwGetWindowSize(window, &wWidth, &wHeight);

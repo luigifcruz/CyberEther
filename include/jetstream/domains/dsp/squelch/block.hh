@@ -13,6 +13,7 @@ struct Squelch : public Block::Config {
     F32 threshold = 0.1f;
 
     JST_BLOCK_TYPE(squelch);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(threshold);
     JST_BLOCK_DESCRIPTION(
         "Squelch",

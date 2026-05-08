@@ -12,6 +12,7 @@ struct Slice : public Block::Config {
     bool contiguous = false;
 
     JST_BLOCK_TYPE(slice);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(slice, contiguous);
     JST_BLOCK_DESCRIPTION(
         "Slice",
