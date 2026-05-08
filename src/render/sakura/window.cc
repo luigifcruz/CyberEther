@@ -38,9 +38,17 @@ void Window::render(const Context& ctx, Child content) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Private::ToImVec2(Scale(ctx, *config.padding)));
         ++styleVarCount;
     }
+    I32 styleColorCount = 0;
+    if (config.backgroundColor.has_value()) {
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, Private::ToImVec4(*config.backgroundColor));
+        ++styleColorCount;
+    }
 
     bool nextOpen = true;
     const bool expanded = ImGui::Begin(impl->windowId.c_str(), &nextOpen);
+    if (styleColorCount > 0) {
+        ImGui::PopStyleColor(styleColorCount);
+    }
     if (styleVarCount > 0) {
         ImGui::PopStyleVar(styleVarCount);
     }

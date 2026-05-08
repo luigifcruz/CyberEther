@@ -1,5 +1,6 @@
 #pragma once
 
+#include <jetstream/render/sakura/color.hh>
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/render/sakura/context.hh>
 #include <jetstream/types.hh>
@@ -20,6 +21,7 @@ struct Window : public Component {
         Extent2D<F32> size = {500.0f, 400.0f};
         std::optional<U64> dockId;
         std::optional<Extent2D<F32>> padding;
+        std::optional<Color> backgroundColor;
         std::function<void()> onOpen;
         std::function<void()> onClose;
     };
