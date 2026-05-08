@@ -48,7 +48,7 @@ struct RemoteView : public Sakura::Component {
         header.update({
             .id = "RemoteStreamingHeader",
             .title = ICON_FA_TOWER_BROADCAST " Remote Streaming",
-            .description = "Stream your session to remote clients via WebRTC. Clients can connect by scanning the QR code or using the invite URL.",
+            .description = "Share this session with remote clients via WebRTC.",
         });
 
         startButton.update({
@@ -75,13 +75,14 @@ struct RemoteView : public Sakura::Component {
 
         qrSplit.update({
             .id = "RemoteStreamingQrSplit",
-            .leftWidth = 220.0f,
-            .height = 260.0f,
+            .leftWidth = 190.0f,
+            .height = 300.0f,
         });
         qrCode.update({
             .id = "RemoteStreamingQrCode",
             .data = cachedQrData,
             .width = cachedQrWidth,
+            .moduleSize = 5.0f,
             .onClick = [this]() {
                 openInvite();
             },
@@ -89,68 +90,24 @@ struct RemoteView : public Sakura::Component {
         openInviteButton.update({
             .id = "RemoteStreamingOpenInvite",
             .str = ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in browser",
-            .size = {-1.0f, 0.0f},
+            .size = {-1.0f, 34.0f},
             .onClick = [this]() {
                 openInvite();
-            },
-        });
-        connectionTitle.update({
-            .id = "RemoteStreamingConnectionTitle",
-            .str = "Connection Info",
-            .font = Sakura::Text::Font::H2,
-            .scale = 1.05f,
-        });
-        connectionTable.update({
-            .id = "RemoteStreamingConnectionTable",
-            .columns = {"Property", "Value"},
-            .rows = {
-                {"Room ID", this->config.roomId},
-                {"Access Token", this->config.accessToken},
-            },
-            .showHeaders = false,
-        });
-        copyRoomButton.update({
-            .id = "RemoteStreamingCopyRoom",
-            .str = "Copy Room ID",
-            .size = {-1.0f, 0.0f},
-            .onClick = [this]() {
-                copy("Room ID", this->config.roomId);
             },
         });
         copyTokenButton.update({
             .id = "RemoteStreamingCopyToken",
             .str = "Copy Access Token",
-            .size = {-1.0f, 0.0f},
+            .size = {-1.0f, 34.0f},
             .onClick = [this]() {
                 copy("Access token", this->config.accessToken);
             },
         });
-        connectedTitle.update({
-            .id = "RemoteStreamingConnectedTitle",
-            .str = "Connected Clients",
-            .font = Sakura::Text::Font::H2,
-            .scale = 1.05f,
-        });
-        pendingTitle.update({
-            .id = "RemoteStreamingPendingTitle",
-            .str = "Pending Connections",
-            .font = Sakura::Text::Font::H2,
-            .scale = 1.05f,
-        });
-        connectedText.update({
-            .id = "RemoteStreamingConnectedText",
-            .str = connectedClientsText(),
-            .tone = connectedClientsText().starts_with("No") ? Sakura::Text::Tone::Disabled : Sakura::Text::Tone::Success,
-        });
-        pendingHint.update({
-            .id = "RemoteStreamingPendingHint",
-            .str = "Click a pending code to approve it.",
-            .tone = Sakura::Text::Tone::Disabled,
-        });
-        noPendingText.update({
-            .id = "RemoteStreamingNoPending",
-            .str = "No pending connections.",
-            .tone = Sakura::Text::Tone::Disabled,
+        clientTable.update({
+            .id = "RemoteStreamingClientsTable",
+            .columns = {"Client", "Status"},
+            .fixedColumnWidths = {0.0f, 160.0f},
+            .size = {0.0f, 270.0f},
         });
         stopButton.update({
             .id = "RemoteStreamingStop",
@@ -163,14 +120,21 @@ struct RemoteView : public Sakura::Component {
                 }
             },
         });
-        pendingButtons.resize(this->config.waitlist.size());
-        for (U64 i = 0; i < pendingButtons.size(); ++i) {
-            const std::string code = clientCode(this->config.waitlist[i]);
-            pendingButtons[i].update({
-                .id = "RemoteStreamingPending" + this->config.waitlist[i],
-                .str = ICON_FA_CLOCK " " + code,
+        clientRows = buildClientRows();
+        clientCodeTexts.resize(clientRows.size());
+        clientApproveButtons.resize(clientRows.size());
+        for (U64 i = 0; i < clientRows.size(); ++i) {
+            const auto& row = clientRows[i];
+            clientCodeTexts[i].update({
+                .id = "RemoteStreamingClient" + row.sessionId,
+                .str = row.code,
+            });
+            clientApproveButtons[i].update({
+                .id = "RemoteStreamingApprove" + row.sessionId,
+                .str = row.pending ? "Approve" : "Approved",
                 .size = {-1.0f, 0.0f},
-                .onClick = [this, code]() {
+                .disabled = !row.pending,
+                .onClick = [this, code = row.code]() {
                     if (this->config.onApprove) {
                         this->config.onApprove(code);
                     }
@@ -189,25 +153,10 @@ struct RemoteView : public Sakura::Component {
                 [this](const Sakura::Context& ctx) {
                     qrCode.render(ctx);
                     openInviteButton.render(ctx);
+                    copyTokenButton.render(ctx);
                 },
                 [this](const Sakura::Context& ctx) {
-                    connectionTitle.render(ctx);
-                    connectionTable.render(ctx);
-                    copyRoomButton.render(ctx);
-                    copyTokenButton.render(ctx);
-                    divider.render(ctx);
-                    connectedTitle.render(ctx);
-                    connectedText.render(ctx);
-                    divider.render(ctx);
-                    pendingTitle.render(ctx);
-                    pendingHint.render(ctx);
-                    if (pendingButtons.empty()) {
-                        noPendingText.render(ctx);
-                    } else {
-                        for (const auto& button : pendingButtons) {
-                            button.render(ctx);
-                        }
-                    }
+                    renderClientTable(ctx);
                 },
             });
             divider.render(ctx);
@@ -216,6 +165,12 @@ struct RemoteView : public Sakura::Component {
     }
 
  private:
+    struct ClientRow {
+        std::string sessionId;
+        std::string code;
+        bool pending = false;
+    };
+
     static std::string clientCode(const std::string& sessionId) {
         if (sessionId.size() <= 6) {
             std::string code = sessionId;
@@ -227,19 +182,46 @@ struct RemoteView : public Sakura::Component {
         return code;
     }
 
-    std::string connectedClientsText() const {
+    std::vector<ClientRow> buildClientRows() const {
         std::set<std::string> pendingIds(config.waitlist.begin(), config.waitlist.end());
-        std::string text;
+        std::set<std::string> seenIds;
+        std::vector<ClientRow> rows;
         for (const auto& client : config.clients) {
-            if (pendingIds.contains(client.sessionId)) {
+            if (client.sessionId.empty()) {
                 continue;
             }
-            if (!text.empty()) {
-                text += "\n";
-            }
-            text += ICON_FA_CIRCLE_CHECK " " + clientCode(client.sessionId);
+            seenIds.insert(client.sessionId);
+            rows.push_back({
+                .sessionId = client.sessionId,
+                .code = clientCode(client.sessionId),
+                .pending = pendingIds.contains(client.sessionId),
+            });
         }
-        return text.empty() ? "No connected clients." : text;
+        for (const auto& sessionId : config.waitlist) {
+            if (sessionId.empty() || seenIds.contains(sessionId)) {
+                continue;
+            }
+            rows.push_back({
+                .sessionId = sessionId,
+                .code = clientCode(sessionId),
+                .pending = true,
+            });
+        }
+        return rows;
+    }
+
+    void renderClientTable(const Sakura::Context& ctx) const {
+        Sakura::Table::Rows rows;
+        rows.reserve(clientRows.size());
+        for (U64 i = 0; i < clientRows.size(); ++i) {
+            Sakura::Table::Row row;
+            row.push_back([this, i](const Sakura::Context& ctx) { clientCodeTexts[i].render(ctx); });
+            row.push_back([this, i](const Sakura::Context& ctx) {
+                clientApproveButtons[i].render(ctx);
+            });
+            rows.push_back(std::move(row));
+        }
+        clientTable.render(ctx, std::move(rows));
     }
 
     void updateQrCode(const std::string& url) {
@@ -283,18 +265,13 @@ struct RemoteView : public Sakura::Component {
     Sakura::SplitView qrSplit;
     Sakura::QrCode qrCode;
     Sakura::Button openInviteButton;
-    Sakura::Text connectionTitle;
-    Sakura::Table connectionTable;
-    Sakura::Button copyRoomButton;
     Sakura::Button copyTokenButton;
-    Sakura::Text connectedTitle;
-    Sakura::Text connectedText;
-    Sakura::Text pendingTitle;
-    Sakura::Text pendingHint;
-    Sakura::Text noPendingText;
+    Sakura::Table clientTable;
     Sakura::Divider divider;
     Sakura::Button stopButton;
-    std::vector<Sakura::Button> pendingButtons;
+    std::vector<ClientRow> clientRows;
+    std::vector<Sakura::Text> clientCodeTexts;
+    std::vector<Sakura::Button> clientApproveButtons;
     std::string cachedQrUrl;
     std::vector<U8> cachedQrData;
     int cachedQrWidth = 0;

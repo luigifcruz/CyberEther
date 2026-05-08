@@ -29,6 +29,20 @@ void SplitView::render(const Context& ctx, Children children) const {
     if (config.fillHeight) {
         size.y = std::max(0.0f, ImGui::GetContentRegionAvail().y - Scale(ctx, config.reservedHeight));
     }
+    if (size.y <= 0.0f) {
+        ImGui::PopID();
+        return;
+    }
+
+    ImVec2 visibleSize = Private::ToImVec2(size);
+    if (visibleSize.x <= 0.0f) {
+        visibleSize.x = ImGui::GetContentRegionAvail().x;
+    }
+    if (!ImGui::IsRectVisible(visibleSize)) {
+        ImGui::Dummy(visibleSize);
+        ImGui::PopID();
+        return;
+    }
 
     if (ImGui::BeginTable(config.id.c_str(),
                           2,
