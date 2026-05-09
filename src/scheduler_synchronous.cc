@@ -13,6 +13,7 @@
 #include <jetstream/module.hh>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <mutex>
@@ -282,6 +283,7 @@ Result SynchronousScheduler::compute() {
 
         localRuntimeCount = runtimes.size();
         if (localRuntimeCount == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             return Result::SUCCESS;
         }
 
