@@ -7,6 +7,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
 } uniforms;
 
 layout(location = 0) in vec2 inTexcoord;
+layout(location = 1) in vec4 inColor;
 layout(location = 0) out vec4 outColor;
 
 layout(set = 0, binding = 1) uniform texture2D remoteFramebufferTex;
@@ -23,5 +24,5 @@ void main() {
     float alpha = smoothstep(0.5 - uniforms.sharpness * width, 0.5 + uniforms.sharpness * width, distance);
 
     // Output the color with the calculated alpha.
-    outColor = vec4(uniforms.color, alpha);
+    outColor = vec4(inColor.rgb, inColor.a * alpha);
 }

@@ -289,7 +289,7 @@ Result LineplotImpl::createPresent() {
         cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
         cfg.font = window->font("default_mono");
         cfg.elements = {
-            {"amplitude", {1.0f, {1.0f, 1.0f}, {0, 0}, 0.0f, ""}},
+            {"amplitude", {.position = {1.0f, 1.0f}}},
         };
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));

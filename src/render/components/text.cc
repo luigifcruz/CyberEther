@@ -27,6 +27,11 @@ struct Text::Impl {
         F32 sharpness;
     };
 
+    struct InstanceData {
+        glm::mat4 transform;
+        glm::vec4 color;
+    };
+
     struct Element {
         U64 characterCount = 0;
         const ElementConfig& config;
@@ -34,7 +39,7 @@ struct Text::Impl {
         Extent2D<I32> bounds;
         std::span<glm::vec2> posVertices;
         std::span<glm::vec2> fillVertices;
-        std::span<glm::mat4> instances;
+        std::span<InstanceData> instances;
     };
 
     // Variables.
@@ -55,7 +60,7 @@ struct Text::Impl {
 
     std::vector<glm::vec2> posVertices;
     std::vector<glm::vec2> fillVertices;
-    std::vector<glm::mat4> instances;
+    std::vector<InstanceData> instances;
     std::vector<U32> indices;
 
     std::shared_ptr<Render::Buffer> fontUniformBuffer;
@@ -152,7 +157,7 @@ Result Text::create(Window* window) {
     {
         Render::Buffer::Config cfg;
         cfg.buffer = pimpl->instances.data();
-        cfg.elementByteSize = sizeof(glm::mat4);
+        cfg.elementByteSize = sizeof(Impl::InstanceData);
         cfg.size = pimpl->instances.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontInstanceBuffer, cfg));
@@ -176,7 +181,7 @@ Result Text::create(Window* window) {
             {pimpl->fontFillVerticesBuffer, 2},
         };
         cfg.instances = {
-            {pimpl->fontInstanceBuffer, 16},
+            {pimpl->fontInstanceBuffer, sizeof(Impl::InstanceData) / sizeof(F32)},
         };
         cfg.indices = pimpl->fontIndicesBuffer;
         JST_CHECK(window->build(pimpl->fontVertex, cfg));
@@ -273,12 +278,14 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     auto& updatedElement = elementConfig;
 
     // Check if element data has changed.
-    const bool shouldUpdateVertices = updatedElement.fill != currentElement.fill;
+    const bool shouldUpdateVertices = updatedElement.fill != currentElement.fill ||
+                                      updatedElement.fixedMetrics != currentElement.fixedMetrics;
     const bool shouldUpdateInstance = shouldUpdateVertices ||
                                       updatedElement.scale != currentElement.scale ||
                                       updatedElement.position != currentElement.position ||
                                       updatedElement.alignment != currentElement.alignment ||
-                                      updatedElement.rotationDeg != currentElement.rotationDeg;
+                                      updatedElement.rotationDeg != currentElement.rotationDeg ||
+                                      updatedElement.color != currentElement.color;
 
     if (!shouldUpdateInstance) {
         return Result::SUCCESS;
@@ -309,6 +316,27 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     }
 
     return Result::SUCCESS;
+}
+
+F32 Text::advance(const std::string& fill) const {
+    if (!config.font) {
+        return 0.0f;
+    }
+
+    const F32 fontSize = config.font->getConfig().size;
+    F32 x = 0.0f;
+    for (const auto c : fill) {
+        if (c < 32 || c >= 127) {
+            continue;
+        }
+        if (c == ' ') {
+            x += fontSize / 2.0f;
+            continue;
+        }
+        x += config.font->glyph(c - 32).xAdvance;
+    }
+
+    return x;
 }
 
 Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
@@ -390,12 +418,12 @@ Result Text::Impl::updateIndices() {
 }
 
 Result Text::Impl::refreshVertexCount() {
-    U64 totalCharacterCount = 0;
+    U64 maxCharacterCount = 0;
     for (const auto& [_, element] : elements) {
-        totalCharacterCount += element.characterCount;
+        maxCharacterCount = std::max(maxCharacterCount, element.characterCount);
     }
 
-    const U64 nextVertexCount = totalCharacterCount * 6;
+    const U64 nextVertexCount = maxCharacterCount * 6;
     if (nextVertexCount == vertexCount) {
         return Result::SUCCESS;
     }
@@ -407,7 +435,8 @@ Result Text::Impl::refreshVertexCount() {
 
 Result Text::Impl::updateElementInstance(Element& element) {
     // Reference transform.
-    auto& transform = element.instances[0];
+    auto& instance = element.instances[0];
+    auto& transform = instance.transform;
 
     // Reset transform.
     transform = glm::mat4(1.0f);
@@ -443,6 +472,9 @@ Result Text::Impl::updateElementInstance(Element& element) {
             transform = glm::translate(transform, glm::vec3(0.0f, element.bounds.y, 0.0f));
         }
     }
+
+    const auto color = element.config.color.value_or(config.color);
+    instance.color = glm::vec4(color.r, color.g, color.b, color.a);
 
     return Result::SUCCESS;
 }
@@ -482,16 +514,25 @@ Result Text::Impl::updateElementVertex(Element& element) {
     I32 minx = 0;
     I32 miny = 0;
 
-    for (const auto& c : element.config.fill) {
-        if (c >= 32 && c < 127) {
-            if (c == ' ') {
-                continue;
-            }
-
-            // TODO: Check if there is no better way to do this.
+    if (element.config.fixedMetrics) {
+        for (I32 c = 33; c < 127; ++c) {
             const auto& b = config.font->glyph(c - 32);
-            minx = std::min(minx, static_cast<I32>(x + b.xOffset));
-            miny = std::max(miny, static_cast<I32>(y - b.yOffset));
+            minx = std::min(minx, static_cast<I32>(b.xOffset));
+            miny = std::max(miny, static_cast<I32>(-b.yOffset));
+            element.bounds.y = std::max(element.bounds.y, static_cast<I32>(b.y1 - b.y0));
+        }
+    } else {
+        for (const auto& c : element.config.fill) {
+            if (c >= 32 && c < 127) {
+                if (c == ' ') {
+                    continue;
+                }
+
+                // TODO: Check if there is no better way to do this.
+                const auto& b = config.font->glyph(c - 32);
+                minx = std::min(minx, static_cast<I32>(x + b.xOffset));
+                miny = std::max(miny, static_cast<I32>(y - b.yOffset));
+            }
         }
     }
 
