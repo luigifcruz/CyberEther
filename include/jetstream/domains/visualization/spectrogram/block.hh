@@ -9,6 +9,7 @@ struct Spectrogram : public Block::Config {
     U64 height = 256;
 
     JST_BLOCK_TYPE(spectrogram);
+    JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_PARAMS(height);
     JST_BLOCK_DESCRIPTION(
         "Spectrogram",

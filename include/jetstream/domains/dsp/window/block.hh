@@ -9,6 +9,7 @@ struct Window : public Block::Config {
     U64 size = 1024;
 
     JST_BLOCK_TYPE(window);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(size);
     JST_BLOCK_DESCRIPTION(
         "Window",

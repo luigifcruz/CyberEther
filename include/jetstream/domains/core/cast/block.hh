@@ -12,6 +12,7 @@ struct Cast : public Block::Config {
     std::string outputType = "CF32";
 
     JST_BLOCK_TYPE(cast);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(outputType);
     JST_BLOCK_DESCRIPTION(
         "Cast",

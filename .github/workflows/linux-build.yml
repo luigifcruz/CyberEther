@@ -84,6 +84,16 @@ jobs:
           test -f /opt/cyberether/bin/cyberether
           meson test -C build --print-errorlogs
 
+      - name: Upload Meson test logs
+        if: failure()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: linux-${{ matrix.arch }}-meson-test-logs
+          path: |
+            build/meson-logs/testlog.txt
+            build/meson-logs/testlog.json
+          if-no-files-found: ignore
+
       - name: Check binary dynamic dependencies
         uses: ./.github/actions/check-dynamic-deps
         with:

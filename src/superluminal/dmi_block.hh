@@ -9,6 +9,7 @@ struct DynamicTensorImport : public Block::Config {
     Tensor buffer;
 
     JST_BLOCK_TYPE(dynamic_tensor_import);
+    JST_BLOCK_DOMAIN("Other");
     JST_BLOCK_PARAMS(buffer);
     JST_BLOCK_DESCRIPTION(
         "Dynamic Tensor Import",

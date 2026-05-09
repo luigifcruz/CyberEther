@@ -14,6 +14,7 @@ struct Arithmetic : public Block::Config {
     bool squeeze = false;
 
     JST_BLOCK_TYPE(arithmetic);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(operation, axis, squeeze);
     JST_BLOCK_DESCRIPTION(
         "Arithmetic",

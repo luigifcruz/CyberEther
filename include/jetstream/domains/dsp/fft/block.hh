@@ -9,6 +9,7 @@ struct Fft : public Block::Config {
     bool forward = true;
 
     JST_BLOCK_TYPE(fft);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(forward);
     JST_BLOCK_DESCRIPTION(
         "FFT",

@@ -15,6 +15,7 @@ struct Filter : public Block::Config {
     U64 heads = 1;
 
     JST_BLOCK_TYPE(filter);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(sampleRate, bandwidth, center, taps, heads);
     JST_BLOCK_DESCRIPTION(
         "Filter",

@@ -38,6 +38,7 @@ class Generic {
     virtual Result createImgui() = 0;
     virtual Result destroyImgui() = 0;
 
+    virtual Extent2D<F32> displaySize() const;
     virtual F32 scale(const F32& scale) const = 0;
 
     virtual Result waitEvents() = 0;

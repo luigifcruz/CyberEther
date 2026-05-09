@@ -11,6 +11,7 @@ struct Range : public Block::Config {
     F32 max = +1.0f;
 
     JST_BLOCK_TYPE(range);
+    JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_PARAMS(min, max);
     JST_BLOCK_DESCRIPTION(
         "Range",

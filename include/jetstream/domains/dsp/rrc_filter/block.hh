@@ -12,6 +12,7 @@ struct RrcFilter : public Block::Config {
     U64 taps = 101;
 
     JST_BLOCK_TYPE(rrc_filter);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(symbolRate, sampleRate, rollOff, taps);
     JST_BLOCK_DESCRIPTION(
         "RRC Filter",

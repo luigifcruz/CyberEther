@@ -7,10 +7,11 @@ namespace Jetstream::Blocks {
 
 struct Adsb : public Block::Config {
     JST_BLOCK_TYPE(adsb);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "ADS-B Decoder",
-        "Decodes ADS-B Mode S transponder frames and displays aircraft on a map.",
+        "Decodes ADS-B Mode S frames and maps aircraft positions.",
         "# ADS-B Decoder\n"
         "The ADS-B Decoder block takes raw CF32 IQ samples tuned to 1090 MHz "
         "at 2 MHz sample rate and decodes Mode S ADS-B transponder frames. "

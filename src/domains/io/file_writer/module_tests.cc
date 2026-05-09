@@ -69,6 +69,7 @@ void expectFileWriterSuccess(const std::string& suffix,
             verify.read(reinterpret_cast<char*>(values.data()),
                         static_cast<std::streamsize>(values.size() * sizeof(T)));
             REQUIRE(values == expectedData);
+            verify.close();
 
             cleanupTestFile(testPath);
         }
@@ -312,6 +313,7 @@ TEST_CASE("FileWriter Module - Multiple runs overwrite with latest buffer",
             REQUIRE(values[0] == 40);
             REQUIRE(values[1] == 50);
             REQUIRE(values[2] == 60);
+            verify.close();
 
             cleanupTestFile(testPath);
         }

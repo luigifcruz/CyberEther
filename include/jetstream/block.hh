@@ -32,6 +32,7 @@ class JETSTREAM_API Block {
         virtual ~Config() = default;
 
         virtual std::string type() const = 0;
+        virtual std::string domain() const = 0;
         virtual std::string title() const = 0;
         virtual std::string summary() const = 0;
         virtual std::string description() const = 0;
@@ -137,6 +138,14 @@ template <> struct jst::fmt::formatter<Jetstream::Block::State> : jst::fmt::ostr
         return h; \
     }
 #endif  // JST_BLOCK_PARAMS
+
+#ifndef JST_BLOCK_DOMAIN
+#define JST_BLOCK_DOMAIN(DOMAIN) \
+    std::string domain() const override { \
+        static const std::string domain = DOMAIN; \
+        return domain; \
+    }
+#endif  // JST_BLOCK_DOMAIN
 
 #ifndef JST_BLOCK_DESCRIPTION
 #define JST_BLOCK_DESCRIPTION(TITLE, SUMMARY, DESCRIPTION) \

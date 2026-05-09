@@ -1,5 +1,10 @@
 #include "jetstream/platform.hh"
 
+#include <array>
+#include <cstdlib>
+#include <filesystem>
+#include <memory>
+
 #if defined(JST_OS_IOS) || defined(JST_OS_MAC)
 #include "apple.hh"
 #endif
@@ -7,6 +12,7 @@
 #if defined(JST_OS_BROWSER)
 
 #include "emscripten.h"
+
 #include <functional>
 #include <string>
 
@@ -106,6 +112,142 @@ Result OpenUrl(const std::string& url) {
 
 Result OpenUrl(const std::string& url) {
     JST_ERROR("Opening URL is not supported in this platform.");
+    return Result::ERROR;
+}
+
+#endif
+
+//
+// App Path
+//
+
+#if defined(JST_OS_MAC) || defined(JST_OS_IOS)
+
+// Defined on apple.mm.
+
+#elif defined(JST_OS_BROWSER)
+
+Result ConfigPath(std::string& path) {
+    path = "/storage/cyberether";
+    return Result::SUCCESS;
+}
+
+Result CachePath(std::string& path) {
+    path = "/storage/cyberether/cache";
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_LINUX)
+
+namespace {
+
+Result ResolveLinuxBasePath(const char* homeEnv, std::string& homePath) {
+    const char* home = std::getenv(homeEnv);
+    if (!home || std::string(home).empty()) {
+        JST_ERROR("Failed to resolve app path because {} is not set.", homeEnv);
+        return Result::ERROR;
+    }
+
+    homePath = home;
+    return Result::SUCCESS;
+}
+
+}  // namespace
+
+Result ConfigPath(std::string& path) {
+    const char* xdg = std::getenv("XDG_CONFIG_HOME");
+    if (xdg && *xdg) {
+        const std::filesystem::path basePath(xdg);
+        if (basePath.is_absolute()) {
+            path = (basePath / "cyberether").string();
+            return Result::SUCCESS;
+        }
+
+        JST_WARN("XDG_CONFIG_HOME must be an absolute path. Falling back to $HOME/.config.");
+    }
+
+    std::string homePath;
+    JST_CHECK(ResolveLinuxBasePath("HOME", homePath));
+    path = (std::filesystem::path(homePath) / ".config" / "cyberether").string();
+    return Result::SUCCESS;
+}
+
+Result CachePath(std::string& path) {
+    const char* xdg = std::getenv("XDG_CACHE_HOME");
+    if (xdg && *xdg) {
+        const std::filesystem::path basePath(xdg);
+        if (basePath.is_absolute()) {
+            path = (basePath / "cyberether").string();
+            return Result::SUCCESS;
+        }
+
+        JST_WARN("XDG_CACHE_HOME must be an absolute path. Falling back to $HOME/.cache.");
+    }
+
+    std::string homePath;
+    JST_CHECK(ResolveLinuxBasePath("HOME", homePath));
+    path = (std::filesystem::path(homePath) / ".cache" / "cyberether").string();
+    return Result::SUCCESS;
+}
+
+#elif defined(JST_OS_WINDOWS)
+
+namespace {
+
+std::string WindowsPathToUtf8(const std::filesystem::path& nativePath) {
+    const auto utf8Path = nativePath.u8string();
+
+    std::string utf8String;
+    utf8String.reserve(utf8Path.size());
+    for (const auto ch : utf8Path) {
+        utf8String.push_back(static_cast<char>(ch));
+    }
+
+    return utf8String;
+}
+
+}  // namespace
+
+Result ConfigPath(std::string& path) {
+    const wchar_t* appData = _wgetenv(L"APPDATA");
+    if (!(appData && *appData)) {
+        JST_ERROR("Failed to resolve config path because APPDATA is not set.");
+        return Result::ERROR;
+    }
+
+    path = WindowsPathToUtf8(std::filesystem::path(appData) / L"CyberEther");
+    return Result::SUCCESS;
+}
+
+Result CachePath(std::string& path) {
+    const wchar_t* appData = _wgetenv(L"APPDATA");
+    const wchar_t* localAppData = _wgetenv(L"LOCALAPPDATA");
+
+    if (localAppData && *localAppData) {
+        path = WindowsPathToUtf8(std::filesystem::path(localAppData) / L"CyberEther" / L"Cache");
+        return Result::SUCCESS;
+    }
+
+    if (appData && *appData) {
+        path = WindowsPathToUtf8(std::filesystem::path(appData) / L"CyberEther" / L"Cache");
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("Failed to resolve cache path because LOCALAPPDATA and APPDATA are not set.");
+    return Result::ERROR;
+}
+
+#else
+
+Result ConfigPath(std::string& path) {
+    path.clear();
+    JST_ERROR("Resolving configuration paths is not supported on this platform.");
+    return Result::ERROR;
+}
+
+Result CachePath(std::string& path) {
+    path.clear();
+    JST_ERROR("Resolving cache paths is not supported on this platform.");
     return Result::ERROR;
 }
 

@@ -9,6 +9,7 @@ struct FM : public Block::Config {
     F32 sampleRate = 240e3f;
 
     JST_BLOCK_TYPE(fm);
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_PARAMS(sampleRate);
     JST_BLOCK_DESCRIPTION(
         "FM Demodulator",

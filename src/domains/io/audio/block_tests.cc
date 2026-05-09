@@ -59,6 +59,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockList().at("audio_out")->state() ==
             Block::State::Created);
 
+    REQUIRE(flowgraph->blockDestroy("audio_out", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
+
     Cleanup(path);
 }
 
@@ -99,6 +102,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(createResult == Result::SUCCESS);
     REQUIRE(flowgraph->blockList().at("audio_invalid")->state() ==
             Block::State::Errored);
+
+    REQUIRE(flowgraph->blockDestroy("audio_invalid", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
 
     Cleanup(path);
 }

@@ -13,6 +13,7 @@ struct Registry::Impl {
                           const ProviderType& provider,
                           ModuleFactory factory);
     Result registerBlock(const std::string& type,
+                         const std::string& domain,
                          const std::string& title,
                          const std::string& summary,
                          const std::string& description,
@@ -86,14 +87,19 @@ Result Registry::Impl::registerModule(const std::string& type,
 }
 
 Result Registry::Impl::registerBlock(const std::string& type,
+                                     const std::string& domain,
                                      const std::string& title,
                                      const std::string& summary,
                                      const std::string& description,
                                      BlockFactory factory) {
-    JST_TRACE("[REGISTRY] Registering block [Type: {}]", type);
+    JST_TRACE("[REGISTRY] Registering block [Type: {}, Domain: {}]", type, domain);
 
     if (type.empty()) {
         JST_ERROR("[REGISTRY] Empty type for block registration.");
+        return Result::ERROR;
+    }
+    if (domain.empty()) {
+        JST_ERROR("[REGISTRY] Empty domain for block '{}'.", type);
         return Result::ERROR;
     }
 
@@ -108,7 +114,7 @@ Result Registry::Impl::registerBlock(const std::string& type,
         return Result::ERROR;
     }
 
-    blocks.push_back({type, title, summary, description, factory});
+    blocks.push_back({type, domain, title, summary, description, factory});
     return Result::SUCCESS;
 }
 
@@ -269,11 +275,12 @@ Result Registry::RegisterModule(const std::string& type,
 }
 
 Result Registry::RegisterBlock(const std::string& type,
+                               const std::string& domain,
                                const std::string& title,
                                const std::string& summary,
                                const std::string& description,
                                BlockFactory factory) {
-    return registry().registerBlock(type, title, summary, description, std::move(factory));
+    return registry().registerBlock(type, domain, title, summary, description, std::move(factory));
 }
 
 Result Registry::RegisterFlowgraph(const std::string& key,

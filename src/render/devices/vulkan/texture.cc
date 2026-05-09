@@ -190,12 +190,35 @@ Result Implementation::destroy() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
-    vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
-    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-    vkDestroySampler(device, sampler, nullptr);
-    vkDestroyImageView(device, imageView, nullptr);
-    vkDestroyImage(device, texture, nullptr);
-    vkFreeMemory(device, memory, nullptr);
+    if (descriptorSet) {
+        vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
+        descriptorSet = VK_NULL_HANDLE;
+    }
+
+    if (descriptorSetLayout) {
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+        descriptorSetLayout = VK_NULL_HANDLE;
+    }
+
+    if (sampler) {
+        vkDestroySampler(device, sampler, nullptr);
+        sampler = VK_NULL_HANDLE;
+    }
+
+    if (imageView) {
+        vkDestroyImageView(device, imageView, nullptr);
+        imageView = VK_NULL_HANDLE;
+    }
+
+    if (texture) {
+        vkDestroyImage(device, texture, nullptr);
+        texture = VK_NULL_HANDLE;
+    }
+
+    if (memory) {
+        vkFreeMemory(device, memory, nullptr);
+        memory = VK_NULL_HANDLE;
+    }
 
     return Result::SUCCESS;
 }

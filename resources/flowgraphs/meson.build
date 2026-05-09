@@ -5,7 +5,7 @@ if py.found()
         modules : ['yaml'],
     )
 
-    flowchart = custom_target(
+    flowgraph_examples = custom_target(
         input : files([
             meson.project_source_root() / 'examples/flowgraphs/flight-tracker.yml',
             meson.project_source_root() / 'examples/flowgraphs/multi-fm.yml',
@@ -15,10 +15,8 @@ if py.found()
             meson.project_source_root() / 'examples/flowgraphs/spectrum-analyzer.yml',
             meson.project_source_root() / 'examples/flowgraphs/signal-generator.yml',
         ]),
-        output : ['base.hh'],
+        output : ['examples.cc'],
         command : [python_with_modules, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],
     )
-    dep_lst += declare_dependency(
-        sources : flowchart,
-    )
+    src_lst += flowgraph_examples
 endif
