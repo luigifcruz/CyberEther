@@ -12,6 +12,7 @@
 #include "resources/fonts/compressed_jbmm.hh"
 
 #include <unordered_map>
+#include <chrono>
 #include <mutex>
 #include <shared_mutex>
 #include <deque>
@@ -306,6 +307,11 @@ Result Instance::compute() {
         for (const auto& [_, flowgraph] : impl->flowgraphs) {
             flowgraphs.push_back(flowgraph);
         }
+    }
+
+    if (flowgraphs.empty()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return Result::SUCCESS;
     }
 
     for (const auto& flowgraph : flowgraphs) {
