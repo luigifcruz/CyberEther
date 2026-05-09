@@ -72,9 +72,14 @@ Result Implementation::destroyFramebuffer() {
 }
 
 Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
-    if (framebuffer->size(requestedSize)) {
+    const bool framebufferChanged = framebuffer->size(requestedSize);
+    if (framebufferChanged) {
         JST_CHECK(destroyFramebuffer());
         JST_CHECK(createFramebuffer());
+    }
+
+    if (!shouldDraw(framebufferChanged)) {
+        return Result::SUCCESS;
     }
 
     // Encode kernels.
@@ -117,6 +122,8 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);
 
+    markDrawn();
+
     return Result::SUCCESS;
 }
 
@@ -126,6 +133,7 @@ const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     }
 
     requestedSize = size;
+    invalidate();
 
     return framebuffer->size();
 }

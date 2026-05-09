@@ -164,7 +164,8 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
-    if (framebufferResolve->size(requestedSize)) {
+    const bool framebufferChanged = framebufferResolve->size(requestedSize);
+    if (framebufferChanged) {
         JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
             JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
         });
@@ -175,6 +176,10 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
 
         JST_CHECK(destroy());
         JST_CHECK(create());
+    }
+
+    if (!shouldDraw(framebufferChanged)) {
+        return Result::SUCCESS;
     }
 
     // Encode kernels.
@@ -242,6 +247,8 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
 
     vkCmdEndRenderPass(commandBuffer);
 
+    markDrawn();
+
     return Result::SUCCESS;
 }
 
@@ -251,6 +258,7 @@ const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     }
 
     requestedSize = size;
+    invalidate();
 
     return framebufferResolve->size();
 }

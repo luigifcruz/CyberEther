@@ -117,13 +117,18 @@ Result Implementation::destroyFramebuffer() {
 }
 
 Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
-    if (framebufferResolve->size(requestedSize)) {
+    const bool framebufferChanged = framebufferResolve->size(requestedSize);
+    if (framebufferChanged) {
         if (config.multisampled) {
             framebuffer->size(requestedSize);
         }
 
         JST_CHECK(destroyFramebuffer());
         JST_CHECK(createFramebuffer());
+    }
+
+    if (!shouldDraw(framebufferChanged)) {
+        return Result::SUCCESS;
     }
 
     // Encode kernels.
@@ -154,6 +159,8 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     }
     renderCmdEncoder->endEncoding();
 
+    markDrawn();
+
     return Result::SUCCESS;
 }
 
@@ -163,6 +170,7 @@ const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     }
 
     requestedSize = size;
+    invalidate();
 
     return framebufferResolve->size();
 }
