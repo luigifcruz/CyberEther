@@ -64,7 +64,7 @@ jobs:
 
       - name: Install Rust dependencies
         run: |
-          cargo install cargo-c --locked
+          cargo install cargo-c --locked --features vendored-openssl
 
       - name: Install Vulkan SDK
         run: |

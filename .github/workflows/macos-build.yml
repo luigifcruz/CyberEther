@@ -47,7 +47,7 @@ jobs:
       - name: Install Rust dependencies
         run: |
           set -euo pipefail
-          cargo install cargo-c --locked
+          cargo install cargo-c --locked --features vendored-openssl
 
       - name: Install Python dependencies
         run: |
