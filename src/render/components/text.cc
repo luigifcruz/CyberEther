@@ -278,8 +278,7 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     auto& updatedElement = elementConfig;
 
     // Check if element data has changed.
-    const bool shouldUpdateVertices = updatedElement.fill != currentElement.fill ||
-                                      updatedElement.fixedMetrics != currentElement.fixedMetrics;
+    const bool shouldUpdateVertices = updatedElement.fill != currentElement.fill;
     const bool shouldUpdateInstance = shouldUpdateVertices ||
                                       updatedElement.scale != currentElement.scale ||
                                       updatedElement.position != currentElement.position ||
@@ -323,14 +322,9 @@ F32 Text::advance(const std::string& fill) const {
         return 0.0f;
     }
 
-    const F32 fontSize = config.font->getConfig().size;
     F32 x = 0.0f;
     for (const auto c : fill) {
         if (c < 32 || c >= 127) {
-            continue;
-        }
-        if (c == ' ') {
-            x += fontSize / 2.0f;
             continue;
         }
         x += config.font->glyph(c - 32).xAdvance;
@@ -511,32 +505,7 @@ Result Text::Impl::updateElementVertex(Element& element) {
     F32 x = 0.0f;
     F32 y = 0.0f;
 
-    I32 minx = 0;
-    I32 miny = 0;
-
-    if (element.config.fixedMetrics) {
-        for (I32 c = 33; c < 127; ++c) {
-            const auto& b = config.font->glyph(c - 32);
-            minx = std::min(minx, static_cast<I32>(b.xOffset));
-            miny = std::max(miny, static_cast<I32>(-b.yOffset));
-            element.bounds.y = std::max(element.bounds.y, static_cast<I32>(b.y1 - b.y0));
-        }
-    } else {
-        for (const auto& c : element.config.fill) {
-            if (c >= 32 && c < 127) {
-                if (c == ' ') {
-                    continue;
-                }
-
-                // TODO: Check if there is no better way to do this.
-                const auto& b = config.font->glyph(c - 32);
-                minx = std::min(minx, static_cast<I32>(x + b.xOffset));
-                miny = std::max(miny, static_cast<I32>(y - b.yOffset));
-            }
-        }
-    }
-
-    const auto& fontSize = config.font->getConfig().size;
+    const I32 baselineY = config.font->ascent();
 
     for (U64 i = 0; i < element.config.fill.size(); ++i) {
         const auto& atlasSize = config.font->atlasSize();
@@ -544,14 +513,14 @@ Result Text::Impl::updateElementVertex(Element& element) {
 
         if (c >= 32 && c < 127) {
             if (c == ' ') {
-                x += (fontSize / 2.0f);
+                x += config.font->glyph(c - 32).xAdvance;
                 continue;
             }
 
             const auto& b = config.font->glyph(c - 32);
 
-            F32 x0 = x + b.xOffset - minx;
-            F32 y0 = y - b.yOffset - miny;
+            F32 x0 = x + b.xOffset;
+            F32 y0 = y - b.yOffset - baselineY;
             F32 x1 = x0 + (b.x1 - b.x0);
             F32 y1 = y0 - (b.y1 - b.y0);
             const U64 base = element.characterCount * 4;
@@ -581,16 +550,13 @@ Result Text::Impl::updateElementVertex(Element& element) {
 
             x += b.xAdvance;
 
-            // Save text height.
-
-            element.bounds.y = std::max(element.bounds.y, static_cast<I32>(b.y1 - b.y0));
-
             // Count actual rendered characters (non-space)
             element.characterCount++;
         }
     }
 
     element.bounds.x = x;
+    element.bounds.y = config.font->lineHeight();
 
     return Result::SUCCESS;
 }

@@ -21,7 +21,6 @@ class Text : public Generic {
         Extent2D<I32> alignment = {0, 0};
         F32 rotationDeg = 0.0f;
         std::string fill = "";
-        bool fixedMetrics = false;
         std::optional<ColorRGBA<F32>> color;
     };
 
