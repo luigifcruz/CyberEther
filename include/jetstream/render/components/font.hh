@@ -29,6 +29,10 @@ class Font : public Generic {
         return config;
     }
 
+    I32 ascent() const;
+    I32 descent() const;
+    I32 lineHeight() const;
+
  protected:
     struct Glyph {
         I32 x0;
@@ -41,9 +45,6 @@ class Font : public Generic {
     };
 
     const Glyph& glyph(const I32& code) const;
-    I32 ascent() const;
-    I32 descent() const;
-    I32 lineHeight() const;
     const Extent2D<I32>& atlasSize() const;
     const std::shared_ptr<Render::Texture>& atlas() const;
 
