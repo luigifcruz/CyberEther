@@ -175,7 +175,6 @@ if remote_opt.allowed() and remote_cargo_c.found()
         if jst_is_macos or jst_is_ios
             deps += [
                 dependency('appleframeworks', modules: ['SystemConfiguration'], required: remote_opt),
-                dependency('libffi', required: remote_opt),
                 cpp.find_library('iconv', required: remote_opt),
                 cpp.find_library('resolv', required: remote_opt),
             ]

@@ -23,6 +23,7 @@ subprojects/*
 !subprojects/glm.wrap
 !subprojects/gstreamer-full.wrap
 !subprojects/libairspy.wrap
+!subprojects/libffi.wrap
 !subprojects/libmodes.wrap
 !subprojects/librtlsdr.wrap
 !subprojects/libusb-browser.wrap
@@ -32,6 +33,7 @@ subprojects/*
 !subprojects/nanobench.wrap
 !subprojects/nanobind.wrap
 !subprojects/nlohmann_json.wrap
+!subprojects/openssl.wrap
 !subprojects/qrencode.wrap
 !subprojects/rapidyaml.wrap
 !subprojects/robin-map.wrap

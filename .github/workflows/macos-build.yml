@@ -21,6 +21,11 @@ env:
     Security.framework/Security
     libz.1.dylib
     AppKit.framework/AppKit
+    AVFoundation.framework/AVFoundation
+    CoreMedia.framework/CoreMedia
+    CoreVideo.framework/CoreVideo
+    SystemConfiguration.framework/SystemConfiguration
+    VideoToolbox.framework/VideoToolbox
     UniformTypeIdentifiers.framework/UniformTypeIdentifiers
     libc++.1.dylib
     libSystem.B.dylib
@@ -35,7 +40,14 @@ jobs:
       - name: Install system dependencies
         run: |
           set -euo pipefail
-          brew install pkg-config spirv-cross glslang
+          brew install pkg-config spirv-cross glslang nasm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust dependencies
+        run: |
+          set -euo pipefail
+          cargo install cargo-c --locked
 
       - name: Install Python dependencies
         run: |
@@ -46,7 +58,14 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          meson setup build --default-library=static -Dbuildtype=release -Dexamples=false
+          meson setup build \
+            --force-fallback-for=libffi,openssl \
+            --default-library=static \
+            -Dlibffi:default_library=static \
+            -Dopenssl:default_library=static \
+            -Dbuildtype=release \
+            -Dexamples=false \
+            -Dremote=enabled
           meson compile -C build
 
       - name: Validate binary

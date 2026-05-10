@@ -59,11 +59,23 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y \
-            git gcc-c++ glslang openssl-devel \
+            git gcc-c++ glslang curl bison flex nasm \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
             vulkan-loader-devel pkgconf-pkg-config
           dnf clean all
+
+      - name: Install Rust dependencies
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          source "$HOME/.cargo/env"
+          cargo install cargo-c --locked
+          ln -sf "$HOME/.cargo/bin/cargo" /usr/local/bin/cargo
+          ln -sf "$HOME/.cargo/bin/cargo-cbuild" /usr/local/bin/cargo-cbuild
+          ln -sf "$HOME/.cargo/bin/rustc" /usr/local/bin/rustc
+          ln -sf "$HOME/.cargo/bin/rustup" /usr/local/bin/rustup
+          printf '%s\n' "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Install Python dependencies
         run: |
@@ -74,7 +86,15 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          meson setup build --default-library=static -Dprefix=/opt/cyberether -Dbuildtype=release -Dexamples=false
+          meson setup build \
+            --force-fallback-for=libffi,openssl \
+            --default-library=static \
+            -Dlibffi:default_library=static \
+            -Dopenssl:default_library=static \
+            -Dprefix=/opt/cyberether \
+            -Dbuildtype=release \
+            -Dexamples=false \
+            -Dremote=enabled
           meson compile -C build
           meson install -C build
 
