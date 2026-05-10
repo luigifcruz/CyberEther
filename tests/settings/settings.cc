@@ -183,6 +183,8 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     SettingsSandbox sandbox("roundtrip");
 
     Settings settings;
+    settings.benchmark.format = "json";
+    settings.graphics.headless = true;
     settings.graphics.size.width = 1280;
     settings.graphics.size.height = 720;
     settings.interface.themeKey = "Light";
@@ -193,7 +195,10 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     REQUIRE(std::filesystem::exists(sandbox.path));
 
     const auto yaml = ReadFile(sandbox.path);
+    REQUIRE(yaml.find("benchmark") == std::string::npos);
+    REQUIRE(yaml.find("format") == std::string::npos);
     REQUIRE(yaml.find("graphics:") != std::string::npos);
+    REQUIRE(yaml.find("headless") == std::string::npos);
     REQUIRE(yaml.find("interface:") != std::string::npos);
     REQUIRE(yaml.find("remote:") != std::string::npos);
     REQUIRE(yaml.find("themeKey: Light") != std::string::npos);
@@ -205,6 +210,10 @@ TEST_CASE("Settings loads existing YAML", "[settings]") {
     SettingsSandbox sandbox("existing");
 
     WriteFile(sandbox.path,
+              "graphics:\n"
+              "  headless: true\n"
+              "benchmark:\n"
+              "  format: csv\n"
               "interface:\n"
               "  themeKey: Solarized\n"
               "  infoPanelEnabled: false\n"
@@ -222,6 +231,8 @@ TEST_CASE("Settings loads existing YAML", "[settings]") {
     REQUIRE(settings.remote.brokerUrl == "https://example.net");
     REQUIRE(settings.remote.autoJoinSessions);
     REQUIRE(settings.developer.logLevel == 4);
+    REQUIRE(settings.benchmark.format == "markdown");
+    REQUIRE(!settings.graphics.headless);
     REQUIRE(settings.graphics.framerate == 60);
 }
 
