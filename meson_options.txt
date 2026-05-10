@@ -3,3 +3,4 @@ option('python', type : 'boolean', value : false, description: 'Enable Superlumi
 option('wheel', type : 'boolean', value : false, description: 'Enable Python wheel packaging mode.')
 option('tests', type : 'boolean', value : true, description: 'Enable tests.')
 option('examples', type : 'boolean', value : true, description: 'Enable examples.')
+option('remote', type : 'feature', value : 'auto', description: 'Enable remote streaming with bundled static GStreamer.')

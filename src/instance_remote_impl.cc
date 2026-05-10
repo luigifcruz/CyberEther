@@ -53,6 +53,7 @@ struct Instance::Remote::Impl {
         Software,
         HardwareNVENC,
         HardwareV4L2,
+        HardwareVideoToolbox,
     };
 
     Extent2D<U64> size;
@@ -499,6 +500,15 @@ Result Instance::Remote::Impl::createStream() {
         }
 #endif
 
+        if (checkGstreamerPlugins({"applemedia"}, true) == Result::SUCCESS) {
+            GstElementFactory* factory = gst_element_factory_find("vtenc_h264_hw");
+            if (factory) {
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareVideoToolbox, {"applemedia"}});
+                gst_object_unref(GST_OBJECT(factory));
+                GST_DEBUG("[REMOTE] Checking for VideoToolbox strategy support for h264.");
+            }
+        }
+
         if (checkGstreamerPlugins({"video4linux2"}, true) == Result::SUCCESS) {
             GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
             if (factory) {
@@ -508,7 +518,7 @@ Result Instance::Remote::Impl::createStream() {
             }
         }
 
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"x264"}});
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264"}});
     }
 
     if (config.codec == Instance::Remote::CodecType::VP8) {
@@ -537,6 +547,9 @@ Result Instance::Remote::Impl::createStream() {
                     break;
                 case Instance::Remote::EncoderType::V4L2:
                     match = (strategy == EncodingStrategyType::HardwareV4L2);
+                    break;
+                case Instance::Remote::EncoderType::VideoToolbox:
+                    match = (strategy == EncodingStrategyType::HardwareVideoToolbox);
                     break;
                 default:
                     break;
@@ -908,18 +921,19 @@ Result Instance::Remote::Impl::startStream() {
 
         switch(config.codec) {
             case Instance::Remote::CodecType::H264: {
-                elements["encoder"] = encoder = gst_element_factory_make("x264enc", "encoder");
+                elements["encoder"] = encoder = gst_element_factory_make("openh264enc", "encoder");
                 elementOrder.push_back("encoder");
 
-                g_object_set(elements["encoder"], "speed-preset", 1, nullptr);
-                g_object_set(elements["encoder"], "tune", 4, nullptr);
-                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "rate-control", "bitrate");
+                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "usage-type", "screen");
+                g_object_set(elements["encoder"], "bitrate", 25*1024*1024, nullptr);
+                g_object_set(elements["encoder"], "max-bitrate", 25*1024*1024, nullptr);
 
                 elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
                 elementOrder.push_back("hwcaps");
 
                 GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
-                                                      "profile", G_TYPE_STRING, "high",
+                                                      "profile", G_TYPE_STRING, "constrained-baseline",
                                                       nullptr);
                 g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
                 gst_caps_unref(hwcaps);
@@ -1001,6 +1015,50 @@ Result Instance::Remote::Impl::startStream() {
 
                 GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
                                                       "profile", G_TYPE_STRING, "high",
+                                                      nullptr);
+                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
+                gst_caps_unref(hwcaps);
+
+                elements["parser"] = gst_element_factory_make("h264parse", "parser");
+                elementOrder.push_back("parser");
+
+                g_object_set(elements["parser"], "config-interval", 1, nullptr);
+                break;
+            }
+            default:
+                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
+                return Result::ERROR;
+        }
+    }
+
+    if (encodingStrategy == EncodingStrategyType::HardwareVideoToolbox) {
+        elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
+        elementOrder.push_back("rawparser");
+
+        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
+        g_object_set(elements["rawparser"], "format", 12, nullptr);
+        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
+        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+
+        elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+        elementOrder.push_back("convert");
+
+        switch(config.codec) {
+            case Instance::Remote::CodecType::H264: {
+                elements["encoder"] = encoder = gst_element_factory_make("vtenc_h264_hw", "encoder");
+                elementOrder.push_back("encoder");
+
+                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "rate-control", "cbr");
+                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
+                g_object_set(elements["encoder"], "realtime", true, nullptr);
+                g_object_set(elements["encoder"], "allow-frame-reordering", false, nullptr);
+                g_object_set(elements["encoder"], "max-keyframe-interval", static_cast<int>(config.framerate), nullptr);
+
+                elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
+                elementOrder.push_back("hwcaps");
+
+                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
+                                                      "profile", G_TYPE_STRING, "baseline",
                                                       nullptr);
                 g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
                 gst_caps_unref(hwcaps);
@@ -1179,6 +1237,8 @@ const char* Instance::Remote::Impl::GetEncodingStrategyPrettyName(const Encoding
             return "Hardware NVIDIA (NVENC)";
         case EncodingStrategyType::HardwareV4L2:
             return "Hardware Linux (V4L2)";
+        case EncodingStrategyType::HardwareVideoToolbox:
+            return "Hardware Apple (VideoToolbox)";
         default:
             return "Unknown";
     }

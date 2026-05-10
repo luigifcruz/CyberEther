@@ -15,13 +15,36 @@ imgui.ini
 
 *.zip
 subprojects/*
-!subprojects/*.wrap
 !subprojects/packagefiles
+!subprojects/catch2.wrap
+!subprojects/cpp-httplib.wrap
+!subprojects/fmt.wrap
+!subprojects/glfw.wrap
+!subprojects/glm.wrap
+!subprojects/gstreamer-full.wrap
+!subprojects/libairspy.wrap
+!subprojects/libmodes.wrap
+!subprojects/librtlsdr.wrap
+!subprojects/libusb-browser.wrap
+!subprojects/libusb.wrap
+!subprojects/limesuite.wrap
+!subprojects/naga.wrap
+!subprojects/nanobench.wrap
+!subprojects/nanobind.wrap
+!subprojects/nlohmann_json.wrap
+!subprojects/qrencode.wrap
+!subprojects/rapidyaml.wrap
+!subprojects/robin-map.wrap
+!subprojects/soapyairspy.wrap
+!subprojects/soapyremote.wrap
+!subprojects/soapyrtlsdr.wrap
+!subprojects/soapysdr.wrap
+!subprojects/stb.wrap
+!subprojects/zlib.wrap
 
 build
 build-*
 
-!*.wrap
 !packagefiles
 !libusb-browser
 

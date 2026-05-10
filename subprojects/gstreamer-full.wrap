@@ -1,0 +1,8 @@
+[wrap-file]
+directory = gstreamer-1.28.1
+source_url = https://gitlab.freedesktop.org/gstreamer/gstreamer/-/archive/1.28.1/gstreamer-1.28.1.tar.gz
+source_filename = gstreamer-1.28.1.tar.gz
+source_hash = 97fee2ed866d087cd0f0cecbb3b955d18145bda22c8ae4d3a04603c6a055e8a6
+
+[provide]
+dependency_names = gstreamer-full-1.0
