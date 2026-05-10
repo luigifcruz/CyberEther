@@ -1,0 +1,10 @@
+[wrap-file]
+directory = tree-sitter-markdown-0.5.3
+lead_directory_missing = true
+source_url = https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.3/tree-sitter-markdown.tar.gz
+source_filename = tree-sitter-markdown-0.5.3.tar.gz
+source_hash = 22e40c51810e64c6bf073f0147f3abc167473206789e6dcbed4ba198ff3ca119
+patch_directory = tree-sitter-markdown
+
+[provide]
+tree-sitter-markdown = tree_sitter_markdown_dep
