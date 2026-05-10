@@ -24,7 +24,7 @@ struct JETSTREAM_API Settings {
         F32 scale = 1.0f;
         U64 framerate = 60;
 
-        JST_SERDES(device, headless, size, scale, framerate);
+        JST_SERDES(device, size, scale, framerate);
     };
 
     struct Remote {
@@ -65,7 +65,7 @@ struct JETSTREAM_API Settings {
     Developer developer;
     Benchmark benchmark;
 
-    JST_SERDES(graphics, remote, interface, developer, benchmark);
+    JST_SERDES(graphics, remote, interface, developer);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);
