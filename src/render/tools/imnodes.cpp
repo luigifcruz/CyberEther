@@ -730,16 +730,6 @@ void BeginCanvasInteraction(ImNodesEditorContext& editor)
 
     const bool mouse_not_in_canvas = !MouseInCanvas();
 
-    // Scroll-to-pan: two-finger trackpad gesture on macOS, scroll wheel on other platforms.
-    // Allow scrolling even when hovering over UI elements, but only when mouse is in canvas.
-    if (!mouse_not_in_canvas &&
-        (GImNodes->AltMouseScrollDelta != 0.f || GImNodes->AltMouseScrollDeltaH != 0.f))
-    {
-        const float scroll_speed = 20.0f;
-        editor.Panning.x += GImNodes->AltMouseScrollDeltaH * scroll_speed;
-        editor.Panning.y += GImNodes->AltMouseScrollDelta * scroll_speed;
-    }
-
     if (editor.ClickInteraction.Type != ImNodesClickInteractionType_None ||
         any_ui_element_hovered || mouse_not_in_canvas)
     {
@@ -2355,8 +2345,6 @@ void BeginNodeEditor()
         (GImNodes->Io.EmulateThreeButtonMouse.Modifier != NULL && GImNodes->LeftMouseDragging &&
          (*GImNodes->Io.EmulateThreeButtonMouse.Modifier)) ||
         ImGui::IsMouseDragging(GImNodes->Io.AltMouseButton, 0.0f);
-    GImNodes->AltMouseScrollDelta = ImGui::GetIO().MouseWheel;
-    GImNodes->AltMouseScrollDeltaH = ImGui::GetIO().MouseWheelH;
     GImNodes->MultipleSelectModifier =
         (GImNodes->Io.MultipleSelectModifier.Modifier != NULL
              ? *GImNodes->Io.MultipleSelectModifier.Modifier
@@ -2520,8 +2508,7 @@ void EndNodeEditor()
 
         else if (
             GImNodes->LeftMouseClicked || GImNodes->LeftMouseReleased ||
-            GImNodes->AltMouseClicked || GImNodes->AltMouseScrollDelta != 0.f ||
-            GImNodes->AltMouseScrollDeltaH != 0.f)
+            GImNodes->AltMouseClicked)
         {
             BeginCanvasInteraction(editor);
         }
