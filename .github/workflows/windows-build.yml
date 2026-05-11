@@ -51,8 +51,6 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - name: Install system dependencies
         run: |
           choco install nasm -y --no-progress
@@ -61,10 +59,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install meson ninja numpy mapbox_earcut pyyaml
-
-      - name: Install Rust dependencies
-        run: |
-          cargo install cargo-c --locked --features vendored-openssl
 
       - name: Install Vulkan SDK
         run: |
@@ -92,7 +86,6 @@ jobs:
             Remove-Item -Recurse -Force build
           }
 
-          $env:RUSTFLAGS = '-C target-feature=+crt-static'
           meson setup --vsenv `
             --force-fallback-for=libffi,openssl `
             -Dbuildtype=release `

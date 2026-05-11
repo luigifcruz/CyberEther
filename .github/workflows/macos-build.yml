@@ -42,13 +42,6 @@ jobs:
           set -euo pipefail
           brew install pkg-config spirv-cross glslang nasm
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Rust dependencies
-        run: |
-          set -euo pipefail
-          cargo install cargo-c --locked --features vendored-openssl
-
       - name: Install Python dependencies
         run: |
           set -euo pipefail

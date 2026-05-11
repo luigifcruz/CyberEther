@@ -65,18 +65,6 @@ jobs:
             vulkan-loader-devel pkgconf-pkg-config
           dnf clean all
 
-      - name: Install Rust dependencies
-        run: |
-          set -euo pipefail
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-          source "$HOME/.cargo/env"
-          cargo install cargo-c --locked --features vendored-openssl
-          ln -sf "$HOME/.cargo/bin/cargo" /usr/local/bin/cargo
-          ln -sf "$HOME/.cargo/bin/cargo-cbuild" /usr/local/bin/cargo-cbuild
-          ln -sf "$HOME/.cargo/bin/rustc" /usr/local/bin/rustc
-          ln -sf "$HOME/.cargo/bin/rustup" /usr/local/bin/rustup
-          printf '%s\n' "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
       - name: Install Python dependencies
         run: |
           set -euo pipefail
