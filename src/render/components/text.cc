@@ -356,6 +356,11 @@ Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
+Result Text::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
+    pimpl->fontProgram->scissorRect(rect);
+    return Result::SUCCESS;
+}
+
 Result Text::Impl::updateUniforms() {
     // Set data.
     uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);

@@ -48,6 +48,7 @@ class Text : public Generic {
 
     F32 advance(const std::string& fill) const;
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
+    Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
 
     constexpr const Config& getConfig() const {
         return config;
