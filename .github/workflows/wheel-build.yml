@@ -82,10 +82,7 @@ jobs:
             --config-settings=setup-args=-Dbuildtype=release \
             --config-settings=setup-args=-Dtests=false \
             --config-settings=setup-args=-Dexamples=false \
-            --config-settings=setup-args=-Dremote=enabled \
-            --config-settings=setup-args=-Dlibffi:default_library=static \
-            --config-settings=setup-args=-Dopenssl:default_library=static \
-            --config-settings=setup-args=--force-fallback-for=libffi,openssl
+            --config-settings=setup-args=-Dremote=enabled
           auditwheel repair .dist/wheels/*.whl -w .dist/wheels/repaired
           cd .dist/wheels/repaired
           tar -czf ../../artifacts/superluminal-manylinux-${ARCH}-wheel.tar.gz ./*.whl

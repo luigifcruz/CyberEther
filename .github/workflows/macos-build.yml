@@ -52,10 +52,7 @@ jobs:
           set -euo pipefail
           rm -rf build
           meson setup build \
-            --force-fallback-for=libffi,openssl \
             --default-library=static \
-            -Dlibffi:default_library=static \
-            -Dopenssl:default_library=static \
             -Dbuildtype=release \
             -Dexamples=false \
             -Dremote=enabled

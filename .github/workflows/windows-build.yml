@@ -53,7 +53,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          choco install nasm -y --no-progress
+          choco install nasm winflexbison3 pkgconfiglite -y --no-progress
 
       - name: Install Python dependencies
         run: |
@@ -87,11 +87,8 @@ jobs:
           }
 
           meson setup --vsenv `
-            --force-fallback-for=libffi,openssl `
             -Dbuildtype=release `
             -Ddefault_library=static `
-            -Dlibffi:default_library=static `
-            -Dopenssl:default_library=static `
             -Db_vscrt=static_from_buildtype `
             -Dtests=true `
             -Dexamples=false `

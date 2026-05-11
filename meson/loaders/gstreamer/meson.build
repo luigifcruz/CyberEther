@@ -73,6 +73,10 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         ]
     endif
 
+    if jst_is_windows
+        gst_platform_options += ['build-tools-source=system']
+    endif
+
     gst_disabled_base_plugins = [
         'adder', 'alsa', 'audioconvert', 'audiomixer', 'audiorate',
         'audioresample', 'audiotestsrc', 'cdparanoia', 'compositor',
