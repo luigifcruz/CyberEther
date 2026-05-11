@@ -1,0 +1,10 @@
+[wrap-file]
+directory = libsrtp-2.7.0
+source_url = https://github.com/cisco/libsrtp/archive/refs/tags/v2.7.0.tar.gz
+source_filename = libsrtp-2.7.0.tar.gz
+source_hash = 54facb1727a557c2a76b91194dcb2d0a453aaf8e2d0cbbf1e3c2848c323e28ad
+source_fallback_url = https://github.com/mesonbuild/wrapdb/releases/download/libsrtp2_2.7.0-1/libsrtp-2.7.0.tar.gz
+wrapdb_version = 2.7.0-1
+
+[provide]
+libsrtp2 = libsrtp2_dep

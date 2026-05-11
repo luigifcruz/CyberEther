@@ -198,7 +198,6 @@ if remote_opt.enabled()
         'libnice:tests=disabled',
         'libsrtp2:default_library=static',
         'openh264:default_library=static',
-        'openssl:default_library=static',
         'orc:default_library=static',
         'pcre2:test=false',
         'proxy-libintl:default_library=static',
