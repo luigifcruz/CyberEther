@@ -1,5 +1,5 @@
 deps = []
-all_deps_found = not jst_is_browser and cfg_lst.has('JETSTREAM_LOADER_OPENSSL_AVAILABLE')
+all_deps_found = not jst_is_browser and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', false)
 
 if all_deps_found
     deps += [

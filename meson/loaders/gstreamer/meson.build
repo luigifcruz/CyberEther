@@ -3,7 +3,7 @@ remote_opt = get_option('remote')
 deps = []
 all_deps_found = false
 
-if remote_opt.enabled()
+if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', false)
     gst_full_libraries = [
         'app',
         'rtp',

@@ -29,6 +29,8 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
+extern "C" void gst_init_static_plugins(void);
+
 namespace Jetstream {
 
 struct Instance::Remote::Impl {
@@ -540,12 +542,16 @@ Result Instance::Remote::Impl::createStream() {
         gst_init(nullptr, nullptr);
     }
 
+    gst_init_static_plugins();
+
     std::vector<std::string> plugins = {
-        "app",
-        "rawparse",
-        "coreelements",
-        "rtp",
-        "webrtc",
+        "appsrc",
+        "capsfilter",
+        "queue",
+        "rawvideoparse",
+        "tee",
+        "videoconvert",
+        "webrtcbin",
     };
 
     JST_CHECK(checkGstreamerPlugins(plugins));
@@ -560,38 +566,38 @@ Result Instance::Remote::Impl::createStream() {
     if (config.codec == Instance::Remote::CodecType::H264) {
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
         if (viewportDevice == DeviceType::Vulkan && Backend::State<DeviceType::CUDA>()->isAvailable()) {
-            combinations.push_back({DeviceType::CUDA, EncodingStrategyType::HardwareNVENC, {"nvcodec"}});
+            combinations.push_back({DeviceType::CUDA, EncodingStrategyType::HardwareNVENC, {"nvh264enc", "h264parse", "rtph264pay"}});
             GST_DEBUG("[REMOTE] Checking for NVENC strategy support for h264.");
         }
 #endif
 
-        if (checkGstreamerPlugins({"applemedia"}, true) == Result::SUCCESS) {
+        if (checkGstreamerPlugins({"vtenc_h264_hw"}, true) == Result::SUCCESS) {
             GstElementFactory* factory = gst_element_factory_find("vtenc_h264_hw");
             if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareVideoToolbox, {"applemedia"}});
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareVideoToolbox, {"vtenc_h264_hw", "h264parse", "rtph264pay"}});
                 gst_object_unref(GST_OBJECT(factory));
                 GST_DEBUG("[REMOTE] Checking for VideoToolbox strategy support for h264.");
             }
         }
 
-        if (checkGstreamerPlugins({"video4linux2"}, true) == Result::SUCCESS) {
+        if (checkGstreamerPlugins({"v4l2h264enc"}, true) == Result::SUCCESS) {
             GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
             if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareV4L2, {"video4linux2"}});
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareV4L2, {"v4l2h264enc", "h264parse", "rtph264pay"}});
                 gst_object_unref(GST_OBJECT(factory));
                 GST_DEBUG("[REMOTE] Checking for V4L2 strategy support for h264.");
             }
         }
 
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264"}});
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264enc", "h264parse", "rtph264pay"}});
     }
 
     if (config.codec == Instance::Remote::CodecType::VP8) {
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vpx"}});
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp8enc", "rtpvp8pay"}});
     }
 
     if (config.codec == Instance::Remote::CodecType::VP9) {
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vpx"}});
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp9enc", "rtpvp9pay"}});
     }
 
     bool requestedEncoderFound = false;
@@ -666,9 +672,21 @@ Result Instance::Remote::Impl::destroyStream() {
 Result Instance::Remote::Impl::checkGstreamerPlugins(const std::vector<std::string>& plugins,
                                                      const bool& silent) {
     for (const auto& plugin : plugins) {
-        if (!gst_registry_find_plugin(gst_registry_get(), plugin.c_str())) {
+        GstPlugin* gstPlugin = gst_registry_find_plugin(gst_registry_get(), plugin.c_str());
+        if (gstPlugin) {
+            gst_object_unref(GST_OBJECT(gstPlugin));
+            continue;
+        }
+
+        GstElementFactory* factory = gst_element_factory_find(plugin.c_str());
+        if (factory) {
+            gst_object_unref(GST_OBJECT(factory));
+            continue;
+        }
+
+        {
             if (!silent) {
-                JST_ERROR("[REMOTE] Gstreamer plugin '{}' is not available.", plugin);
+                JST_ERROR("[REMOTE] Gstreamer plugin or element '{}' is not available.", plugin);
             }
             return Result::ERROR;
         }
