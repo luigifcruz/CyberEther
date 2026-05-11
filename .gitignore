@@ -23,7 +23,6 @@ subprojects/*
 !subprojects/glm.wrap
 !subprojects/gstreamer-full.wrap
 !subprojects/libairspy.wrap
-!subprojects/libffi.wrap
 !subprojects/libmodes.wrap
 !subprojects/librtlsdr.wrap
 !subprojects/libusb-browser.wrap
