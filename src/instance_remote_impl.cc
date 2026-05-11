@@ -1,10 +1,10 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/viewport/capture.hh"
-#include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 
 #ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+#include "jetstream/viewport/adapters/vulkan.hh"
 #include "jetstream/viewport/capture/vulkan.hh"
 #endif
 
