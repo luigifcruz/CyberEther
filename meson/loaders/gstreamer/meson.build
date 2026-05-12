@@ -185,6 +185,8 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gst-plugins-bad:auto_features=disabled',
         'gst-plugins-bad:orc=disabled',
         'glib:default_library=static',
+        'glib:libmount=disabled',
+        'glib:selinux=disabled',
         'glib:tests=false',
         'libffi:tests=false',
         'json-glib:tests=false',
@@ -240,8 +242,10 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'default_library=static',
         'introspection=disabled',
         'libffi:tests=false',
+        'libmount=disabled',
         'nls=disabled',
         'proxy-libintl:default_library=static',
+        'selinux=disabled',
         'tests=false',
     ])
 

@@ -7,6 +7,7 @@ RUN apt-get update --fix-missing && \
       git build-essential pkg-config python3-pip \
       curl ca-certificates bison flex nasm \
       spirv-cross glslang-tools \
+      libudev-dev \
       libglfw3-dev zenity \
       mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers \
       libsoapysdr-dev soapysdr-module-rtlsdr && \
@@ -37,6 +38,7 @@ RUN rm -rf build && \
       -Dopenssl:default_library=static \
       -Dprefix=${PREFIX} \
       -Dbuildtype=${BUILD_TYPE} \
+      -Dexamples=false \
       -Dremote=enabled
 RUN meson compile -C build
 RUN meson install -C build

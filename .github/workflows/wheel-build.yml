@@ -30,6 +30,7 @@ env:
     libwayland-cursor.so.0
     libwayland-egl.so.1
     libudev.so.1
+    libffi.so.8
 
 jobs:
   wheel:
@@ -78,6 +79,7 @@ jobs:
           mkdir -p .dist/wheels/repaired .dist/artifacts
           python -m pip wheel . \
             --no-deps --no-build-isolation --wheel-dir .dist/wheels \
+            --config-settings=setup-args=--default-library=static \
             --config-settings=setup-args=-Dpython=true \
             --config-settings=setup-args=-Dwheel=true \
             --config-settings=setup-args=-Dbuildtype=release \
