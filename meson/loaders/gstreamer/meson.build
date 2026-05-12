@@ -49,10 +49,6 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
     endif
 
     if jst_is_linux
-        gst_full_elements += [
-            'nvcodec:nvh264enc',
-            'v4l2codecs:v4l2h264enc',
-        ]
         gst_full_plugins += [
             'libgstnvcodec.a',
             'libgstv4l2codecs.a',
