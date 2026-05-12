@@ -69,7 +69,6 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
             'audio',
             'pbutils',
         ]
-        gst_full_elements += ['mediafoundation:mfh264enc']
         gst_full_plugins += ['libgstmediafoundation.a']
         gst_platform_options += [
             'build-tools-source=system',
