@@ -138,6 +138,7 @@ struct RemoteSettingsPanel : public Sakura::Component {
                 "NVENC",
                 "V4L2",
                 "VideoToolbox",
+                "MediaFoundation",
             },
             .value = encoderLabel(this->config.encoder),
             .onChange = [this](const std::string& label) {
@@ -245,6 +246,7 @@ struct RemoteSettingsPanel : public Sakura::Component {
             case Instance::Remote::EncoderType::NVENC: return "NVENC";
             case Instance::Remote::EncoderType::V4L2: return "V4L2";
             case Instance::Remote::EncoderType::VideoToolbox: return "VideoToolbox";
+            case Instance::Remote::EncoderType::MediaFoundation: return "MediaFoundation";
         }
         return "Auto";
     }
@@ -255,6 +257,7 @@ struct RemoteSettingsPanel : public Sakura::Component {
         if (label == "NVENC") return Instance::Remote::EncoderType::NVENC;
         if (label == "V4L2") return Instance::Remote::EncoderType::V4L2;
         if (label == "VideoToolbox") return Instance::Remote::EncoderType::VideoToolbox;
+        if (label == "MediaFoundation") return Instance::Remote::EncoderType::MediaFoundation;
         return Instance::Remote::EncoderType::Auto;
     }
 

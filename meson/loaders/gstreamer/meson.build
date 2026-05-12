@@ -65,7 +65,18 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
     endif
 
     if jst_is_windows
-        gst_platform_options += ['build-tools-source=system']
+        gst_full_libraries += [
+            'audio',
+            'pbutils',
+        ]
+        gst_full_elements += ['mediafoundation:mfh264enc']
+        gst_full_plugins += ['libgstmediafoundation.a']
+        gst_platform_options += [
+            'build-tools-source=system',
+            'gst-plugins-bad:mediafoundation=enabled',
+        ]
+    else
+        gst_platform_options += ['gst-plugins-bad:mediafoundation=disabled']
     endif
 
     gst_disabled_base_plugins = [
@@ -113,7 +124,7 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'id3tag', 'insertbin', 'inter', 'interlace', 'ipcpipeline', 'iqa',
         'isac', 'ivfparse', 'ivtc', 'jpegformat', 'jp2kdecimator', 'kms',
         'ladspa', 'ladspa-rdf', 'lc3', 'lcevcdecoder', 'lcevcencoder',
-        'ldac', 'libde265', 'librfb', 'lv2', 'mediafoundation', 'microdns',
+        'ldac', 'libde265', 'librfb', 'lv2', 'microdns',
         'midi', 'modplug', 'mpeghdec', 'mpeg2enc', 'mpegdemux', 'mpegpsmux',
         'mpegtsdemux', 'mpegtsmux', 'mplex', 'msdk', 'mse', 'musepack', 'mxf',
         'neon', 'netsim', 'nvcomp', 'nvdswrapper', 'onnx', 'onvif', 'openal',

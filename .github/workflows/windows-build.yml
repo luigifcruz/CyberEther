@@ -21,6 +21,9 @@ env:
     RPCRT4.dll
     SHLWAPI.dll
     IMM32.dll
+    MF.dll
+    MFPlat.dll
+    MFReadWrite.dll
     BCRYPT.dll
     CRYPT32.dll
     DNSAPI.dll

@@ -29,6 +29,7 @@ struct Instance::Remote {
         NVENC,
         V4L2,
         VideoToolbox,
+        MediaFoundation,
     };
 
     struct Config {
@@ -83,12 +84,13 @@ static inline constexpr std::array<Instance::Remote::CodecType, 4> RemoteCodecTy
     Instance::Remote::CodecType::VP9,
 };
 
-static inline constexpr std::array<Instance::Remote::EncoderType, 5> RemoteEncoderTypes = {
+static inline constexpr std::array<Instance::Remote::EncoderType, 6> RemoteEncoderTypes = {
     Instance::Remote::EncoderType::Auto,
     Instance::Remote::EncoderType::Software,
     Instance::Remote::EncoderType::NVENC,
     Instance::Remote::EncoderType::V4L2,
     Instance::Remote::EncoderType::VideoToolbox,
+    Instance::Remote::EncoderType::MediaFoundation,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Instance::Remote::EncoderType& encoder) {

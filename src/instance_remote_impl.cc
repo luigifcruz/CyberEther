@@ -60,6 +60,7 @@ struct Instance::Remote::Impl {
         HardwareNVENC,
         HardwareV4L2,
         HardwareVideoToolbox,
+        HardwareMediaFoundation,
     };
 
     Extent2D<U64> size;
@@ -611,6 +612,15 @@ Result Instance::Remote::Impl::createStream() {
             }
         }
 
+        if (checkGstreamerPlugins({"mfh264enc"}, true) == Result::SUCCESS) {
+            GstElementFactory* factory = gst_element_factory_find("mfh264enc");
+            if (factory) {
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareMediaFoundation, {"mfh264enc", "h264parse", "rtph264pay"}});
+                gst_object_unref(GST_OBJECT(factory));
+                GST_DEBUG("[REMOTE] Checking for MediaFoundation strategy support for h264.");
+            }
+        }
+
         combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264enc", "h264parse", "rtph264pay"}});
     }
 
@@ -639,6 +649,9 @@ Result Instance::Remote::Impl::createStream() {
                     break;
                 case Instance::Remote::EncoderType::VideoToolbox:
                     match = (strategy == EncodingStrategyType::HardwareVideoToolbox);
+                    break;
+                case Instance::Remote::EncoderType::MediaFoundation:
+                    match = (strategy == EncodingStrategyType::HardwareMediaFoundation);
                     break;
                 default:
                     break;
@@ -1135,6 +1148,46 @@ Result Instance::Remote::Impl::startStream() {
                 g_object_set(elements["encoder"], "realtime", true, nullptr);
                 g_object_set(elements["encoder"], "allow-frame-reordering", false, nullptr);
                 g_object_set(elements["encoder"], "max-keyframe-interval", static_cast<int>(config.framerate), nullptr);
+
+                elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
+                elementOrder.push_back("hwcaps");
+
+                GstCaps* hwcaps = gst_caps_new_simple("video/x-h264",
+                                                      "profile", G_TYPE_STRING, "baseline",
+                                                      nullptr);
+                g_object_set(elements["hwcaps"], "caps", hwcaps, nullptr);
+                gst_caps_unref(hwcaps);
+
+                elements["parser"] = gst_element_factory_make("h264parse", "parser");
+                elementOrder.push_back("parser");
+
+                g_object_set(elements["parser"], "config-interval", 1, nullptr);
+                break;
+            }
+            default:
+                JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
+                return Result::ERROR;
+        }
+    }
+
+    if (encodingStrategy == EncodingStrategyType::HardwareMediaFoundation) {
+        elements["rawparser"] = gst_element_factory_make("rawvideoparse", "rawparser");
+        elementOrder.push_back("rawparser");
+
+        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
+        g_object_set(elements["rawparser"], "format", 12, nullptr);
+        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
+        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+
+        elements["convert"] = gst_element_factory_make("videoconvert", "convert");
+        elementOrder.push_back("convert");
+
+        switch(config.codec) {
+            case Instance::Remote::CodecType::H264: {
+                elements["encoder"] = encoder = gst_element_factory_make("mfh264enc", "encoder");
+                elementOrder.push_back("encoder");
+
+                g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
 
                 elements["hwcaps"] = gst_element_factory_make("capsfilter", "hwcaps");
                 elementOrder.push_back("hwcaps");
@@ -2082,6 +2135,8 @@ const char* Instance::Remote::Impl::GetEncodingStrategyPrettyName(const Encoding
             return "Hardware Linux (V4L2)";
         case EncodingStrategyType::HardwareVideoToolbox:
             return "Hardware Apple (VideoToolbox)";
+        case EncodingStrategyType::HardwareMediaFoundation:
+            return "Hardware Windows (MediaFoundation)";
         default:
             return "Unknown";
     }

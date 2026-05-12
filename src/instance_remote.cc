@@ -70,6 +70,8 @@ std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder) {
             return "v4l2";
         case Instance::Remote::EncoderType::VideoToolbox:
             return "videotoolbox";
+        case Instance::Remote::EncoderType::MediaFoundation:
+            return "mediafoundation";
         default:
             JST_ERROR("Unknown remote encoder.");
             throw Result::ERROR;
@@ -92,6 +94,8 @@ Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder) 
         return Instance::Remote::EncoderType::V4L2;
     } else if (sanitizedEncoder == "videotoolbox") {
         return Instance::Remote::EncoderType::VideoToolbox;
+    } else if (sanitizedEncoder == "mediafoundation") {
+        return Instance::Remote::EncoderType::MediaFoundation;
     }
 
     JST_ERROR("Unknown remote encoder: {}", encoder);
@@ -110,6 +114,8 @@ const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& enco
             return "V4L2";
         case Instance::Remote::EncoderType::VideoToolbox:
             return "VideoToolbox";
+        case Instance::Remote::EncoderType::MediaFoundation:
+            return "MediaFoundation";
         default:
             return "Unknown";
     }
