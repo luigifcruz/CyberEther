@@ -1,4 +1,5 @@
 #include "jetstream/instance_remote.hh"
+#include "jetstream/backend/base.hh"
 #include "jetstream/viewport/capture.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
@@ -25,6 +26,10 @@
 #include <gst/sdp/sdp.h>
 #include <gst/video/video-event.h>
 #include <gst/gststructure.h>
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include <gst/cuda/gstcuda.h>
+#endif
 
 #include <httplib.h>
 #include <nlohmann/json.hpp>
@@ -85,6 +90,10 @@ struct Instance::Remote::Impl {
     GstElement* source = nullptr;
     GstElement* encoder = nullptr;
     GstElement* tee = nullptr;
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    GstCudaContext* gstCudaContext = nullptr;
+#endif
 
     std::unique_ptr<httplib::ws::WebSocketClient> signallerClient;
     std::thread signallerThread;
@@ -698,6 +707,10 @@ Result Instance::Remote::Impl::createStream() {
 Result Instance::Remote::Impl::destroyStream() {
     JST_DEBUG("[REMOTE] Destroying stream.");
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    gst_clear_object(&gstCudaContext);
+#endif
+
     encodingStrategy = EncodingStrategyType::None;
     inputMemoryDevice_ = DeviceType::None;
 
@@ -957,6 +970,22 @@ Result Instance::Remote::Impl::startStream() {
         JST_ERROR("[REMOTE] Failed to create gstreamer pipeline.");
         return Result::ERROR;
     }
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (inputMemoryDevice_ == DeviceType::CUDA) {
+        gst_cuda_memory_init_once();
+        gst_clear_object(&gstCudaContext);
+
+        const auto& cudaState = Backend::State<DeviceType::CUDA>();
+        gstCudaContext = gst_cuda_context_new_wrapped(cudaState->getContext(), cudaState->getDevice());
+        if (!gstCudaContext) {
+            JST_ERROR("[REMOTE] Failed to wrap CUDA context for GStreamer.");
+            gst_object_unref(pipeline);
+            pipeline = nullptr;
+            return Result::ERROR;
+        }
+    }
+#endif
 
     std::map<std::string, GstElement*> elements;
     std::vector<std::string> elementOrder;
@@ -1264,6 +1293,9 @@ Result Instance::Remote::Impl::startStream() {
         source = nullptr;
         encoder = nullptr;
         tee = nullptr;
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        gst_clear_object(&gstCudaContext);
+#endif
         return Result::ERROR;
     }
 
@@ -1300,6 +1332,9 @@ Result Instance::Remote::Impl::stopStream() {
         source = nullptr;
         encoder = nullptr;
         tee = nullptr;
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        gst_clear_object(&gstCudaContext);
+#endif
     }
 
     return Result::SUCCESS;
@@ -2072,13 +2107,57 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
             return Result::SUCCESS;
         }
 
-        GstBuffer* buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
-                                                        const_cast<void*>(data),
-                                                        size.x * size.y * 4,
-                                                        0,
-                                                        size.x * size.y * 4,
-                                                        this,
-                                                        &OnBufferReleaseCallback);
+        GstBuffer* buffer = nullptr;
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        if (inputMemoryDevice_ == DeviceType::CUDA) {
+            if (!gstCudaContext) {
+                JST_ERROR("[REMOTE] CUDA frame submitted without a GStreamer CUDA context.");
+                return Result::ERROR;
+            }
+
+            GstVideoInfo info;
+            gst_video_info_set_format(&info,
+                                      GST_VIDEO_FORMAT_BGRA,
+                                      static_cast<guint>(size.x),
+                                      static_cast<guint>(size.y));
+
+            GstMemory* memory = gst_cuda_allocator_alloc_wrapped(nullptr,
+                                                                 gstCudaContext,
+                                                                 nullptr,
+                                                                 &info,
+                                                                 reinterpret_cast<CUdeviceptr>(const_cast<void*>(data)),
+                                                                 this,
+                                                                 &OnBufferReleaseCallback);
+            if (!memory) {
+                JST_ERROR("[REMOTE] Failed to wrap CUDA frame for GStreamer.");
+                return Result::ERROR;
+            }
+
+            GST_MINI_OBJECT_FLAG_SET(memory, GST_MEMORY_FLAG_READONLY);
+
+            buffer = gst_buffer_new();
+            gst_buffer_append_memory(buffer, memory);
+            gst_buffer_add_video_meta_full(buffer,
+                                           GST_VIDEO_FRAME_FLAG_NONE,
+                                           GST_VIDEO_FORMAT_BGRA,
+                                           static_cast<guint>(size.x),
+                                           static_cast<guint>(size.y),
+                                           GST_VIDEO_INFO_N_PLANES(&info),
+                                           info.offset,
+                                           info.stride);
+        }
+#endif
+
+        if (!buffer) {
+            buffer = gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY,
+                                                 const_cast<void*>(data),
+                                                 size.x * size.y * 4,
+                                                 0,
+                                                 size.x * size.y * 4,
+                                                 this,
+                                                 &OnBufferReleaseCallback);
+        }
 
         const auto currentFrameTime = std::chrono::steady_clock::now();
         const auto elapsedSinceLastFrame = std::chrono::duration_cast<std::chrono::nanoseconds>(currentFrameTime -
