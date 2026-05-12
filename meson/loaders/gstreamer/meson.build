@@ -23,33 +23,26 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'vpx:vp8enc,vp9enc',
     ]
 
-    gst_plugin_prefix = 'lib'
-    gst_plugin_suffix = '.a'
-    if jst_is_windows
-        gst_plugin_prefix = ''
-        gst_plugin_suffix = '.lib'
-    endif
-
     gst_full_plugins = [
-        gst_plugin_prefix + 'gstapp' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstcoreelements' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstdtls' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstopenh264' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstrawparse' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstrtp' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstsctp' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstsrtp' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstvideoconvertscale' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstvideoparsersbad' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstvpx' + gst_plugin_suffix,
-        gst_plugin_prefix + 'gstwebrtc' + gst_plugin_suffix,
+        'libgstapp.a',
+        'libgstcoreelements.a',
+        'libgstdtls.a',
+        'libgstopenh264.a',
+        'libgstrawparse.a',
+        'libgstrtp.a',
+        'libgstsctp.a',
+        'libgstsrtp.a',
+        'libgstvideoconvertscale.a',
+        'libgstvideoparsersbad.a',
+        'libgstvpx.a',
+        'libgstwebrtc.a',
     ]
 
     gst_platform_options = []
 
     if jst_is_macos
         gst_full_elements += ['applemedia:vtenc_h264_hw']
-        gst_full_plugins += [gst_plugin_prefix + 'gstapplemedia' + gst_plugin_suffix]
+        gst_full_plugins += ['libgstapplemedia.a']
         gst_platform_options += ['gst-plugins-bad:applemedia=enabled']
     else
         gst_platform_options += ['gst-plugins-bad:applemedia=disabled']
@@ -61,8 +54,8 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
             'v4l2codecs:v4l2h264enc',
         ]
         gst_full_plugins += [
-            gst_plugin_prefix + 'gstnvcodec' + gst_plugin_suffix,
-            gst_plugin_prefix + 'gstv4l2codecs' + gst_plugin_suffix,
+            'libgstnvcodec.a',
+            'libgstv4l2codecs.a',
         ]
         gst_platform_options += [
             'gst-plugins-bad:nvcodec=enabled',

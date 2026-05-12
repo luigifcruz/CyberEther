@@ -9,8 +9,10 @@ if all_deps_found
             default_options: [
                 'tls=enabled',
                 'tls_backend=openssl',
+                'brotli=disabled',
                 'compile=true',
                 'default_library=static',
+                'zstd=disabled',
             ]
         ).get_variable('cpp_httplib_dep')
     ]

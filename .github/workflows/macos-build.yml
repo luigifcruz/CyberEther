@@ -15,9 +15,12 @@ env:
     CoreFoundation.framework/CoreFoundation
     CoreAudio.framework/CoreAudio
     CoreGraphics.framework/CoreGraphics
+    IOSurface.framework/IOSurface
     CoreServices.framework/CoreServices
     CFNetwork.framework/CFNetwork
     IOKit.framework/IOKit
+    OpenGL.framework/OpenGL
+    QuartzCore.framework/QuartzCore
     Security.framework/Security
     libz.1.dylib
     AppKit.framework/AppKit
@@ -29,7 +32,10 @@ env:
     UniformTypeIdentifiers.framework/UniformTypeIdentifiers
     libc++.1.dylib
     libSystem.B.dylib
+    libffi.dylib
+    libiconv.2.dylib
     libobjc.A.dylib
+    libresolv.9.dylib
 
 jobs:
   bin:
