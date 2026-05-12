@@ -289,6 +289,11 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gstreamer-video-1.0',
         'gstreamer-webrtc-1.0',
     ]
+
+    if jst_is_linux and cfg_lst.get('JETSTREAM_LOADER_CUDA_AVAILABLE', false)
+        gst_component_deps += ['gstreamer-cuda-1.0']
+    endif
+
     foreach gst_component_dep : gst_component_deps
         dep_lst += dependency(gst_component_dep, required: true, static: true)
     endforeach
