@@ -10,11 +10,12 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
     ]
 
     gst_full_elements = [
-        'app:appsrc',
-        'coreelements:capsfilter,queue,tee',
+        'app:appsink,appsrc',
+        'coreelements:capsfilter,clocksync,funnel,queue,tee',
         'openh264:openh264enc',
         'rawparse:rawvideoparse',
-        'rtp:rtph264pay,rtpvp8pay,rtpvp9pay',
+        'rtpmanager:rtpbin,rtpfunnel,rtphdrextmid,rtphdrextrepairedstreamid,rtphdrextstreamid,rtphdrexttwcc,rtpjitterbuffer,rtpptdemux,rtprtxreceive,rtprtxsend,rtpsession,rtpssrcdemux,rtpstorage',
+        'rtp:rtph264pay,rtpreddec,rtpredenc,rtpulpfecdec,rtpulpfecenc,rtpvp8pay,rtpvp9pay',
         'videoconvertscale:videoconvert',
         'videoparsersbad:h264parse',
         'vpx:vp8enc,vp9enc',
@@ -24,9 +25,11 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'libgstapp.a',
         'libgstcoreelements.a',
         'libgstdtls.a',
+        'libgstnice.a',
         'libgstopenh264.a',
         'libgstrawparse.a',
         'libgstrtp.a',
+        'libgstrtpmanager.a',
         'libgstsctp.a',
         'libgstsrtp.a',
         'libgstvideoconvertscale.a',
@@ -86,9 +89,9 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'jack', 'jpeg', 'lame', 'law', 'level', 'libcaca', 'matroska',
         'monoscope', 'mpg123', 'multifile', 'multipart', 'oss', 'oss4',
         'osxaudio', 'osxvideo', 'png', 'pulse', 'qt-egl', 'qt-wayland',
-        'qt-x11', 'qt5', 'qt6', 'replaygain', 'rpicamsrc', 'rtpmanager',
-        'rtsp', 'shapewipe', 'shout2', 'smpte', 'soup', 'speex',
-        'spectrum', 'taglib', 'twolame', 'udp', 'v4l2', 'videobox',
+        'qt-x11', 'qt5', 'qt6', 'replaygain', 'rpicamsrc', 'rtsp',
+        'shapewipe', 'shout2', 'smpte', 'soup', 'speex', 'spectrum',
+        'taglib', 'twolame', 'udp', 'v4l2', 'videobox',
         'videocrop', 'videofilter', 'videomixer', 'waveform', 'wavenc',
         'wavpack', 'wavparse', 'ximagesrc', 'xingmux', 'y4m',
     ]
@@ -166,6 +169,8 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'rtsp_server=disabled',
 
         'gpl=disabled',
+        'libnice=enabled',
+        'webrtc=enabled',
         'gst-plugins-bad:gpl=disabled',
         'gst-plugins-ugly:gpl=disabled',
         'gstreamer:default_library=static',
@@ -181,19 +186,27 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gst-plugins-bad:orc=disabled',
         'glib:default_library=static',
         'glib:tests=false',
+        'libffi:tests=false',
         'json-glib:tests=false',
         'libnice:crypto-library=openssl',
         'libnice:default_library=static',
-        'libnice:gstreamer=disabled',
+        'libnice:gstreamer=enabled',
         'libnice:gupnp=disabled',
         'libnice:introspection=disabled',
         'libnice:tests=disabled',
         'libsrtp2:default_library=static',
+        'libsrtp2:pcap-tests=disabled',
+        'libsrtp2:tests=disabled',
         'openh264:default_library=static',
         'orc:default_library=static',
         'pcre2:test=false',
         'proxy-libintl:default_library=static',
         'vpx:default_library=static',
+        'vpx:decode_perf_tests=disabled',
+        'vpx:encode_perf_tests=disabled',
+        'vpx:examples=disabled',
+        'vpx:tools=disabled',
+        'vpx:unit_tests=disabled',
 
         'gst-full-target-type=static_library',
         'gst-full-libraries=' + ','.join(gst_full_libraries),
@@ -208,6 +221,7 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gst-plugins-base:rawparse=enabled',
         'gst-plugins-base:videoconvertscale=enabled',
         'gst-plugins-good:rtp=enabled',
+        'gst-plugins-good:rtpmanager=enabled',
         'gst-plugins-good:vpx=enabled',
         'gst-plugins-bad:dtls=enabled',
         'gst-plugins-bad:openh264=enabled',
@@ -225,6 +239,7 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
     subproject('glib', required: true, default_options: [
         'default_library=static',
         'introspection=disabled',
+        'libffi:tests=false',
         'nls=disabled',
         'proxy-libintl:default_library=static',
         'tests=false',
@@ -232,10 +247,17 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
 
     subproject('libsrtp2', required: true, default_options: [
         'default_library=static',
+        'pcap-tests=disabled',
+        'tests=disabled',
     ])
 
     subproject('vpx', required: true, default_options: [
         'default_library=static',
+        'decode_perf_tests=disabled',
+        'encode_perf_tests=disabled',
+        'examples=disabled',
+        'tools=disabled',
+        'unit_tests=disabled',
     ])
 
     subproject('gstreamer-full', required: true, default_options: gst_default_options)
