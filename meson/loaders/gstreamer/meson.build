@@ -241,7 +241,12 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gst-plugins-bad:srtp=enabled',
         'gst-plugins-bad:videoparsers=enabled',
         'gst-plugins-bad:webrtc=enabled',
-    ] + gst_platform_options + gst_disabled_base_options + gst_disabled_good_options + gst_disabled_bad_options
+    ]
+
+    gst_default_options += gst_platform_options
+    gst_default_options += gst_disabled_base_options
+    gst_default_options += gst_disabled_good_options
+    gst_default_options += gst_disabled_bad_options
 
     subproject('pcre2', required: true, default_options: [
         'default_library=static',
