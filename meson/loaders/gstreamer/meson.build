@@ -1,8 +1,5 @@
 remote_opt = get_option('remote')
 
-deps = []
-all_deps_found = false
-
 if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', false)
     gst_full_libraries = [
         'app',
@@ -241,32 +238,20 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'default_library=static',
     ])
 
-    gst_full_dep = dependency(
+    subproject('gstreamer-full', required: true, default_options: gst_default_options)
+
+    gst_component_deps = [
         'gstreamer-full-1.0',
-        fallback: 'gstreamer-full',
-        default_options: gst_default_options,
-        required: true,
-        static: true,
-    )
-
-    deps = [
-        gst_full_dep,
-        dependency('gstreamer-app-1.0', required: true, static: true),
-        dependency('gstreamer-rtp-1.0', required: true, static: true),
-        dependency('gstreamer-sdp-1.0', required: true, static: true),
-        dependency('gstreamer-video-1.0', required: true, static: true),
-        dependency('gstreamer-webrtc-1.0', required: true, static: true),
+        'gstreamer-app-1.0',
+        'gstreamer-rtp-1.0',
+        'gstreamer-sdp-1.0',
+        'gstreamer-video-1.0',
+        'gstreamer-webrtc-1.0',
     ]
-
-    all_deps_found = true
-    foreach x_dep : deps
-        all_deps_found = all_deps_found and x_dep.found()
+    foreach gst_component_dep : gst_component_deps
+        dep_lst += dependency(gst_component_dep, required: true, static: true)
     endforeach
-endif
 
-if all_deps_found
     cfg_lst.set('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', true)
-    dep_lst += deps
+    ldr_lst += {'GStreamer': true}
 endif
-
-ldr_lst += {'GStreamer': all_deps_found}
