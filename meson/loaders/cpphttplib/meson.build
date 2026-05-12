@@ -1,5 +1,5 @@
 deps = []
-all_deps_found = not (jst_is_browser or jst_is_windows)
+all_deps_found = not jst_is_browser and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', false)
 
 if all_deps_found
     deps += [
@@ -7,9 +7,12 @@ if all_deps_found
             'cpp-httplib',
             required: true,
             default_options: [
-                'tls=auto',
+                'tls=enabled',
+                'tls_backend=openssl',
+                'brotli=disabled',
                 'compile=true',
-                'default_library=static'
+                'default_library=static',
+                'zstd=disabled',
             ]
         ).get_variable('cpp_httplib_dep')
     ]

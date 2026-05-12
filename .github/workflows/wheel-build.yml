@@ -29,6 +29,8 @@ env:
     libwayland-client.so.0
     libwayland-cursor.so.0
     libwayland-egl.so.1
+    libudev.so.1
+    libffi.so.8
 
 jobs:
   wheel:
@@ -59,10 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y \
-            git gcc-c++ glslang openssl-devel \
+            git gcc-c++ glslang curl bison flex nasm \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
-            vulkan-loader-devel pkgconf-pkg-config
+            vulkan-loader-devel systemd-devel pkgconf-pkg-config
           dnf clean all
 
       - name: Install Python dependencies
@@ -77,11 +79,13 @@ jobs:
           mkdir -p .dist/wheels/repaired .dist/artifacts
           python -m pip wheel . \
             --no-deps --no-build-isolation --wheel-dir .dist/wheels \
+            --config-settings=setup-args=--default-library=static \
             --config-settings=setup-args=-Dpython=true \
             --config-settings=setup-args=-Dwheel=true \
             --config-settings=setup-args=-Dbuildtype=release \
             --config-settings=setup-args=-Dtests=false \
-            --config-settings=setup-args=-Dexamples=false
+            --config-settings=setup-args=-Dexamples=false \
+            --config-settings=setup-args=-Dremote=enabled
           auditwheel repair .dist/wheels/*.whl -w .dist/wheels/repaired
           cd .dist/wheels/repaired
           tar -czf ../../artifacts/superluminal-manylinux-${ARCH}-wheel.tar.gz ./*.whl

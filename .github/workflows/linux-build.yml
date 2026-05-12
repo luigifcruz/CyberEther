@@ -29,6 +29,8 @@ env:
     libwayland-client.so.0
     libwayland-cursor.so.0
     libwayland-egl.so.1
+    libudev.so.1
+    libffi.so.8
 
 jobs:
   bin:
@@ -59,10 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y \
-            git gcc-c++ glslang openssl-devel \
+            git gcc-c++ glslang curl bison flex nasm \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
-            vulkan-loader-devel pkgconf-pkg-config
+            vulkan-loader-devel systemd-devel pkgconf-pkg-config
           dnf clean all
 
       - name: Install Python dependencies
@@ -74,7 +76,12 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          meson setup build --default-library=static -Dprefix=/opt/cyberether -Dbuildtype=release -Dexamples=false
+          meson setup build \
+            --default-library=static \
+            -Dprefix=/opt/cyberether \
+            -Dbuildtype=release \
+            -Dexamples=false \
+            -Dremote=enabled
           meson compile -C build
           meson install -C build
 
