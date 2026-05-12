@@ -29,6 +29,7 @@ env:
     libwayland-client.so.0
     libwayland-cursor.so.0
     libwayland-egl.so.1
+    libudev.so.1
 
 jobs:
   wheel:
@@ -62,7 +63,7 @@ jobs:
             git gcc-c++ glslang curl bison flex nasm \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
-            vulkan-loader-devel pkgconf-pkg-config
+            vulkan-loader-devel systemd-devel pkgconf-pkg-config
           dnf clean all
 
       - name: Install Python dependencies
