@@ -46,15 +46,25 @@ struct RemoteSettingsPanel : public Sakura::Component {
             .id = "RemoteHeaderDivider",
         });
 
+        activeCard.update({
+            .id = "RemoteActiveCard",
+            .padding = 16.0f,
+            .rounding = 8.0f,
+            .border = true,
+            .scrollbar = false,
+            .mouseScroll = false,
+        });
+
         activeWarning.update({
             .id = "RemoteActiveWarning",
             .str = ICON_FA_TOWER_BROADCAST " Remote streaming is currently active.",
             .tone = Sakura::Text::Tone::Warning,
+            .scale = 1.05f,
         });
 
         activeDescription.update({
             .id = "RemoteActiveDescription",
-            .str = "Changes here update the defaults for the next session. Use the remote streaming panel to manage the live session.",
+            .str = "Updates here take effect after the current session ends.",
             .tone = Sakura::Text::Tone::Disabled,
             .wrapped = true,
         });
@@ -176,8 +186,11 @@ struct RemoteSettingsPanel : public Sakura::Component {
         divider.render(ctx);
 
         if (config.started) {
-            activeWarning.render(ctx);
-            activeDescription.render(ctx);
+            activeCard.render(ctx, [&](const Sakura::Context& ctx) {
+                activeWarning.render(ctx);
+                activeSpacing.render(ctx);
+                activeDescription.render(ctx);
+            });
             activeSpacing.render(ctx);
         }
 
@@ -265,6 +278,7 @@ struct RemoteSettingsPanel : public Sakura::Component {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
+    Sakura::Div activeCard;
     Sakura::Text activeWarning;
     Sakura::Text activeDescription;
     Sakura::Spacing activeSpacing;
