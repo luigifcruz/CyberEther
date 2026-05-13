@@ -15,6 +15,7 @@ struct Button : public Component {
         Default,
         Action,
         Destructive,
+        Text,
     };
 
     struct Config {
