@@ -45,8 +45,9 @@ struct PrimitiveVectorConfig {
     std::vector<U64> counts;
     std::vector<F32> ratios;
     std::vector<F64> weights;
+    std::vector<std::string> names;
 
-    JST_SERDES(counts, ratios, weights);
+    JST_SERDES(counts, ratios, weights, names);
 };
 
 struct NestedVectorConfig {
