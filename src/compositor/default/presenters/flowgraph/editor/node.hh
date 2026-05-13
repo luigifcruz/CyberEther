@@ -78,6 +78,10 @@ struct FlowgraphNodePresenter {
                            const std::string& nodeViewId,
                            const std::shared_ptr<Block>& blockPtr) const {
         for (const auto& [name, entry] : blockPtr->interface()->metrics()) {
+            if (entry.format.starts_with("private-")) {
+                continue;
+            }
+
             std::any value;
             if (entry.metric) {
                 value = entry.metric();
