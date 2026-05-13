@@ -18,6 +18,7 @@ enum class ModalContent : I32 {
 enum class SettingsSection : I32 {
     General = 0,
     Remote,
+    Registry,
     Developer,
     About,
     Legal,
