@@ -6,8 +6,11 @@
 #include "../model/state.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/settings.hh"
 
+#include <algorithm>
+#include <filesystem>
 #include <optional>
 #include <tuple>
 
@@ -24,7 +27,9 @@ struct SettingsActions {
                               MailSetDebugRuntimeMetricsEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
-                              MailDismissUpdate>;
+                              MailDismissUpdate,
+                              MailAddRegistryLibraryPath,
+                              MailRemoveRegistryLibraryPath>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -137,6 +142,65 @@ struct SettingsActions {
 
     Result handle(const MailDismissUpdate&) {
         state.update.available = false;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailAddRegistryLibraryPath& msg) {
+        if (msg.path.empty()) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot add registry library because the path is empty.");
+            return Result::SUCCESS;
+        }
+
+        if (!std::filesystem::exists(msg.path)) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected registry library does not exist.");
+            return Result::SUCCESS;
+        }
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+
+        const auto duplicate = std::find_if(settings.registry.dynamicLibraries.begin(),
+                                            settings.registry.dynamicLibraries.end(),
+                                            [&](const auto& path) {
+                                                return path == msg.path;
+                                            });
+        if (duplicate != settings.registry.dynamicLibraries.end()) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "Registry library is already registered.");
+            return Result::SUCCESS;
+        }
+
+        if (Registry::LoadDynamicLibrary(msg.path) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to load registry library.");
+            return Result::SUCCESS;
+        }
+
+        settings.registry.dynamicLibraries.push_back(msg.path);
+        JST_CHECK(Settings::Set(settings));
+
+        state.settings.section = SettingsSection::Registry;
+        state.modal.content = ModalContent::Settings;
+        callbacks.notify(Sakura::ToastType::Success, 3000, "Registry library loaded.");
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailRemoveRegistryLibraryPath& msg) {
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+
+        const auto initialSize = settings.registry.dynamicLibraries.size();
+        settings.registry.dynamicLibraries.erase(
+            std::remove(settings.registry.dynamicLibraries.begin(),
+                        settings.registry.dynamicLibraries.end(),
+                        msg.path),
+            settings.registry.dynamicLibraries.end());
+
+        if (settings.registry.dynamicLibraries.size() == initialSize) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "Registry library was not registered.");
+            return Result::SUCCESS;
+        }
+
+        JST_CHECK(Settings::Set(settings));
+        callbacks.notify(Sakura::ToastType::Success, 5000, "Registry library removed. Restart CyberEther to unload registered blocks.");
         return Result::SUCCESS;
     }
 

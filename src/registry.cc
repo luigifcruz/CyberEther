@@ -2,7 +2,14 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <exception>
 #include <mutex>
+
+#if defined(JST_OS_WINDOWS)
+#include <windows.h>
+#elif !defined(JST_OS_BROWSER)
+#include <dlfcn.h>
+#endif
 
 namespace Jetstream {
 
@@ -26,6 +33,7 @@ struct Registry::Impl {
                                                 const ProviderType& provider);
     std::vector<FlowgraphRegistration> listFlowgraphs(const std::string& key);
     std::vector<BlockRegistration> listBlocks(const std::string& type);
+    Result loadDynamicLibrary(const std::string& path);
     Result buildModule(const std::string& type,
                        const DeviceType& device,
                        const RuntimeType& runtime,
@@ -37,6 +45,7 @@ struct Registry::Impl {
     std::vector<ModuleRegistration> modules;
     std::vector<BlockRegistration> blocks;
     std::vector<FlowgraphRegistration> flowgraphs;
+    std::vector<std::pair<std::string, void*>> dynamicLibraries;
 };
 
 Registry::Impl& Registry::registry() {
@@ -175,6 +184,63 @@ std::vector<Registry::ModuleRegistration> Registry::Impl::listModules(const std:
     return filtered;
 }
 
+Result Registry::Impl::loadDynamicLibrary(const std::string& path) {
+    if (path.empty()) {
+        JST_ERROR("[REGISTRY] Cannot load dynamic library because path is empty.");
+        return Result::ERROR;
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(mutex);
+        const auto duplicate = std::find_if(dynamicLibraries.begin(), dynamicLibraries.end(), [&](const auto& entry) {
+            return entry.first == path;
+        });
+        if (duplicate != dynamicLibraries.end()) {
+            return Result::SUCCESS;
+        }
+    }
+
+    void* handle = nullptr;
+
+    try {
+#if defined(JST_OS_WINDOWS)
+        handle = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
+#elif defined(JST_OS_BROWSER)
+        JST_ERROR("[REGISTRY] Dynamic libraries are not supported in this platform.");
+        return Result::ERROR;
+#else
+        dlerror();
+        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+#endif
+    } catch (const Result& status) {
+        JST_ERROR("[REGISTRY] Exception while loading dynamic library '{}': {}", path, status);
+        return Result::ERROR;
+    } catch (const std::exception& e) {
+        JST_ERROR("[REGISTRY] Exception while loading dynamic library '{}': {}", path, e.what());
+        return Result::ERROR;
+    } catch (...) {
+        JST_ERROR("[REGISTRY] Unknown exception while loading dynamic library '{}'.", path);
+        return Result::ERROR;
+    }
+
+#if defined(JST_OS_WINDOWS)
+    if (handle == nullptr) {
+        JST_ERROR("[REGISTRY] Failed to load dynamic library '{}'.", path);
+        return Result::ERROR;
+    }
+#elif !defined(JST_OS_BROWSER)
+    if (handle == nullptr) {
+        const char* error = dlerror();
+        JST_ERROR("[REGISTRY] Failed to load dynamic library '{}': {}", path, error != nullptr ? error : "unknown error");
+        return Result::ERROR;
+    }
+#endif
+
+    std::lock_guard<std::mutex> guard(mutex);
+    dynamicLibraries.push_back({path, handle});
+    return Result::SUCCESS;
+}
+
 std::vector<Registry::FlowgraphRegistration> Registry::Impl::listFlowgraphs(const std::string& key) {
     JST_TRACE("[REGISTRY] Listing flowgraphs.");
     std::lock_guard<std::mutex> guard(mutex);
@@ -301,6 +367,10 @@ std::vector<Registry::BlockRegistration> Registry::ListAvailableBlocks(const std
 
 std::vector<Registry::FlowgraphRegistration> Registry::ListAvailableFlowgraphs(const std::string& key) {
     return registry().listFlowgraphs(key);
+}
+
+Result Registry::LoadDynamicLibrary(const std::string& path) {
+    return registry().loadDynamicLibrary(path);
 }
 
 Result Registry::BuildModule(const std::string& type,

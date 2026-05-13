@@ -7,6 +7,7 @@
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
 
@@ -37,6 +38,14 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
     };
 
     return config;
+}
+
+void LoadDynamicRegistryLibraries(const Settings& settings) {
+    for (const auto& path : settings.registry.dynamicLibraries) {
+        if (Registry::LoadDynamicLibrary(path) != Result::SUCCESS) {
+            JST_WARN("[CYBERETHER] Failed to load dynamic registry library '{}'. Continuing startup.", path);
+        }
+    }
 }
 
 std::string RemoteCodecOptionsString() {
@@ -324,6 +333,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     }
 
     JST_INFO("[CYBERETHER] Running native app.");
+    LoadDynamicRegistryLibraries(settings);
 
     //
     // Benchmark Logic

@@ -3,11 +3,14 @@
 
 #include "../../context.hh"
 
+#include "../../../model/messages.hh"
 #include "../../../views/modal/settings/registry.hh"
 
 #include "jetstream/registry.hh"
+#include "jetstream/settings.hh"
 
 #include <algorithm>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
@@ -20,6 +23,7 @@ struct RegistrySettingsPresenter {
     explicit RegistrySettingsPresenter(const PresenterContext& context) : context(context) {}
 
     RegistrySettingsPanel::Config build() const {
+        const auto enqueue = context.callbacks.enqueueMail;
         std::map<std::string, std::vector<std::string>> domains;
 
         for (const auto& block : Registry::ListAvailableBlocks("")) {
@@ -36,8 +40,26 @@ struct RegistrySettingsPresenter {
             });
         }
 
+        std::vector<RegistrySettingsPanel::LibraryRow> libraries;
+        Settings settings;
+        if (Settings::Get(settings) == Result::SUCCESS) {
+            libraries.reserve(settings.registry.dynamicLibraries.size());
+            for (const auto& path : settings.registry.dynamicLibraries) {
+                libraries.push_back({
+                    .path = path,
+                });
+            }
+        }
+
         return RegistrySettingsPanel::Config{
             .domains = rows,
+            .dynamicLibraries = libraries,
+            .onAddLibrary = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::Library});
+            },
+            .onRemoveLibrary = [enqueue](const std::string& path) {
+                enqueue(MailRemoveRegistryLibraryPath{.path = path});
+            },
         };
     }
 };

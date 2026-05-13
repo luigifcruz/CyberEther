@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "jetstream/parser.hh"
 
@@ -59,13 +60,20 @@ struct JETSTREAM_API Settings {
         JST_SERDES(format);
     };
 
+    struct Registry {
+        std::vector<std::string> dynamicLibraries;
+
+        JST_SERDES(dynamicLibraries);
+    };
+
     Graphics graphics;
     Remote remote;
     Interface interface;
     Developer developer;
     Benchmark benchmark;
+    Registry registry;
 
-    JST_SERDES(graphics, remote, interface, developer);
+    JST_SERDES(graphics, remote, interface, developer, registry);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

@@ -56,6 +56,14 @@ struct MailSetSettingsSection {
     SettingsSection section = SettingsSection::General;
 };
 
+struct MailAddRegistryLibraryPath {
+    std::string path;
+};
+
+struct MailRemoveRegistryLibraryPath {
+    std::string path;
+};
+
 struct MailCloseModal {};
 
 struct MailNotify {
@@ -308,6 +316,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailApplyTheme,
                           MailOpenModal,
                           MailSetSettingsSection,
+                          MailAddRegistryLibraryPath,
+                          MailRemoveRegistryLibraryPath,
                           MailCloseModal,
                           MailNotify,
                           MailNotifyResult,

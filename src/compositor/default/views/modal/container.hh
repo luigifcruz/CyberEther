@@ -8,6 +8,7 @@
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "settings/base.hh"
+#include "library.hh"
 #include "../../model/ui.hh"
 #include "remote.hh"
 
@@ -29,6 +30,7 @@ struct ModalView : public Sakura::Component {
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
         RemoteView::Config remoteStreaming;
+        LibraryView::Config library;
         std::function<void()> onClose;
     };
 
@@ -91,6 +93,11 @@ struct ModalView : public Sakura::Component {
                 remoteView.update(std::move(viewConfig));
                 break;
             }
+            case ModalContent::Library: {
+                auto viewConfig = this->config.library;
+                libraryView.update(std::move(viewConfig));
+                break;
+            }
         }
 
         previousContent = this->config.content;
@@ -133,6 +140,9 @@ struct ModalView : public Sakura::Component {
                 case ModalContent::RemoteStreaming:
                     remoteView.render(ctx);
                     break;
+                case ModalContent::Library:
+                    libraryView.render(ctx);
+                    break;
             }
         });
     }
@@ -141,6 +151,9 @@ struct ModalView : public Sakura::Component {
     std::optional<Extent2D<F32>> modalSize() const {
         if (config.content == ModalContent::Settings) {
             return Extent2D<F32>{880.0f, 700.0f};
+        }
+        if (config.content == ModalContent::Library) {
+            return Extent2D<F32>{620.0f, 0.0f};
         }
         return std::nullopt;
     }
@@ -156,6 +169,7 @@ struct ModalView : public Sakura::Component {
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
     RemoteView remoteView;
+    LibraryView libraryView;
 };
 
 }  // namespace Jetstream

@@ -70,6 +70,7 @@ class JETSTREAM_API Registry {
         ListAvailableBlocks(const std::string& type = "");
     static std::vector<FlowgraphRegistration>
         ListAvailableFlowgraphs(const std::string& key = "");
+    static Result LoadDynamicLibrary(const std::string& path);
 
     static Result BuildModule(const std::string& type,
                                const DeviceType& device,
