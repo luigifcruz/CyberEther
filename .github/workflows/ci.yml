@@ -18,5 +18,9 @@ jobs:
   macos:
     uses: ./.github/workflows/macos-build.yml
 
+  macos-package:
+    needs: macos
+    uses: ./.github/workflows/macos-package.yml
+
   emscripten:
     uses: ./.github/workflows/emscripten-build.yml
