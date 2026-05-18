@@ -38,7 +38,9 @@ require_env() {
 
 assert_authorized_release_context() {
     [[ "${GITHUB_ACTIONS:-}" == "true" ]] || return 0
-    [[ "${GITHUB_EVENT_NAME:-}" == "push" ]] || die "signing is only allowed for GitHub push events"
+    [[ "${GITHUB_EVENT_NAME:-}" == "push" ]] || die "signing is only allowed for GitHub tag push events"
+    [[ "${GITHUB_REF_TYPE:-}" == "tag" ]] || die "signing is only allowed for GitHub tag refs"
+    [[ "${GITHUB_REF_NAME:-}" == v* ]] || die "signing is only allowed for v* tags"
 }
 
 validate_metadata() {
