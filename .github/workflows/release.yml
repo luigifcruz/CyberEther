@@ -17,8 +17,12 @@ jobs:
   windows:
     uses: ./.github/workflows/windows-build.yml
 
-  macos:
+  macos-build:
     uses: ./.github/workflows/macos-build.yml
+
+  macos-package:
+    needs: macos-build
+    uses: ./.github/workflows/macos-package.yml
 
   emscripten:
     uses: ./.github/workflows/emscripten-build.yml
@@ -27,7 +31,7 @@ jobs:
     uses: ./.github/workflows/container-build.yml
 
   github-release:
-    needs: [linux, wheel, windows, macos, emscripten]
+    needs: [linux, wheel, windows, macos-build, macos-package, emscripten]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,13 +54,20 @@ jobs:
 
       - uses: actions/download-artifact@v4.3.0
         with:
+          name: cyberether-macos-dmg
+          path: .dist/artifacts
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
           name: cyberether-emscripten-wasm32
           path: .dist/artifacts
 
       - name: Release
         uses: softprops/action-gh-release@v2.6.2
         with:
-          files: .dist/artifacts/*.tar.gz
+          files: |
+            .dist/artifacts/*.tar.gz
+            .dist/artifacts/*.dmg
 
   publish-containers:
     name: publish (${{ matrix.arch }})

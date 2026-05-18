@@ -1,0 +1,38 @@
+name: macOS Package
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-macos-arm64
+          path: .dist/artifacts
+
+      - name: Extract macOS binary
+        run: |
+          set -euo pipefail
+          mkdir -p .dist/bin
+          tar -C .dist/bin -xzf .dist/artifacts/cyberether-macos-arm64.tar.gz
+          test -f .dist/bin/cyberether
+
+      - name: Package DMG
+        env:
+          CYBERETHER_BINARY: .dist/bin/cyberether
+          OUTPUT_DIR: .dist/macos
+        run: |
+          set -euo pipefail
+          apps/macos/package.sh
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: cyberether-macos-dmg
+          path: .dist/macos/*.dmg
