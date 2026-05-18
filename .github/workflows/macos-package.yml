@@ -2,6 +2,19 @@ name: macOS Package
 
 on:
   workflow_call:
+    secrets:
+      APPLE_CERT_P12_BASE64:
+        required: false
+      APPLE_CERT_PASSWORD:
+        required: false
+      APPLE_CODESIGN_IDENTITY:
+        required: false
+      APPLE_NOTARY_KEY_ID:
+        required: false
+      APPLE_NOTARY_ISSUER_ID:
+        required: false
+      APPLE_NOTARY_KEY_P8_BASE64:
+        required: false
 
 permissions:
   contents: read
