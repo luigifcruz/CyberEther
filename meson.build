@@ -195,10 +195,6 @@ if not jst_is_wheel and \
             install: true,
         )
     endif
-
-    if jst_is_macos
-        subdir('apps/macos')
-    endif
 endif
 
 #
