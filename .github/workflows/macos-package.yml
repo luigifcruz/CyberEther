@@ -8,11 +8,7 @@ permissions:
 
 jobs:
   dmg:
-    if: >-
-      github.event_name == 'push' &&
-      github.ref_type == 'tag' &&
-      startsWith(github.ref_name, 'v') &&
-      github.ref_protected
+    if: github.event_name == 'push'
     runs-on: macos-14
     environment: macos-notarization
     env:

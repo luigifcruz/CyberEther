@@ -31,7 +31,7 @@ apps/macos/create-dmg.sh
 apps/macos/sign-notarize-dmg.sh
 ```
 
-The create stages only assemble the app bundle and DMG. The sign/notarize stages require Apple Developer ID and App Store Connect API credentials in environment variables. In GitHub Actions, notarization is restricted to protected `v*` tag pushes through the `macos-notarization` environment.
+The create stages only assemble the app bundle and DMG. The sign/notarize stages require Apple Developer ID and App Store Connect API credentials in environment variables. In GitHub Actions, push-triggered packaging signs and notarizes through the `macos-notarization` environment.
 
 Required signing/notarization variables:
 
