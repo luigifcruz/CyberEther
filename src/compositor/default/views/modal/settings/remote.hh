@@ -194,8 +194,8 @@ struct RemoteSettingsPanel : public Sakura::Component {
             activeSpacing.render(ctx);
         }
 
-        brokerField.render(ctx, [&](const Sakura::Context& ctx) {
-            brokerInput.render(ctx);
+        encoderField.render(ctx, [&](const Sakura::Context& ctx) {
+            encoderCombo.render(ctx);
         });
 
         codecField.render(ctx, [&](const Sakura::Context& ctx) {
@@ -206,12 +206,12 @@ struct RemoteSettingsPanel : public Sakura::Component {
             framerateCombo.render(ctx);
         });
 
-        encoderField.render(ctx, [&](const Sakura::Context& ctx) {
-            encoderCombo.render(ctx);
-        });
-
         approvalField.render(ctx, [&](const Sakura::Context& ctx) {
             approvalCombo.render(ctx);
+        });
+
+        brokerField.render(ctx, [&](const Sakura::Context& ctx) {
+            brokerInput.render(ctx);
         });
     }
 
