@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace Jetstream {
 
@@ -18,6 +19,7 @@ struct RemoteSettingsPanel : public Sakura::Component {
         Instance::Remote::CodecType codec = Instance::Remote::CodecType::H264;
         U32 framerate = 30;
         Instance::Remote::EncoderType encoder = Instance::Remote::EncoderType::Auto;
+        std::vector<Instance::Remote::EncoderType> available;
         bool autoJoinSessions = false;
         std::function<void(const std::string&)> onBrokerUrlChange;
         std::function<void(Instance::Remote::CodecType)> onCodecChange;
@@ -142,15 +144,9 @@ struct RemoteSettingsPanel : public Sakura::Component {
 
         encoderCombo.update({
             .id = "##app-settings-encoder",
-            .options = {
-                "Auto",
-                "Software",
-                "NVENC",
-                "V4L2",
-                "VideoToolbox",
-                "MediaFoundation",
-            },
-            .value = encoderLabel(this->config.encoder),
+            .options = encoderOptions(this->config.available),
+            .value = encoderLabel(this->config.encoder, this->config.available),
+            .disabled = this->config.available.empty(),
             .onChange = [this](const std::string& label) {
                 if (this->config.onEncoderChange) {
                     this->config.onEncoderChange(encoderValue(label));
@@ -162,7 +158,6 @@ struct RemoteSettingsPanel : public Sakura::Component {
             .id = "RemoteApprovalField",
             .label = "Client Approval",
             .description = "Whether new remote clients are accepted automatically or require manual approval.",
-            .divider = false,
         });
 
         approvalCombo.update({
@@ -194,12 +189,12 @@ struct RemoteSettingsPanel : public Sakura::Component {
             activeSpacing.render(ctx);
         }
 
-        encoderField.render(ctx, [&](const Sakura::Context& ctx) {
-            encoderCombo.render(ctx);
-        });
-
         codecField.render(ctx, [&](const Sakura::Context& ctx) {
             codecCombo.render(ctx);
+        });
+
+        encoderField.render(ctx, [&](const Sakura::Context& ctx) {
+            encoderCombo.render(ctx);
         });
 
         framerateField.render(ctx, [&](const Sakura::Context& ctx) {
@@ -252,26 +247,29 @@ struct RemoteSettingsPanel : public Sakura::Component {
         return 30;
     }
 
-    static std::string encoderLabel(Instance::Remote::EncoderType encoder) {
-        switch (encoder) {
-            case Instance::Remote::EncoderType::Auto: return "Auto";
-            case Instance::Remote::EncoderType::Software: return "Software";
-            case Instance::Remote::EncoderType::NVENC: return "NVENC";
-            case Instance::Remote::EncoderType::V4L2: return "V4L2";
-            case Instance::Remote::EncoderType::VideoToolbox: return "VideoToolbox";
-            case Instance::Remote::EncoderType::MediaFoundation: return "MediaFoundation";
+    static std::string encoderLabel(Instance::Remote::EncoderType encoder,
+                                    const std::vector<Instance::Remote::EncoderType>& encoders) {
+        if (encoders.empty()) {
+            return "Unavailable";
         }
-        return "Auto";
+        return GetRemoteEncoderPrettyName(encoder);
+    }
+
+    static std::vector<std::string> encoderOptions(const std::vector<Instance::Remote::EncoderType>& encoders) {
+        std::vector<std::string> options;
+        options.reserve(encoders.size());
+        for (const auto encoder : encoders) {
+            options.push_back(GetRemoteEncoderPrettyName(encoder));
+        }
+        return options;
     }
 
     static Instance::Remote::EncoderType encoderValue(const std::string& label) {
-        if (label == "Auto") return Instance::Remote::EncoderType::Auto;
-        if (label == "Software") return Instance::Remote::EncoderType::Software;
-        if (label == "NVENC") return Instance::Remote::EncoderType::NVENC;
-        if (label == "V4L2") return Instance::Remote::EncoderType::V4L2;
-        if (label == "VideoToolbox") return Instance::Remote::EncoderType::VideoToolbox;
-        if (label == "MediaFoundation") return Instance::Remote::EncoderType::MediaFoundation;
-        return Instance::Remote::EncoderType::Auto;
+        try {
+            return StringToRemoteEncoder(label);
+        } catch (const Result&) {
+            return Instance::Remote::EncoderType::Auto;
+        }
     }
 
     Config config;

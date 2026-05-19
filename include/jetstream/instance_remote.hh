@@ -48,6 +48,7 @@ struct Instance::Remote {
     ~Remote();
 
     bool supported() const;
+    std::vector<EncoderType> available(CodecType codec);
 
     Result create(const Config& config);
     Result destroy();
