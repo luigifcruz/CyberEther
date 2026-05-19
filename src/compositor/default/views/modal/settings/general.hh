@@ -70,7 +70,7 @@ struct GeneralSettingsPanel : public Sakura::Component {
         scaleField.update({
             .id = "ScaleField",
             .label = "Interface Scale",
-            .description = "Changing the interface scale requires restarting CyberEther.",
+            .description = "Adjust the interface scale.",
         });
 
         scaleSlider.update({
