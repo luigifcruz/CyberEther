@@ -100,7 +100,6 @@ struct AboutUpdateCard : public Sakura::Component {
     void render(const Sakura::Context& ctx) const {
         div.render(ctx, [&](const Sakura::Context& ctx) {
             versionText.render(ctx);
-            spacing.render(ctx);
             buildText.render(ctx);
             spacing.render(ctx);
 
