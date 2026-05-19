@@ -412,6 +412,10 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
     ImGui::SetNextWindowPos(Private::ToImVec2(Scale(ctx, config.position)), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(Private::ToImVec2(Scale(ctx, config.size)), ImGuiCond_FirstUseEver);
 
+    ImGuiWindowClass windowClass;
+    windowClass.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoCloseButton;
+    ImGui::SetNextWindowClass(&windowClass);
+
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     bool nextOpen = true;
     ImGuiWindowFlags windowFlags = ImGuiWindowFlags_None;
@@ -472,7 +476,8 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
         ImGui::DockSpace(impl->dockspaceId,
                          dockspaceSize,
                          ImGuiDockNodeFlags_KeepAliveOnly |
-                             ImGuiDockNodeFlags_NoWindowMenuButton);
+                             ImGuiDockNodeFlags_NoWindowMenuButton |
+                             ImGuiDockNodeFlags_NoCloseButton);
         const ImGuiDockNode* root = ImGui::DockBuilderGetNode(impl->dockspaceId);
         const auto capturedLayout = CaptureLayout(root, labelToKey);
         const bool restoreCaptureComplete = !config.restoreLayout || !config.layout.has_value() ||
@@ -496,7 +501,8 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
 
     ImGui::DockSpace(impl->dockspaceId,
                      dockspaceSize,
-                     ImGuiDockNodeFlags_NoWindowMenuButton);
+                     ImGuiDockNodeFlags_NoWindowMenuButton |
+                     ImGuiDockNodeFlags_NoCloseButton);
 
     const ImGuiDockNode* root = ImGui::DockBuilderGetNode(impl->dockspaceId);
     const U64 knownWindowCount = CountKnownWindows(root, labelToKey);
