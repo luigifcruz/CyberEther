@@ -14,15 +14,30 @@ layout(set = 0, binding = 1) uniform texture2D remoteFramebufferTex;
 layout(set = 0, binding = 2) uniform sampler remoteFramebufferSam;
 
 void main() {
-    // Get the color from the texture.
-    float distance = texture(sampler2D(remoteFramebufferTex, remoteFramebufferSam), inTexcoord).r;
+    float sampleValue = texture(
+        sampler2D(remoteFramebufferTex, remoteFramebufferSam),
+        inTexcoord
+    ).r;
 
-    // Calculate the gradient of the distance field.
-    float width = fwidth(distance);
+    // Matches src/render/components/font.cc.
+    const float edge = 128.0 / 255.0;
+    const float atlasPixelRange = 255.0 / 16.0;
 
-    // Convert distance to pixel space.
-    float alpha = smoothstep(0.5 - uniforms.sharpness * width, 0.5 + uniforms.sharpness * width, distance);
+    // Convert STB SDF to screen-pixel distance.
+    vec2 atlasSize = vec2(textureSize(
+        sampler2D(remoteFramebufferTex, remoteFramebufferSam),
+        0
+    ));
 
-    // Output the color with the calculated alpha.
+    vec2 uvFwidth = max(fwidth(inTexcoord), vec2(1.0e-6));
+    vec2 screenTexSize = vec2(1.0) / uvFwidth;
+    vec2 unitRange = vec2(atlasPixelRange) / atlasSize;
+    float screenPixelRange = max(0.5 * dot(unitRange, screenTexSize), 1.0e-6);
+
+    float screenPixelDistance = (sampleValue - edge) * screenPixelRange;
+
+    // One-screen-pixel coverage ramp.
+    float alpha = clamp(screenPixelDistance + 0.5, 0.0, 1.0);
+
     outColor = vec4(inColor.rgb, inColor.a * alpha);
 }
