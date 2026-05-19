@@ -49,7 +49,7 @@ if jst_is_browser
 endif
 
 if jst_is_windows
-    add_project_arguments('/Zc:preprocessor', language: 'cpp')
+    add_project_arguments('/Zc:preprocessor', '/bigobj', language: 'cpp')
 endif
 
 if get_option('native')
