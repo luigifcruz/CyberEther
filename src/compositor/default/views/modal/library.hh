@@ -32,7 +32,6 @@ struct LibraryView : public Sakura::Component {
             .id = "RegistryLibraryPathField",
             .label = "Library Path",
             .description = "Path to a .so, .dylib, or .dll file that registers additional blocks.",
-            .divider = false,
         });
 
         pathInput.update({
@@ -40,6 +39,9 @@ struct LibraryView : public Sakura::Component {
             .value = path,
             .submit = Sakura::TextInput::Submit::OnEdit,
             .onChange = [this](const std::string& value) {
+                if (path != value) {
+                    sourceTrusted = false;
+                }
                 path = value;
             },
         });
@@ -51,9 +53,28 @@ struct LibraryView : public Sakura::Component {
             .onClick = [this]() {
                 if (this->config.onBrowse) {
                     this->config.onBrowse(path, [this](std::string nextPath) {
+                        if (path != nextPath) {
+                            sourceTrusted = false;
+                        }
                         path = std::move(nextPath);
                     });
                 }
+            },
+        });
+
+        trustField.update({
+            .id = "RegistryLibraryTrustField",
+            .label = "Trust Source",
+            .description = "Dynamic libraries run native code inside CyberEther as soon as they load. Only register libraries you built yourself or received from a source you trust.",
+            .divider = false,
+        });
+
+        trustCheckbox.update({
+            .id = "RegistryLibraryTrustCheckbox",
+            .label = "I trust the source of this dynamic library.",
+            .value = sourceTrusted,
+            .onChange = [this](bool value) {
+                sourceTrusted = value;
             },
         });
 
@@ -62,7 +83,11 @@ struct LibraryView : public Sakura::Component {
             .str = ICON_FA_FLOPPY_DISK " Register Library",
             .size = {-1.0f, 40.0f},
             .variant = Sakura::Button::Variant::Action,
+            .disabled = !sourceTrusted,
             .onClick = [this]() {
+                if (!sourceTrusted) {
+                    return;
+                }
                 if (this->config.onRegister) {
                     this->config.onRegister(path);
                 }
@@ -76,6 +101,9 @@ struct LibraryView : public Sakura::Component {
             pathInput.render(ctx);
             browseButton.render(ctx);
         });
+        trustField.render(ctx, [this](const Sakura::Context& ctx) {
+            trustCheckbox.render(ctx);
+        });
         divider.render(ctx);
         registerButton.render(ctx);
     }
@@ -83,10 +111,13 @@ struct LibraryView : public Sakura::Component {
  private:
     Config config;
     std::string path;
+    bool sourceTrusted = false;
     ModalHeader header;
     Sakura::SettingField pathField;
     Sakura::TextInput pathInput;
     Sakura::Button browseButton;
+    Sakura::SettingField trustField;
+    Sakura::Checkbox trustCheckbox;
     Sakura::Divider divider;
     Sakura::Button registerButton;
 };
