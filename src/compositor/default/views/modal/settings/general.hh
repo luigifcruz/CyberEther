@@ -109,6 +109,8 @@ struct GeneralSettingsPanel : public Sakura::Component {
             },
         });
 
+// TODO: Implement framerate limit.
+#if 0
         frameRateField.update({
             .id = "FrameRateField",
             .label = "Frame Rate Limit",
@@ -134,6 +136,7 @@ struct GeneralSettingsPanel : public Sakura::Component {
                 }
             },
         });
+#endif
 
         infoPanelField.update({
             .id = "InfoPanelField",
@@ -186,9 +189,11 @@ struct GeneralSettingsPanel : public Sakura::Component {
             rendererCombo.render(ctx);
         });
 
+#if 0
         frameRateField.render(ctx, [&](const Sakura::Context& ctx) {
             frameRateCombo.render(ctx);
         });
+#endif
 
         infoPanelField.render(ctx, [&](const Sakura::Context& ctx) {
             infoPanelCheckbox.render(ctx);
