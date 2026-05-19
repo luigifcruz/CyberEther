@@ -105,9 +105,15 @@ struct GeneralSettingsPanel : public Sakura::Component {
         rendererCombo.update({
             .id = "##renderer",
             .options = {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
                 "Metal",
+#endif
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
                 "Vulkan",
+#endif
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
                 "WebGPU",
+#endif
             },
             .value = renderer,
             .onChange = [this](const std::string& value) {
