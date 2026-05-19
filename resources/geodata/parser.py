@@ -178,7 +178,12 @@ if __name__ == "__main__":
 
     print(f"[GEODATA] Compiling {len(inputs)} geodata files...")
 
-    with open(os.path.join(path, output), "w") as fh:
+    output_path = os.path.join(path, output)
+    if not os.path.isdir(os.path.dirname(output_path)):
+        output_path = output
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+    with open(output_path, "w") as fh:
         fh.write("#pragma once\n\n")
         fh.write("#include <stdint.h>\n\n")
         fh.write("namespace Jetstream::Resources {\n\n")
