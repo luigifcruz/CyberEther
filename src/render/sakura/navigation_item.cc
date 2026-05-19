@@ -35,7 +35,12 @@ void NavigationItem::render(const Context& ctx) const {
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, Scale(ctx, 1.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, Private::ToImVec2({0.0f, 0.5f}));
 
-    if (ImGui::Button(config.label.c_str(), Private::ToImVec2(Scale(ctx, {-1.0f, 0.0f})))) {
+    const bool pressed = ImGui::Button(config.label.c_str(), Private::ToImVec2(Scale(ctx, {-1.0f, 0.0f})));
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        if (config.onDoubleClick) {
+            config.onDoubleClick();
+        }
+    } else if (pressed) {
         if (config.onSelect) {
             config.onSelect();
         }
