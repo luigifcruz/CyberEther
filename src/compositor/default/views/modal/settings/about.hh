@@ -16,11 +16,10 @@ namespace Jetstream {
 struct AboutSettingsPanel : public Sakura::Component {
     struct Config {
         bool updateAvailable = false;
-        bool checkingForUpdate = false;
         std::string updateVersion;
         std::string accentKey = "accent_color";
         std::vector<AboutInfoTable::Config> infoTables;
-        std::function<void()> onCheckForUpdates;
+        std::function<void()> onOpenReleases;
         std::function<void()> onDownloadUpdate;
         std::function<void()> onDismissUpdate;
     };
@@ -54,10 +53,9 @@ struct AboutSettingsPanel : public Sakura::Component {
             .version = jst::fmt::format("CyberEther v{}", JETSTREAM_VERSION_STR),
             .buildInfo = jst::fmt::format("Built on {} at {}", __DATE__, __TIME__),
             .updateAvailable = this->config.updateAvailable,
-            .checkingForUpdate = this->config.checkingForUpdate,
             .updateVersion = this->config.updateVersion,
             .accentKey = this->config.accentKey,
-            .onCheckForUpdates = this->config.onCheckForUpdates,
+            .onOpenReleases = this->config.onOpenReleases,
             .onDownloadUpdate = this->config.onDownloadUpdate,
             .onDismissUpdate = this->config.onDismissUpdate,
         });

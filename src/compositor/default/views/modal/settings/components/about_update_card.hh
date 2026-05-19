@@ -14,10 +14,9 @@ struct AboutUpdateCard : public Sakura::Component {
         std::string version;
         std::string buildInfo;
         bool updateAvailable = false;
-        bool checkingForUpdate = false;
         std::string updateVersion;
         std::string accentKey = "accent_color";
-        std::function<void()> onCheckForUpdates;
+        std::function<void()> onOpenReleases;
         std::function<void()> onDownloadUpdate;
         std::function<void()> onDismissUpdate;
     };
@@ -59,11 +58,6 @@ struct AboutUpdateCard : public Sakura::Component {
             .str = "Version " + this->config.updateVersion + " is ready to download.",
         });
 
-        checkingText.update({
-            .id = "AboutCheckingForUpdate",
-            .str = "Checking...",
-        });
-
         downloadButton.update({
             .id = "AboutDownloadUpdate",
             .str = ICON_FA_DOWNLOAD " Download Update",
@@ -87,13 +81,13 @@ struct AboutUpdateCard : public Sakura::Component {
             },
         });
 
-        checkButton.update({
-            .id = "AboutCheckForUpdates",
-            .str = ICON_FA_ROTATE " Check for Updates",
+        releasesButton.update({
+            .id = "AboutOpenReleases",
+            .str = ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open Releases",
             .size = {-1.0f, 40.0f},
             .onClick = [this]() {
-                if (this->config.onCheckForUpdates) {
-                    this->config.onCheckForUpdates();
+                if (this->config.onOpenReleases) {
+                    this->config.onOpenReleases();
                 }
             },
         });
@@ -119,11 +113,7 @@ struct AboutUpdateCard : public Sakura::Component {
                 spacing.render(ctx);
                 dismissButton.render(ctx);
             } else {
-                checkButton.render(ctx);
-                if (config.checkingForUpdate) {
-                    spacing.render(ctx);
-                    checkingText.render(ctx);
-                }
+                releasesButton.render(ctx);
             }
         });
     }
@@ -135,10 +125,9 @@ struct AboutUpdateCard : public Sakura::Component {
     Sakura::Text buildText;
     Sakura::Text updateAvailableText;
     Sakura::Text updateVersionText;
-    Sakura::Text checkingText;
     Sakura::Button downloadButton;
     Sakura::Button dismissButton;
-    Sakura::Button checkButton;
+    Sakura::Button releasesButton;
     Sakura::Spacing spacing;
 };
 
