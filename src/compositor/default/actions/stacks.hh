@@ -83,7 +83,10 @@ struct StackActions {
             .dockInMainDockspace = true,
         };
 
-        return persistFlowgraphStacks(msg.flowgraph);
+        JST_CHECK(persistFlowgraphStacks(msg.flowgraph));
+        callbacks.notify(Sakura::ToastType::Success, 3000, "New stack created.");
+
+        return Result::SUCCESS;
     }
 
     Result handle(const MailDeleteStack& msg) {
