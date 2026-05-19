@@ -34,6 +34,7 @@ struct RemoteSettingsPanel : public Sakura::Component {
         title.update({
             .id = "RemoteTitle",
             .str = "Remote",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 

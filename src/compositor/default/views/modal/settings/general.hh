@@ -38,6 +38,7 @@ struct GeneralSettingsPanel : public Sakura::Component {
         title.update({
             .id = "GeneralTitle",
             .str = "General",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 

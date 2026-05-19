@@ -30,6 +30,7 @@ struct AboutSettingsPanel : public Sakura::Component {
         title.update({
             .id = "AboutTitle",
             .str = "About",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 
