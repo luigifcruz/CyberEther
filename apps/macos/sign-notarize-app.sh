@@ -38,6 +38,14 @@ require_env() {
 
 assert_authorized_release_context() {
     [[ "${GITHUB_ACTIONS:-}" == "true" ]] || return 0
+
+    if [[ "${TEMPORARY_ALLOW_PR_SIGNING:-}" == "true" ]]; then
+        [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]] || die "temporary signing is only allowed for GitHub pull_request events"
+        [[ -n "${GITHUB_REPOSITORY:-}" ]] || die "GITHUB_REPOSITORY is required for temporary signing"
+        [[ "${GITHUB_PR_HEAD_REPOSITORY:-}" == "$GITHUB_REPOSITORY" ]] || die "temporary signing is only allowed for same-repository pull requests"
+        return 0
+    fi
+
     [[ "${GITHUB_EVENT_NAME:-}" == "push" ]] || die "signing is only allowed for GitHub tag push events"
     [[ "${GITHUB_REF_TYPE:-}" == "tag" ]] || die "signing is only allowed for GitHub tag refs"
     [[ "${GITHUB_REF_NAME:-}" == v* ]] || die "signing is only allowed for v* tags"
