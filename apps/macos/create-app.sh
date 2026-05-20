@@ -13,6 +13,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 VERSION="${VERSION:-}"
 CYBERETHER_BINARY="${CYBERETHER_BINARY:-$ROOT_DIR/build/cyberether}"
+JETSTREAM_DYLIB="${JETSTREAM_DYLIB:-$ROOT_DIR/build/libjetstream.dylib}"
 ICON_SOURCE="${ICON_SOURCE:-$ROOT_DIR/resources/assets/icon.png}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/.dist/macos}"
 
@@ -67,18 +68,41 @@ fi
 validate_metadata
 
 CYBERETHER_BINARY="$(abs_path "$CYBERETHER_BINARY")"
+JETSTREAM_DYLIB="$(abs_path "$JETSTREAM_DYLIB")"
 ICON_SOURCE="$(abs_path "$ICON_SOURCE")"
 OUTPUT_DIR="$(abs_path "$OUTPUT_DIR")"
 
 APP_PATH="$(abs_path "${APP_PATH:-$OUTPUT_DIR/$APP_NAME.app}")"
 CONTENTS_DIR="$APP_PATH/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 WORK_DIR="$OUTPUT_DIR/.app-work"
+JETSTREAM_DYLIB_NAME="libjetstream.dylib"
 
 validate_inputs() {
     [[ -f "$CYBERETHER_BINARY" ]] || die "binary does not exist: $CYBERETHER_BINARY"
+    [[ -f "$JETSTREAM_DYLIB" ]] || die "dylib does not exist: $JETSTREAM_DYLIB"
     [[ -f "$ICON_SOURCE" ]] || die "icon source does not exist: $ICON_SOURCE"
+}
+
+fix_library_paths() {
+    local app_binary="$MACOS_DIR/$EXECUTABLE_NAME"
+    local app_dylib="$FRAMEWORKS_DIR/$JETSTREAM_DYLIB_NAME"
+    local load_path
+
+    require_tool install_name_tool
+    require_tool otool
+
+    install_name_tool -id "@rpath/$JETSTREAM_DYLIB_NAME" "$app_dylib"
+
+    load_path="$(otool -L "$app_binary" | awk '/libjetstream.*\.dylib/ { print $1; exit }')"
+    [[ -n "$load_path" ]] || die "$EXECUTABLE_NAME does not link to $JETSTREAM_DYLIB_NAME"
+    if [[ "$load_path" != "@rpath/$JETSTREAM_DYLIB_NAME" ]]; then
+        install_name_tool -change "$load_path" "@rpath/$JETSTREAM_DYLIB_NAME" "$app_binary"
+    fi
+
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$app_binary"
 }
 
 render_plist() {
@@ -111,10 +135,13 @@ generate_icon() {
 
 create_app() {
     rm -rf "$APP_PATH" "$WORK_DIR"
-    mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$WORK_DIR"
+    mkdir -p "$MACOS_DIR" "$FRAMEWORKS_DIR" "$RESOURCES_DIR" "$WORK_DIR"
 
     cp "$CYBERETHER_BINARY" "$MACOS_DIR/$EXECUTABLE_NAME"
+    cp "$JETSTREAM_DYLIB" "$FRAMEWORKS_DIR/$JETSTREAM_DYLIB_NAME"
     chmod 755 "$MACOS_DIR/$EXECUTABLE_NAME"
+    chmod 755 "$FRAMEWORKS_DIR/$JETSTREAM_DYLIB_NAME"
+    fix_library_paths
     printf 'APPL????' > "$CONTENTS_DIR/PkgInfo"
 
     render_plist

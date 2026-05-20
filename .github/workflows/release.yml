@@ -26,6 +26,7 @@ jobs:
     environment: macos-notarization
     env:
       CYBERETHER_BINARY: .dist/bin/cyberether
+      JETSTREAM_DYLIB: .dist/bin/libjetstream.dylib
       OUTPUT_DIR: .dist/macos
       APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
       APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -41,12 +42,13 @@ jobs:
           name: cyberether-macos-arm64
           path: .dist/artifacts
 
-      - name: Extract macOS binary
+      - name: Extract macOS binary archive
         run: |
           set -euo pipefail
           mkdir -p .dist/bin
           tar -C .dist/bin -xzf .dist/artifacts/cyberether-macos-arm64.tar.gz
           test -f .dist/bin/cyberether
+          test -f .dist/bin/libjetstream.dylib
 
       - name: Package app bundle
         run: apps/macos/create-app.sh
