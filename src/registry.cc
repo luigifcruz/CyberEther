@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <exception>
 #include <mutex>
+#include <string>
 
 #if defined(JST_OS_WINDOWS)
 #include <windows.h>
@@ -12,6 +13,140 @@
 #endif
 
 namespace Jetstream {
+
+namespace {
+
+void CloseDynamicLibrary(void* handle) {
+    if (handle == nullptr) {
+        return;
+    }
+
+#if defined(JST_OS_WINDOWS)
+    FreeLibrary(reinterpret_cast<HMODULE>(handle));
+#elif !defined(JST_OS_BROWSER)
+    dlclose(handle);
+#else
+    (void)handle;
+#endif
+}
+
+const JetstreamPluginAbi* LoadPluginAbi(void* handle) {
+#if defined(JST_OS_WINDOWS)
+    return reinterpret_cast<const JetstreamPluginAbi*>(
+        GetProcAddress(reinterpret_cast<HMODULE>(handle), JETSTREAM_PLUGIN_ABI_SYMBOL));
+#elif !defined(JST_OS_BROWSER)
+    dlerror();
+    return reinterpret_cast<const JetstreamPluginAbi*>(dlsym(handle, JETSTREAM_PLUGIN_ABI_SYMBOL));
+#else
+    (void)handle;
+    return nullptr;
+#endif
+}
+
+uint64_t PluginAbiMask(DeviceType device) {
+    return static_cast<uint64_t>(static_cast<uint8_t>(device));
+}
+
+uint64_t PluginAbiMask(RuntimeType runtime) {
+    return static_cast<uint64_t>(static_cast<uint8_t>(runtime));
+}
+
+uint64_t AvailableDeviceMask() {
+    uint64_t mask = 0;
+
+#if defined(JETSTREAM_BACKEND_CPU_AVAILABLE)
+    mask |= PluginAbiMask(DeviceType::CPU);
+#endif
+#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE)
+    mask |= PluginAbiMask(DeviceType::CUDA);
+#endif
+#if defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
+    mask |= PluginAbiMask(DeviceType::Metal);
+#endif
+#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
+    mask |= PluginAbiMask(DeviceType::Vulkan);
+#endif
+#if defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
+    mask |= PluginAbiMask(DeviceType::WebGPU);
+#endif
+
+    return mask;
+}
+
+uint64_t AvailableRuntimeMask() {
+    uint64_t mask = PluginAbiMask(RuntimeType::NATIVE);
+
+#if defined(JETSTREAM_LOADER_MLIR_AVAILABLE)
+    mask |= PluginAbiMask(RuntimeType::MLIR);
+#endif
+
+    return mask;
+}
+
+Result ValidatePluginAbi(const std::string& path, void* handle) {
+    const auto abi = LoadPluginAbi(handle);
+    if (abi == nullptr) {
+#if defined(JST_OS_WINDOWS)
+        JST_ERROR("[REGISTRY] Dynamic library '{}' does not export '{}'.", path, JETSTREAM_PLUGIN_ABI_SYMBOL);
+#elif !defined(JST_OS_BROWSER)
+        const char* error = dlerror();
+        JST_ERROR("[REGISTRY] Dynamic library '{}' does not export '{}': {}.",
+                  path,
+                  JETSTREAM_PLUGIN_ABI_SYMBOL,
+                  error != nullptr ? error : "unknown error");
+#endif
+        return Result::ERROR;
+    }
+
+    if (abi->magic != JETSTREAM_PLUGIN_ABI_MAGIC) {
+        JST_ERROR("[REGISTRY] Dynamic library '{}' has invalid plugin ABI magic.", path);
+        return Result::ERROR;
+    }
+
+    if (abi->size < sizeof(JetstreamPluginAbi)) {
+        JST_ERROR("[REGISTRY] Dynamic library '{}' reports an unsupported plugin ABI size ({} < {}).",
+                  path,
+                  abi->size,
+                  sizeof(JetstreamPluginAbi));
+        return Result::ERROR;
+    }
+
+    if (abi->abi_version != JETSTREAM_PLUGIN_ABI_VERSION) {
+        JST_ERROR("[REGISTRY] Dynamic library '{}' has plugin ABI version {}, expected {}.",
+                  path,
+                  abi->abi_version,
+                  JETSTREAM_PLUGIN_ABI_VERSION);
+        return Result::ERROR;
+    }
+
+    if (abi->min_jetstream_version > JETSTREAM_VERSION_CURRENT) {
+        JST_ERROR("[REGISTRY] Dynamic library '{}' requires Jetstream version {}, current version is {}.",
+                  path,
+                  abi->min_jetstream_version,
+                  JETSTREAM_VERSION_CURRENT);
+        return Result::ERROR;
+    }
+
+    const auto missingDevices = abi->required_devices & ~AvailableDeviceMask();
+    if (missingDevices != 0) {
+        JST_ERROR("[REGISTRY] Dynamic library '{}' requires unavailable devices [Mask: {}].", path, missingDevices);
+        return Result::ERROR;
+    }
+
+    const auto missingRuntimes = abi->required_runtimes & ~AvailableRuntimeMask();
+    if (missingRuntimes != 0) {
+        JST_ERROR("[REGISTRY] Dynamic library '{}' requires unavailable runtimes [Mask: {}].", path, missingRuntimes);
+        return Result::ERROR;
+    }
+
+    JST_TRACE("[REGISTRY] Dynamic library '{}' plugin ABI validated [Name: {}, Version: {}].",
+              path,
+              abi->name != nullptr ? abi->name : "unknown",
+              abi->version != nullptr ? abi->version : "unknown");
+    return Result::SUCCESS;
+}
+
+}  // namespace
 
 struct Registry::Impl {
     Result registerModule(const std::string& type,
@@ -235,6 +370,11 @@ Result Registry::Impl::loadDynamicLibrary(const std::string& path) {
         return Result::ERROR;
     }
 #endif
+
+    if (ValidatePluginAbi(path, handle) != Result::SUCCESS) {
+        CloseDynamicLibrary(handle);
+        return Result::ERROR;
+    }
 
     std::lock_guard<std::mutex> guard(mutex);
     dynamicLibraries.push_back({path, handle});

@@ -14,6 +14,7 @@
 #include "jetstream/runtime.hh"
 #include "jetstream/module.hh"
 #include "jetstream/block.hh"
+#include "jetstream/plugin.h"
 
 namespace Jetstream {
 
