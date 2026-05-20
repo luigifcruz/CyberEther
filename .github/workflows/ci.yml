@@ -1,7 +1,6 @@
 name: CI
 
 on:
-  pull_request:
   push:
     branches: ['**']
   workflow_dispatch:
@@ -18,59 +17,6 @@ jobs:
 
   macos:
     uses: ./.github/workflows/macos-build.yml
-
-  # Temporary PR artifact for testing dynamic macOS app packaging.
-  macos-dmg:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    needs: macos
-    runs-on: macos-14
-    environment: macos-notarization
-    env:
-      CYBERETHER_BINARY: .dist/bin/cyberether
-      JETSTREAM_DYLIB: .dist/bin/libjetstream.dylib
-      OUTPUT_DIR: .dist/macos
-      TEMPORARY_ALLOW_PR_SIGNING: 'true'
-      GITHUB_PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-      APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-      APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
-    steps:
-      - uses: actions/checkout@v4.3.1
-
-      - uses: actions/download-artifact@v4.3.0
-        with:
-          name: cyberether-macos-arm64
-          path: .dist/artifacts
-
-      - name: Extract macOS binary archive
-        run: |
-          set -euo pipefail
-          mkdir -p .dist/bin
-          tar -C .dist/bin -xzf .dist/artifacts/cyberether-macos-arm64.tar.gz
-          test -f .dist/bin/cyberether
-          test -f .dist/bin/libjetstream.dylib
-
-      - name: Package app bundle
-        run: apps/macos/create-app.sh
-
-      - name: Package app notarization
-        run: apps/macos/sign-notarize-app.sh
-
-      - name: Package DMG
-        run: apps/macos/create-dmg.sh
-
-      - name: Package DMG notarization
-        run: apps/macos/sign-notarize-dmg.sh
-
-      - uses: actions/upload-artifact@v4.6.2
-        with:
-          name: cyberether-macos-pr-dmg
-          path: .dist/macos/*.dmg
-          if-no-files-found: error
-          retention-days: 7
 
   emscripten:
     uses: ./.github/workflows/emscripten-build.yml
