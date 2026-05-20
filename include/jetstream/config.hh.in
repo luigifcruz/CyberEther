@@ -1,4 +1,9 @@
 #define JETSTREAM_VERSION_STR "@version@"
+#define JETSTREAM_VERSION_MAJOR @version_major@
+#define JETSTREAM_VERSION_MINOR @version_minor@
+#define JETSTREAM_VERSION_PATCH @version_patch@
+#define JETSTREAM_VERSION_ENCODE(major, minor, patch) ((((major) & 0xffu) << 16) | (((minor) & 0xffu) << 8) | ((patch) & 0xffu))
+#define JETSTREAM_VERSION_CURRENT JETSTREAM_VERSION_ENCODE(JETSTREAM_VERSION_MAJOR, JETSTREAM_VERSION_MINOR, JETSTREAM_VERSION_PATCH)
 #define JETSTREAM_BUILD_TYPE "@buildtype@"
 #define JETSTREAM_BUILD_OPTIMIZATION "@optimization@"
 #define JETSTREAM_BUILD_DEBUG "@debug@"
