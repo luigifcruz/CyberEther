@@ -13,8 +13,8 @@ class Module;
 
 enum class JETSTREAM_API RuntimeType : uint8_t {
     NONE = 0,
-    NATIVE,
-    MLIR
+    NATIVE = 1 << 0,
+    MLIR   = 1 << 1,
 };
 
 class JETSTREAM_API Runtime {
@@ -48,6 +48,14 @@ class JETSTREAM_API Runtime {
 const char* GetRuntimeName(const RuntimeType& runtime);
 const char* GetRuntimePrettyName(const RuntimeType& runtime);
 RuntimeType StringToRuntime(const std::string& runtime);
+
+inline constexpr RuntimeType operator|(RuntimeType lhs, RuntimeType rhs) {
+    return static_cast<RuntimeType>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));
+}
+
+inline constexpr RuntimeType operator&(RuntimeType lhs, RuntimeType rhs) {
+    return static_cast<RuntimeType>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
+}
 
 inline std::ostream& operator<<(std::ostream& os, const RuntimeType& runtime) {
     return os << GetRuntimePrettyName(runtime);
