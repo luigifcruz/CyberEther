@@ -26,6 +26,7 @@ struct DeveloperSettingsPanel : public Sakura::Component {
         title.update({
             .id = "DeveloperTitle",
             .str = "Developer",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 

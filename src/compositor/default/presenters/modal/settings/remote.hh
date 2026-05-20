@@ -15,12 +15,16 @@ struct RemoteSettingsPresenter {
 
     RemoteSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
+        const auto remote = context.state.system.instance->remote();
+        const auto available = remote->available(context.state.remote.codec);
+
         return RemoteSettingsPanel::Config{
             .started = context.state.remote.started,
             .brokerUrl = context.state.remote.brokerUrl,
             .codec = context.state.remote.codec,
             .framerate = context.state.remote.framerate,
             .encoder = context.state.remote.encoder,
+            .available = available,
             .autoJoinSessions = context.state.remote.autoJoinSessions,
             .onBrokerUrlChange = [enqueue](const std::string& value) {
                 enqueue(MailSetRemoteBrokerUrl{.value = value});

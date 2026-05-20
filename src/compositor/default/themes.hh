@@ -100,11 +100,11 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"resize_grip_active", {0.38f, 0.38f, 0.38f, 1.00f}},
 
             // Tab Colors
-            {"tab", {0.04f, 0.04f, 0.04f, 0.95f}},
-            {"tab_hovered", {0.12f, 0.12f, 0.12f, 1.00f}},
-            {"tab_selected", {0.08f, 0.08f, 0.08f, 0.95f}},
-            {"tab_dimmed", {0.03f, 0.03f, 0.03f, 0.95f}},
-            {"tab_dimmed_selected", {0.06f, 0.06f, 0.06f, 0.95f}},
+            {"tab", {0.08f, 0.08f, 0.09f, 1.00f}},
+            {"tab_hovered", {0.11f, 0.11f, 0.12f, 1.00f}},
+            {"tab_selected", {0.15f, 0.15f, 0.17f, 1.00f}},
+            {"tab_dimmed", {0.10f, 0.10f, 0.11f, 1.00f}},
+            {"tab_dimmed_selected", {0.12f, 0.12f, 0.13f, 1.00f}},
 
             // Docking Colors
             {"docking_preview", {0.30f, 0.30f, 0.30f, 0.50f}},
@@ -190,11 +190,11 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"action_btn_active", {0.15f, 0.35f, 0.85f, 1.0f}},
             {"action_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
             {"action_btn_outline", {0.15f, 0.35f, 0.85f, 0.85f}},
-            {"destructive_btn", {0.54f, 0.09f, 0.09f, 1.0f}},
-            {"destructive_btn_hovered", {0.63f, 0.11f, 0.11f, 1.0f}},
-            {"destructive_btn_active", {0.45f, 0.08f, 0.08f, 1.0f}},
+            {"destructive_btn", {0.92f, 0.20f, 0.20f, 1.0f}},
+            {"destructive_btn_hovered", {0.98f, 0.30f, 0.30f, 1.0f}},
+            {"destructive_btn_active", {0.80f, 0.15f, 0.15f, 1.0f}},
             {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
-            {"destructive_btn_outline", {0.90f, 0.15f, 0.15f, 1.0f}},
+            {"destructive_btn_outline", {0.74f, 0.12f, 0.12f, 1.0f}},
 
             // Text Colors
             {"text_primary", {0.12f, 0.12f, 0.14f, 1.00f}},
@@ -243,11 +243,11 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"resize_grip_active", {0.32f, 0.32f, 0.35f, 0.85f}},
 
             // Tab Colors
-            {"tab", {0.92f, 0.92f, 0.93f, 0.95f}},
+            {"tab", {0.92f, 0.92f, 0.93f, 1.00f}},
             {"tab_hovered", {0.88f, 0.88f, 0.89f, 1.00f}},
-            {"tab_selected", {0.97f, 0.97f, 0.98f, 0.95f}},
-            {"tab_dimmed", {0.90f, 0.90f, 0.91f, 0.95f}},
-            {"tab_dimmed_selected", {0.94f, 0.94f, 0.95f, 0.95f}},
+            {"tab_selected", {0.86f, 0.86f, 0.87f, 1.00f}},
+            {"tab_dimmed", {0.90f, 0.90f, 0.90f, 1.00f}},
+            {"tab_dimmed_selected", {0.88f, 0.88f, 0.89f, 1.00f}},
 
             // Docking Colors
             {"docking_preview", {0.60f, 0.60f, 0.62f, 0.50f}},

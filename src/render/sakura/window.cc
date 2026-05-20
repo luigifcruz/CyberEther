@@ -33,6 +33,10 @@ void Window::render(const Context& ctx, Child content) {
 
     ImGui::SetNextWindowSize(Private::ToImVec2(Scale(ctx, config.size)), ImGuiCond_FirstUseEver);
 
+    ImGuiWindowClass windowClass;
+    windowClass.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoCloseButton;
+    ImGui::SetNextWindowClass(&windowClass);
+
     I32 styleVarCount = 0;
     if (config.padding.has_value()) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Private::ToImVec2(Scale(ctx, *config.padding)));

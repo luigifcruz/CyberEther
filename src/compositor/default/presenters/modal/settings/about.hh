@@ -134,9 +134,15 @@ struct AboutPresenter {
 
     AboutSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
+        const auto openReleases = [enqueue]() {
+            enqueue(MailOpenUrl{
+                .url = "https://github.com/luigifcruz/CyberEther/releases",
+                .notifyResult = true,
+            });
+        };
+
         return AboutSettingsPanel::Config{
             .updateAvailable = context.state.update.available,
-            .checkingForUpdate = context.state.update.checking,
             .updateVersion = context.state.update.version,
             .accentKey = "cyber_blue",
             .infoTables = BuildAboutInfoTables({
@@ -145,12 +151,8 @@ struct AboutPresenter {
                 .framebufferScale = context.state.system.render->framebufferScale(),
                 .renderScale = context.state.system.render->scalingFactor(),
             }),
-            .onCheckForUpdates = [enqueue]() {
-                enqueue(MailCheckForUpdates{});
-            },
-            .onDownloadUpdate = []() {
-                // TODO: Wire download logic.
-            },
+            .onOpenReleases = openReleases,
+            .onDownloadUpdate = openReleases,
             .onDismissUpdate = [enqueue]() {
                 enqueue(MailDismissUpdate{});
             },

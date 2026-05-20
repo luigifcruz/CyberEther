@@ -80,15 +80,20 @@ struct FlowgraphLink : public Sakura::Component {
         tooltipTitle.update({
             .id = this->config.id + ":tooltip:title",
             .str = ICON_FA_MEMORY " Tensor Metadata",
-            .font = Sakura::Text::Font::Bold,
         });
-        tooltipHeaderDivider.update({.id = this->config.id + ":tooltip:header-divider"});
+        tooltipHeaderDivider.update({
+            .id = this->config.id + ":tooltip:header-divider",
+            .spacing = 0.0f,
+        });
         tooltipHelp.update({
             .id = this->config.id + ":tooltip:help",
             .str = ICON_FA_CIRCLE_INFO " Click on the end of the link to detach it.",
             .tone = Sakura::Text::Tone::Secondary,
         });
-        tooltipHelpDivider.update({.id = this->config.id + ":tooltip:help-divider"});
+        tooltipHelpDivider.update({
+            .id = this->config.id + ":tooltip:help-divider",
+            .spacing = 0.0f,
+        });
         linkSection.update({
             .id = this->config.id + ":tooltip:link-section",
             .str = "Link",

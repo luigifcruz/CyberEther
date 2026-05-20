@@ -58,6 +58,7 @@ struct Instance::Remote::Impl {
     std::string inviteUrl_;
     std::vector<std::string> waitlist_;
     std::vector<ClientInfo> clients_;
+    std::map<CodecType, std::vector<EncoderType>> availableEncoderCache;
 
     enum class EncodingStrategyType {
         None,
@@ -66,6 +67,12 @@ struct Instance::Remote::Impl {
         HardwareV4L2,
         HardwareVideoToolbox,
         HardwareMediaFoundation,
+    };
+
+    struct EncodingCombination {
+        DeviceType device = DeviceType::None;
+        EncodingStrategyType strategy = EncodingStrategyType::None;
+        std::vector<std::string> plugins;
     };
 
     Extent2D<U64> size;
@@ -129,6 +136,10 @@ struct Instance::Remote::Impl {
     Result startStream();
     Result stopStream();
     Result destroyStream();
+    std::vector<EncoderType> available(CodecType codec);
+    std::vector<EncodingCombination> encodingCombinations(CodecType codec);
+    static EncoderType EncoderFromEncodingStrategy(EncodingStrategyType strategy);
+    static bool EncoderMatchesStrategy(EncoderType encoder, EncodingStrategyType strategy);
     Result createWebRtcSession(const std::string& sessionId, const std::string& peerId);
     void destroyWebRtcSession(const std::string& sessionId);
     void destroyAllWebRtcSessions();
@@ -195,6 +206,10 @@ Instance::Remote::~Remote() = default;
 
 bool Instance::Remote::supported() const {
     return impl->supported();
+}
+
+std::vector<Instance::Remote::EncoderType> Instance::Remote::available(CodecType codec) {
+    return impl->available(codec);
 }
 
 Result Instance::Remote::create(const Config& config) {
@@ -545,6 +560,115 @@ Result Instance::Remote::Impl::createRoom() {
 // Stream
 //
 
+std::vector<Instance::Remote::EncoderType> Instance::Remote::Impl::available(CodecType codec) {
+    if (!supported()) {
+        return {};
+    }
+
+    auto cacheIt = availableEncoderCache.find(codec);
+    if (cacheIt != availableEncoderCache.end()) {
+        return cacheIt->second;
+    }
+
+    if (!gst_is_initialized()) {
+        gst_init(nullptr, nullptr);
+    }
+    gst_init_static_plugins();
+
+    std::vector<EncoderType> encoders;
+    const auto addEncoder = [&](EncoderType encoder) {
+        if (std::find(encoders.begin(), encoders.end(), encoder) == encoders.end()) {
+            encoders.push_back(encoder);
+        }
+    };
+
+    for (const auto& combination : encodingCombinations(codec)) {
+        if (checkGstreamerPlugins(combination.plugins, true) == Result::SUCCESS) {
+            addEncoder(EncoderFromEncodingStrategy(combination.strategy));
+        }
+    }
+
+    if (!encoders.empty()) {
+        encoders.insert(encoders.begin(), EncoderType::Auto);
+    }
+
+    availableEncoderCache[codec] = encoders;
+    return encoders;
+}
+
+std::vector<Instance::Remote::Impl::EncodingCombination> Instance::Remote::Impl::encodingCombinations(CodecType codec) {
+    std::vector<EncodingCombination> combinations;
+
+    if (codec == CodecType::H264) {
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        if (viewportDevice == DeviceType::Vulkan && Backend::State<DeviceType::CUDA>()->isAvailable()) {
+            combinations.push_back({DeviceType::CUDA, EncodingStrategyType::HardwareNVENC, {"nvh264enc", "h264parse", "rtph264pay"}});
+            GST_DEBUG("[REMOTE] Checking for NVENC strategy support for h264.");
+        }
+#endif
+
+        if (checkGstreamerPlugins({"vtenc_h264_hw"}, true) == Result::SUCCESS) {
+            GstElementFactory* factory = gst_element_factory_find("vtenc_h264_hw");
+            if (factory) {
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareVideoToolbox, {"vtenc_h264_hw", "h264parse", "rtph264pay"}});
+                gst_object_unref(GST_OBJECT(factory));
+                GST_DEBUG("[REMOTE] Checking for VideoToolbox strategy support for h264.");
+            }
+        }
+
+        if (checkGstreamerPlugins({"v4l2h264enc"}, true) == Result::SUCCESS) {
+            GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
+            if (factory) {
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareV4L2, {"v4l2h264enc", "h264parse", "rtph264pay"}});
+                gst_object_unref(GST_OBJECT(factory));
+                GST_DEBUG("[REMOTE] Checking for V4L2 strategy support for h264.");
+            }
+        }
+
+        if (checkGstreamerPlugins({"mfh264enc"}, true) == Result::SUCCESS) {
+            GstElementFactory* factory = gst_element_factory_find("mfh264enc");
+            if (factory) {
+                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareMediaFoundation, {"mfh264enc", "h264parse", "rtph264pay"}});
+                gst_object_unref(GST_OBJECT(factory));
+                GST_DEBUG("[REMOTE] Checking for MediaFoundation strategy support for h264.");
+            }
+        }
+
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264enc", "h264parse", "rtph264pay"}});
+    }
+
+    if (codec == CodecType::VP8) {
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp8enc", "rtpvp8pay"}});
+    }
+
+    if (codec == CodecType::VP9) {
+        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp9enc", "rtpvp9pay"}});
+    }
+
+    return combinations;
+}
+
+Instance::Remote::EncoderType Instance::Remote::Impl::EncoderFromEncodingStrategy(EncodingStrategyType strategy) {
+    switch (strategy) {
+        case EncodingStrategyType::Software:
+            return EncoderType::Software;
+        case EncodingStrategyType::HardwareNVENC:
+            return EncoderType::NVENC;
+        case EncodingStrategyType::HardwareV4L2:
+            return EncoderType::V4L2;
+        case EncodingStrategyType::HardwareVideoToolbox:
+            return EncoderType::VideoToolbox;
+        case EncodingStrategyType::HardwareMediaFoundation:
+            return EncoderType::MediaFoundation;
+        default:
+            return EncoderType::Auto;
+    }
+}
+
+bool Instance::Remote::Impl::EncoderMatchesStrategy(EncoderType encoder, EncodingStrategyType strategy) {
+    return EncoderFromEncodingStrategy(strategy) == encoder;
+}
+
 Result Instance::Remote::Impl::createStream() {
     JST_DEBUG("[REMOTE] Creating stream.");
 
@@ -593,95 +717,29 @@ Result Instance::Remote::Impl::createStream() {
         return Result::ERROR;
     }
 
-    std::vector<std::tuple<DeviceType, EncodingStrategyType, std::vector<std::string>>> combinations;
-
-    if (config.codec == Instance::Remote::CodecType::H264) {
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        if (viewportDevice == DeviceType::Vulkan && Backend::State<DeviceType::CUDA>()->isAvailable()) {
-            combinations.push_back({DeviceType::CUDA, EncodingStrategyType::HardwareNVENC, {"nvh264enc", "h264parse", "rtph264pay"}});
-            GST_DEBUG("[REMOTE] Checking for NVENC strategy support for h264.");
-        }
-#endif
-
-        if (checkGstreamerPlugins({"vtenc_h264_hw"}, true) == Result::SUCCESS) {
-            GstElementFactory* factory = gst_element_factory_find("vtenc_h264_hw");
-            if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareVideoToolbox, {"vtenc_h264_hw", "h264parse", "rtph264pay"}});
-                gst_object_unref(GST_OBJECT(factory));
-                GST_DEBUG("[REMOTE] Checking for VideoToolbox strategy support for h264.");
-            }
-        }
-
-        if (checkGstreamerPlugins({"v4l2h264enc"}, true) == Result::SUCCESS) {
-            GstElementFactory* factory = gst_element_factory_find("v4l2h264enc");
-            if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareV4L2, {"v4l2h264enc", "h264parse", "rtph264pay"}});
-                gst_object_unref(GST_OBJECT(factory));
-                GST_DEBUG("[REMOTE] Checking for V4L2 strategy support for h264.");
-            }
-        }
-
-        if (checkGstreamerPlugins({"mfh264enc"}, true) == Result::SUCCESS) {
-            GstElementFactory* factory = gst_element_factory_find("mfh264enc");
-            if (factory) {
-                combinations.push_back({DeviceType::CPU, EncodingStrategyType::HardwareMediaFoundation, {"mfh264enc", "h264parse", "rtph264pay"}});
-                gst_object_unref(GST_OBJECT(factory));
-                GST_DEBUG("[REMOTE] Checking for MediaFoundation strategy support for h264.");
-            }
-        }
-
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"openh264enc", "h264parse", "rtph264pay"}});
-    }
-
-    if (config.codec == Instance::Remote::CodecType::VP8) {
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp8enc", "rtpvp8pay"}});
-    }
-
-    if (config.codec == Instance::Remote::CodecType::VP9) {
-        combinations.push_back({DeviceType::CPU, EncodingStrategyType::Software, {"vp9enc", "rtpvp9pay"}});
-    }
+    const auto combinations = encodingCombinations(config.codec);
 
     bool requestedEncoderFound = false;
 
-    for (const auto& [device, strategy, pluginList] : combinations) {
+    for (const auto& combination : combinations) {
         if (config.encoder != Instance::Remote::EncoderType::Auto) {
-            bool match = false;
-            switch (config.encoder) {
-                case Instance::Remote::EncoderType::Software:
-                    match = (strategy == EncodingStrategyType::Software);
-                    break;
-                case Instance::Remote::EncoderType::NVENC:
-                    match = (strategy == EncodingStrategyType::HardwareNVENC);
-                    break;
-                case Instance::Remote::EncoderType::V4L2:
-                    match = (strategy == EncodingStrategyType::HardwareV4L2);
-                    break;
-                case Instance::Remote::EncoderType::VideoToolbox:
-                    match = (strategy == EncodingStrategyType::HardwareVideoToolbox);
-                    break;
-                case Instance::Remote::EncoderType::MediaFoundation:
-                    match = (strategy == EncodingStrategyType::HardwareMediaFoundation);
-                    break;
-                default:
-                    break;
-            }
-            if (!match) {
+            if (!EncoderMatchesStrategy(config.encoder, combination.strategy)) {
                 continue;
             }
 
             requestedEncoderFound = true;
         }
 
-        if (checkGstreamerPlugins(pluginList, true) == Result::SUCCESS) {
-            inputMemoryDevice_ = device;
-            encodingStrategy = strategy;
+        if (checkGstreamerPlugins(combination.plugins, true) == Result::SUCCESS) {
+            inputMemoryDevice_ = combination.device;
+            encodingStrategy = combination.strategy;
 
-            JST_INFO("[REMOTE] Using {} encoding with {} memory.", GetEncodingStrategyPrettyName(strategy),
-                                                                   GetDevicePrettyName(device));
+            JST_INFO("[REMOTE] Using {} encoding with {} memory.", GetEncodingStrategyPrettyName(combination.strategy),
+                                                                   GetDevicePrettyName(combination.device));
 
             return Result::SUCCESS;
         }
-        JST_DEBUG("[REMOTE] Failed to find plugins: {}", pluginList);
+        JST_DEBUG("[REMOTE] Failed to find plugins: {}", combination.plugins);
     }
 
     if (config.encoder != Instance::Remote::EncoderType::Auto) {
