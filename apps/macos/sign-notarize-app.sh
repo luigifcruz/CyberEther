@@ -66,6 +66,8 @@ fi
 OUTPUT_DIR="$(abs_path "$OUTPUT_DIR")"
 APP_PATH="$(abs_path "${APP_PATH:-$OUTPUT_DIR/$APP_NAME.app}")"
 APP_ZIP_PATH="$(abs_path "${APP_ZIP_PATH:-$OUTPUT_DIR/$APP_NAME.app.zip}")"
+FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+JETSTREAM_DYLIB_PATH="$FRAMEWORKS_DIR/libjetstream.dylib"
 validate_metadata
 assert_authorized_release_context
 
@@ -85,6 +87,7 @@ trap cleanup EXIT
 validate_inputs() {
     [[ -d "$APP_PATH" ]] || die "app bundle does not exist: $APP_PATH"
     [[ -f "$APP_PATH/Contents/MacOS/$EXECUTABLE_NAME" ]] || die "app executable does not exist: $APP_PATH/Contents/MacOS/$EXECUTABLE_NAME"
+    [[ -f "$JETSTREAM_DYLIB_PATH" ]] || die "app dylib does not exist: $JETSTREAM_DYLIB_PATH"
 
     require_env APPLE_CERT_P12_BASE64
     require_env APPLE_CERT_PASSWORD
@@ -109,6 +112,18 @@ setup_credentials() {
     security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
     security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
     security list-keychains -d user -s "$KEYCHAIN_PATH" >/dev/null
+}
+
+sign_frameworks() {
+    local dylib
+
+    require_tool codesign
+
+    for dylib in "$FRAMEWORKS_DIR"/*.dylib; do
+        [[ -e "$dylib" ]] || continue
+        codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$dylib"
+        codesign --verify --strict --verbose=2 "$dylib"
+    done
 }
 
 sign_app() {
@@ -141,6 +156,7 @@ notarize_app() {
 
 validate_inputs
 setup_credentials
+sign_frameworks
 sign_app
 notarize_app
 msg "Signed and notarized app bundle: $APP_PATH"
