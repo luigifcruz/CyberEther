@@ -19,7 +19,8 @@ ImGuiWindowFlags DefaultWindowFlags() {
 
 ImGuiDockNodeFlags DefaultDockFlags() {
     return ImGuiDockNodeFlags_PassthruCentralNode |
-           ImGuiDockNodeFlags_NoWindowMenuButton;
+           ImGuiDockNodeFlags_NoWindowMenuButton |
+           ImGuiDockNodeFlags_NoCloseButton;
 }
 
 }  // namespace
@@ -49,7 +50,12 @@ void Dockspace(const DockspaceConfig& config) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::Begin(config.windowTitle, nullptr, windowFlags);
     ImGui::PopStyleVar(3);
+    const ImVec4 dockTitleBg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, dockTitleBg);
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, dockTitleBg);
+    ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, dockTitleBg);
     ImGui::DockSpace(id, ImVec2(0.0f, 0.0f), dockFlags);
+    ImGui::PopStyleColor(3);
     ImGui::End();
 }
 

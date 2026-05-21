@@ -26,6 +26,61 @@ void Button::render(const Context& ctx) const {
 
     ImGui::PushID(config.id.c_str());
 
+    if (config.variant == Variant::Text) {
+        if (config.disabled) {
+            ImGui::BeginDisabled();
+        }
+
+        if (config.textScale != 1.0f) {
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * config.textScale);
+        }
+
+        const ImVec4 textColor = Private::ImColor(ctx, config.textColorKey.empty()
+                                                       ? (config.disabled ? "text_disabled" : "text_primary")
+                                                       : config.textColorKey);
+        const ImU32 textColorU32 = ImGui::GetColorU32(textColor);
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const ImVec2 textSize = ImGui::CalcTextSize(config.str.c_str());
+        ImVec2 buttonSize = Private::ToImVec2(Scale(ctx, config.size));
+        if (buttonSize.x <= 0.0f) {
+            buttonSize.x = textSize.x;
+        }
+        if (buttonSize.y <= 0.0f) {
+            buttonSize.y = textSize.y;
+        }
+
+        const bool pressed = ImGui::InvisibleButton("##text-button", buttonSize);
+        const bool hovered = !config.disabled && ImGui::IsItemHovered();
+        if (hovered) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        }
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(cursor, textColorU32, config.str.c_str());
+        if (hovered) {
+            const F32 underlineY = cursor.y + textSize.y;
+            drawList->AddLine(ImVec2(cursor.x, underlineY),
+                              ImVec2(cursor.x + textSize.x, underlineY),
+                              textColorU32,
+                              Scale(ctx, 1.0f));
+        }
+
+        if (pressed && config.onClick) {
+            config.onClick();
+        }
+
+        if (config.textScale != 1.0f) {
+            ImGui::PopFont();
+        }
+
+        if (config.disabled) {
+            ImGui::EndDisabled();
+        }
+
+        ImGui::PopID();
+        return;
+    }
+
     I32 styleColorCount = 0;
     const char* defaultColorKey = "button";
     const char* defaultHoveredColorKey = "button_hovered";

@@ -6,8 +6,11 @@
 #include "../model/state.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
+#include <algorithm>
+#include <filesystem>
 #include <optional>
 #include <tuple>
 
@@ -24,7 +27,11 @@ struct SettingsActions {
                               MailSetDebugRuntimeMetricsEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
-                              MailDismissUpdate>;
+                              MailDismissUpdate,
+                              MailAddPluginPath,
+                              MailRemovePluginPath,
+                              MailReloadPlugin,
+                              MailReloadAllPlugins>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -58,6 +65,7 @@ struct SettingsActions {
 
     Result handle(const MailSetGraphicsScale& msg) {
         state.graphics.scale = msg.value;
+        state.system.render->setScale(msg.value);
 
         Settings settings;
         JST_CHECK(Settings::Get(settings));
@@ -137,6 +145,139 @@ struct SettingsActions {
 
     Result handle(const MailDismissUpdate&) {
         state.update.available = false;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailAddPluginPath& msg) {
+        if (msg.path.empty()) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot add plugin because the path is empty.");
+            return Result::SUCCESS;
+        }
+
+        if (!std::filesystem::exists(msg.path)) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
+            return Result::SUCCESS;
+        }
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+
+        const auto duplicate = std::find_if(settings.registry.plugins.begin(),
+                                            settings.registry.plugins.end(),
+                                            [&](const auto& path) {
+                                                return path == msg.path;
+                                            });
+        if (duplicate != settings.registry.plugins.end()) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin is already registered.");
+            return Result::SUCCESS;
+        }
+
+        if (Plugin::Load(msg.path) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to load plugin.");
+            return Result::SUCCESS;
+        }
+
+        settings.registry.plugins.push_back(msg.path);
+        JST_CHECK(Settings::Set(settings));
+
+        state.settings.section = SettingsSection::Registry;
+        state.modal.content = ModalContent::Settings;
+        callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailRemovePluginPath& msg) {
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+
+        const auto initialSize = settings.registry.plugins.size();
+        settings.registry.plugins.erase(
+            std::remove(settings.registry.plugins.begin(),
+                        settings.registry.plugins.end(),
+                        msg.path),
+            settings.registry.plugins.end());
+
+        if (settings.registry.plugins.size() == initialSize) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin was not registered.");
+            return Result::SUCCESS;
+        }
+
+        JST_CHECK(Settings::Set(settings));
+        callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload registered blocks.");
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailReloadPlugin& msg) {
+        if (msg.path.empty()) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot reload plugin because the path is empty.");
+            return Result::SUCCESS;
+        }
+
+        if (!std::filesystem::exists(msg.path)) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
+            return Result::SUCCESS;
+        }
+
+        if (!state.flowgraph.items.empty()) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Close open flowgraphs before reloading plugins.");
+            return Result::SUCCESS;
+        }
+
+        if (Plugin::Reload(msg.path) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to reload plugin.");
+            return Result::SUCCESS;
+        }
+
+        callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin reloaded.");
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailReloadAllPlugins&) {
+        if (!state.flowgraph.items.empty()) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Close open flowgraphs before reloading plugins.");
+            return Result::SUCCESS;
+        }
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+
+        if (settings.registry.plugins.empty()) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "No plugins registered to reload.");
+            return Result::SUCCESS;
+        }
+
+        for (const auto& path : settings.registry.plugins) {
+            if (path.empty()) {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "Cannot reload plugin because a registered path is empty.");
+                return Result::SUCCESS;
+            }
+            if (!std::filesystem::exists(path)) {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "A registered plugin does not exist: " + path);
+                return Result::SUCCESS;
+            }
+        }
+
+        for (const auto& path : settings.registry.plugins) {
+            if (Plugin::Reload(path) != Result::SUCCESS) {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "Failed to reload plugin: " + path);
+                return Result::SUCCESS;
+            }
+        }
+
+        const auto count = settings.registry.plugins.size();
+        callbacks.notify(Sakura::ToastType::Success,
+                         3000,
+                         "Reloaded modules from " + std::to_string(count) + (count == 1 ? " plugin." : " plugins."));
         return Result::SUCCESS;
     }
 

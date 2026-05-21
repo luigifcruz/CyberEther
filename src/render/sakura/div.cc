@@ -72,7 +72,13 @@ void Div::render(const Context& ctx, Child child) const {
                               contentChildFlags,
                               windowFlags)) {
             if (child) {
+                const F32 clipSlack = std::ceil(Scale(ctx, 1.0f));
+                const ImRect clipRect = ImGui::GetCurrentWindow()->ClipRect;
+                ImGui::PushClipRect(ImVec2(clipRect.Min.x - clipSlack, clipRect.Min.y - clipSlack),
+                                    ImVec2(clipRect.Max.x + clipSlack, clipRect.Max.y + clipSlack),
+                                    false);
                 child(ctx);
+                ImGui::PopClipRect();
             }
         }
         ImGui::EndChild();

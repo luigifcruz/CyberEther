@@ -77,6 +77,7 @@ Result Instance::create(const Config& config) {
             .scale = config.scale,
         };
 
+#ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
         auto buildGlfw = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
 
@@ -91,6 +92,7 @@ Result Instance::create(const Config& config) {
 
             return Result::SUCCESS;
         };
+#endif  // JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 
         auto buildHeadless = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));

@@ -1,4 +1,5 @@
 #include "jetstream/benchmark.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/adsb/module.hh"
 
 namespace Jetstream::Modules {

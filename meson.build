@@ -1,7 +1,8 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.3.0',  # [VERSION HOOK]
+    version: '1.4.0',  # [VERSION HOOK]
+    meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
         'buildtype=release',
@@ -48,7 +49,7 @@ if jst_is_browser
 endif
 
 if jst_is_windows
-    add_project_arguments('/Zc:preprocessor', language: 'cpp')
+    add_project_arguments('/Zc:preprocessor', '/bigobj', language: 'cpp')
 endif
 
 if get_option('native')
@@ -87,6 +88,10 @@ inc_lst = [
 #
 
 cfg_lst.set('version', meson.project_version())
+version_parts = meson.project_version().split('.')
+cfg_lst.set('version_major', version_parts[0])
+cfg_lst.set('version_minor', version_parts[1])
+cfg_lst.set('version_patch', version_parts[2])
 cfg_lst.set('buildtype', get_option('buildtype'))
 cfg_lst.set('optimization', get_option('optimization'))
 cfg_lst.set('debug', get_option('debug'))

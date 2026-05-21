@@ -30,7 +30,15 @@ class CUDA {
         return config.deviceId;
     }
 
- private:
+    CUdevice getDevice() const {
+        return device;
+    }
+
+    CUcontext getContext() const {
+        return context;
+    }
+
+  private:
     Config config;
     CUdevice device;
     CUcontext context;

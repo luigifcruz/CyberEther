@@ -1,4 +1,5 @@
 #include "jetstream/benchmark.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/domains/visualization/waterfall/module.hh"
 
 namespace Jetstream::Modules {

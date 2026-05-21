@@ -21,8 +21,23 @@ env:
     RPCRT4.dll
     SHLWAPI.dll
     IMM32.dll
+    MF.dll
+    MFPlat.dll
+    MFReadWrite.dll
+    BCRYPT.dll
+    CRYPT32.dll
+    DNSAPI.dll
+    IPHLPAPI.dll
+    NORMALIZ.dll
+    NTDLL.dll
+    SECUR32.dll
+    VERSION.dll
     VULKAN-1.dll
+    WINMM.dll
+    WLDAP32.dll
     api-ms-win-core-synch-l1-2-0.dll
+    api-ms-win-core-winrt-l1-1-0.dll
+    api-ms-win-core-winrt-string-l1-1-0.dll
   VULKAN_VERSION: 1.4.309.0
   VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
 
@@ -40,6 +55,10 @@ jobs:
           python-version: '3.12'
 
       - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install system dependencies
+        run: |
+          choco install nasm winflexbison3 pkgconfiglite -y --no-progress
 
       - name: Install Python dependencies
         run: |
@@ -72,7 +91,14 @@ jobs:
             Remove-Item -Recurse -Force build
           }
 
-          meson setup --vsenv -Dbuildtype=release -Ddefault_library=static -Db_vscrt=static_from_buildtype -Dtests=true -Dexamples=false build
+          meson setup --vsenv `
+            -Dbuildtype=release `
+            -Ddefault_library=static `
+            -Db_vscrt=static_from_buildtype `
+            -Dtests=true `
+            -Dexamples=false `
+            -Dremote=enabled `
+            build
           meson compile -C build
 
           New-Item -ItemType Directory -Force -Path .dist/artifacts | Out-Null

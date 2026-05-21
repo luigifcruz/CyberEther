@@ -17,7 +17,12 @@ def cpp_string(value):
 
 
 def yml_to_source(path, output, inputs):
-    with open(os.path.join(path, output), "w", encoding="utf-8") as f:
+    output_path = os.path.join(path, output)
+    if not os.path.isdir(os.path.dirname(output_path)):
+        output_path = output
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write('#include "jetstream/registry.hh"\n\n')
 
         for file in inputs:

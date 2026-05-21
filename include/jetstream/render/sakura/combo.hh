@@ -15,6 +15,7 @@ struct Combo : public Component {
         std::string id;
         std::vector<std::string> options;
         std::string value;
+        bool disabled = false;
         std::function<void(const std::string&)> onChange;
     };
 

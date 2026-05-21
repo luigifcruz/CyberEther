@@ -163,7 +163,9 @@ class JETSTREAM_API Parser {
         } else if constexpr (detail::Vector<ValueType>) {
             using EntryType = typename ValueType::value_type;
 
-            if constexpr (detail::HasParserSerialize<EntryType> || detail::Vector<EntryType>) {
+            if constexpr (detail::HasParserSerialize<EntryType> ||
+                          detail::Vector<EntryType> ||
+                          std::is_same_v<EntryType, std::string>) {
                 Sequence sequence;
                 sequence.reserve(variable.size());
 

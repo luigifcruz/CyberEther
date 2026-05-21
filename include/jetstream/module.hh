@@ -116,8 +116,7 @@ inline Module::Taint operator|(Module::Taint lhs, Module::Taint rhs) {
 #ifndef JST_MODULE_TYPE
 #define JST_MODULE_TYPE(TYPE) \
     std::string type() const override { \
-        static const std::string type = #TYPE; \
-        return type; \
+        return #TYPE; \
     }
 #endif  // JST_MODULE_TYPE
 

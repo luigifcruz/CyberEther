@@ -23,6 +23,7 @@ struct NavigationItem : public Component {
         std::string borderColorKey = "border";
         std::string selectedBorderColorKey = "accent_color";
         std::function<void()> onSelect;
+        std::function<void()> onDoubleClick;
     };
 
     NavigationItem();

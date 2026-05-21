@@ -7,6 +7,7 @@
 #include "developer.hh"
 #include "general.hh"
 #include "legal.hh"
+#include "registry.hh"
 #include "remote.hh"
 
 #include "jetstream/render/tools/imgui_icons_ext.hh"
@@ -20,6 +21,7 @@ struct SettingsView : public Sakura::Component {
         SettingsSection section = SettingsSection::General;
         GeneralSettingsPanel::Config general;
         RemoteSettingsPanel::Config remote;
+        RegistrySettingsPanel::Config registry;
         DeveloperSettingsPanel::Config developer;
         AboutSettingsPanel::Config about;
         LegalSettingsPanel::Config legal;
@@ -75,6 +77,15 @@ struct SettingsView : public Sakura::Component {
                     },
                 },
                 {
+                    .label = ICON_FA_DATABASE " Registry",
+                    .selected = this->config.section == SettingsSection::Registry,
+                    .onSelect = [this]() {
+                        if (this->config.onSectionChange) {
+                            this->config.onSectionChange(SettingsSection::Registry);
+                        }
+                    },
+                },
+                {
                     .label = ICON_FA_FLASK " Developer",
                     .selected = this->config.section == SettingsSection::Developer,
                     .onSelect = [this]() {
@@ -106,6 +117,7 @@ struct SettingsView : public Sakura::Component {
 
         general.update(this->config.general);
         remote.update(this->config.remote);
+        registry.update(this->config.registry);
         developer.update(this->config.developer);
         about.update(this->config.about);
         legal.update(this->config.legal);
@@ -127,6 +139,9 @@ struct SettingsView : public Sakura::Component {
                             break;
                         case SettingsSection::Remote:
                             remote.render(ctx);
+                            break;
+                        case SettingsSection::Registry:
+                            registry.render(ctx);
                             break;
                         case SettingsSection::Developer:
                             developer.render(ctx);
@@ -152,6 +167,7 @@ struct SettingsView : public Sakura::Component {
     Sakura::NavigationList navigation;
     GeneralSettingsPanel general;
     RemoteSettingsPanel remote;
+    RegistrySettingsPanel registry;
     DeveloperSettingsPanel developer;
     AboutSettingsPanel about;
     LegalSettingsPanel legal;

@@ -5,6 +5,8 @@
 #include "jetstream/render/sakura/sakura.hh"
 
 #include <functional>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -30,12 +32,13 @@ struct GeneralSettingsPanel : public Sakura::Component {
     void update(Config config) {
         this->config = std::move(config);
         renderer = this->config.renderer.empty() ? "Metal" : this->config.renderer;
-        interfaceScalePreview = this->config.interfaceScale;
+        interfaceScale = scaleLabel(this->config.interfaceScale);
         frameRateLimit = framerateLabel(this->config.framerate);
 
         title.update({
             .id = "GeneralTitle",
             .str = "General",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 
@@ -70,19 +73,26 @@ struct GeneralSettingsPanel : public Sakura::Component {
         scaleField.update({
             .id = "ScaleField",
             .label = "Interface Scale",
-            .description = "Changing the interface scale requires restarting CyberEther.",
+            .description = "Adjust the interface scale.",
         });
 
-        scaleSlider.update({
+        scaleCombo.update({
             .id = "##scale",
-            .value = interfaceScalePreview,
-            .min = 0.5f,
-            .max = 2.0f,
-            .format = "%.2fx",
-            .onChange = [this](F32 value) {
-                interfaceScalePreview = value;
+            .options = {
+                "0.50x",
+                "0.75x",
+                "1.00x",
+                "1.15x",
+                "1.25x",
+                "1.50x",
+                "2.00x",
+                "3.00x",
+            },
+            .value = interfaceScale,
+            .onChange = [this](const std::string& value) {
+                interfaceScale = value;
                 if (this->config.onInterfaceScaleChange) {
-                    this->config.onInterfaceScaleChange(value);
+                    this->config.onInterfaceScaleChange(scaleValue(value));
                 }
             },
         });
@@ -96,9 +106,15 @@ struct GeneralSettingsPanel : public Sakura::Component {
         rendererCombo.update({
             .id = "##renderer",
             .options = {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
                 "Metal",
+#endif
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
                 "Vulkan",
+#endif
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
                 "WebGPU",
+#endif
             },
             .value = renderer,
             .onChange = [this](const std::string& value) {
@@ -109,6 +125,8 @@ struct GeneralSettingsPanel : public Sakura::Component {
             },
         });
 
+// TODO: Implement framerate limit.
+#if 0
         frameRateField.update({
             .id = "FrameRateField",
             .label = "Frame Rate Limit",
@@ -134,6 +152,7 @@ struct GeneralSettingsPanel : public Sakura::Component {
                 }
             },
         });
+#endif
 
         infoPanelField.update({
             .id = "InfoPanelField",
@@ -179,16 +198,18 @@ struct GeneralSettingsPanel : public Sakura::Component {
         });
 
         scaleField.render(ctx, [&](const Sakura::Context& ctx) {
-            scaleSlider.render(ctx);
+            scaleCombo.render(ctx);
         });
 
         rendererField.render(ctx, [&](const Sakura::Context& ctx) {
             rendererCombo.render(ctx);
         });
 
+#if 0
         frameRateField.render(ctx, [&](const Sakura::Context& ctx) {
             frameRateCombo.render(ctx);
         });
+#endif
 
         infoPanelField.render(ctx, [&](const Sakura::Context& ctx) {
             infoPanelCheckbox.render(ctx);
@@ -205,6 +226,33 @@ struct GeneralSettingsPanel : public Sakura::Component {
         if (label == "Vulkan") return DeviceType::Vulkan;
         if (label == "WebGPU") return DeviceType::WebGPU;
         return DeviceType::None;
+    }
+
+    static std::string scaleLabel(F32 scale) {
+        if (scale == 0.5f) return "0.50x";
+        if (scale == 0.75f) return "0.75x";
+        if (scale == 1.0f) return "1.00x";
+        if (scale == 1.15f) return "1.15x";
+        if (scale == 1.25f) return "1.25x";
+        if (scale == 1.5f) return "1.50x";
+        if (scale == 2.0f) return "2.00x";
+        if (scale == 3.0f) return "3.00x";
+
+        std::ostringstream stream;
+        stream << std::fixed << std::setprecision(2) << scale << "x";
+        return stream.str();
+    }
+
+    static F32 scaleValue(const std::string& label) {
+        if (label == "0.50x") return 0.5f;
+        if (label == "0.75x") return 0.75f;
+        if (label == "1.00x") return 1.0f;
+        if (label == "1.15x") return 1.15f;
+        if (label == "1.25x") return 1.25f;
+        if (label == "1.50x") return 1.5f;
+        if (label == "2.00x") return 2.0f;
+        if (label == "3.00x") return 3.0f;
+        return 1.0f;
     }
 
     static std::string framerateLabel(U64 framerate) {
@@ -242,14 +290,14 @@ struct GeneralSettingsPanel : public Sakura::Component {
     Sakura::SettingField infoPanelField;
     Sakura::SettingField particlesField;
     Sakura::Combo themeCombo;
+    Sakura::Combo scaleCombo;
     Sakura::Combo rendererCombo;
     Sakura::Combo frameRateCombo;
-    Sakura::SliderFloat scaleSlider;
     Sakura::Checkbox infoPanelCheckbox;
     Sakura::Checkbox particlesCheckbox;
     std::string renderer;
+    std::string interfaceScale = "1.00x";
     std::string frameRateLimit = "Auto";
-    F32 interfaceScalePreview = 0.0f;
 };
 
 }  // namespace Jetstream

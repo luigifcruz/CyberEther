@@ -15,16 +15,29 @@ env:
     CoreFoundation.framework/CoreFoundation
     CoreAudio.framework/CoreAudio
     CoreGraphics.framework/CoreGraphics
+    IOSurface.framework/IOSurface
     CoreServices.framework/CoreServices
     CFNetwork.framework/CFNetwork
     IOKit.framework/IOKit
+    OpenGL.framework/OpenGL
+    QuartzCore.framework/QuartzCore
     Security.framework/Security
     libz.1.dylib
     AppKit.framework/AppKit
+    AVFoundation.framework/AVFoundation
+    CoreMedia.framework/CoreMedia
+    CoreVideo.framework/CoreVideo
+    SystemConfiguration.framework/SystemConfiguration
+    VideoToolbox.framework/VideoToolbox
     UniformTypeIdentifiers.framework/UniformTypeIdentifiers
     libc++.1.dylib
     libSystem.B.dylib
+    libffi.dylib
+    libiconv.2.dylib
     libobjc.A.dylib
+    libresolv.9.dylib
+  BUNDLED_MACOS_DYLIBS: |
+    libjetstream.dylib
 
 jobs:
   bin:
@@ -35,7 +48,7 @@ jobs:
       - name: Install system dependencies
         run: |
           set -euo pipefail
-          brew install pkg-config spirv-cross glslang
+          brew install pkg-config spirv-cross glslang nasm
 
       - name: Install Python dependencies
         run: |
@@ -46,13 +59,18 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          meson setup build --default-library=static -Dbuildtype=release -Dexamples=false
+          meson setup build \
+            --default-library=shared \
+            -Dbuildtype=release \
+            -Dexamples=false \
+            -Dremote=enabled
           meson compile -C build
 
       - name: Validate binary
         run: |
           set -euo pipefail
           test -f build/cyberether
+          test -f build/libjetstream.dylib
           meson test -C build --print-errorlogs
 
       - name: Upload Meson test logs
@@ -65,20 +83,36 @@ jobs:
             build/meson-logs/testlog.json
           if-no-files-found: ignore
 
-      - name: Check binary dynamic dependencies
-        uses: ./.github/actions/check-dynamic-deps
-        with:
-          format: macho
-          targets: |
-            build/cyberether
-          allowlist: ${{ env.SYSTEM_MACOS_DYLIBS }}
-
       - name: Package binary
         run: |
           set -euo pipefail
           mkdir -p .dist/artifacts .dist/bin
           cp build/cyberether .dist/bin/
-          tar -C .dist/bin -czf .dist/artifacts/cyberether-macos-arm64.tar.gz cyberether
+          cp build/libjetstream.dylib .dist/bin/
+          chmod 755 .dist/bin/cyberether .dist/bin/libjetstream.dylib
+
+          install_name_tool -id "@rpath/libjetstream.dylib" .dist/bin/libjetstream.dylib
+
+          load_path="$(otool -L .dist/bin/cyberether | awk '/libjetstream.*\.dylib/ { print $1; exit }')"
+          test -n "$load_path"
+          if [ "$load_path" != "@rpath/libjetstream.dylib" ]; then
+            install_name_tool -change "$load_path" "@rpath/libjetstream.dylib" .dist/bin/cyberether
+          fi
+
+          install_name_tool -add_rpath "@executable_path" .dist/bin/cyberether
+
+          tar -C .dist/bin -czf .dist/artifacts/cyberether-macos-arm64.tar.gz cyberether libjetstream.dylib
+
+      - name: Check binary dynamic dependencies
+        uses: ./.github/actions/check-dynamic-deps
+        with:
+          format: macho
+          targets: |
+            .dist/bin/cyberether
+            .dist/bin/libjetstream.dylib
+          allowlist: |
+            ${{ env.SYSTEM_MACOS_DYLIBS }}
+            ${{ env.BUNDLED_MACOS_DYLIBS }}
 
       - uses: actions/upload-artifact@v4.6.2
         with:

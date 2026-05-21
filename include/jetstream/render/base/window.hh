@@ -47,6 +47,8 @@ class Window {
         return config;
     }
 
+    void setScale(F32 scale);
+
     Result create();
     Result destroy();
 
