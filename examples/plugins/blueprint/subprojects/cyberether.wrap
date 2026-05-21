@@ -1,0 +1,9 @@
+[wrap-git]
+directory = cyberether
+url = https://github.com/luigifcruz/cyberether.git
+revision = main
+depth = 1
+clone-recursive = true
+
+[provide]
+jetstream = libjetstream_dep
