@@ -29,6 +29,10 @@ void Combo::render(const Context& ctx) const {
     ImGui::SetNextItemWidth(-FLT_MIN);
 
     const char* preview = config.value.empty() ? "Select" : config.value.c_str();
+    if (config.disabled) {
+        ImGui::BeginDisabled();
+    }
+
     if (ImGui::BeginCombo(comboId.c_str(), preview)) {
         for (const auto& option : config.options) {
             const bool selected = config.value == option;
@@ -43,6 +47,10 @@ void Combo::render(const Context& ctx) const {
             }
         }
         ImGui::EndCombo();
+    }
+
+    if (config.disabled) {
+        ImGui::EndDisabled();
     }
 }
 

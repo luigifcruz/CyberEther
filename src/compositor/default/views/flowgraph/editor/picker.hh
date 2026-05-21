@@ -177,6 +177,9 @@ struct FlowgraphBlockPicker : public Sakura::Component {
                         this->config.onSelectIndex(static_cast<int>(i));
                     }
                 },
+                .onDoubleClick = [this, option = item.option]() {
+                    createBlock(option);
+                },
             });
         }
 

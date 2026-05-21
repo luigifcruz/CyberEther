@@ -8,6 +8,7 @@ struct Runtime::Impl {
     void create(FontConfig fontConfig) {
         this->fontConfig = fontConfig;
         loadFonts();
+        applyImGuiStyle();
         setupMarkdown();
     }
 
@@ -125,6 +126,7 @@ struct Runtime::Impl {
         }
 
         auto& io = ImGui::GetIO();
+        fontScalingFactor = scalingFactor();
 
         ImFontConfig fontConfig;
         fontConfig.OversampleH = 5;
@@ -135,7 +137,7 @@ struct Runtime::Impl {
         fonts.body = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.body.data,
             static_cast<int>(this->fontConfig.body.size),
-            15.0f * scalingFactor(),
+            15.0f * fontScalingFactor,
             &fontConfig,
             nullptr));
 
@@ -145,7 +147,7 @@ struct Runtime::Impl {
             iconFontConfig.OversampleV = 5;
             iconFontConfig.FontLoaderFlags = 1;
             iconFontConfig.MergeMode = true;
-            iconFontConfig.GlyphMinAdvanceX = 15.0f * scalingFactor();
+            iconFontConfig.GlyphMinAdvanceX = 15.0f * fontScalingFactor;
             iconFontConfig.GlyphOffset = {0.0f, 2.0f};
 
             static const ImWchar iconRanges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
@@ -153,14 +155,14 @@ struct Runtime::Impl {
             if (this->fontConfig.iconRegular.valid()) {
                 io.Fonts->AddFontFromMemoryCompressedTTF(this->fontConfig.iconRegular.data,
                                                          static_cast<int>(this->fontConfig.iconRegular.size),
-                                                         15.0f * scalingFactor(),
+                                                         15.0f * fontScalingFactor,
                                                          &iconFontConfig,
                                                          iconRanges);
             }
             if (this->fontConfig.iconSolid.valid()) {
                 io.Fonts->AddFontFromMemoryCompressedTTF(this->fontConfig.iconSolid.data,
                                                          static_cast<int>(this->fontConfig.iconSolid.size),
-                                                         15.0f * scalingFactor(),
+                                                         15.0f * fontScalingFactor,
                                                          &iconFontConfig,
                                                          iconRanges);
             }
@@ -169,19 +171,19 @@ struct Runtime::Impl {
         fonts.h1 = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.bold.data,
             static_cast<int>(this->fontConfig.bold.size),
-            15.0f * scalingFactor() * 1.15f,
+            15.0f * fontScalingFactor * 1.15f,
             &fontConfig,
             nullptr));
         fonts.h2 = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.bold.data,
             static_cast<int>(this->fontConfig.bold.size),
-            15.0f * scalingFactor() * 1.10f,
+            15.0f * fontScalingFactor * 1.10f,
             &fontConfig,
             nullptr));
         fonts.bold = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.bold.data,
             static_cast<int>(this->fontConfig.bold.size),
-            15.0f * scalingFactor() * 1.04f,
+            15.0f * fontScalingFactor * 1.04f,
             &fontConfig,
             nullptr));
     }
@@ -196,6 +198,10 @@ struct Runtime::Impl {
 
         auto& style = ImGui::GetStyle();
         auto& colors = style.Colors;
+        const F32 currentScalingFactor = scalingFactor();
+        const F32 fontScale = fontScalingFactor != 0.0f
+            ? currentScalingFactor / fontScalingFactor
+            : 1.0f;
         colors[ImGuiCol_Text]                      = color("text_primary");
         colors[ImGuiCol_TextDisabled]              = color("text_secondary");
         colors[ImGuiCol_TextSelectedBg]            = color("text_selected_bg");
@@ -254,6 +260,7 @@ struct Runtime::Impl {
         colors[ImGuiCol_NavWindowingHighlight]     = color("nav_windowing_highlight");
         colors[ImGuiCol_NavWindowingDimBg]         = color("nav_windowing_dim_bg");
 
+        style.FontScaleMain                    = fontScale;
         style._MainScale                        = 1.0f;
         style.WindowPadding                     = ImVec2(12.00f, 12.00f);
         style.FramePadding                      = ImVec2(12.00f, 5.00f);
@@ -295,12 +302,14 @@ struct Runtime::Impl {
         style.DisplaySafeAreaPadding            = ImVec2(3.0f, 3.0f);
         style.MouseCursorScale                  = 1.0f;
         style.CircleTessellationMaxError        = 0.1f;
-        style.ScaleAllSizes(scalingFactor());
+        style.ScaleAllSizes(currentScalingFactor);
+        ImGui::UpdateCurrentFontSize(0.0f);
     }
 
     FontConfig fontConfig;
     Config config;
     Fonts fonts;
+    F32 fontScalingFactor = 1.0f;
     ImGui::MarkdownConfig markdownConfig;
 };
 

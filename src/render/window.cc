@@ -26,6 +26,10 @@ Result Window::create() {
     return res;
 }
 
+void Window::setScale(F32 scale) {
+    config.scale = scale;
+}
+
 Result Window::destroy() {
     // Unbind unclaimed components.
 

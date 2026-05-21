@@ -65,6 +65,7 @@ struct SettingsActions {
 
     Result handle(const MailSetGraphicsScale& msg) {
         state.graphics.scale = msg.value;
+        state.system.render->setScale(msg.value);
 
         Settings settings;
         JST_CHECK(Settings::Get(settings));

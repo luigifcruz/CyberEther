@@ -19,6 +19,7 @@ struct LegalSettingsPanel : public Sakura::Component {
         title.update({
             .id = "LegalTitle",
             .str = "Legal",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 

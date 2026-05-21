@@ -19,6 +19,10 @@ struct Instance::Remote::Impl {
         return false;
     }
 
+    std::vector<EncoderType> available(CodecType) {
+        return {};
+    }
+
     Result create(const Instance::Remote::Config&) {
         JST_ERROR("[REMOTE] Remote streaming is not available in this build.");
         return Result::ERROR;
@@ -55,6 +59,10 @@ Instance::Remote::~Remote() = default;
 
 bool Instance::Remote::supported() const {
     return impl->supported();
+}
+
+std::vector<Instance::Remote::EncoderType> Instance::Remote::available(CodecType codec) {
+    return impl->available(codec);
 }
 
 Result Instance::Remote::create(const Config& config) {
