@@ -11,6 +11,7 @@
 #include "jetstream/runtime.hh"
 #include "jetstream/module.hh"
 #include "jetstream/block.hh"
+#include "jetstream/benchmark.hh"
 
 namespace Jetstream {
 
@@ -18,6 +19,7 @@ class JETSTREAM_API Registry {
  public:
     using ModuleFactory = std::function<std::shared_ptr<Module>()>;
     using BlockFactory = std::function<std::shared_ptr<Block>()>;
+    using BenchmarkFactory = std::function<std::vector<Benchmark::Case>()>;
 
     struct ModuleRegistration {
         std::string type;
@@ -44,6 +46,12 @@ class JETSTREAM_API Registry {
         std::string content;
     };
 
+    struct BenchmarkRegistration {
+        std::string moduleType;
+        const void* owner = nullptr;
+        BenchmarkFactory factory;
+    };
+
     static Result QueueStaticRegistration(std::function<Result()> callback);
     static Result DrainStaticRegistrations();
     static Result DiscardStaticRegistrations();
@@ -61,6 +69,9 @@ class JETSTREAM_API Registry {
                                 BlockFactory factory);
     static Result RegisterFlowgraph(const std::string& key,
                                     const FlowgraphRegistration& metadata);
+    static Result RegisterBenchmark(const std::string& moduleType,
+                                    BenchmarkFactory factory,
+                                    const void* owner);
 
     static Result UnregisterModule(const std::string& type,
                                     DeviceType device,
@@ -68,6 +79,8 @@ class JETSTREAM_API Registry {
                                     const ProviderType& provider);
     static Result UnregisterBlock(const std::string& type);
     static Result UnregisterFlowgraph(const std::string& key);
+    static Result UnregisterBenchmark(const std::string& moduleType,
+                                      const void* owner);
 
     static std::vector<ModuleRegistration>
         ListAvailableModules(const std::string& type = "",
@@ -78,6 +91,8 @@ class JETSTREAM_API Registry {
         ListAvailableBlocks(const std::string& type = "");
     static std::vector<FlowgraphRegistration>
         ListAvailableFlowgraphs(const std::string& key = "");
+    static std::vector<BenchmarkRegistration>
+        ListAvailableBenchmarks(const std::string& moduleType = "");
 
     static Result BuildModule(const std::string& type,
                                const DeviceType& device,
@@ -173,5 +188,26 @@ class JETSTREAM_API Registry {
 
 #define JST_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val) \
     JST_DETAIL_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val, __COUNTER__)
+
+#define JST_DETAIL_REGISTER_BENCHMARKS(module_type_val, id) \
+    static std::vector<::Jetstream::Benchmark::Case> \
+    JST_DETAIL_CONCAT(__jst_benchmark_specs_, id)(); \
+    namespace { \
+    [[maybe_unused]] const ::Jetstream::Result JST_DETAIL_CONCAT(__jst_register_benchmarks_, id) = \
+        ::Jetstream::Registry::QueueStaticRegistration([]() { \
+            static const int JST_DETAIL_CONCAT(__jst_benchmark_owner_, id) = 0; \
+            const std::string moduleType = module_type_val; \
+            return ::Jetstream::Registry::RegisterBenchmark( \
+                moduleType, \
+                &JST_DETAIL_CONCAT(__jst_benchmark_specs_, id), \
+                &JST_DETAIL_CONCAT(__jst_benchmark_owner_, id) \
+            ); \
+        }); \
+    } \
+    static std::vector<::Jetstream::Benchmark::Case> \
+    JST_DETAIL_CONCAT(__jst_benchmark_specs_, id)()
+
+#define JST_BENCHMARKS(module_type_val) \
+    JST_DETAIL_REGISTER_BENCHMARKS(module_type_val, __COUNTER__)
 
 #endif  // JETSTREAM_REGISTRY_HH

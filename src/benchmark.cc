@@ -15,31 +15,18 @@
 namespace Jetstream {
 
 struct Benchmark::Impl {
-    void registerModuleBenchmarkSpecs(const std::string& moduleType,
-                                      Benchmark::BenchmarkSpecFunc specFunc);
     void run(const std::string& outputType, std::ostream& out);
     U64 totalCount();
     U64 currentCount();
     void resetResults();
     const Benchmark::ResultMapType& getResults();
-    const std::vector<Benchmark::ModuleBenchmarkSpecs>& listModuleBenchmarkSpecs();
 
     Benchmark::ResultMapType results;
-    std::vector<Benchmark::ModuleBenchmarkSpecs> moduleBenchmarkSpecs;
 };
 
 Benchmark::Impl& Benchmark::benchmark() {
     static Impl impl;
     return impl;
-}
-
-void Benchmark::Impl::registerModuleBenchmarkSpecs(const std::string& moduleType,
-                                                   Benchmark::BenchmarkSpecFunc specFunc) {
-    JST_TRACE("[BENCHMARK] Registering benchmark specs for module type: {}", moduleType);
-    moduleBenchmarkSpecs.push_back({
-        .moduleType = moduleType,
-        .specFunc = std::move(specFunc),
-    });
 }
 
 void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
@@ -59,22 +46,22 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
     resetResults();
 
-    for (const auto& specEntry : moduleBenchmarkSpecs) {
-        const auto specs = specEntry.specFunc();
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+        const auto specs = benchmark.factory();
         if (specs.empty()) {
             continue;
         }
 
-        const auto implementations = Registry::ListAvailableModules(specEntry.moduleType);
+        const auto implementations = Registry::ListAvailableModules(benchmark.moduleType);
         if (implementations.empty()) {
             JST_WARN("[BENCHMARK] No implementations found for module type: {}",
-                     specEntry.moduleType);
+                     benchmark.moduleType);
             continue;
         }
 
         for (const auto& impl : implementations) {
-            std::string moduleTitle = specEntry.moduleType;
-            const auto blocks = Registry::ListAvailableBlocks(specEntry.moduleType);
+            std::string moduleTitle = benchmark.moduleType;
+            const auto blocks = Registry::ListAvailableBlocks(benchmark.moduleType);
             if (!blocks.empty()) {
                 moduleTitle = blocks.front().title;
             }
@@ -99,7 +86,7 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
             for (const auto& spec : specs) {
                 std::shared_ptr<Module> module;
-                if (Registry::BuildModule(specEntry.moduleType, impl.device, impl.runtime, impl.provider, module) != Result::SUCCESS) {
+                if (Registry::BuildModule(benchmark.moduleType, impl.device, impl.runtime, impl.provider, module) != Result::SUCCESS) {
                     continue;
                 }
 
@@ -174,9 +161,9 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
 U64 Benchmark::Impl::totalCount() {
     U64 count = 0;
-    for (const auto& specEntry : moduleBenchmarkSpecs) {
-        const auto implementations = Registry::ListAvailableModules(specEntry.moduleType);
-        count += specEntry.specFunc().size() * implementations.size();
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+        const auto implementations = Registry::ListAvailableModules(benchmark.moduleType);
+        count += benchmark.factory().size() * implementations.size();
     }
     return count;
 }
@@ -197,15 +184,6 @@ const Benchmark::ResultMapType& Benchmark::Impl::getResults() {
     return results;
 }
 
-const std::vector<Benchmark::ModuleBenchmarkSpecs>& Benchmark::Impl::listModuleBenchmarkSpecs() {
-    return moduleBenchmarkSpecs;
-}
-
-void Benchmark::RegisterModuleBenchmarkSpecs(const std::string& moduleType,
-                                             BenchmarkSpecFunc specFunc) {
-    benchmark().registerModuleBenchmarkSpecs(moduleType, std::move(specFunc));
-}
-
 void Benchmark::Run(const std::string& outputType, std::ostream& out) {
     benchmark().run(outputType, out);
 }
@@ -224,10 +202,6 @@ void Benchmark::ResetResults() {
 
 const Benchmark::ResultMapType& Benchmark::GetResults() {
     return benchmark().getResults();
-}
-
-const std::vector<Benchmark::ModuleBenchmarkSpecs>& Benchmark::ListModuleBenchmarkSpecs() {
-    return benchmark().listModuleBenchmarkSpecs();
 }
 
 }  // namespace Jetstream

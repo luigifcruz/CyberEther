@@ -35,6 +35,13 @@ struct Plugin::Impl {
         std::vector<Module> modules;
         std::vector<std::string> blocks;
         std::vector<std::string> flowgraphs;
+
+        struct Benchmark {
+            std::string moduleType;
+            const void* owner = nullptr;
+        };
+
+        std::vector<Benchmark> benchmarks;
     };
 
     struct Record {
@@ -48,6 +55,7 @@ struct Plugin::Impl {
         std::vector<Registrations::Module> modules;
         std::vector<std::string> blocks;
         std::vector<std::string> flowgraphs;
+        std::vector<Registrations::Benchmark> benchmarks;
     };
 
     ~Impl();
@@ -69,6 +77,8 @@ struct Plugin::Impl {
 
     static bool containsModule(const std::vector<Registrations::Module>& modules,
                                const Registrations::Module& module);
+    static bool containsBenchmark(const std::vector<Registrations::Benchmark>& benchmarks,
+                                  const Registrations::Benchmark& benchmark);
     static bool containsString(const std::vector<std::string>& values,
                                const std::string& value);
     static RegistrySnapshot snapshotRegistry();
@@ -220,6 +230,13 @@ bool Plugin::Impl::containsModule(const std::vector<Registrations::Module>& modu
     }) != modules.end();
 }
 
+bool Plugin::Impl::containsBenchmark(const std::vector<Registrations::Benchmark>& benchmarks,
+                                     const Registrations::Benchmark& benchmark) {
+    return std::find_if(benchmarks.begin(), benchmarks.end(), [&](const auto& entry) {
+        return entry.moduleType == benchmark.moduleType && entry.owner == benchmark.owner;
+    }) != benchmarks.end();
+}
+
 bool Plugin::Impl::containsString(const std::vector<std::string>& values,
                                   const std::string& value) {
     return std::find(values.begin(), values.end(), value) != values.end();
@@ -243,6 +260,13 @@ Plugin::Impl::RegistrySnapshot Plugin::Impl::snapshotRegistry() {
 
     for (const auto& flowgraph : Registry::ListAvailableFlowgraphs()) {
         snapshot.flowgraphs.push_back(flowgraph.key);
+    }
+
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+        snapshot.benchmarks.push_back({
+            .moduleType = benchmark.moduleType,
+            .owner = benchmark.owner,
+        });
     }
 
     return snapshot;
@@ -270,10 +294,20 @@ Plugin::Impl::Registrations Plugin::Impl::diffRegistrations(const RegistrySnapsh
         }
     }
 
+    for (const auto& benchmark : after.benchmarks) {
+        if (!containsBenchmark(before.benchmarks, benchmark)) {
+            diff.benchmarks.push_back(benchmark);
+        }
+    }
+
     return diff;
 }
 
 void Plugin::Impl::rollbackRegistrations(const Registrations& registrations) {
+    for (auto it = registrations.benchmarks.rbegin(); it != registrations.benchmarks.rend(); ++it) {
+        (void)Registry::UnregisterBenchmark(it->moduleType, it->owner);
+    }
+
     for (auto it = registrations.flowgraphs.rbegin(); it != registrations.flowgraphs.rend(); ++it) {
         (void)Registry::UnregisterFlowgraph(*it);
     }

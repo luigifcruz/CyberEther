@@ -47,6 +47,9 @@ struct Registry::Impl {
                          Registry::BlockFactory factory);
     Result registerFlowgraph(const std::string& key,
                              const Registry::FlowgraphRegistration& metadata);
+    Result registerBenchmark(const std::string& moduleType,
+                             Registry::BenchmarkFactory factory,
+                             const void* owner);
 
     Result unregisterModule(const std::string& type,
                             DeviceType device,
@@ -54,6 +57,8 @@ struct Registry::Impl {
                             const ProviderType& provider);
     Result unregisterBlock(const std::string& type);
     Result unregisterFlowgraph(const std::string& key);
+    Result unregisterBenchmark(const std::string& moduleType,
+                               const void* owner);
 
     std::vector<Registry::ModuleRegistration> listModules(const std::string& type,
                                                           std::optional<DeviceType> device,
@@ -61,6 +66,7 @@ struct Registry::Impl {
                                                           const ProviderType& provider);
     std::vector<Registry::FlowgraphRegistration> listFlowgraphs(const std::string& key);
     std::vector<Registry::BlockRegistration> listBlocks(const std::string& type);
+    std::vector<Registry::BenchmarkRegistration> listBenchmarks(const std::string& moduleType);
 
     Result buildModule(const std::string& type,
                        const DeviceType& device,
@@ -77,6 +83,7 @@ struct Registry::Impl {
     std::vector<Registry::ModuleRegistration> modules;
     std::vector<Registry::BlockRegistration> blocks;
     std::vector<Registry::FlowgraphRegistration> flowgraphs;
+    std::vector<Registry::BenchmarkRegistration> benchmarks;
 };
 
 Registry::Impl& Registry::registry() {
@@ -241,6 +248,39 @@ Result Registry::Impl::registerFlowgraph(const std::string& key,
     return Result::SUCCESS;
 }
 
+Result Registry::Impl::registerBenchmark(const std::string& moduleType,
+                                         Registry::BenchmarkFactory factory,
+                                         const void* owner) {
+    JST_TRACE("[REGISTRY] Registering benchmark [Module: {}]", moduleType);
+
+    if (moduleType.empty()) {
+        JST_ERROR("[REGISTRY] Empty module type for benchmark spec registration.");
+        return Result::ERROR;
+    }
+    if (!factory) {
+        JST_ERROR("[REGISTRY] Empty benchmark factory for module '{}'.", moduleType);
+        return Result::ERROR;
+    }
+    if (owner == nullptr) {
+        JST_ERROR("[REGISTRY] Empty benchmark spec owner for module '{}'.", moduleType);
+        return Result::ERROR;
+    }
+
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+
+    const auto duplicate = std::find_if(benchmarks.begin(), benchmarks.end(), [&](const auto& entry) {
+        return entry.moduleType == moduleType && entry.owner == owner;
+    });
+
+    if (duplicate != benchmarks.end()) {
+        JST_ERROR("[REGISTRY] Benchmark already registered [Module: {}].", moduleType);
+        return Result::ERROR;
+    }
+
+    benchmarks.push_back({moduleType, owner, std::move(factory)});
+    return Result::SUCCESS;
+}
+
 Result Registry::Impl::unregisterModule(const std::string& type,
                                         DeviceType device,
                                         RuntimeType runtime,
@@ -278,6 +318,18 @@ Result Registry::Impl::unregisterFlowgraph(const std::string& key) {
         }),
         flowgraphs.end());
     return flowgraphs.size() == size ? Result::ERROR : Result::SUCCESS;
+}
+
+Result Registry::Impl::unregisterBenchmark(const std::string& moduleType,
+                                           const void* owner) {
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+    const auto size = benchmarks.size();
+    benchmarks.erase(
+        std::remove_if(benchmarks.begin(), benchmarks.end(), [&](const auto& entry) {
+            return entry.moduleType == moduleType && entry.owner == owner;
+        }),
+        benchmarks.end());
+    return benchmarks.size() == size ? Result::ERROR : Result::SUCCESS;
 }
 
 std::vector<Registry::ModuleRegistration> Registry::Impl::listModules(const std::string& type,
@@ -344,6 +396,24 @@ std::vector<Registry::BlockRegistration> Registry::Impl::listBlocks(const std::s
         }
 
         filtered.push_back(block);
+    }
+
+    return filtered;
+}
+
+std::vector<Registry::BenchmarkRegistration> Registry::Impl::listBenchmarks(const std::string& moduleType) {
+    JST_TRACE("[REGISTRY] Listing benchmarks.");
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+
+    std::vector<Registry::BenchmarkRegistration> filtered;
+    filtered.reserve(benchmarks.size());
+
+    for (const auto& benchmark : benchmarks) {
+        if (!moduleType.empty() && benchmark.moduleType != moduleType) {
+            continue;
+        }
+
+        filtered.push_back(benchmark);
     }
 
     return filtered;
@@ -444,6 +514,13 @@ Result Registry::RegisterFlowgraph(const std::string& key,
     return Result::SUCCESS;
 }
 
+Result Registry::RegisterBenchmark(const std::string& moduleType,
+                                   Registry::BenchmarkFactory factory,
+                                   const void* owner) {
+    JST_CHECK(registry().registerBenchmark(moduleType, std::move(factory), owner));
+    return Result::SUCCESS;
+}
+
 Result Registry::UnregisterModule(const std::string& type,
                                   DeviceType device,
                                   RuntimeType runtime,
@@ -459,6 +536,12 @@ Result Registry::UnregisterBlock(const std::string& type) {
 
 Result Registry::UnregisterFlowgraph(const std::string& key) {
     JST_CHECK(registry().unregisterFlowgraph(key));
+    return Result::SUCCESS;
+}
+
+Result Registry::UnregisterBenchmark(const std::string& moduleType,
+                                     const void* owner) {
+    JST_CHECK(registry().unregisterBenchmark(moduleType, owner));
     return Result::SUCCESS;
 }
 
@@ -484,6 +567,13 @@ std::vector<Registry::FlowgraphRegistration> Registry::ListAvailableFlowgraphs(c
         std::abort();
     }
     return registry().listFlowgraphs(key);
+}
+
+std::vector<Registry::BenchmarkRegistration> Registry::ListAvailableBenchmarks(const std::string& moduleType) {
+    if (registry().drainStaticRegistrations() != Result::SUCCESS) {
+        std::abort();
+    }
+    return registry().listBenchmarks(moduleType);
 }
 
 Result Registry::BuildModule(const std::string& type,

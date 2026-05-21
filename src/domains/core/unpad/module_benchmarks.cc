@@ -1,4 +1,5 @@
 #include "jetstream/benchmark.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/domains/core/unpad/module.hh"
 
 namespace Jetstream::Modules {

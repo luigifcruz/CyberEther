@@ -1,4 +1,5 @@
 #include "jetstream/benchmark.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/filter_taps/module.hh"
 
 namespace Jetstream::Modules {
