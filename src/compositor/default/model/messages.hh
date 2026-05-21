@@ -56,6 +56,20 @@ struct MailSetSettingsSection {
     SettingsSection section = SettingsSection::General;
 };
 
+struct MailAddPluginPath {
+    std::string path;
+};
+
+struct MailRemovePluginPath {
+    std::string path;
+};
+
+struct MailReloadPlugin {
+    std::string path;
+};
+
+struct MailReloadAllPlugins {};
+
 struct MailCloseModal {};
 
 struct MailNotify {
@@ -308,6 +322,10 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailApplyTheme,
                           MailOpenModal,
                           MailSetSettingsSection,
+                          MailAddPluginPath,
+                          MailRemovePluginPath,
+                          MailReloadPlugin,
+                          MailReloadAllPlugins,
                           MailCloseModal,
                           MailNotify,
                           MailNotifyResult,

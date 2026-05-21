@@ -53,8 +53,12 @@ void Modal::render(const Context& ctx, Child child) {
                              ImGuiWindowFlags_NoResize |
                              ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoScrollbar;
-    if (config.size.has_value()) {
+    if (config.size.has_value() && config.size->x > 0.0f && config.size->y > 0.0f) {
         ImGui::SetNextWindowSize(Private::ToImVec2(Scale(ctx, *config.size)), ImGuiCond_Always);
+    } else if (config.size.has_value() && config.size->x > 0.0f) {
+        ImGui::SetNextWindowSizeConstraints(Private::ToImVec2(Scale(ctx, {config.size->x, 0.0f})),
+                                            Private::ToImVec2(Scale(ctx, {config.size->x, FLT_MAX})));
+        flags |= ImGuiWindowFlags_AlwaysAutoResize;
     } else {
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
     }

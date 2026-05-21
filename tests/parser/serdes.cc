@@ -150,18 +150,26 @@ TEST_CASE("Parser stores primitive vectors directly and nested vectors as sequen
         source.counts = {1, 2, 3};
         source.ratios = {1.5f, 2.5f};
         source.weights = {3.25, 4.75};
+        source.names = {"alpha", "beta"};
 
         Parser::Map data;
         REQUIRE(source.serialize(data) == Result::SUCCESS);
         REQUIRE(data.at("counts").type() == typeid(std::vector<U64>));
         REQUIRE(data.at("ratios").type() == typeid(std::vector<F32>));
         REQUIRE(data.at("weights").type() == typeid(std::vector<F64>));
+        REQUIRE(data.at("names").type() == typeid(Parser::Sequence));
+
+        const auto& names = std::any_cast<const Parser::Sequence&>(data.at("names"));
+        REQUIRE(names.size() == 2);
+        REQUIRE(std::any_cast<std::string>(names.at(0)) == "alpha");
+        REQUIRE(std::any_cast<std::string>(names.at(1)) == "beta");
 
         PrimitiveVectorConfig restored;
         REQUIRE(restored.deserialize(data) == Result::SUCCESS);
         REQUIRE(restored.counts == source.counts);
         RequireF32VectorEq(restored.ratios, source.ratios);
         RequireF64VectorEq(restored.weights, source.weights);
+        REQUIRE(restored.names == source.names);
     }
 
     SECTION("string-backed primitive vectors deserialize through Parser::Deserialize") {

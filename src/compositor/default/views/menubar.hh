@@ -26,6 +26,7 @@ struct MenubarView : public Sakura::Component {
         CloseFlowgraph,
         RenameFlowgraph,
         OpenExamples,
+        ReloadPlugins,
         ToggleInfoPanel,
         ToggleBackgroundParticles,
         RemoteStreaming,
@@ -153,6 +154,11 @@ struct MenubarView : public Sakura::Component {
             .id = this->config.id + ":open-examples",
             .label = "Open Examples",
             .onClick = [this]() { emit(Action::OpenExamples); },
+        });
+        reloadPluginsItem.update({
+            .id = this->config.id + ":reload-plugins",
+            .label = "Reload Plugins",
+            .onClick = [this]() { emit(Action::ReloadPlugins); },
         });
 
         viewMenu.update({
@@ -370,12 +376,14 @@ struct MenubarView : public Sakura::Component {
                 runtimeMetricsItem.render(ctx);
                 benchmarksItem.render(ctx);
                 dividers[7].render(ctx);
+                reloadPluginsItem.render(ctx);
+                dividers[8].render(ctx);
                 logLevelMenu.render(ctx, [this](const Sakura::Context& ctx) {
                     for (auto& item : logLevelItems) {
                         item.render(ctx);
                     }
                 });
-                dividers[8].render(ctx);
+                dividers[9].render(ctx);
                 openDeveloperSettingsItem.render(ctx);
             });
 
@@ -426,6 +434,7 @@ struct MenubarView : public Sakura::Component {
     Sakura::MenuItem closeFlowgraphItem;
     Sakura::MenuItem renameFlowgraphItem;
     Sakura::MenuItem openExamplesItem;
+    Sakura::MenuItem reloadPluginsItem;
     Sakura::MenuItem infoPanelItem;
     Sakura::MenuItem backgroundParticlesItem;
     std::vector<Sakura::MenuItem> themeItems;
@@ -441,7 +450,7 @@ struct MenubarView : public Sakura::Component {
     Sakura::MenuItem documentationItem;
     Sakura::MenuItem repositoryItem;
     Sakura::MenuItem reportIssueItem;
-    std::array<Sakura::Divider, 9> dividers;
+    std::array<Sakura::Divider, 10> dividers;
     Sakura::KeyboardInput shortcuts;
 };
 

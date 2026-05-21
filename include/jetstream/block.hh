@@ -115,8 +115,7 @@ template <> struct jst::fmt::formatter<Jetstream::Block::State> : jst::fmt::ostr
 #ifndef JST_BLOCK_TYPE
 #define JST_BLOCK_TYPE(TYPE) \
     std::string type() const override { \
-        static const std::string type = #TYPE; \
-        return type; \
+        return #TYPE; \
     }
 #endif  // JST_BLOCK_TYPE
 
@@ -142,24 +141,20 @@ template <> struct jst::fmt::formatter<Jetstream::Block::State> : jst::fmt::ostr
 #ifndef JST_BLOCK_DOMAIN
 #define JST_BLOCK_DOMAIN(DOMAIN) \
     std::string domain() const override { \
-        static const std::string domain = DOMAIN; \
-        return domain; \
+        return DOMAIN; \
     }
 #endif  // JST_BLOCK_DOMAIN
 
 #ifndef JST_BLOCK_DESCRIPTION
 #define JST_BLOCK_DESCRIPTION(TITLE, SUMMARY, DESCRIPTION) \
     std::string title() const override { \
-        static const std::string title = TITLE; \
-        return title; \
+        return TITLE; \
     } \
     std::string summary() const override { \
-        static const std::string summary = SUMMARY; \
-        return summary; \
+        return SUMMARY; \
     } \
     std::string description() const override { \
-        static const std::string description = DESCRIPTION; \
-        return description; \
+        return DESCRIPTION; \
     }
 #endif  // JST_BLOCK_DESCRIPTION
 
