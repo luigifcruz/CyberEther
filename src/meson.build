@@ -39,6 +39,7 @@ src_lst += files([
     'block_impl.cc',
     'block_interface.cc',
     'registry.cc',
+    'plugin.cc',
     'benchmark.cc',
     'testing.cc',
     'compositor.cc',

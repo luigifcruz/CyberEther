@@ -13,7 +13,7 @@ enum class ModalContent : I32 {
     Benchmark,
     RemoteStreaming,
     Settings,
-    Library,
+    Plugin,
 };
 
 enum class SettingsSection : I32 {

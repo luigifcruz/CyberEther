@@ -176,7 +176,7 @@ TEST_CASE("Settings returns defaults when file is missing", "[settings]") {
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.remote.brokerUrl == "https://cyberether.org");
-    REQUIRE(settings.registry.dynamicLibraries.empty());
+    REQUIRE(settings.registry.plugins.empty());
     REQUIRE(!std::filesystem::exists(sandbox.path));
 }
 
@@ -191,7 +191,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     settings.interface.themeKey = "Light";
     settings.remote.brokerUrl = "https://example.com";
     settings.remote.autoJoinSessions = true;
-    settings.registry.dynamicLibraries.push_back("/tmp/libcyberether-extra.so");
+    settings.registry.plugins.push_back("/tmp/libcyberether-extra.so");
 
     REQUIRE(Settings::Set(settings) == Result::SUCCESS);
     REQUIRE(std::filesystem::exists(sandbox.path));
@@ -204,7 +204,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     REQUIRE(yaml.find("interface:") != std::string::npos);
     REQUIRE(yaml.find("remote:") != std::string::npos);
     REQUIRE(yaml.find("registry:") != std::string::npos);
-    REQUIRE(yaml.find("dynamicLibraries:") != std::string::npos);
+    REQUIRE(yaml.find("plugins:") != std::string::npos);
     REQUIRE(yaml.find("/tmp/libcyberether-extra.so") != std::string::npos);
     REQUIRE(yaml.find("themeKey: Light") != std::string::npos);
     REQUIRE(yaml.find("brokerUrl:") != std::string::npos);
@@ -228,7 +228,7 @@ TEST_CASE("Settings loads existing YAML", "[settings]") {
               "developer:\n"
               "  logLevel: 4\n"
               "registry:\n"
-              "  dynamicLibraries:\n"
+              "  plugins:\n"
               "    - /tmp/libcyberether-extra.so\n");
 
     Settings settings;
@@ -239,8 +239,8 @@ TEST_CASE("Settings loads existing YAML", "[settings]") {
     REQUIRE(settings.remote.brokerUrl == "https://example.net");
     REQUIRE(settings.remote.autoJoinSessions);
     REQUIRE(settings.developer.logLevel == 4);
-    REQUIRE(settings.registry.dynamicLibraries.size() == 1);
-    REQUIRE(settings.registry.dynamicLibraries[0] == "/tmp/libcyberether-extra.so");
+    REQUIRE(settings.registry.plugins.size() == 1);
+    REQUIRE(settings.registry.plugins[0] == "/tmp/libcyberether-extra.so");
     REQUIRE(settings.benchmark.format == "markdown");
     REQUIRE(!settings.graphics.headless);
     REQUIRE(settings.graphics.framerate == 60);

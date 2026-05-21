@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_LIBRARY_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_LIBRARY_HH
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_PLUGIN_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_PLUGIN_HH
 
 #include "../components/modal_header.hh"
 
@@ -12,7 +12,7 @@
 
 namespace Jetstream {
 
-struct LibraryView : public Sakura::Component {
+struct PluginView : public Sakura::Component {
     struct Config {
         std::function<void(const std::string&, std::function<void(std::string)>)> onBrowse;
         std::function<void(const std::string&)> onRegister;
@@ -23,19 +23,19 @@ struct LibraryView : public Sakura::Component {
         this->config = std::move(config);
 
         header.update({
-            .id = "RegistryLibraryHeader",
-            .title = ICON_FA_FOLDER_OPEN " Register Dynamic Library",
-            .description = "Load a dynamic library that registers additional blocks.",
+            .id = "RegistryPluginHeader",
+            .title = ICON_FA_FOLDER_OPEN " Register Plugin",
+            .description = "Load a plugin that registers additional blocks.",
         });
 
         pathField.update({
-            .id = "RegistryLibraryPathField",
-            .label = "Library Path",
+            .id = "RegistryPluginPathField",
+            .label = "Plugin Path",
             .description = "Path to a .so, .dylib, or .dll file that registers additional blocks.",
         });
 
         pathInput.update({
-            .id = "##registry-library-path",
+            .id = "##registry-plugin-path",
             .value = path,
             .submit = Sakura::TextInput::Submit::OnEdit,
             .onChange = [this](const std::string& value) {
@@ -47,7 +47,7 @@ struct LibraryView : public Sakura::Component {
         });
 
         browseButton.update({
-            .id = "RegistryLibraryBrowse",
+            .id = "RegistryPluginBrowse",
             .str = "Browse File",
             .size = {-1.0f, 0.0f},
             .onClick = [this]() {
@@ -63,15 +63,15 @@ struct LibraryView : public Sakura::Component {
         });
 
         trustField.update({
-            .id = "RegistryLibraryTrustField",
+            .id = "RegistryPluginTrustField",
             .label = "Trust Source",
-            .description = "Dynamic libraries run native code inside CyberEther as soon as they load. Only register libraries you built yourself or received from a source you trust.",
+            .description = "Plugins run native code inside CyberEther as soon as they load. Only register plugins you built yourself or received from a source you trust.",
             .divider = false,
         });
 
         trustCheckbox.update({
-            .id = "RegistryLibraryTrustCheckbox",
-            .label = "I trust the source of this dynamic library.",
+            .id = "RegistryPluginTrustCheckbox",
+            .label = "I trust the source of this plugin.",
             .value = sourceTrusted,
             .onChange = [this](bool value) {
                 sourceTrusted = value;
@@ -79,8 +79,8 @@ struct LibraryView : public Sakura::Component {
         });
 
         registerButton.update({
-            .id = "RegistryLibraryRegister",
-            .str = ICON_FA_FLOPPY_DISK " Register Library",
+            .id = "RegistryPluginRegister",
+            .str = "Register Plugin",
             .size = {-1.0f, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !sourceTrusted,
@@ -124,4 +124,4 @@ struct LibraryView : public Sakura::Component {
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_LIBRARY_HH
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_PLUGIN_HH

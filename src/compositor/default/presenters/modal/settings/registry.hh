@@ -40,12 +40,12 @@ struct RegistrySettingsPresenter {
             });
         }
 
-        std::vector<RegistrySettingsPanel::LibraryRow> libraries;
+        std::vector<RegistrySettingsPanel::PluginRow> plugins;
         Settings settings;
         if (Settings::Get(settings) == Result::SUCCESS) {
-            libraries.reserve(settings.registry.dynamicLibraries.size());
-            for (const auto& path : settings.registry.dynamicLibraries) {
-                libraries.push_back({
+            plugins.reserve(settings.registry.plugins.size());
+            for (const auto& path : settings.registry.plugins) {
+                plugins.push_back({
                     .path = path,
                 });
             }
@@ -53,12 +53,15 @@ struct RegistrySettingsPresenter {
 
         return RegistrySettingsPanel::Config{
             .domains = rows,
-            .dynamicLibraries = libraries,
-            .onAddLibrary = [enqueue]() {
-                enqueue(MailOpenModal{.content = ModalContent::Library});
+            .plugins = plugins,
+            .onAddPlugin = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::Plugin});
             },
-            .onRemoveLibrary = [enqueue](const std::string& path) {
-                enqueue(MailRemoveRegistryLibraryPath{.path = path});
+            .onRemovePlugin = [enqueue](const std::string& path) {
+                enqueue(MailRemovePluginPath{.path = path});
+            },
+            .onReloadPlugin = [enqueue](const std::string& path) {
+                enqueue(MailReloadPlugin{.path = path});
             },
         };
     }

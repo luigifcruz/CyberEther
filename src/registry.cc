@@ -1,174 +1,67 @@
 #include "jetstream/registry.hh"
 
 #include <algorithm>
-#include <cstddef>
+#include <cstdlib>
 #include <exception>
+#include <functional>
 #include <mutex>
-#include <string>
-
-#if defined(JST_OS_WINDOWS)
-#include <windows.h>
-#elif !defined(JST_OS_BROWSER)
-#include <dlfcn.h>
-#endif
+#include <utility>
 
 namespace Jetstream {
 
 namespace {
 
-void CloseDynamicLibrary(void* handle) {
-    if (handle == nullptr) {
-        return;
+thread_local std::vector<std::function<Result()>>* target = nullptr;
+
+class ActiveQueueScope {
+ public:
+    explicit ActiveQueueScope(std::vector<std::function<Result()>>* queue) : previousQueue(target) {
+        target = queue;
     }
 
-#if defined(JST_OS_WINDOWS)
-    FreeLibrary(reinterpret_cast<HMODULE>(handle));
-#elif !defined(JST_OS_BROWSER)
-    dlclose(handle);
-#else
-    (void)handle;
-#endif
-}
-
-const JetstreamPluginAbi* LoadPluginAbi(void* handle) {
-#if defined(JST_OS_WINDOWS)
-    return reinterpret_cast<const JetstreamPluginAbi*>(
-        GetProcAddress(reinterpret_cast<HMODULE>(handle), JETSTREAM_PLUGIN_ABI_SYMBOL));
-#elif !defined(JST_OS_BROWSER)
-    dlerror();
-    return reinterpret_cast<const JetstreamPluginAbi*>(dlsym(handle, JETSTREAM_PLUGIN_ABI_SYMBOL));
-#else
-    (void)handle;
-    return nullptr;
-#endif
-}
-
-uint64_t PluginAbiMask(DeviceType device) {
-    return static_cast<uint64_t>(static_cast<uint8_t>(device));
-}
-
-uint64_t PluginAbiMask(RuntimeType runtime) {
-    return static_cast<uint64_t>(static_cast<uint8_t>(runtime));
-}
-
-uint64_t AvailableDeviceMask() {
-    uint64_t mask = 0;
-
-#if defined(JETSTREAM_BACKEND_CPU_AVAILABLE)
-    mask |= PluginAbiMask(DeviceType::CPU);
-#endif
-#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE)
-    mask |= PluginAbiMask(DeviceType::CUDA);
-#endif
-#if defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
-    mask |= PluginAbiMask(DeviceType::Metal);
-#endif
-#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
-    mask |= PluginAbiMask(DeviceType::Vulkan);
-#endif
-#if defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
-    mask |= PluginAbiMask(DeviceType::WebGPU);
-#endif
-
-    return mask;
-}
-
-uint64_t AvailableRuntimeMask() {
-    uint64_t mask = PluginAbiMask(RuntimeType::NATIVE);
-
-#if defined(JETSTREAM_LOADER_MLIR_AVAILABLE)
-    mask |= PluginAbiMask(RuntimeType::MLIR);
-#endif
-
-    return mask;
-}
-
-Result ValidatePluginAbi(const std::string& path, void* handle) {
-    const auto abi = LoadPluginAbi(handle);
-    if (abi == nullptr) {
-#if defined(JST_OS_WINDOWS)
-        JST_ERROR("[REGISTRY] Dynamic library '{}' does not export '{}'.", path, JETSTREAM_PLUGIN_ABI_SYMBOL);
-#elif !defined(JST_OS_BROWSER)
-        const char* error = dlerror();
-        JST_ERROR("[REGISTRY] Dynamic library '{}' does not export '{}': {}.",
-                  path,
-                  JETSTREAM_PLUGIN_ABI_SYMBOL,
-                  error != nullptr ? error : "unknown error");
-#endif
-        return Result::ERROR;
+    ~ActiveQueueScope() {
+        target = previousQueue;
     }
 
-    if (abi->magic != JETSTREAM_PLUGIN_ABI_MAGIC) {
-        JST_ERROR("[REGISTRY] Dynamic library '{}' has invalid plugin ABI magic.", path);
-        return Result::ERROR;
-    }
-
-    if (abi->size < sizeof(JetstreamPluginAbi)) {
-        JST_ERROR("[REGISTRY] Dynamic library '{}' reports an unsupported plugin ABI size ({} < {}).",
-                  path,
-                  abi->size,
-                  sizeof(JetstreamPluginAbi));
-        return Result::ERROR;
-    }
-
-    if (abi->abi_version != JETSTREAM_PLUGIN_ABI_VERSION) {
-        JST_ERROR("[REGISTRY] Dynamic library '{}' has plugin ABI version {}, expected {}.",
-                  path,
-                  abi->abi_version,
-                  JETSTREAM_PLUGIN_ABI_VERSION);
-        return Result::ERROR;
-    }
-
-    if (abi->min_jetstream_version > JETSTREAM_VERSION_CURRENT) {
-        JST_ERROR("[REGISTRY] Dynamic library '{}' requires Jetstream version {}, current version is {}.",
-                  path,
-                  abi->min_jetstream_version,
-                  JETSTREAM_VERSION_CURRENT);
-        return Result::ERROR;
-    }
-
-    const auto missingDevices = abi->required_devices & ~AvailableDeviceMask();
-    if (missingDevices != 0) {
-        JST_ERROR("[REGISTRY] Dynamic library '{}' requires unavailable devices [Mask: {}].", path, missingDevices);
-        return Result::ERROR;
-    }
-
-    const auto missingRuntimes = abi->required_runtimes & ~AvailableRuntimeMask();
-    if (missingRuntimes != 0) {
-        JST_ERROR("[REGISTRY] Dynamic library '{}' requires unavailable runtimes [Mask: {}].", path, missingRuntimes);
-        return Result::ERROR;
-    }
-
-    JST_TRACE("[REGISTRY] Dynamic library '{}' plugin ABI validated [Name: {}, Version: {}].",
-              path,
-              abi->name != nullptr ? abi->name : "unknown",
-              abi->version != nullptr ? abi->version : "unknown");
-    return Result::SUCCESS;
-}
+ private:
+    std::vector<std::function<Result()>>* previousQueue;
+};
 
 }  // namespace
 
 struct Registry::Impl {
+    Result queueStaticRegistration(std::function<Result()> callback);
+    Result drainStaticRegistrations();
+    Result discardStaticRegistrations();
+
     Result registerModule(const std::string& type,
                           DeviceType device,
                           RuntimeType runtime,
                           const ProviderType& provider,
-                          ModuleFactory factory);
+                          Registry::ModuleFactory factory);
     Result registerBlock(const std::string& type,
                          const std::string& domain,
                          const std::string& title,
                          const std::string& summary,
                          const std::string& description,
-                         BlockFactory factory);
+                         Registry::BlockFactory factory);
     Result registerFlowgraph(const std::string& key,
-                             const FlowgraphRegistration& metadata);
-    std::vector<ModuleRegistration> listModules(const std::string& type,
-                                                std::optional<DeviceType> device,
-                                                std::optional<RuntimeType> runtime,
-                                                const ProviderType& provider);
-    std::vector<FlowgraphRegistration> listFlowgraphs(const std::string& key);
-    std::vector<BlockRegistration> listBlocks(const std::string& type);
-    Result loadDynamicLibrary(const std::string& path);
+                             const Registry::FlowgraphRegistration& metadata);
+
+    Result unregisterModule(const std::string& type,
+                            DeviceType device,
+                            RuntimeType runtime,
+                            const ProviderType& provider);
+    Result unregisterBlock(const std::string& type);
+    Result unregisterFlowgraph(const std::string& key);
+
+    std::vector<Registry::ModuleRegistration> listModules(const std::string& type,
+                                                          std::optional<DeviceType> device,
+                                                          std::optional<RuntimeType> runtime,
+                                                          const ProviderType& provider);
+    std::vector<Registry::FlowgraphRegistration> listFlowgraphs(const std::string& key);
+    std::vector<Registry::BlockRegistration> listBlocks(const std::string& type);
+
     Result buildModule(const std::string& type,
                        const DeviceType& device,
                        const RuntimeType& runtime,
@@ -176,11 +69,14 @@ struct Registry::Impl {
                        std::shared_ptr<Module>& module);
     Result buildBlock(const std::string& type, std::shared_ptr<Block>& block);
 
-    std::mutex mutex;
-    std::vector<ModuleRegistration> modules;
-    std::vector<BlockRegistration> blocks;
-    std::vector<FlowgraphRegistration> flowgraphs;
-    std::vector<std::pair<std::string, void*>> dynamicLibraries;
+    std::mutex pendingRegistrationMutex;
+    std::recursive_mutex registrationDrainMutex;
+    std::vector<std::function<Result()>> pendingRegistrations;
+
+    std::mutex registrationsMutex;
+    std::vector<Registry::ModuleRegistration> modules;
+    std::vector<Registry::BlockRegistration> blocks;
+    std::vector<Registry::FlowgraphRegistration> flowgraphs;
 };
 
 Registry::Impl& Registry::registry() {
@@ -188,11 +84,70 @@ Registry::Impl& Registry::registry() {
     return impl;
 }
 
+Result Registry::Impl::queueStaticRegistration(std::function<Result()> callback) {
+    if (!callback) {
+        JST_ERROR("[REGISTRY] Cannot queue an empty static registration.");
+        return Result::ERROR;
+    }
+
+    if (target != nullptr) {
+        auto* queue = target;
+        queue->push_back(std::move(callback));
+        return Result::SUCCESS;
+    }
+
+    std::lock_guard<std::mutex> guard(pendingRegistrationMutex);
+    pendingRegistrations.push_back(std::move(callback));
+    return Result::SUCCESS;
+}
+
+Result Registry::Impl::drainStaticRegistrations() {
+    std::lock_guard<std::recursive_mutex> guard(registrationDrainMutex);
+
+    std::vector<std::function<Result()>> callbacks;
+    {
+        std::lock_guard<std::mutex> pendingGuard(pendingRegistrationMutex);
+        callbacks.swap(pendingRegistrations);
+    }
+
+    ActiveQueueScope queueScope(&callbacks);
+
+    while (!callbacks.empty()) {
+        auto pending = std::move(callbacks);
+        callbacks.clear();
+
+        for (const auto& callback : pending) {
+            try {
+                if (callback() != Result::SUCCESS) {
+                    return Result::ERROR;
+                }
+            } catch (const Result& status) {
+                JST_ERROR("[REGISTRY] Exception while processing deferred registration: {}", status);
+                return Result::ERROR;
+            } catch (const std::exception& e) {
+                JST_ERROR("[REGISTRY] Exception while processing deferred registration: {}", e.what());
+                return Result::ERROR;
+            } catch (...) {
+                JST_ERROR("[REGISTRY] Unknown exception while processing deferred registration.");
+                return Result::ERROR;
+            }
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Registry::Impl::discardStaticRegistrations() {
+    std::lock_guard<std::mutex> guard(pendingRegistrationMutex);
+    pendingRegistrations.clear();
+    return Result::SUCCESS;
+}
+
 Result Registry::Impl::registerModule(const std::string& type,
                                       DeviceType device,
                                       RuntimeType runtime,
                                       const ProviderType& provider,
-                                      ModuleFactory factory) {
+                                      Registry::ModuleFactory factory) {
     JST_TRACE("[REGISTRY] Registering module [Type: {}, Runtime: {}, Device: {}, Provider: {}]", type, runtime, device, provider);
 
     if (type.empty()) {
@@ -212,9 +167,9 @@ Result Registry::Impl::registerModule(const std::string& type,
         return Result::ERROR;
     }
 
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    auto duplicate = std::find_if(modules.begin(), modules.end(), [&](const ModuleRegistration& entry) {
+    const auto duplicate = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
         return entry.type == type &&
                entry.device == device &&
                entry.runtime == runtime &&
@@ -235,7 +190,7 @@ Result Registry::Impl::registerBlock(const std::string& type,
                                      const std::string& title,
                                      const std::string& summary,
                                      const std::string& description,
-                                     BlockFactory factory) {
+                                     Registry::BlockFactory factory) {
     JST_TRACE("[REGISTRY] Registering block [Type: {}, Domain: {}]", type, domain);
 
     if (type.empty()) {
@@ -247,9 +202,9 @@ Result Registry::Impl::registerBlock(const std::string& type,
         return Result::ERROR;
     }
 
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    auto duplicate = std::find_if(blocks.begin(), blocks.end(), [&](const BlockRegistration& entry) {
+    const auto duplicate = std::find_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
         return entry.type == type;
     });
 
@@ -258,12 +213,12 @@ Result Registry::Impl::registerBlock(const std::string& type,
         return Result::ERROR;
     }
 
-    blocks.push_back({type, domain, title, summary, description, factory});
+    blocks.push_back({type, domain, title, summary, description, std::move(factory)});
     return Result::SUCCESS;
 }
 
 Result Registry::Impl::registerFlowgraph(const std::string& key,
-                                         const FlowgraphRegistration& metadata) {
+                                         const Registry::FlowgraphRegistration& metadata) {
     JST_TRACE("[REGISTRY] Registering flowgraph [Key: {}]", key);
 
     if (key.empty()) {
@@ -271,9 +226,9 @@ Result Registry::Impl::registerFlowgraph(const std::string& key,
         return Result::ERROR;
     }
 
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    auto duplicate = std::find_if(flowgraphs.begin(), flowgraphs.end(), [&](const FlowgraphRegistration& entry) {
+    const auto duplicate = std::find_if(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
         return entry.key == key;
     });
 
@@ -286,14 +241,53 @@ Result Registry::Impl::registerFlowgraph(const std::string& key,
     return Result::SUCCESS;
 }
 
+Result Registry::Impl::unregisterModule(const std::string& type,
+                                        DeviceType device,
+                                        RuntimeType runtime,
+                                        const ProviderType& provider) {
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+    const auto size = modules.size();
+    modules.erase(
+        std::remove_if(modules.begin(), modules.end(), [&](const auto& entry) {
+            return entry.type == type &&
+                   entry.device == device &&
+                   entry.runtime == runtime &&
+                   entry.provider == provider;
+        }),
+        modules.end());
+    return modules.size() == size ? Result::ERROR : Result::SUCCESS;
+}
+
+Result Registry::Impl::unregisterBlock(const std::string& type) {
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+    const auto size = blocks.size();
+    blocks.erase(
+        std::remove_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
+            return entry.type == type;
+        }),
+        blocks.end());
+    return blocks.size() == size ? Result::ERROR : Result::SUCCESS;
+}
+
+Result Registry::Impl::unregisterFlowgraph(const std::string& key) {
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+    const auto size = flowgraphs.size();
+    flowgraphs.erase(
+        std::remove_if(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
+            return entry.key == key;
+        }),
+        flowgraphs.end());
+    return flowgraphs.size() == size ? Result::ERROR : Result::SUCCESS;
+}
+
 std::vector<Registry::ModuleRegistration> Registry::Impl::listModules(const std::string& type,
                                                                       std::optional<DeviceType> device,
                                                                       std::optional<RuntimeType> runtime,
                                                                       const ProviderType& provider) {
     JST_TRACE("[REGISTRY] Listing modules.");
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    std::vector<ModuleRegistration> filtered;
+    std::vector<Registry::ModuleRegistration> filtered;
     filtered.reserve(modules.size());
 
     for (const auto& module : modules) {
@@ -319,73 +313,11 @@ std::vector<Registry::ModuleRegistration> Registry::Impl::listModules(const std:
     return filtered;
 }
 
-Result Registry::Impl::loadDynamicLibrary(const std::string& path) {
-    if (path.empty()) {
-        JST_ERROR("[REGISTRY] Cannot load dynamic library because path is empty.");
-        return Result::ERROR;
-    }
-
-    {
-        std::lock_guard<std::mutex> guard(mutex);
-        const auto duplicate = std::find_if(dynamicLibraries.begin(), dynamicLibraries.end(), [&](const auto& entry) {
-            return entry.first == path;
-        });
-        if (duplicate != dynamicLibraries.end()) {
-            return Result::SUCCESS;
-        }
-    }
-
-    void* handle = nullptr;
-
-    try {
-#if defined(JST_OS_WINDOWS)
-        handle = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
-#elif defined(JST_OS_BROWSER)
-        JST_ERROR("[REGISTRY] Dynamic libraries are not supported in this platform.");
-        return Result::ERROR;
-#else
-        dlerror();
-        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
-#endif
-    } catch (const Result& status) {
-        JST_ERROR("[REGISTRY] Exception while loading dynamic library '{}': {}", path, status);
-        return Result::ERROR;
-    } catch (const std::exception& e) {
-        JST_ERROR("[REGISTRY] Exception while loading dynamic library '{}': {}", path, e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[REGISTRY] Unknown exception while loading dynamic library '{}'.", path);
-        return Result::ERROR;
-    }
-
-#if defined(JST_OS_WINDOWS)
-    if (handle == nullptr) {
-        JST_ERROR("[REGISTRY] Failed to load dynamic library '{}'.", path);
-        return Result::ERROR;
-    }
-#elif !defined(JST_OS_BROWSER)
-    if (handle == nullptr) {
-        const char* error = dlerror();
-        JST_ERROR("[REGISTRY] Failed to load dynamic library '{}': {}", path, error != nullptr ? error : "unknown error");
-        return Result::ERROR;
-    }
-#endif
-
-    if (ValidatePluginAbi(path, handle) != Result::SUCCESS) {
-        CloseDynamicLibrary(handle);
-        return Result::ERROR;
-    }
-
-    std::lock_guard<std::mutex> guard(mutex);
-    dynamicLibraries.push_back({path, handle});
-    return Result::SUCCESS;
-}
-
 std::vector<Registry::FlowgraphRegistration> Registry::Impl::listFlowgraphs(const std::string& key) {
     JST_TRACE("[REGISTRY] Listing flowgraphs.");
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    std::vector<FlowgraphRegistration> filtered;
+    std::vector<Registry::FlowgraphRegistration> filtered;
     filtered.reserve(flowgraphs.size());
 
     for (const auto& flowgraph : flowgraphs) {
@@ -401,9 +333,9 @@ std::vector<Registry::FlowgraphRegistration> Registry::Impl::listFlowgraphs(cons
 
 std::vector<Registry::BlockRegistration> Registry::Impl::listBlocks(const std::string& type) {
     JST_TRACE("[REGISTRY] Listing blocks.");
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    std::vector<BlockRegistration> filtered;
+    std::vector<Registry::BlockRegistration> filtered;
     filtered.reserve(blocks.size());
 
     for (const auto& block : blocks) {
@@ -437,9 +369,9 @@ Result Registry::Impl::buildModule(const std::string& type,
         return Result::ERROR;
     }
 
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    auto it = std::find_if(modules.begin(), modules.end(), [&](const ModuleRegistration& entry) {
+    const auto it = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
         return entry.type == type &&
                entry.device == device &&
                entry.runtime == runtime &&
@@ -457,9 +389,9 @@ Result Registry::Impl::buildModule(const std::string& type,
 
 Result Registry::Impl::buildBlock(const std::string& type, std::shared_ptr<Block>& block) {
     JST_TRACE("[REGISTRY] Creating block [Type: {}]", type);
-    std::lock_guard<std::mutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
 
-    auto it = std::find_if(blocks.begin(), blocks.end(), [&](const BlockRegistration& entry) {
+    const auto it = std::find_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
         return entry.type == type;
     });
 
@@ -472,12 +404,28 @@ Result Registry::Impl::buildBlock(const std::string& type, std::shared_ptr<Block
     return Result::ERROR;
 }
 
+Result Registry::QueueStaticRegistration(std::function<Result()> callback) {
+    JST_CHECK(registry().queueStaticRegistration(std::move(callback)));
+    return Result::SUCCESS;
+}
+
+Result Registry::DrainStaticRegistrations() {
+    JST_CHECK(registry().drainStaticRegistrations());
+    return Result::SUCCESS;
+}
+
+Result Registry::DiscardStaticRegistrations() {
+    JST_CHECK(registry().discardStaticRegistrations());
+    return Result::SUCCESS;
+}
+
 Result Registry::RegisterModule(const std::string& type,
                                 DeviceType device,
                                 RuntimeType runtime,
                                 const ProviderType& provider,
                                 ModuleFactory factory) {
-    return registry().registerModule(type, device, runtime, provider, std::move(factory));
+    JST_CHECK(registry().registerModule(type, device, runtime, provider, std::move(factory)));
+    return Result::SUCCESS;
 }
 
 Result Registry::RegisterBlock(const std::string& type,
@@ -486,31 +434,56 @@ Result Registry::RegisterBlock(const std::string& type,
                                const std::string& summary,
                                const std::string& description,
                                BlockFactory factory) {
-    return registry().registerBlock(type, domain, title, summary, description, std::move(factory));
+    JST_CHECK(registry().registerBlock(type, domain, title, summary, description, std::move(factory)));
+    return Result::SUCCESS;
 }
 
 Result Registry::RegisterFlowgraph(const std::string& key,
                                    const FlowgraphRegistration& metadata) {
-    return registry().registerFlowgraph(key, metadata);
+    JST_CHECK(registry().registerFlowgraph(key, metadata));
+    return Result::SUCCESS;
+}
+
+Result Registry::UnregisterModule(const std::string& type,
+                                  DeviceType device,
+                                  RuntimeType runtime,
+                                  const ProviderType& provider) {
+    JST_CHECK(registry().unregisterModule(type, device, runtime, provider));
+    return Result::SUCCESS;
+}
+
+Result Registry::UnregisterBlock(const std::string& type) {
+    JST_CHECK(registry().unregisterBlock(type));
+    return Result::SUCCESS;
+}
+
+Result Registry::UnregisterFlowgraph(const std::string& key) {
+    JST_CHECK(registry().unregisterFlowgraph(key));
+    return Result::SUCCESS;
 }
 
 std::vector<Registry::ModuleRegistration> Registry::ListAvailableModules(const std::string& type,
                                                                          std::optional<DeviceType> device,
                                                                          std::optional<RuntimeType> runtime,
                                                                          const ProviderType& provider) {
+    if (registry().drainStaticRegistrations() != Result::SUCCESS) {
+        std::abort();
+    }
     return registry().listModules(type, device, runtime, provider);
 }
 
 std::vector<Registry::BlockRegistration> Registry::ListAvailableBlocks(const std::string& type) {
+    if (registry().drainStaticRegistrations() != Result::SUCCESS) {
+        std::abort();
+    }
     return registry().listBlocks(type);
 }
 
 std::vector<Registry::FlowgraphRegistration> Registry::ListAvailableFlowgraphs(const std::string& key) {
+    if (registry().drainStaticRegistrations() != Result::SUCCESS) {
+        std::abort();
+    }
     return registry().listFlowgraphs(key);
-}
-
-Result Registry::LoadDynamicLibrary(const std::string& path) {
-    return registry().loadDynamicLibrary(path);
 }
 
 Result Registry::BuildModule(const std::string& type,
@@ -518,11 +491,15 @@ Result Registry::BuildModule(const std::string& type,
                              const RuntimeType& runtime,
                              const ProviderType& provider,
                              std::shared_ptr<Module>& module) {
-    return registry().buildModule(type, device, runtime, provider, module);
+    JST_CHECK(registry().drainStaticRegistrations());
+    JST_CHECK(registry().buildModule(type, device, runtime, provider, module));
+    return Result::SUCCESS;
 }
 
 Result Registry::BuildBlock(const std::string& type, std::shared_ptr<Block>& block) {
-    return registry().buildBlock(type, block);
+    JST_CHECK(registry().drainStaticRegistrations());
+    JST_CHECK(registry().buildBlock(type, block));
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

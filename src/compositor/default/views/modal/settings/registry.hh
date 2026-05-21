@@ -2,7 +2,6 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REGISTRY_HH
 
 #include "jetstream/render/sakura/sakura.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
 #include <string>
@@ -17,15 +16,16 @@ struct RegistrySettingsPanel : public Sakura::Component {
         std::vector<std::string> blocks;
     };
 
-    struct LibraryRow {
+    struct PluginRow {
         std::string path;
     };
 
     struct Config {
         std::vector<DomainRow> domains;
-        std::vector<LibraryRow> dynamicLibraries;
-        std::function<void()> onAddLibrary;
-        std::function<void(const std::string&)> onRemoveLibrary;
+        std::vector<PluginRow> plugins;
+        std::function<void()> onAddPlugin;
+        std::function<void(const std::string&)> onRemovePlugin;
+        std::function<void(const std::string&)> onReloadPlugin;
     };
 
     void update(Config config) {
@@ -62,62 +62,78 @@ struct RegistrySettingsPanel : public Sakura::Component {
             .wrapped = true,
         });
 
-        libraryTitle.update({
-            .id = "RegistryLibraryTitle",
-            .str = "Dynamic Libraries",
+        pluginTitle.update({
+            .id = "RegistryPluginTitle",
+            .str = "Plugins",
         });
 
-        libraryDescription.update({
-            .id = "RegistryLibraryDescription",
-            .str = "Load additional block domains from shared libraries at startup.",
+        pluginDescription.update({
+            .id = "RegistryPluginDescription",
+            .str = "Load additional block domains from plugins at startup.",
             .tone = Sakura::Text::Tone::Secondary,
             .wrapped = true,
         });
 
-        libraryButton.update({
-            .id = "RegistryLibraryButton",
-            .str = ICON_FA_FOLDER_OPEN " Add Library",
+        pluginButton.update({
+            .id = "RegistryPluginButton",
+            .str = "Add Plugin",
             .size = {-1.0f, 34.0f},
-            .onClick = this->config.onAddLibrary,
+            .onClick = this->config.onAddPlugin,
         });
 
-        libraryTable.update({
-            .id = "RegistryLibraryTable",
+        pluginTable.update({
+            .id = "RegistryPluginTable",
             .columns = {
                 "Path",
                 "Action",
             },
             .fixedColumnWidths = {
                 0.0f,
-                90.0f,
+                128.0f,
             },
             .wrapped = true,
         });
 
-        libraryPathTexts.resize(this->config.dynamicLibraries.size());
-        libraryDeleteButtons.resize(this->config.dynamicLibraries.size());
-        for (U64 i = 0; i < this->config.dynamicLibraries.size(); ++i) {
-            const auto& library = this->config.dynamicLibraries[i];
-            libraryPathTexts[i].update({
-                .id = "RegistryLibraryPathText" + std::to_string(i),
-                .str = library.path,
+        pluginPathTexts.resize(this->config.plugins.size());
+        pluginActionRows.resize(this->config.plugins.size());
+        pluginReloadButtons.resize(this->config.plugins.size());
+        pluginDeleteButtons.resize(this->config.plugins.size());
+        for (U64 i = 0; i < this->config.plugins.size(); ++i) {
+            const auto& plugin = this->config.plugins[i];
+            pluginPathTexts[i].update({
+                .id = "RegistryPluginPathText" + std::to_string(i),
+                .str = plugin.path,
                 .wrapped = true,
             });
-            libraryDeleteButtons[i].update({
-                .id = "RegistryLibraryDelete" + std::to_string(i),
+            pluginActionRows[i].update({
+                .id = "RegistryPluginActions" + std::to_string(i),
+                .spacing = 8.0f,
+            });
+            pluginReloadButtons[i].update({
+                .id = "RegistryPluginReload" + std::to_string(i),
+                .str = "Reload",
+                .variant = Sakura::Button::Variant::Text,
+                .onClick = [this, path = plugin.path]() {
+                    if (this->config.onReloadPlugin) {
+                        this->config.onReloadPlugin(path);
+                    }
+                },
+            });
+            pluginDeleteButtons[i].update({
+                .id = "RegistryPluginDelete" + std::to_string(i),
                 .str = "Delete",
                 .variant = Sakura::Button::Variant::Text,
-                .onClick = [this, path = library.path]() {
-                    if (this->config.onRemoveLibrary) {
-                        this->config.onRemoveLibrary(path);
+                .onClick = [this, path = plugin.path]() {
+                    if (this->config.onRemovePlugin) {
+                        this->config.onRemovePlugin(path);
                     }
                 },
             });
         }
 
-        emptyLibraryText.update({
-            .id = "RegistryLibraryEmptyText",
-            .str = "No dynamic libraries registered.",
+        emptyPluginText.update({
+            .id = "RegistryPluginEmptyText",
+            .str = "No plugins registered.",
             .tone = Sakura::Text::Tone::Disabled,
         });
 
@@ -140,10 +156,10 @@ struct RegistrySettingsPanel : public Sakura::Component {
         }
 
         divider.render(ctx);
-        libraryTitle.render(ctx);
-        renderLibraryTable(ctx);
-        libraryButton.render(ctx);
-        libraryDescription.render(ctx);
+        pluginTitle.render(ctx);
+        renderPluginTable(ctx);
+        pluginButton.render(ctx);
+        pluginDescription.render(ctx);
     }
 
  private:
@@ -170,31 +186,34 @@ struct RegistrySettingsPanel : public Sakura::Component {
         return rows;
     }
 
-    void renderLibraryTable(const Sakura::Context& ctx) const {
+    void renderPluginTable(const Sakura::Context& ctx) const {
         Sakura::Table::Rows rows;
 
-        if (config.dynamicLibraries.empty()) {
+        if (config.plugins.empty()) {
             Sakura::Table::Row row;
             row.push_back([this](const Sakura::Context& ctx) {
-                emptyLibraryText.render(ctx);
+                emptyPluginText.render(ctx);
             });
             rows.push_back(std::move(row));
-            libraryTable.render(ctx, std::move(rows));
+            pluginTable.render(ctx, std::move(rows));
             return;
         }
 
-        rows.reserve(config.dynamicLibraries.size());
-        for (U64 i = 0; i < config.dynamicLibraries.size(); ++i) {
+        rows.reserve(config.plugins.size());
+        for (U64 i = 0; i < config.plugins.size(); ++i) {
             Sakura::Table::Row row;
             row.push_back([this, i](const Sakura::Context& ctx) {
-                libraryPathTexts[i].render(ctx);
+                pluginPathTexts[i].render(ctx);
             });
             row.push_back([this, i](const Sakura::Context& ctx) {
-                libraryDeleteButtons[i].render(ctx);
+                pluginActionRows[i].render(ctx, {
+                    [this, i](const Sakura::Context& ctx) { pluginReloadButtons[i].render(ctx); },
+                    [this, i](const Sakura::Context& ctx) { pluginDeleteButtons[i].render(ctx); },
+                });
             });
             rows.push_back(std::move(row));
         }
-        libraryTable.render(ctx, std::move(rows));
+        pluginTable.render(ctx, std::move(rows));
     }
 
     Config config;
@@ -203,13 +222,15 @@ struct RegistrySettingsPanel : public Sakura::Component {
     Sakura::Divider divider;
     Sakura::Table table;
     Sakura::Text emptyText;
-    Sakura::Text libraryTitle;
-    Sakura::Text libraryDescription;
-    Sakura::Button libraryButton;
-    Sakura::Table libraryTable;
-    Sakura::Text emptyLibraryText;
-    std::vector<Sakura::Text> libraryPathTexts;
-    std::vector<Sakura::Button> libraryDeleteButtons;
+    Sakura::Text pluginTitle;
+    Sakura::Text pluginDescription;
+    Sakura::Button pluginButton;
+    Sakura::Table pluginTable;
+    Sakura::Text emptyPluginText;
+    std::vector<Sakura::Text> pluginPathTexts;
+    std::vector<Sakura::HStack> pluginActionRows;
+    std::vector<Sakura::Button> pluginReloadButtons;
+    std::vector<Sakura::Button> pluginDeleteButtons;
 };
 
 }  // namespace Jetstream

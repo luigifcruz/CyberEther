@@ -61,9 +61,9 @@ struct JETSTREAM_API Settings {
     };
 
     struct Registry {
-        std::vector<std::string> dynamicLibraries;
+        std::vector<std::string> plugins;
 
-        JST_SERDES(dynamicLibraries);
+        JST_SERDES(plugins);
     };
 
     Graphics graphics;

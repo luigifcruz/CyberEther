@@ -105,6 +105,9 @@ struct MenubarPresenter {
                     case MenubarView::Action::OpenExamples:
                         enqueue(MailOpenModal{.content = ModalContent::FlowgraphExamples});
                         break;
+                    case MenubarView::Action::ReloadPlugins:
+                        enqueue(MailReloadAllPlugins{});
+                        break;
                     case MenubarView::Action::ToggleInfoPanel:
                         enqueue(MailSetInfoPanelEnabled{.value = !infoPanelEnabled});
                         break;

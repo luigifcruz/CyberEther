@@ -8,7 +8,7 @@
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "settings/base.hh"
-#include "library.hh"
+#include "plugin.hh"
 #include "../../model/ui.hh"
 #include "remote.hh"
 
@@ -30,7 +30,7 @@ struct ModalView : public Sakura::Component {
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
         RemoteView::Config remoteStreaming;
-        LibraryView::Config library;
+        PluginView::Config plugin;
         std::function<void()> onClose;
     };
 
@@ -93,9 +93,9 @@ struct ModalView : public Sakura::Component {
                 remoteView.update(std::move(viewConfig));
                 break;
             }
-            case ModalContent::Library: {
-                auto viewConfig = this->config.library;
-                libraryView.update(std::move(viewConfig));
+            case ModalContent::Plugin: {
+                auto viewConfig = this->config.plugin;
+                pluginView.update(std::move(viewConfig));
                 break;
             }
         }
@@ -140,8 +140,8 @@ struct ModalView : public Sakura::Component {
                 case ModalContent::RemoteStreaming:
                     remoteView.render(ctx);
                     break;
-                case ModalContent::Library:
-                    libraryView.render(ctx);
+                case ModalContent::Plugin:
+                    pluginView.render(ctx);
                     break;
             }
         });
@@ -152,7 +152,7 @@ struct ModalView : public Sakura::Component {
         if (config.content == ModalContent::Settings) {
             return Extent2D<F32>{880.0f, 700.0f};
         }
-        if (config.content == ModalContent::Library) {
+        if (config.content == ModalContent::Plugin) {
             return Extent2D<F32>{620.0f, 0.0f};
         }
         return std::nullopt;
@@ -169,7 +169,7 @@ struct ModalView : public Sakura::Component {
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
     RemoteView remoteView;
-    LibraryView libraryView;
+    PluginView pluginView;
 };
 
 }  // namespace Jetstream

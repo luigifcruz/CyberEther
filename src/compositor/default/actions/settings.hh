@@ -6,7 +6,7 @@
 #include "../model/state.hh"
 
 #include "jetstream/logger.hh"
-#include "jetstream/registry.hh"
+#include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
 #include <algorithm>
@@ -28,8 +28,10 @@ struct SettingsActions {
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
                               MailDismissUpdate,
-                              MailAddRegistryLibraryPath,
-                              MailRemoveRegistryLibraryPath>;
+                              MailAddPluginPath,
+                              MailRemovePluginPath,
+                              MailReloadPlugin,
+                              MailReloadAllPlugins>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -145,62 +147,136 @@ struct SettingsActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailAddRegistryLibraryPath& msg) {
+    Result handle(const MailAddPluginPath& msg) {
         if (msg.path.empty()) {
-            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot add registry library because the path is empty.");
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot add plugin because the path is empty.");
             return Result::SUCCESS;
         }
 
         if (!std::filesystem::exists(msg.path)) {
-            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected registry library does not exist.");
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
         }
 
         Settings settings;
         JST_CHECK(Settings::Get(settings));
 
-        const auto duplicate = std::find_if(settings.registry.dynamicLibraries.begin(),
-                                            settings.registry.dynamicLibraries.end(),
+        const auto duplicate = std::find_if(settings.registry.plugins.begin(),
+                                            settings.registry.plugins.end(),
                                             [&](const auto& path) {
                                                 return path == msg.path;
                                             });
-        if (duplicate != settings.registry.dynamicLibraries.end()) {
-            callbacks.notify(Sakura::ToastType::Info, 3000, "Registry library is already registered.");
+        if (duplicate != settings.registry.plugins.end()) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin is already registered.");
             return Result::SUCCESS;
         }
 
-        if (Registry::LoadDynamicLibrary(msg.path) != Result::SUCCESS) {
-            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to load registry library.");
+        if (Plugin::Load(msg.path) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to load plugin.");
             return Result::SUCCESS;
         }
 
-        settings.registry.dynamicLibraries.push_back(msg.path);
+        settings.registry.plugins.push_back(msg.path);
         JST_CHECK(Settings::Set(settings));
 
         state.settings.section = SettingsSection::Registry;
         state.modal.content = ModalContent::Settings;
-        callbacks.notify(Sakura::ToastType::Success, 3000, "Registry library loaded.");
+        callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
         return Result::SUCCESS;
     }
 
-    Result handle(const MailRemoveRegistryLibraryPath& msg) {
+    Result handle(const MailRemovePluginPath& msg) {
         Settings settings;
         JST_CHECK(Settings::Get(settings));
 
-        const auto initialSize = settings.registry.dynamicLibraries.size();
-        settings.registry.dynamicLibraries.erase(
-            std::remove(settings.registry.dynamicLibraries.begin(),
-                        settings.registry.dynamicLibraries.end(),
+        const auto initialSize = settings.registry.plugins.size();
+        settings.registry.plugins.erase(
+            std::remove(settings.registry.plugins.begin(),
+                        settings.registry.plugins.end(),
                         msg.path),
-            settings.registry.dynamicLibraries.end());
+            settings.registry.plugins.end());
 
-        if (settings.registry.dynamicLibraries.size() == initialSize) {
-            callbacks.notify(Sakura::ToastType::Info, 3000, "Registry library was not registered.");
+        if (settings.registry.plugins.size() == initialSize) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "Plugin was not registered.");
             return Result::SUCCESS;
         }
 
         JST_CHECK(Settings::Set(settings));
-        callbacks.notify(Sakura::ToastType::Success, 5000, "Registry library removed. Restart CyberEther to unload registered blocks.");
+        callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload registered blocks.");
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailReloadPlugin& msg) {
+        if (msg.path.empty()) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Cannot reload plugin because the path is empty.");
+            return Result::SUCCESS;
+        }
+
+        if (!std::filesystem::exists(msg.path)) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
+            return Result::SUCCESS;
+        }
+
+        if (!state.flowgraph.items.empty()) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Close open flowgraphs before reloading plugins.");
+            return Result::SUCCESS;
+        }
+
+        if (Plugin::Reload(msg.path) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to reload plugin.");
+            return Result::SUCCESS;
+        }
+
+        callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin reloaded.");
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailReloadAllPlugins&) {
+        if (!state.flowgraph.items.empty()) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Close open flowgraphs before reloading plugins.");
+            return Result::SUCCESS;
+        }
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+
+        if (settings.registry.plugins.empty()) {
+            callbacks.notify(Sakura::ToastType::Info, 3000, "No plugins registered to reload.");
+            return Result::SUCCESS;
+        }
+
+        for (const auto& path : settings.registry.plugins) {
+            if (path.empty()) {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "Cannot reload plugin because a registered path is empty.");
+                return Result::SUCCESS;
+            }
+            if (!std::filesystem::exists(path)) {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "A registered plugin does not exist: " + path);
+                return Result::SUCCESS;
+            }
+        }
+
+        for (const auto& path : settings.registry.plugins) {
+            if (Plugin::Reload(path) != Result::SUCCESS) {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "Failed to reload plugin: " + path);
+                return Result::SUCCESS;
+            }
+        }
+
+        const auto count = settings.registry.plugins.size();
+        callbacks.notify(Sakura::ToastType::Success,
+                         3000,
+                         "Reloaded modules from " + std::to_string(count) + (count == 1 ? " plugin." : " plugins."));
         return Result::SUCCESS;
     }
 

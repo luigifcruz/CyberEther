@@ -1,10 +1,10 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_LIBRARY_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_LIBRARY_HH
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_PLUGIN_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_PLUGIN_HH
 
 #include "../context.hh"
 
 #include "../../model/messages.hh"
-#include "../../views/modal/library.hh"
+#include "../../views/modal/plugin.hh"
 
 #include <functional>
 #include <string>
@@ -12,14 +12,14 @@
 
 namespace Jetstream {
 
-struct LibraryPresenter {
+struct PluginPresenter {
     const PresenterContext& context;
 
-    explicit LibraryPresenter(const PresenterContext& context) : context(context) {}
+    explicit PluginPresenter(const PresenterContext& context) : context(context) {}
 
-    LibraryView::Config build() const {
+    PluginView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        return LibraryView::Config{
+        return PluginView::Config{
             .onBrowse = [enqueue](const std::string& currentPath, std::function<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
@@ -29,7 +29,7 @@ struct LibraryPresenter {
                 });
             },
             .onRegister = [enqueue](const std::string& path) {
-                enqueue(MailAddRegistryLibraryPath{.path = path});
+                enqueue(MailAddPluginPath{.path = path});
             },
             .onCancel = [enqueue]() {
                 enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Registry});
@@ -40,4 +40,4 @@ struct LibraryPresenter {
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_LIBRARY_HH
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_PLUGIN_HH

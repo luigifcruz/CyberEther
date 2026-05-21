@@ -1,9 +1,24 @@
-#ifndef JETSTREAM_PLUGIN_H
-#define JETSTREAM_PLUGIN_H
+#ifndef JETSTREAM_PLUGIN_HH
+#define JETSTREAM_PLUGIN_HH
 
 #include <stdint.h>
+#include <string>
 
-#include "jetstream/config.hh"
+#include "jetstream/types.hh"
+
+namespace Jetstream {
+
+class JETSTREAM_API Plugin {
+ public:
+    static Result Load(const std::string& path);
+    static Result Reload(const std::string& path);
+
+ private:
+    struct Impl;
+    static Impl& plugin();
+};
+
+}  // namespace Jetstream
 
 #define JETSTREAM_PLUGIN_ABI_SYMBOL "jetstream_plugin_abi"
 #define JETSTREAM_PLUGIN_ABI_MAGIC UINT32_C(0x4a535450)
@@ -58,4 +73,4 @@ typedef struct JetstreamPluginAbi {
         (uint64_t)(runtimes), \
     };
 
-#endif  // JETSTREAM_PLUGIN_H
+#endif  // JETSTREAM_PLUGIN_HH
