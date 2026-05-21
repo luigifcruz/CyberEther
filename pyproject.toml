@@ -34,4 +34,4 @@ classifiers = [
 ]
 
 [tool.meson-python.args]
-install = ["--skip-subprojects"]
+install = ["--skip-subprojects", "--tags=python"]

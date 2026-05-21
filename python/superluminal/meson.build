@@ -24,4 +24,5 @@ py.extension_module(
     link_with: libjetstream,
     install: true,
     install_dir: py_install_path,
+    install_tag: 'python',
 )
