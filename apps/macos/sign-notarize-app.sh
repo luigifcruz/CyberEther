@@ -68,6 +68,7 @@ APP_PATH="$(abs_path "${APP_PATH:-$OUTPUT_DIR/$APP_NAME.app}")"
 APP_ZIP_PATH="$(abs_path "${APP_ZIP_PATH:-$OUTPUT_DIR/$APP_NAME.app.zip}")"
 FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
 JETSTREAM_DYLIB_PATH="$FRAMEWORKS_DIR/libjetstream.dylib"
+ENTITLEMENTS_PATH="$SCRIPT_DIR/Entitlements.plist"
 validate_metadata
 assert_authorized_release_context
 
@@ -88,6 +89,7 @@ validate_inputs() {
     [[ -d "$APP_PATH" ]] || die "app bundle does not exist: $APP_PATH"
     [[ -f "$APP_PATH/Contents/MacOS/$EXECUTABLE_NAME" ]] || die "app executable does not exist: $APP_PATH/Contents/MacOS/$EXECUTABLE_NAME"
     [[ -f "$JETSTREAM_DYLIB_PATH" ]] || die "app dylib does not exist: $JETSTREAM_DYLIB_PATH"
+    [[ -f "$ENTITLEMENTS_PATH" ]] || die "entitlements plist does not exist: $ENTITLEMENTS_PATH"
 
     require_env APPLE_CERT_P12_BASE64
     require_env APPLE_CERT_PASSWORD
@@ -129,7 +131,7 @@ sign_frameworks() {
 sign_app() {
     require_tool codesign
 
-    codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$APP_PATH"
+    codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS_PATH" --sign "$APPLE_CODESIGN_IDENTITY" "$APP_PATH"
     codesign --verify --strict --verbose=2 "$APP_PATH"
 }
 
