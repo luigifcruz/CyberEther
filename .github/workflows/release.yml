@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags: ['v*']
 
@@ -74,6 +75,7 @@ jobs:
     uses: ./.github/workflows/container-build.yml
 
   github-release:
+    if: github.event_name == 'push'
     needs: [linux, wheel, windows, macos-build, macos-package, emscripten]
     runs-on: ubuntu-latest
     permissions:
@@ -113,6 +115,7 @@ jobs:
             .dist/artifacts/*.dmg
 
   publish-containers:
+    if: github.event_name == 'push'
     name: publish (${{ matrix.arch }})
     needs: containers
     runs-on: ${{ matrix.runner }}
