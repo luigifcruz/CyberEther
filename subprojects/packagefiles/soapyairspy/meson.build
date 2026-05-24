@@ -7,7 +7,13 @@ interface_cpp_args += []
 
 deps = [
   dependency('soapysdr', required: true),
-  dependency('libairspy', required: true),
+  subproject(
+    'libairspy',
+    required: true,
+    default_options: [
+      'default_library=static',
+    ],
+  ).get_variable('libairspy_dep'),
 ]
 
 soapyairspy_lib = library(

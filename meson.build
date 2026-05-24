@@ -141,7 +141,7 @@ else
         'jetstream',
         src_lst,
         include_directories: inc_lst,
-        dependencies: dep_lst,
+        dependencies: dep_lst + whole_dep_lst,
         install: true
     )
 
