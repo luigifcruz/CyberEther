@@ -1,5 +1,11 @@
 deps = [
-    dependency('zlib', required: false, fallback: ['zlib', 'zlib_dep']),
+    subproject(
+        'zlib',
+        required: true,
+        default_options: [
+            'default_library=static',
+        ]
+    ).get_variable('zlib_dep'),
 ]
 
 all_deps_found = true
