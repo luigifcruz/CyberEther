@@ -8,9 +8,8 @@ RUN apt-get update --fix-missing && \
       curl ca-certificates bison flex nasm \
       spirv-cross glslang-tools \
       libudev-dev \
-      libglfw3-dev zenity \
-      mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers \
-      libsoapysdr-dev soapysdr-module-rtlsdr && \
+      libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+      mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
