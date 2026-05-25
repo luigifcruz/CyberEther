@@ -9,8 +9,55 @@ permissions:
   contents: read
 
 jobs:
-  linux:
+  linux-build:
     uses: ./.github/workflows/linux-build.yml
+
+  linux-release:
+    needs: linux-build
+    name: linux-release (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    env:
+      ARCH: ${{ matrix.arch }}
+      CYBERETHER_BINARY: .dist/bin/cyberether
+      JETSTREAM_SO: .dist/bin/libjetstream.so
+      OUTPUT_DIR: .dist/linux
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cyberether-bin-manylinux-${{ matrix.arch }}
+          path: .dist/artifacts
+
+      - name: Extract Linux binary archive
+        run: |
+          set -euo pipefail
+          mkdir -p .dist/bin
+          tar -C .dist/bin -xzf .dist/artifacts/cyberether-manylinux-${ARCH}.tar.gz
+          test -f .dist/bin/cyberether
+          test -f .dist/bin/libjetstream.so
+
+      - name: Install packaging dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y binutils curl patchelf
+
+      - name: Package AppImage
+        run: apps/linux/create-appimage.sh
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cyberether-appimage-linux-${{ matrix.arch }}
+          path: .dist/linux/*.AppImage
 
   wheel:
     uses: ./.github/workflows/wheel-build.yml
@@ -40,7 +87,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: cyberether-macos-arm64
+          name: cyberether-bin-macos-arm64
           path: .dist/artifacts
 
       - name: Extract macOS binary archive
@@ -65,7 +112,7 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cyberether-macos-dmg
+          name: cyberether-dmg-macos-arm64
           path: .dist/macos/*.dmg
 
   emscripten:
@@ -76,7 +123,7 @@ jobs:
 
   github-release:
     if: github.event_name == 'push'
-    needs: [linux, wheel, windows, macos-build, macos-package, emscripten]
+    needs: [linux-build, linux-release, wheel, windows, macos-build, macos-package, emscripten]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,22 +136,28 @@ jobs:
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-windows-x86_64
+          pattern: 'cyberether-appimage-linux-*'
+          path: .dist/artifacts
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-bin-windows-x86_64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-macos-arm64
+          name: cyberether-bin-macos-arm64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-macos-dmg
+          name: cyberether-dmg-macos-arm64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-emscripten-wasm32
+          name: cyberether-bin-emscripten-wasm32
           path: .dist/artifacts
 
       - name: Release
@@ -113,6 +166,7 @@ jobs:
           files: |
             .dist/artifacts/*.tar.gz
             .dist/artifacts/*.dmg
+            .dist/artifacts/*.AppImage
 
   publish-containers:
     if: github.event_name == 'push'
@@ -133,7 +187,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-ubuntu24-${{ matrix.arch }}
+          name: cyberether-container-ubuntu24-${{ matrix.arch }}
           path: .dist/images
 
       - name: Load image

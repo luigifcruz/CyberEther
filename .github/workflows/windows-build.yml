@@ -133,5 +133,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4.6.2
         with:
-          name: cyberether-windows-x86_64
+          name: cyberether-bin-windows-x86_64
           path: .dist/artifacts/cyberether-windows-x86_64.tar.gz

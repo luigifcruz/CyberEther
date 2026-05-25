@@ -18,8 +18,6 @@ env:
     ld-linux-x86-64.so.2
     ld-linux-aarch64.so.1
     libvulkan.so.1
-    libz.so.1
-    libjetstream.so
     libX11.so.6
     libXrandr.so.2
     libXi.so.6
@@ -30,7 +28,10 @@ env:
     libwayland-cursor.so.0
     libwayland-egl.so.1
     libudev.so.1
+    libgudev-1.0.so.0
     libffi.so.8
+  BUNDLED_LINUX_LIBS: |
+    libjetstream.so
 
 jobs:
   bin:
@@ -61,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y \
-            git gcc-c++ glslang curl bison flex nasm \
+            git gcc-c++ glslang curl bison flex nasm patchelf \
             wayland-devel libxkbcommon-devel \
             libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel \
             vulkan-loader-devel systemd-devel pkgconf-pkg-config
@@ -77,18 +78,18 @@ jobs:
           set -euo pipefail
           rm -rf build
           meson setup build \
-            --default-library=static \
+            --default-library=shared \
             -Dprefix=/opt/cyberether \
             -Dbuildtype=release \
             -Dexamples=false \
             -Dremote=enabled
           meson compile -C build
-          meson install -C build
 
       - name: Validate binary
         run: |
           set -euo pipefail
-          test -f /opt/cyberether/bin/cyberether
+          test -f build/cyberether
+          test -f build/libjetstream.so
           meson test -C build --print-errorlogs
 
       - name: Upload Meson test logs
@@ -101,20 +102,35 @@ jobs:
             build/meson-logs/testlog.json
           if-no-files-found: ignore
 
+      - name: Package binary
+        run: |
+          set -euo pipefail
+          mkdir -p .dist/artifacts .dist/bin
+          cp build/cyberether .dist/bin/cyberether
+          cp build/libjetstream.so .dist/bin/libjetstream.so
+          chmod 755 .dist/bin/cyberether .dist/bin/libjetstream.so
+
+          patchelf --set-soname libjetstream.so .dist/bin/libjetstream.so
+
+          load_path="$(readelf -d .dist/bin/cyberether | awk -F'[][]' '/NEEDED/ && $2 ~ /libjetstream\.so/ { print $2; exit }')"
+          test -n "$load_path"
+          if [ "$load_path" != "libjetstream.so" ]; then
+            patchelf --replace-needed "$load_path" libjetstream.so .dist/bin/cyberether
+          fi
+
+          patchelf --set-rpath '$ORIGIN' .dist/bin/cyberether
+          tar -C .dist/bin -czf .dist/artifacts/cyberether-manylinux-${ARCH}.tar.gz cyberether libjetstream.so
+
       - name: Check binary dynamic dependencies
         uses: ./.github/actions/check-dynamic-deps
         with:
           format: elf
           targets: |
-            /opt/cyberether/bin/cyberether
-          allowlist: ${{ env.SYSTEM_SHARED_LIBS }}
-
-      - name: Package binary
-        run: |
-          set -euo pipefail
-          mkdir -p .dist/artifacts .dist/bin
-          cp /opt/cyberether/bin/cyberether .dist/bin/cyberether
-          tar -C .dist/bin -czf .dist/artifacts/cyberether-manylinux-${ARCH}.tar.gz cyberether
+            .dist/bin/cyberether
+            .dist/bin/libjetstream.so
+          allowlist: |
+            ${{ env.SYSTEM_SHARED_LIBS }}
+            ${{ env.BUNDLED_LINUX_LIBS }}
 
       - uses: actions/upload-artifact@v4.6.2
         with:
