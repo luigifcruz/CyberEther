@@ -1,4 +1,14 @@
-if cfg_lst.get('JETSTREAM_LOADER_LIBMODES_AVAILABLE', false)
+deps = [
+    'JETSTREAM_LOADER_LIBMODES_AVAILABLE',
+    'JETSTREAM_LOADER_ZLIB_AVAILABLE',
+]
+
+all_deps_found = true
+foreach x_dep : deps
+    all_deps_found = all_deps_found and cfg_lst.get(x_dep, false)
+endforeach
+
+if all_deps_found
     src_lst += files([
         'block_impl.cc',
         'module_impl.cc',

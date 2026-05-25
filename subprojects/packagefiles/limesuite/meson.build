@@ -23,9 +23,23 @@ thread_dep = dependency('threads')
 soapysdr_dep = dependency('soapysdr', required: true)
 
 if target_machine.system() == 'emscripten'
-  usb_dep = dependency('libusb-browser', required: true)
+  usb_dep = subproject(
+    'libusb-browser',
+    required: true,
+    default_options: [
+      'default_library=static',
+    ],
+  ).get_variable('libusb_dep')
 else
-  usb_dep = dependency('libusb-1.0', required: true)
+  usb_dep = subproject(
+    'libusb',
+    required: true,
+    default_options: [
+      'default_library=static',
+      'examples=false',
+      'tests=false',
+    ],
+  ).get_variable('libusb_dep')
 endif
 
 atomic_dep = cpp.find_library('atomic', required: false)
