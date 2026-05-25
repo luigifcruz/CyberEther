@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cyberether-linux-appimage-${{ matrix.arch }}
+          name: cyberether-appimage-linux-${{ matrix.arch }}
           path: .dist/linux/*.AppImage
 
   wheel:
@@ -87,7 +87,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: cyberether-macos-arm64
+          name: cyberether-bin-macos-arm64
           path: .dist/artifacts
 
       - name: Extract macOS binary archive
@@ -112,7 +112,7 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cyberether-macos-dmg
+          name: cyberether-dmg-macos-arm64
           path: .dist/macos/*.dmg
 
   emscripten:
@@ -136,28 +136,28 @@ jobs:
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          pattern: 'cyberether-linux-appimage-*'
+          pattern: 'cyberether-appimage-linux-*'
           path: .dist/artifacts
           merge-multiple: true
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-windows-x86_64
+          name: cyberether-bin-windows-x86_64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-macos-arm64
+          name: cyberether-bin-macos-arm64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-macos-dmg
+          name: cyberether-dmg-macos-arm64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-emscripten-wasm32
+          name: cyberether-bin-emscripten-wasm32
           path: .dist/artifacts
 
       - name: Release
@@ -187,7 +187,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-ubuntu24-${{ matrix.arch }}
+          name: cyberether-container-ubuntu24-${{ matrix.arch }}
           path: .dist/images
 
       - name: Load image

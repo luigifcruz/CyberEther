@@ -55,5 +55,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4.6.2
         with:
-          name: cyberether-ubuntu24-${{ matrix.arch }}
+          name: cyberether-container-ubuntu24-${{ matrix.arch }}
           path: .dist/images/cyberether-ubuntu24-${{ matrix.arch }}.tar.gz
