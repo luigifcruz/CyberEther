@@ -254,6 +254,11 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'test=false',
     ])
 
+    subproject('libffi', required: true, default_options: [
+        'default_library=static',
+        'tests=false',
+    ])
+
     subproject('glib', required: true, default_options: [
         'default_library=static',
         'introspection=disabled',
