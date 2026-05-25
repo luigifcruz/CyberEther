@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class BufferImp<DeviceType::WebGPU> : public Buffer {
+class JETSTREAM_API BufferImp<DeviceType::WebGPU> : public Buffer {
  public:
     explicit BufferImp(const Config& config);
 

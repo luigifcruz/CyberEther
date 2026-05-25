@@ -12,7 +12,7 @@
 
 namespace Jetstream::Platform {
 
-class FileLock {
+class JETSTREAM_API FileLock {
  public:
     FileLock();
     ~FileLock();
@@ -32,18 +32,18 @@ class FileLock {
     std::unique_ptr<Impl> impl;
 };
 
-Result OpenUrl(const std::string& url);
-Result ConfigPath(std::string& path);
-Result CachePath(std::string& path);
-Result PickFile(std::string& path,
-                const std::vector<std::string>& extensions = {},
-                std::function<void(std::string)> callback = nullptr);
-Result PickFolder(std::string& path,
-                  std::function<void(std::string)> callback = nullptr);
-Result SaveFile(std::string& path,
-                std::function<void(std::string)> callback = nullptr);
+JETSTREAM_API Result OpenUrl(const std::string& url);
+JETSTREAM_API Result ConfigPath(std::string& path);
+JETSTREAM_API Result CachePath(std::string& path);
+JETSTREAM_API Result PickFile(std::string& path,
+                              const std::vector<std::string>& extensions = {},
+                              std::function<void(std::string)> callback = nullptr);
+JETSTREAM_API Result PickFolder(std::string& path,
+                                std::function<void(std::string)> callback = nullptr);
+JETSTREAM_API Result SaveFile(std::string& path,
+                              std::function<void(std::string)> callback = nullptr);
 
-bool IsFilePending();
+JETSTREAM_API bool IsFilePending();
 
 }  // namespace Jetstream::Platform
 

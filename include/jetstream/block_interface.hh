@@ -12,7 +12,7 @@
 
 namespace Jetstream {
 
-struct Block::Interface {
+struct JETSTREAM_API Block::Interface {
  public:
     struct Entry {
         std::string label;

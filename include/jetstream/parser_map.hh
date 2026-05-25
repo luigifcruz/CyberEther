@@ -6,9 +6,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "jetstream/macros.hh"
+
 namespace Jetstream {
 
-class ParserMap {
+class JETSTREAM_API ParserMap {
  public:
     struct Entry {
         std::string key;

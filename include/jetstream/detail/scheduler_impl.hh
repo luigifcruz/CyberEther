@@ -7,7 +7,7 @@
 
 namespace Jetstream {
 
-struct Scheduler::Impl {
+struct JETSTREAM_API Scheduler::Impl {
  public:
     virtual ~Impl() = default;
 

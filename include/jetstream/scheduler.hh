@@ -44,9 +44,9 @@ class JETSTREAM_API Scheduler {
     std::shared_ptr<Impl> impl;
 };
 
-const char* GetSchedulerName(const SchedulerType& scheduler);
-const char* GetSchedulerPrettyName(const SchedulerType& scheduler);
-SchedulerType StringToScheduler(const std::string& scheduler);
+JETSTREAM_API const char* GetSchedulerName(const SchedulerType& scheduler);
+JETSTREAM_API const char* GetSchedulerPrettyName(const SchedulerType& scheduler);
+JETSTREAM_API SchedulerType StringToScheduler(const std::string& scheduler);
 
 inline std::ostream& operator<<(std::ostream& os, const SchedulerType& scheduler) {
     return os << GetSchedulerPrettyName(scheduler);

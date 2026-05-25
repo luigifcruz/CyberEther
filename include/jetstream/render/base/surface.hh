@@ -15,7 +15,7 @@
 
 namespace Jetstream::Render {
 
-class Surface : public WindowAttachment {
+class JETSTREAM_API Surface : public WindowAttachment {
  public:
     struct Config {
         std::shared_ptr<Texture> framebuffer;

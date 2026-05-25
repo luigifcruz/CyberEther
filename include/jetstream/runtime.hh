@@ -45,9 +45,9 @@ class JETSTREAM_API Runtime {
     std::shared_ptr<Impl> impl;
 };
 
-const char* GetRuntimeName(const RuntimeType& runtime);
-const char* GetRuntimePrettyName(const RuntimeType& runtime);
-RuntimeType StringToRuntime(const std::string& runtime);
+JETSTREAM_API const char* GetRuntimeName(const RuntimeType& runtime);
+JETSTREAM_API const char* GetRuntimePrettyName(const RuntimeType& runtime);
+JETSTREAM_API RuntimeType StringToRuntime(const std::string& runtime);
 
 inline constexpr RuntimeType operator|(RuntimeType lhs, RuntimeType rhs) {
     return static_cast<RuntimeType>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs));

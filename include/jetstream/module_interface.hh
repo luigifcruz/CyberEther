@@ -8,7 +8,7 @@
 
 namespace Jetstream {
 
-struct Module::Interface {
+struct JETSTREAM_API Module::Interface {
  public:
     typedef std::vector<std::string> EntryList;
 

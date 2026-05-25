@@ -5,7 +5,7 @@
 
 namespace Jetstream {
 
-struct Scheduler::Context {
+struct JETSTREAM_API Scheduler::Context {
  public:
     virtual Result presentInitialize();
     virtual Result presentSubmit();

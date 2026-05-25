@@ -11,7 +11,7 @@
 
 namespace Jetstream::Render {
 
-class Buffer : public WindowAttachment {
+class JETSTREAM_API Buffer : public WindowAttachment {
  public:
     enum class Target : U16 {
         VERTEX          = 1 << 0,

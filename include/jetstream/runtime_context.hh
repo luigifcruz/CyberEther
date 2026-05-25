@@ -5,7 +5,7 @@
 
 namespace Jetstream {
 
-struct Runtime::Context {
+struct JETSTREAM_API Runtime::Context {
  public:
     virtual ~Context() = default;
 };

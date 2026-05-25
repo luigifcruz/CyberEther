@@ -9,7 +9,7 @@
 namespace Jetstream::Render {
 
 template<>
-class WindowImp<DeviceType::Metal> : public Window {
+class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
  public:
     explicit WindowImp(const Config& config,
                        const std::shared_ptr<Viewport::Adapter<DeviceType::Metal>>& viewport);
