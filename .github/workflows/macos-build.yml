@@ -32,7 +32,6 @@ env:
     UniformTypeIdentifiers.framework/UniformTypeIdentifiers
     libc++.1.dylib
     libSystem.B.dylib
-    libffi.dylib
     libiconv.2.dylib
     libobjc.A.dylib
     libresolv.9.dylib

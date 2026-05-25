@@ -89,6 +89,9 @@ jobs:
 
       - name: Build Windows binary
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+
           if (Test-Path build) {
             Remove-Item -Recurse -Force build
           }
