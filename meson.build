@@ -140,6 +140,7 @@ else
     libjetstream = library(
         'jetstream',
         src_lst,
+        cpp_args: ['-DJST_IS_LIBRARY'],
         include_directories: inc_lst,
         dependencies: dep_lst + whole_dep_lst,
         install: true
