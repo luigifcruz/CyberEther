@@ -17,7 +17,7 @@
 
 namespace Jetstream::Render {
 
-class Program {
+class JETSTREAM_API Program {
  public:
     enum class Target : U8 {
         VERTEX   = 1 << 0,

@@ -30,7 +30,7 @@ class DynamicConfig : public ConfigType {
 };
 #endif  // JETSTREAM_DYNAMIC_CONFIG_DEFINED
 
-struct Block::Impl {
+struct JETSTREAM_API Block::Impl {
  public:
     virtual ~Impl() = default;
 

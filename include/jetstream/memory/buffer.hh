@@ -8,7 +8,7 @@
 
 namespace Jetstream {
 
-class Buffer {
+class JETSTREAM_API Buffer {
  public:
     struct Config {
         bool hostAccessible;

@@ -12,7 +12,7 @@
 
 namespace Jetstream::Render::Components {
 
-class Text : public Generic {
+class JETSTREAM_API Text : public Generic {
  public:
     struct ElementConfig {
         F32 scale = 1.0f;

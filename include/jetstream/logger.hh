@@ -19,12 +19,13 @@
 #endif  // JST_FMT_INCLUDED
 
 #include "jetstream/config.hh"
+#include "jetstream/macros.hh"
 
-std::string& JST_LOG_LAST_WARNING();
-std::string& JST_LOG_LAST_ERROR();
-std::string& JST_LOG_LAST_FATAL();
+JETSTREAM_API std::string& JST_LOG_LAST_WARNING();
+JETSTREAM_API std::string& JST_LOG_LAST_ERROR();
+JETSTREAM_API std::string& JST_LOG_LAST_FATAL();
 
-void JST_LOG_SET_DEBUG_LEVEL(int level);
+JETSTREAM_API void JST_LOG_SET_DEBUG_LEVEL(int level);
 
 #ifdef JST_DEBUG_MODE
 #define JST_LOG_DEBUG_DEFAULT_LEVEL 3
@@ -32,13 +33,13 @@ void JST_LOG_SET_DEBUG_LEVEL(int level);
 #define JST_LOG_DEBUG_DEFAULT_LEVEL 2
 #endif
 
-std::mutex& _JST_LOG_MUTEX();
-int& _JST_LOG_DEBUG_LEVEL();
-std::ostream& JST_LOG_SINK();
-void JST_LOG_SET_SINK(std::ostream*);
-void JST_LOG_RESTORE_STDOUT();
-void JST_LOG_COLOR(bool);
-jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
+JETSTREAM_API std::mutex& _JST_LOG_MUTEX();
+JETSTREAM_API int& _JST_LOG_DEBUG_LEVEL();
+JETSTREAM_API std::ostream& JST_LOG_SINK();
+JETSTREAM_API void JST_LOG_SET_SINK(std::ostream*);
+JETSTREAM_API void JST_LOG_RESTORE_STDOUT();
+JETSTREAM_API void JST_LOG_COLOR(bool);
+JETSTREAM_API jst::fmt::text_style JST_LOG_STYLE(const jst::fmt::text_style&);
 
 #define _JST_LOG_SINK          (JST_LOG_SINK())
 #define _JST_LOG_ENDL          std::endl

@@ -59,11 +59,10 @@ std::vector<std::string> Parser::SplitString(const std::string& str, const std::
 }
 
 //
-// StringToTyped Specializations
+// StringToTyped overloads
 //
 
-template<>
-Result Parser::StringToTyped<Tensor>(const std::string& encoded, Tensor& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, Tensor& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Tensor'.");
     (void)encoded;
     (void)variable;
@@ -72,50 +71,43 @@ Result Parser::StringToTyped<Tensor>(const std::string& encoded, Tensor& variabl
     return Result::ERROR;
 }
 
-template<>
-Result Parser::StringToTyped<std::string>(const std::string& encoded, std::string& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, std::string& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::string'.");
     variable = encoded;
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<I32>(const std::string& encoded, I32& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, I32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I32'.");
     variable = std::stoi(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<U64>(const std::string& encoded, U64& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, U64& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U64'.");
     variable = std::stoull(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<F32>(const std::string& encoded, F32& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, F32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'F32'.");
     variable = std::stof(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<F64>(const std::string& encoded, F64& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, F64& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'F64'.");
     variable = std::stod(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<CF32>(const std::string& encoded, CF32& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, CF32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'CF32'.");
     variable = StringToComplex<CF32>(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<bool>(const std::string& encoded, bool& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, bool& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'bool'.");
     std::string lower_s = encoded;
     std::transform(lower_s.begin(), lower_s.end(), lower_s.begin(), ::tolower);
@@ -123,29 +115,25 @@ Result Parser::StringToTyped<bool>(const std::string& encoded, bool& variable) {
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<DeviceType>(const std::string& encoded, DeviceType& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, DeviceType& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'DeviceType'.");
     variable = StringToDevice(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<RuntimeType>(const std::string& encoded, RuntimeType& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, RuntimeType& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'RuntimeType'.");
     variable = StringToRuntime(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<SchedulerType>(const std::string& encoded, SchedulerType& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, SchedulerType& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'SchedulerType'.");
     variable = StringToScheduler(encoded);
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<std::vector<U64>>(const std::string& encoded, std::vector<U64>& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, std::vector<U64>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<U64>'.");
     const auto values = ParseListValues(encoded);
     variable = std::vector<U64>(values.size());
@@ -153,8 +141,7 @@ Result Parser::StringToTyped<std::vector<U64>>(const std::string& encoded, std::
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<std::vector<F64>>(const std::string& encoded, std::vector<F64>& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, std::vector<F64>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<F64>'.");
     const auto values = ParseListValues(encoded);
     variable = std::vector<F64>(values.size());
@@ -162,8 +149,7 @@ Result Parser::StringToTyped<std::vector<F64>>(const std::string& encoded, std::
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<std::vector<F32>>(const std::string& encoded, std::vector<F32>& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, std::vector<F32>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<F32>'.");
     const auto values = ParseListValues(encoded);
     variable = std::vector<F32>(values.size());
@@ -171,8 +157,7 @@ Result Parser::StringToTyped<std::vector<F32>>(const std::string& encoded, std::
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<Range<F32>>(const std::string& encoded, Range<F32>& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, Range<F32>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Range<F32>'.");
     const auto values = ParseListValues(encoded);
     JST_ASSERT(values.size() == 2, "Unexpected number of values.");
@@ -180,8 +165,7 @@ Result Parser::StringToTyped<Range<F32>>(const std::string& encoded, Range<F32>&
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<Extent2D<U64>>(const std::string& encoded, Extent2D<U64>& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, Extent2D<U64>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Extent2D<U64>'.");
     const auto values = ParseListValues(encoded);
     JST_ASSERT(values.size() == 2, "Unexpected number of values.");
@@ -189,8 +173,7 @@ Result Parser::StringToTyped<Extent2D<U64>>(const std::string& encoded, Extent2D
     return Result::SUCCESS;
 }
 
-template<>
-Result Parser::StringToTyped<Extent2D<F32>>(const std::string& encoded, Extent2D<F32>& variable) {
+Result Parser::StringToTypedValue(const std::string& encoded, Extent2D<F32>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Extent2D<F32>'.");
     const auto values = ParseListValues(encoded);
     JST_ASSERT(values.size() == 2, "Unexpected number of values.");

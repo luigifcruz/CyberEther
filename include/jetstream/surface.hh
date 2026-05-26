@@ -115,10 +115,10 @@ struct JETSTREAM_API SurfaceInteractionConfig {
     bool enableCursor = true;
 };
 
-SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
-                                                  std::vector<SurfaceEvent>&& surfaceEvents,
-                                                  std::vector<MouseEvent>&& mouseEvents,
-                                                  const SurfaceInteractionConfig& config = {});
+JETSTREAM_API SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
+                                                                std::vector<SurfaceEvent>&& surfaceEvents,
+                                                                std::vector<MouseEvent>&& mouseEvents,
+                                                                const SurfaceInteractionConfig& config = {});
 
 }  // namespace Jetstream
 

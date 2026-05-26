@@ -19,7 +19,7 @@ struct ModuleEndpoint {
     std::string port;
 };
 
-struct TensorLink {
+struct JETSTREAM_API TensorLink {
     std::optional<ModuleEndpoint> producer;
     std::optional<BlockEndpoint> external;
     Tensor tensor;

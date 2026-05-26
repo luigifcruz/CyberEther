@@ -14,7 +14,7 @@
 
 namespace Jetstream::Render::Components {
 
-class Axis : public Generic {
+class JETSTREAM_API Axis : public Generic {
  public:
     struct Config {
         U64 numberOfVerticalLines = 11;

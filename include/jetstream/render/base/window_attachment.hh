@@ -5,7 +5,7 @@
 
 namespace Jetstream::Render {
 
-class WindowAttachment {
+class JETSTREAM_API WindowAttachment {
  public:
     WindowAttachment() = default;
     virtual ~WindowAttachment() = default;

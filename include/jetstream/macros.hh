@@ -12,9 +12,14 @@
 //
 
 #ifndef JETSTREAM_API
-// TODO: Add support for DLL export if needed.
-#if defined(JST_IS_STATIC) || defined(JST_OS_WINDOWS)
+#if defined(JST_IS_STATIC)
 #define JETSTREAM_API
+#elif defined(JST_OS_WINDOWS)
+#if defined(JST_IS_LIBRARY)
+#define JETSTREAM_API __declspec(dllexport)
+#else
+#define JETSTREAM_API __declspec(dllimport)
+#endif
 #elif defined(__GNUC__) || defined(__clang__)
 #define JETSTREAM_API __attribute__((visibility("default")))
 #else

@@ -12,7 +12,7 @@
 
 namespace Jetstream::Render {
 
-class Texture : public WindowAttachment {
+class JETSTREAM_API Texture : public WindowAttachment {
  public:
     enum class PixelFormat : U64 {
         RGBA,

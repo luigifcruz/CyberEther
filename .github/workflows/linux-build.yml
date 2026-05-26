@@ -29,7 +29,6 @@ env:
     libwayland-egl.so.1
     libudev.so.1
     libgudev-1.0.so.0
-    libffi.so.8
   BUNDLED_LINUX_LIBS: |
     libjetstream.so
 

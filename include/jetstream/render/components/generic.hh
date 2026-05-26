@@ -8,7 +8,7 @@ namespace Jetstream::Render { class Window; }
 
 namespace Jetstream::Render::Components {
 
-class Generic {
+class JETSTREAM_API Generic {
  public:
     virtual ~Generic() = default;
 

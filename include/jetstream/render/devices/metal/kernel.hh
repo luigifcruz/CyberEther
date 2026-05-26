@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class KernelImp<DeviceType::Metal> : public Kernel {
+class JETSTREAM_API KernelImp<DeviceType::Metal> : public Kernel {
  public:
     explicit KernelImp(const Config& config);
 

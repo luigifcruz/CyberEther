@@ -12,7 +12,7 @@
 
 namespace Jetstream::Render::Components {
 
-class GeoMap : public Generic {
+class JETSTREAM_API GeoMap : public Generic {
  public:
     struct Config {
     };

@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class SurfaceImp<DeviceType::Metal> : public Surface {
+class JETSTREAM_API SurfaceImp<DeviceType::Metal> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 

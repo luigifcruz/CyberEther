@@ -15,7 +15,7 @@
 
 namespace Jetstream::Render {
 
-class Kernel {
+class JETSTREAM_API Kernel {
  public:
     enum class AccessMode : U8 {
         WRITE = 1 << 0,

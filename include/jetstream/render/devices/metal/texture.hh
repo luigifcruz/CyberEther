@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class TextureImp<DeviceType::Metal> : public Texture {
+class JETSTREAM_API TextureImp<DeviceType::Metal> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 

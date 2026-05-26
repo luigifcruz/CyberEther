@@ -29,7 +29,7 @@ namespace Jetstream::Render::Components { class Font; }
 
 namespace Jetstream::Render {
 
-class Window {
+class JETSTREAM_API Window {
  public:
     struct Config {
         F32 scale = 1.0f;

@@ -40,9 +40,9 @@ inline constexpr bool operator==(DeviceType lhs, DeviceType rhs) {
     return (static_cast<uint8_t>(lhs) == static_cast<uint8_t>(rhs));
 }
 
-const char* GetDeviceName(const DeviceType& device);
-const char* GetDevicePrettyName(const DeviceType& device);
-DeviceType StringToDevice(const std::string& device);
+JETSTREAM_API const char* GetDeviceName(const DeviceType& device);
+JETSTREAM_API const char* GetDevicePrettyName(const DeviceType& device);
+JETSTREAM_API DeviceType StringToDevice(const std::string& device);
 
 inline std::ostream& operator<<(std::ostream& os, const DeviceType& device) {
     return os << GetDevicePrettyName(device);
@@ -264,7 +264,7 @@ inline constexpr Location operator&(Location lhs, Location rhs) {
     return static_cast<Location>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs));
 }
 
-std::string_view LocationName(const Location& loc);
+JETSTREAM_API std::string_view LocationName(const Location& loc);
 
 inline std::ostream& operator<<(std::ostream& os, const Location& location) {
     return os << LocationName(location);
@@ -305,10 +305,10 @@ enum class DataType : uint8_t {
     CU64,
 };
 
-std::size_t DataTypeSize(const DataType& type);
-bool IsDataTypeComplex(const DataType& type);
-std::string_view DataTypeToName(const DataType& type);
-DataType NameToDataType(const std::string_view& name);
+JETSTREAM_API std::size_t DataTypeSize(const DataType& type);
+JETSTREAM_API bool IsDataTypeComplex(const DataType& type);
+JETSTREAM_API std::string_view DataTypeToName(const DataType& type);
+JETSTREAM_API DataType NameToDataType(const std::string_view& name);
 
 inline std::ostream& operator<<(std::ostream& os, const DataType& type) {
     return os << DataTypeToName(type);

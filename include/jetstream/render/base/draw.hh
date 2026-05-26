@@ -11,7 +11,7 @@
 
 namespace Jetstream::Render {
 
-class Draw {
+class JETSTREAM_API Draw {
  public:
     enum class Mode : U64 {
         TRIANGLE_STRIP,

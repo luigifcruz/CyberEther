@@ -38,6 +38,8 @@ env:
     api-ms-win-core-synch-l1-2-0.dll
     api-ms-win-core-winrt-l1-1-0.dll
     api-ms-win-core-winrt-string-l1-1-0.dll
+  BUNDLED_WINDOWS_DLLS: |
+    jetstream.dll
   VULKAN_VERSION: 1.4.309.0
   VULKAN_SDK_SHA256: 48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297
 
@@ -87,13 +89,16 @@ jobs:
 
       - name: Build Windows binary
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+
           if (Test-Path build) {
             Remove-Item -Recurse -Force build
           }
 
           meson setup --vsenv `
             -Dbuildtype=release `
-            -Ddefault_library=static `
+            -Ddefault_library=shared `
             -Db_vscrt=static_from_buildtype `
             -Dtests=true `
             -Dexamples=false `
@@ -102,12 +107,15 @@ jobs:
           meson compile -C build
 
           New-Item -ItemType Directory -Force -Path .dist/artifacts | Out-Null
-          tar -C build -czf .dist/artifacts/cyberether-windows-x86_64.tar.gz cyberether.exe
+          tar -C build -czf .dist/artifacts/cyberether-windows-x86_64.tar.gz cyberether.exe jetstream.dll
 
       - name: Validate Windows binary
         run: |
           if (!(Test-Path build/cyberether.exe)) {
             throw 'cyberether.exe was not produced.'
+          }
+          if (!(Test-Path build/jetstream.dll)) {
+            throw 'jetstream.dll was not produced.'
           }
 
           meson test -C build --print-errorlogs
@@ -128,7 +136,10 @@ jobs:
           format: pe
           targets: |
             build/cyberether.exe
-          allowlist: ${{ env.SYSTEM_WINDOWS_DLLS }}
+            build/jetstream.dll
+          allowlist: |
+            ${{ env.SYSTEM_WINDOWS_DLLS }}
+            ${{ env.BUNDLED_WINDOWS_DLLS }}
           tool-path: dumpbin
 
       - uses: actions/upload-artifact@v4.6.2

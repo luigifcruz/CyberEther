@@ -12,7 +12,7 @@
 namespace Jetstream::Render {
 
 template<>
-class WindowImp<DeviceType::WebGPU> : public Window {
+class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
  public:
     explicit WindowImp(const Config& config,
                        const std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>>& viewport);

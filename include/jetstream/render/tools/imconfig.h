@@ -14,7 +14,15 @@
 
 #pragma once
 
-#include "jetstream/config.hh"
+#include "jetstream/macros.hh"
+
+#ifndef IMGUI_API
+#define IMGUI_API JETSTREAM_API
+#endif
+
+#ifndef IMGUI_IMPL_API
+#define IMGUI_IMPL_API IMGUI_API
+#endif
 
 #define IMGUI_STB_NAMESPACE ImStb
 #define IMGUI_IMPL_WEBGPU_BACKEND_DAWN

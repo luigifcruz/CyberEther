@@ -8,7 +8,7 @@
 
 namespace Jetstream {
 
-struct Module::Context {
+struct JETSTREAM_API Module::Context {
  public:
     Context(const std::shared_ptr<Runtime::Context>& runtime,
             const std::shared_ptr<Scheduler::Context>& scheduler);

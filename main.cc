@@ -1,5 +1,11 @@
 #include "jetstream/run.hh"
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <cstdlib>
+#endif
+
 using namespace Jetstream;
 
 #if defined(JST_OS_LINUX)
@@ -16,7 +22,9 @@ void cyberether_shutdown() {
 }
 #endif
 
-int main(int argc, char* argv[]) {
+namespace {
+
+int CyberEtherMain(int argc, char* argv[]) {
     try {
 #if defined(JST_OS_BROWSER)
         (void)argc;
@@ -42,3 +50,15 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+}
+
+#if defined(JST_OS_WINDOWS)
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    return CyberEtherMain(__argc, __argv);
+}
+#else
+int main(int argc, char* argv[]) {
+    return CyberEtherMain(argc, argv);
+}
+#endif

@@ -16,7 +16,7 @@
 
 namespace Jetstream {
 
-class Tensor : public std::enable_shared_from_this<Tensor> {
+class JETSTREAM_API Tensor : public std::enable_shared_from_this<Tensor> {
  public:
     Tensor();
     Tensor(void* pointer, const DeviceType& device, const DataType& dtype, const Shape& shape);

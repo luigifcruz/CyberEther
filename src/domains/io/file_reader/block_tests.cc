@@ -1,9 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
+
+#include "jetstream/block_interface.hh"
 
 #include "flowgraph_fixture.hh"
 
@@ -21,6 +26,24 @@ void Cleanup(const std::filesystem::path& path) {
     if (std::filesystem::exists(path)) {
         std::filesystem::remove(path);
     }
+}
+
+std::string MetricString(const std::shared_ptr<Block>& block, const std::string& key) {
+    for (const auto& [metricKey, entry] : block->interface()->metrics()) {
+        if (metricKey == key) {
+            return std::any_cast<std::string>(entry.metric());
+        }
+    }
+
+    FAIL("Missing metric: " << key);
+    return {};
+}
+
+template<typename T>
+void WriteRawFile(const std::filesystem::path& path, const std::vector<T>& data) {
+    std::ofstream file(path, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(data.data()),
+               static_cast<std::streamsize>(data.size() * sizeof(T)));
 }
 
 }  // namespace
@@ -52,6 +75,44 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(out.dtype() == DataType::F32);
     REQUIRE(out.rank() == 1);
     REQUIRE(out.shape(0) == 4);
+
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
+
+    Cleanup(path);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "FileReader block current bandwidth metric updates after a read",
+                 "[modules][io][file_reader][block][metrics]") {
+    const auto path = TestFilePath("bandwidth");
+    Cleanup(path);
+
+    std::vector<U8> data(8 * 1024 * 1024);
+    for (U64 i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<U8>(i & 0xFF);
+    }
+    WriteRawFile(path, data);
+
+    Parser::Map config;
+    config["filepath"] = path.string();
+    config["dataType"] = std::string("U8");
+    config["batchSize"] = std::to_string(data.size());
+    config["loop"] = std::string("false");
+
+    REQUIRE(flowgraph->blockCreate("reader", "file_reader", config, {}) ==
+            Result::SUCCESS);
+
+    const auto block = flowgraph->blockList().at("reader");
+    REQUIRE(MetricString(block, "currentBandwidth") == "0.0 MB/s");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const auto metric = MetricString(block, "currentBandwidth");
+    INFO("currentBandwidth=" << metric);
+    REQUIRE(metric != "N/A");
+    REQUIRE(metric != "0.0 MB/s");
 
     REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
 

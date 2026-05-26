@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class BufferImp<DeviceType::Metal> : public Buffer {
+class JETSTREAM_API BufferImp<DeviceType::Metal> : public Buffer {
  public:
     explicit BufferImp(const Config& config);
 

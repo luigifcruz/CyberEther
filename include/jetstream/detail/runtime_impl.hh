@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct Runtime::Impl {
+struct JETSTREAM_API Runtime::Impl {
  public:
     virtual Result create(const Modules& modules) = 0;
     virtual Result destroy() = 0;

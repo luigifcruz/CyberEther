@@ -6,7 +6,7 @@
 
 namespace Jetstream {
 
-struct NativeCpuRuntimeContext : Runtime::Context {
+struct JETSTREAM_API NativeCpuRuntimeContext : Runtime::Context {
  public:
     virtual Result computeInitialize();
     virtual Result computeSubmit();
