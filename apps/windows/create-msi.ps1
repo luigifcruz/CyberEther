@@ -71,10 +71,38 @@ function ResolveTool($Tool) {
     return $Command.Source
 }
 
+function ResolveWixTool($Tool) {
+    if ($Tool.Contains('\') -or $Tool.Contains('/')) {
+        $Path = AbsolutePath $Tool
+        if (!(Test-Path -LiteralPath $Path)) {
+            Die "WiX path does not exist: $Path"
+        }
+
+        $Item = Get-Item -LiteralPath $Path
+        if (!$Item.PSIsContainer) {
+            return $Path
+        }
+
+        foreach ($Candidate in @((Join-Path $Path 'wix.exe'), (Join-Path $Path 'bin\wix.exe'))) {
+            if (Test-Path -LiteralPath $Candidate) {
+                return $Candidate
+            }
+        }
+
+        Msg "Ignoring WiX directory without wix.exe: $Path"
+        return ''
+    }
+
+    return ResolveTool $Tool
+}
+
 function ResolveWix($OutputDir) {
     $WixTool = EnvOrDefault 'WIX' ''
     if (![string]::IsNullOrWhiteSpace($WixTool)) {
-        return ResolveTool $WixTool
+        $ResolvedWixTool = ResolveWixTool $WixTool
+        if (![string]::IsNullOrWhiteSpace($ResolvedWixTool)) {
+            return $ResolvedWixTool
+        }
     }
 
     $Existing = Get-Command wix -ErrorAction SilentlyContinue
@@ -102,6 +130,9 @@ function ResolveWix($OutputDir) {
         & $Dotnet.Source @InstallArgs
         if ($LASTEXITCODE -ne 0) {
             Die 'failed to install WiX Toolset CLI'
+        }
+        if (!(Test-Path -LiteralPath $WixExe)) {
+            Die "WiX Toolset CLI was not installed to $WixExe"
         }
     }
 
@@ -164,8 +195,7 @@ function WriteWixSource($Path, $Data) {
         <Component Id="JetstreamRuntime" Guid="*">
           <File Id="JetstreamRuntimeFile" Source="$JetstreamDllEsc" KeyPath="yes" />
         </Component>
-        <Component Id="PathEnvironment" Guid="*">
-          <Condition>ADD_TO_PATH = "1"</Condition>
+        <Component Id="PathEnvironment" Guid="*" Condition='ADD_TO_PATH = "1"'>
           <RegistryValue Root="HKLM" Key="Software\$AppNameEsc" Name="PathEnvironment" Type="integer" Value="1" KeyPath="yes" />
           <Environment Id="CyberEtherPath" Name="PATH" Action="set" Part="last" System="yes" Permanent="no" Value="[INSTALLFOLDER]" />
         </Component>
