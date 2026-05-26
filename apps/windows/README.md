@@ -42,4 +42,4 @@ The same property can be overridden at install time:
 msiexec /i CyberEther-<version>-<arch>.msi ADD_TO_PATH=0
 ```
 
-WiX Toolset is required. If `wix.exe` is not available on `PATH`, the script installs the WiX CLI with `dotnet tool install` under `.dist\windows\.tools\wix`.
+WiX Toolset is required. If `wix.exe` is not available on `PATH`, the script installs WiX CLI `6.0.2` with `dotnet tool install` under `.dist\windows\.tools\wix`. Set `WIX_VERSION` to override the fallback version.

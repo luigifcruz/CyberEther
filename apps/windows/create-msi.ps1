@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 $AppName = 'CyberEther'
 $Manufacturer = 'Luigi Cruz'
 $ExecutableName = 'cyberether.exe'
+$DefaultWixVersion = '6.0.2'
 
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $RootDir = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
@@ -121,12 +122,12 @@ function ResolveWix($OutputDir) {
         New-Item -ItemType Directory -Force -Path $ToolDir | Out-Null
 
         $InstallArgs = @('tool', 'install', '--tool-path', $ToolDir, 'wix')
-        $WixVersion = EnvOrDefault 'WIX_VERSION' ''
+        $WixVersion = EnvOrDefault 'WIX_VERSION' $DefaultWixVersion
         if (![string]::IsNullOrWhiteSpace($WixVersion)) {
             $InstallArgs += @('--version', $WixVersion)
         }
 
-        Msg 'Installing WiX Toolset CLI'
+        Msg "Installing WiX Toolset CLI $WixVersion"
         $InstallOutput = & $Dotnet.Source @InstallArgs 2>&1
         $InstallExitCode = $LASTEXITCODE
         $InstallOutput | ForEach-Object { Msg $_ }
