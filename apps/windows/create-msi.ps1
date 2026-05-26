@@ -291,7 +291,7 @@ function WriteWixSource($Path, $Data) {
       </Directory>
     </StandardDirectory>
 
-    <StandardDirectory Id="CommonDesktopFolder">
+    <StandardDirectory Id="DesktopFolder">
       <Component Id="DesktopShortcut" Guid="*">
         <Shortcut Id="ApplicationDesktopShortcut" Name="$AppNameEsc" Description="CyberEther signal processing runtime" Target="[INSTALLFOLDER]$ExecutableNameEsc" WorkingDirectory="INSTALLFOLDER" Icon="CyberEtherIcon" />
         <RegistryValue Root="HKLM" Key="Software\$AppNameEsc" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
