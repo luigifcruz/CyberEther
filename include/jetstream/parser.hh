@@ -16,6 +16,8 @@
 #include "jetstream/memory/tensor.hh"
 #include "jetstream/parser_detail.hh"
 #include "jetstream/parser_map.hh"
+#include "jetstream/runtime.hh"
+#include "jetstream/scheduler.hh"
 
 namespace Jetstream {
 
@@ -25,7 +27,9 @@ class JETSTREAM_API Parser {
     typedef std::vector<std::any> Sequence;
 
     template<typename T>
-    static Result StringToTyped(const std::string& encoded, T& variable);
+    static Result StringToTyped(const std::string& encoded, T& variable) {
+        return StringToTypedValue(encoded, variable);
+    }
     static Result TypedToString(const std::any& variable, std::string& encoded);
 
     template<typename T>
@@ -150,6 +154,24 @@ class JETSTREAM_API Parser {
     static std::vector<std::string> SplitString(const std::string& str, const std::string& delimiter);
 
  private:
+    static Result StringToTypedValue(const std::string& encoded, Tensor& variable);
+    static Result StringToTypedValue(const std::string& encoded, std::string& variable);
+    static Result StringToTypedValue(const std::string& encoded, I32& variable);
+    static Result StringToTypedValue(const std::string& encoded, U64& variable);
+    static Result StringToTypedValue(const std::string& encoded, F32& variable);
+    static Result StringToTypedValue(const std::string& encoded, F64& variable);
+    static Result StringToTypedValue(const std::string& encoded, CF32& variable);
+    static Result StringToTypedValue(const std::string& encoded, bool& variable);
+    static Result StringToTypedValue(const std::string& encoded, DeviceType& variable);
+    static Result StringToTypedValue(const std::string& encoded, RuntimeType& variable);
+    static Result StringToTypedValue(const std::string& encoded, SchedulerType& variable);
+    static Result StringToTypedValue(const std::string& encoded, std::vector<U64>& variable);
+    static Result StringToTypedValue(const std::string& encoded, std::vector<F64>& variable);
+    static Result StringToTypedValue(const std::string& encoded, std::vector<F32>& variable);
+    static Result StringToTypedValue(const std::string& encoded, Range<F32>& variable);
+    static Result StringToTypedValue(const std::string& encoded, Extent2D<U64>& variable);
+    static Result StringToTypedValue(const std::string& encoded, Extent2D<F32>& variable);
+
     template<typename T>
     static Result Encode(const T& variable, std::any& encoded) {
         using ValueType = std::remove_cvref_t<T>;
