@@ -18,7 +18,7 @@ The default output is:
 .dist/windows/CyberEther-<version>-<arch>.msi
 ```
 
-The MSI installs `cyberether.exe` and `jetstream.dll` into `Program Files\CyberEther`, creates a Start Menu shortcut, and adds the install directory to the system `PATH` by default.
+The MSI installs `cyberether.exe` and `jetstream.dll` into `Program Files\CyberEther`, creates a Start Menu shortcut, and shows a normal installer wizard. The wizard lets the user choose the optional desktop shortcut and system `PATH` feature.
 
 Use environment variables to override packaging inputs when needed:
 
@@ -42,4 +42,10 @@ The same property can be overridden at install time:
 msiexec /i CyberEther-<version>-<arch>.msi ADD_TO_PATH=0
 ```
 
-WiX Toolset is required. If `wix.exe` is not available on `PATH`, the script installs WiX CLI `6.0.2` with `dotnet tool install` under `.dist\windows\.tools\wix`. Set `WIX_VERSION` to override the fallback version.
+The desktop shortcut feature is enabled by default. It can be disabled for scripted installs:
+
+```powershell
+msiexec /i CyberEther-<version>-<arch>.msi CREATE_DESKTOP_SHORTCUT=0
+```
+
+WiX Toolset is required. If `wix.exe` is not available on `PATH`, the script installs WiX CLI `6.0.2` with `dotnet tool install` under `.dist\windows\.tools\wix`. It also installs the matching `WixToolset.UI.wixext` package for the installer wizard. Set `WIX_VERSION` to override the fallback WiX version or `WIX_UI_EXTENSION_VERSION` to override the UI extension version.
