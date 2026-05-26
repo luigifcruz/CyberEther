@@ -127,8 +127,10 @@ function ResolveWix($OutputDir) {
         }
 
         Msg 'Installing WiX Toolset CLI'
-        & $Dotnet.Source @InstallArgs
-        if ($LASTEXITCODE -ne 0) {
+        $InstallOutput = & $Dotnet.Source @InstallArgs 2>&1
+        $InstallExitCode = $LASTEXITCODE
+        $InstallOutput | ForEach-Object { Msg $_ }
+        if ($InstallExitCode -ne 0) {
             Die 'failed to install WiX Toolset CLI'
         }
         if (!(Test-Path -LiteralPath $WixExe)) {
