@@ -53,7 +53,7 @@ struct StackActions {
             }
         }
 
-        return state.flowgraph.items.at(flowgraphId)->setMeta("stacks", serializedStacks);
+        return state.flowgraph.items.at(flowgraphId)->setPersistentMeta("stacks", serializedStacks);
     }
 
     Result handle(const MailCreateStack& msg) {
@@ -148,13 +148,13 @@ struct StackActions {
 
         const std::string metaKey = "surface_" + msg.surface;
         SurfaceMeta meta;
-        JST_CHECK(flowgraph->getMeta(metaKey, meta, msg.block));
+        JST_CHECK(flowgraph->getPersistentMeta(metaKey, meta, msg.block));
         if (meta.detached == msg.detached) {
             return Result::SUCCESS;
         }
 
         meta.detached = msg.detached;
-        return flowgraph->setMeta(metaKey, meta, msg.block);
+        return flowgraph->setPersistentMeta(metaKey, meta, msg.block);
     }
 
  private:

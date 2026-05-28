@@ -279,7 +279,7 @@ void DefaultCompositor::updateStacksState() {
 
         auto& stacks = state.flowgraph.stacks[flowgraphId];
         Parser::Map stackMap;
-        if (flowgraph->getMeta("stacks", stackMap) != Result::SUCCESS) {
+        if (flowgraph->getPersistentMeta("stacks", stackMap) != Result::SUCCESS) {
             JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to load stack metadata for flowgraph '{}'.", flowgraphId);
             continue;
         }

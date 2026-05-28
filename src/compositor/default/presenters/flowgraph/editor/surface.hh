@@ -36,7 +36,7 @@ struct FlowgraphSurfacePresenter {
 
                 const std::string surfaceMetaKey = "surface_" + manifest.id;
                 SurfaceMeta surfaceMeta;
-                flowgraph->getMeta(surfaceMetaKey, surfaceMeta, blockName);
+                flowgraph->getPersistentMeta(surfaceMetaKey, surfaceMeta, blockName);
                 std::optional<Extent2D<F32>> aspectRatioSize;
                 const SurfaceMeta defaultSurfaceMeta;
                 if (surfaceMeta.attachedWidth == defaultSurfaceMeta.attachedWidth &&

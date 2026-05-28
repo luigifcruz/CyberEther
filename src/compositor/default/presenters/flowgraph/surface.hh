@@ -52,7 +52,7 @@ struct FlowgraphDetachedSurfacePresenter {
 
                     const std::string surfaceMetaKey = "surface_" + manifest.id;
                     SurfaceMeta surfaceMeta;
-                    flowgraph->getMeta(surfaceMetaKey, surfaceMeta, blockName);
+                    flowgraph->getPersistentMeta(surfaceMetaKey, surfaceMeta, blockName);
 
                     const std::string windowId = MakeDetachedSurfaceWindowId(flowgraphId,
                                                                              blockName,

@@ -186,7 +186,7 @@ struct FlowgraphNodePresenter {
                                                          block.provider);
 
         NodeMeta nodeMeta;
-        flowgraph->getMeta("node", nodeMeta, blockName);
+        flowgraph->getPersistentMeta("node", nodeMeta, blockName);
         block.layout = FlowgraphNode::Layout{
             .x = nodeMeta.x,
             .y = nodeMeta.y,

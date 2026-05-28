@@ -80,7 +80,7 @@ OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
     return lookup;
 }
 
-std::optional<Parser::Map> CompactMetaMap(const Parser::Map& meta) {
+std::optional<Parser::Map> CompactPersistentMetaMap(const Parser::Map& meta) {
     Parser::Map compact;
 
     for (const auto& entry : meta) {
@@ -169,8 +169,8 @@ struct Flowgraph::Impl {
     std::string description;
     std::string path;
 
-    Parser::Map meta;
-    std::unordered_map<std::string, Parser::Map> blockMeta;
+    Parser::Map persistentMeta;
+    std::unordered_map<std::string, Parser::Map> blockPersistentMeta;
 
     Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
     std::vector<std::string> collectDownstream(const std::string& name) const;
@@ -803,7 +803,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     }
 
     if (document.meta.has_value()) {
-        impl->meta = *document.meta;
+        impl->persistentMeta = *document.meta;
     }
 
     if (document.graph.empty()) {
@@ -928,7 +928,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         }
 
         if (!def.meta.empty()) {
-            impl->blockMeta[name] = def.meta;
+            impl->blockPersistentMeta[name] = def.meta;
         }
 
         JST_CHECK(blockCreate(name, def.type, def.config, requestedInputs, def.device, def.runtime, def.provider));
@@ -995,7 +995,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     if (!impl->description.empty()) {
         document.description = impl->description;
     }
-    document.meta = CompactMetaMap(impl->meta);
+    document.meta = CompactPersistentMetaMap(impl->persistentMeta);
 
     const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
 
@@ -1045,8 +1045,8 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
             blockDocument.input = std::move(inputs);
         }
 
-        if (impl->blockMeta.contains(name)) {
-            blockDocument.meta = CompactMetaMap(impl->blockMeta.at(name));
+        if (impl->blockPersistentMeta.contains(name)) {
+            blockDocument.meta = CompactPersistentMetaMap(impl->blockPersistentMeta.at(name));
         }
 
         document.graph.push_back(std::move(blockDocument));
@@ -1143,25 +1143,53 @@ Result Flowgraph::setDescription(const std::string& description) {
     return Result::SUCCESS;
 }
 
-Result Flowgraph::getMeta(const std::string& key, Parser::Map& data, const std::string& block) const {
+bool Flowgraph::hasPersistentMeta(const std::string& key, const std::string& block) const {
     if (block.empty()) {
-        if (impl->meta.contains(key) && impl->meta.at(key).type() == typeid(Parser::Map)) {
-            data = std::any_cast<const Parser::Map&>(impl->meta.at(key));
+        return impl->persistentMeta.contains(key) &&
+               impl->persistentMeta.at(key).type() == typeid(Parser::Map);
+    }
+
+    return impl->blockPersistentMeta.contains(block) &&
+           impl->blockPersistentMeta.at(block).contains(key) &&
+           impl->blockPersistentMeta.at(block).at(key).type() == typeid(Parser::Map);
+}
+
+Result Flowgraph::getPersistentMeta(const std::string& key, Parser::Map& data, const std::string& block) const {
+    if (block.empty()) {
+        if (hasPersistentMeta(key)) {
+            data = std::any_cast<const Parser::Map&>(impl->persistentMeta.at(key));
         }
-    } else if (impl->blockMeta.contains(block) &&
-               impl->blockMeta.at(block).contains(key) &&
-               impl->blockMeta.at(block).at(key).type() == typeid(Parser::Map)) {
-        data = std::any_cast<const Parser::Map&>(impl->blockMeta.at(block).at(key));
+    } else if (hasPersistentMeta(key, block)) {
+        data = std::any_cast<const Parser::Map&>(impl->blockPersistentMeta.at(block).at(key));
     }
     return Result::SUCCESS;
 }
 
-Result Flowgraph::setMeta(const std::string& key, const Parser::Map& data, const std::string& block) {
+Result Flowgraph::setPersistentMeta(const std::string& key, const Parser::Map& data, const std::string& block) {
     if (block.empty()) {
-        impl->meta[key] = data;
+        impl->persistentMeta[key] = data;
     } else {
-        impl->blockMeta[block][key] = data;
+        impl->blockPersistentMeta[block][key] = data;
     }
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::clearPersistentMeta(const std::string& key, const std::string& block) {
+    if (block.empty()) {
+        impl->persistentMeta.erase(key);
+    } else if (impl->blockPersistentMeta.contains(block)) {
+        impl->blockPersistentMeta.at(block).erase(key);
+        if (impl->blockPersistentMeta.at(block).empty()) {
+            impl->blockPersistentMeta.erase(block);
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::clearAllPersistentMeta() {
+    impl->persistentMeta.clear();
+    impl->blockPersistentMeta.clear();
     return Result::SUCCESS;
 }
 

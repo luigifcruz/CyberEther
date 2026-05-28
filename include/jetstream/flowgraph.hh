@@ -93,10 +93,12 @@ class JETSTREAM_API Flowgraph {
 
     const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const;
 
+    bool hasPersistentMeta(const std::string& key, const std::string& block = {}) const;
+
     template<typename T>
-    Result getMeta(const std::string& key, T& config, const std::string& block = {}) const {
+    Result getPersistentMeta(const std::string& key, T& config, const std::string& block = {}) const {
         Parser::Map data;
-        JST_CHECK(getMeta(key, data, block));
+        JST_CHECK(getPersistentMeta(key, data, block));
 
         if (data.empty()) {
             return Result::SUCCESS;
@@ -107,22 +109,33 @@ class JETSTREAM_API Flowgraph {
         return Parser::Deserialize(encoded, key, config);
     }
 
-    Result getMeta(const std::string& key, Parser::Map& data, const std::string& block = {}) const;
+    Result getPersistentMeta(const std::string& key, Parser::Map& data, const std::string& block = {}) const;
 
     template<typename T>
-    Result setMeta(const std::string& key, const T& config, const std::string& block = {}) {
+    bool tryGetPersistentMeta(const std::string& key, T& config, const std::string& block = {}) const {
+        if (!hasPersistentMeta(key, block)) {
+            return false;
+        }
+
+        return getPersistentMeta(key, config, block) == Result::SUCCESS;
+    }
+
+    template<typename T>
+    Result setPersistentMeta(const std::string& key, const T& config, const std::string& block = {}) {
         Parser::Map encoded;
         JST_CHECK(Parser::Serialize(encoded, key, config));
 
         if (!encoded.contains(key) || encoded.at(key).type() != typeid(Parser::Map)) {
-            JST_ERROR("[FLOWGRAPH] Metadata '{}' must serialize to a map.", key);
+            JST_ERROR("[FLOWGRAPH] Persistent meta '{}' must serialize to a map.", key);
             return Result::ERROR;
         }
 
-        return setMeta(key, std::any_cast<const Parser::Map&>(encoded.at(key)), block);
+        return setPersistentMeta(key, std::any_cast<const Parser::Map&>(encoded.at(key)), block);
     }
 
-    Result setMeta(const std::string& key, const Parser::Map& data, const std::string& block = {});
+    Result setPersistentMeta(const std::string& key, const Parser::Map& data, const std::string& block = {});
+    Result clearPersistentMeta(const std::string& key, const std::string& block = {});
+    Result clearAllPersistentMeta();
 
  private:
     std::shared_ptr<Impl> impl;

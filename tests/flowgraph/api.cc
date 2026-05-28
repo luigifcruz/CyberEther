@@ -112,55 +112,89 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph block configuration APIs are cover
     }
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph metadata APIs are covered", "[flowgraph][api][meta]") {
+TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph persistent meta APIs are covered", "[flowgraph][api][meta]") {
     REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
 
-    SECTION("raw metadata round-trips at flowgraph scope") {
+    SECTION("raw persistent meta round-trips at flowgraph scope") {
         Parser::Map source;
         source["order"] = U64{7};
         source["label"] = std::string("global");
 
-        REQUIRE(flowgraph->setMeta("layout", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->setPersistentMeta("layout", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->hasPersistentMeta("layout"));
 
         Parser::Map restored;
-        REQUIRE(flowgraph->getMeta("layout", restored) == Result::SUCCESS);
+        REQUIRE(flowgraph->getPersistentMeta("layout", restored) == Result::SUCCESS);
         REQUIRE(restored.contains("order"));
         REQUIRE(restored.contains("label"));
         REQUIRE(std::any_cast<U64>(restored.at("order")) == 7);
         REQUIRE(std::any_cast<std::string>(restored.at("label")) == "global");
+
+        Parser::Map tried;
+        REQUIRE(flowgraph->tryGetPersistentMeta("layout", tried));
+        REQUIRE(std::any_cast<U64>(tried.at("order")) == 7);
     }
 
-    SECTION("typed metadata round-trips at block scope") {
+    SECTION("typed persistent meta round-trips at block scope") {
         SimpleMetaFixture source;
         source.order = 3;
         source.label = "block";
 
-        REQUIRE(flowgraph->setMeta("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->setPersistentMeta("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->hasPersistentMeta("dock", "gen1"));
 
         SimpleMetaFixture restored;
-        REQUIRE(flowgraph->getMeta("dock", restored, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->getPersistentMeta("dock", restored, "gen1") == Result::SUCCESS);
         REQUIRE(restored.order == 3);
         REQUIRE(restored.label == "block");
+
+        SimpleMetaFixture tried;
+        REQUIRE(flowgraph->tryGetPersistentMeta("dock", tried, "gen1"));
+        REQUIRE(tried.order == 3);
+        REQUIRE(tried.label == "block");
     }
 
-    SECTION("missing typed metadata leaves the destination unchanged") {
+    SECTION("missing typed persistent meta leaves the destination unchanged") {
         SimpleMetaFixture restored;
         restored.order = 99;
         restored.label = "keep";
 
-        REQUIRE(flowgraph->getMeta("missing", restored) == Result::SUCCESS);
+        REQUIRE(flowgraph->getPersistentMeta("missing", restored) == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->hasPersistentMeta("missing"));
+        REQUIRE_FALSE(flowgraph->tryGetPersistentMeta("missing", restored));
         REQUIRE(restored.order == 99);
         REQUIRE(restored.label == "keep");
     }
 
-    SECTION("missing raw metadata returns success with empty output") {
+    SECTION("missing raw persistent meta returns success with empty output") {
         Parser::Map restored;
-        REQUIRE(flowgraph->getMeta("missing", restored, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->getPersistentMeta("missing", restored, "gen1") == Result::SUCCESS);
         REQUIRE(restored.empty());
     }
 
-    SECTION("typed metadata must serialize to a map") {
-        REQUIRE(flowgraph->setMeta("invalid", U64{7}) == Result::ERROR);
+    SECTION("typed persistent meta must serialize to a map") {
+        REQUIRE(flowgraph->setPersistentMeta("invalid", U64{7}) == Result::ERROR);
+    }
+
+    SECTION("persistent meta can be cleared") {
+        Parser::Map source;
+        source["order"] = U64{7};
+
+        REQUIRE(flowgraph->setPersistentMeta("layout", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->setPersistentMeta("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->hasPersistentMeta("layout"));
+        REQUIRE(flowgraph->hasPersistentMeta("dock", "gen1"));
+
+        REQUIRE(flowgraph->clearPersistentMeta("layout") == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->hasPersistentMeta("layout"));
+        REQUIRE(flowgraph->hasPersistentMeta("dock", "gen1"));
+
+        REQUIRE(flowgraph->clearPersistentMeta("dock", "gen1") == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->hasPersistentMeta("dock", "gen1"));
+
+        REQUIRE(flowgraph->setPersistentMeta("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->clearAllPersistentMeta() == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->hasPersistentMeta("dock", "gen1"));
     }
 }
 
@@ -186,7 +220,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
         SimpleMetaFixture meta;
         meta.order = 12;
         meta.label = "graph";
-        REQUIRE(flowgraph->setMeta("layout", meta) == Result::SUCCESS);
+        REQUIRE(flowgraph->setPersistentMeta("layout", meta) == Result::SUCCESS);
 
         const TempFlowgraphFile tempFile("roundtrip");
         REQUIRE(flowgraph->exportToFile(tempFile.path.string()) == Result::SUCCESS);
@@ -213,7 +247,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
         REQUIRE(imported.blockList().size() == 3);
 
         SimpleMetaFixture restored;
-        REQUIRE(imported.getMeta("layout", restored) == Result::SUCCESS);
+        REQUIRE(imported.getPersistentMeta("layout", restored) == Result::SUCCESS);
         REQUIRE(restored.order == 12);
         REQUIRE(restored.label == "graph");
 
