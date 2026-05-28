@@ -97,34 +97,34 @@ class JETSTREAM_API Flowgraph {
     bool hasPersistentMeta(const std::string& key, const std::string& block = {}) const;
 
     template<typename T>
-    Result getPersistentMeta(const std::string& key, T& config, const std::string& block = {}) const {
-        Parser::Map data;
-        JST_CHECK(getPersistentMeta(key, data, block));
+    Result getPersistentMeta(const std::string& key, T& data, const std::string& block = {}) const {
+        Parser::Map stored;
+        JST_CHECK(getPersistentMeta(key, stored, block));
 
-        if (data.empty()) {
+        if (stored.empty()) {
             return Result::SUCCESS;
         }
 
         Parser::Map encoded;
-        encoded[key] = data;
-        return Parser::Deserialize(encoded, key, config);
+        encoded[key] = stored;
+        return Parser::Deserialize(encoded, key, data);
     }
 
     Result getPersistentMeta(const std::string& key, Parser::Map& data, const std::string& block = {}) const;
 
     template<typename T>
-    bool tryGetPersistentMeta(const std::string& key, T& config, const std::string& block = {}) const {
+    bool tryGetPersistentMeta(const std::string& key, T& data, const std::string& block = {}) const {
         if (!hasPersistentMeta(key, block)) {
             return false;
         }
 
-        return getPersistentMeta(key, config, block) == Result::SUCCESS;
+        return getPersistentMeta(key, data, block) == Result::SUCCESS;
     }
 
     template<typename T>
-    Result setPersistentMeta(const std::string& key, const T& config, const std::string& block = {}) {
+    Result setPersistentMeta(const std::string& key, const T& data, const std::string& block = {}) {
         Parser::Map encoded;
-        JST_CHECK(Parser::Serialize(encoded, key, config));
+        JST_CHECK(Parser::Serialize(encoded, key, data));
 
         if (!encoded.contains(key) || encoded.at(key).type() != typeid(Parser::Map)) {
             JST_ERROR("[FLOWGRAPH] Persistent meta '{}' must serialize to a map.", key);
@@ -143,18 +143,18 @@ class JETSTREAM_API Flowgraph {
 
     template<typename T>
     Result getVolatileMeta(const std::string& key,
-                           T& config,
+                           T& data,
                            U64 timestamp = std::numeric_limits<U64>::min()) const {
-        Parser::Map data;
-        JST_CHECK(getVolatileMeta(key, data, timestamp));
+        Parser::Map stored;
+        JST_CHECK(getVolatileMeta(key, stored, timestamp));
 
-        if (data.empty()) {
+        if (stored.empty()) {
             return Result::SUCCESS;
         }
 
         Parser::Map encoded;
-        encoded[key] = data;
-        return Parser::Deserialize(encoded, key, config);
+        encoded[key] = stored;
+        return Parser::Deserialize(encoded, key, data);
     }
 
     Result getVolatileMeta(const std::string& key,
@@ -163,22 +163,22 @@ class JETSTREAM_API Flowgraph {
 
     template<typename T>
     bool tryGetVolatileMeta(const std::string& key,
-                            T& config,
+                            T& data,
                             U64 timestamp = std::numeric_limits<U64>::min()) const {
         if (!hasVolatileMeta(key, timestamp)) {
             return false;
         }
 
-        return getVolatileMeta(key, config, timestamp) == Result::SUCCESS;
+        return getVolatileMeta(key, data, timestamp) == Result::SUCCESS;
     }
 
     template<typename T>
     Result setVolatileMeta(const std::string& key,
-                           const T& config,
+                           const T& data,
                            U64 start = std::numeric_limits<U64>::min(),
                            U64 end = std::numeric_limits<U64>::max()) {
         Parser::Map encoded;
-        JST_CHECK(Parser::Serialize(encoded, key, config));
+        JST_CHECK(Parser::Serialize(encoded, key, data));
 
         if (!encoded.contains(key) || encoded.at(key).type() != typeid(Parser::Map)) {
             JST_ERROR("[FLOWGRAPH] Volatile meta '{}' must serialize to a map.", key);
