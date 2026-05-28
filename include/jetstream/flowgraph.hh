@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_FLOWGRAPH_HH
 #define JETSTREAM_FLOWGRAPH_HH
 
+#include <limits>
 #include <string>
 #include <vector>
 #include <memory>
@@ -136,6 +137,63 @@ class JETSTREAM_API Flowgraph {
     Result setPersistentMeta(const std::string& key, const Parser::Map& data, const std::string& block = {});
     Result clearPersistentMeta(const std::string& key, const std::string& block = {});
     Result clearAllPersistentMeta();
+
+    bool hasVolatileMeta(const std::string& key,
+                         U64 timestamp = std::numeric_limits<U64>::min()) const;
+
+    template<typename T>
+    Result getVolatileMeta(const std::string& key,
+                           T& config,
+                           U64 timestamp = std::numeric_limits<U64>::min()) const {
+        Parser::Map data;
+        JST_CHECK(getVolatileMeta(key, data, timestamp));
+
+        if (data.empty()) {
+            return Result::SUCCESS;
+        }
+
+        Parser::Map encoded;
+        encoded[key] = data;
+        return Parser::Deserialize(encoded, key, config);
+    }
+
+    Result getVolatileMeta(const std::string& key,
+                           Parser::Map& data,
+                           U64 timestamp = std::numeric_limits<U64>::min()) const;
+
+    template<typename T>
+    bool tryGetVolatileMeta(const std::string& key,
+                            T& config,
+                            U64 timestamp = std::numeric_limits<U64>::min()) const {
+        if (!hasVolatileMeta(key, timestamp)) {
+            return false;
+        }
+
+        return getVolatileMeta(key, config, timestamp) == Result::SUCCESS;
+    }
+
+    template<typename T>
+    Result setVolatileMeta(const std::string& key,
+                           const T& config,
+                           U64 start = std::numeric_limits<U64>::min(),
+                           U64 end = std::numeric_limits<U64>::max()) {
+        Parser::Map encoded;
+        JST_CHECK(Parser::Serialize(encoded, key, config));
+
+        if (!encoded.contains(key) || encoded.at(key).type() != typeid(Parser::Map)) {
+            JST_ERROR("[FLOWGRAPH] Volatile meta '{}' must serialize to a map.", key);
+            return Result::ERROR;
+        }
+
+        return setVolatileMeta(key, std::any_cast<const Parser::Map&>(encoded.at(key)), start, end);
+    }
+
+    Result setVolatileMeta(const std::string& key,
+                           const Parser::Map& data,
+                           U64 start = std::numeric_limits<U64>::min(),
+                           U64 end = std::numeric_limits<U64>::max());
+    Result clearVolatileMeta(const std::string& key);
+    Result clearAllVolatileMeta();
 
  private:
     std::shared_ptr<Impl> impl;

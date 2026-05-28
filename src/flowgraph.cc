@@ -7,10 +7,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <queue>
 #include <ranges>
 #include <regex>
+#include <shared_mutex>
 #include <unordered_set>
 
 namespace Jetstream {
@@ -33,6 +35,13 @@ struct BlockState {
 };
 
 using OutputLookup = std::unordered_map<U64, OutputRef>;
+
+struct VolatileMetaEntry {
+    U64 start;
+    U64 end;
+    U64 sequence;
+    Parser::Map data;
+};
 
 struct FlowgraphBlockDocument {
     std::string name;
@@ -171,6 +180,10 @@ struct Flowgraph::Impl {
 
     Parser::Map persistentMeta;
     std::unordered_map<std::string, Parser::Map> blockPersistentMeta;
+
+    mutable std::shared_mutex volatileMetaMutex;
+    std::unordered_map<std::string, std::vector<VolatileMetaEntry>> volatileMeta;
+    U64 volatileMetaSequence = 0;
 
     Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
     std::vector<std::string> collectDownstream(const std::string& name) const;
@@ -1190,6 +1203,82 @@ Result Flowgraph::clearPersistentMeta(const std::string& key, const std::string&
 Result Flowgraph::clearAllPersistentMeta() {
     impl->persistentMeta.clear();
     impl->blockPersistentMeta.clear();
+    return Result::SUCCESS;
+}
+
+bool Flowgraph::hasVolatileMeta(const std::string& key, U64 timestamp) const {
+    std::shared_lock lock(impl->volatileMetaMutex);
+
+    if (!impl->volatileMeta.contains(key)) {
+        return false;
+    }
+
+    for (const auto& entry : impl->volatileMeta.at(key)) {
+        if (timestamp >= entry.start && timestamp <= entry.end) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+Result Flowgraph::getVolatileMeta(const std::string& key, Parser::Map& data, U64 timestamp) const {
+    std::shared_lock lock(impl->volatileMetaMutex);
+
+    if (!impl->volatileMeta.contains(key)) {
+        return Result::SUCCESS;
+    }
+
+    const VolatileMetaEntry* selected = nullptr;
+    for (const auto& entry : impl->volatileMeta.at(key)) {
+        if (timestamp < entry.start || timestamp > entry.end) {
+            continue;
+        }
+
+        if (selected == nullptr || entry.sequence > selected->sequence) {
+            selected = &entry;
+        }
+    }
+
+    if (selected != nullptr) {
+        data = selected->data;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::setVolatileMeta(const std::string& key, const Parser::Map& data, U64 start, U64 end) {
+    if (end < start) {
+        JST_ERROR("[FLOWGRAPH] Volatile meta '{}' has invalid timestamp range [{}, {}].", key, start, end);
+        return Result::ERROR;
+    }
+
+    std::unique_lock lock(impl->volatileMetaMutex);
+    const U64 sequence = ++impl->volatileMetaSequence;
+    auto& entries = impl->volatileMeta[key];
+
+    for (auto& entry : entries) {
+        if (entry.start == start && entry.end == end) {
+            entry.sequence = sequence;
+            entry.data = data;
+            return Result::SUCCESS;
+        }
+    }
+
+    entries.push_back({start, end, sequence, data});
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::clearVolatileMeta(const std::string& key) {
+    std::unique_lock lock(impl->volatileMetaMutex);
+    impl->volatileMeta.erase(key);
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::clearAllVolatileMeta() {
+    std::unique_lock lock(impl->volatileMetaMutex);
+    impl->volatileMeta.clear();
+    impl->volatileMetaSequence = 0;
     return Result::SUCCESS;
 }
 
