@@ -17,8 +17,6 @@ struct JETSTREAM_API Runtime::Impl {
     virtual Result compute(const std::vector<std::string>& modules,
                            std::unordered_set<std::string>& skippedModules) = 0;
 
-    virtual const std::shared_ptr<Metrics>& metrics() const = 0;
-
  protected:
     std::string name;
     DeviceType device;

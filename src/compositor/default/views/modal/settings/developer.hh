@@ -13,10 +13,10 @@ namespace Jetstream {
 struct DeveloperSettingsPanel : public Sakura::Component {
     struct Config {
         bool latencyEnabled = false;
-        bool runtimeMetricsEnabled = false;
+        bool timingEnabled = false;
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
         std::function<void(bool)> onLatencyEnabledChange;
-        std::function<void(bool)> onRuntimeMetricsEnabledChange;
+        std::function<void(bool)> onTimingEnabledChange;
         std::function<void(int)> onLogLevelChange;
     };
 
@@ -57,18 +57,18 @@ struct DeveloperSettingsPanel : public Sakura::Component {
             },
         });
 
-        runtimeMetricsField.update({
-            .id = "DeveloperRuntimeMetricsField",
-            .description = "Display engine performance and resource usage statistics.",
+        timingField.update({
+            .id = "DeveloperTimingField",
+            .description = "Display engine timing information.",
         });
 
-        runtimeMetricsCheckbox.update({
-            .id = "DeveloperRuntimeMetricsCheckbox",
-            .label = "Show runtime metrics",
-            .value = this->config.runtimeMetricsEnabled,
+        timingCheckbox.update({
+            .id = "DeveloperTimingCheckbox",
+            .label = "Show timing",
+            .value = this->config.timingEnabled,
             .onChange = [this](bool value) {
-                if (this->config.onRuntimeMetricsEnabledChange) {
-                    this->config.onRuntimeMetricsEnabledChange(value);
+                if (this->config.onTimingEnabledChange) {
+                    this->config.onTimingEnabledChange(value);
                 }
             },
         });
@@ -108,8 +108,8 @@ struct DeveloperSettingsPanel : public Sakura::Component {
             latencyCheckbox.render(ctx);
         });
 
-        runtimeMetricsField.render(ctx, [&](const Sakura::Context& ctx) {
-            runtimeMetricsCheckbox.render(ctx);
+        timingField.render(ctx, [&](const Sakura::Context& ctx) {
+            timingCheckbox.render(ctx);
         });
 
         logLevelField.render(ctx, [&](const Sakura::Context& ctx) {
@@ -143,10 +143,10 @@ struct DeveloperSettingsPanel : public Sakura::Component {
     Sakura::Text description;
     Sakura::Divider divider;
     Sakura::SettingField latencyField;
-    Sakura::SettingField runtimeMetricsField;
+    Sakura::SettingField timingField;
     Sakura::SettingField logLevelField;
     Sakura::Checkbox latencyCheckbox;
-    Sakura::Checkbox runtimeMetricsCheckbox;
+    Sakura::Checkbox timingCheckbox;
     Sakura::Combo logLevelCombo;
 };
 

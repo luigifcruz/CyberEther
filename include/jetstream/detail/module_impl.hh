@@ -6,6 +6,7 @@
 #include "jetstream/module_interface.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/runtime.hh"
+#include "jetstream/tools/snapshot.hh"
 
 namespace Jetstream {
 
@@ -82,6 +83,10 @@ struct JETSTREAM_API Module::Impl {
     RuntimeType _runtime;
     ProviderType _provider;
     Taint _taint;
+
+    // Timing
+
+    Tools::Snapshot<Timing> _timing;
 
     // I/O
 

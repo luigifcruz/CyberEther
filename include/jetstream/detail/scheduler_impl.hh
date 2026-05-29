@@ -23,8 +23,6 @@ struct JETSTREAM_API Scheduler::Impl {
     virtual Result present() = 0;
     virtual Result compute() = 0;
 
-    virtual const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const = 0;
-
  protected:
     std::shared_ptr<Instance> instance;
 

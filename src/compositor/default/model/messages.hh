@@ -119,7 +119,7 @@ struct MailSetDebugLatencyEnabled {
     bool value = false;
 };
 
-struct MailSetDebugRuntimeMetricsEnabled {
+struct MailSetDebugTimingEnabled {
     bool value = false;
 };
 
@@ -338,7 +338,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetGraphicsDevice,
                           MailSetGraphicsFramerate,
                           MailSetDebugLatencyEnabled,
-                          MailSetDebugRuntimeMetricsEnabled,
+                          MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
                           MailDismissUpdate,

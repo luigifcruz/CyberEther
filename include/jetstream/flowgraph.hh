@@ -92,8 +92,6 @@ class JETSTREAM_API Flowgraph {
     Result compute();
     Result present();
 
-    const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const;
-
     bool hasPersistentMeta(const std::string& key, const std::string& block = {}) const;
 
     template<typename T>

@@ -60,7 +60,6 @@ TEST_CASE("Flowgraph lifecycle APIs behave consistently", "[flowgraph][api][life
 
     SECTION("create and destroy update lifecycle state") {
         REQUIRE(flowgraph.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
-        REQUIRE(flowgraph.metrics().empty());
         REQUIRE(flowgraph.compute() == Result::SUCCESS);
         REQUIRE(flowgraph.present() == Result::SUCCESS);
         REQUIRE(flowgraph.start() == Result::SUCCESS);
@@ -73,7 +72,6 @@ TEST_CASE("Flowgraph lifecycle APIs behave consistently", "[flowgraph][api][life
 
 TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph setter and getter APIs are covered", "[flowgraph][api]") {
     REQUIRE(flowgraph->path().empty());
-    REQUIRE(flowgraph->metrics().empty());
 
     REQUIRE(flowgraph->setTitle("Example") == Result::SUCCESS);
     REQUIRE(flowgraph->setSummary("Summary") == Result::SUCCESS);

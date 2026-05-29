@@ -62,10 +62,6 @@ Result Runtime::destroy() {
     return impl->destroy();
 }
 
-const std::shared_ptr<Runtime::Metrics>& Runtime::metrics() const {
-    return impl->metrics();
-}
-
 Result Runtime::compute(const std::vector<std::string>& modules,
                         std::unordered_set<std::string>& skippedModules) {
     if (impl->presentRunning.load(std::memory_order_acquire)) {

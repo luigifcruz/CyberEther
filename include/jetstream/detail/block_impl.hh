@@ -101,6 +101,10 @@ struct JETSTREAM_API Block::Impl {
     Block::State _state;
     std::string _diagnostic;
 
+    // Timing
+
+    Result defineModuleTiming();
+
     // I/O
 
     TensorMap _inputs;

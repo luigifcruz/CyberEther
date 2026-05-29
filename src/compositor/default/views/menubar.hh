@@ -32,7 +32,7 @@ struct MenubarView : public Sakura::Component {
         RemoteStreaming,
         OpenSettings,
         ToggleDebugLatency,
-        ToggleRuntimeMetrics,
+        ToggleTiming,
         ShowBenchmarks,
         OpenDeveloperSettings,
         GettingStarted,
@@ -49,7 +49,7 @@ struct MenubarView : public Sakura::Component {
         bool backgroundParticles = false;
         bool remoteSupported = false;
         bool debugLatencyEnabled = false;
-        bool debugRuntimeMetricsEnabled = false;
+        bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
         std::vector<std::string> themes;
         std::string currentThemeKey;
@@ -219,11 +219,11 @@ struct MenubarView : public Sakura::Component {
             .selected = this->config.debugLatencyEnabled,
             .onClick = [this]() { emit(Action::ToggleDebugLatency); },
         });
-        runtimeMetricsItem.update({
-            .id = this->config.id + ":runtime-metrics",
-            .label = "Show Runtime Metrics",
-            .selected = this->config.debugRuntimeMetricsEnabled,
-            .onClick = [this]() { emit(Action::ToggleRuntimeMetrics); },
+        timingItem.update({
+            .id = this->config.id + ":timing",
+            .label = "Show Timing",
+            .selected = this->config.debugTimingEnabled,
+            .onClick = [this]() { emit(Action::ToggleTiming); },
         });
         benchmarksItem.update({
             .id = this->config.id + ":benchmarks",
@@ -373,7 +373,7 @@ struct MenubarView : public Sakura::Component {
 
             developerMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 latencyWindowItem.render(ctx);
-                runtimeMetricsItem.render(ctx);
+                timingItem.render(ctx);
                 benchmarksItem.render(ctx);
                 dividers[7].render(ctx);
                 reloadPluginsItem.render(ctx);
@@ -441,7 +441,7 @@ struct MenubarView : public Sakura::Component {
     Sakura::MenuItem remoteStreamingItem;
     Sakura::MenuItem openSettingsItem;
     Sakura::MenuItem latencyWindowItem;
-    Sakura::MenuItem runtimeMetricsItem;
+    Sakura::MenuItem timingItem;
     Sakura::MenuItem benchmarksItem;
     std::vector<Sakura::MenuItem> logLevelItems;
     Sakura::MenuItem openDeveloperSettingsItem;

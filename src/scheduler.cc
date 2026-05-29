@@ -58,10 +58,6 @@ Result Scheduler::compute() {
     return impl->compute();
 }
 
-const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& Scheduler::metrics() const {
-    return impl->metrics();
-}
-
 const char* GetSchedulerName(const SchedulerType& scheduler) {
     switch (scheduler) {
         case SchedulerType::SYNCHRONOUS:
