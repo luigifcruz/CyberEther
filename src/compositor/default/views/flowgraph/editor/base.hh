@@ -20,7 +20,7 @@ struct FlowgraphEditor : public Sakura::Component {
     struct Config {
         std::string id;
         bool clipboardHasData = false;
-        bool debugRuntimeMetricsEnabled = false;
+        bool debugTimingEnabled = false;
         bool openBlockPicker = false;
         std::vector<FlowgraphBlockPicker::BlockOption> blockOptions;
 
@@ -162,7 +162,7 @@ struct FlowgraphEditor : public Sakura::Component {
                 .id = block.name,
                 .block = std::move(nodeBlock),
                 .pasteEnabled = this->config.clipboardHasData,
-                .runtimeMetricsEnabled = this->config.debugRuntimeMetricsEnabled,
+                .timingEnabled = this->config.debugTimingEnabled,
                 .onCopy = [this, blockName = block.name]() {
                     if (this->config.onCopyBlock) {
                         this->config.onCopyBlock(blockName);

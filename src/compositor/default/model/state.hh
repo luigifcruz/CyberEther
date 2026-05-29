@@ -65,7 +65,7 @@ struct DefaultCompositorState {
     struct DebugState {
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
         bool latencyEnabled = false;
-        bool runtimeMetricsEnabled = false;
+        bool timingEnabled = false;
     };
 
     struct UpdateState {

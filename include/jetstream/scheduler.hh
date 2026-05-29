@@ -3,11 +3,9 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "jetstream/macros.hh"
 #include "jetstream/types.hh"
-#include "jetstream/runtime.hh"
 
 namespace Jetstream {
 
@@ -37,8 +35,6 @@ class JETSTREAM_API Scheduler {
 
     Result present();
     Result compute();
-
-    const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const;
 
  private:
     std::shared_ptr<Impl> impl;

@@ -298,4 +298,19 @@ Result Block::Impl::defineInterfaceMetric(const std::string& key,
     return Result::SUCCESS;
 }
 
+Result Block::Impl::defineModuleTiming() {
+    for (const auto& name : _moduleOrder) {
+        const auto& module = _modules.at(name).module;
+        JST_CHECK(defineInterfaceMetric("runtime:" + name,
+                                        name,
+                                        "Runtime timing collected by the scheduler.",
+                                        "private-timing",
+                                        [module]() -> std::any {
+            return module->timing();
+        }));
+    }
+
+    return Result::SUCCESS;
+}
+
 }  // namespace Jetstream

@@ -36,7 +36,7 @@ struct FlowgraphEditorPresenter {
         FlowgraphEditor::Config config{
             .id = flowgraphId,
             .clipboardHasData = context.state.clipboard.hasData,
-            .debugRuntimeMetricsEnabled = context.state.debug.runtimeMetricsEnabled,
+            .debugTimingEnabled = context.state.debug.timingEnabled,
             .blockOptions = catalog.buildBlockCatalog(),
             .title = flowgraph->title(),
             .summary = flowgraph->summary(),

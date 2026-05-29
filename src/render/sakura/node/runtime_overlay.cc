@@ -48,7 +48,7 @@ void NodeRuntimeOverlay::render(const Context& ctx) const {
 
     for (U64 i = 0; i < config.lines.size(); ++i) {
         const ImVec2 pos(textPos.x, textPos.y + static_cast<F32>(i) * ImGui::GetTextLineHeight());
-        const ImU32 lineColor = (i == 0 || i + 1 == config.lines.size()) ? primaryColor : secondaryColor;
+        const ImU32 lineColor = (i + 1 == config.lines.size()) ? primaryColor : secondaryColor;
         drawList->AddText(pos, lineColor, config.lines[i].c_str());
     }
 }

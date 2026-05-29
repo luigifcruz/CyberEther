@@ -1103,10 +1103,6 @@ Result Flowgraph::present() {
     return Result::SUCCESS;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& Flowgraph::metrics() const {
-    return impl->scheduler->metrics();
-}
-
 const std::string& Flowgraph::title() const {
     return impl->title;
 }

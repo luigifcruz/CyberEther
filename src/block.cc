@@ -137,6 +137,10 @@ Result Block::create(const std::string& name,
         return result;
     }
 
+    // Define internal metrics.
+
+    JST_CHECK(impl->defineModuleTiming());
+
     // Check if block provides all requested outputs.
 
     for (const auto& [key, _] : impl->_interface->outputs()) {
@@ -229,6 +233,7 @@ Result Block::reconfigure(const Parser::Map& config) {
 
     impl->_interface = std::make_shared<Interface>();
     JST_CHECK(impl->define());
+    JST_CHECK(impl->defineModuleTiming());
 
     return Result::SUCCESS;
 }

@@ -203,6 +203,14 @@ const Module::Taint& Module::taint() const {
     return impl->_taint;
 }
 
+Module::Timing Module::timing() const {
+    return impl->_timing.get();
+}
+
+void Module::timing(const Timing& timing) {
+    impl->_timing.publish(timing);
+}
+
 const TensorMap& Module::inputs() const {
     return impl->_inputs;
 }

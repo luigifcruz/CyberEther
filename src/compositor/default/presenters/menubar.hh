@@ -22,7 +22,7 @@ struct MenubarPresenter {
         const bool infoPanelEnabled = context.state.interface.infoPanelEnabled;
         const bool backgroundParticles = context.state.interface.backgroundParticles;
         const bool debugLatencyEnabled = context.state.debug.latencyEnabled;
-        const bool debugRuntimeMetricsEnabled = context.state.debug.runtimeMetricsEnabled;
+        const bool debugTimingEnabled = context.state.debug.timingEnabled;
 
         return MenubarView::Config{
             .id = "main-menubar",
@@ -31,7 +31,7 @@ struct MenubarPresenter {
             .backgroundParticles = backgroundParticles,
             .remoteSupported = context.state.remote.supported,
             .debugLatencyEnabled = debugLatencyEnabled,
-            .debugRuntimeMetricsEnabled = debugRuntimeMetricsEnabled,
+            .debugTimingEnabled = debugTimingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
             .themes = BuildThemeKeys(),
             .currentThemeKey = context.state.sakura.themeKey,
@@ -40,7 +40,7 @@ struct MenubarPresenter {
                          infoPanelEnabled,
                          backgroundParticles,
                          debugLatencyEnabled,
-                         debugRuntimeMetricsEnabled](const MenubarView::Action action) {
+                         debugTimingEnabled](const MenubarView::Action action) {
                 switch (action) {
                     case MenubarView::Action::About:
                         enqueue(MailOpenModal{.content = ModalContent::About});
@@ -123,8 +123,8 @@ struct MenubarPresenter {
                     case MenubarView::Action::ToggleDebugLatency:
                         enqueue(MailSetDebugLatencyEnabled{.value = !debugLatencyEnabled});
                         break;
-                    case MenubarView::Action::ToggleRuntimeMetrics:
-                        enqueue(MailSetDebugRuntimeMetricsEnabled{.value = !debugRuntimeMetricsEnabled});
+                    case MenubarView::Action::ToggleTiming:
+                        enqueue(MailSetDebugTimingEnabled{.value = !debugTimingEnabled});
                         break;
                     case MenubarView::Action::ShowBenchmarks:
                         enqueue(MailOpenModal{.content = ModalContent::Benchmark});

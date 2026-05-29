@@ -123,41 +123,46 @@ struct FlowgraphNodePresenter {
         }
     }
 
-    void buildRuntimeMetrics(FlowgraphNode::BlockData& block,
-                             const std::shared_ptr<Flowgraph>& flowgraph,
-                             const std::string& blockName,
-                             const std::shared_ptr<Block>& blockPtr) const {
-        if (!flowgraph->metrics().contains(blockName)) {
-            return;
-        }
-
-        const auto& blockMetrics = flowgraph->metrics().at(blockName);
+    void buildTiming(FlowgraphNode::BlockData& block,
+                     const std::shared_ptr<Block>& blockPtr) const {
         F32 totalTime = 0.0f;
         U64 maxCycles = 0;
 
-        block.runtimeMetrics.push_back(jst::fmt::format("Runtime #{} ({}/{})",
-                                                        blockMetrics->runtime,
-                                                        blockMetrics->device,
-                                                        blockMetrics->backend));
-
-        for (const auto& moduleName : blockPtr->modules()) {
-            const auto& fullModuleName = jst::fmt::format("{}-{}", blockName, moduleName);
-            if (!blockMetrics->averageComputeTime.contains(fullModuleName) ||
-                !blockMetrics->cycles.contains(fullModuleName)) {
+        for (const auto& [moduleName, entry] : blockPtr->interface()->metrics()) {
+            if (entry.format != "private-timing" || !entry.metric) {
                 continue;
             }
 
-            const auto& averageComputeTime = blockMetrics->averageComputeTime.at(fullModuleName);
-            const auto& cycles = blockMetrics->cycles.at(fullModuleName);
-            block.runtimeMetrics.push_back(jst::fmt::format("+ {}: {:.3f} ms", moduleName, averageComputeTime));
+            Module::Timing timing;
+            try {
+                timing = std::any_cast<Module::Timing>(entry.metric());
+            } catch (const std::bad_any_cast&) {
+                continue;
+            }
+
+            const F32 averageComputeTime = timing.cycles == 0
+                ? 0.0f
+                : timing.computeTime / static_cast<F32>(timing.cycles);
+            const auto& label = entry.label.empty() ? moduleName : entry.label;
+
+            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.3f} ms",
+                                                    label,
+                                                    timing.backend,
+                                                    timing.device,
+                                                    timing.runtime,
+                                                    averageComputeTime));
             totalTime += averageComputeTime;
-            maxCycles = std::max(maxCycles, cycles);
+            maxCycles = std::max(maxCycles, timing.cycles);
+        }
+
+        if (block.timing.empty()) {
+            return;
         }
 
         const std::string cyclesStr = (maxCycles > 1000)
             ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f)
             : jst::fmt::format("{}", maxCycles);
-        block.runtimeMetrics.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
+        block.timing.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
     }
 
     FlowgraphNode::BlockData build(const std::string& flowgraphId,
@@ -200,7 +205,7 @@ struct FlowgraphNodePresenter {
         if (blockState != Block::State::Creating) {
             buildBlockMetrics(block, nodeViewId, blockPtr);
             buildConfigFields(block, nodeViewId, blockPtr);
-            buildRuntimeMetrics(block, flowgraph, blockName, blockPtr);
+            buildTiming(block, blockPtr);
             surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockPtr);
         }
 
