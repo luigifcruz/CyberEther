@@ -74,11 +74,13 @@ inline Result RegisterSignalGeneratorTestProvider() {
         DeviceType::CPU,
         RuntimeType::NATIVE,
         kSignalGeneratorTestProvider,
-        []() -> std::shared_ptr<Module> {
+        [](const std::shared_ptr<Flowgraph::Environment>& environment) -> std::shared_ptr<Module> {
             const auto impl = std::make_shared<SignalGeneratorTestProviderImpl>();
             const auto runtimeContext = std::static_pointer_cast<Runtime::Context>(impl);
             const auto schedulerContext = std::static_pointer_cast<Scheduler::Context>(impl);
-            const auto context = std::make_shared<Module::Context>(runtimeContext, schedulerContext);
+            const auto context = std::make_shared<Module::Context>(runtimeContext,
+                                                                   schedulerContext,
+                                                                   environment);
             const auto stagedConfig = std::static_pointer_cast<Module::Config>(impl);
             const auto candidateConfig = std::static_pointer_cast<Module::Config>(impl->candidate());
 

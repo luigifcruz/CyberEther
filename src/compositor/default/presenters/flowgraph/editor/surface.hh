@@ -9,6 +9,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
 
 #include <memory>
 #include <optional>
@@ -36,7 +37,7 @@ struct FlowgraphSurfacePresenter {
 
                 const std::string surfaceMetaKey = "surface_" + manifest.id;
                 SurfaceMeta surfaceMeta;
-                flowgraph->getPersistentMeta(surfaceMetaKey, surfaceMeta, blockName);
+                flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
                 std::optional<Extent2D<F32>> aspectRatioSize;
                 const SurfaceMeta defaultSurfaceMeta;
                 if (surfaceMeta.attachedWidth == defaultSurfaceMeta.attachedWidth &&

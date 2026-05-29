@@ -11,6 +11,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
 
 #include <memory>
 #include <string>
@@ -52,7 +53,7 @@ struct FlowgraphDetachedSurfacePresenter {
 
                     const std::string surfaceMetaKey = "surface_" + manifest.id;
                     SurfaceMeta surfaceMeta;
-                    flowgraph->getPersistentMeta(surfaceMetaKey, surfaceMeta, blockName);
+                    flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
 
                     const std::string windowId = MakeDetachedSurfaceWindowId(flowgraphId,
                                                                              blockName,

@@ -1,4 +1,7 @@
 #include "jetstream/flowgraph.hh"
+#include "jetstream/block_context.hh"
+#include "jetstream/detail/block_impl.hh"
+#include "jetstream/detail/flowgraph_impl.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
@@ -7,12 +10,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <mutex>
 #include <optional>
 #include <queue>
 #include <ranges>
 #include <regex>
-#include <shared_mutex>
 #include <unordered_set>
 
 namespace Jetstream {
@@ -35,13 +36,6 @@ struct BlockState {
 };
 
 using OutputLookup = std::unordered_map<U64, OutputRef>;
-
-struct VolatileMetaEntry {
-    U64 start;
-    U64 end;
-    U64 sequence;
-    Parser::Map data;
-};
 
 struct FlowgraphBlockDocument {
     std::string name;
@@ -89,7 +83,7 @@ OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
     return lookup;
 }
 
-std::optional<Parser::Map> CompactPersistentMetaMap(const Parser::Map& meta) {
+std::optional<Parser::Map> CompactMetadataMap(const Parser::Map& meta) {
     Parser::Map compact;
 
     for (const auto& entry : meta) {
@@ -159,36 +153,6 @@ std::optional<OutputRef> ParseGraphReference(const std::string& value) {
 
 }  // namespace
 
-struct Flowgraph::Impl {
-    bool created = false;
-
-    std::shared_ptr<Instance> instance;
-    std::shared_ptr<Render::Window> render;
-    std::shared_ptr<Compositor> compositor;
-
-    std::shared_ptr<Scheduler> scheduler;
-    std::unordered_map<std::string, std::shared_ptr<Block>> blocks;
-    std::vector<std::string> blockOrder;
-    std::unordered_map<std::string, std::vector<std::string>> edges;
-
-    std::string title;
-    std::string summary;
-    std::string author;
-    std::string license;
-    std::string description;
-    std::string path;
-
-    Parser::Map persistentMeta;
-    std::unordered_map<std::string, Parser::Map> blockPersistentMeta;
-
-    mutable std::shared_mutex volatileMetaMutex;
-    std::unordered_map<std::string, std::vector<VolatileMetaEntry>> volatileMeta;
-    U64 volatileMetaSequence = 0;
-
-    Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
-    std::vector<std::string> collectDownstream(const std::string& name) const;
-};
-
 Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& resolved) const {
     Result result = Result::SUCCESS;
 
@@ -257,7 +221,9 @@ std::vector<std::string> Flowgraph::Impl::collectDownstream(const std::string& n
 }
 
 Flowgraph::Flowgraph() {
-    impl = std::make_unique<Impl>();
+    impl = std::make_shared<Impl>();
+    impl->metadata = std::make_unique<Metadata>(impl);
+    impl->environment = std::make_shared<Environment>(impl);
 }
 
 Flowgraph::~Flowgraph() {
@@ -380,15 +346,18 @@ Result Flowgraph::blockCreate(const std::string name,
     impl->blocks[name] = block;
     impl->blockOrder.push_back(name);
 
+    const auto context = std::make_shared<Block::Context>(impl->instance,
+                                                          impl->render,
+                                                          impl->scheduler,
+                                                          impl->environment);
+
     const auto result = block->create(name,
                                       device,
                                       runtime,
                                       provider,
                                       config,
                                       resolvedInputs,
-                                      impl->instance,
-                                      impl->render,
-                                      impl->scheduler);
+                                      context);
 
     if (result != Result::SUCCESS && result != Result::INCOMPLETE && result != Result::ERROR) {
         impl->blocks.erase(name);
@@ -816,7 +785,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     }
 
     if (document.meta.has_value()) {
-        impl->persistentMeta = *document.meta;
+        impl->metadataValues = *document.meta;
     }
 
     if (document.graph.empty()) {
@@ -941,7 +910,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         }
 
         if (!def.meta.empty()) {
-            impl->blockPersistentMeta[name] = def.meta;
+            impl->blockMetadataValues[name] = def.meta;
         }
 
         JST_CHECK(blockCreate(name, def.type, def.config, requestedInputs, def.device, def.runtime, def.provider));
@@ -1008,7 +977,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     if (!impl->description.empty()) {
         document.description = impl->description;
     }
-    document.meta = CompactPersistentMetaMap(impl->persistentMeta);
+    document.meta = CompactMetadataMap(impl->metadataValues);
 
     const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
 
@@ -1058,8 +1027,8 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
             blockDocument.input = std::move(inputs);
         }
 
-        if (impl->blockPersistentMeta.contains(name)) {
-            blockDocument.meta = CompactPersistentMetaMap(impl->blockPersistentMeta.at(name));
+        if (impl->blockMetadataValues.contains(name)) {
+            blockDocument.meta = CompactMetadataMap(impl->blockMetadataValues.at(name));
         }
 
         document.graph.push_back(std::move(blockDocument));
@@ -1152,130 +1121,20 @@ Result Flowgraph::setDescription(const std::string& description) {
     return Result::SUCCESS;
 }
 
-bool Flowgraph::hasPersistentMeta(const std::string& key, const std::string& block) const {
-    if (block.empty()) {
-        return impl->persistentMeta.contains(key) &&
-               impl->persistentMeta.at(key).type() == typeid(Parser::Map);
-    }
-
-    return impl->blockPersistentMeta.contains(block) &&
-           impl->blockPersistentMeta.at(block).contains(key) &&
-           impl->blockPersistentMeta.at(block).at(key).type() == typeid(Parser::Map);
+Flowgraph::Metadata& Flowgraph::metadata() {
+    return *impl->metadata;
 }
 
-Result Flowgraph::getPersistentMeta(const std::string& key, Parser::Map& data, const std::string& block) const {
-    if (block.empty()) {
-        if (hasPersistentMeta(key)) {
-            data = std::any_cast<const Parser::Map&>(impl->persistentMeta.at(key));
-        }
-    } else if (hasPersistentMeta(key, block)) {
-        data = std::any_cast<const Parser::Map&>(impl->blockPersistentMeta.at(block).at(key));
-    }
-    return Result::SUCCESS;
+const Flowgraph::Metadata& Flowgraph::metadata() const {
+    return *impl->metadata;
 }
 
-Result Flowgraph::setPersistentMeta(const std::string& key, const Parser::Map& data, const std::string& block) {
-    if (block.empty()) {
-        impl->persistentMeta[key] = data;
-    } else {
-        impl->blockPersistentMeta[block][key] = data;
-    }
-    return Result::SUCCESS;
+Flowgraph::Environment& Flowgraph::environment() {
+    return *impl->environment;
 }
 
-Result Flowgraph::clearPersistentMeta(const std::string& key, const std::string& block) {
-    if (block.empty()) {
-        impl->persistentMeta.erase(key);
-    } else if (impl->blockPersistentMeta.contains(block)) {
-        impl->blockPersistentMeta.at(block).erase(key);
-        if (impl->blockPersistentMeta.at(block).empty()) {
-            impl->blockPersistentMeta.erase(block);
-        }
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::clearAllPersistentMeta() {
-    impl->persistentMeta.clear();
-    impl->blockPersistentMeta.clear();
-    return Result::SUCCESS;
-}
-
-bool Flowgraph::hasVolatileMeta(const std::string& key, U64 timestamp) const {
-    std::shared_lock lock(impl->volatileMetaMutex);
-
-    if (!impl->volatileMeta.contains(key)) {
-        return false;
-    }
-
-    for (const auto& entry : impl->volatileMeta.at(key)) {
-        if (timestamp >= entry.start && timestamp <= entry.end) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-Result Flowgraph::getVolatileMeta(const std::string& key, Parser::Map& data, U64 timestamp) const {
-    std::shared_lock lock(impl->volatileMetaMutex);
-
-    if (!impl->volatileMeta.contains(key)) {
-        return Result::SUCCESS;
-    }
-
-    const VolatileMetaEntry* selected = nullptr;
-    for (const auto& entry : impl->volatileMeta.at(key)) {
-        if (timestamp < entry.start || timestamp > entry.end) {
-            continue;
-        }
-
-        if (selected == nullptr || entry.sequence > selected->sequence) {
-            selected = &entry;
-        }
-    }
-
-    if (selected != nullptr) {
-        data = selected->data;
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::setVolatileMeta(const std::string& key, const Parser::Map& data, U64 start, U64 end) {
-    if (end < start) {
-        JST_ERROR("[FLOWGRAPH] Volatile meta '{}' has invalid timestamp range [{}, {}].", key, start, end);
-        return Result::ERROR;
-    }
-
-    std::unique_lock lock(impl->volatileMetaMutex);
-    const U64 sequence = ++impl->volatileMetaSequence;
-    auto& entries = impl->volatileMeta[key];
-
-    for (auto& entry : entries) {
-        if (entry.start == start && entry.end == end) {
-            entry.sequence = sequence;
-            entry.data = data;
-            return Result::SUCCESS;
-        }
-    }
-
-    entries.push_back({start, end, sequence, data});
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::clearVolatileMeta(const std::string& key) {
-    std::unique_lock lock(impl->volatileMetaMutex);
-    impl->volatileMeta.erase(key);
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::clearAllVolatileMeta() {
-    std::unique_lock lock(impl->volatileMetaMutex);
-    impl->volatileMeta.clear();
-    impl->volatileMetaSequence = 0;
-    return Result::SUCCESS;
+const Flowgraph::Environment& Flowgraph::environment() const {
+    return *impl->environment;
 }
 
 }  // namespace Jetstream

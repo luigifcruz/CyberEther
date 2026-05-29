@@ -7,6 +7,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
 
@@ -266,7 +267,7 @@ struct FlowgraphActions {
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
             const NodeMeta nodeMeta = {pos.x, pos.y, 140.0f, 0.0f};
-            flowgraph->setPersistentMeta("node", nodeMeta, blockName);
+            flowgraph->metadata().set("node", nodeMeta, blockName);
         }
 
         const auto moduleId = msg.moduleId;
@@ -486,7 +487,7 @@ struct FlowgraphActions {
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
             const NodeMeta nodeMeta = {pos.x, pos.y, 140.0f, 0.0f};
-            flowgraph->setPersistentMeta("node", nodeMeta, blockName);
+            flowgraph->metadata().set("node", nodeMeta, blockName);
         }
 
         auto config = state.clipboard.config;
@@ -516,7 +517,7 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        state.flowgraph.items.at(msg.flowgraph)->setPersistentMeta("node", msg.meta, msg.block);
+        state.flowgraph.items.at(msg.flowgraph)->metadata().set("node", msg.meta, msg.block);
         return Result::SUCCESS;
     }
 
@@ -537,7 +538,7 @@ struct FlowgraphActions {
             state.flowgraph.items.contains(msg.flowgraph)) {
             SurfaceMeta surfaceMeta;
             auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-            flowgraph->getPersistentMeta(msg.metaKey, surfaceMeta, msg.block);
+            flowgraph->metadata().get(msg.metaKey, surfaceMeta, msg.block);
             if (msg.placement == SurfacePlacement::Attached) {
                 surfaceMeta.attachedWidth = msg.resize.logicalSize.x;
                 surfaceMeta.attachedHeight = msg.resize.logicalSize.y;
@@ -545,7 +546,7 @@ struct FlowgraphActions {
                 surfaceMeta.detachedWidth = msg.resize.logicalSize.x;
                 surfaceMeta.detachedHeight = msg.resize.logicalSize.y;
             }
-            flowgraph->setPersistentMeta(msg.metaKey, surfaceMeta, msg.block);
+            flowgraph->metadata().set(msg.metaKey, surfaceMeta, msg.block);
         }
 
         SurfaceEvent event;

@@ -12,6 +12,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/block_interface.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/sakura/toast.hh"
 
@@ -191,7 +192,7 @@ struct FlowgraphNodePresenter {
                                                          block.provider);
 
         NodeMeta nodeMeta;
-        flowgraph->getPersistentMeta("node", nodeMeta, blockName);
+        flowgraph->metadata().get("node", nodeMeta, blockName);
         block.layout = FlowgraphNode::Layout{
             .x = nodeMeta.x,
             .y = nodeMeta.y,

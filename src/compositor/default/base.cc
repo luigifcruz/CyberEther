@@ -12,6 +12,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/settings.hh"
+#include "jetstream/flowgraph_metadata.hh"
 
 #include <any>
 #include <chrono>
@@ -279,7 +280,7 @@ void DefaultCompositor::updateStacksState() {
 
         auto& stacks = state.flowgraph.stacks[flowgraphId];
         Parser::Map stackMap;
-        if (flowgraph->getPersistentMeta("stacks", stackMap) != Result::SUCCESS) {
+        if (flowgraph->metadata().get("stacks", stackMap) != Result::SUCCESS) {
             JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to load stack metadata for flowgraph '{}'.", flowgraphId);
             continue;
         }

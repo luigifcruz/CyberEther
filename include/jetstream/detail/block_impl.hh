@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "jetstream/block.hh"
+#include "jetstream/block_context.hh"
 #include "jetstream/block_interface.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/registry.hh"
@@ -73,9 +74,11 @@ struct JETSTREAM_API Block::Impl {
 
     // Components
 
-    std::shared_ptr<Instance>& instance();
-    std::shared_ptr<Render::Window>& render();
-    std::shared_ptr<Scheduler>& scheduler();
+    const std::shared_ptr<Instance>& instance();
+    const std::shared_ptr<Render::Window>& render();
+    const std::shared_ptr<Scheduler>& scheduler();
+    const std::shared_ptr<Flowgraph::Environment>& environment();
+    const std::shared_ptr<Flowgraph::Environment>& environment() const;
     const std::vector<std::shared_ptr<Module::Surface>>& surfaces() const;
     const std::vector<std::string>& modules() const;
 
@@ -113,9 +116,7 @@ struct JETSTREAM_API Block::Impl {
 
     // Components
 
-    std::shared_ptr<Instance> _instance;
-    std::shared_ptr<Render::Window> _render;
-    std::shared_ptr<Scheduler> _scheduler;
+    std::shared_ptr<Block::Context> _context;
     std::vector<std::shared_ptr<Module::Surface>> _surfaces;
 
     // Modules
@@ -133,6 +134,7 @@ struct JETSTREAM_API Block::Impl {
     std::shared_ptr<Block::Config> _candidateConfig;
 
     friend class Block;
+    friend class Flowgraph;
 };
 
 }  // namespace Jetstream

@@ -8,6 +8,7 @@ namespace Jetstream {
 struct Module::Context::Impl {
     std::shared_ptr<Runtime::Context> runtime;
     std::shared_ptr<Scheduler::Context> scheduler;
+    std::shared_ptr<Flowgraph::Environment> environment;
 };
 
 }  // namespace Jetstream

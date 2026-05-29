@@ -1,6 +1,7 @@
 #include "jetstream/parser.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
+#include <jetstream/block_context.hh>
 #include <jetstream/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
@@ -19,11 +20,10 @@ Result Block::create(const std::string& name,
                      const ProviderType& provider,
                      const Parser::Map& config,
                      const TensorMap& inputs,
-                     const std::shared_ptr<Instance>& instance,
-                     const std::shared_ptr<Render::Window>& render,
-                     const std::shared_ptr<Scheduler>& scheduler) {
+                     const std::shared_ptr<Block::Context>& context) {
     JST_ASSERT(impl->_state == State::None || impl->_state == State::Destroyed,
                "[BLOCK] Cannot create block '{}' in state '{}'.", name, impl->_state);
+    JST_ASSERT(context != nullptr, "[BLOCK] Cannot create block '{}' without a context.", name);
 
     // Set implementation variables.
 
@@ -38,9 +38,7 @@ Result Block::create(const std::string& name,
     impl->_runtime = runtime;
     impl->_provider = provider;
 
-    impl->_instance = instance;
-    impl->_render = render;
-    impl->_scheduler = scheduler;
+    impl->_context = context;
 
     JST_DEBUG("[BLOCK] Creating block '{}'.", impl->_name);
 

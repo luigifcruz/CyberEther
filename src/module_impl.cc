@@ -97,8 +97,16 @@ const Module::Taint& Module::Impl::taint() const {
     return _taint;
 }
 
-std::shared_ptr<Render::Window>& Module::Impl::render() {
+const std::shared_ptr<Render::Window>& Module::Impl::render() {
     return _render;
+}
+
+const std::shared_ptr<Flowgraph::Environment>& Module::Impl::environment() {
+    return _context->environment();
+}
+
+const std::shared_ptr<Flowgraph::Environment>& Module::Impl::environment() const {
+    return _context->environment();
 }
 
 Result Module::Impl::surfaceCreateManifest(SurfaceManifest&& manifest) {

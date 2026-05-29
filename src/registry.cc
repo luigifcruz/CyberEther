@@ -72,7 +72,8 @@ struct Registry::Impl {
                        const DeviceType& device,
                        const RuntimeType& runtime,
                        const ProviderType& provider,
-                       std::shared_ptr<Module>& module);
+                       std::shared_ptr<Module>& module,
+                       const std::shared_ptr<Flowgraph::Environment>& environment);
     Result buildBlock(const std::string& type, std::shared_ptr<Block>& block);
 
     std::mutex pendingRegistrationMutex;
@@ -423,7 +424,8 @@ Result Registry::Impl::buildModule(const std::string& type,
                                    const DeviceType& device,
                                    const RuntimeType& runtime,
                                    const ProviderType& provider,
-                                   std::shared_ptr<Module>& module) {
+                                   std::shared_ptr<Module>& module,
+                                   const std::shared_ptr<Flowgraph::Environment>& environment) {
     JST_TRACE("[REGISTRY] Creating module [Type: {}, Device: {}, Runtime: {}, Provider: {}].", type, device, runtime, provider);
 
     if (device == DeviceType::None) {
@@ -449,7 +451,7 @@ Result Registry::Impl::buildModule(const std::string& type,
     });
 
     if (it != modules.end()) {
-        module = it->factory();
+        module = it->factory(environment);
         return Result::SUCCESS;
     }
 
@@ -580,9 +582,10 @@ Result Registry::BuildModule(const std::string& type,
                              const DeviceType& device,
                              const RuntimeType& runtime,
                              const ProviderType& provider,
-                             std::shared_ptr<Module>& module) {
+                             std::shared_ptr<Module>& module,
+                             const std::shared_ptr<Flowgraph::Environment>& environment) {
     JST_CHECK(registry().drainStaticRegistrations());
-    JST_CHECK(registry().buildModule(type, device, runtime, provider, module));
+    JST_CHECK(registry().buildModule(type, device, runtime, provider, module, environment));
     return Result::SUCCESS;
 }
 

@@ -5,6 +5,9 @@
 #include <filesystem>
 #include <fstream>
 
+#include <jetstream/flowgraph_environment.hh>
+#include <jetstream/flowgraph_metadata.hh>
+
 #include "common.hh"
 
 using namespace Jetstream;
@@ -110,150 +113,150 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph block configuration APIs are cover
     }
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph persistent meta APIs are covered", "[flowgraph][api][meta]") {
+TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph metadata APIs are covered", "[flowgraph][api][metadata]") {
     REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
 
-    SECTION("raw persistent meta round-trips at flowgraph scope") {
+    SECTION("raw metadata round-trips at flowgraph scope") {
         Parser::Map source;
         source["order"] = U64{7};
         source["label"] = std::string("global");
 
-        REQUIRE(flowgraph->setPersistentMeta("layout", source) == Result::SUCCESS);
-        REQUIRE(flowgraph->hasPersistentMeta("layout"));
+        REQUIRE(flowgraph->metadata().set("layout", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().has("layout"));
 
         Parser::Map restored;
-        REQUIRE(flowgraph->getPersistentMeta("layout", restored) == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().get("layout", restored) == Result::SUCCESS);
         REQUIRE(restored.contains("order"));
         REQUIRE(restored.contains("label"));
         REQUIRE(std::any_cast<U64>(restored.at("order")) == 7);
         REQUIRE(std::any_cast<std::string>(restored.at("label")) == "global");
 
         Parser::Map tried;
-        REQUIRE(flowgraph->tryGetPersistentMeta("layout", tried));
+        REQUIRE(flowgraph->metadata().tryGet("layout", tried));
         REQUIRE(std::any_cast<U64>(tried.at("order")) == 7);
     }
 
-    SECTION("typed persistent meta round-trips at block scope") {
+    SECTION("typed metadata round-trips at block scope") {
         SimpleMetaFixture source;
         source.order = 3;
         source.label = "block";
 
-        REQUIRE(flowgraph->setPersistentMeta("dock", source, "gen1") == Result::SUCCESS);
-        REQUIRE(flowgraph->hasPersistentMeta("dock", "gen1"));
+        REQUIRE(flowgraph->metadata().set("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().has("dock", "gen1"));
 
         SimpleMetaFixture restored;
-        REQUIRE(flowgraph->getPersistentMeta("dock", restored, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().get("dock", restored, "gen1") == Result::SUCCESS);
         REQUIRE(restored.order == 3);
         REQUIRE(restored.label == "block");
 
         SimpleMetaFixture tried;
-        REQUIRE(flowgraph->tryGetPersistentMeta("dock", tried, "gen1"));
+        REQUIRE(flowgraph->metadata().tryGet("dock", tried, "gen1"));
         REQUIRE(tried.order == 3);
         REQUIRE(tried.label == "block");
     }
 
-    SECTION("missing typed persistent meta leaves the destination unchanged") {
+    SECTION("missing typed metadata leaves the destination unchanged") {
         SimpleMetaFixture restored;
         restored.order = 99;
         restored.label = "keep";
 
-        REQUIRE(flowgraph->getPersistentMeta("missing", restored) == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasPersistentMeta("missing"));
-        REQUIRE_FALSE(flowgraph->tryGetPersistentMeta("missing", restored));
+        REQUIRE(flowgraph->metadata().get("missing", restored) == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->metadata().has("missing"));
+        REQUIRE_FALSE(flowgraph->metadata().tryGet("missing", restored));
         REQUIRE(restored.order == 99);
         REQUIRE(restored.label == "keep");
     }
 
-    SECTION("missing raw persistent meta returns success with empty output") {
+    SECTION("missing raw metadata returns success with empty output") {
         Parser::Map restored;
-        REQUIRE(flowgraph->getPersistentMeta("missing", restored, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().get("missing", restored, "gen1") == Result::SUCCESS);
         REQUIRE(restored.empty());
     }
 
-    SECTION("typed persistent meta must serialize to a map") {
-        REQUIRE(flowgraph->setPersistentMeta("invalid", U64{7}) == Result::ERROR);
+    SECTION("typed metadata must serialize to a map") {
+        REQUIRE(flowgraph->metadata().set("invalid", U64{7}) == Result::ERROR);
     }
 
-    SECTION("persistent meta can be cleared") {
+    SECTION("metadata can be cleared") {
         Parser::Map source;
         source["order"] = U64{7};
 
-        REQUIRE(flowgraph->setPersistentMeta("layout", source) == Result::SUCCESS);
-        REQUIRE(flowgraph->setPersistentMeta("dock", source, "gen1") == Result::SUCCESS);
-        REQUIRE(flowgraph->hasPersistentMeta("layout"));
-        REQUIRE(flowgraph->hasPersistentMeta("dock", "gen1"));
+        REQUIRE(flowgraph->metadata().set("layout", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().set("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().has("layout"));
+        REQUIRE(flowgraph->metadata().has("dock", "gen1"));
 
-        REQUIRE(flowgraph->clearPersistentMeta("layout") == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasPersistentMeta("layout"));
-        REQUIRE(flowgraph->hasPersistentMeta("dock", "gen1"));
+        REQUIRE(flowgraph->metadata().clear("layout") == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->metadata().has("layout"));
+        REQUIRE(flowgraph->metadata().has("dock", "gen1"));
 
-        REQUIRE(flowgraph->clearPersistentMeta("dock", "gen1") == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasPersistentMeta("dock", "gen1"));
+        REQUIRE(flowgraph->metadata().clear("dock", "gen1") == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->metadata().has("dock", "gen1"));
 
-        REQUIRE(flowgraph->setPersistentMeta("dock", source, "gen1") == Result::SUCCESS);
-        REQUIRE(flowgraph->clearAllPersistentMeta() == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasPersistentMeta("dock", "gen1"));
+        REQUIRE(flowgraph->metadata().set("dock", source, "gen1") == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().clearAll() == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->metadata().has("dock", "gen1"));
     }
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph volatile meta APIs are covered", "[flowgraph][api][volatile]") {
-    SECTION("raw volatile meta round-trips") {
+TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph environment APIs are covered", "[flowgraph][api][environment]") {
+    SECTION("raw environment value round-trips") {
         Parser::Map source;
         source["order"] = U64{7};
         source["label"] = std::string("live");
 
-        REQUIRE(flowgraph->setVolatileMeta("layout", source) == Result::SUCCESS);
-        REQUIRE(flowgraph->hasVolatileMeta("layout"));
+        REQUIRE(flowgraph->environment().set("layout", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().has("layout"));
 
         Parser::Map restored;
-        REQUIRE(flowgraph->getVolatileMeta("layout", restored) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().get("layout", restored) == Result::SUCCESS);
         REQUIRE(restored.contains("order"));
         REQUIRE(restored.contains("label"));
         REQUIRE(std::any_cast<U64>(restored.at("order")) == 7);
         REQUIRE(std::any_cast<std::string>(restored.at("label")) == "live");
 
         Parser::Map tried;
-        REQUIRE(flowgraph->tryGetVolatileMeta("layout", tried));
+        REQUIRE(flowgraph->environment().tryGet("layout", tried));
         REQUIRE(std::any_cast<U64>(tried.at("order")) == 7);
     }
 
-    SECTION("typed volatile meta round-trips") {
+    SECTION("typed environment value round-trips") {
         SimpleMetaFixture source;
         source.order = 3;
         source.label = "live";
 
-        REQUIRE(flowgraph->setVolatileMeta("dock", source) == Result::SUCCESS);
-        REQUIRE(flowgraph->hasVolatileMeta("dock"));
+        REQUIRE(flowgraph->environment().set("dock", source) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().has("dock"));
 
         SimpleMetaFixture restored;
-        REQUIRE(flowgraph->getVolatileMeta("dock", restored) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().get("dock", restored) == Result::SUCCESS);
         REQUIRE(restored.order == 3);
         REQUIRE(restored.label == "live");
 
         SimpleMetaFixture tried;
-        REQUIRE(flowgraph->tryGetVolatileMeta("dock", tried));
+        REQUIRE(flowgraph->environment().tryGet("dock", tried));
         REQUIRE(tried.order == 3);
         REQUIRE(tried.label == "live");
     }
 
-    SECTION("typed volatile meta must serialize to a map") {
-        REQUIRE(flowgraph->setVolatileMeta("sampleRate", U64{48000}) == Result::ERROR);
-        REQUIRE_FALSE(flowgraph->hasVolatileMeta("sampleRate"));
+    SECTION("typed environment value must serialize to a map") {
+        REQUIRE(flowgraph->environment().set("sampleRate", U64{48000}) == Result::ERROR);
+        REQUIRE_FALSE(flowgraph->environment().has("sampleRate"));
     }
 
-    SECTION("missing volatile meta leaves the destination unchanged") {
+    SECTION("missing environment value leaves the destination unchanged") {
         SimpleMetaFixture restored;
         restored.order = 99;
         restored.label = "keep";
 
-        REQUIRE(flowgraph->getVolatileMeta("missing", restored) == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasVolatileMeta("missing"));
-        REQUIRE_FALSE(flowgraph->tryGetVolatileMeta("missing", restored));
+        REQUIRE(flowgraph->environment().get("missing", restored) == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->environment().has("missing"));
+        REQUIRE_FALSE(flowgraph->environment().tryGet("missing", restored));
         REQUIRE(restored.order == 99);
         REQUIRE(restored.label == "keep");
     }
 
-    SECTION("timestamped volatile meta resolves latest matching range") {
+    SECTION("timestamped environment value resolves latest matching range") {
         SimpleMetaFixture scan;
         scan.order = 1;
         scan.label = "scan";
@@ -264,47 +267,47 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph volatile meta APIs are covered", "
         override.order = 3;
         override.label = "override";
 
-        REQUIRE(flowgraph->setVolatileMeta("mode", scan, 0, 99) == Result::SUCCESS);
-        REQUIRE(flowgraph->setVolatileMeta("mode", track, 100, 200) == Result::SUCCESS);
-        REQUIRE(flowgraph->setVolatileMeta("mode", override, 50, 175) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().set("mode", scan, 0, 99) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().set("mode", track, 100, 200) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().set("mode", override, 50, 175) == Result::SUCCESS);
 
         SimpleMetaFixture mode;
-        REQUIRE(flowgraph->tryGetVolatileMeta("mode", mode, 25));
+        REQUIRE(flowgraph->environment().tryGet("mode", mode, 25));
         REQUIRE(mode.label == "scan");
-        REQUIRE(flowgraph->tryGetVolatileMeta("mode", mode, 75));
+        REQUIRE(flowgraph->environment().tryGet("mode", mode, 75));
         REQUIRE(mode.label == "override");
-        REQUIRE(flowgraph->tryGetVolatileMeta("mode", mode, 150));
+        REQUIRE(flowgraph->environment().tryGet("mode", mode, 150));
         REQUIRE(mode.label == "override");
-        REQUIRE(flowgraph->tryGetVolatileMeta("mode", mode, 190));
+        REQUIRE(flowgraph->environment().tryGet("mode", mode, 190));
         REQUIRE(mode.label == "track");
-        REQUIRE_FALSE(flowgraph->hasVolatileMeta("mode", 250));
+        REQUIRE_FALSE(flowgraph->environment().has("mode", 250));
     }
 
-    SECTION("volatile meta rejects invalid timestamp ranges") {
+    SECTION("environment rejects invalid timestamp ranges") {
         Parser::Map source;
         source["value"] = std::string("invalid");
 
-        REQUIRE(flowgraph->setVolatileMeta("mode", source, 10, 9) == Result::ERROR);
-        REQUIRE_FALSE(flowgraph->hasVolatileMeta("mode", 10));
+        REQUIRE(flowgraph->environment().set("mode", source, 10, 9) == Result::ERROR);
+        REQUIRE_FALSE(flowgraph->environment().has("mode", 10));
     }
 
-    SECTION("volatile meta can be cleared") {
+    SECTION("environment values can be cleared") {
         Parser::Map sampleRate;
         sampleRate["value"] = U64{48000};
         Parser::Map centerFrequency;
         centerFrequency["value"] = F64{915.0e6};
 
-        REQUIRE(flowgraph->setVolatileMeta("sampleRate", sampleRate) == Result::SUCCESS);
-        REQUIRE(flowgraph->setVolatileMeta("centerFrequency", centerFrequency) == Result::SUCCESS);
-        REQUIRE(flowgraph->hasVolatileMeta("sampleRate"));
-        REQUIRE(flowgraph->hasVolatileMeta("centerFrequency"));
+        REQUIRE(flowgraph->environment().set("sampleRate", sampleRate) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().set("centerFrequency", centerFrequency) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().has("sampleRate"));
+        REQUIRE(flowgraph->environment().has("centerFrequency"));
 
-        REQUIRE(flowgraph->clearVolatileMeta("sampleRate") == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasVolatileMeta("sampleRate"));
-        REQUIRE(flowgraph->hasVolatileMeta("centerFrequency"));
+        REQUIRE(flowgraph->environment().clear("sampleRate") == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->environment().has("sampleRate"));
+        REQUIRE(flowgraph->environment().has("centerFrequency"));
 
-        REQUIRE(flowgraph->clearAllVolatileMeta() == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->hasVolatileMeta("centerFrequency"));
+        REQUIRE(flowgraph->environment().clearAll() == Result::SUCCESS);
+        REQUIRE_FALSE(flowgraph->environment().has("centerFrequency"));
     }
 }
 
@@ -330,10 +333,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
         SimpleMetaFixture meta;
         meta.order = 12;
         meta.label = "graph";
-        REQUIRE(flowgraph->setPersistentMeta("layout", meta) == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().set("layout", meta) == Result::SUCCESS);
         Parser::Map session;
         session["id"] = U64{42};
-        REQUIRE(flowgraph->setVolatileMeta("session", session) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().set("session", session) == Result::SUCCESS);
 
         const TempFlowgraphFile tempFile("roundtrip");
         REQUIRE(flowgraph->exportToFile(tempFile.path.string()) == Result::SUCCESS);
@@ -360,10 +363,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
         REQUIRE(imported.blockList().size() == 3);
 
         SimpleMetaFixture restored;
-        REQUIRE(imported.getPersistentMeta("layout", restored) == Result::SUCCESS);
+        REQUIRE(imported.metadata().get("layout", restored) == Result::SUCCESS);
         REQUIRE(restored.order == 12);
         REQUIRE(restored.label == "graph");
-        REQUIRE_FALSE(imported.hasVolatileMeta("session"));
+        REQUIRE_FALSE(imported.environment().has("session"));
 
         REQUIRE(imported.destroy() == Result::SUCCESS);
     }
