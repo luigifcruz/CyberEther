@@ -5,12 +5,14 @@ namespace Jetstream {
 Block::Context::Context(const std::shared_ptr<Instance>& instance,
                         const std::shared_ptr<Render::Window>& render,
                         const std::shared_ptr<Scheduler>& scheduler,
-                        const std::shared_ptr<Flowgraph::Environment>& environment) {
+                        const std::shared_ptr<Flowgraph::Environment>& environment,
+                        const std::shared_ptr<Flowgraph::View>& view) {
     impl = std::make_shared<Impl>();
     impl->instance = instance;
     impl->render = render;
     impl->scheduler = scheduler;
     impl->environment = environment;
+    impl->view = view;
 }
 
 Block::Context::~Context() {
@@ -31,6 +33,10 @@ const std::shared_ptr<Scheduler>& Block::Context::scheduler() const {
 
 const std::shared_ptr<Flowgraph::Environment>& Block::Context::environment() const {
     return impl->environment;
+}
+
+const std::shared_ptr<Flowgraph::View>& Block::Context::view() const {
+    return impl->view;
 }
 
 }  // namespace Jetstream

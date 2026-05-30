@@ -69,6 +69,8 @@ struct JETSTREAM_API Module::Impl {
     const std::shared_ptr<Render::Window>& render();
     const std::shared_ptr<Flowgraph::Environment>& environment();
     const std::shared_ptr<Flowgraph::Environment>& environment() const;
+    const std::shared_ptr<Flowgraph::View>& view();
+    const std::shared_ptr<Flowgraph::View>& view() const;
 
     // Surface
 

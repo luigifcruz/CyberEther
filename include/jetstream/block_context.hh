@@ -13,13 +13,15 @@ struct JETSTREAM_API Block::Context {
     Context(const std::shared_ptr<Instance>& instance,
             const std::shared_ptr<Render::Window>& render,
             const std::shared_ptr<Scheduler>& scheduler,
-            const std::shared_ptr<Flowgraph::Environment>& environment);
+            const std::shared_ptr<Flowgraph::Environment>& environment,
+            const std::shared_ptr<Flowgraph::View>& view);
     ~Context();
 
     const std::shared_ptr<Instance>& instance() const;
     const std::shared_ptr<Render::Window>& render() const;
     const std::shared_ptr<Scheduler>& scheduler() const;
     const std::shared_ptr<Flowgraph::Environment>& environment() const;
+    const std::shared_ptr<Flowgraph::View>& view() const;
 
  private:
     struct Impl;

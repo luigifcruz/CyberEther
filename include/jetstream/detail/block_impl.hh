@@ -79,6 +79,8 @@ struct JETSTREAM_API Block::Impl {
     const std::shared_ptr<Scheduler>& scheduler();
     const std::shared_ptr<Flowgraph::Environment>& environment();
     const std::shared_ptr<Flowgraph::Environment>& environment() const;
+    const std::shared_ptr<Flowgraph::View>& view();
+    const std::shared_ptr<Flowgraph::View>& view() const;
     const std::vector<std::shared_ptr<Module::Surface>>& surfaces() const;
     const std::vector<std::string>& modules() const;
 

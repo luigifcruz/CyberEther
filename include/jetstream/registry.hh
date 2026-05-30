@@ -18,7 +18,8 @@ namespace Jetstream {
 
 class JETSTREAM_API Registry {
  public:
-    using ModuleFactory = std::function<std::shared_ptr<Module>(const std::shared_ptr<Flowgraph::Environment>&)>;
+    using ModuleFactory = std::function<std::shared_ptr<Module>(const std::shared_ptr<Flowgraph::Environment>&,
+                                                                const std::shared_ptr<Flowgraph::View>&)>;
     using BlockFactory = std::function<std::shared_ptr<Block>()>;
     using BenchmarkFactory = std::function<std::vector<Benchmark::Case>()>;
 
@@ -100,7 +101,8 @@ class JETSTREAM_API Registry {
                                const RuntimeType& runtime,
                                const ProviderType& provider,
                                std::shared_ptr<Module>& module,
-                               const std::shared_ptr<Flowgraph::Environment>& environment = nullptr);
+                               const std::shared_ptr<Flowgraph::Environment>& environment = nullptr,
+                               const std::shared_ptr<Flowgraph::View>& view = nullptr);
     static Result BuildBlock(const std::string& type, std::shared_ptr<Block>& block);
 
  private:
@@ -126,11 +128,15 @@ class JETSTREAM_API Registry {
                 device, \
                 runtime, \
                 provider, \
-                [device, runtime, provider](const std::shared_ptr<::Jetstream::Flowgraph::Environment>& environment) { \
+                [device, runtime, provider](const std::shared_ptr<::Jetstream::Flowgraph::Environment>& environment, \
+                                            const std::shared_ptr<::Jetstream::Flowgraph::View>& view) { \
                     const auto impl = std::make_shared<impl_type>(); \
                     const auto runtimeContext = std::static_pointer_cast<::Jetstream::Runtime::Context>(impl); \
                     const auto schedulerContext = std::static_pointer_cast<::Jetstream::Scheduler::Context>(impl); \
-                    const auto context = std::make_shared<::Jetstream::Module::Context>(runtimeContext, schedulerContext, environment); \
+                    const auto context = std::make_shared<::Jetstream::Module::Context>(runtimeContext, \
+                                                                                        schedulerContext, \
+                                                                                        environment, \
+                                                                                        view); \
                     const auto stagedConfig = std::static_pointer_cast<::Jetstream::Module::Config>(impl); \
                     const auto candidateConfig = std::static_pointer_cast<::Jetstream::Module::Config>(impl->candidate()); \
                     return std::make_shared<::Jetstream::Module>(device, \

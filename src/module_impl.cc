@@ -111,6 +111,14 @@ const std::shared_ptr<Flowgraph::Environment>& Module::Impl::environment() const
     return _context->environment();
 }
 
+const std::shared_ptr<Flowgraph::View>& Module::Impl::view() {
+    return _context->view();
+}
+
+const std::shared_ptr<Flowgraph::View>& Module::Impl::view() const {
+    return _context->view();
+}
+
 Result Module::Impl::surfaceCreateManifest(SurfaceManifest&& manifest) {
     std::lock_guard<std::mutex> lock(_surface->impl->manifestMutex);
     _surface->impl->manifests.push_back(std::move(manifest));

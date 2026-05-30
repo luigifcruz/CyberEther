@@ -10,6 +10,7 @@ struct Block::Context::Impl {
     std::shared_ptr<Render::Window> render;
     std::shared_ptr<Scheduler> scheduler;
     std::shared_ptr<Flowgraph::Environment> environment;
+    std::shared_ptr<Flowgraph::View> view;
 };
 
 }  // namespace Jetstream

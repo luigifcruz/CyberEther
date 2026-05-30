@@ -49,7 +49,8 @@ Result Block::Impl::moduleCreate(const std::string name,
                                     _runtime,
                                     _provider,
                                     module,
-                                    _context->impl->environment));
+                                    _context->impl->environment,
+                                    _context->impl->view));
     _modules[name] = {module, config};
     _moduleOrder.push_back(name);
 
@@ -244,6 +245,14 @@ const std::shared_ptr<Flowgraph::Environment>& Block::Impl::environment() {
 
 const std::shared_ptr<Flowgraph::Environment>& Block::Impl::environment() const {
     return _context->environment();
+}
+
+const std::shared_ptr<Flowgraph::View>& Block::Impl::view() {
+    return _context->view();
+}
+
+const std::shared_ptr<Flowgraph::View>& Block::Impl::view() const {
+    return _context->view();
 }
 
 const std::vector<std::shared_ptr<Module::Surface>>& Block::Impl::surfaces() const {

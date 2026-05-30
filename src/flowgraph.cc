@@ -429,7 +429,8 @@ Result Flowgraph::blockCreate(const std::string name,
     const auto context = std::make_shared<Block::Context>(impl->instance,
                                                           impl->render,
                                                           impl->scheduler,
-                                                          impl->environment);
+                                                          impl->environment,
+                                                          impl->view);
 
     const auto result = block->create(name,
                                       device,
