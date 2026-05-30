@@ -10,23 +10,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block creation and destruction", "[flowgraph
     SECTION("create single block") {
         auto result = flowgraph->blockCreate("gen1", "signal_generator", {}, {});
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().size() == 1);
-        REQUIRE(flowgraph->blockList().contains("gen1"));
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 1);
+        REQUIRE(flowgraph->view().has("gen1"));
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
     }
 
     SECTION("create multiple blocks") {
         REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
         REQUIRE(flowgraph->blockCreate("gen2", "signal_generator", {}, {}) == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().size() == 2);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 2);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
     }
 
     SECTION("destroy block") {
         REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
         REQUIRE(flowgraph->blockDestroy("gen1") == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().empty());
+        REQUIRE(flowgraph->view().empty());
     }
 
     SECTION("create duplicate block fails") {
@@ -53,30 +53,30 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {
     addInputs["a"].requested("gen1", "signal");
     addInputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, addInputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
 
     SECTION("disconnect blocks") {
         auto result = flowgraph->blockDisconnect("add1", "a");
         REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
     }
 
     SECTION("reconnect after disconnect") {
         flowgraph->blockDisconnect("add1", "a");
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
 
         auto result = flowgraph->blockConnect("add1", "a", "gen1", "signal");
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
     }
 
     SECTION("reconnect to different source") {
         flowgraph->blockDisconnect("add1", "a");
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
 
         auto result = flowgraph->blockConnect("add1", "a", "gen3", "signal");
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
     }
 
     SECTION("connect to nonexistent block fails") {
@@ -88,7 +88,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {
         flowgraph->blockDisconnect("add1", "a");
         auto result = flowgraph->blockConnect("add1", "a", "gen1", "nonexistent");
         REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
     }
 
     SECTION("disconnect nonexistent port fails") {
@@ -115,30 +115,30 @@ TEST_CASE_METHOD(FlowgraphFixture, "Downstream propagation on connect", "[flowgr
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
     // All blocks should exist and be created
-    REQUIRE(flowgraph->blockList().size() == 4);
-    REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+    REQUIRE(flowgraph->view().size() == 4);
+    REQUIRE(viewBlock("gen1").state == Block::State::Created);
+    REQUIRE(viewBlock("gen2").state == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
+    REQUIRE(viewBlock("add2").state == Block::State::Created);
 
     SECTION("disconnecting upstream marks downstream incomplete") {
         auto result = flowgraph->blockDisconnect("add1", "a");
         REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
 
         // add1 should be incomplete, add2 should be incomplete (unresolved input)
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
     }
 
     SECTION("reconnecting upstream restores downstream") {
         flowgraph->blockDisconnect("add1", "a");
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
 
         auto result = flowgraph->blockConnect("add1", "a", "gen1", "signal");
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
     }
 }
 
@@ -157,31 +157,31 @@ TEST_CASE_METHOD(FlowgraphFixture, "Downstream propagation on destroy", "[flowgr
     add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
+    REQUIRE(viewBlock("add2").state == Block::State::Created);
 
     SECTION("destroying upstream marks downstream incomplete") {
         REQUIRE(flowgraph->blockDestroy("gen1") == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE(flowgraph->view().has("add1"));
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
     }
 
     SECTION("destroying middle block marks downstream incomplete") {
         REQUIRE(flowgraph->blockDestroy("add1") == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().contains("add2"));
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("add1"));
+        REQUIRE(flowgraph->view().has("add2"));
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
     }
 
     SECTION("destroying all upstream sources marks downstream incomplete") {
         REQUIRE(flowgraph->blockDestroy("gen1") == Result::SUCCESS);
         REQUIRE(flowgraph->blockDestroy("gen2") == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
     }
 }
 
@@ -211,28 +211,28 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with multi-input downstream", 
     add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 5);
-    REQUIRE(flowgraph->blockList().at("add0")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+    REQUIRE(flowgraph->view().size() == 5);
+    REQUIRE(viewBlock("add0").state == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
+    REQUIRE(viewBlock("add2").state == Block::State::Created);
 
     SECTION("destroying middle block preserves other connections in downstream") {
         REQUIRE(flowgraph->blockDestroy("add0") == Result::SUCCESS);
 
         // add0 should be gone
-        REQUIRE_FALSE(flowgraph->blockList().contains("add0"));
+        REQUIRE_FALSE(flowgraph->view().has("add0"));
 
         // add1 should exist but be incomplete (lost a from add0)
-        REQUIRE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
+        REQUIRE(flowgraph->view().has("add1"));
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
 
         // add2 should exist but be incomplete (add1 is incomplete so no valid output)
-        REQUIRE(flowgraph->blockList().contains("add2"));
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE(flowgraph->view().has("add2"));
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
 
         // gen1 and gen2 should still be created
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
     }
 
     SECTION("reconnecting after middle block destruction restores chain") {
@@ -242,8 +242,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with multi-input downstream", 
         REQUIRE(flowgraph->blockConnect("add1", "a", "gen1", "signal") == Result::SUCCESS);
 
         // Both add1 and add2 should now be Created
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
     }
 }
 
@@ -274,33 +274,33 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with deep downstream chain", "
     add4Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add4", "add", {}, add4Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 6);
+    REQUIRE(flowgraph->view().size() == 6);
 
     SECTION("destroying early block marks entire downstream chain incomplete") {
         REQUIRE(flowgraph->blockDestroy("add1") == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add4")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("add1"));
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add4").state == Block::State::Incomplete);
     }
 
     SECTION("destroying middle of chain marks only downstream incomplete") {
         REQUIRE(flowgraph->blockDestroy("add2") == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE_FALSE(flowgraph->blockList().contains("add2"));
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add4")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE_FALSE(flowgraph->view().has("add2"));
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add4").state == Block::State::Incomplete);
     }
 
     SECTION("destroying end of chain leaves upstream created") {
         REQUIRE(flowgraph->blockDestroy("add4") == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
-        REQUIRE_FALSE(flowgraph->blockList().contains("add4"));
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
+        REQUIRE_FALSE(flowgraph->view().has("add4"));
     }
 }
 
@@ -330,41 +330,41 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with diamond dependency", "[fl
     add3Inputs["b"].requested("add2", "sum");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 5);
-    REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+    REQUIRE(flowgraph->view().size() == 5);
+    REQUIRE(viewBlock("add3").state == Block::State::Created);
 
     SECTION("destroying one branch leaves add3 incomplete but preserves other branch") {
         REQUIRE(flowgraph->blockDestroy("add1") == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("add1"));
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
     }
 
     SECTION("destroying other branch leaves add3 incomplete but preserves first branch") {
         REQUIRE(flowgraph->blockDestroy("add2") == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE_FALSE(flowgraph->blockList().contains("add2"));
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE_FALSE(flowgraph->view().has("add2"));
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
     }
 
     SECTION("destroying source marks all downstream incomplete") {
         REQUIRE(flowgraph->blockDestroy("gen1") == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("gen1"));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("gen1"));
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
     }
 
     SECTION("reconnecting both branches restores add3") {
         REQUIRE(flowgraph->blockDestroy("add1") == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
 
         // Reconnect add3.a to gen1 directly (bypassing removed add1)
         REQUIRE(flowgraph->blockConnect("add3", "a", "gen1", "signal") == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 }
 
@@ -399,19 +399,19 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block with multiple dependents at sa
     add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 6);
+    REQUIRE(flowgraph->view().size() == 6);
 
     SECTION("destroying fan-out source marks all dependents incomplete") {
         REQUIRE(flowgraph->blockDestroy("add0") == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("add0"));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("add0"));
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add3").state == Block::State::Incomplete);
 
         // gen1 and gen2 should still be created
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
     }
 }
 
@@ -436,9 +436,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy with no propagation flag", "[flowgra
         // Downstream blocks remain but may have stale references (internal use only)
         REQUIRE(flowgraph->blockDestroy("add1", false) == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("add1"));
+        REQUIRE_FALSE(flowgraph->view().has("add1"));
         // add2 still exists (not recreated, may have invalid state - internal use)
-        REQUIRE(flowgraph->blockList().contains("add2"));
+        REQUIRE(flowgraph->view().has("add2"));
     }
 }
 
@@ -458,16 +458,16 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy block then recreate with same name",
 
     SECTION("can recreate block with same name after destruction") {
         REQUIRE(flowgraph->blockDestroy("add1") == Result::SUCCESS);
-        REQUIRE_FALSE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("add1"));
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
 
         // Recreate add1
         REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
 
         // Reconnect add2 to the new add1
         REQUIRE(flowgraph->blockConnect("add2", "a", "add1", "sum") == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
     }
 }
 
@@ -483,14 +483,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Destroy source block used by multiple inputs
     add1Inputs["b"].requested("gen1", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, add1Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
 
     SECTION("destroying source disconnects all inputs from that source") {
         REQUIRE(flowgraph->blockDestroy("gen1") == Result::SUCCESS);
 
-        REQUIRE_FALSE(flowgraph->blockList().contains("gen1"));
-        REQUIRE(flowgraph->blockList().contains("add1"));
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
+        REQUIRE_FALSE(flowgraph->view().has("gen1"));
+        REQUIRE(flowgraph->view().has("add1"));
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
     }
 }
 
@@ -510,34 +510,34 @@ TEST_CASE_METHOD(FlowgraphFixture, "Fan-out propagation", "[flowgraph][propagati
     add2Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add2", "add", {}, add2Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
+    REQUIRE(viewBlock("add2").state == Block::State::Created);
 
     SECTION("destroying shared source marks all downstream incomplete") {
         REQUIRE(flowgraph->blockDestroy("gen1") == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Incomplete);
     }
 
     SECTION("disconnecting from shared source marks only that block incomplete") {
         flowgraph->blockDisconnect("add1", "a");
 
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Incomplete);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
     }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block reconfiguration", "[flowgraph]") {
     REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
+    REQUIRE(viewBlock("gen1").state == Block::State::Created);
 
     SECTION("reconfigure existing block") {
         Parser::Map newConfig;
         newConfig["bufferSize"] = std::string("2048");
         auto result = flowgraph->blockReconfigure("gen1", newConfig);
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
     }
 
     SECTION("reconfigure nonexistent block fails") {
@@ -549,16 +549,16 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block reconfiguration", "[flowgraph]") {
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block recreation", "[flowgraph][recreation]") {
     REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
+    REQUIRE(viewBlock("gen1").state == Block::State::Created);
 
     SECTION("recreate single block") {
         Parser::Map newConfig;
         newConfig["bufferSize"] = std::string("4096");
         auto result = flowgraph->blockRecreate("gen1", newConfig);
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().size() == 1);
-        REQUIRE(flowgraph->blockList().contains("gen1"));
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 1);
+        REQUIRE(flowgraph->view().has("gen1"));
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
     }
 
     SECTION("recreate nonexistent block fails") {
@@ -575,14 +575,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation can change implementation",
     Parser::Map config;
     REQUIRE(flowgraph->blockConfig("gen1", config) == Result::SUCCESS);
 
-    const auto& block = flowgraph->blockList().at("gen1");
+    const auto block = viewBlock("gen1");
     const auto implementations = Registry::ListAvailableModules("signal_generator",
-                                                                 block->device(),
-                                                                 block->runtime(),
+                                                                 block.device,
+                                                                 block.runtime,
                                                                  kSignalGeneratorTestProvider);
 
     REQUIRE(implementations.size() == 1);
-    REQUIRE(block->provider() != implementations.front().provider);
+    REQUIRE(block.provider != implementations.front().provider);
 
     REQUIRE(flowgraph->blockRecreate("gen1",
                                      config,
@@ -590,11 +590,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation can change implementation",
                                      implementations.front().runtime,
                                      implementations.front().provider) == Result::SUCCESS);
 
-    const auto& recreated = flowgraph->blockList().at("gen1");
-    REQUIRE(recreated->state() == Block::State::Created);
-    REQUIRE(recreated->device() == implementations.front().device);
-    REQUIRE(recreated->runtime() == implementations.front().runtime);
-    REQUIRE(recreated->provider() == implementations.front().provider);
+    const auto recreated = viewBlock("gen1");
+    REQUIRE(recreated.state == Block::State::Created);
+    REQUIRE(recreated.device == implementations.front().device);
+    REQUIRE(recreated.runtime == implementations.front().runtime);
+    REQUIRE(recreated.provider == implementations.front().provider);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[flowgraph][recreation]") {
@@ -617,10 +617,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[f
     add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 5);
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+    REQUIRE(flowgraph->view().size() == 5);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
+    REQUIRE(viewBlock("add2").state == Block::State::Created);
+    REQUIRE(viewBlock("add3").state == Block::State::Created);
 
     SECTION("recreating source recreates entire downstream chain") {
         Parser::Map newConfig;
@@ -628,12 +628,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[f
         REQUIRE(result == Result::SUCCESS);
 
         // All blocks should still exist and be created
-        REQUIRE(flowgraph->blockList().size() == 5);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 5);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 
     SECTION("recreating middle block recreates downstream only") {
@@ -642,12 +642,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[f
         REQUIRE(result == Result::SUCCESS);
 
         // All blocks should still exist and be created
-        REQUIRE(flowgraph->blockList().size() == 5);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 5);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 
     SECTION("recreating end block recreates only that block") {
@@ -656,10 +656,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with downstream chain", "[f
         REQUIRE(result == Result::SUCCESS);
 
         // All blocks should still exist and be created
-        REQUIRE(flowgraph->blockList().size() == 5);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 5);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 }
 
@@ -687,19 +687,19 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with diamond dependency", "
     add3Inputs["b"].requested("add2", "sum");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 5);
-    REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+    REQUIRE(flowgraph->view().size() == 5);
+    REQUIRE(viewBlock("add3").state == Block::State::Created);
 
     SECTION("recreating source recreates all downstream including diamond") {
         Parser::Map newConfig;
         auto result = flowgraph->blockRecreate("gen1", newConfig);
         REQUIRE(result == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().size() == 5);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 5);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 
     SECTION("recreating one branch recreates that branch and convergence point") {
@@ -707,10 +707,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with diamond dependency", "
         auto result = flowgraph->blockRecreate("add1", newConfig);
         REQUIRE(result == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().size() == 5);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 5);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 }
 
@@ -743,18 +743,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with fan-out", "[flowgraph]
     add3Inputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add3", "add", {}, add3Inputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().size() == 6);
+    REQUIRE(flowgraph->view().size() == 6);
 
     SECTION("recreating fan-out source recreates all dependents") {
         Parser::Map newConfig;
         auto result = flowgraph->blockRecreate("add0", newConfig);
         REQUIRE(result == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().size() == 6);
-        REQUIRE(flowgraph->blockList().at("add0")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 6);
+        REQUIRE(viewBlock("add0").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 
     SECTION("recreating one fan-out target does not affect siblings") {
@@ -762,11 +762,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with fan-out", "[flowgraph]
         auto result = flowgraph->blockRecreate("add1", newConfig);
         REQUIRE(result == Result::SUCCESS);
 
-        REQUIRE(flowgraph->blockList().size() == 6);
-        REQUIRE(flowgraph->blockList().at("add0")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add3")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 6);
+        REQUIRE(viewBlock("add0").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
+        REQUIRE(viewBlock("add3").state == Block::State::Created);
     }
 }
 
@@ -791,12 +791,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation preserves connections", "[f
         REQUIRE(flowgraph->blockRecreate("add1", newConfig) == Result::SUCCESS);
 
         // All blocks should be created, meaning connections are valid
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add2")->state() == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
+        REQUIRE(viewBlock("add2").state == Block::State::Created);
 
         // Verify add2 still has its connection to add1
-        const auto& add2Ptr = flowgraph->blockList().at("add2");
-        const auto& inputs = add2Ptr->inputs();
+        const auto add2Ptr = viewBlock("add2");
+        const auto& inputs = add2Ptr.inputs;
         REQUIRE(inputs.contains("a"));
         REQUIRE(inputs.at("a").external.has_value());
         REQUIRE(inputs.at("a").external->block == "add1");
@@ -813,9 +813,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
     addInputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph->blockCreate("add1", "add", {}, addInputs) == Result::SUCCESS);
 
-    REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+    REQUIRE(viewBlock("gen1").state == Block::State::Created);
+    REQUIRE(viewBlock("gen2").state == Block::State::Created);
+    REQUIRE(viewBlock("add1").state == Block::State::Created);
 
     flowgraph->setTitle("Test Flowgraph");
     flowgraph->setAuthor("Test Author");
@@ -836,20 +836,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph serialization", "[flowgraph][seria
 
         // Destroy current blocks
         std::vector<std::string> names;
-        for (const auto& [name, _] : flowgraph->blockList()) {
-            names.push_back(name);
-        }
+        REQUIRE(flowgraph->view().keys(names) == Result::SUCCESS);
         for (const auto& name : names) {
             flowgraph->blockDestroy(name, false);
         }
-        REQUIRE(flowgraph->blockList().empty());
+        REQUIRE(flowgraph->view().empty());
 
         // Reimport
         REQUIRE(flowgraph->importFromBlob(blob) == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().size() == 3);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 3);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
         REQUIRE(flowgraph->title() == "Test Flowgraph");
         REQUIRE(flowgraph->author() == "Test Author");
     }

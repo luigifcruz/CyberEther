@@ -22,6 +22,7 @@ class JETSTREAM_API Flowgraph {
  public:
     class Metadata;
     class Environment;
+    class View;
 
     struct Config {
         SchedulerType scheduler = SchedulerType::SYNCHRONOUS;
@@ -42,12 +43,12 @@ class JETSTREAM_API Flowgraph {
     Result stop();
     Result destroy();
 
-    const std::string& title() const;
-    const std::string& summary() const;
-    const std::string& author() const;
-    const std::string& license() const;
-    const std::string& description() const;
-    const std::string& path() const;
+    std::string title() const;
+    std::string summary() const;
+    std::string author() const;
+    std::string license() const;
+    std::string description() const;
+    std::string path() const;
 
     Result setTitle(const std::string& title);
     Result setSummary(const std::string& summary);
@@ -87,7 +88,6 @@ class JETSTREAM_API Flowgraph {
                          const ProviderType& provider);
     Result blockConfig(const std::string name,
                        Parser::Map& config) const;
-    const std::unordered_map<std::string, std::shared_ptr<Block>>& blockList() const;
 
     Result importFromFile(const std::string& path);
     Result importFromBlob(const std::vector<char>& blob);
@@ -103,6 +103,9 @@ class JETSTREAM_API Flowgraph {
 
     Environment& environment();
     const Environment& environment() const;
+
+    View& view();
+    const View& view() const;
 
  private:
     std::shared_ptr<Impl> impl;

@@ -50,6 +50,10 @@ Result Scheduler::reload(const std::shared_ptr<Module>& module) {
     return impl->reload(module);
 }
 
+Result Scheduler::synchronize(const std::function<Result()>& fn) {
+    return impl->synchronize(fn);
+}
+
 Result Scheduler::present() {
     return impl->present();
 }

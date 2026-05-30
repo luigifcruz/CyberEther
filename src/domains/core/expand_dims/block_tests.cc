@@ -18,8 +18,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block applies axis configuration"
     Blocks::ExpandDims config;
     config.axis = 1;
     REQUIRE(flowgraph->blockCreate("expand_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("expand_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("expand_block")->outputs().count("buffer") == 1);
+    REQUIRE(viewBlock("expand_block").state == Block::State::Created);
+    REQUIRE(viewBlock("expand_block").outputs.count("buffer") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block rejects invalid axis",
@@ -33,5 +33,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block rejects invalid axis",
     Blocks::ExpandDims config;
     config.axis = 10;
     REQUIRE(flowgraph->blockCreate("expand_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("expand_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("expand_bad").state == Block::State::Errored);
 }

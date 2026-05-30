@@ -34,6 +34,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result add(const std::shared_ptr<Module>& module) override;
     Result remove(const std::shared_ptr<Module>& module) override;
     Result reload(const std::shared_ptr<Module>& module) override;
+    Result synchronize(const std::function<Result()>& fn) override;
 
     Result present() override;
     Result compute() override;
@@ -183,6 +184,14 @@ Result SynchronousScheduler::reload(const std::shared_ptr<Module>&) {
     }));
 
     return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
+    if (!fn) {
+        return Result::SUCCESS;
+    }
+
+    return lockState(fn);
 }
 
 Result SynchronousScheduler::present() {

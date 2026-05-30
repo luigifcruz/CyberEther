@@ -18,9 +18,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block bypasses matching source type",
     config.outputType = "CF32";
     REQUIRE(flowgraph->blockCreate("cast_block", config, inputs) == Result::SUCCESS);
 
-    const auto& castBlock = flowgraph->blockList().at("cast_block");
-    REQUIRE(castBlock->state() == Block::State::Created);
-    REQUIRE(castBlock->outputs().at("buffer").tensor.dtype() == DataType::CF32);
+    const auto castBlock = viewBlock("cast_block");
+    REQUIRE(castBlock.state == Block::State::Created);
+    REQUIRE(castBlock.outputs.at("buffer").tensor.dtype() == DataType::CF32);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Cast block rejects invalid output type",
@@ -34,5 +34,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block rejects invalid output type",
     Blocks::Cast config;
     config.outputType = "INVALID";
     REQUIRE(flowgraph->blockCreate("cast_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("cast_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("cast_bad").state == Block::State::Errored);
 }

@@ -10,6 +10,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/render/sakura/sakura.hh"
 
 #include <algorithm>
@@ -253,14 +254,18 @@ struct StackPresenter {
             .label = MakeFlowgraphWindowLabel(flowgraphId, flowgraph),
         });
 
-        const auto blocks = flowgraph->blockList();
-        for (const auto& [blockName, blockPtr] : blocks) {
-            if (!blockPtr) {
+        std::vector<std::string> blocks;
+        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+            return dockables;
+        }
+
+        for (const auto& blockName : blocks) {
+            Flowgraph::View::BlockData blockData;
+            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
                 continue;
             }
 
-            const std::string blockTitle = blockPtr->config().title();
-            for (const auto& surface : blockPtr->surfaces()) {
+            for (const auto& surface : blockData.surfaces) {
                 if (!surface) {
                     continue;
                 }
@@ -273,7 +278,7 @@ struct StackPresenter {
                         .label = MakeDetachedSurfaceWindowLabel(flowgraphId,
                                                                 blockName,
                                                                 manifest.id,
-                                                                blockTitle),
+                                                                blockData.title),
                     });
                 }
             }

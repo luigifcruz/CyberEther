@@ -20,7 +20,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("soapy_invalid", "soapy", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("soapy_invalid")->state() ==
+    REQUIRE(viewBlock("soapy_invalid").state ==
             Block::State::Errored);
 }
 
@@ -37,7 +37,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("soapy_bad_samples", "soapy", badSamples,
                                    {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("soapy_bad_samples")->state() ==
+    REQUIRE(viewBlock("soapy_bad_samples").state ==
             Block::State::Errored);
 
     Parser::Map badMultiplier;
@@ -45,7 +45,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("soapy_bad_multiplier", "soapy",
                                    badMultiplier, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("soapy_bad_multiplier")->state() ==
+    REQUIRE(viewBlock("soapy_bad_multiplier").state ==
             Block::State::Errored);
 }
 
@@ -61,7 +61,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     invalidStart["numberOfBatches"] = std::string("0");
     REQUIRE(flowgraph->blockCreate("soapy_cfg", "soapy", invalidStart, {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("soapy_cfg")->state() ==
+    REQUIRE(viewBlock("soapy_cfg").state ==
             Block::State::Errored);
 
     Parser::Map update;
@@ -75,5 +75,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
     update["numberOfTimeSamples"] = std::string("256");
     update["bufferMultiplier"] = std::string("2");
     REQUIRE(flowgraph->blockReconfigure("soapy_cfg", update) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().find("soapy_cfg") != flowgraph->blockList().end());
+    REQUIRE(flowgraph->view().has("soapy_cfg"));
 }

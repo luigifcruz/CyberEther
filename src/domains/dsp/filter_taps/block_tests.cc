@@ -14,9 +14,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter taps keeps legacy center-only head co
     config["center"] = std::string("[600000, 0]");
 
     REQUIRE(flowgraph->blockCreate("taps", "filter_taps", config, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("taps")->state() == Block::State::Created);
+    REQUIRE(viewBlock("taps").state == Block::State::Created);
 
-    const Tensor& coeffs = flowgraph->blockList().at("taps")->outputs().at("coeffs").tensor;
+    const Tensor coeffs = viewBlock("taps").outputs.at("coeffs").tensor;
     REQUIRE(coeffs.rank() == 2);
     REQUIRE(coeffs.shape(0) == 2);
     REQUIRE(coeffs.shape(1) == 51);

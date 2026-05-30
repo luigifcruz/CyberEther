@@ -8,6 +8,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
 
@@ -255,12 +256,11 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto existingBlocks = flowgraph->blockList();
 
         std::string baseName = msg.moduleId;
         std::string blockName = baseName;
         int suffix = 1;
-        while (existingBlocks.contains(blockName)) {
+        while (flowgraph->view().has(blockName)) {
             blockName = jst::fmt::format("{}_{}", baseName, suffix++);
         }
 
@@ -351,16 +351,15 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto blocks = flowgraph->blockList();
-        if (!blocks.contains(msg.blockId)) {
+        Flowgraph::View::BlockData block;
+        if (flowgraph->view().block(msg.blockId, block) != Result::SUCCESS) {
             JST_ERROR("Failed to change block device because block was not found.");
             return Result::ERROR;
         }
 
-        const auto& block = blocks.at(msg.blockId);
-        if (block->device() == msg.device &&
-            block->runtime() == msg.runtime &&
-            block->provider() == msg.provider) {
+        if (block.device == msg.device &&
+            block.runtime == msg.runtime &&
+            block.provider == msg.provider) {
             return Result::SUCCESS;
         }
 
@@ -443,19 +442,17 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto blocks = flowgraph->blockList();
-        if (!blocks.contains(msg.blockId)) {
+        Flowgraph::View::BlockData block;
+        if (flowgraph->view().block(msg.blockId, block) != Result::SUCCESS) {
             JST_ERROR("Failed to copy block because block was not found.");
             return Result::ERROR;
         }
 
-        const auto& block = blocks.at(msg.blockId);
-
-        state.clipboard.moduleType = block->config().type();
-        state.clipboard.device = block->device();
-        state.clipboard.runtime = block->runtime();
-        state.clipboard.provider = block->provider();
-        flowgraph->blockConfig(msg.blockId, state.clipboard.config);
+        state.clipboard.moduleType = block.type;
+        state.clipboard.device = block.device;
+        state.clipboard.runtime = block.runtime;
+        state.clipboard.provider = block.provider;
+        state.clipboard.config = block.config;
         state.clipboard.hasData = true;
 
         callbacks.notify(Sakura::ToastType::Info, 3000, "Block copied to clipboard.");
@@ -475,12 +472,11 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto existingBlocks = flowgraph->blockList();
 
         std::string baseName = state.clipboard.moduleType;
         std::string blockName = baseName;
         int suffix = 1;
-        while (existingBlocks.contains(blockName)) {
+        while (flowgraph->view().has(blockName)) {
             blockName = jst::fmt::format("{}_{}", baseName, suffix++);
         }
 

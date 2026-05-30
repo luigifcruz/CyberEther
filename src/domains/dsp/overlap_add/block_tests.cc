@@ -27,6 +27,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("overlap_add", "overlap_add", {}, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("overlap_add")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("overlap_add")->outputs().contains("buffer"));
+    REQUIRE(viewBlock("overlap_add").state == Block::State::Created);
+    REQUIRE(viewBlock("overlap_add").outputs.contains("buffer"));
 }

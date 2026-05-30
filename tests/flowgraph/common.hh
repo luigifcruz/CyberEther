@@ -12,6 +12,7 @@
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/dsp/signal_generator/module.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"

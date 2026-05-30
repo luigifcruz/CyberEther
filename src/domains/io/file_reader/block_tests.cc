@@ -28,10 +28,15 @@ void Cleanup(const std::filesystem::path& path) {
     }
 }
 
-std::string MetricString(const std::shared_ptr<Block>& block, const std::string& key) {
-    for (const auto& [metricKey, entry] : block->interface()->metrics()) {
-        if (metricKey == key) {
-            return std::any_cast<std::string>(entry.metric());
+std::string MetricString(const Flowgraph& flowgraph,
+                         const std::string& block,
+                         const std::string& key) {
+    std::vector<Flowgraph::View::MetricEntry> metrics;
+    REQUIRE(flowgraph.view().metrics(block, metrics) == Result::SUCCESS);
+
+    for (const auto& metric : metrics) {
+        if (metric.name == key) {
+            return std::any_cast<std::string>(metric.value);
         }
     }
 
@@ -68,10 +73,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("reader", "file_reader", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("reader")->state() == Block::State::Created);
+    REQUIRE(viewBlock("reader").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("reader")
-                            ->outputs().at("signal").tensor;
+    const Tensor out = viewBlock("reader").outputs.at("signal").tensor;
     REQUIRE(out.dtype() == DataType::F32);
     REQUIRE(out.rank() == 1);
     REQUIRE(out.shape(0) == 4);
@@ -102,14 +106,13 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("reader", "file_reader", config, {}) ==
             Result::SUCCESS);
 
-    const auto block = flowgraph->blockList().at("reader");
-    REQUIRE(MetricString(block, "currentBandwidth") == "0.0 MB/s");
+    REQUIRE(MetricString(*flowgraph, "reader", "currentBandwidth") == "0.0 MB/s");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const auto metric = MetricString(block, "currentBandwidth");
+    const auto metric = MetricString(*flowgraph, "reader", "currentBandwidth");
     INFO("currentBandwidth=" << metric);
     REQUIRE(metric != "N/A");
     REQUIRE(metric != "0.0 MB/s");
@@ -143,7 +146,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map loopOnly;
     loopOnly["loop"] = std::string("false");
     REQUIRE(flowgraph->blockReconfigure("reader", loopOnly) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("reader")->state() == Block::State::Created);
+    REQUIRE(viewBlock("reader").state == Block::State::Created);
 
     Parser::Map resize;
     resize["filepath"] = path.string();
@@ -151,10 +154,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     resize["batchSize"] = std::string("2");
     resize["loop"] = std::string("false");
     REQUIRE(flowgraph->blockReconfigure("reader", resize) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("reader")->state() == Block::State::Created);
+    REQUIRE(viewBlock("reader").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("reader")
-                            ->outputs().at("signal").tensor;
+    const Tensor out = viewBlock("reader").outputs.at("signal").tensor;
     REQUIRE(out.shape(0) == 2);
 
     REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
@@ -170,6 +172,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("reader_invalid", "file_reader", config,
                                    {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("reader_invalid")->state() ==
+    REQUIRE(viewBlock("reader_invalid").state ==
             Block::State::Errored);
 }

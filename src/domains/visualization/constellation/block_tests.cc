@@ -23,17 +23,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Blocks::Constellation constellationConfig;
     REQUIRE(flowgraph->blockCreate("constellation", constellationConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("constellation")->state() ==
+    REQUIRE(viewBlock("constellation").state ==
             Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("constellation")->outputs().empty());
+    REQUIRE(viewBlock("constellation").outputs.empty());
 
     auto result = flowgraph->blockDisconnect("constellation", "signal");
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-    REQUIRE(flowgraph->blockList().at("constellation")->state() ==
+    REQUIRE(viewBlock("constellation").state ==
             Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("constellation", "signal", "src", "signal") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("constellation")->state() ==
+    REQUIRE(viewBlock("constellation").state ==
             Block::State::Created);
 }

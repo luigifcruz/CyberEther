@@ -19,8 +19,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Slice block creates with contiguous output",
     config.slice = "[0:8]";
     config.contiguous = true;
     REQUIRE(flowgraph->blockCreate("slice_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("slice_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("slice_block")->outputs().count("buffer") == 1);
+    REQUIRE(viewBlock("slice_block").state == Block::State::Created);
+    REQUIRE(viewBlock("slice_block").outputs.count("buffer") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Slice block rejects malformed slice string",
@@ -34,5 +34,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Slice block rejects malformed slice string",
     Blocks::Slice config;
     config.slice = "foo";
     REQUIRE(flowgraph->blockCreate("slice_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("slice_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("slice_bad").state == Block::State::Errored);
 }

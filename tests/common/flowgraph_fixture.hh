@@ -8,10 +8,22 @@
 #include <vector>
 
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
+
+inline Jetstream::Flowgraph::View::BlockData ViewBlock(Jetstream::Flowgraph& flowgraph,
+                                                       const std::string& name) {
+    Jetstream::Flowgraph::View::BlockData data;
+    REQUIRE(flowgraph.view().block(name, data) == Jetstream::Result::SUCCESS);
+    return data;
+}
 
 class FlowgraphFixture {
  protected:
     std::unique_ptr<Jetstream::Flowgraph> flowgraph;
+
+    Jetstream::Flowgraph::View::BlockData viewBlock(const std::string& name) {
+        return ViewBlock(*flowgraph, name);
+    }
 
  public:
     FlowgraphFixture() {
@@ -22,9 +34,7 @@ class FlowgraphFixture {
     ~FlowgraphFixture() {
         if (flowgraph) {
             std::vector<std::string> names;
-            for (const auto& [name, _] : flowgraph->blockList()) {
-                names.push_back(name);
-            }
+            REQUIRE(flowgraph->view().keys(names) == Jetstream::Result::SUCCESS);
             for (const auto& name : names) {
                 flowgraph->blockDestroy(name, false);
             }

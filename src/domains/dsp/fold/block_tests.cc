@@ -25,8 +25,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["buffer"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("fold", "fold", foldConfig, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("fold")->state() == Block::State::Created);
+    REQUIRE(viewBlock("fold").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("fold")->outputs().at("buffer").tensor;
+    const Tensor out = viewBlock("fold").outputs.at("buffer").tensor;
     REQUIRE(out.shape(0) == 16);
 }
