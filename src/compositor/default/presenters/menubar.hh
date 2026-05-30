@@ -144,6 +144,9 @@ struct MenubarPresenter {
                     case MenubarView::Action::OpenSettings:
                         enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::General});
                         break;
+                    case MenubarView::Action::OpenRemoteSettings:
+                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Remote});
+                        break;
                     case MenubarView::Action::ToggleDebugLatency:
                         enqueue(MailSetDebugLatencyEnabled{.value = !debugLatencyEnabled});
                         break;

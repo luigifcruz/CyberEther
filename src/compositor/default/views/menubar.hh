@@ -33,6 +33,7 @@ struct MenubarView : public Sakura::Component {
         ToggleBackgroundParticles,
         RemoteStreaming,
         OpenSettings,
+        OpenRemoteSettings,
         ToggleDebugLatency,
         ToggleTiming,
         ShowBenchmarks,
@@ -226,6 +227,17 @@ struct MenubarView : public Sakura::Component {
             .onClick = [this]() { emit(Action::OpenSettings); },
         });
 
+        remoteMenu.update({
+            .id = this->config.id + ":remote",
+            .label = "Remote",
+            .scale = 1.04f,
+        });
+        openRemoteSettingsItem.update({
+            .id = this->config.id + ":remote-settings",
+            .label = "Open In Settings",
+            .onClick = [this]() { emit(Action::OpenRemoteSettings); },
+        });
+
         developerMenu.update({
             .id = this->config.id + ":developer",
             .label = "Developer",
@@ -386,9 +398,13 @@ struct MenubarView : public Sakura::Component {
                 backgroundParticlesItem.render(ctx);
                 infoPanelItem.render(ctx);
                 dividers[5].render(ctx);
+                openSettingsItem.render(ctx);
+            });
+
+            remoteMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 remoteStreamingItem.render(ctx);
                 dividers[6].render(ctx);
-                openSettingsItem.render(ctx);
+                openRemoteSettingsItem.render(ctx);
             });
 
             developerMenu.render(ctx, [this](const Sakura::Context& ctx) {
@@ -438,6 +454,7 @@ struct MenubarView : public Sakura::Component {
     Sakura::Menu flowgraphMenu;
     Sakura::Menu viewMenu;
     Sakura::Menu themeMenu;
+    Sakura::Menu remoteMenu;
     Sakura::Menu developerMenu;
     Sakura::Menu logLevelMenu;
     Sakura::Menu helpMenu;
@@ -462,6 +479,7 @@ struct MenubarView : public Sakura::Component {
     std::vector<Sakura::MenuItem> themeItems;
     Sakura::MenuItem remoteStreamingItem;
     Sakura::MenuItem openSettingsItem;
+    Sakura::MenuItem openRemoteSettingsItem;
     Sakura::MenuItem latencyWindowItem;
     Sakura::MenuItem timingItem;
     Sakura::MenuItem benchmarksItem;
