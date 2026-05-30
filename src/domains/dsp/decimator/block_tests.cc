@@ -25,9 +25,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("decimator", "decimator", decimatorConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("decimator")->state() == Block::State::Created);
+    REQUIRE(viewBlock("decimator").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("decimator")->outputs().at("buffer").tensor;
+    const Tensor out = viewBlock("decimator").outputs.at("buffer").tensor;
     REQUIRE(out.shape(0) == 64);
 }
 
@@ -49,5 +49,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("decimator_bad", "decimator", decimatorConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("decimator_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("decimator_bad").state == Block::State::Errored);
 }

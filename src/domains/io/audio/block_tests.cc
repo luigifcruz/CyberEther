@@ -56,7 +56,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("audio_out", "audio", {}, audioInputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("audio_out")->state() ==
+    REQUIRE(viewBlock("audio_out").state ==
             Block::State::Created);
 
     REQUIRE(flowgraph->blockDestroy("audio_out", false) == Result::SUCCESS);
@@ -100,7 +100,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto createResult = flowgraph->blockCreate("audio_invalid", "audio",
                                                       config, audioInputs);
     REQUIRE(createResult == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("audio_invalid")->state() ==
+    REQUIRE(viewBlock("audio_invalid").state ==
             Block::State::Errored);
 
     REQUIRE(flowgraph->blockDestroy("audio_invalid", false) == Result::SUCCESS);

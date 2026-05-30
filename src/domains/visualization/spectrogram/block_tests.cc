@@ -24,18 +24,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config.height = 128;
 
     REQUIRE(flowgraph->blockCreate("spectrogram", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("spectrogram")->state() ==
+    REQUIRE(viewBlock("spectrogram").state ==
             Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("spectrogram")->outputs().empty());
+    REQUIRE(viewBlock("spectrogram").outputs.empty());
 
     auto result = flowgraph->blockDisconnect("spectrogram", "signal");
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-    REQUIRE(flowgraph->blockList().at("spectrogram")->state() ==
+    REQUIRE(viewBlock("spectrogram").state ==
             Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("spectrogram", "signal", "src", "signal") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("spectrogram")->state() ==
+    REQUIRE(viewBlock("spectrogram").state ==
             Block::State::Created);
 }
 
@@ -57,13 +57,13 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map config;
     config["height"] = std::string("64");
     REQUIRE(flowgraph->blockReconfigure("spectrogram", config) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("spectrogram")->state() ==
+    REQUIRE(viewBlock("spectrogram").state ==
             Block::State::Created);
 
     Blocks::Spectrogram invalid;
     invalid.height = 0;
     REQUIRE(flowgraph->blockCreate("spectrogram_invalid", invalid, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("spectrogram_invalid")->state() ==
+    REQUIRE(viewBlock("spectrogram_invalid").state ==
             Block::State::Errored);
 }

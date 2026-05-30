@@ -22,6 +22,7 @@ src_lst += files([
     'flowgraph.cc',
     'flowgraph_metadata.cc',
     'flowgraph_environment.cc',
+    'flowgraph_view.cc',
     'settings.cc',
     'parser_map.cc',
     'parser_decode.cc',

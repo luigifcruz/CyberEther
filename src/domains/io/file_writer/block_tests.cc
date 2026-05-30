@@ -34,10 +34,15 @@ void Cleanup(const std::filesystem::path& path) {
     }
 }
 
-std::string MetricString(const std::shared_ptr<Block>& block, const std::string& key) {
-    for (const auto& [metricKey, entry] : block->interface()->metrics()) {
-        if (metricKey == key) {
-            return std::any_cast<std::string>(entry.metric());
+std::string MetricString(const Flowgraph& flowgraph,
+                         const std::string& block,
+                         const std::string& key) {
+    std::vector<Flowgraph::View::MetricEntry> metrics;
+    REQUIRE(flowgraph.view().metrics(block, metrics) == Result::SUCCESS);
+
+    for (const auto& metric : metrics) {
+        if (metric.name == key) {
+            return std::any_cast<std::string>(metric.value);
         }
     }
 
@@ -64,7 +69,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("writer", "file_writer", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("writer")->state() ==
+    REQUIRE(viewBlock("writer").state ==
             Block::State::Incomplete);
 }
 
@@ -100,18 +105,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("writer", "file_writer", writerConfig,
                                    inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("writer")->state() == Block::State::Created);
+    REQUIRE(viewBlock("writer").state == Block::State::Created);
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     REQUIRE(std::filesystem::exists(outputPath));
     REQUIRE(std::filesystem::file_size(outputPath) == 4 * sizeof(F32));
 
     REQUIRE(flowgraph->blockDisconnect("writer", "buffer") == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("writer")->state() == Block::State::Incomplete);
+    REQUIRE(viewBlock("writer").state == Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("writer", "buffer", "reader", "signal") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("writer")->state() == Block::State::Created);
+    REQUIRE(viewBlock("writer").state == Block::State::Created);
 
     REQUIRE(flowgraph->blockDestroy("writer", false) == Result::SUCCESS);
     REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
@@ -153,15 +158,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("writer", "file_writer", writerConfig,
                                    inputs) == Result::SUCCESS);
 
-    const auto block = flowgraph->blockList().at("writer");
-    REQUIRE(MetricString(block, "currentBandwidth") == "0.0 MB/s");
+    REQUIRE(MetricString(*flowgraph, "writer", "currentBandwidth") == "0.0 MB/s");
 
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     REQUIRE(std::filesystem::file_size(outputPath) == data.size());
 
-    const auto metric = MetricString(block, "currentBandwidth");
+    const auto metric = MetricString(*flowgraph, "writer", "currentBandwidth");
     INFO("currentBandwidth=" << metric);
     REQUIRE(metric != "N/A");
     REQUIRE(metric != "0.0 MB/s");
@@ -208,7 +212,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map update;
     update["recording"] = std::string("false");
     REQUIRE(flowgraph->blockReconfigure("writer", update) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("writer")->state() == Block::State::Created);
+    REQUIRE(viewBlock("writer").state == Block::State::Created);
 
     REQUIRE(flowgraph->blockDestroy("writer", false) == Result::SUCCESS);
     REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);

@@ -20,9 +20,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("agc", "agc", {}, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("agc")->state() == Block::State::Created);
+    REQUIRE(viewBlock("agc").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("agc")->outputs().at("signal").tensor;
+    const Tensor out = viewBlock("agc").outputs.at("signal").tensor;
     REQUIRE(out.dtype() == DataType::CF32);
     REQUIRE(out.rank() == 1);
     REQUIRE(out.shape(0) == 128);
@@ -33,6 +33,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[modules][dsp][agc][block][validation]") {
     auto result = flowgraph->blockCreate("agc_incomplete", "agc", {}, {});
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-    REQUIRE(flowgraph->blockList().at("agc_incomplete")->state() ==
+    REQUIRE(viewBlock("agc_incomplete").state ==
             Block::State::Incomplete);
 }

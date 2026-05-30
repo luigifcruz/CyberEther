@@ -25,8 +25,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Range block creates with F32 upstream",
     config.max = 0.0f;
     REQUIRE(flowgraph->blockCreate("range_block", config, rangeInputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("range_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("range_block")->outputs().count("signal") == 1);
+    REQUIRE(viewBlock("range_block").state == Block::State::Created);
+    REQUIRE(viewBlock("range_block").outputs.count("signal") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Range block rejects invalid min/max",
@@ -46,5 +46,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Range block rejects invalid min/max",
     config.min = 1.0f;
     config.max = -1.0f;
     REQUIRE(flowgraph->blockCreate("range_bad", config, rangeInputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("range_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("range_bad").state == Block::State::Errored);
 }

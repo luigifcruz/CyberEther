@@ -21,8 +21,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Arithmetic block creates with custom config"
     config.squeeze = false;
 
     REQUIRE(flowgraph->blockCreate("arith_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("arith_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("arith_block")->outputs().count("buffer") == 1);
+    REQUIRE(viewBlock("arith_block").state == Block::State::Created);
+    REQUIRE(viewBlock("arith_block").outputs.count("buffer") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Arithmetic block rejects invalid operation",
@@ -36,5 +36,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Arithmetic block rejects invalid operation",
     Blocks::Arithmetic config;
     config.operation = "invalid";
     REQUIRE(flowgraph->blockCreate("arith_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("arith_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("arith_bad").state == Block::State::Errored);
 }

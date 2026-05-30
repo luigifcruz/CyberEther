@@ -12,15 +12,15 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[modules][note][block]") {
     REQUIRE(flowgraph->blockCreate("note_default", Blocks::Note(), {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("note_default")->state() ==
+    REQUIRE(viewBlock("note_default").state ==
             Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("note_default")->inputs().empty());
-    REQUIRE(flowgraph->blockList().at("note_default")->outputs().empty());
+    REQUIRE(viewBlock("note_default").inputs.empty());
+    REQUIRE(viewBlock("note_default").outputs.empty());
 
     Blocks::Note custom;
     custom.content = "# Title\nA **note** for tests.";
     REQUIRE(flowgraph->blockCreate("note_custom", custom, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("note_custom")->state() ==
+    REQUIRE(viewBlock("note_custom").state ==
             Block::State::Created);
 
     Parser::Map saved;
@@ -37,5 +37,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config["content"] = std::string("## Updated\nStill markdown.");
 
     REQUIRE(flowgraph->blockReconfigure("note", config) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("note")->state() == Block::State::Created);
+    REQUIRE(viewBlock("note").state == Block::State::Created);
 }

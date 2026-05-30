@@ -9,6 +9,7 @@
 #include "../../views/flowgraph/key_value.hh"
 
 #include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <algorithm>
 #include <optional>
@@ -61,7 +62,12 @@ struct FlowgraphMetadataWindowPresenter {
             totalEntries += metadataKeys.size();
             appendRows(metadataKeys, "", "");
         }
-        for (const auto& [blockName, _] : flowgraph->blockList()) {
+        std::vector<std::string> blocks;
+        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+            return std::nullopt;
+        }
+
+        for (const auto& blockName : blocks) {
             std::vector<std::string> blockMetadataKeys;
             if (flowgraph->metadata().keys(blockMetadataKeys, blockName) != Result::SUCCESS) {
                 continue;

@@ -19,8 +19,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Multiply block creates and exposes output",
 
     Blocks::Multiply config;
     REQUIRE(flowgraph->blockCreate("mul_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("mul_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("mul_block")->outputs().count("product") == 1);
+    REQUIRE(viewBlock("mul_block").state == Block::State::Created);
+    REQUIRE(viewBlock("mul_block").outputs.count("product") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Multiply block handles disconnect and reconnect",
@@ -36,9 +36,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Multiply block handles disconnect and reconn
             Result::SUCCESS);
 
     REQUIRE(flowgraph->blockDisconnect("mul_life", "a") == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("mul_life")->state() == Block::State::Incomplete);
+    REQUIRE(viewBlock("mul_life").state == Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("mul_life", "a", "mul_life_a", "window") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("mul_life")->state() == Block::State::Created);
+    REQUIRE(viewBlock("mul_life").state == Block::State::Created);
 }

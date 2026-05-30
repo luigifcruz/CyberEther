@@ -7,6 +7,7 @@
 
 #include "jetstream/logger.hh"
 #include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <cmath>
 #include <string>
@@ -142,8 +143,7 @@ struct StackActions {
         }
 
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-        const auto blocks = flowgraph->blockList();
-        if (!blocks.contains(msg.block)) {
+        if (!flowgraph->view().has(msg.block)) {
             return Result::SUCCESS;
         }
 

@@ -19,8 +19,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block creates with axis and size",
     config.size = 4;
     config.axis = 0;
     REQUIRE(flowgraph->blockCreate("pad_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("pad_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("pad_block")->outputs().count("padded") == 1);
+    REQUIRE(viewBlock("pad_block").state == Block::State::Created);
+    REQUIRE(viewBlock("pad_block").outputs.count("padded") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Pad block rejects invalid axis",
@@ -35,5 +35,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block rejects invalid axis",
     config.axis = 5;
     config.size = 1;
     REQUIRE(flowgraph->blockCreate("pad_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("pad_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("pad_bad").state == Block::State::Errored);
 }

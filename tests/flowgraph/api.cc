@@ -44,7 +44,7 @@ void CreateSerializableGraph(Flowgraph& flowgraph) {
     addInputs["a"].requested("gen1", "signal");
     addInputs["b"].requested("gen2", "signal");
     REQUIRE(flowgraph.blockCreate("add1", "add", {}, addInputs) == Result::SUCCESS);
-    REQUIRE(flowgraph.blockList().at("add1")->state() == Block::State::Created);
+    REQUIRE(ViewBlock(flowgraph, "add1").state == Block::State::Created);
 }
 
 }  // namespace
@@ -102,8 +102,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph block configuration APIs are cover
         config.frequency = 2000.0f;
 
         REQUIRE(flowgraph->blockCreate("gen1", config, {}) == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().contains("gen1"));
-        REQUIRE(flowgraph->blockList().at("gen1")->config().type() == "signal_generator");
+        REQUIRE(flowgraph->view().has("gen1"));
+        REQUIRE(viewBlock("gen1").type == "signal_generator");
 
         Parser::Map encoded;
         REQUIRE(flowgraph->blockConfig("gen1", encoded) == Result::SUCCESS);
@@ -401,7 +401,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
         REQUIRE(imported.author() == "File Author");
         REQUIRE(imported.license() == "BSD-3-Clause");
         REQUIRE(imported.description() == "File Description");
-        REQUIRE(imported.blockList().size() == 3);
+        REQUIRE(imported.view().size() == 3);
 
         SimpleMetaFixture restored;
         REQUIRE(imported.metadata().get("layout", restored) == Result::SUCCESS);
@@ -451,10 +451,10 @@ graph:
         REQUIRE(flowgraph->author() == "Legacy Author");
         REQUIRE(flowgraph->license() == "Legacy License");
         REQUIRE(flowgraph->description() == "Legacy Description");
-        REQUIRE(flowgraph->blockList().size() == 3);
-        REQUIRE(flowgraph->blockList().at("gen1")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("gen2")->state() == Block::State::Created);
-        REQUIRE(flowgraph->blockList().at("add1")->state() == Block::State::Created);
+        REQUIRE(flowgraph->view().size() == 3);
+        REQUIRE(viewBlock("gen1").state == Block::State::Created);
+        REQUIRE(viewBlock("gen2").state == Block::State::Created);
+        REQUIRE(viewBlock("add1").state == Block::State::Created);
 
         std::vector<char> exported;
         REQUIRE(flowgraph->exportToBlob(exported) == Result::SUCCESS);
