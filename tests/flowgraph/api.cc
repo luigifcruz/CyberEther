@@ -1,9 +1,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 #include <jetstream/flowgraph_environment.hh>
 #include <jetstream/flowgraph_metadata.hh>
@@ -29,6 +31,10 @@ struct TempFlowgraphFile {
 
     std::filesystem::path path;
 };
+
+bool ContainsKey(const std::vector<std::string>& keys, const std::string& key) {
+    return std::find(keys.begin(), keys.end(), key) != keys.end();
+}
 
 void CreateSerializableGraph(Flowgraph& flowgraph) {
     REQUIRE(flowgraph.blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
@@ -173,6 +179,26 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph metadata APIs are covered", "[flow
         REQUIRE(restored.empty());
     }
 
+    SECTION("metadata keys can be listed") {
+        Parser::Map global;
+        global["order"] = U64{7};
+        Parser::Map block;
+        block["order"] = U64{3};
+
+        REQUIRE(flowgraph->metadata().set("layout", global) == Result::SUCCESS);
+        REQUIRE(flowgraph->metadata().set("dock", block, "gen1") == Result::SUCCESS);
+
+        std::vector<std::string> globalKeys;
+        REQUIRE(flowgraph->metadata().keys(globalKeys) == Result::SUCCESS);
+        REQUIRE(ContainsKey(globalKeys, "layout"));
+        REQUIRE_FALSE(ContainsKey(globalKeys, "dock"));
+
+        std::vector<std::string> blockKeys;
+        REQUIRE(flowgraph->metadata().keys(blockKeys, "gen1") == Result::SUCCESS);
+        REQUIRE(ContainsKey(blockKeys, "dock"));
+        REQUIRE_FALSE(ContainsKey(blockKeys, "layout"));
+    }
+
     SECTION("typed metadata must serialize to a map") {
         REQUIRE(flowgraph->metadata().set("invalid", U64{7}) == Result::ERROR);
     }
@@ -308,6 +334,21 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph environment APIs are covered", "[f
 
         REQUIRE(flowgraph->environment().clearAll() == Result::SUCCESS);
         REQUIRE_FALSE(flowgraph->environment().has("centerFrequency"));
+    }
+
+    SECTION("environment keys can be listed") {
+        Parser::Map sampleRate;
+        sampleRate["value"] = U64{48000};
+        Parser::Map mode;
+        mode["value"] = std::string("scan");
+
+        REQUIRE(flowgraph->environment().set("sampleRate", sampleRate) == Result::SUCCESS);
+        REQUIRE(flowgraph->environment().set("mode", mode, 100, 200) == Result::SUCCESS);
+
+        std::vector<std::string> keys;
+        REQUIRE(flowgraph->environment().keys(keys) == Result::SUCCESS);
+        REQUIRE(ContainsKey(keys, "sampleRate"));
+        REQUIRE(ContainsKey(keys, "mode"));
     }
 }
 

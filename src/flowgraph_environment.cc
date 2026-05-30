@@ -59,6 +59,26 @@ Result Flowgraph::Environment::get(const std::string& key, Parser::Map& data, U6
     return Result::SUCCESS;
 }
 
+Result Flowgraph::Environment::keys(std::vector<std::string>& keys) const {
+    const auto graph = impl.lock();
+    if (!graph) {
+        JST_ERROR("[FLOWGRAPH] Environment is no longer attached to a flowgraph.");
+        return Result::ERROR;
+    }
+
+    std::shared_lock lock(graph->environmentMutex);
+
+    keys.clear();
+    keys.reserve(graph->environmentValues.size());
+    for (const auto& [key, entries] : graph->environmentValues) {
+        if (!entries.empty()) {
+            keys.push_back(key);
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Flowgraph::Environment::set(const std::string& key, const Parser::Map& data, U64 start, U64 end) {
     const auto graph = impl.lock();
     if (!graph) {

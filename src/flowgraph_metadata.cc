@@ -37,6 +37,35 @@ Result Flowgraph::Metadata::get(const std::string& key, Parser::Map& data, const
     return Result::SUCCESS;
 }
 
+Result Flowgraph::Metadata::keys(std::vector<std::string>& keys, const std::string& block) const {
+    const auto graph = impl.lock();
+    if (!graph) {
+        JST_ERROR("[FLOWGRAPH] Metadata is no longer attached to a flowgraph.");
+        return Result::ERROR;
+    }
+
+    keys.clear();
+    const Parser::Map* values = nullptr;
+    if (block.empty()) {
+        values = &graph->metadataValues;
+    } else if (graph->blockMetadataValues.contains(block)) {
+        values = &graph->blockMetadataValues.at(block);
+    }
+
+    if (values == nullptr) {
+        return Result::SUCCESS;
+    }
+
+    keys.reserve(values->size());
+    for (const auto& entry : *values) {
+        if (entry.value.type() == typeid(Parser::Map)) {
+            keys.push_back(entry.key);
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Flowgraph::Metadata::set(const std::string& key, const Parser::Map& data, const std::string& block) {
     const auto graph = impl.lock();
     if (!graph) {

@@ -4,6 +4,7 @@
 #include <any>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "jetstream/flowgraph.hh"
 #include "jetstream/logger.hh"
@@ -35,6 +36,7 @@ class JETSTREAM_API Flowgraph::Metadata {
     }
 
     Result get(const std::string& key, Parser::Map& data, const std::string& block = {}) const;
+    Result keys(std::vector<std::string>& keys, const std::string& block = {}) const;
 
     template<typename T>
     bool tryGet(const std::string& key, T& data, const std::string& block = {}) const {
