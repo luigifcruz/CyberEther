@@ -23,6 +23,10 @@ struct WorkbenchActions {
                               MailNotifyResult,
                               MailOpenUrl,
                               MailCopyText,
+                              MailSetFlowgraphMetadataVisible,
+                              MailSetFlowgraphMetadataSearch,
+                              MailSetFlowgraphEnvironmentVisible,
+                              MailSetFlowgraphEnvironmentSearch,
                               MailQuit>;
 
     DefaultCompositorState& state;
@@ -97,6 +101,32 @@ struct WorkbenchActions {
         callbacks.setClipboardText(msg.value);
         const std::string notification = msg.label + " copied to clipboard.";
         callbacks.notify(Sakura::ToastType::Info, 3000, notification);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetFlowgraphMetadataVisible& msg) {
+        state.interface.flowgraphMetadataVisible = msg.value;
+        if (!msg.value) {
+            state.interface.flowgraphMetadataSearch.clear();
+        }
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetFlowgraphMetadataSearch& msg) {
+        state.interface.flowgraphMetadataSearch = msg.value;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetFlowgraphEnvironmentVisible& msg) {
+        state.interface.flowgraphEnvironmentVisible = msg.value;
+        if (!msg.value) {
+            state.interface.flowgraphEnvironmentSearch.clear();
+        }
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetFlowgraphEnvironmentSearch& msg) {
+        state.interface.flowgraphEnvironmentSearch = msg.value;
         return Result::SUCCESS;
     }
 

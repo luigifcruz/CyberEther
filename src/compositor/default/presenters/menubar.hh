@@ -21,6 +21,8 @@ struct MenubarPresenter {
         const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
         const bool infoPanelEnabled = context.state.interface.infoPanelEnabled;
         const bool backgroundParticles = context.state.interface.backgroundParticles;
+        const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
+        const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
         const bool debugLatencyEnabled = context.state.debug.latencyEnabled;
         const bool debugTimingEnabled = context.state.debug.timingEnabled;
 
@@ -29,6 +31,8 @@ struct MenubarPresenter {
             .hasFocusedFlowgraph = focusedFlowgraph.has_value(),
             .infoPanelEnabled = infoPanelEnabled,
             .backgroundParticles = backgroundParticles,
+            .flowgraphMetadataVisible = flowgraphMetadataVisible,
+            .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
             .remoteSupported = context.state.remote.supported,
             .debugLatencyEnabled = debugLatencyEnabled,
             .debugTimingEnabled = debugTimingEnabled,
@@ -39,6 +43,8 @@ struct MenubarPresenter {
                          focusedFlowgraph,
                          infoPanelEnabled,
                          backgroundParticles,
+                         flowgraphMetadataVisible,
+                         flowgraphEnvironmentVisible,
                          debugLatencyEnabled,
                          debugTimingEnabled](const MenubarView::Action action) {
                 switch (action) {
@@ -83,6 +89,24 @@ struct MenubarPresenter {
                             enqueue(MailNotify{.type = Sakura::ToastType::Error,
                                                .durationMs = 5000,
                                                .message = "No focused flowgraph to display information."});
+                        }
+                        break;
+                    case MenubarView::Action::ToggleFlowgraphMetadata:
+                        if (focusedFlowgraph.has_value()) {
+                            enqueue(MailSetFlowgraphMetadataVisible{.value = !flowgraphMetadataVisible});
+                        } else {
+                            enqueue(MailNotify{.type = Sakura::ToastType::Error,
+                                               .durationMs = 5000,
+                                               .message = "No focused flowgraph to display metadata."});
+                        }
+                        break;
+                    case MenubarView::Action::ToggleFlowgraphEnvironment:
+                        if (focusedFlowgraph.has_value()) {
+                            enqueue(MailSetFlowgraphEnvironmentVisible{.value = !flowgraphEnvironmentVisible});
+                        } else {
+                            enqueue(MailNotify{.type = Sakura::ToastType::Error,
+                                               .durationMs = 5000,
+                                               .message = "No focused flowgraph to display environment."});
                         }
                         break;
                     case MenubarView::Action::CloseFlowgraph:

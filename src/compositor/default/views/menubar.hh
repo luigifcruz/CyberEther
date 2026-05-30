@@ -23,6 +23,8 @@ struct MenubarView : public Sakura::Component {
         OpenFlowgraph,
         SaveFlowgraph,
         ShowFlowgraphInfo,
+        ToggleFlowgraphMetadata,
+        ToggleFlowgraphEnvironment,
         CloseFlowgraph,
         RenameFlowgraph,
         OpenExamples,
@@ -47,6 +49,8 @@ struct MenubarView : public Sakura::Component {
         bool hasFocusedFlowgraph = false;
         bool infoPanelEnabled = false;
         bool backgroundParticles = false;
+        bool flowgraphMetadataVisible = false;
+        bool flowgraphEnvironmentVisible = false;
         bool remoteSupported = false;
         bool debugLatencyEnabled = false;
         bool debugTimingEnabled = false;
@@ -136,6 +140,20 @@ struct MenubarView : public Sakura::Component {
             .shortcut = "CTRL+I",
             .enabled = this->config.hasFocusedFlowgraph,
             .onClick = [this]() { emit(Action::ShowFlowgraphInfo); },
+        });
+        flowgraphMetadataItem.update({
+            .id = this->config.id + ":flowgraph-metadata",
+            .label = "Show Metadata View",
+            .enabled = this->config.hasFocusedFlowgraph,
+            .selected = this->config.flowgraphMetadataVisible,
+            .onClick = [this]() { emit(Action::ToggleFlowgraphMetadata); },
+        });
+        flowgraphEnvironmentItem.update({
+            .id = this->config.id + ":flowgraph-environment",
+            .label = "Show Environment View",
+            .enabled = this->config.hasFocusedFlowgraph,
+            .selected = this->config.flowgraphEnvironmentVisible,
+            .onClick = [this]() { emit(Action::ToggleFlowgraphEnvironment); },
         });
         closeFlowgraphItem.update({
             .id = this->config.id + ":close-flowgraph",
@@ -357,14 +375,16 @@ struct MenubarView : public Sakura::Component {
             });
 
             viewMenu.render(ctx, [this](const Sakura::Context& ctx) {
-                infoPanelItem.render(ctx);
-                backgroundParticlesItem.render(ctx);
+                flowgraphMetadataItem.render(ctx);
+                flowgraphEnvironmentItem.render(ctx);
                 dividers[4].render(ctx);
                 themeMenu.render(ctx, [this](const Sakura::Context& ctx) {
                     for (auto& item : themeItems) {
                         item.render(ctx);
                     }
                 });
+                backgroundParticlesItem.render(ctx);
+                infoPanelItem.render(ctx);
                 dividers[5].render(ctx);
                 remoteStreamingItem.render(ctx);
                 dividers[6].render(ctx);
@@ -431,6 +451,8 @@ struct MenubarView : public Sakura::Component {
     Sakura::MenuItem openFlowgraphItem;
     Sakura::MenuItem saveFlowgraphItem;
     Sakura::MenuItem flowgraphInfoItem;
+    Sakura::MenuItem flowgraphMetadataItem;
+    Sakura::MenuItem flowgraphEnvironmentItem;
     Sakura::MenuItem closeFlowgraphItem;
     Sakura::MenuItem renameFlowgraphItem;
     Sakura::MenuItem openExamplesItem;

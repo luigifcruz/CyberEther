@@ -41,6 +41,10 @@ struct DefaultCompositorState {
         bool filePending = false;
         bool infoPanelEnabled = true;
         bool backgroundParticles = true;
+        bool flowgraphMetadataVisible = false;
+        std::string flowgraphMetadataSearch;
+        bool flowgraphEnvironmentVisible = false;
+        std::string flowgraphEnvironmentSearch;
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;

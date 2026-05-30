@@ -12,7 +12,7 @@ struct Table::Impl {
         ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchProp |
                                 ImGuiTableFlags_Borders |
                                 ImGuiTableFlags_RowBg;
-        if (config.size.y > 0.0f) {
+        if (config.size.y != 0.0f) {
             flags |= ImGuiTableFlags_ScrollY;
         }
         return flags;

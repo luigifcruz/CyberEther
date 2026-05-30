@@ -207,9 +207,17 @@ void DefaultCompositor::updateWorkbenchState() {
 
     if (state.flowgraph.items.empty()) {
         state.interface.focusedFlowgraph.reset();
+        state.interface.flowgraphMetadataVisible = false;
+        state.interface.flowgraphMetadataSearch.clear();
+        state.interface.flowgraphEnvironmentVisible = false;
+        state.interface.flowgraphEnvironmentSearch.clear();
     } else if (state.interface.focusedFlowgraph.has_value() &&
                !state.flowgraph.items.contains(state.interface.focusedFlowgraph.value())) {
         state.interface.focusedFlowgraph.reset();
+        state.interface.flowgraphMetadataVisible = false;
+        state.interface.flowgraphMetadataSearch.clear();
+        state.interface.flowgraphEnvironmentVisible = false;
+        state.interface.flowgraphEnvironmentSearch.clear();
     }
 
     if (!state.modal.content.has_value()) {
