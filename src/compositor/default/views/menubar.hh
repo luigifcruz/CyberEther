@@ -145,15 +145,15 @@ struct MenubarView : public Sakura::Component {
         flowgraphMetadataItem.update({
             .id = this->config.id + ":flowgraph-metadata",
             .label = "Show Metadata View",
-            .enabled = this->config.hasFocusedFlowgraph,
             .selected = this->config.flowgraphMetadataVisible,
+            .enabled = this->config.hasFocusedFlowgraph,
             .onClick = [this]() { emit(Action::ToggleFlowgraphMetadata); },
         });
         flowgraphEnvironmentItem.update({
             .id = this->config.id + ":flowgraph-environment",
             .label = "Show Environment View",
-            .enabled = this->config.hasFocusedFlowgraph,
             .selected = this->config.flowgraphEnvironmentVisible,
+            .enabled = this->config.hasFocusedFlowgraph,
             .onClick = [this]() { emit(Action::ToggleFlowgraphEnvironment); },
         });
         closeFlowgraphItem.update({
