@@ -15,6 +15,7 @@
 #include <queue>
 #include <ranges>
 #include <regex>
+#include <shared_mutex>
 #include <unordered_set>
 
 namespace Jetstream {
@@ -334,8 +335,7 @@ Result Flowgraph::destroy() {
     }
 
     {
-        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
-
+        std::unique_lock metadataLock(impl->metadataMutex);
         impl->path.clear();
     }
 
@@ -912,7 +912,10 @@ Result Flowgraph::blockConfig(const std::string name, Parser::Map& config) const
 
 Result Flowgraph::importFromFile(const std::string& path) {
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
-    impl->path = path;
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        impl->path = path;
+    }
 
     const auto flowgraphPath = std::filesystem::u8path(path);
 
@@ -947,24 +950,28 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         return Result::ERROR;
     }
 
-    if (document.title.has_value()) {
-        impl->title = *document.title;
-    }
-    if (document.summary.has_value()) {
-        impl->summary = *document.summary;
-    }
-    if (document.author.has_value()) {
-        impl->author = *document.author;
-    }
-    if (document.license.has_value()) {
-        impl->license = *document.license;
-    }
-    if (document.description.has_value()) {
-        impl->description = *document.description;
-    }
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
 
-    if (document.meta.has_value()) {
-        impl->metadataValues = *document.meta;
+        if (document.title.has_value()) {
+            impl->title = *document.title;
+        }
+        if (document.summary.has_value()) {
+            impl->summary = *document.summary;
+        }
+        if (document.author.has_value()) {
+            impl->author = *document.author;
+        }
+        if (document.license.has_value()) {
+            impl->license = *document.license;
+        }
+        if (document.description.has_value()) {
+            impl->description = *document.description;
+        }
+
+        if (document.meta.has_value()) {
+            impl->metadataValues = *document.meta;
+        }
     }
 
     if (document.graph.empty()) {
@@ -1099,6 +1106,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         }
 
         if (!def.meta.empty()) {
+            std::unique_lock metadataLock(impl->metadataMutex);
             impl->blockMetadataValues[name] = def.meta;
         }
 
@@ -1110,33 +1118,38 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 
 Result Flowgraph::exportToFile(const std::string& path) {
     JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
-    impl->path = path;
+    std::string exportPath;
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        impl->path = path;
+        exportPath = impl->path;
+    }
 
-    if (impl->path.empty()) {
+    if (exportPath.empty()) {
         JST_ERROR("[FLOWGRAPH] Filepath is empty.");
         return Result::ERROR;
     }
 
-    JST_INFO("[FLOWGRAPH] Exporting flowgraph to file '{}'.", impl->path);
+    JST_INFO("[FLOWGRAPH] Exporting flowgraph to file '{}'.", exportPath);
 
     std::vector<char> blob;
     JST_CHECK(exportToBlob(blob));
 
-    const auto flowgraphPath = std::filesystem::u8path(impl->path);
+    const auto flowgraphPath = std::filesystem::u8path(exportPath);
 
     const auto parent = flowgraphPath.parent_path();
     if (!parent.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
         if (ec) {
-            JST_ERROR("[FLOWGRAPH] Cannot create parent directory for '{}'.", impl->path);
+            JST_ERROR("[FLOWGRAPH] Cannot create parent directory for '{}'.", exportPath);
             return Result::ERROR;
         }
     }
 
     std::ofstream file(flowgraphPath, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
-        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", impl->path);
+        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", exportPath);
         return Result::ERROR;
     }
 
@@ -1152,24 +1165,42 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
     std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
+    std::string title;
+    std::string summary;
+    std::string author;
+    std::string license;
+    std::string description;
+    Parser::Map metadataValues;
+    std::unordered_map<std::string, Parser::Map> blockMetadataValues;
+    {
+        std::shared_lock metadataLock(impl->metadataMutex);
+        title = impl->title;
+        summary = impl->summary;
+        author = impl->author;
+        license = impl->license;
+        description = impl->description;
+        metadataValues = impl->metadataValues;
+        blockMetadataValues = impl->blockMetadataValues;
+    }
+
     FlowgraphDocument document;
     document.version = "2";
-    if (!impl->title.empty()) {
-        document.title = impl->title;
+    if (!title.empty()) {
+        document.title = title;
     }
-    if (!impl->summary.empty()) {
-        document.summary = impl->summary;
+    if (!summary.empty()) {
+        document.summary = summary;
     }
-    if (!impl->author.empty()) {
-        document.author = impl->author;
+    if (!author.empty()) {
+        document.author = author;
     }
-    if (!impl->license.empty()) {
-        document.license = impl->license;
+    if (!license.empty()) {
+        document.license = license;
     }
-    if (!impl->description.empty()) {
-        document.description = impl->description;
+    if (!description.empty()) {
+        document.description = description;
     }
-    document.meta = CompactMetadataMap(impl->metadataValues);
+    document.meta = CompactMetadataMap(metadataValues);
 
     const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
 
@@ -1219,8 +1250,8 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
             blockDocument.input = std::move(inputs);
         }
 
-        if (impl->blockMetadataValues.contains(name)) {
-            blockDocument.meta = CompactMetadataMap(impl->blockMetadataValues.at(name));
+        if (blockMetadataValues.contains(name)) {
+            blockDocument.meta = CompactMetadataMap(blockMetadataValues.at(name));
         }
 
         document.graph.push_back(std::move(blockDocument));
@@ -1264,51 +1295,62 @@ Result Flowgraph::present() {
     return Result::SUCCESS;
 }
 
-const std::string& Flowgraph::title() const {
+std::string Flowgraph::title() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->title;
 }
 
-const std::string& Flowgraph::summary() const {
+std::string Flowgraph::summary() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->summary;
 }
 
-const std::string& Flowgraph::author() const {
+std::string Flowgraph::author() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->author;
 }
 
-const std::string& Flowgraph::license() const {
+std::string Flowgraph::license() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->license;
 }
 
-const std::string& Flowgraph::description() const {
+std::string Flowgraph::description() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->description;
 }
 
-const std::string& Flowgraph::path() const {
+std::string Flowgraph::path() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->path;
 }
 
 Result Flowgraph::setTitle(const std::string& title) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->title = title;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setSummary(const std::string& summary) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->summary = summary;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setAuthor(const std::string& author) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->author = author;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setLicense(const std::string& license) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->license = license;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setDescription(const std::string& description) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->description = description;
     return Result::SUCCESS;
 }

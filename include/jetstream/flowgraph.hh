@@ -43,12 +43,12 @@ class JETSTREAM_API Flowgraph {
     Result stop();
     Result destroy();
 
-    const std::string& title() const;
-    const std::string& summary() const;
-    const std::string& author() const;
-    const std::string& license() const;
-    const std::string& description() const;
-    const std::string& path() const;
+    std::string title() const;
+    std::string summary() const;
+    std::string author() const;
+    std::string license() const;
+    std::string description() const;
+    std::string path() const;
 
     Result setTitle(const std::string& title);
     Result setSummary(const std::string& summary);

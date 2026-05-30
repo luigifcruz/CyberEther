@@ -1,5 +1,8 @@
 #include <jetstream/detail/flowgraph_impl.hh>
 
+#include <mutex>
+#include <shared_mutex>
+
 namespace Jetstream {
 
 Flowgraph::Metadata::Metadata(const std::shared_ptr<Flowgraph::Impl>& impl) : impl(impl) {}
@@ -9,6 +12,8 @@ bool Flowgraph::Metadata::has(const std::string& key, const std::string& block) 
     if (!graph) {
         return false;
     }
+
+    std::shared_lock lock(graph->metadataMutex);
 
     if (block.empty()) {
         return graph->metadataValues.contains(key) &&
@@ -27,11 +32,16 @@ Result Flowgraph::Metadata::get(const std::string& key, Parser::Map& data, const
         return Result::ERROR;
     }
 
+    std::shared_lock lock(graph->metadataMutex);
+
     if (block.empty()) {
-        if (has(key)) {
+        if (graph->metadataValues.contains(key) &&
+            graph->metadataValues.at(key).type() == typeid(Parser::Map)) {
             data = std::any_cast<const Parser::Map&>(graph->metadataValues.at(key));
         }
-    } else if (has(key, block)) {
+    } else if (graph->blockMetadataValues.contains(block) &&
+               graph->blockMetadataValues.at(block).contains(key) &&
+               graph->blockMetadataValues.at(block).at(key).type() == typeid(Parser::Map)) {
         data = std::any_cast<const Parser::Map&>(graph->blockMetadataValues.at(block).at(key));
     }
     return Result::SUCCESS;
@@ -45,6 +55,9 @@ Result Flowgraph::Metadata::keys(std::vector<std::string>& keys, const std::stri
     }
 
     keys.clear();
+
+    std::shared_lock lock(graph->metadataMutex);
+
     const Parser::Map* values = nullptr;
     if (block.empty()) {
         values = &graph->metadataValues;
@@ -73,6 +86,8 @@ Result Flowgraph::Metadata::set(const std::string& key, const Parser::Map& data,
         return Result::ERROR;
     }
 
+    std::unique_lock lock(graph->metadataMutex);
+
     if (block.empty()) {
         graph->metadataValues[key] = data;
     } else {
@@ -87,6 +102,8 @@ Result Flowgraph::Metadata::clear(const std::string& key, const std::string& blo
         JST_ERROR("[FLOWGRAPH] Metadata is no longer attached to a flowgraph.");
         return Result::ERROR;
     }
+
+    std::unique_lock lock(graph->metadataMutex);
 
     if (block.empty()) {
         graph->metadataValues.erase(key);
@@ -106,6 +123,8 @@ Result Flowgraph::Metadata::clearAll() {
         JST_ERROR("[FLOWGRAPH] Metadata is no longer attached to a flowgraph.");
         return Result::ERROR;
     }
+
+    std::unique_lock lock(graph->metadataMutex);
 
     graph->metadataValues.clear();
     graph->blockMetadataValues.clear();

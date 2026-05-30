@@ -53,6 +53,7 @@ struct Flowgraph::Impl {
 
     mutable std::recursive_mutex mutationMutex;
     mutable std::recursive_mutex blockMutex;
+    mutable std::shared_mutex metadataMutex;
     mutable std::shared_mutex environmentMutex;
 
     Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
