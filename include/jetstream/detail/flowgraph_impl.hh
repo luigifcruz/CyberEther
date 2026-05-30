@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_DETAIL_FLOWGRAPH_IMPL_HH
 #define JETSTREAM_DETAIL_FLOWGRAPH_IMPL_HH
 
+#include <atomic>
 #include <mutex>
 #include <memory>
 #include <shared_mutex>
@@ -22,7 +23,7 @@ struct Flowgraph::Impl {
         Parser::Map data;
     };
 
-    bool created = false;
+    std::atomic<bool> created = false;
 
     std::unique_ptr<Metadata> metadata;
     std::shared_ptr<Environment> environment;

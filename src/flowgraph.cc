@@ -281,7 +281,7 @@ Result Flowgraph::create(const Config& config,
                          const std::shared_ptr<Render::Window>& render,
                          const std::shared_ptr<Compositor>& compositor) {
     JST_INFO("[FLOWGRAPH] Creating flowgraph.");
-    JST_ASSERT(!impl->created, "[FLOWGRAPH] Flowgraph already created.");
+    JST_ASSERT(!impl->created.load(), "[FLOWGRAPH] Flowgraph already created.");
 
     // Set implementation variables.
 
@@ -297,13 +297,13 @@ Result Flowgraph::create(const Config& config,
 
     JST_CHECK(impl->scheduler->create(impl->instance));
 
-    impl->created = true;
+    impl->created.store(true);
     return Result::SUCCESS;
 }
 
 Result Flowgraph::destroy() {
     JST_INFO("[FLOWGRAPH] Destroying flowgraph.");
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
@@ -339,12 +339,12 @@ Result Flowgraph::destroy() {
         impl->path.clear();
     }
 
-    impl->created = false;
+    impl->created.store(false);
     return Result::SUCCESS;
 }
 
 Result Flowgraph::start() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -356,7 +356,7 @@ Result Flowgraph::start() {
 }
 
 Result Flowgraph::stop() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -388,7 +388,7 @@ Result Flowgraph::blockCreate(const std::string name,
                               const RuntimeType& runtime,
                               const ProviderType& provider) {
     JST_INFO("[FLOWGRAPH] Creating block '{}' of type '{}'.", name, type);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
@@ -472,7 +472,7 @@ Result Flowgraph::blockCreate(const std::string name,
 
 Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
     JST_INFO("[FLOWGRAPH] Destroying block '{}'.", name);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
@@ -599,7 +599,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
                                const std::string sourcePort) {
     JST_INFO("[FLOWGRAPH] Connecting '{}.{}' to '{}.{}'.",
              sourceBlock, sourcePort, blockName, inputPort);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
@@ -686,7 +686,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
 Result Flowgraph::blockDisconnect(const std::string blockName,
                                   const std::string inputPort) {
     JST_INFO("[FLOWGRAPH] Disconnecting '{}.{}'.", blockName, inputPort);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
@@ -819,7 +819,7 @@ Result Flowgraph::blockRecreate(const std::string name,
                                 const RuntimeType& runtime,
                                 const ProviderType& provider) {
     JST_INFO("[FLOWGRAPH] Recreating block '{}' and downstream blocks.", name);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
@@ -911,7 +911,7 @@ Result Flowgraph::blockConfig(const std::string name, Parser::Map& config) const
 }
 
 Result Flowgraph::importFromFile(const std::string& path) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
     {
         std::unique_lock metadataLock(impl->metadataMutex);
         impl->path = path;
@@ -932,7 +932,7 @@ Result Flowgraph::importFromFile(const std::string& path) {
 }
 
 Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.")
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.")
 
     std::string yamlText(blob.begin(), blob.end());
     Parser::Map root;
@@ -1117,7 +1117,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 }
 
 Result Flowgraph::exportToFile(const std::string& path) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
     std::string exportPath;
     {
         std::unique_lock metadataLock(impl->metadataMutex);
@@ -1160,7 +1160,7 @@ Result Flowgraph::exportToFile(const std::string& path) {
 }
 
 Result Flowgraph::exportToBlob(std::vector<char>& blob) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
     std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
@@ -1272,7 +1272,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
 }
 
 Result Flowgraph::compute() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -1284,7 +1284,7 @@ Result Flowgraph::compute() {
 }
 
 Result Flowgraph::present() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
