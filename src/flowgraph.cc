@@ -767,8 +767,8 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
 Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& config) {
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
-    Result result;
-    {
+    Result result = Result::SUCCESS;
+    const auto reconfigure = [&]() -> Result {
         std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
         if (!impl->blocks.contains(name)) {
@@ -777,6 +777,13 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
         }
 
         result = impl->blocks.at(name)->reconfigure(config);
+        return result == Result::RECREATE ? Result::SUCCESS : result;
+    };
+
+    if (impl->scheduler) {
+        JST_CHECK(impl->scheduler->synchronize(reconfigure));
+    } else {
+        JST_CHECK(reconfigure());
     }
 
     if (result == Result::RECREATE) {

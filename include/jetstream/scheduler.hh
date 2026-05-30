@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_SCHEDULER_HH
 #define JETSTREAM_SCHEDULER_HH
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -32,6 +33,7 @@ class JETSTREAM_API Scheduler {
     Result add(const std::shared_ptr<Module>& module);
     Result remove(const std::shared_ptr<Module>& module);
     Result reload(const std::shared_ptr<Module>& module);
+    Result synchronize(const std::function<Result()>& fn);
 
     Result present();
     Result compute();
