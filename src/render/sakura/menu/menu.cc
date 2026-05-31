@@ -13,6 +13,7 @@ struct Menu::Impl {
             case Text::Font::H1: return Private::NativeFont(ctx.fonts.h1) ? Private::NativeFont(ctx.fonts.h1) : ImGui::GetFont();
             case Text::Font::H2: return Private::NativeFont(ctx.fonts.h2) ? Private::NativeFont(ctx.fonts.h2) : ImGui::GetFont();
             case Text::Font::Bold: return Private::NativeFont(ctx.fonts.bold) ? Private::NativeFont(ctx.fonts.bold) : ImGui::GetFont();
+            case Text::Font::Display: return Private::NativeFont(ctx.fonts.display) ? Private::NativeFont(ctx.fonts.display) : ImGui::GetFont();
             case Text::Font::Current: return ImGui::GetFont();
         }
         return ImGui::GetFont();

@@ -22,6 +22,7 @@ struct Fonts {
     FontHandle h1;
     FontHandle h2;
     FontHandle bold;
+    FontHandle display;
 };
 
 struct MarkdownConfigHandle {

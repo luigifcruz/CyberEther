@@ -22,6 +22,7 @@ struct Text : public Component {
         H1,
         H2,
         Bold,
+        Display,
     };
 
     enum class Tone {

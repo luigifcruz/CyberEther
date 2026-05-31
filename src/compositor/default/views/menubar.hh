@@ -75,7 +75,7 @@ struct MenubarView : public Sakura::Component {
         appMenu.update({
             .id = this->config.id + ":app",
             .label = "CyberEther",
-            .font = Sakura::Text::Font::Bold,
+            .font = Sakura::Text::Font::Display,
             .scale = 1.5f,
             .colorKey = "cyber_blue",
         });

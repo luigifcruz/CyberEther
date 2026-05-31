@@ -186,6 +186,15 @@ struct Runtime::Impl {
             15.0f * fontScalingFactor * 1.04f,
             &fontConfig,
             nullptr));
+
+        if (this->fontConfig.display.valid()) {
+            fonts.display = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
+                this->fontConfig.display.data,
+                static_cast<int>(this->fontConfig.display.size),
+                15.0f * fontScalingFactor * 1.15f,
+                &fontConfig,
+                nullptr));
+        }
     }
 
     void applyImGuiStyle() const {
