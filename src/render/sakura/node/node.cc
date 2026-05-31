@@ -2,9 +2,210 @@
 
 #include "base.hh"
 
+#include <algorithm>
 #include <cmath>
 
 namespace Jetstream::Sakura {
+
+namespace {
+
+constexpr F32 Pi = 3.14159265358979323846f;
+
+ImVec2 PointOnRectPerimeter(const ImVec2& min, const ImVec2& max, F32 distance) {
+    const F32 width = max.x - min.x;
+    const F32 height = max.y - min.y;
+    const F32 perimeter = 2.0f * (width + height);
+    if (perimeter <= 0.0f) {
+        return min;
+    }
+
+    F32 d = std::fmod(distance, perimeter);
+    if (d < 0.0f) {
+        d += perimeter;
+    }
+
+    if (d <= width) {
+        return ImVec2(min.x + d, min.y);
+    }
+    d -= width;
+
+    if (d <= height) {
+        return ImVec2(max.x, min.y + d);
+    }
+    d -= height;
+
+    if (d <= width) {
+        return ImVec2(max.x - d, max.y);
+    }
+    d -= width;
+
+    return ImVec2(min.x, max.y - d);
+}
+
+F32 RoundedRectPerimeter(const ImVec2& min, const ImVec2& max, F32 radius) {
+    const F32 width = max.x - min.x;
+    const F32 height = max.y - min.y;
+    const F32 r = std::clamp(radius, 0.0f, std::min(width, height) * 0.5f);
+    return 2.0f * (std::max(0.0f, width - 2.0f * r) + std::max(0.0f, height - 2.0f * r)) +
+           2.0f * Pi * r;
+}
+
+ImVec2 PointOnRoundedRectPerimeter(const ImVec2& min, const ImVec2& max, F32 radius, F32 distance) {
+    const F32 width = max.x - min.x;
+    const F32 height = max.y - min.y;
+    const F32 r = std::clamp(radius, 0.0f, std::min(width, height) * 0.5f);
+    if (r <= 0.0f) {
+        return PointOnRectPerimeter(min, max, distance);
+    }
+
+    const F32 straightWidth = std::max(0.0f, width - 2.0f * r);
+    const F32 straightHeight = std::max(0.0f, height - 2.0f * r);
+    const F32 arcLength = Pi * r * 0.5f;
+    const F32 perimeter = RoundedRectPerimeter(min, max, r);
+    if (perimeter <= 0.0f) {
+        return min;
+    }
+
+    F32 d = std::fmod(distance, perimeter);
+    if (d < 0.0f) {
+        d += perimeter;
+    }
+
+    const auto arcPoint = [r](const ImVec2& center, F32 startAngle, F32 arcDistance) {
+        const F32 angle = startAngle + arcDistance / r;
+        return ImVec2(center.x + std::cos(angle) * r, center.y + std::sin(angle) * r);
+    };
+
+    if (d <= straightWidth) {
+        return ImVec2(min.x + r + d, min.y);
+    }
+    d -= straightWidth;
+
+    if (d <= arcLength) {
+        return arcPoint(ImVec2(max.x - r, min.y + r), -Pi * 0.5f, d);
+    }
+    d -= arcLength;
+
+    if (d <= straightHeight) {
+        return ImVec2(max.x, min.y + r + d);
+    }
+    d -= straightHeight;
+
+    if (d <= arcLength) {
+        return arcPoint(ImVec2(max.x - r, max.y - r), 0.0f, d);
+    }
+    d -= arcLength;
+
+    if (d <= straightWidth) {
+        return ImVec2(max.x - r - d, max.y);
+    }
+    d -= straightWidth;
+
+    if (d <= arcLength) {
+        return arcPoint(ImVec2(min.x + r, max.y - r), Pi * 0.5f, d);
+    }
+    d -= arcLength;
+
+    if (d <= straightHeight) {
+        return ImVec2(min.x, max.y - r - d);
+    }
+    d -= straightHeight;
+
+    return arcPoint(ImVec2(min.x + r, min.y + r), Pi, d);
+}
+
+ImU32 ColorWithAlpha(const ImVec4& color, F32 alpha) {
+    return ImGui::ColorConvertFloat4ToU32(ImVec4(color.x,
+                                                 color.y,
+                                                 color.z,
+                                                 color.w * std::clamp(alpha, 0.0f, 1.0f)));
+}
+
+void DrawLoadingBadge(const Context& ctx, const ImVec2& pos, const ImVec2& size) {
+    const char* label = "LOADING";
+    ImFont* font = Private::NativeFont(ctx.fonts.bold);
+    if (!font) {
+        font = ImGui::GetFont();
+    }
+
+    const F32 fontSize = ImGui::GetStyle().FontSizeBase;
+    const ImVec2 padding(Scale(ctx, 10.0f), Scale(ctx, 5.0f));
+    const F32 rounding = Scale(ctx, 8.0f);
+    const ImVec4 color = Private::ImColor(ctx, "node_outline_pending");
+    const ImU32 fillColor = ColorWithAlpha(color, 0.16f);
+    const ImU32 textColor = ColorWithAlpha(color, 1.0f);
+    const ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label);
+    const ImVec2 badgeSize(textSize.x + padding.x * 2.0f, textSize.y + padding.y * 2.0f);
+    const ImVec2 badgePosition(pos.x + (size.x - badgeSize.x) * 0.5f,
+                               pos.y + (size.y - badgeSize.y) * 0.5f);
+    const ImVec2 badgeMax(badgePosition.x + badgeSize.x, badgePosition.y + badgeSize.y);
+    const ImVec2 textPosition(badgePosition.x + padding.x, badgePosition.y + padding.y);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(badgePosition, badgeMax, fillColor, rounding);
+    drawList->AddText(font, fontSize, textPosition, textColor, label);
+}
+
+void DrawBorderChase(const Context& ctx, const ImVec2& pos, const ImVec2& size) {
+    const F32 thickness = ImNodes::GetStyle().NodeBorderThickness;
+    const F32 inset = std::max(thickness * 0.5f, Scale(ctx, 1.0f));
+    if (size.x <= inset * 2.0f || size.y <= inset * 2.0f) {
+        return;
+    }
+
+    const ImVec2 min(pos.x + inset, pos.y + inset);
+    const ImVec2 max(pos.x + size.x - inset, pos.y + size.y - inset);
+    const F32 radius = std::max(0.0f, ImNodes::GetStyle().NodeCornerRounding - inset);
+    const F32 perimeter = RoundedRectPerimeter(min, max, radius);
+    if (perimeter <= 0.0f) {
+        return;
+    }
+
+    const F32 time = static_cast<F32>(ImGui::GetTime());
+    const F32 visibleThickness = thickness + Scale(ctx, 0.75f);
+    const F32 glowThickness = visibleThickness + Scale(ctx, 4.0f);
+    const F32 chaseLength = std::min(perimeter * 0.42f, Scale(ctx, 360.0f));
+    if (chaseLength <= 0.0f) {
+        return;
+    }
+
+    const F32 step = std::max(Scale(ctx, 2.0f), chaseLength / 88.0f);
+    const F32 speed = Scale(ctx, 320.0f);
+    const F32 head = std::fmod(time * speed, perimeter);
+    const F32 pulse = 0.55f + std::sin(time * 7.0f) * 0.25f;
+    const ImVec4 pendingColor = Private::ImColor(ctx, "node_outline_pending");
+    const ImVec4 highlightColor(std::min(pendingColor.x + 0.22f, 0.92f),
+                                std::min(pendingColor.y + 0.22f, 0.92f),
+                                std::min(pendingColor.z + 0.22f, 0.92f),
+                                pendingColor.w);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    drawList->AddRect(min,
+                      max,
+                      ColorWithAlpha(highlightColor, pulse * 0.45f),
+                      radius,
+                      ImDrawFlags_RoundCornersAll,
+                      thickness);
+
+    for (F32 offset = 0.0f; offset < chaseLength; offset += step) {
+        const F32 nextOffset = std::min(offset + step, chaseLength);
+        const ImVec2 p0 = PointOnRoundedRectPerimeter(min, max, radius, head - offset);
+        const ImVec2 p1 = PointOnRoundedRectPerimeter(min, max, radius, head - nextOffset);
+        const F32 dx = p1.x - p0.x;
+        const F32 dy = p1.y - p0.y;
+        if ((dx * dx + dy * dy) > (step * step * 4.0f)) {
+            continue;
+        }
+
+        const F32 t = 1.0f - (offset / chaseLength);
+        const F32 alpha = t * t;
+        drawList->AddLine(p0, p1, ColorWithAlpha(pendingColor, alpha * 0.45f), glowThickness);
+        drawList->AddLine(p0, p1, ColorWithAlpha(pendingColor, alpha * 0.95f), visibleThickness);
+        drawList->AddLine(p0, p1, ColorWithAlpha(highlightColor, alpha * 0.85f), thickness);
+    }
+}
+
+}  // namespace
 
 struct Node::Impl {
     struct GeometryRecord {
@@ -110,10 +311,18 @@ void Node::render(const Context& ctx, Child child) const {
     Private::NodeEditorNodeStack().pop_back();
     ImNodes::EndNode();
 
+    const ImVec2 nodeGridPosition = ImNodes::GetNodeGridSpacePos(imNodesId);
+    const ImVec2 nodeScreenPosition = ImNodes::GetNodeScreenSpacePos(imNodesId);
+    const ImVec2 nodeDimensions = ImNodes::GetNodeDimensions(imNodesId);
+    if (config.state == State::Loading) {
+        DrawBorderChase(ctx, nodeScreenPosition, nodeDimensions);
+        DrawLoadingBadge(ctx, nodeScreenPosition, nodeDimensions);
+    }
+
     const Impl::GeometryRecord geometryRecord{
-        .gridPosition = Unscale(ctx, Private::ToExtent2D(ImNodes::GetNodeGridSpacePos(imNodesId))),
-        .screenPosition = Private::ToExtent2D(ImNodes::GetNodeScreenSpacePos(imNodesId)),
-        .outerDimensions = Private::ToExtent2D(ImNodes::GetNodeDimensions(imNodesId)),
+        .gridPosition = Unscale(ctx, Private::ToExtent2D(nodeGridPosition)),
+        .screenPosition = Private::ToExtent2D(nodeScreenPosition),
+        .outerDimensions = Private::ToExtent2D(nodeDimensions),
         .contentDimensions = Unscale(ctx, Private::ToExtent2D(impl->contentSize)),
     };
     if (config.onGeometryChange) {

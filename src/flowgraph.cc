@@ -1105,6 +1105,12 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         return Result::ERROR;
     }
 
+    std::stable_partition(order.begin(), order.end(), [&](const auto& name) {
+        const auto dependent = dependents.find(name);
+        return nodes.at(name).inputs.empty() &&
+               (dependent == dependents.end() || dependent->second.empty());
+    });
+
     for (const auto& name : order) {
         const auto& def = nodes.at(name);
 
