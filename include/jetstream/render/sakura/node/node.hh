@@ -18,6 +18,7 @@ struct Node : public Component {
         Normal,
         Error,
         Pending,
+        Loading,
     };
 
     struct Config {

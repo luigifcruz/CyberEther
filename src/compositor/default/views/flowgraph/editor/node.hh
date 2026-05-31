@@ -123,11 +123,13 @@ struct FlowgraphNode : public Sakura::Component {
         const auto& block = this->config.block;
         const U64 surfaceCount = block.surfaces.size();
         const bool hasSurfaces = surfaceCount > 0;
-        const bool isPending = block.state == Block::State::Creating ||
+        const bool isCreating = block.state == Block::State::Creating;
+        const bool isPending = isCreating ||
                                block.state == Block::State::Incomplete;
         const auto nodeState = block.state == Block::State::Errored
             ? Sakura::Node::State::Error
-            : isPending ? Sakura::Node::State::Pending : Sakura::Node::State::Normal;
+            : isCreating ? Sakura::Node::State::Loading
+                         : isPending ? Sakura::Node::State::Pending : Sakura::Node::State::Normal;
 
         bool allSurfacesDetached = hasSurfaces;
         for (const auto& surface : block.surfaces) {
@@ -220,7 +222,6 @@ struct FlowgraphNode : public Sakura::Component {
             },
         });
         subtitle.update({.text = block.name});
-        loadingBar.update({.id = this->config.id + "Loading"});
         metricsSpacing.update({.id = this->config.id + "MetricsSpacing"});
         runtimeOverlay.update({
             .lines = block.timing,
@@ -353,7 +354,6 @@ struct FlowgraphNode : public Sakura::Component {
             }
 
             if (config.block.state == Block::State::Creating) {
-                loadingBar.render(ctx);
                 return;
             }
 
@@ -395,7 +395,6 @@ struct FlowgraphNode : public Sakura::Component {
     Sakura::Node node;
     Sakura::NodeTitle title;
     Sakura::NodeSubtitle subtitle;
-    Sakura::NodeLoadingBar loadingBar;
     Sakura::NodeRuntimeOverlay runtimeOverlay;
     Sakura::Spacing metricsSpacing;
     std::vector<Sakura::NodePin> pins;
