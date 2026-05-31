@@ -26,6 +26,7 @@ struct Runtime {
         FontData bold;
         FontData iconRegular;
         FontData iconSolid;
+        FontData display;
     };
 
     struct Config {

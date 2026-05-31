@@ -7,6 +7,7 @@
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
 #include "resources/fonts/compressed_fa.hh"
+#include "resources/fonts/compressed_sg.hh"
 
 #include "jetstream/platform.hh"
 #include "jetstream/logger.hh"
@@ -128,6 +129,10 @@ Result DefaultCompositor::create() {
         .iconSolid = {
             .data = fas_compressed_data,
             .size = fas_compressed_size,
+        },
+        .display = {
+            .data = sg_compressed_data,
+            .size = sg_compressed_size,
         },
     });
 
