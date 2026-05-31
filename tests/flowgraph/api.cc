@@ -462,4 +462,33 @@ graph:
         REQUIRE(yaml.starts_with("---\nversion: 2\n"));
         REQUIRE(yaml.find("protocolVersion") == std::string::npos);
     }
+
+    SECTION("importFromBlob creates graph-isolated blocks before connected roots") {
+        const std::string yaml = R"(---
+version: 2
+graph:
+  - name: source
+    module: signal_generator
+  - name: sink
+    module: add
+    input:
+      a: '${graph.source.output.signal}'
+      b: '${graph.source.output.signal}'
+  - name: startup
+    module: note
+)";
+
+        const std::vector<char> blob(yaml.begin(), yaml.end());
+        REQUIRE(flowgraph->importFromBlob(blob) == Result::SUCCESS);
+
+        std::vector<std::string> keys;
+        REQUIRE(flowgraph->view().keys(keys) == Result::SUCCESS);
+        REQUIRE(keys.size() == 3);
+        REQUIRE(keys[0] == "startup");
+        REQUIRE(keys[1] == "source");
+        REQUIRE(keys[2] == "sink");
+        REQUIRE(viewBlock("startup").state == Block::State::Created);
+        REQUIRE(viewBlock("source").state == Block::State::Created);
+        REQUIRE(viewBlock("sink").state == Block::State::Created);
+    }
 }
