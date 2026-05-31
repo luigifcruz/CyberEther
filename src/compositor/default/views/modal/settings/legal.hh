@@ -111,6 +111,7 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- GLM - Happy Bunny/MIT License\n"
                    "- cpp-httplib - MIT License\n"
                    "- nlohmann/json - MIT License\n"
+                   "- nanobind - BSD 3-Clause License\n"
                    "- Google Turbo colormap - Apache License 2.0\n"
                    "- Natural Earth - Public Domain\n"
                    // [NEW DEPENDENCY HOOK]
