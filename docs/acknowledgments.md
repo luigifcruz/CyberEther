@@ -42,7 +42,7 @@ CyberEther uses the following open-source libraries.
 | [Catch2](https://github.com/catchorg/Catch2) | Unit testing framework. | Boost |
 | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | Monospace font for the GUI. | OFL-1.1 |
 | [imgui_markdown](https://github.com/juliettef/imgui_markdown) | Markdown rendering for help. | Zlib |
-| [GLM](https://github.com/g-truc/glm) | Vector and matrix math. | MIT |
+| [GLM](https://github.com/g-truc/glm) | Vector and matrix math. | Happy Bunny/MIT |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | Server for REST API. | MIT |
 | [nlohmann/json](https://github.com/nlohmann/json) | JSON file parser. | MIT |
 | [Natural Earth](https://www.naturalearthdata.com/) | Map datasets used for geodata layers. | Public Domain |
@@ -3080,7 +3080,7 @@ freely, subject to the following restrictions:
 </details>
 
 ### GLM
-OpenGL Mathematics library. Used for matrix and vector operations. Licensed under MIT/Happy Bunny License. [GitHub](https://github.com/g-truc/glm)
+OpenGL Mathematics library. Used for matrix and vector operations. Licensed under Happy Bunny/MIT License. [GitHub](https://github.com/g-truc/glm)
 
 <details>
   <summary>View License</summary>
