@@ -29,6 +29,7 @@ struct Text::Impl {
             case Font::H1: return Private::NativeFont(ctx.fonts.h1) ? Private::NativeFont(ctx.fonts.h1) : ImGui::GetFont();
             case Font::H2: return Private::NativeFont(ctx.fonts.h2) ? Private::NativeFont(ctx.fonts.h2) : ImGui::GetFont();
             case Font::Bold: return Private::NativeFont(ctx.fonts.bold) ? Private::NativeFont(ctx.fonts.bold) : ImGui::GetFont();
+            case Font::Display: return Private::NativeFont(ctx.fonts.display) ? Private::NativeFont(ctx.fonts.display) : ImGui::GetFont();
             case Font::Current: return nullptr;
         }
         return nullptr;

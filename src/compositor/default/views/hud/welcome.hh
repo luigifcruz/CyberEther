@@ -21,17 +21,18 @@ struct WelcomeHudTitle : public Sakura::Component {
         title.update({
             .id = "WelcomeTitle",
             .str = this->config.title,
-            .font = Sakura::Text::Font::Bold,
+            .font = Sakura::Text::Font::Display,
             .align = Sakura::Text::Align::Center,
             .colorKey = "cyber_blue",
-            .scale = 6.0f,
+            .scale = 8.5f,
         });
         slogan.update({
             .id = "WelcomeSlogan",
             .str = this->config.slogan,
+            .font = Sakura::Text::Font::Display,
             .tone = Sakura::Text::Tone::Secondary,
             .align = Sakura::Text::Align::Center,
-            .scale = 1.3f,
+            .scale = 2.3f,
         });
     }
 
@@ -145,7 +146,7 @@ struct WelcomeHudView : public Sakura::Component {
         });
         title.update({
             .title = "CyberEther",
-            .slogan = "GPU-accelerated Signal Processing",
+            .slogan = "GPU-ACCELERATED SIGNAL PROCESSING",
         });
         actions.update({
             .id = "WelcomeActions",
