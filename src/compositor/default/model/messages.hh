@@ -103,6 +103,22 @@ struct MailSetBackgroundParticles {
     bool value = false;
 };
 
+struct MailSetFlowgraphMetadataVisible {
+    bool value = false;
+};
+
+struct MailSetFlowgraphMetadataSearch {
+    std::string value;
+};
+
+struct MailSetFlowgraphEnvironmentVisible {
+    bool value = false;
+};
+
+struct MailSetFlowgraphEnvironmentSearch {
+    std::string value;
+};
+
 struct MailSetGraphicsScale {
     F32 value = 1.0f;
 };
@@ -119,7 +135,7 @@ struct MailSetDebugLatencyEnabled {
     bool value = false;
 };
 
-struct MailSetDebugRuntimeMetricsEnabled {
+struct MailSetDebugTimingEnabled {
     bool value = false;
 };
 
@@ -334,11 +350,15 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailQuit,
                           MailSetInfoPanelEnabled,
                           MailSetBackgroundParticles,
+                          MailSetFlowgraphMetadataVisible,
+                          MailSetFlowgraphMetadataSearch,
+                          MailSetFlowgraphEnvironmentVisible,
+                          MailSetFlowgraphEnvironmentSearch,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
                           MailSetGraphicsFramerate,
                           MailSetDebugLatencyEnabled,
-                          MailSetDebugRuntimeMetricsEnabled,
+                          MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
                           MailDismissUpdate,

@@ -72,7 +72,9 @@ struct Registry::Impl {
                        const DeviceType& device,
                        const RuntimeType& runtime,
                        const ProviderType& provider,
-                       std::shared_ptr<Module>& module);
+                       std::shared_ptr<Module>& module,
+                       const std::shared_ptr<Flowgraph::Environment>& environment,
+                       const std::shared_ptr<Flowgraph::View>& view);
     Result buildBlock(const std::string& type, std::shared_ptr<Block>& block);
 
     std::mutex pendingRegistrationMutex;
@@ -423,7 +425,9 @@ Result Registry::Impl::buildModule(const std::string& type,
                                    const DeviceType& device,
                                    const RuntimeType& runtime,
                                    const ProviderType& provider,
-                                   std::shared_ptr<Module>& module) {
+                                   std::shared_ptr<Module>& module,
+                                   const std::shared_ptr<Flowgraph::Environment>& environment,
+                                   const std::shared_ptr<Flowgraph::View>& view) {
     JST_TRACE("[REGISTRY] Creating module [Type: {}, Device: {}, Runtime: {}, Provider: {}].", type, device, runtime, provider);
 
     if (device == DeviceType::None) {
@@ -449,7 +453,7 @@ Result Registry::Impl::buildModule(const std::string& type,
     });
 
     if (it != modules.end()) {
-        module = it->factory();
+        module = it->factory(environment, view);
         return Result::SUCCESS;
     }
 
@@ -580,9 +584,11 @@ Result Registry::BuildModule(const std::string& type,
                              const DeviceType& device,
                              const RuntimeType& runtime,
                              const ProviderType& provider,
-                             std::shared_ptr<Module>& module) {
+                             std::shared_ptr<Module>& module,
+                             const std::shared_ptr<Flowgraph::Environment>& environment,
+                             const std::shared_ptr<Flowgraph::View>& view) {
     JST_CHECK(registry().drainStaticRegistrations());
-    JST_CHECK(registry().buildModule(type, device, runtime, provider, module));
+    JST_CHECK(registry().buildModule(type, device, runtime, provider, module, environment, view));
     return Result::SUCCESS;
 }
 

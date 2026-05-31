@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 
 #include <jetstream/detail/module_surface_impl.hh>
 #include <jetstream/surface.hh>
@@ -123,15 +124,18 @@ Module::Surface::~Surface() {
     impl.reset();
 }
 
-const std::vector<SurfaceManifest>& Module::Surface::manifests() const {
+std::vector<SurfaceManifest> Module::Surface::manifests() const {
+    std::lock_guard<std::mutex> lock(impl->manifestMutex);
     return impl->manifests;
 }
 
 void Module::Surface::pushMouseEvent(const MouseEvent& event) {
+    std::lock_guard<std::mutex> lock(impl->eventMutex);
     impl->eventBuffer.pushMouse(event);
 }
 
 void Module::Surface::pushSurfaceEvent(const SurfaceEvent& event) {
+    std::lock_guard<std::mutex> lock(impl->eventMutex);
     impl->eventBuffer.pushSurface(event);
 }
 

@@ -26,7 +26,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block creates after expand_dims"
     squeezeConfig.axis = 0;
     REQUIRE(flowgraph->blockCreate("sq_block", squeezeConfig, squeezeInputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("sq_block")->state() == Block::State::Created);
+    REQUIRE(viewBlock("sq_block").state == Block::State::Created);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block rejects non-singleton axis",
@@ -40,5 +40,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block rejects non-singleton axis
     Blocks::SqueezeDims config;
     config.axis = 0;
     REQUIRE(flowgraph->blockCreate("sq_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("sq_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("sq_bad").state == Block::State::Errored);
 }

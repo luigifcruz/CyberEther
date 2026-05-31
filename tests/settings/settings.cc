@@ -251,7 +251,7 @@ TEST_CASE("Settings can update memory without persisting", "[settings]") {
 
     Settings settings;
     settings.interface.themeKey = "Transient";
-    settings.developer.runtimeMetricsEnabled = true;
+    settings.developer.timingEnabled = true;
 
     REQUIRE(Settings::Set(settings, false) == Result::SUCCESS);
     REQUIRE(!std::filesystem::exists(sandbox.path));
@@ -259,5 +259,5 @@ TEST_CASE("Settings can update memory without persisting", "[settings]") {
     Settings restored;
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
     REQUIRE(restored.interface.themeKey == "Transient");
-    REQUIRE(restored.developer.runtimeMetricsEnabled);
+    REQUIRE(restored.developer.timingEnabled);
 }

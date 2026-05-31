@@ -16,8 +16,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block creates with complex input",
 
     Blocks::Invert config;
     REQUIRE(flowgraph->blockCreate("invert_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("invert_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("invert_block")->outputs().count("signal") == 1);
+    REQUIRE(viewBlock("invert_block").state == Block::State::Created);
+    REQUIRE(viewBlock("invert_block").outputs.count("signal") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Invert block input reconnect lifecycle",
@@ -31,9 +31,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block input reconnect lifecycle",
             Result::SUCCESS);
 
     REQUIRE(flowgraph->blockDisconnect("invert_life", "signal") == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("invert_life")->state() == Block::State::Incomplete);
+    REQUIRE(viewBlock("invert_life").state == Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("invert_life", "signal", "invert_life_src", "window")
             == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("invert_life")->state() == Block::State::Created);
+    REQUIRE(viewBlock("invert_life").state == Block::State::Created);
 }

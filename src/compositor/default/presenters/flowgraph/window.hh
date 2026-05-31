@@ -12,6 +12,7 @@
 #include "../../views/flowgraph/window.hh"
 
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <memory>
 #include <string>
@@ -32,14 +33,13 @@ struct FlowgraphWindowPresenter {
     FlowgraphWindow::Config build(const std::string& flowgraphId,
                                   const std::shared_ptr<Flowgraph>& flowgraph) const {
         const auto enqueue = context.callbacks.enqueueMail;
-        const auto blocks = flowgraph->blockList();
         return FlowgraphWindow::Config{
             .id = MakeFlowgraphWindowId(flowgraphId),
             .title = MakeFlowgraphWindowTitle(flowgraphId, flowgraph),
             .editor = editor.build(flowgraphId, flowgraph),
             .stacks = stacks.build(flowgraphId, flowgraph),
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
-            .empty = blocks.empty(),
+            .empty = flowgraph->view().empty(),
             .onSave = [enqueue, flowgraphId]() {
                 enqueue(MailSaveFlowgraph{.flowgraph = flowgraphId});
             },

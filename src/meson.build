@@ -20,6 +20,9 @@ endif
 
 src_lst += files([
     'flowgraph.cc',
+    'flowgraph_metadata.cc',
+    'flowgraph_environment.cc',
+    'flowgraph_view.cc',
     'settings.cc',
     'parser_map.cc',
     'parser_decode.cc',
@@ -37,6 +40,7 @@ src_lst += files([
     'module_surface.cc',
     'block.cc',
     'block_impl.cc',
+    'block_context.cc',
     'block_interface.cc',
     'registry.cc',
     'plugin.cc',

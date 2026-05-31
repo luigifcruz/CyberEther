@@ -27,9 +27,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("spec", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("spec")->state() == Block::State::Created);
+    REQUIRE(viewBlock("spec").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("spec")->outputs().at("buffer").tensor;
+    const Tensor out = viewBlock("spec").outputs.at("buffer").tensor;
     REQUIRE(out.dtype() == DataType::F32);
     REQUIRE(out.shape(0) == 256);
 }
@@ -52,5 +52,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("spec_bad", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("spec_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("spec_bad").state == Block::State::Errored);
 }

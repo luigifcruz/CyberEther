@@ -18,8 +18,6 @@ struct NativeCudaRuntime : public Runtime::Impl {
     Result compute(const std::vector<std::string>& modules,
                    std::unordered_set<std::string>& skippedModules) override;
 
-    const std::shared_ptr<Runtime::Metrics>& metrics() const final;
-
  private:
     static inline std::shared_ptr<NativeCudaRuntimeContext> getRuntimeContext(const std::shared_ptr<Module>& module) {
         return std::dynamic_pointer_cast<NativeCudaRuntimeContext>(module->context()->runtime());
@@ -27,20 +25,12 @@ struct NativeCudaRuntime : public Runtime::Impl {
 
     Runtime::Modules modulesMap;
     std::vector<std::string> moduleNames;
-    std::shared_ptr<Runtime::Metrics> runtimeMetrics;
 
     cudaStream_t stream;
     std::unordered_map<std::string, std::pair<cudaEvent_t, cudaEvent_t>> eventMap;
 };
 
 Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
-    // Setup metrics.
-
-    runtimeMetrics = std::make_shared<Runtime::Metrics>();
-    runtimeMetrics->runtime = name;
-    runtimeMetrics->device = GetDevicePrettyName(device);
-    runtimeMetrics->backend = GetRuntimePrettyName(backend);
-
     // Create stream.
 
     JST_CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), [&]{
@@ -64,6 +54,12 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
         // Initialize module.
 
         JST_CHECK(getRuntimeContext(module)->computeInitialize());
+
+        Module::Timing timing;
+        timing.runtime = this->name;
+        timing.device = GetDevicePrettyName(device);
+        timing.backend = GetRuntimePrettyName(backend);
+        module->timing(timing);
 
         // Create events for module.
 
@@ -121,13 +117,8 @@ Result NativeCudaRuntime::destroy() {
     modulesMap.clear();
     moduleNames.clear();
     eventMap.clear();
-    runtimeMetrics.reset();
 
     return Result::SUCCESS;
-}
-
-const std::shared_ptr<Runtime::Metrics>& NativeCudaRuntime::metrics() const {
-    return runtimeMetrics;
 }
 
 Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
@@ -201,11 +192,10 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't get elapsed time for '{}': {}", name, err);
         });
 
-        auto& cycles = runtimeMetrics->cycles[name];
-        auto& averageComputeTime = runtimeMetrics->averageComputeTime[name];
-
-        const F32 totalTime = averageComputeTime * static_cast<F32>(cycles++);
-        averageComputeTime = (totalTime + elapsedMs) / static_cast<F32>(cycles);
+        auto timing = modulesMap.at(name)->timing();
+        timing.cycles += 1;
+        timing.computeTime += elapsedMs;
+        modulesMap.at(name)->timing(timing);
     }
 
     return Result::SUCCESS;

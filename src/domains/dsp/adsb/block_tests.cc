@@ -20,7 +20,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("adsb", "adsb", {}, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("adsb")->state() == Block::State::Created);
+    REQUIRE(viewBlock("adsb").state == Block::State::Created);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -28,6 +28,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[modules][dsp][adsb][block][validation]") {
     auto result = flowgraph->blockCreate("adsb_incomplete", "adsb", {}, {});
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-    REQUIRE(flowgraph->blockList().at("adsb_incomplete")->state() ==
+    REQUIRE(viewBlock("adsb_incomplete").state ==
             Block::State::Incomplete);
 }

@@ -10,10 +10,10 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block creates with default confi
                  "[modules][ones_tensor][block]") {
     Blocks::OnesTensor config;
     REQUIRE(flowgraph->blockCreate("ones_default", config, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ones_default")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("ones_default")->outputs().count("buffer") == 1);
+    REQUIRE(viewBlock("ones_default").state == Block::State::Created);
+    REQUIRE(viewBlock("ones_default").outputs.count("buffer") == 1);
 
-    const Tensor& out = flowgraph->blockList().at("ones_default")->outputs().at("buffer").tensor;
+    const Tensor out = viewBlock("ones_default").outputs.at("buffer").tensor;
     REQUIRE(out.shape() == Shape{1});
     REQUIRE(out.dtype() == DataType::F32);
     REQUIRE_THAT(out.at<F32>(0), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
@@ -31,9 +31,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block creates a non-default CF32
     config.dataType = "CF32";
 
     REQUIRE(flowgraph->blockCreate("ones_cf32", config, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ones_cf32")->state() == Block::State::Created);
+    REQUIRE(viewBlock("ones_cf32").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("ones_cf32")->outputs().at("buffer").tensor;
+    const Tensor out = viewBlock("ones_cf32").outputs.at("buffer").tensor;
     REQUIRE(out.shape() == Shape{2, 3});
     REQUIRE(out.dtype() == DataType::CF32);
     REQUIRE_THAT(out.at<CF32>(1, 2).real(), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
@@ -49,9 +49,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block recreates on config change
     update["dataType"] = std::string("CF32");
 
     REQUIRE(flowgraph->blockReconfigure("ones_recfg", update) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ones_recfg")->state() == Block::State::Created);
+    REQUIRE(viewBlock("ones_recfg").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("ones_recfg")->outputs().at("buffer").tensor;
+    const Tensor out = viewBlock("ones_recfg").outputs.at("buffer").tensor;
     REQUIRE(out.shape() == Shape{2, 2});
     REQUIRE(out.dtype() == DataType::CF32);
     REQUIRE_THAT(out.at<CF32>(0, 1).real(), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
@@ -64,5 +64,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block rejects invalid config",
     config.shape = {0};
 
     REQUIRE(flowgraph->blockCreate("ones_bad", config, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ones_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("ones_bad").state == Block::State::Errored);
 }

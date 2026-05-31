@@ -12,6 +12,7 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <functional>
 #include <memory>
@@ -36,7 +37,7 @@ struct FlowgraphEditorPresenter {
         FlowgraphEditor::Config config{
             .id = flowgraphId,
             .clipboardHasData = context.state.clipboard.hasData,
-            .debugRuntimeMetricsEnabled = context.state.debug.runtimeMetricsEnabled,
+            .debugTimingEnabled = context.state.debug.timingEnabled,
             .blockOptions = catalog.buildBlockCatalog(),
             .title = flowgraph->title(),
             .summary = flowgraph->summary(),
@@ -106,13 +107,21 @@ struct FlowgraphEditorPresenter {
             },
         };
 
-        const auto blocks = flowgraph->blockList();
-        for (const auto& [blockName, blockPtr] : blocks) {
-            if (!blockPtr || !blockPtr->interface()) {
+        std::vector<std::string> blocks;
+        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+            return config;
+        }
+
+        for (const auto& blockName : blocks) {
+            Flowgraph::View::BlockData blockData;
+            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
+                continue;
+            }
+            if (flowgraph->view().metrics(blockName, blockData.metrics) != Result::SUCCESS) {
                 continue;
             }
 
-            config.graph.push_back(node.build(flowgraphId, flowgraph, blockName, blockPtr));
+            config.graph.push_back(node.build(flowgraphId, flowgraph, blockName, blockData));
         }
 
         return config;

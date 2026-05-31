@@ -20,8 +20,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("filter", "filter", {}, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("filter")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("filter")->outputs().contains("buffer"));
+    REQUIRE(viewBlock("filter").state == Block::State::Created);
+    REQUIRE(viewBlock("filter").outputs.contains("buffer"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -43,5 +43,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("filter_bad", "filter", badConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("filter_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("filter_bad").state == Block::State::Errored);
 }

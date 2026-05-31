@@ -93,7 +93,7 @@ struct FlowgraphNode : public Sakura::Component {
         std::vector<Input> inputs;
         std::vector<Output> outputs;
         std::vector<FlowgraphMetricConfig> metrics;
-        std::vector<std::string> runtimeMetrics;
+        std::vector<std::string> timing;
         std::vector<FlowgraphConfigFieldConfig> configFields;
         std::vector<Surface> surfaces;
         std::vector<DeviceOption> deviceOptions;
@@ -103,7 +103,7 @@ struct FlowgraphNode : public Sakura::Component {
         std::string id;
         BlockData block;
         bool pasteEnabled = false;
-        bool runtimeMetricsEnabled = false;
+        bool timingEnabled = false;
         std::function<void()> onCopy;
         std::function<void(Extent2D<F32>)> onPaste;
         std::function<void()> onReload;
@@ -223,7 +223,7 @@ struct FlowgraphNode : public Sakura::Component {
         loadingBar.update({.id = this->config.id + "Loading"});
         metricsSpacing.update({.id = this->config.id + "MetricsSpacing"});
         runtimeOverlay.update({
-            .lines = block.runtimeMetrics,
+            .lines = block.timing,
             .onResolveGeometry = [this]() -> std::optional<Sakura::NodeRuntimeOverlay::Geometry> {
                 if (!geometry.has_value()) {
                     return std::nullopt;
@@ -382,7 +382,7 @@ struct FlowgraphNode : public Sakura::Component {
         if (documentationOpen) {
             documentation.render(ctx);
         }
-        if (config.runtimeMetricsEnabled) {
+        if (config.timingEnabled) {
             runtimeOverlay.render(ctx);
         }
     }

@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "jetstream/detail/instance_remote_supervisor.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
@@ -36,7 +37,7 @@ struct Superluminal::Impl {
         Extent2D<U8> mosaicOffset;
         Extent2D<U8> mosaicSize;
         PlotConfig config;
-        std::shared_ptr<Jetstream::Block> block;
+        std::string block;
         std::function<void()> callback;
         bool active = false;
         U64 surfaceWidth = 0;
@@ -283,73 +284,76 @@ Result Superluminal::start() {
 
                     if (plot.config.type == Type::Interface) {
                         plot.callback();
-                    } else if (plot.block) {
-                        for (const auto& surface : plot.block->surfaces()) {
-                            for (const auto& manifest : surface->manifests()) {
-                                const auto availableRegion = ImGui::GetContentRegionAvail();
-                                const auto& io = ImGui::GetIO();
+                    } else if (!plot.block.empty()) {
+                        std::vector<std::shared_ptr<Module::Surface>> surfaces;
+                        if (impl->flowgraph->view().surfaces(plot.block, surfaces) == Result::SUCCESS) {
+                            for (const auto& surface : surfaces) {
+                                for (const auto& manifest : surface->manifests()) {
+                                    const auto availableRegion = ImGui::GetContentRegionAvail();
+                                    const auto& io = ImGui::GetIO();
 
-                                const U64 expectedWidth = availableRegion.x * io.DisplayFramebufferScale.x;
-                                const U64 expectedHeight = availableRegion.y * io.DisplayFramebufferScale.y;
+                                    const U64 expectedWidth = availableRegion.x * io.DisplayFramebufferScale.x;
+                                    const U64 expectedHeight = availableRegion.y * io.DisplayFramebufferScale.y;
 
-                                if (plot.surfaceWidth != static_cast<U64>(availableRegion.x) ||
-                                    plot.surfaceHeight != static_cast<U64>(availableRegion.y) ||
-                                    manifest.size.x != expectedWidth ||
-                                    manifest.size.y != expectedHeight) {
-                                    plot.surfaceWidth = availableRegion.x;
-                                    plot.surfaceHeight = availableRegion.y;
+                                    if (plot.surfaceWidth != static_cast<U64>(availableRegion.x) ||
+                                        plot.surfaceHeight != static_cast<U64>(availableRegion.y) ||
+                                        manifest.size.x != expectedWidth ||
+                                        manifest.size.y != expectedHeight) {
+                                        plot.surfaceWidth = availableRegion.x;
+                                        plot.surfaceHeight = availableRegion.y;
 
-                                    SurfaceEvent event;
-                                    event.type = SurfaceEventType::Resize;
-                                    event.size = {expectedWidth, expectedHeight};
-                                    event.scale = 0.5f * impl->config.interfaceScale * io.DisplayFramebufferScale.x;
-                                    event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
-                                    surface->pushSurfaceEvent(event);
-                                }
-
-                                const auto cursorPos = ImGui::GetCursorScreenPos();
-                                ImGui::Image(ImTextureRef(manifest.surface->raw()), availableRegion);
-
-                                ImGui::SetCursorScreenPos(cursorPos);
-                                ImGui::InvisibleButton("##surface", availableRegion);
-
-                                if (ImGui::IsItemHovered()) {
-                                    const auto mousePos = ImGui::GetMousePos();
-                                    const Extent2D<F32> normPos = {
-                                        (mousePos.x - cursorPos.x) / availableRegion.x,
-                                        (mousePos.y - cursorPos.y) / availableRegion.y
-                                    };
-
-                                    MouseEvent event;
-                                    event.position = normPos;
-                                    event.scroll = {0.0f, 0.0f};
-
-                                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                                        event.type = MouseEventType::Click;
-                                        event.button = MouseButton::Left;
-                                        surface->pushMouseEvent(event);
-                                    } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                                        event.type = MouseEventType::Click;
-                                        event.button = MouseButton::Right;
-                                        surface->pushMouseEvent(event);
-                                    } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                                        event.type = MouseEventType::Release;
-                                        event.button = MouseButton::Left;
-                                        surface->pushMouseEvent(event);
-                                    } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-                                        event.type = MouseEventType::Release;
-                                        event.button = MouseButton::Right;
-                                        surface->pushMouseEvent(event);
+                                        SurfaceEvent event;
+                                        event.type = SurfaceEventType::Resize;
+                                        event.size = {expectedWidth, expectedHeight};
+                                        event.scale = 0.5f * impl->config.interfaceScale * io.DisplayFramebufferScale.x;
+                                        event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+                                        surface->pushSurfaceEvent(event);
                                     }
 
-                                    if (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) {
-                                        event.type = MouseEventType::Scroll;
-                                        event.scroll = {io.MouseWheelH, io.MouseWheel};
+                                    const auto cursorPos = ImGui::GetCursorScreenPos();
+                                    ImGui::Image(ImTextureRef(manifest.surface->raw()), availableRegion);
+
+                                    ImGui::SetCursorScreenPos(cursorPos);
+                                    ImGui::InvisibleButton("##surface", availableRegion);
+
+                                    if (ImGui::IsItemHovered()) {
+                                        const auto mousePos = ImGui::GetMousePos();
+                                        const Extent2D<F32> normPos = {
+                                            (mousePos.x - cursorPos.x) / availableRegion.x,
+                                            (mousePos.y - cursorPos.y) / availableRegion.y
+                                        };
+
+                                        MouseEvent event;
+                                        event.position = normPos;
+                                        event.scroll = {0.0f, 0.0f};
+
+                                        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                                            event.type = MouseEventType::Click;
+                                            event.button = MouseButton::Left;
+                                            surface->pushMouseEvent(event);
+                                        } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                                            event.type = MouseEventType::Click;
+                                            event.button = MouseButton::Right;
+                                            surface->pushMouseEvent(event);
+                                        } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                                            event.type = MouseEventType::Release;
+                                            event.button = MouseButton::Left;
+                                            surface->pushMouseEvent(event);
+                                        } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+                                            event.type = MouseEventType::Release;
+                                            event.button = MouseButton::Right;
+                                            surface->pushMouseEvent(event);
+                                        }
+
+                                        if (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) {
+                                            event.type = MouseEventType::Scroll;
+                                            event.scroll = {io.MouseWheelH, io.MouseWheel};
+                                            surface->pushMouseEvent(event);
+                                        }
+
+                                        event.type = MouseEventType::Move;
                                         surface->pushMouseEvent(event);
                                     }
-
-                                    event.type = MouseEventType::Move;
-                                    surface->pushMouseEvent(event);
                                 }
                             }
                         }
@@ -947,7 +951,7 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     // Update plot state.
 
-    state.block = flowgraph->blockList().at(state.name + "_lineplot");
+    state.block = state.name + "_lineplot";
 
     return Result::SUCCESS;
 }
@@ -1052,7 +1056,7 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
     // Update plot state.
 
-    state.block = flowgraph->blockList().at(state.name + "_waterfall");
+    state.block = state.name + "_waterfall";
 
     return Result::SUCCESS;
 }

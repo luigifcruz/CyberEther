@@ -7,6 +7,8 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
 
@@ -254,19 +256,18 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto existingBlocks = flowgraph->blockList();
 
         std::string baseName = msg.moduleId;
         std::string blockName = baseName;
         int suffix = 1;
-        while (existingBlocks.contains(blockName)) {
+        while (flowgraph->view().has(blockName)) {
             blockName = jst::fmt::format("{}_{}", baseName, suffix++);
         }
 
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
             const NodeMeta nodeMeta = {pos.x, pos.y, 140.0f, 0.0f};
-            flowgraph->setMeta("node", nodeMeta, blockName);
+            flowgraph->metadata().set("node", nodeMeta, blockName);
         }
 
         const auto moduleId = msg.moduleId;
@@ -350,16 +351,15 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto blocks = flowgraph->blockList();
-        if (!blocks.contains(msg.blockId)) {
+        Flowgraph::View::BlockData block;
+        if (flowgraph->view().block(msg.blockId, block) != Result::SUCCESS) {
             JST_ERROR("Failed to change block device because block was not found.");
             return Result::ERROR;
         }
 
-        const auto& block = blocks.at(msg.blockId);
-        if (block->device() == msg.device &&
-            block->runtime() == msg.runtime &&
-            block->provider() == msg.provider) {
+        if (block.device == msg.device &&
+            block.runtime == msg.runtime &&
+            block.provider == msg.provider) {
             return Result::SUCCESS;
         }
 
@@ -442,19 +442,17 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto blocks = flowgraph->blockList();
-        if (!blocks.contains(msg.blockId)) {
+        Flowgraph::View::BlockData block;
+        if (flowgraph->view().block(msg.blockId, block) != Result::SUCCESS) {
             JST_ERROR("Failed to copy block because block was not found.");
             return Result::ERROR;
         }
 
-        const auto& block = blocks.at(msg.blockId);
-
-        state.clipboard.moduleType = block->config().type();
-        state.clipboard.device = block->device();
-        state.clipboard.runtime = block->runtime();
-        state.clipboard.provider = block->provider();
-        flowgraph->blockConfig(msg.blockId, state.clipboard.config);
+        state.clipboard.moduleType = block.type;
+        state.clipboard.device = block.device;
+        state.clipboard.runtime = block.runtime;
+        state.clipboard.provider = block.provider;
+        state.clipboard.config = block.config;
         state.clipboard.hasData = true;
 
         callbacks.notify(Sakura::ToastType::Info, 3000, "Block copied to clipboard.");
@@ -474,19 +472,18 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
-        const auto existingBlocks = flowgraph->blockList();
 
         std::string baseName = state.clipboard.moduleType;
         std::string blockName = baseName;
         int suffix = 1;
-        while (existingBlocks.contains(blockName)) {
+        while (flowgraph->view().has(blockName)) {
             blockName = jst::fmt::format("{}_{}", baseName, suffix++);
         }
 
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
             const NodeMeta nodeMeta = {pos.x, pos.y, 140.0f, 0.0f};
-            flowgraph->setMeta("node", nodeMeta, blockName);
+            flowgraph->metadata().set("node", nodeMeta, blockName);
         }
 
         auto config = state.clipboard.config;
@@ -516,7 +513,7 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        state.flowgraph.items.at(msg.flowgraph)->setMeta("node", msg.meta, msg.block);
+        state.flowgraph.items.at(msg.flowgraph)->metadata().set("node", msg.meta, msg.block);
         return Result::SUCCESS;
     }
 
@@ -537,7 +534,7 @@ struct FlowgraphActions {
             state.flowgraph.items.contains(msg.flowgraph)) {
             SurfaceMeta surfaceMeta;
             auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-            flowgraph->getMeta(msg.metaKey, surfaceMeta, msg.block);
+            flowgraph->metadata().get(msg.metaKey, surfaceMeta, msg.block);
             if (msg.placement == SurfacePlacement::Attached) {
                 surfaceMeta.attachedWidth = msg.resize.logicalSize.x;
                 surfaceMeta.attachedHeight = msg.resize.logicalSize.y;
@@ -545,7 +542,7 @@ struct FlowgraphActions {
                 surfaceMeta.detachedWidth = msg.resize.logicalSize.x;
                 surfaceMeta.detachedHeight = msg.resize.logicalSize.y;
             }
-            flowgraph->setMeta(msg.metaKey, surfaceMeta, msg.block);
+            flowgraph->metadata().set(msg.metaKey, surfaceMeta, msg.block);
         }
 
         SurfaceEvent event;

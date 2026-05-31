@@ -9,6 +9,8 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <memory>
 #include <optional>
@@ -26,9 +28,9 @@ struct FlowgraphSurfacePresenter {
                        const std::string& flowgraphId,
                        const std::string& blockName,
                        const std::string& nodeViewId,
-                       const std::shared_ptr<Block>& blockPtr) const {
+                       const Flowgraph::View::BlockData& blockData) const {
         const auto enqueue = context.callbacks.enqueueMail;
-        for (const auto& surface : blockPtr->surfaces()) {
+        for (const auto& surface : blockData.surfaces) {
             for (const auto& manifest : surface->manifests()) {
                 if (!manifest.surface || manifest.surface->raw() == 0) {
                     continue;
@@ -36,7 +38,7 @@ struct FlowgraphSurfacePresenter {
 
                 const std::string surfaceMetaKey = "surface_" + manifest.id;
                 SurfaceMeta surfaceMeta;
-                flowgraph->getMeta(surfaceMetaKey, surfaceMeta, blockName);
+                flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
                 std::optional<Extent2D<F32>> aspectRatioSize;
                 const SurfaceMeta defaultSurfaceMeta;
                 if (surfaceMeta.attachedWidth == defaultSurfaceMeta.attachedWidth &&

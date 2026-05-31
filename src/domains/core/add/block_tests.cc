@@ -19,8 +19,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Add block creates and exposes output",
 
     Blocks::Add config;
     REQUIRE(flowgraph->blockCreate("add_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("add_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("add_block")->outputs().count("sum") == 1);
+    REQUIRE(viewBlock("add_block").state == Block::State::Created);
+    REQUIRE(viewBlock("add_block").outputs.count("sum") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Add block handles disconnect and reconnect",
@@ -35,9 +35,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Add block handles disconnect and reconnect",
     REQUIRE(flowgraph->blockCreate("add_life", "add", {}, inputs) == Result::SUCCESS);
 
     REQUIRE(flowgraph->blockDisconnect("add_life", "b") == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("add_life")->state() == Block::State::Incomplete);
+    REQUIRE(viewBlock("add_life").state == Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("add_life", "b", "add_life_b", "window") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("add_life")->state() == Block::State::Created);
+    REQUIRE(viewBlock("add_life").state == Block::State::Created);
 }

@@ -12,6 +12,8 @@
 #include "jetstream/block.hh"
 #include "jetstream/block_interface.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/sakura/toast.hh"
 
@@ -31,18 +33,18 @@ struct FlowgraphNodePresenter {
     explicit FlowgraphNodePresenter(const PresenterContext& context) : context(context),
                                                                        surfaces(context) {}
 
-    void buildInputs(FlowgraphNode::BlockData& block, const std::shared_ptr<Block>& blockPtr) const {
-        for (const auto& [slot, interfaceInfo] : blockPtr->interface()->inputs()) {
+    void buildInputs(FlowgraphNode::BlockData& block, const Flowgraph::View::BlockData& blockData) const {
+        for (const auto& interfaceInfo : blockData.interfaceInputs) {
             FlowgraphNode::Input input{
                 .port = {
-                    .id = slot,
+                    .id = interfaceInfo.name,
                     .label = interfaceInfo.label,
                     .help = interfaceInfo.help,
                 },
             };
 
-            const auto inputIt = blockPtr->inputs().find(slot);
-            if (inputIt != blockPtr->inputs().end() && inputIt->second.external.has_value()) {
+            const auto inputIt = blockData.inputs.find(interfaceInfo.name);
+            if (inputIt != blockData.inputs.end() && inputIt->second.external.has_value()) {
                 input.source = FlowgraphNode::Link{
                     .block = inputIt->second.external->block,
                     .port = inputIt->second.external->port,
@@ -55,18 +57,18 @@ struct FlowgraphNodePresenter {
         }
     }
 
-    void buildOutputs(FlowgraphNode::BlockData& block, const std::shared_ptr<Block>& blockPtr) const {
-        for (const auto& [slot, interfaceInfo] : blockPtr->interface()->outputs()) {
+    void buildOutputs(FlowgraphNode::BlockData& block, const Flowgraph::View::BlockData& blockData) const {
+        for (const auto& interfaceInfo : blockData.interfaceOutputs) {
             FlowgraphNode::Output output{
                 .port = {
-                    .id = slot,
+                    .id = interfaceInfo.name,
                     .label = interfaceInfo.label,
                     .help = interfaceInfo.help,
                 },
             };
 
-            const auto outputIt = blockPtr->outputs().find(slot);
-            if (outputIt != blockPtr->outputs().end()) {
+            const auto outputIt = blockData.outputs.find(interfaceInfo.name);
+            if (outputIt != blockData.outputs.end()) {
                 output.tensor = outputIt->second.tensor;
             }
 
@@ -76,109 +78,105 @@ struct FlowgraphNodePresenter {
 
     void buildBlockMetrics(FlowgraphNode::BlockData& block,
                            const std::string& nodeViewId,
-                           const std::shared_ptr<Block>& blockPtr) const {
-        for (const auto& [name, entry] : blockPtr->interface()->metrics()) {
-            if (entry.format.starts_with("private-")) {
+                           const Flowgraph::View::BlockData& blockData) const {
+        for (const auto& metric : blockData.metrics) {
+            if (metric.format.starts_with("private-")) {
                 continue;
             }
 
-            std::any value;
-            if (entry.metric) {
-                value = entry.metric();
-            }
             block.metrics.push_back({
-                .id = nodeViewId + ":metric:" + name,
-                .label = entry.label,
-                .help = entry.help,
-                .format = entry.format,
-                .value = std::move(value),
+                .id = nodeViewId + ":metric:" + metric.name,
+                .label = metric.label,
+                .help = metric.help,
+                .format = metric.format,
+                .value = metric.value,
             });
         }
     }
 
     void buildConfigFields(FlowgraphNode::BlockData& block,
                            const std::string& nodeViewId,
-                           const std::shared_ptr<Block>& blockPtr) const {
-        Parser::Map cfg;
-        if (blockPtr->config(cfg) != Result::SUCCESS) {
-            return;
-        }
-
-        block.config = cfg;
-        for (const auto& [name, entry] : blockPtr->interface()->configs()) {
+                           const Flowgraph::View::BlockData& blockData) const {
+        block.config = blockData.config;
+        for (const auto& entry : blockData.interfaceConfigs) {
             std::string encoded;
-            if (cfg.contains(name)) {
-                Parser::TypedToString(cfg[name], encoded);
+            if (blockData.config.contains(entry.name)) {
+                Parser::TypedToString(blockData.config.at(entry.name), encoded);
             }
 
             block.configFields.push_back({
-                .id = nodeViewId + ":config:" + name,
-                .name = name,
-                .label = entry.label.empty() ? name : entry.label,
+                .id = nodeViewId + ":config:" + entry.name,
+                .name = entry.name,
+                .label = entry.label.empty() ? entry.name : entry.label,
                 .help = entry.help,
                 .format = entry.format,
                 .encoded = encoded,
-                .values = cfg,
+                .values = blockData.config,
             });
         }
     }
 
-    void buildRuntimeMetrics(FlowgraphNode::BlockData& block,
-                             const std::shared_ptr<Flowgraph>& flowgraph,
-                             const std::string& blockName,
-                             const std::shared_ptr<Block>& blockPtr) const {
-        if (!flowgraph->metrics().contains(blockName)) {
-            return;
-        }
-
-        const auto& blockMetrics = flowgraph->metrics().at(blockName);
+    void buildTiming(FlowgraphNode::BlockData& block,
+                     const Flowgraph::View::BlockData& blockData) const {
         F32 totalTime = 0.0f;
         U64 maxCycles = 0;
 
-        block.runtimeMetrics.push_back(jst::fmt::format("Runtime #{} ({}/{})",
-                                                        blockMetrics->runtime,
-                                                        blockMetrics->device,
-                                                        blockMetrics->backend));
-
-        for (const auto& moduleName : blockPtr->modules()) {
-            const auto& fullModuleName = jst::fmt::format("{}-{}", blockName, moduleName);
-            if (!blockMetrics->averageComputeTime.contains(fullModuleName) ||
-                !blockMetrics->cycles.contains(fullModuleName)) {
+        for (const auto& metric : blockData.metrics) {
+            if (metric.format != "private-timing") {
                 continue;
             }
 
-            const auto& averageComputeTime = blockMetrics->averageComputeTime.at(fullModuleName);
-            const auto& cycles = blockMetrics->cycles.at(fullModuleName);
-            block.runtimeMetrics.push_back(jst::fmt::format("+ {}: {:.3f} ms", moduleName, averageComputeTime));
+            Module::Timing timing;
+            try {
+                timing = std::any_cast<Module::Timing>(metric.value);
+            } catch (const std::bad_any_cast&) {
+                continue;
+            }
+
+            const F32 averageComputeTime = timing.cycles == 0
+                ? 0.0f
+                : timing.computeTime / static_cast<F32>(timing.cycles);
+            const auto& label = metric.label.empty() ? metric.name : metric.label;
+
+            block.timing.push_back(jst::fmt::format("{} ({}/{}/{}): {:.3f} ms",
+                                                    label,
+                                                    timing.backend,
+                                                    timing.device,
+                                                    timing.runtime,
+                                                    averageComputeTime));
             totalTime += averageComputeTime;
-            maxCycles = std::max(maxCycles, cycles);
+            maxCycles = std::max(maxCycles, timing.cycles);
+        }
+
+        if (block.timing.empty()) {
+            return;
         }
 
         const std::string cyclesStr = (maxCycles > 1000)
             ? jst::fmt::format("{:.1f}k", maxCycles / 1000.0f)
             : jst::fmt::format("{}", maxCycles);
-        block.runtimeMetrics.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
+        block.timing.push_back(jst::fmt::format("= {:.3f} ms ({})", totalTime, cyclesStr));
     }
 
     FlowgraphNode::BlockData build(const std::string& flowgraphId,
                                    const std::shared_ptr<Flowgraph>& flowgraph,
                                    const std::string& blockName,
-                                   const std::shared_ptr<Block>& blockPtr) const {
+                                   const Flowgraph::View::BlockData& blockData) const {
         const std::string nodeViewId = flowgraphId + ":" + blockName;
-        const Block::State blockState = blockPtr->state();
+        const Block::State blockState = blockData.state;
         const bool hasDiagnostic = (blockState == Block::State::Errored ||
-                                    blockState == Block::State::Incomplete) &&
-                                   !blockPtr->diagnostic().empty();
+                                     blockState == Block::State::Incomplete) &&
+                                    !blockData.diagnostic.empty();
         FlowgraphNode::BlockData block{
             .name = blockName,
-            .module = blockPtr->config().type(),
-            .title = blockPtr->config().title(),
-            .documentation = blockPtr->config().description(),
-            .device = blockPtr->device(),
-            .runtime = blockPtr->runtime(),
-            .provider = blockPtr->provider(),
+            .module = blockData.type,
+            .title = blockData.title,
+            .documentation = blockData.description,
+            .device = blockData.device,
+            .runtime = blockData.runtime,
+            .provider = blockData.provider,
             .state = blockState,
-            .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockPtr->diagnostic()) : "",
+            .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
         };
         block.deviceOptions = catalog.buildDeviceOptions(block.module,
                                                          block.device,
@@ -186,7 +184,7 @@ struct FlowgraphNodePresenter {
                                                          block.provider);
 
         NodeMeta nodeMeta;
-        flowgraph->getMeta("node", nodeMeta, blockName);
+        flowgraph->metadata().get("node", nodeMeta, blockName);
         block.layout = FlowgraphNode::Layout{
             .x = nodeMeta.x,
             .y = nodeMeta.y,
@@ -194,14 +192,14 @@ struct FlowgraphNodePresenter {
             .height = nodeMeta.height,
         };
 
-        buildInputs(block, blockPtr);
-        buildOutputs(block, blockPtr);
+        buildInputs(block, blockData);
+        buildOutputs(block, blockData);
 
         if (blockState != Block::State::Creating) {
-            buildBlockMetrics(block, nodeViewId, blockPtr);
-            buildConfigFields(block, nodeViewId, blockPtr);
-            buildRuntimeMetrics(block, flowgraph, blockName, blockPtr);
-            surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockPtr);
+            buildBlockMetrics(block, nodeViewId, blockData);
+            buildConfigFields(block, nodeViewId, blockData);
+            buildTiming(block, blockData);
+            surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
         }
 
         return block;
