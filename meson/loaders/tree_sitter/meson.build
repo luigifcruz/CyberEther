@@ -1,5 +1,7 @@
 deps = [
-    dependency('tree-sitter', required: true),
+    subproject('tree-sitter', required: true, default_options: [
+        'default_library=static',
+    ]).get_variable('tree_sitter_dep'),
     subproject('tree-sitter-python', required: true).get_variable('tree_sitter_python_dep'),
     subproject('tree-sitter-markdown', required: true).get_variable('tree_sitter_markdown_dep'),
 ]
