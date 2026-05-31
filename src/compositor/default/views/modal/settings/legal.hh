@@ -118,6 +118,7 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- Catch2 - Boost Software License\n"
                    "- Font Awesome - Font Awesome Free License\n"
                    "- JetBrains Mono - SIL Open Font License 1.1\n"
+                   "- Space Grotesk - SIL Open Font License 1.1\n"
                    "- imgui_markdown - Zlib License\n"
                    "- GLM - Happy Bunny/MIT License\n"
                    "- cpp-httplib - MIT License\n"
