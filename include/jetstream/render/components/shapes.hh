@@ -16,7 +16,7 @@ namespace Jetstream::Render::Components {
 // TODO: Add support for zero-copy buffers.
 // TODO: Implement proper rotation.
 
-class Shapes : public Generic {
+class JETSTREAM_API Shapes : public Generic {
  public:
     enum class Type : uint32_t {
         TRIANGLE = 0,

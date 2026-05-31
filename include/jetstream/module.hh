@@ -22,6 +22,14 @@ class JETSTREAM_API Module {
     struct Interface;
     struct Surface;
 
+    struct Timing {
+        std::string runtime;
+        std::string device;
+        std::string backend;
+        U64 cycles = 0;
+        F32 computeTime = 0.0f;
+    };
+
     struct Config {
         virtual ~Config() = default;
 
@@ -75,6 +83,11 @@ class JETSTREAM_API Module {
     const RuntimeType& runtime() const;
     const ProviderType& provider() const;
     const Module::Taint& taint() const;
+
+    // Timing
+
+    Timing timing() const;
+    void timing(const Timing& timing);
 
     // I/O
 

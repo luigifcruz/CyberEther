@@ -34,6 +34,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result add(const std::shared_ptr<Module>& module) override;
     Result remove(const std::shared_ptr<Module>& module) override;
     Result reload(const std::shared_ptr<Module>& module) override;
+    Result synchronize(const std::function<Result()>& fn) override;
 
     Result present() override;
     Result compute() override;
@@ -86,12 +87,9 @@ struct SynchronousScheduler : public Scheduler::Impl {
         std::vector<std::string> modules;
     };
     std::vector<RuntimeSegment> runtimes;
-    std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>> metrics_;
 
     Result rebuildOrder();
     Result rebuildRuntimes();
-
-    const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const override;
 };
 
 Result SynchronousScheduler::create() {
@@ -186,6 +184,14 @@ Result SynchronousScheduler::reload(const std::shared_ptr<Module>&) {
     }));
 
     return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
+    if (!fn) {
+        return Result::SUCCESS;
+    }
+
+    return lockState(fn);
 }
 
 Result SynchronousScheduler::present() {
@@ -511,7 +517,6 @@ Result SynchronousScheduler::rebuildRuntimes() {
         }
     }
     runtimes.clear();
-    metrics_.clear();
 
     if (topoOrder.empty()) {
         return Result::SUCCESS;
@@ -530,18 +535,6 @@ Result SynchronousScheduler::rebuildRuntimes() {
         const std::string runtimeName = jst::fmt::format("{}", runtimes.size());
         auto runtime = std::make_shared<Runtime>(runtimeName, currentDevice, currentRuntime);
         JST_CHECK(runtime->create(segmentModules));
-
-        // Assign metrics for each block.
-
-        std::unordered_set<std::string> blocks;
-
-        for (const auto& fullName : segmentNames) {
-            blocks.insert(Parser::SplitString(fullName, "-")[0]);
-        }
-
-        for (const auto& name : blocks) {
-            metrics_[name] = runtime->metrics();
-        }
 
         runtimes.push_back({std::move(runtime), std::move(segmentNames)});
         segmentModules.clear();
@@ -568,10 +561,6 @@ Result SynchronousScheduler::rebuildRuntimes() {
     JST_CHECK(flushSegment());
 
     return Result::SUCCESS;
-}
-
-const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& SynchronousScheduler::metrics() const {
-    return metrics_;
 }
 
 void SynchronousScheduler::haltAll() {

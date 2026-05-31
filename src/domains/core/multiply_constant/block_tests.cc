@@ -17,8 +17,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "MultiplyConstant block creates with custom c
     Blocks::MultiplyConstant config;
     config.constant = 0.25f;
     REQUIRE(flowgraph->blockCreate("mulc_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("mulc_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("mulc_block")->outputs().count("product") == 1);
+    REQUIRE(viewBlock("mulc_block").state == Block::State::Created);
+    REQUIRE(viewBlock("mulc_block").outputs.count("product") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "MultiplyConstant block reconnects input",
@@ -32,9 +32,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "MultiplyConstant block reconnects input",
             Result::SUCCESS);
 
     REQUIRE(flowgraph->blockDisconnect("mulc_life", "factor") == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("mulc_life")->state() == Block::State::Incomplete);
+    REQUIRE(viewBlock("mulc_life").state == Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("mulc_life", "factor", "mulc_life_src", "window") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("mulc_life")->state() == Block::State::Created);
+    REQUIRE(viewBlock("mulc_life").state == Block::State::Created);
 }

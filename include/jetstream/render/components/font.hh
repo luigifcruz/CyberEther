@@ -12,7 +12,7 @@
 
 namespace Jetstream::Render::Components {
 
-class Font : public Generic {
+class JETSTREAM_API Font : public Generic {
  public:
     struct Config {
         F32 size = 13.0f;

@@ -1,5 +1,7 @@
 #include <jetstream/block.hh>
 #include <jetstream/detail/block_impl.hh>
+#include <jetstream/detail/block_context_impl.hh>
+#include <jetstream/module_context.hh>
 #include <jetstream/module_surface.hh>
 #include <jetstream/detail/block_interface_impl.hh>
 
@@ -46,7 +48,9 @@ Result Block::Impl::moduleCreate(const std::string name,
                                     _device,
                                     _runtime,
                                     _provider,
-                                    module));
+                                    module,
+                                    _context->impl->environment,
+                                    _context->impl->view));
     _modules[name] = {module, config};
     _moduleOrder.push_back(name);
 
@@ -61,11 +65,11 @@ Result Block::Impl::moduleCreate(const std::string name,
     // Create module.
 
     const auto& blockModuleName = jst::fmt::format("{}-{}", _name, name);
-    JST_CHECK(module->create(blockModuleName, *config, clonedInputs, _render));
+    JST_CHECK(module->create(blockModuleName, *config, clonedInputs, render()));
 
     // Add module to scheduler.
 
-    JST_CHECK(_scheduler->add(module));
+    JST_CHECK(scheduler()->add(module));
 
     // Cache surface providers.
 
@@ -101,7 +105,7 @@ Result Block::Impl::moduleDestroy(const std::string name) {
 
     // Remove module from scheduler.
 
-    JST_CHECK(_scheduler->remove(entry.module));
+    JST_CHECK(scheduler()->remove(entry.module));
 
     // Remove from surface providers cache.
 
@@ -223,16 +227,32 @@ const ProviderType& Block::Impl::provider() const {
     return _provider;
 }
 
-std::shared_ptr<Instance>& Block::Impl::instance() {
-    return _instance;
+const std::shared_ptr<Instance>& Block::Impl::instance() {
+    return _context->instance();
 }
 
-std::shared_ptr<Render::Window>& Block::Impl::render() {
-    return _render;
+const std::shared_ptr<Render::Window>& Block::Impl::render() {
+    return _context->render();
 }
 
-std::shared_ptr<Scheduler>& Block::Impl::scheduler() {
-    return _scheduler;
+const std::shared_ptr<Scheduler>& Block::Impl::scheduler() {
+    return _context->scheduler();
+}
+
+const std::shared_ptr<Flowgraph::Environment>& Block::Impl::environment() {
+    return _context->environment();
+}
+
+const std::shared_ptr<Flowgraph::Environment>& Block::Impl::environment() const {
+    return _context->environment();
+}
+
+const std::shared_ptr<Flowgraph::View>& Block::Impl::view() {
+    return _context->view();
+}
+
+const std::shared_ptr<Flowgraph::View>& Block::Impl::view() const {
+    return _context->view();
 }
 
 const std::vector<std::shared_ptr<Module::Surface>>& Block::Impl::surfaces() const {
@@ -295,6 +315,21 @@ Result Block::Impl::defineInterfaceMetric(const std::string& key,
         }
     }
     _interface->impl->metrics.push_back({key, {label, format, help, std::move(metric)}});
+    return Result::SUCCESS;
+}
+
+Result Block::Impl::defineModuleTiming() {
+    for (const auto& name : _moduleOrder) {
+        const auto& module = _modules.at(name).module;
+        JST_CHECK(defineInterfaceMetric("runtime:" + name,
+                                        name,
+                                        "Runtime timing collected by the scheduler.",
+                                        "private-timing",
+                                        [module]() -> std::any {
+            return module->timing();
+        }));
+    }
+
     return Result::SUCCESS;
 }
 

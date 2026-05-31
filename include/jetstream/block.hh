@@ -26,6 +26,7 @@ class JETSTREAM_API Block {
     // Types & Nested Structs
 
     struct Impl;
+    struct Context;
     struct Interface;
 
     struct Config {
@@ -66,9 +67,7 @@ class JETSTREAM_API Block {
                   const ProviderType& provider,
                   const Parser::Map& config,
                   const TensorMap& inputs,
-                  const std::shared_ptr<Instance>& instance,
-                  const std::shared_ptr<Render::Window>& render,
-                  const std::shared_ptr<Scheduler>& scheduler);
+                  const std::shared_ptr<Block::Context>& context);
     Result destroy();
 
     // Configuration
@@ -99,6 +98,8 @@ class JETSTREAM_API Block {
 
  private:
     std::shared_ptr<Impl> impl;
+
+    friend class Flowgraph;
 };
 
 JETSTREAM_API const char* GetBlockStateName(const Block::State& state);

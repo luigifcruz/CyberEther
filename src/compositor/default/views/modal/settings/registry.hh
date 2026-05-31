@@ -34,6 +34,7 @@ struct RegistrySettingsPanel : public Sakura::Component {
         title.update({
             .id = "RegistryTitle",
             .str = "Registry",
+            .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 

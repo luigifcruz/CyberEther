@@ -12,6 +12,7 @@
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/dsp/signal_generator/module.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
@@ -74,11 +75,15 @@ inline Result RegisterSignalGeneratorTestProvider() {
         DeviceType::CPU,
         RuntimeType::NATIVE,
         kSignalGeneratorTestProvider,
-        []() -> std::shared_ptr<Module> {
+        [](const std::shared_ptr<Flowgraph::Environment>& environment,
+           const std::shared_ptr<Flowgraph::View>& view) -> std::shared_ptr<Module> {
             const auto impl = std::make_shared<SignalGeneratorTestProviderImpl>();
             const auto runtimeContext = std::static_pointer_cast<Runtime::Context>(impl);
             const auto schedulerContext = std::static_pointer_cast<Scheduler::Context>(impl);
-            const auto context = std::make_shared<Module::Context>(runtimeContext, schedulerContext);
+            const auto context = std::make_shared<Module::Context>(runtimeContext,
+                                                                   schedulerContext,
+                                                                   environment,
+                                                                   view);
             const auto stagedConfig = std::static_pointer_cast<Module::Config>(impl);
             const auto candidateConfig = std::static_pointer_cast<Module::Config>(impl->candidate());
 

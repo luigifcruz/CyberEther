@@ -9,6 +9,7 @@ if py.found() and cfg_lst.get('JETSTREAM_SUPERLUMINAL_AVAILABLE', false)
     install_subdir(
         'superluminal',
         install_dir: py.get_install_dir(pure: false),
+        install_tag: 'python',
         exclude_files: [
             'superluminal.cc',
             'meson.build',

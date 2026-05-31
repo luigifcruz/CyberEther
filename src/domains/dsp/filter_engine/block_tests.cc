@@ -15,20 +15,20 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter engine chain", "[modules][dsp][filter
     engineInputs["signal"].requested("taps_signal", "coeffs");
     engineInputs["filter"].requested("taps_filter", "coeffs");
     REQUIRE(flowgraph->blockCreate("engine1", "filter_engine", {}, engineInputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("engine1")->state() == Block::State::Created);
+    REQUIRE(viewBlock("engine1").state == Block::State::Created);
 
     SECTION("disconnecting filter input marks engine incomplete") {
         auto result = flowgraph->blockDisconnect("engine1", "filter");
         REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-        REQUIRE(flowgraph->blockList().at("engine1")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("engine1").state == Block::State::Incomplete);
     }
 
     SECTION("reconnecting filter input restores engine") {
         flowgraph->blockDisconnect("engine1", "filter");
-        REQUIRE(flowgraph->blockList().at("engine1")->state() == Block::State::Incomplete);
+        REQUIRE(viewBlock("engine1").state == Block::State::Incomplete);
 
         auto result = flowgraph->blockConnect("engine1", "filter", "taps_filter", "coeffs");
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(flowgraph->blockList().at("engine1")->state() == Block::State::Created);
+        REQUIRE(viewBlock("engine1").state == Block::State::Created);
     }
 }

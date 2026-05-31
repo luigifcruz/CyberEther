@@ -1,13 +1,12 @@
 #ifndef JETSTREAM_SCHEDULER_HH
 #define JETSTREAM_SCHEDULER_HH
 
+#include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "jetstream/macros.hh"
 #include "jetstream/types.hh"
-#include "jetstream/runtime.hh"
 
 namespace Jetstream {
 
@@ -34,19 +33,18 @@ class JETSTREAM_API Scheduler {
     Result add(const std::shared_ptr<Module>& module);
     Result remove(const std::shared_ptr<Module>& module);
     Result reload(const std::shared_ptr<Module>& module);
+    Result synchronize(const std::function<Result()>& fn);
 
     Result present();
     Result compute();
-
-    const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const;
 
  private:
     std::shared_ptr<Impl> impl;
 };
 
-const char* GetSchedulerName(const SchedulerType& scheduler);
-const char* GetSchedulerPrettyName(const SchedulerType& scheduler);
-SchedulerType StringToScheduler(const std::string& scheduler);
+JETSTREAM_API const char* GetSchedulerName(const SchedulerType& scheduler);
+JETSTREAM_API const char* GetSchedulerPrettyName(const SchedulerType& scheduler);
+JETSTREAM_API SchedulerType StringToScheduler(const std::string& scheduler);
 
 inline std::ostream& operator<<(std::ostream& os, const SchedulerType& scheduler) {
     return os << GetSchedulerPrettyName(scheduler);

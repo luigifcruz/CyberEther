@@ -1,14 +1,17 @@
-deps = [
-    dependency(
-        'glfw3', 
-        required: false, 
-        fallback: 'glfw', 
-        default_options: [
-            'default_library=static',
-            'install=false',
-        ]
-    ),
-]
+deps = []
+
+if not jst_is_browser
+    deps += [
+        subproject(
+            'glfw',
+            required: true,
+            default_options: [
+                'default_library=static',
+                'install=false',
+            ]
+        ).get_variable('glfw_dep'),
+    ]
+endif
 
 all_deps_found = true
 foreach x_dep : deps

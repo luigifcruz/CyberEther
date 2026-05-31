@@ -3,6 +3,8 @@
 #include <jetstream/detail/module_interface_impl.hh>
 #include <jetstream/detail/module_surface_impl.hh>
 
+#include <mutex>
+
 #ifdef JST_OS_BROWSER
 #include <utility>
 #endif
@@ -97,16 +99,34 @@ const Module::Taint& Module::Impl::taint() const {
     return _taint;
 }
 
-std::shared_ptr<Render::Window>& Module::Impl::render() {
+const std::shared_ptr<Render::Window>& Module::Impl::render() {
     return _render;
 }
 
+const std::shared_ptr<Flowgraph::Environment>& Module::Impl::environment() {
+    return _context->environment();
+}
+
+const std::shared_ptr<Flowgraph::Environment>& Module::Impl::environment() const {
+    return _context->environment();
+}
+
+const std::shared_ptr<Flowgraph::View>& Module::Impl::view() {
+    return _context->view();
+}
+
+const std::shared_ptr<Flowgraph::View>& Module::Impl::view() const {
+    return _context->view();
+}
+
 Result Module::Impl::surfaceCreateManifest(SurfaceManifest&& manifest) {
+    std::lock_guard<std::mutex> lock(_surface->impl->manifestMutex);
     _surface->impl->manifests.push_back(std::move(manifest));
     return Result::SUCCESS;
 }
 
 Result Module::Impl::surfaceUpdateManifestSize(const std::string& id, const Extent2D<U64>& size) {
+    std::lock_guard<std::mutex> lock(_surface->impl->manifestMutex);
     for (auto& manifest : _surface->impl->manifests) {
         if (manifest.id == id) {
             manifest.size = size;
@@ -117,10 +137,12 @@ Result Module::Impl::surfaceUpdateManifestSize(const std::string& id, const Exte
 }
 
 std::vector<MouseEvent> Module::Impl::surfaceConsumeMouseEvents() {
+    std::lock_guard<std::mutex> lock(_surface->impl->eventMutex);
     return _surface->impl->eventBuffer.consumeMouseEvents();
 }
 
 std::vector<SurfaceEvent> Module::Impl::surfaceConsumeSurfaceEvents() {
+    std::lock_guard<std::mutex> lock(_surface->impl->eventMutex);
     return _surface->impl->eventBuffer.consumeSurfaceEvents();
 }
 

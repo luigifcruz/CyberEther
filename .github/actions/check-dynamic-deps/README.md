@@ -20,6 +20,7 @@ Allowlist rules:
 
 Normalization:
 - `elf`: keeps exact `DT_NEEDED` names like `libc.so.6`
+- `elf`: normalizes auditwheel-renamed libraries like `libffi-82b99805.so.8.1.0` to `libffi.so.8`
 - `pe`: compares lowercased DLL names like `kernel32.dll`
 - `macho`: normalizes dylibs to their leaf name like `libSystem.B.dylib`
 - `macho`: normalizes frameworks to `Framework.framework/Binary` like `Metal.framework/Metal`

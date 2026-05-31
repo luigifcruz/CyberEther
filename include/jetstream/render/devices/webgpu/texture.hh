@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class TextureImp<DeviceType::WebGPU> : public Texture {
+class JETSTREAM_API TextureImp<DeviceType::WebGPU> : public Texture {
  public:
     explicit TextureImp(const Config& config);
 

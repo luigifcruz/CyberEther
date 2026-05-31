@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class SurfaceImp<DeviceType::WebGPU> : public Surface {
+class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
  public:
     explicit SurfaceImp(const Config& config);
 

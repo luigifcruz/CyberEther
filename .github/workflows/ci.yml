@@ -9,10 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  linux:
+  linux-build:
     uses: ./.github/workflows/linux-build.yml
 
-  windows:
+  windows-build:
     uses: ./.github/workflows/windows-build.yml
 
   macos:

@@ -26,9 +26,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Unpad block creates and exposes both outputs
     config.size = 4;
     config.axis = 0;
     REQUIRE(flowgraph->blockCreate("unpad_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("unpad_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("unpad_block")->outputs().count("unpadded") == 1);
-    REQUIRE(flowgraph->blockList().at("unpad_block")->outputs().count("pad") == 1);
+    REQUIRE(viewBlock("unpad_block").state == Block::State::Created);
+    REQUIRE(viewBlock("unpad_block").outputs.count("unpadded") == 1);
+    REQUIRE(viewBlock("unpad_block").outputs.count("pad") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Unpad block rejects invalid axis",
@@ -43,5 +43,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Unpad block rejects invalid axis",
     config.size = 1;
     config.axis = 5;
     REQUIRE(flowgraph->blockCreate("unpad_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("unpad_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("unpad_bad").state == Block::State::Errored);
 }

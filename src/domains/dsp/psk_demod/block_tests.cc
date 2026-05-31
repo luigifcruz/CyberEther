@@ -20,9 +20,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("demod", "psk_demod", {}, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("demod")->state() == Block::State::Created);
+    REQUIRE(viewBlock("demod").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("demod")->outputs().at("signal").tensor;
+    const Tensor out = viewBlock("demod").outputs.at("signal").tensor;
     REQUIRE(out.rank() == 1);
     REQUIRE(out.dtype() == DataType::CF32);
 }

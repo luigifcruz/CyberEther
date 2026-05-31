@@ -23,6 +23,8 @@ struct MenubarView : public Sakura::Component {
         OpenFlowgraph,
         SaveFlowgraph,
         ShowFlowgraphInfo,
+        ToggleFlowgraphMetadata,
+        ToggleFlowgraphEnvironment,
         CloseFlowgraph,
         RenameFlowgraph,
         OpenExamples,
@@ -31,8 +33,9 @@ struct MenubarView : public Sakura::Component {
         ToggleBackgroundParticles,
         RemoteStreaming,
         OpenSettings,
+        OpenRemoteSettings,
         ToggleDebugLatency,
-        ToggleRuntimeMetrics,
+        ToggleTiming,
         ShowBenchmarks,
         OpenDeveloperSettings,
         GettingStarted,
@@ -47,9 +50,11 @@ struct MenubarView : public Sakura::Component {
         bool hasFocusedFlowgraph = false;
         bool infoPanelEnabled = false;
         bool backgroundParticles = false;
+        bool flowgraphMetadataVisible = false;
+        bool flowgraphEnvironmentVisible = false;
         bool remoteSupported = false;
         bool debugLatencyEnabled = false;
-        bool debugRuntimeMetricsEnabled = false;
+        bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
         std::vector<std::string> themes;
         std::string currentThemeKey;
@@ -137,6 +142,20 @@ struct MenubarView : public Sakura::Component {
             .enabled = this->config.hasFocusedFlowgraph,
             .onClick = [this]() { emit(Action::ShowFlowgraphInfo); },
         });
+        flowgraphMetadataItem.update({
+            .id = this->config.id + ":flowgraph-metadata",
+            .label = "Show Metadata View",
+            .selected = this->config.flowgraphMetadataVisible,
+            .enabled = this->config.hasFocusedFlowgraph,
+            .onClick = [this]() { emit(Action::ToggleFlowgraphMetadata); },
+        });
+        flowgraphEnvironmentItem.update({
+            .id = this->config.id + ":flowgraph-environment",
+            .label = "Show Environment View",
+            .selected = this->config.flowgraphEnvironmentVisible,
+            .enabled = this->config.hasFocusedFlowgraph,
+            .onClick = [this]() { emit(Action::ToggleFlowgraphEnvironment); },
+        });
         closeFlowgraphItem.update({
             .id = this->config.id + ":close-flowgraph",
             .label = "Close",
@@ -208,6 +227,17 @@ struct MenubarView : public Sakura::Component {
             .onClick = [this]() { emit(Action::OpenSettings); },
         });
 
+        remoteMenu.update({
+            .id = this->config.id + ":remote",
+            .label = "Remote",
+            .scale = 1.04f,
+        });
+        openRemoteSettingsItem.update({
+            .id = this->config.id + ":remote-settings",
+            .label = "Open In Settings",
+            .onClick = [this]() { emit(Action::OpenRemoteSettings); },
+        });
+
         developerMenu.update({
             .id = this->config.id + ":developer",
             .label = "Developer",
@@ -219,11 +249,11 @@ struct MenubarView : public Sakura::Component {
             .selected = this->config.debugLatencyEnabled,
             .onClick = [this]() { emit(Action::ToggleDebugLatency); },
         });
-        runtimeMetricsItem.update({
-            .id = this->config.id + ":runtime-metrics",
-            .label = "Show Runtime Metrics",
-            .selected = this->config.debugRuntimeMetricsEnabled,
-            .onClick = [this]() { emit(Action::ToggleRuntimeMetrics); },
+        timingItem.update({
+            .id = this->config.id + ":timing",
+            .label = "Show Timing",
+            .selected = this->config.debugTimingEnabled,
+            .onClick = [this]() { emit(Action::ToggleTiming); },
         });
         benchmarksItem.update({
             .id = this->config.id + ":benchmarks",
@@ -357,23 +387,29 @@ struct MenubarView : public Sakura::Component {
             });
 
             viewMenu.render(ctx, [this](const Sakura::Context& ctx) {
-                infoPanelItem.render(ctx);
-                backgroundParticlesItem.render(ctx);
+                flowgraphMetadataItem.render(ctx);
+                flowgraphEnvironmentItem.render(ctx);
                 dividers[4].render(ctx);
                 themeMenu.render(ctx, [this](const Sakura::Context& ctx) {
                     for (auto& item : themeItems) {
                         item.render(ctx);
                     }
                 });
+                backgroundParticlesItem.render(ctx);
+                infoPanelItem.render(ctx);
                 dividers[5].render(ctx);
+                openSettingsItem.render(ctx);
+            });
+
+            remoteMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 remoteStreamingItem.render(ctx);
                 dividers[6].render(ctx);
-                openSettingsItem.render(ctx);
+                openRemoteSettingsItem.render(ctx);
             });
 
             developerMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 latencyWindowItem.render(ctx);
-                runtimeMetricsItem.render(ctx);
+                timingItem.render(ctx);
                 benchmarksItem.render(ctx);
                 dividers[7].render(ctx);
                 reloadPluginsItem.render(ctx);
@@ -418,6 +454,7 @@ struct MenubarView : public Sakura::Component {
     Sakura::Menu flowgraphMenu;
     Sakura::Menu viewMenu;
     Sakura::Menu themeMenu;
+    Sakura::Menu remoteMenu;
     Sakura::Menu developerMenu;
     Sakura::Menu logLevelMenu;
     Sakura::Menu helpMenu;
@@ -431,6 +468,8 @@ struct MenubarView : public Sakura::Component {
     Sakura::MenuItem openFlowgraphItem;
     Sakura::MenuItem saveFlowgraphItem;
     Sakura::MenuItem flowgraphInfoItem;
+    Sakura::MenuItem flowgraphMetadataItem;
+    Sakura::MenuItem flowgraphEnvironmentItem;
     Sakura::MenuItem closeFlowgraphItem;
     Sakura::MenuItem renameFlowgraphItem;
     Sakura::MenuItem openExamplesItem;
@@ -440,8 +479,9 @@ struct MenubarView : public Sakura::Component {
     std::vector<Sakura::MenuItem> themeItems;
     Sakura::MenuItem remoteStreamingItem;
     Sakura::MenuItem openSettingsItem;
+    Sakura::MenuItem openRemoteSettingsItem;
     Sakura::MenuItem latencyWindowItem;
-    Sakura::MenuItem runtimeMetricsItem;
+    Sakura::MenuItem timingItem;
     Sakura::MenuItem benchmarksItem;
     std::vector<Sakura::MenuItem> logLevelItems;
     Sakura::MenuItem openDeveloperSettingsItem;

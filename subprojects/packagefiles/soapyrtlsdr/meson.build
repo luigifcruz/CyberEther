@@ -7,7 +7,13 @@ interface_cpp_args += []
 
 deps = [
   dependency('soapysdr', required: true),
-  dependency('librtlsdr', required: true),
+  subproject(
+    'librtlsdr',
+    required: true,
+    default_options: [
+      'default_library=static',
+    ],
+  ).get_variable('librtlsdr_dep'),
 ]
 
 soapyrtlsdr_lib = library(

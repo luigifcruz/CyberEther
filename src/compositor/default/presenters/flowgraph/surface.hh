@@ -11,6 +11,8 @@
 
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <memory>
 #include <string>
@@ -34,14 +36,18 @@ struct FlowgraphDetachedSurfacePresenter {
             return configs;
         }
 
-        const auto blocks = flowgraph->blockList();
-        for (const auto& [blockName, blockPtr] : blocks) {
-            if (!blockPtr) {
+        std::vector<std::string> blocks;
+        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+            return configs;
+        }
+
+        for (const auto& blockName : blocks) {
+            Flowgraph::View::BlockData blockData;
+            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
                 continue;
             }
 
-            const std::string blockTitle = blockPtr->config().title();
-            for (const auto& surface : blockPtr->surfaces()) {
+            for (const auto& surface : blockData.surfaces) {
                 if (!surface) {
                     continue;
                 }
@@ -52,7 +58,7 @@ struct FlowgraphDetachedSurfacePresenter {
 
                     const std::string surfaceMetaKey = "surface_" + manifest.id;
                     SurfaceMeta surfaceMeta;
-                    flowgraph->getMeta(surfaceMetaKey, surfaceMeta, blockName);
+                    flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
 
                     const std::string windowId = MakeDetachedSurfaceWindowId(flowgraphId,
                                                                              blockName,
@@ -64,7 +70,7 @@ struct FlowgraphDetachedSurfacePresenter {
                     const auto texture = manifest.surface;
                     configs.push_back({
                         .id = windowId,
-                        .title = MakeDetachedSurfaceWindowTitle(blockName, blockTitle),
+                        .title = MakeDetachedSurfaceWindowTitle(blockName, blockData.title),
                         .logicalSize = {
                             static_cast<F32>(surfaceMeta.detachedWidth),
                             static_cast<F32>(surfaceMeta.detachedHeight),

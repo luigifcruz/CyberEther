@@ -1,3 +1,5 @@
 subdir('shaders')
 subdir('flowgraphs')
-subdir('geodata')
+if cfg_lst.get('JETSTREAM_LOADER_ZLIB_AVAILABLE', false)
+    subdir('geodata')
+endif

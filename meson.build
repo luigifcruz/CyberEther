@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.4.0',  # [VERSION HOOK]
+    version: '1.4.1',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
@@ -140,8 +140,9 @@ else
     libjetstream = library(
         'jetstream',
         src_lst,
+        cpp_args: ['-DJST_IS_LIBRARY'],
         include_directories: inc_lst,
-        dependencies: dep_lst,
+        dependencies: dep_lst + whole_dep_lst,
         install: true
     )
 
@@ -181,24 +182,29 @@ endif
 if not jst_is_wheel and \
    not jst_is_ios and \
    not jst_is_android
-    if jst_is_browser or jst_is_static
-        cyberether_exe = executable(
-            'cyberether',
-            'main.cc',
-            include_directories: inc_lst,
-            dependencies: libjetstream_dep,
-            install: true,
+    cyberether_src_lst = ['main.cc']
+
+    if jst_is_windows
+        windows = import('windows')
+        cyberether_rc_conf = configuration_data()
+        cyberether_rc_conf.set('CYBERETHER_ICON', meson.current_source_dir() / 'apps/windows/cyberether.ico')
+        cyberether_rc = configure_file(
+            input: 'apps/windows/cyberether.rc.in',
+            output: 'cyberether.rc',
+            configuration: cyberether_rc_conf,
         )
-    else
-        cyberether_exe = executable(
-            'cyberether',
-            'main.cc',
-            include_directories: inc_lst,
-            dependencies: dep_lst,
-            link_with: libjetstream,
-            install: true,
-        )
+
+        cyberether_src_lst += windows.compile_resources(cyberether_rc)
     endif
+
+    cyberether_exe = executable(
+        'cyberether',
+        cyberether_src_lst,
+        include_directories: inc_lst,
+        dependencies: libjetstream_dep,
+        win_subsystem: 'windows',
+        install: true,
+    )
 endif
 
 #

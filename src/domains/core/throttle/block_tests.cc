@@ -17,8 +17,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Throttle block creates with non-default inte
     Blocks::Throttle config;
     config.intervalMs = 5;
     REQUIRE(flowgraph->blockCreate("thr_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("thr_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("thr_block")->outputs().count("buffer") == 1);
+    REQUIRE(viewBlock("thr_block").state == Block::State::Created);
+    REQUIRE(viewBlock("thr_block").outputs.count("buffer") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Throttle block rejects zero interval",
@@ -32,5 +32,5 @@ TEST_CASE_METHOD(FlowgraphFixture, "Throttle block rejects zero interval",
     Blocks::Throttle config;
     config.intervalMs = 0;
     REQUIRE(flowgraph->blockCreate("thr_bad", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("thr_bad")->state() == Block::State::Errored);
+    REQUIRE(viewBlock("thr_bad").state == Block::State::Errored);
 }

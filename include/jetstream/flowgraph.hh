@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_FLOWGRAPH_HH
 #define JETSTREAM_FLOWGRAPH_HH
 
+#include <limits>
 #include <string>
 #include <vector>
 #include <memory>
@@ -19,6 +20,10 @@ namespace Jetstream {
 
 class JETSTREAM_API Flowgraph {
  public:
+    class Metadata;
+    class Environment;
+    class View;
+
     struct Config {
         SchedulerType scheduler = SchedulerType::SYNCHRONOUS;
     };
@@ -26,6 +31,9 @@ class JETSTREAM_API Flowgraph {
 
     Flowgraph();
     ~Flowgraph();
+
+    Flowgraph(const Flowgraph&) = delete;
+    Flowgraph& operator=(const Flowgraph&) = delete;
 
     Result create(const Config& config,
                   const std::shared_ptr<Instance>& instance,
@@ -35,12 +43,12 @@ class JETSTREAM_API Flowgraph {
     Result stop();
     Result destroy();
 
-    const std::string& title() const;
-    const std::string& summary() const;
-    const std::string& author() const;
-    const std::string& license() const;
-    const std::string& description() const;
-    const std::string& path() const;
+    std::string title() const;
+    std::string summary() const;
+    std::string author() const;
+    std::string license() const;
+    std::string description() const;
+    std::string path() const;
 
     Result setTitle(const std::string& title);
     Result setSummary(const std::string& summary);
@@ -80,7 +88,6 @@ class JETSTREAM_API Flowgraph {
                          const ProviderType& provider);
     Result blockConfig(const std::string name,
                        Parser::Map& config) const;
-    const std::unordered_map<std::string, std::shared_ptr<Block>>& blockList() const;
 
     Result importFromFile(const std::string& path);
     Result importFromBlob(const std::vector<char>& blob);
@@ -91,38 +98,14 @@ class JETSTREAM_API Flowgraph {
     Result compute();
     Result present();
 
-    const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& metrics() const;
+    Metadata& metadata();
+    const Metadata& metadata() const;
 
-    template<typename T>
-    Result getMeta(const std::string& key, T& config, const std::string& block = {}) const {
-        Parser::Map data;
-        JST_CHECK(getMeta(key, data, block));
+    Environment& environment();
+    const Environment& environment() const;
 
-        if (data.empty()) {
-            return Result::SUCCESS;
-        }
-
-        Parser::Map encoded;
-        encoded[key] = data;
-        return Parser::Deserialize(encoded, key, config);
-    }
-
-    Result getMeta(const std::string& key, Parser::Map& data, const std::string& block = {}) const;
-
-    template<typename T>
-    Result setMeta(const std::string& key, const T& config, const std::string& block = {}) {
-        Parser::Map encoded;
-        JST_CHECK(Parser::Serialize(encoded, key, config));
-
-        if (!encoded.contains(key) || encoded.at(key).type() != typeid(Parser::Map)) {
-            JST_ERROR("[FLOWGRAPH] Metadata '{}' must serialize to a map.", key);
-            return Result::ERROR;
-        }
-
-        return setMeta(key, std::any_cast<const Parser::Map&>(encoded.at(key)), block);
-    }
-
-    Result setMeta(const std::string& key, const Parser::Map& data, const std::string& block = {});
+    View& view();
+    const View& view() const;
 
  private:
     std::shared_ptr<Impl> impl;

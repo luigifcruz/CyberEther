@@ -20,9 +20,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("src", "signal");
 
     REQUIRE(flowgraph->blockCreate("fft", "fft", {}, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("fft")->state() == Block::State::Created);
+    REQUIRE(viewBlock("fft").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("fft")->outputs().at("signal").tensor;
+    const Tensor out = viewBlock("fft").outputs.at("signal").tensor;
     REQUIRE(out.dtype() == DataType::CF32);
     REQUIRE(out.shape(0) == 64);
 }

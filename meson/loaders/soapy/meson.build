@@ -1,48 +1,90 @@
 deps = []
 all_deps_found = true
 
-if (jst_is_linux or jst_is_macos) and not jst_is_static
-    deps += [
-        dependency('soapysdr', 'SoapySDR', required: false),
-    ]
+soapy_static_options = [
+    'default_library=static',
+]
+
+if not jst_is_android
+    soapysdr_dep = subproject(
+        'soapysdr',
+        required: true,
+        default_options: soapy_static_options,
+    ).get_variable('soapysdr_dep')
 endif
 
 if jst_is_ios
     deps += [
-        dependency('soapysdr', 'SoapySDR', required: true),
-        dependency('soapyremote', 'SoapyRemote', required: true),
+        soapysdr_dep,
+        subproject(
+            'soapyremote',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyremote_dep'),
     ]
 endif
 
-if (jst_is_macos or jst_is_linux) and jst_is_static
+if jst_is_macos or jst_is_linux
     deps += [
-        dependency('soapysdr', 'SoapySDR', required: true),
+        soapysdr_dep,
     ]
     whole_dep_lst += [
-        dependency('soapyairspy', required: true).as_link_whole(),
-        dependency('soapylms7', required: true).as_link_whole(),
-        dependency('soapyrtlsdr', required: true).as_link_whole(),
+        subproject(
+            'soapyairspy',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyairspy_dep').as_link_whole(),
+        subproject(
+            'limesuite',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapylms7_dep').as_link_whole(),
+        subproject(
+            'soapyrtlsdr',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyrtlsdr_dep').as_link_whole(),
     ]
 endif
 
-if jst_is_windows and jst_is_static
+if jst_is_windows
     deps += [
-        dependency('soapysdr', 'SoapySDR', required: true),
+        soapysdr_dep,
     ]
     whole_dep_lst += [
-        dependency('soapyrtlsdr', required: true).as_link_whole(),
-        dependency('soapylms7', required: true).as_link_whole(),
+        subproject(
+            'soapyrtlsdr',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyrtlsdr_dep').as_link_whole(),
+        subproject(
+            'limesuite',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapylms7_dep').as_link_whole(),
     ]
 endif
 
 if jst_is_browser
     deps += [
-        dependency('soapysdr', 'SoapySDR', required: true),
+        soapysdr_dep,
     ]
     whole_dep_lst += [
-        dependency('soapyairspy', required: true).as_link_whole(),
-        dependency('soapylms7', required: true).as_link_whole(),
-        dependency('soapyrtlsdr', required: true).as_link_whole(),
+        subproject(
+            'soapyairspy',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyairspy_dep').as_link_whole(),
+        subproject(
+            'limesuite',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapylms7_dep').as_link_whole(),
+        subproject(
+            'soapyrtlsdr',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyrtlsdr_dep').as_link_whole(),
     ]
 endif
 

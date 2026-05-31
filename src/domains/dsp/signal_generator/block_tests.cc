@@ -10,9 +10,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "Signal generator block creates with default config",
                  "[modules][dsp][signal_generator][block]") {
     REQUIRE(flowgraph->blockCreate("gen", "signal_generator", {}, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("gen")->state() == Block::State::Created);
+    REQUIRE(viewBlock("gen").state == Block::State::Created);
 
-    const Tensor& out = flowgraph->blockList().at("gen")->outputs().at("signal").tensor;
+    const Tensor out = viewBlock("gen").outputs.at("signal").tensor;
     REQUIRE(out.rank() == 1);
     REQUIRE(out.shape(0) == 8192);
     REQUIRE(out.dtype() == DataType::F32);
@@ -27,5 +27,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
     update["signalType"] = std::string("chirp");
 
     REQUIRE(flowgraph->blockReconfigure("gen", update) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("gen")->state() == Block::State::Created);
+    REQUIRE(viewBlock("gen").state == Block::State::Created);
 }

@@ -2,6 +2,7 @@ ldr_lst = {}
 
 subdir('cuda')
 subdir('metal')
+subdir('zlib')
 subdir('glfw')
 subdir('soapy')
 subdir('vulkan')

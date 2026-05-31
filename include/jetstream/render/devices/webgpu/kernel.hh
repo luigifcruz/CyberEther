@@ -7,7 +7,7 @@
 namespace Jetstream::Render {
 
 template<>
-class KernelImp<DeviceType::WebGPU> : public Kernel {
+class JETSTREAM_API KernelImp<DeviceType::WebGPU> : public Kernel {
  public:
     explicit KernelImp(const Config& config);
 

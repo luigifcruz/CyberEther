@@ -147,7 +147,7 @@ class JETSTREAM_API Instance {
     std::mutex mutex;
 };
 
-Instance& Get();
+JETSTREAM_API Instance& Get();
 
 template<DeviceType D>
 const auto& State() {

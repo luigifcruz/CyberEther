@@ -20,7 +20,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("ws_invalid", "websocket", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ws_invalid")->state() ==
+    REQUIRE(viewBlock("ws_invalid").state ==
             Block::State::Errored);
 }
 
@@ -36,21 +36,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
     zeroBatches["numberOfBatches"] = std::string("0");
     REQUIRE(flowgraph->blockCreate("ws_bad_batches", "websocket",
                                    zeroBatches, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ws_bad_batches")->state() ==
+    REQUIRE(viewBlock("ws_bad_batches").state ==
             Block::State::Errored);
 
     Parser::Map zeroSamples;
     zeroSamples["numberOfTimeSamples"] = std::string("0");
     REQUIRE(flowgraph->blockCreate("ws_bad_samples", "websocket",
                                    zeroSamples, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ws_bad_samples")->state() ==
+    REQUIRE(viewBlock("ws_bad_samples").state ==
             Block::State::Errored);
 
     Parser::Map zeroMultiplier;
     zeroMultiplier["bufferMultiplier"] = std::string("0");
     REQUIRE(flowgraph->blockCreate("ws_bad_multiplier", "websocket",
                                    zeroMultiplier, {}) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ws_bad_multiplier")->state() ==
+    REQUIRE(viewBlock("ws_bad_multiplier").state ==
             Block::State::Errored);
 }
 
@@ -66,7 +66,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config["url"] = std::string("");
     REQUIRE(flowgraph->blockCreate("ws_cfg", "websocket", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("ws_cfg")->state() ==
+    REQUIRE(viewBlock("ws_cfg").state ==
             Block::State::Incomplete);
 
     Parser::Map reconfigure;
@@ -76,5 +76,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
     reconfigure["numberOfTimeSamples"] = std::string("256");
     reconfigure["bufferMultiplier"] = std::string("2");
     REQUIRE(flowgraph->blockReconfigure("ws_cfg", reconfigure) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().find("ws_cfg") != flowgraph->blockList().end());
+    REQUIRE(flowgraph->view().has("ws_cfg"));
 }

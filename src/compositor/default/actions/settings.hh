@@ -24,7 +24,7 @@ struct SettingsActions {
                               MailSetGraphicsFramerate,
                               MailSetSettingsSection,
                               MailSetDebugLatencyEnabled,
-                              MailSetDebugRuntimeMetricsEnabled,
+                              MailSetDebugTimingEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
                               MailDismissUpdate,
@@ -115,12 +115,12 @@ struct SettingsActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetDebugRuntimeMetricsEnabled& msg) {
-        state.debug.runtimeMetricsEnabled = msg.value;
+    Result handle(const MailSetDebugTimingEnabled& msg) {
+        state.debug.timingEnabled = msg.value;
 
         Settings settings;
         JST_CHECK(Settings::Get(settings));
-        settings.developer.runtimeMetricsEnabled = msg.value;
+        settings.developer.timingEnabled = msg.value;
         JST_CHECK(Settings::Set(settings));
 
         return Result::SUCCESS;

@@ -23,6 +23,17 @@ trim_line() {
     printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
 }
 
+normalize_elf_dep() {
+    local dep="$1"
+
+    if [[ "$dep" =~ ^(.*)-[0-9a-fA-F]{8}\.so\.([0-9]+)(\..*)?$ ]]; then
+        printf '%s.so.%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    printf '%s\n' "$dep"
+}
+
 normalize_dep() {
     local dep framework_path framework_name
 
@@ -31,7 +42,7 @@ normalize_dep() {
 
     case "$format" in
         elf)
-            printf '%s\n' "$dep"
+            normalize_elf_dep "$dep"
             ;;
         pe)
             printf '%s\n' "$dep" | tr '[:upper:]' '[:lower:]'

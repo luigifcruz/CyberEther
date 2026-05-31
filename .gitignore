@@ -21,6 +21,7 @@ subprojects/*
 !subprojects/fmt.wrap
 !subprojects/glfw.wrap
 !subprojects/glm.wrap
+!subprojects/libffi.wrap
 !subprojects/glib.wrap
 !subprojects/gstreamer-full.wrap
 !subprojects/libairspy.wrap

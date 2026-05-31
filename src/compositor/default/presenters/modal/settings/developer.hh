@@ -17,13 +17,13 @@ struct DeveloperSettingsPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         return DeveloperSettingsPanel::Config{
             .latencyEnabled = context.state.debug.latencyEnabled,
-            .runtimeMetricsEnabled = context.state.debug.runtimeMetricsEnabled,
+            .timingEnabled = context.state.debug.timingEnabled,
             .logLevel = context.state.debug.logLevel,
             .onLatencyEnabledChange = [enqueue](bool value) {
                 enqueue(MailSetDebugLatencyEnabled{.value = value});
             },
-            .onRuntimeMetricsEnabledChange = [enqueue](bool value) {
-                enqueue(MailSetDebugRuntimeMetricsEnabled{.value = value});
+            .onTimingEnabledChange = [enqueue](bool value) {
+                enqueue(MailSetDebugTimingEnabled{.value = value});
             },
             .onLogLevelChange = [enqueue](int value) {
                 enqueue(MailSetDebugLogLevel{.value = value});

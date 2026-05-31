@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 
+#include "flowgraph/key_value.hh"
 #include "flowgraph/window.hh"
 #include "hud/info.hh"
 #include "hud/remote.hh"
@@ -8,6 +9,7 @@
 #include "menubar.hh"
 #include "modal/container.hh"
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -26,6 +28,8 @@ struct WorkbenchView : public Sakura::Component {
         RemoteHudView::Config remoteHud;
         MenubarView::Config menubar;
         ModalView::Config modal;
+        std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
+        std::optional<FlowgraphKeyValueWindow::Config> flowgraphEnvironment;
         std::vector<FlowgraphWindow::Config> flowgraphs;
     };
 
@@ -90,6 +94,13 @@ struct WorkbenchView : public Sakura::Component {
             flowgraphWindows.erase(flowgraphId);
         }
 
+        if (this->config.flowgraphMetadata.has_value()) {
+            flowgraphMetadataWindow.update(std::move(this->config.flowgraphMetadata.value()));
+        }
+        if (this->config.flowgraphEnvironment.has_value()) {
+            flowgraphEnvironmentWindow.update(std::move(this->config.flowgraphEnvironment.value()));
+        }
+
         modal.update(std::move(this->config.modal));
     }
 
@@ -118,6 +129,13 @@ struct WorkbenchView : public Sakura::Component {
             }
         }
 
+        if (config.flowgraphMetadata.has_value()) {
+            flowgraphMetadataWindow.render(ctx);
+        }
+        if (config.flowgraphEnvironment.has_value()) {
+            flowgraphEnvironmentWindow.render(ctx);
+        }
+
         modal.render(ctx);
     }
 
@@ -135,6 +153,8 @@ struct WorkbenchView : public Sakura::Component {
     MenubarView menubar;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphWindow> flowgraphWindows;
+    FlowgraphKeyValueWindow flowgraphMetadataWindow;
+    FlowgraphKeyValueWindow flowgraphEnvironmentWindow;
     ModalView modal;
 };
 

@@ -26,17 +26,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("lineplot", lineplotConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("lineplot")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("lineplot")->outputs().empty());
+    REQUIRE(viewBlock("lineplot").state == Block::State::Created);
+    REQUIRE(viewBlock("lineplot").outputs.empty());
 
     auto result = flowgraph->blockDisconnect("lineplot", "signal");
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
-    REQUIRE(flowgraph->blockList().at("lineplot")->state() ==
+    REQUIRE(viewBlock("lineplot").state ==
             Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("lineplot", "signal", "src", "signal") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("lineplot")->state() == Block::State::Created);
+    REQUIRE(viewBlock("lineplot").state == Block::State::Created);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -58,12 +58,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config["averaging"] = std::string("8");
     config["decimation"] = std::string("2");
     REQUIRE(flowgraph->blockReconfigure("lineplot", config) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("lineplot")->state() == Block::State::Created);
+    REQUIRE(viewBlock("lineplot").state == Block::State::Created);
 
     Blocks::Lineplot invalid;
     invalid.averaging = 0;
     REQUIRE(flowgraph->blockCreate("lineplot_invalid", invalid, inputs) ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("lineplot_invalid")->state() ==
+    REQUIRE(viewBlock("lineplot_invalid").state ==
             Block::State::Errored);
 }

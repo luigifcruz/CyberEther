@@ -12,7 +12,7 @@
 
 namespace Jetstream::Render {
 
-class Vertex {
+class JETSTREAM_API Vertex {
  public:
     struct Config {
         std::vector<std::pair<std::shared_ptr<Buffer>, U32>> vertices;

@@ -6,6 +6,8 @@
 #include "../model/state.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/flowgraph_metadata.hh"
+#include "jetstream/flowgraph_view.hh"
 
 #include <cmath>
 #include <string>
@@ -53,7 +55,7 @@ struct StackActions {
             }
         }
 
-        return state.flowgraph.items.at(flowgraphId)->setMeta("stacks", serializedStacks);
+        return state.flowgraph.items.at(flowgraphId)->metadata().set("stacks", serializedStacks);
     }
 
     Result handle(const MailCreateStack& msg) {
@@ -141,20 +143,19 @@ struct StackActions {
         }
 
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-        const auto blocks = flowgraph->blockList();
-        if (!blocks.contains(msg.block)) {
+        if (!flowgraph->view().has(msg.block)) {
             return Result::SUCCESS;
         }
 
         const std::string metaKey = "surface_" + msg.surface;
         SurfaceMeta meta;
-        JST_CHECK(flowgraph->getMeta(metaKey, meta, msg.block));
+        JST_CHECK(flowgraph->metadata().get(metaKey, meta, msg.block));
         if (meta.detached == msg.detached) {
             return Result::SUCCESS;
         }
 
         meta.detached = msg.detached;
-        return flowgraph->setMeta(metaKey, meta, msg.block);
+        return flowgraph->metadata().set(metaKey, meta, msg.block);
     }
 
  private:

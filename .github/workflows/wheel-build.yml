@@ -30,7 +30,6 @@ env:
     libwayland-cursor.so.0
     libwayland-egl.so.1
     libudev.so.1
-    libffi.so.8
 
 jobs:
   wheel:

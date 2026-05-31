@@ -367,30 +367,47 @@ std::string WindowsPathToUtf8(const std::filesystem::path& nativePath) {
     return utf8String;
 }
 
+Result WindowsEnvPath(const wchar_t* name, std::filesystem::path& path) {
+    const DWORD requiredSize = GetEnvironmentVariableW(name, nullptr, 0);
+    if (requiredSize == 0) {
+        return Result::ERROR;
+    }
+
+    std::wstring value(requiredSize, L'\0');
+    const DWORD writtenSize = GetEnvironmentVariableW(name, value.data(), requiredSize);
+    if (writtenSize == 0 || writtenSize >= requiredSize) {
+        return Result::ERROR;
+    }
+
+    value.resize(writtenSize);
+    path = value;
+    return Result::SUCCESS;
+}
+
 }  // namespace
 
 Result ConfigPath(std::string& path) {
-    const wchar_t* appData = _wgetenv(L"APPDATA");
-    if (!(appData && *appData)) {
+    std::filesystem::path appData;
+    if (WindowsEnvPath(L"APPDATA", appData) != Result::SUCCESS) {
         JST_ERROR("Failed to resolve config path because APPDATA is not set.");
         return Result::ERROR;
     }
 
-    path = WindowsPathToUtf8(std::filesystem::path(appData) / L"CyberEther");
+    path = WindowsPathToUtf8(appData / L"CyberEther");
     return Result::SUCCESS;
 }
 
 Result CachePath(std::string& path) {
-    const wchar_t* appData = _wgetenv(L"APPDATA");
-    const wchar_t* localAppData = _wgetenv(L"LOCALAPPDATA");
+    std::filesystem::path appData;
+    std::filesystem::path localAppData;
 
-    if (localAppData && *localAppData) {
-        path = WindowsPathToUtf8(std::filesystem::path(localAppData) / L"CyberEther" / L"Cache");
+    if (WindowsEnvPath(L"LOCALAPPDATA", localAppData) == Result::SUCCESS) {
+        path = WindowsPathToUtf8(localAppData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
 
-    if (appData && *appData) {
-        path = WindowsPathToUtf8(std::filesystem::path(appData) / L"CyberEther" / L"Cache");
+    if (WindowsEnvPath(L"APPDATA", appData) == Result::SUCCESS) {
+        path = WindowsPathToUtf8(appData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
 

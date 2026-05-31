@@ -6,6 +6,7 @@
 #include "jetstream/module_interface.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/runtime.hh"
+#include "jetstream/tools/snapshot.hh"
 
 namespace Jetstream {
 
@@ -27,7 +28,7 @@ class DynamicConfig : public ConfigType {
 };
 #endif  // JETSTREAM_DYNAMIC_CONFIG_DEFINED
 
-struct Module::Impl {
+struct JETSTREAM_API Module::Impl {
  public:
     virtual ~Impl() = default;
 
@@ -65,7 +66,11 @@ struct Module::Impl {
 
     // Components
 
-    std::shared_ptr<Render::Window>& render();
+    const std::shared_ptr<Render::Window>& render();
+    const std::shared_ptr<Flowgraph::Environment>& environment();
+    const std::shared_ptr<Flowgraph::Environment>& environment() const;
+    const std::shared_ptr<Flowgraph::View>& view();
+    const std::shared_ptr<Flowgraph::View>& view() const;
 
     // Surface
 
@@ -82,6 +87,10 @@ struct Module::Impl {
     RuntimeType _runtime;
     ProviderType _provider;
     Taint _taint;
+
+    // Timing
+
+    Tools::Snapshot<Timing> _timing;
 
     // I/O
 

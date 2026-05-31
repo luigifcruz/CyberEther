@@ -36,13 +36,6 @@ require_env() {
     [[ -n "${!1:-}" ]] || die "$1 is required"
 }
 
-assert_authorized_release_context() {
-    [[ "${GITHUB_ACTIONS:-}" == "true" ]] || return 0
-    [[ "${GITHUB_EVENT_NAME:-}" == "push" ]] || die "signing is only allowed for GitHub tag push events"
-    [[ "${GITHUB_REF_TYPE:-}" == "tag" ]] || die "signing is only allowed for GitHub tag refs"
-    [[ "${GITHUB_REF_NAME:-}" == v* ]] || die "signing is only allowed for v* tags"
-}
-
 validate_metadata() {
     [[ "$APP_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._\ -]*$ ]] || die "APP_NAME contains unsupported characters"
 }
@@ -79,7 +72,6 @@ validate_metadata
 
 OUTPUT_DIR="$(abs_path "$OUTPUT_DIR")"
 DMG_PATH="$(abs_path "${DMG_PATH:-$OUTPUT_DIR/$APP_NAME-$VERSION.dmg}")"
-assert_authorized_release_context
 
 WORK_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 WORK_DIR="$(mktemp -d "$WORK_ROOT/cyberether-sign-dmg.XXXXXX")"

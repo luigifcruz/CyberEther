@@ -17,8 +17,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Duplicate block creates and exposes buffer",
     Blocks::Duplicate config;
     config.hostAccessible = true;
     REQUIRE(flowgraph->blockCreate("dup_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("dup_block")->state() == Block::State::Created);
-    REQUIRE(flowgraph->blockList().at("dup_block")->outputs().count("buffer") == 1);
+    REQUIRE(viewBlock("dup_block").state == Block::State::Created);
+    REQUIRE(viewBlock("dup_block").outputs.count("buffer") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Duplicate block reconnects input",
@@ -32,9 +32,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Duplicate block reconnects input",
             Result::SUCCESS);
 
     REQUIRE(flowgraph->blockDisconnect("dup_life", "buffer") == Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("dup_life")->state() == Block::State::Incomplete);
+    REQUIRE(viewBlock("dup_life").state == Block::State::Incomplete);
 
     REQUIRE(flowgraph->blockConnect("dup_life", "buffer", "dup_life_src", "window") ==
             Result::SUCCESS);
-    REQUIRE(flowgraph->blockList().at("dup_life")->state() == Block::State::Created);
+    REQUIRE(viewBlock("dup_life").state == Block::State::Created);
 }

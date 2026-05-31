@@ -1,4 +1,7 @@
 #include "jetstream/flowgraph.hh"
+#include "jetstream/block_context.hh"
+#include "jetstream/detail/block_impl.hh"
+#include "jetstream/detail/flowgraph_impl.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/registry.hh"
@@ -7,10 +10,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <queue>
 #include <ranges>
 #include <regex>
+#include <shared_mutex>
 #include <unordered_set>
 
 namespace Jetstream {
@@ -80,7 +85,50 @@ OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
     return lookup;
 }
 
-std::optional<Parser::Map> CompactMetaMap(const Parser::Map& meta) {
+void CopyInterfaceEntries(const Block::Interface::EntryList& source,
+                          std::vector<Flowgraph::View::InterfaceEntry>& target) {
+    target.clear();
+    target.reserve(source.size());
+    for (const auto& [name, entry] : source) {
+        target.push_back({
+            .name = name,
+            .label = entry.label,
+            .format = entry.format,
+            .help = entry.help,
+        });
+    }
+}
+
+Result CopyBlockViewData(const std::string& name,
+                         const std::shared_ptr<Block>& block,
+                         Block::State state,
+                         Flowgraph::View::BlockData& data) {
+    data = {};
+    data.name = name;
+    data.type = block->config().type();
+    data.title = block->config().title();
+    data.summary = block->config().summary();
+    data.description = block->config().description();
+    data.device = block->device();
+    data.runtime = block->runtime();
+    data.provider = block->provider();
+    data.state = state;
+    data.diagnostic = block->diagnostic();
+    data.inputs = block->inputs();
+    data.outputs = block->outputs();
+    JST_CHECK(block->config(data.config));
+
+    const auto& interface = block->interface();
+    if (interface) {
+        CopyInterfaceEntries(interface->inputs(), data.interfaceInputs);
+        CopyInterfaceEntries(interface->outputs(), data.interfaceOutputs);
+        CopyInterfaceEntries(interface->configs(), data.interfaceConfigs);
+    }
+
+    return Result::SUCCESS;
+}
+
+std::optional<Parser::Map> CompactMetadataMap(const Parser::Map& meta) {
     Parser::Map compact;
 
     for (const auto& entry : meta) {
@@ -150,32 +198,6 @@ std::optional<OutputRef> ParseGraphReference(const std::string& value) {
 
 }  // namespace
 
-struct Flowgraph::Impl {
-    bool created = false;
-
-    std::shared_ptr<Instance> instance;
-    std::shared_ptr<Render::Window> render;
-    std::shared_ptr<Compositor> compositor;
-
-    std::shared_ptr<Scheduler> scheduler;
-    std::unordered_map<std::string, std::shared_ptr<Block>> blocks;
-    std::vector<std::string> blockOrder;
-    std::unordered_map<std::string, std::vector<std::string>> edges;
-
-    std::string title;
-    std::string summary;
-    std::string author;
-    std::string license;
-    std::string description;
-    std::string path;
-
-    Parser::Map meta;
-    std::unordered_map<std::string, Parser::Map> blockMeta;
-
-    Result resolveInputs(const TensorMap& requested, TensorMap& resolved) const;
-    std::vector<std::string> collectDownstream(const std::string& name) const;
-};
-
 Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& resolved) const {
     Result result = Result::SUCCESS;
 
@@ -244,7 +266,10 @@ std::vector<std::string> Flowgraph::Impl::collectDownstream(const std::string& n
 }
 
 Flowgraph::Flowgraph() {
-    impl = std::make_unique<Impl>();
+    impl = std::make_shared<Impl>();
+    impl->metadata = std::make_unique<Metadata>(impl);
+    impl->environment = std::make_shared<Environment>(impl);
+    impl->view = std::make_shared<View>(impl);
 }
 
 Flowgraph::~Flowgraph() {
@@ -256,7 +281,7 @@ Result Flowgraph::create(const Config& config,
                          const std::shared_ptr<Render::Window>& render,
                          const std::shared_ptr<Compositor>& compositor) {
     JST_INFO("[FLOWGRAPH] Creating flowgraph.");
-    JST_ASSERT(!impl->created, "[FLOWGRAPH] Flowgraph already created.");
+    JST_ASSERT(!impl->created.load(), "[FLOWGRAPH] Flowgraph already created.");
 
     // Set implementation variables.
 
@@ -272,24 +297,36 @@ Result Flowgraph::create(const Config& config,
 
     JST_CHECK(impl->scheduler->create(impl->instance));
 
-    impl->created = true;
+    impl->created.store(true);
     return Result::SUCCESS;
 }
 
 Result Flowgraph::destroy() {
     JST_INFO("[FLOWGRAPH] Destroying flowgraph.");
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
-    if (!impl->blocks.empty()) {
-        JST_WARN("[FLOWGRAPH] Flowgraph still has {} blocks for destruction.", impl->blocks.size());
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
-        // Destroy blocks in reverse order of creation.
+    std::vector<std::string> blockNames;
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
-        for (const auto& name : std::ranges::reverse_view(impl->blockOrder)) {
-            if (impl->blocks.contains(name)) {
-                JST_CHECK(impl->blocks.at(name)->destroy());
+        if (!impl->blocks.empty()) {
+            JST_WARN("[FLOWGRAPH] Flowgraph still has {} blocks for destruction.", impl->blocks.size());
+
+            // Destroy blocks in reverse order of creation.
+
+            blockNames.reserve(impl->blocks.size());
+            for (const auto& name : std::ranges::reverse_view(impl->blockOrder)) {
+                if (impl->blocks.contains(name)) {
+                    blockNames.push_back(name);
+                }
             }
         }
+    }
+
+    for (const auto& name : blockNames) {
+        JST_CHECK(blockDestroy(name, false));
     }
 
     if (impl->scheduler) {
@@ -297,17 +334,17 @@ Result Flowgraph::destroy() {
         JST_CHECK(impl->scheduler->destroy());
     }
 
-    impl->blocks.clear();
-    impl->blockOrder.clear();
-    impl->edges.clear();
-    impl->path.clear();
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        impl->path.clear();
+    }
 
-    impl->created = false;
+    impl->created.store(false);
     return Result::SUCCESS;
 }
 
 Result Flowgraph::start() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -319,7 +356,7 @@ Result Flowgraph::start() {
 }
 
 Result Flowgraph::stop() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -351,21 +388,49 @@ Result Flowgraph::blockCreate(const std::string name,
                               const RuntimeType& runtime,
                               const ProviderType& provider) {
     JST_INFO("[FLOWGRAPH] Creating block '{}' of type '{}'.", name, type);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
-    if (impl->blocks.contains(name)) {
-        JST_ERROR("[FLOWGRAPH] Create: Block '{}' already exist.", name);
-        return Result::ERROR;
-    }
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
     std::shared_ptr<Block> block;
     JST_CHECK(Registry::BuildBlock(type, block));
 
     TensorMap resolvedInputs;
-    JST_CHECK_ALLOW(impl->resolveInputs(inputs, resolvedInputs), Result::INCOMPLETE);
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        if (impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Create: Block '{}' already exist.", name);
+            return Result::ERROR;
+        }
+        if (impl->transientBlocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Create: Block '{}' already pending creation.", name);
+            return Result::ERROR;
+        }
 
-    impl->blocks[name] = block;
-    impl->blockOrder.push_back(name);
+        JST_CHECK_ALLOW(impl->resolveInputs(inputs, resolvedInputs), Result::INCOMPLETE);
+
+        Flowgraph::View::BlockData pending;
+        pending.name = name;
+        pending.type = block->config().type();
+        pending.title = block->config().title();
+        pending.summary = block->config().summary();
+        pending.description = block->config().description();
+        pending.device = device;
+        pending.runtime = runtime;
+        pending.provider = provider;
+        pending.state = Block::State::Creating;
+        pending.config = config;
+        pending.inputs = resolvedInputs;
+
+        impl->transientBlocks[name] = std::move(pending);
+        impl->blockOrder.push_back(name);
+    }
+
+    const auto context = std::make_shared<Block::Context>(impl->instance,
+                                                          impl->render,
+                                                          impl->scheduler,
+                                                          impl->environment,
+                                                          impl->view);
 
     const auto result = block->create(name,
                                       device,
@@ -373,24 +438,34 @@ Result Flowgraph::blockCreate(const std::string name,
                                       provider,
                                       config,
                                       resolvedInputs,
-                                      impl->instance,
-                                      impl->render,
-                                      impl->scheduler);
+                                      context);
 
     if (result != Result::SUCCESS && result != Result::INCOMPLETE && result != Result::ERROR) {
-        impl->blocks.erase(name);
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        impl->transientBlocks.erase(name);
         impl->blockOrder.erase(std::remove(impl->blockOrder.begin(), impl->blockOrder.end(), name),
                                impl->blockOrder.end());
         return result;
     }
 
-    // Register dependency list.
-
-    for (const auto& [_, link] : inputs) {
-        if (!link.external.has_value()) {
-            continue;
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        if (impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Create: Block '{}' already exist.", name);
+            return Result::ERROR;
         }
-        impl->edges[link.external->block].push_back(name);
+
+        impl->transientBlocks.erase(name);
+        impl->blocks[name] = block;
+
+        // Register dependency list.
+
+        for (const auto& [_, link] : inputs) {
+            if (!link.external.has_value()) {
+                continue;
+            }
+            impl->edges[link.external->block].push_back(name);
+        }
     }
 
     return Result::SUCCESS;
@@ -398,21 +473,172 @@ Result Flowgraph::blockCreate(const std::string name,
 
 Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
     JST_INFO("[FLOWGRAPH] Destroying block '{}'.", name);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
-    if (!impl->blocks.contains(name)) {
-        JST_ERROR("[FLOWGRAPH] Cannot destroy block '{}' because it doesn't exist.", name);
-        return Result::ERROR;
-    }
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
     // Handle downstream blocks that depend on this block.
 
-    if (propagate && impl->edges.contains(name)) {
+    if (propagate) {
         // 1. Collect all downstream blocks (transitive closure).
 
         std::vector<BlockState> downstreamStates;
 
-        for (const auto& depName : impl->collectDownstream(name)) {
+        {
+            std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+            if (!impl->blocks.contains(name)) {
+                JST_ERROR("[FLOWGRAPH] Cannot destroy block '{}' because it doesn't exist.", name);
+                return Result::ERROR;
+            }
+
+            if (!impl->edges.contains(name)) {
+                propagate = false;
+            } else {
+                for (const auto& depName : impl->collectDownstream(name)) {
+                    const auto& dep = impl->blocks.at(depName);
+
+                    BlockState state;
+                    state.name = depName;
+                    state.type = dep->config().type();
+                    state.device = dep->device();
+                    state.runtime = dep->runtime();
+                    state.provider = dep->provider();
+                    JST_CHECK(dep->config().serialize(state.config));
+
+                    for (const auto& [slot, link] : dep->inputs()) {
+                        if (!link.external.has_value()) {
+                            continue;
+                        }
+                        if (link.external->block != name) {
+                            state.inputs[slot].requested(link.external->block, link.external->port);
+                        }
+                    }
+
+                    downstreamStates.push_back(std::move(state));
+                }
+            }
+        }
+
+        if (!propagate) {
+            // Fall through to non-propagating removal.
+        } else {
+            // 2. Destroy downstream blocks in reverse order.
+
+            for (const auto& state : std::ranges::reverse_view(downstreamStates)) {
+                JST_CHECK(blockDestroy(state.name, false));
+            }
+
+            // 3. Destroy the target block.
+
+            JST_CHECK(blockDestroy(name, false));
+
+            // 4. Recreate downstream blocks in forward order (with severed connections).
+
+            for (const auto& state : downstreamStates) {
+                JST_CHECK_ALLOW(blockCreate(state.name, state.type, state.config,
+                                            state.inputs, state.device, state.runtime, state.provider),
+                                Result::INCOMPLETE);
+            }
+
+            return Result::SUCCESS;
+        }
+    }
+
+    std::shared_ptr<Block> block;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        if (!impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Cannot destroy block '{}' because it doesn't exist.", name);
+            return Result::ERROR;
+        }
+
+        block = impl->blocks.at(name);
+        Flowgraph::View::BlockData transient;
+        JST_CHECK(CopyBlockViewData(name, block, Block::State::Destroying, transient));
+        impl->transientBlocks[name] = std::move(transient);
+        impl->blocks.erase(name);
+    }
+
+    // Destroy block and remove it from state.
+
+    const auto result = block->destroy();
+    if (result != Result::SUCCESS) {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        impl->transientBlocks.erase(name);
+        impl->blocks[name] = block;
+        return result;
+    }
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        impl->transientBlocks.erase(name);
+
+        if (impl->edges.contains(name)) {
+            impl->edges.erase(name);
+        }
+
+        // Remove dependency list.
+
+        for (auto& [_, deps] : impl->edges) {
+            deps.erase(std::remove(deps.begin(), deps.end(), name), deps.end());
+        }
+
+        impl->blockOrder.erase(std::remove(impl->blockOrder.begin(), impl->blockOrder.end(), name),
+                               impl->blockOrder.end());
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::blockConnect(const std::string blockName,
+                               const std::string inputPort,
+                               const std::string sourceBlock,
+                               const std::string sourcePort) {
+    JST_INFO("[FLOWGRAPH] Connecting '{}.{}' to '{}.{}'.",
+             sourceBlock, sourcePort, blockName, inputPort);
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    // 1. Collect target state and downstream blocks.
+
+    std::vector<BlockState> downstreamStates;
+    BlockState targetState;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        if (!impl->blocks.contains(blockName)) {
+            JST_ERROR("[FLOWGRAPH] Block '{}' doesn't exist.", blockName);
+            return Result::ERROR;
+        }
+
+        if (!impl->blocks.contains(sourceBlock)) {
+            JST_ERROR("[FLOWGRAPH] Source block '{}' doesn't exist.", sourceBlock);
+            return Result::ERROR;
+        }
+
+        const auto& block = impl->blocks.at(blockName);
+        const auto& source = impl->blocks.at(sourceBlock);
+
+        if (!source->outputs().contains(sourcePort)) {
+            JST_WARN("[FLOWGRAPH] Source port '{}.{}' doesn't exist.", sourceBlock, sourcePort);
+        }
+
+        targetState.name = blockName;
+        targetState.type = block->config().type();
+        targetState.device = block->device();
+        targetState.runtime = block->runtime();
+        targetState.provider = block->provider();
+        JST_CHECK(block->config().serialize(targetState.config));
+        targetState.inputs = block->inputs();
+        targetState.inputs[inputPort].requested(sourceBlock, sourcePort);
+
+        for (const auto& depName : impl->collectDownstream(blockName)) {
             const auto& dep = impl->blocks.at(depName);
 
             BlockState state;
@@ -424,103 +650,13 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
             JST_CHECK(dep->config().serialize(state.config));
 
             for (const auto& [slot, link] : dep->inputs()) {
-                if (!link.external.has_value()) {
-                    continue;
-                }
-                if (link.external->block != name) {
+                if (link.external.has_value()) {
                     state.inputs[slot].requested(link.external->block, link.external->port);
                 }
             }
 
             downstreamStates.push_back(std::move(state));
         }
-
-        // 2. Destroy downstream blocks in reverse order.
-
-        for (const auto& state : std::ranges::reverse_view(downstreamStates)) {
-            JST_CHECK(blockDestroy(state.name, false));
-        }
-
-        // 3. Destroy the target block.
-
-        JST_CHECK(blockDestroy(name, false));
-
-        // 4. Recreate downstream blocks in forward order (with severed connections).
-
-        for (const auto& state : downstreamStates) {
-            JST_CHECK_ALLOW(blockCreate(state.name, state.type, state.config,
-                                        state.inputs, state.device, state.runtime, state.provider),
-                            Result::INCOMPLETE);
-        }
-
-        return Result::SUCCESS;
-    }
-
-    if (impl->edges.contains(name)) {
-        impl->edges.erase(name);
-    }
-
-    // Remove dependency list.
-
-    for (auto& [_, deps] : impl->edges) {
-        deps.erase(std::remove(deps.begin(), deps.end(), name), deps.end());
-    }
-
-    // Destroy block and remove it from state.
-
-    JST_CHECK(impl->blocks.at(name)->destroy());
-    impl->blocks.erase(name);
-    impl->blockOrder.erase(std::remove(impl->blockOrder.begin(), impl->blockOrder.end(), name),
-                           impl->blockOrder.end());
-
-    return Result::SUCCESS;
-}
-
-Result Flowgraph::blockConnect(const std::string blockName,
-                               const std::string inputPort,
-                               const std::string sourceBlock,
-                               const std::string sourcePort) {
-    JST_INFO("[FLOWGRAPH] Connecting '{}.{}' to '{}.{}'.",
-             sourceBlock, sourcePort, blockName, inputPort);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
-
-    if (!impl->blocks.contains(blockName)) {
-        JST_ERROR("[FLOWGRAPH] Block '{}' doesn't exist.", blockName);
-        return Result::ERROR;
-    }
-
-    if (!impl->blocks.contains(sourceBlock)) {
-        JST_ERROR("[FLOWGRAPH] Source block '{}' doesn't exist.", sourceBlock);
-        return Result::ERROR;
-    }
-
-    const auto& block = impl->blocks.at(blockName);
-    const auto& source = impl->blocks.at(sourceBlock);
-
-    if (!source->outputs().contains(sourcePort)) {
-        JST_WARN("[FLOWGRAPH] Source port '{}.{}' doesn't exist.", sourceBlock, sourcePort);
-    }
-
-    // 1. Collect downstream blocks.
-
-    std::vector<BlockState> downstreamStates;
-
-    for (const auto& depName : impl->collectDownstream(blockName)) {
-        const auto& dep = impl->blocks.at(depName);
-
-        BlockState state;
-        state.name = depName;
-        state.type = dep->config().type();
-        state.device = dep->device();
-        state.runtime = dep->runtime();
-        state.provider = dep->provider();
-        JST_CHECK(dep->config().serialize(state.config));
-
-        for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot].requested(link.external->block, link.external->port);
-        }
-
-        downstreamStates.push_back(std::move(state));
     }
 
     // 2. Destroy downstream blocks in reverse order.
@@ -529,26 +665,15 @@ Result Flowgraph::blockConnect(const std::string blockName,
         JST_CHECK(blockDestroy(state.name, false));
     }
 
-    // 3. Save target block state and modify inputs.
-
-    const auto type = block->config().type();
-    const auto device = block->device();
-    const auto runtime = block->runtime();
-    const auto provider = block->provider();
-
-    Parser::Map serializedConfig;
-    JST_CHECK(block->config().serialize(serializedConfig));
-
-    TensorMap newInputs = block->inputs();
-    newInputs[inputPort].requested(sourceBlock, sourcePort);
-
-    // 4. Destroy and recreate target block.
+    // 3. Destroy and recreate target block.
 
     JST_CHECK(this->blockDestroy(blockName, false));
-    JST_CHECK_ALLOW(this->blockCreate(blockName, type, serializedConfig, newInputs, device, runtime, provider),
+    JST_CHECK_ALLOW(this->blockCreate(targetState.name, targetState.type, targetState.config,
+                                      targetState.inputs, targetState.device, targetState.runtime,
+                                      targetState.provider),
                     Result::INCOMPLETE);
 
-    // 5. Recreate downstream blocks in forward order.
+    // 4. Recreate downstream blocks in forward order.
 
     for (const auto& state : downstreamStates) {
         JST_CHECK_ALLOW(blockCreate(state.name, state.type, state.config,
@@ -562,41 +687,57 @@ Result Flowgraph::blockConnect(const std::string blockName,
 Result Flowgraph::blockDisconnect(const std::string blockName,
                                   const std::string inputPort) {
     JST_INFO("[FLOWGRAPH] Disconnecting '{}.{}'.", blockName, inputPort);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
-    if (!impl->blocks.contains(blockName)) {
-        JST_ERROR("[FLOWGRAPH] Block '{}' doesn't exist.", blockName);
-        return Result::ERROR;
-    }
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
-    const auto& block = impl->blocks.at(blockName);
-
-    TensorMap newInputs = block->inputs();
-    if (!newInputs.contains(inputPort)) {
-        JST_ERROR("[FLOWGRAPH] Input port '{}.{}' is not connected.", blockName, inputPort);
-        return Result::ERROR;
-    }
-
-    // 1. Collect downstream blocks.
+    // 1. Collect target state and downstream blocks.
 
     std::vector<BlockState> downstreamStates;
+    BlockState targetState;
 
-    for (const auto& depName : impl->collectDownstream(blockName)) {
-        const auto& dep = impl->blocks.at(depName);
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
-        BlockState state;
-        state.name = depName;
-        state.type = dep->config().type();
-        state.device = dep->device();
-        state.runtime = dep->runtime();
-        state.provider = dep->provider();
-        JST_CHECK(dep->config().serialize(state.config));
-
-        for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot].requested(link.external->block, link.external->port);
+        if (!impl->blocks.contains(blockName)) {
+            JST_ERROR("[FLOWGRAPH] Block '{}' doesn't exist.", blockName);
+            return Result::ERROR;
         }
 
-        downstreamStates.push_back(std::move(state));
+        const auto& block = impl->blocks.at(blockName);
+
+        targetState.name = blockName;
+        targetState.type = block->config().type();
+        targetState.device = block->device();
+        targetState.runtime = block->runtime();
+        targetState.provider = block->provider();
+        JST_CHECK(block->config().serialize(targetState.config));
+        targetState.inputs = block->inputs();
+        if (!targetState.inputs.contains(inputPort)) {
+            JST_ERROR("[FLOWGRAPH] Input port '{}.{}' is not connected.", blockName, inputPort);
+            return Result::ERROR;
+        }
+        targetState.inputs.erase(inputPort);
+
+        for (const auto& depName : impl->collectDownstream(blockName)) {
+            const auto& dep = impl->blocks.at(depName);
+
+            BlockState state;
+            state.name = depName;
+            state.type = dep->config().type();
+            state.device = dep->device();
+            state.runtime = dep->runtime();
+            state.provider = dep->provider();
+            JST_CHECK(dep->config().serialize(state.config));
+
+            for (const auto& [slot, link] : dep->inputs()) {
+                if (link.external.has_value()) {
+                    state.inputs[slot].requested(link.external->block, link.external->port);
+                }
+            }
+
+            downstreamStates.push_back(std::move(state));
+        }
     }
 
     // 2. Destroy downstream blocks in reverse order.
@@ -605,25 +746,15 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
         JST_CHECK(blockDestroy(state.name, false));
     }
 
-    // 3. Save target block state and modify inputs.
-
-    const auto type = block->config().type();
-    const auto device = block->device();
-    const auto runtime = block->runtime();
-    const auto provider = block->provider();
-
-    Parser::Map serializedConfig;
-    JST_CHECK(block->config().serialize(serializedConfig));
-
-    newInputs.erase(inputPort);
-
-    // 4. Destroy and recreate target block.
+    // 3. Destroy and recreate target block.
 
     JST_CHECK(this->blockDestroy(blockName, false));
-    JST_CHECK_ALLOW(this->blockCreate(blockName, type, serializedConfig, newInputs, device, runtime, provider),
+    JST_CHECK_ALLOW(this->blockCreate(targetState.name, targetState.type, targetState.config,
+                                      targetState.inputs, targetState.device, targetState.runtime,
+                                      targetState.provider),
                     Result::INCOMPLETE);
 
-    // 5. Recreate downstream blocks in forward order.
+    // 4. Recreate downstream blocks in forward order.
 
     for (const auto& state : downstreamStates) {
         JST_CHECK_ALLOW(blockCreate(state.name, state.type, state.config,
@@ -634,17 +765,27 @@ Result Flowgraph::blockDisconnect(const std::string blockName,
     return Result::SUCCESS;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<Block>>& Flowgraph::blockList() const {
-    return impl->blocks;
-}
-
 Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& config) {
-    if (!impl->blocks.contains(name)) {
-        JST_ERROR("[FLOWGRAPH] Cannot update block '{}' because it doesn't exist.", name);
-        return Result::ERROR;
-    }
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
-    const auto result = impl->blocks.at(name)->reconfigure(config);
+    Result result = Result::SUCCESS;
+    const auto reconfigure = [&]() -> Result {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        if (!impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Cannot update block '{}' because it doesn't exist.", name);
+            return Result::ERROR;
+        }
+
+        result = impl->blocks.at(name)->reconfigure(config);
+        return result == Result::RECREATE ? Result::SUCCESS : result;
+    };
+
+    if (impl->scheduler) {
+        JST_CHECK(impl->scheduler->synchronize(reconfigure));
+    } else {
+        JST_CHECK(reconfigure());
+    }
 
     if (result == Result::RECREATE) {
         JST_INFO("[FLOWGRAPH] Block '{}' requested recreation.", name);
@@ -657,13 +798,27 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
 }
 
 Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& config) {
-    if (!impl->blocks.contains(name)) {
-        JST_ERROR("[FLOWGRAPH] Cannot recreate block '{}' because it doesn't exist.", name);
-        return Result::ERROR;
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    DeviceType device;
+    RuntimeType runtime;
+    ProviderType provider;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        if (!impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Cannot recreate block '{}' because it doesn't exist.", name);
+            return Result::ERROR;
+        }
+
+        const auto& block = impl->blocks.at(name);
+        device = block->device();
+        runtime = block->runtime();
+        provider = block->provider();
     }
 
-    const auto& block = impl->blocks.at(name);
-    return blockRecreate(name, config, block->device(), block->runtime(), block->provider());
+    return blockRecreate(name, config, device, runtime, provider);
 }
 
 Result Flowgraph::blockRecreate(const std::string name,
@@ -672,55 +827,65 @@ Result Flowgraph::blockRecreate(const std::string name,
                                 const RuntimeType& runtime,
                                 const ProviderType& provider) {
     JST_INFO("[FLOWGRAPH] Recreating block '{}' and downstream blocks.", name);
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
-    if (!impl->blocks.contains(name)) {
-        JST_ERROR("[FLOWGRAPH] Cannot recreate block '{}' because it doesn't exist.", name);
-        return Result::ERROR;
-    }
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
     // 1. Collect state of target block and all downstream blocks.
 
     std::vector<BlockState> blocksToRecreate;
 
-    // Add target block with new config.
-
     {
-        const auto& block = impl->blocks.at(name);
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
-        BlockState state;
-        state.name = name;
-        state.type = block->config().type();
-        state.device = device;
-        state.runtime = runtime;
-        state.provider = provider;
-        state.config = config;
-
-        for (const auto& [slot, link] : block->inputs()) {
-            state.inputs[slot].requested(link.external->block, link.external->port);
+        if (!impl->blocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Cannot recreate block '{}' because it doesn't exist.", name);
+            return Result::ERROR;
         }
 
-        blocksToRecreate.push_back(std::move(state));
-    }
+        // Add target block with new config.
 
-    // Add downstream blocks with their current config.
+        {
+            const auto& block = impl->blocks.at(name);
 
-    for (const auto& depName : impl->collectDownstream(name)) {
-        const auto& dep = impl->blocks.at(depName);
+            BlockState state;
+            state.name = name;
+            state.type = block->config().type();
+            state.device = device;
+            state.runtime = runtime;
+            state.provider = provider;
+            state.config = config;
 
-        BlockState state;
-        state.name = depName;
-        state.type = dep->config().type();
-        state.device = dep->device();
-        state.runtime = dep->runtime();
-        state.provider = dep->provider();
-        JST_CHECK(dep->config().serialize(state.config));
+            for (const auto& [slot, link] : block->inputs()) {
+                if (link.external.has_value()) {
+                    state.inputs[slot].requested(link.external->block, link.external->port);
+                }
+            }
 
-        for (const auto& [slot, link] : dep->inputs()) {
-            state.inputs[slot].requested(link.external->block, link.external->port);
+            blocksToRecreate.push_back(std::move(state));
         }
 
-        blocksToRecreate.push_back(std::move(state));
+        // Add downstream blocks with their current config.
+
+        for (const auto& depName : impl->collectDownstream(name)) {
+            const auto& dep = impl->blocks.at(depName);
+
+            BlockState state;
+            state.name = depName;
+            state.type = dep->config().type();
+            state.device = dep->device();
+            state.runtime = dep->runtime();
+            state.provider = dep->provider();
+            JST_CHECK(dep->config().serialize(state.config));
+
+            for (const auto& [slot, link] : dep->inputs()) {
+                if (link.external.has_value()) {
+                    state.inputs[slot].requested(link.external->block, link.external->port);
+                }
+            }
+
+            blocksToRecreate.push_back(std::move(state));
+        }
     }
 
     // 2. Destroy all blocks in reverse order.
@@ -741,6 +906,8 @@ Result Flowgraph::blockRecreate(const std::string name,
 }
 
 Result Flowgraph::blockConfig(const std::string name, Parser::Map& config) const {
+    std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
     if (!impl->blocks.contains(name)) {
         JST_ERROR("[FLOWGRAPH] Cannot get block '{}' configuration because it doesn't exist.", name);
         return Result::ERROR;
@@ -752,8 +919,11 @@ Result Flowgraph::blockConfig(const std::string name, Parser::Map& config) const
 }
 
 Result Flowgraph::importFromFile(const std::string& path) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
-    impl->path = path;
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        impl->path = path;
+    }
 
     const auto flowgraphPath = std::filesystem::u8path(path);
 
@@ -770,7 +940,7 @@ Result Flowgraph::importFromFile(const std::string& path) {
 }
 
 Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.")
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.")
 
     std::string yamlText(blob.begin(), blob.end());
     Parser::Map root;
@@ -781,29 +951,35 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     FlowgraphDocument document;
     JST_CHECK(document.deserialize(root));
 
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
     if (document.version != "2") {
         JST_ERROR("[FLOWGRAPH] Invalid flowgraph version '{}'.", document.version);
         return Result::ERROR;
     }
 
-    if (document.title.has_value()) {
-        impl->title = *document.title;
-    }
-    if (document.summary.has_value()) {
-        impl->summary = *document.summary;
-    }
-    if (document.author.has_value()) {
-        impl->author = *document.author;
-    }
-    if (document.license.has_value()) {
-        impl->license = *document.license;
-    }
-    if (document.description.has_value()) {
-        impl->description = *document.description;
-    }
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
 
-    if (document.meta.has_value()) {
-        impl->meta = *document.meta;
+        if (document.title.has_value()) {
+            impl->title = *document.title;
+        }
+        if (document.summary.has_value()) {
+            impl->summary = *document.summary;
+        }
+        if (document.author.has_value()) {
+            impl->author = *document.author;
+        }
+        if (document.license.has_value()) {
+            impl->license = *document.license;
+        }
+        if (document.description.has_value()) {
+            impl->description = *document.description;
+        }
+
+        if (document.meta.has_value()) {
+            impl->metadataValues = *document.meta;
+        }
     }
 
     if (document.graph.empty()) {
@@ -873,6 +1049,16 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 
     std::unordered_map<std::string, size_t> indegree;
     std::unordered_map<std::string, std::vector<std::string>> dependents;
+    std::unordered_set<std::string> existingBlocks;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        existingBlocks.reserve(impl->blocks.size());
+        for (const auto& entry : impl->blocks) {
+            existingBlocks.insert(entry.first);
+        }
+    }
 
     for (const auto& name : nodeOrder) {
         indegree[name] = 0;
@@ -881,7 +1067,7 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     for (const auto& name : nodeOrder) {
         const auto& def = nodes.at(name);
         for (const auto& [_, input] : def.inputs) {
-            if (!nodes.contains(input.block) && !impl->blocks.contains(input.block)) {
+            if (!nodes.contains(input.block) && !existingBlocks.contains(input.block)) {
                 JST_ERROR("[FLOWGRAPH] Block '{}' depends on missing block '{}'.", name, input.block);
                 return Result::ERROR;
             }
@@ -928,7 +1114,8 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         }
 
         if (!def.meta.empty()) {
-            impl->blockMeta[name] = def.meta;
+            std::unique_lock metadataLock(impl->metadataMutex);
+            impl->blockMetadataValues[name] = def.meta;
         }
 
         JST_CHECK(blockCreate(name, def.type, def.config, requestedInputs, def.device, def.runtime, def.provider));
@@ -938,34 +1125,39 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 }
 
 Result Flowgraph::exportToFile(const std::string& path) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
-    impl->path = path;
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+    std::string exportPath;
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        impl->path = path;
+        exportPath = impl->path;
+    }
 
-    if (impl->path.empty()) {
+    if (exportPath.empty()) {
         JST_ERROR("[FLOWGRAPH] Filepath is empty.");
         return Result::ERROR;
     }
 
-    JST_INFO("[FLOWGRAPH] Exporting flowgraph to file '{}'.", impl->path);
+    JST_INFO("[FLOWGRAPH] Exporting flowgraph to file '{}'.", exportPath);
 
     std::vector<char> blob;
     JST_CHECK(exportToBlob(blob));
 
-    const auto flowgraphPath = std::filesystem::u8path(impl->path);
+    const auto flowgraphPath = std::filesystem::u8path(exportPath);
 
     const auto parent = flowgraphPath.parent_path();
     if (!parent.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
         if (ec) {
-            JST_ERROR("[FLOWGRAPH] Cannot create parent directory for '{}'.", impl->path);
+            JST_ERROR("[FLOWGRAPH] Cannot create parent directory for '{}'.", exportPath);
             return Result::ERROR;
         }
     }
 
     std::ofstream file(flowgraphPath, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
-        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", impl->path);
+        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", exportPath);
         return Result::ERROR;
     }
 
@@ -976,26 +1168,47 @@ Result Flowgraph::exportToFile(const std::string& path) {
 }
 
 Result Flowgraph::exportToBlob(std::vector<char>& blob) {
-    JST_ASSERT(impl->created, "[FLOWGRAPH] Flowgraph not created.");
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+    std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+    std::string title;
+    std::string summary;
+    std::string author;
+    std::string license;
+    std::string description;
+    Parser::Map metadataValues;
+    std::unordered_map<std::string, Parser::Map> blockMetadataValues;
+    {
+        std::shared_lock metadataLock(impl->metadataMutex);
+        title = impl->title;
+        summary = impl->summary;
+        author = impl->author;
+        license = impl->license;
+        description = impl->description;
+        metadataValues = impl->metadataValues;
+        blockMetadataValues = impl->blockMetadataValues;
+    }
 
     FlowgraphDocument document;
     document.version = "2";
-    if (!impl->title.empty()) {
-        document.title = impl->title;
+    if (!title.empty()) {
+        document.title = title;
     }
-    if (!impl->summary.empty()) {
-        document.summary = impl->summary;
+    if (!summary.empty()) {
+        document.summary = summary;
     }
-    if (!impl->author.empty()) {
-        document.author = impl->author;
+    if (!author.empty()) {
+        document.author = author;
     }
-    if (!impl->license.empty()) {
-        document.license = impl->license;
+    if (!license.empty()) {
+        document.license = license;
     }
-    if (!impl->description.empty()) {
-        document.description = impl->description;
+    if (!description.empty()) {
+        document.description = description;
     }
-    document.meta = CompactMetaMap(impl->meta);
+    document.meta = CompactMetadataMap(metadataValues);
 
     const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
 
@@ -1045,8 +1258,8 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
             blockDocument.input = std::move(inputs);
         }
 
-        if (impl->blockMeta.contains(name)) {
-            blockDocument.meta = CompactMetaMap(impl->blockMeta.at(name));
+        if (blockMetadataValues.contains(name)) {
+            blockDocument.meta = CompactMetadataMap(blockMetadataValues.at(name));
         }
 
         document.graph.push_back(std::move(blockDocument));
@@ -1067,7 +1280,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
 }
 
 Result Flowgraph::compute() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -1079,7 +1292,7 @@ Result Flowgraph::compute() {
 }
 
 Result Flowgraph::present() {
-    if (!impl->created) {
+    if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
@@ -1090,79 +1303,88 @@ Result Flowgraph::present() {
     return Result::SUCCESS;
 }
 
-const std::unordered_map<std::string, std::shared_ptr<Runtime::Metrics>>& Flowgraph::metrics() const {
-    return impl->scheduler->metrics();
-}
-
-const std::string& Flowgraph::title() const {
+std::string Flowgraph::title() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->title;
 }
 
-const std::string& Flowgraph::summary() const {
+std::string Flowgraph::summary() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->summary;
 }
 
-const std::string& Flowgraph::author() const {
+std::string Flowgraph::author() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->author;
 }
 
-const std::string& Flowgraph::license() const {
+std::string Flowgraph::license() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->license;
 }
 
-const std::string& Flowgraph::description() const {
+std::string Flowgraph::description() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->description;
 }
 
-const std::string& Flowgraph::path() const {
+std::string Flowgraph::path() const {
+    std::shared_lock metadataLock(impl->metadataMutex);
     return impl->path;
 }
 
 Result Flowgraph::setTitle(const std::string& title) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->title = title;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setSummary(const std::string& summary) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->summary = summary;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setAuthor(const std::string& author) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->author = author;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setLicense(const std::string& license) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->license = license;
     return Result::SUCCESS;
 }
 
 Result Flowgraph::setDescription(const std::string& description) {
+    std::unique_lock metadataLock(impl->metadataMutex);
     impl->description = description;
     return Result::SUCCESS;
 }
 
-Result Flowgraph::getMeta(const std::string& key, Parser::Map& data, const std::string& block) const {
-    if (block.empty()) {
-        if (impl->meta.contains(key) && impl->meta.at(key).type() == typeid(Parser::Map)) {
-            data = std::any_cast<const Parser::Map&>(impl->meta.at(key));
-        }
-    } else if (impl->blockMeta.contains(block) &&
-               impl->blockMeta.at(block).contains(key) &&
-               impl->blockMeta.at(block).at(key).type() == typeid(Parser::Map)) {
-        data = std::any_cast<const Parser::Map&>(impl->blockMeta.at(block).at(key));
-    }
-    return Result::SUCCESS;
+Flowgraph::Metadata& Flowgraph::metadata() {
+    return *impl->metadata;
 }
 
-Result Flowgraph::setMeta(const std::string& key, const Parser::Map& data, const std::string& block) {
-    if (block.empty()) {
-        impl->meta[key] = data;
-    } else {
-        impl->blockMeta[block][key] = data;
-    }
-    return Result::SUCCESS;
+const Flowgraph::Metadata& Flowgraph::metadata() const {
+    return *impl->metadata;
+}
+
+Flowgraph::Environment& Flowgraph::environment() {
+    return *impl->environment;
+}
+
+const Flowgraph::Environment& Flowgraph::environment() const {
+    return *impl->environment;
+}
+
+Flowgraph::View& Flowgraph::view() {
+    return *impl->view;
+}
+
+const Flowgraph::View& Flowgraph::view() const {
+    return *impl->view;
 }
 
 }  // namespace Jetstream

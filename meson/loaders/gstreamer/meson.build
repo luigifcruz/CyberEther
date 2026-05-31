@@ -198,6 +198,7 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'glib:libmount=disabled',
         'glib:selinux=disabled',
         'glib:tests=false',
+        'libffi:default_library=static',
         'libffi:tests=false',
         'json-glib:tests=false',
         'libnice:crypto-library=openssl',
@@ -253,9 +254,15 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'test=false',
     ])
 
+    subproject('libffi', required: true, default_options: [
+        'default_library=static',
+        'tests=false',
+    ])
+
     subproject('glib', required: true, default_options: [
         'default_library=static',
         'introspection=disabled',
+        'libffi:default_library=static',
         'libffi:tests=false',
         'libmount=disabled',
         'nls=disabled',
