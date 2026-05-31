@@ -98,6 +98,7 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- GLFW - zlib/libpng License\n"
                    "- imgui-notify - MIT License\n"
                    "- spirv-cross - Apache License 2.0\n"
+                   "- Apple metal-cpp - Apache License 2.0\n"
                    "- glslang - BSD-3-Clause License\n"
                    "- naga - Apache License 2.0\n"
                    "- gstreamer - LGPL-2.1 License\n"
