@@ -1,5 +1,9 @@
 #include "module_impl.hh"
 
+#ifndef JST_OS_BROWSER
+#include <regex>
+#endif
+
 namespace Jetstream::Modules {
 
 Result WebsocketImpl::validate() {
@@ -63,6 +67,7 @@ Result WebsocketImpl::create() {
 
     circularBuffer.resize(buffer.sizeBytes() * bufferMultiplier);
 
+#ifdef JST_OS_BROWSER
     EmscriptenWebSocketCreateAttributes attrs = {
         url.c_str(),
         nullptr,
@@ -81,16 +86,67 @@ Result WebsocketImpl::create() {
     emscripten_websocket_set_onerror_callback(websocket, this, onError);
 
     JST_INFO("[MODULE_WEBSOCKET] Connecting to '{}'.", url);
+#else
+    // cpp-httplib requires an explicit '/' path; browsers accept ws://host.
+    static const std::regex missingPathRegex(R"(^(wss?://[^/?#]+)([?#].*)?$)");
+    const std::string clientUrl = std::regex_replace(url, missingPathRegex, "$1/$2");
+
+    auto client = std::make_unique<httplib::ws::WebSocketClient>(clientUrl);
+    client->set_write_timeout(1);
+    client->set_tcp_nodelay(true);
+
+    if (!client->is_valid()) {
+        JST_ERROR("[MODULE_WEBSOCKET] Invalid WebSocket URL '{}'.", url);
+        return Result::ERROR;
+    }
+
+    if (!client->connect()) {
+        JST_ERROR("[MODULE_WEBSOCKET] Failed to connect to '{}'.", url);
+        return Result::ERROR;
+    }
+
+    connected = true;
+    websocketRunning = true;
+
+    {
+        std::lock_guard<std::mutex> lock(websocketMutex);
+        websocket = std::move(client);
+    }
+
+    websocketThread = std::thread([this]() { websocketLoop(); });
+
+    JST_INFO("[MODULE_WEBSOCKET] Connection established.");
+#endif
 
     return Result::SUCCESS;
 }
 
 Result WebsocketImpl::destroy() {
+#ifdef JST_OS_BROWSER
     if (websocket > 0) {
         emscripten_websocket_close(websocket, 1000, "closing");
         emscripten_websocket_delete(websocket);
         websocket = 0;
     }
+#else
+    websocketRunning = false;
+
+    {
+        std::lock_guard<std::mutex> lock(websocketMutex);
+        if (websocket) {
+            websocket->close();
+        }
+    }
+
+    if (websocketThread.joinable()) {
+        websocketThread.join();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(websocketMutex);
+        websocket.reset();
+    }
+#endif
 
     connected = false;
     bufferHealth.publish(0.0f);
@@ -99,6 +155,25 @@ Result WebsocketImpl::destroy() {
     return Result::SUCCESS;
 }
 
+void WebsocketImpl::receiveBinaryData(const I8* data, const U64 numBytes) {
+    if (!data || numBytes == 0) {
+        return;
+    }
+
+    circularBuffer.put(data, numBytes);
+
+    const U64 capacity = circularBuffer.getCapacity();
+    if (capacity > 0) {
+        const F32 newHealth = static_cast<F32>(circularBuffer.getOccupancy()) /
+                              static_cast<F32>(capacity);
+        const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
+        bufferHealth.publish(smoothedHealth);
+    }
+
+    throughputMBs.publish(static_cast<F32>(circularBuffer.getThroughput()) / 1e6f);
+}
+
+#ifdef JST_OS_BROWSER
 EM_BOOL WebsocketImpl::onOpen(int,
                               const EmscriptenWebSocketOpenEvent*,
                               void* userData) {
@@ -117,19 +192,7 @@ EM_BOOL WebsocketImpl::onMessage(int,
         return EM_TRUE;
     }
 
-    const U64 numBytes = event->numBytes;
-
-    self->circularBuffer.put(reinterpret_cast<const I8*>(event->data), numBytes);
-
-    const U64 capacity = self->circularBuffer.getCapacity();
-    if (capacity > 0) {
-        const F32 newHealth = static_cast<F32>(self->circularBuffer.getOccupancy()) /
-                              static_cast<F32>(capacity);
-        const F32 smoothedHealth = self->bufferHealth.get() * 0.99f + newHealth * 0.01f;
-        self->bufferHealth.publish(smoothedHealth);
-    }
-
-    self->throughputMBs.publish(static_cast<F32>(self->circularBuffer.getThroughput()) / 1e6f);
+    self->receiveBinaryData(reinterpret_cast<const I8*>(event->data), event->numBytes);
 
     return EM_TRUE;
 }
@@ -152,6 +215,38 @@ EM_BOOL WebsocketImpl::onError(int,
     JST_ERROR("[MODULE_WEBSOCKET] Connection error.");
     return EM_TRUE;
 }
+#else
+void WebsocketImpl::websocketLoop() {
+    while (websocketRunning) {
+        std::string payload;
+        httplib::ws::ReadResult result = httplib::ws::Fail;
+        httplib::ws::WebSocketClient* client = nullptr;
+
+        {
+            std::lock_guard<std::mutex> lock(websocketMutex);
+            if (!websocket || !websocket->is_open()) {
+                break;
+            }
+            client = websocket.get();
+        }
+
+        if (client) {
+            result = client->read(payload);
+        }
+
+        if (result == httplib::ws::Binary) {
+            receiveBinaryData(reinterpret_cast<const I8*>(payload.data()), payload.size());
+        } else if (result == httplib::ws::Text) {
+            continue;
+        } else if (websocketRunning) {
+            JST_WARN("[MODULE_WEBSOCKET] Connection closed.");
+            break;
+        }
+    }
+
+    connected = false;
+}
+#endif
 
 F32 WebsocketImpl::getBufferHealth() const {
     return bufferHealth.get();

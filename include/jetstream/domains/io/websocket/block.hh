@@ -21,7 +21,7 @@ struct Websocket : public Block::Config {
         "Receives data streams over WebSocket.",
         "# WebSocket Client\n"
         "The WebSocket block receives data streams from a WebSocket server, "
-        "enabling browser-based signal processing pipelines fed by external "
+        "enabling signal processing pipelines fed by external "
         "data sources.\n\n"
 
         "## Arguments\n"
@@ -32,9 +32,9 @@ struct Websocket : public Block::Config {
         "- **Buffer Multiplier**: Internal buffer size multiplier.\n\n"
 
         "## Useful For\n"
-        "- Receiving real or complex RF samples in the browser from a remote source.\n"
-        "- Browser-based spectrum analysis with external data feeds.\n"
-        "- Connecting browser pipelines to server-side SDR devices.\n\n"
+        "- Receiving real or complex RF samples from a remote source.\n"
+        "- Spectrum analysis with external data feeds.\n"
+        "- Connecting pipelines to server-side SDR devices.\n\n"
 
         "## Examples\n"
         "- Receive IQ samples from local server:\n"
