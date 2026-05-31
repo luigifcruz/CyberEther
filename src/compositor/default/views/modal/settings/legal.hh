@@ -103,6 +103,7 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- naga - Apache License 2.0\n"
                    "- gstreamer - LGPL-2.1 License\n"
                    "- libusb - LGPL-2.1 License\n"
+                   "- libqrencode - LGPL-2.1-or-later License\n"
                    "- Nanobench - MIT License\n"
                    "- Catch2 - Boost Software License\n"
                    "- Font Awesome - Font Awesome Free License\n"
