@@ -59,7 +59,6 @@
 #include <jetstream/render/sakura/node/int_input.hh>
 #include <jetstream/render/sakura/node/label.hh>
 #include <jetstream/render/sakura/node/link.hh>
-#include <jetstream/render/sakura/node/loading_bar.hh>
 #include <jetstream/render/sakura/node/markdown.hh>
 #include <jetstream/render/sakura/node/node.hh>
 #include <jetstream/render/sakura/node/path_input.hh>

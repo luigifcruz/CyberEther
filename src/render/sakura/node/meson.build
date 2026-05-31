@@ -2,7 +2,6 @@ src_lst += files([
     'types.cc',
     'editor.cc',
     'node.cc',
-    'loading_bar.cc',
     'title.cc',
     'subtitle.cc',
     'pin.cc',
