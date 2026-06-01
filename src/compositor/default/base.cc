@@ -225,6 +225,12 @@ void DefaultCompositor::updateWorkbenchState() {
         state.interface.flowgraphEnvironmentSearch.clear();
     }
 
+    if (!state.interface.focusedFlowgraph.has_value() &&
+        !state.interface.pendingFocusedFlowgraph.has_value() &&
+        state.flowgraph.items.size() == 1) {
+        state.interface.focusedFlowgraph = state.flowgraph.items.begin()->first;
+    }
+
     if (!state.modal.content.has_value()) {
         state.modal.flowgraph.reset();
         return;
