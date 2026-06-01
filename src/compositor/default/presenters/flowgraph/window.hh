@@ -40,6 +40,9 @@ struct FlowgraphWindowPresenter {
             .stacks = stacks.build(flowgraphId, flowgraph),
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
             .empty = flowgraph->view().empty(),
+            .onFocus = [enqueue, flowgraphId]() {
+                enqueue(MailFocusFlowgraph{flowgraphId});
+            },
             .onSave = [enqueue, flowgraphId]() {
                 enqueue(MailSaveFlowgraph{.flowgraph = flowgraphId});
             },

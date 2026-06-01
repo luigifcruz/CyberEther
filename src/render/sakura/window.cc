@@ -7,6 +7,7 @@ namespace Jetstream::Sakura {
 struct Window::Impl {
     Config config;
     bool open = false;
+    bool focused = false;
     std::string windowId;
 };
 
@@ -64,6 +65,7 @@ void Window::render(const Context& ctx, Child content) {
             }
             impl->open = false;
         }
+        impl->focused = false;
         return;
     }
 
@@ -73,6 +75,13 @@ void Window::render(const Context& ctx, Child content) {
         }
         impl->open = true;
     }
+
+    const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    if (focused && !impl->focused && config.onFocus) {
+        config.onFocus();
+    }
+    impl->focused = focused;
+
     if (expanded && content) {
         content(ctx);
     }
