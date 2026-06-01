@@ -97,6 +97,8 @@ void SurfaceView::render(const Context& ctx) const {
 
     struct RenderState {
         bool hovered = false;
+        bool active = false;
+        bool deactivated = false;
         bool detachClicked = false;
         bool leftClicked = false;
         bool rightClicked = false;
@@ -145,17 +147,19 @@ void SurfaceView::render(const Context& ctx) const {
 
     ImGui::InvisibleButton(config.id.c_str(), surfaceSize);
     state.hovered = ImGui::IsItemHovered();
-    if (state.hovered) {
+    state.active = ImGui::IsItemActive();
+    state.deactivated = ImGui::IsItemDeactivated();
+    if (state.hovered || state.active || state.deactivated) {
         const ImVec2 mousePos = ImGui::GetMousePos();
         state.normalizedMouse = {(mousePos.x - cursorPos.x) / surfaceSize.x,
                                  (mousePos.y - cursorPos.y) / surfaceSize.y};
-        state.leftClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        state.rightClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        state.leftClicked = state.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        state.rightClicked = state.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
         state.leftReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
         state.rightReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Right);
 
         const ImGuiIO& io = ImGui::GetIO();
-        state.scrolled = io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+        state.scrolled = state.hovered && (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f);
         state.scroll = {io.MouseWheelH, io.MouseWheel};
     }
 
@@ -184,7 +188,7 @@ void SurfaceView::render(const Context& ctx) const {
         drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), icon);
     }
 
-    if (state.hovered && config.onMouse) {
+    if ((state.hovered || state.active || state.deactivated) && config.onMouse) {
         MouseEvent event{};
         event.position = state.normalizedMouse;
         event.scroll = {0.0f, 0.0f};
