@@ -10,6 +10,7 @@
 #include "jetstream/render/components/font.hh"
 
 #include "resources/fonts/compressed_jbmm.hh"
+#include "resources/fonts/compressed_jbmb.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -169,6 +170,17 @@ Result Instance::create(const Config& config) {
         JST_CHECK(impl->render->addFont("default_mono", font));
     }
 
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = jbmb_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_mono_bold", font));
+    }
+
     impl->remote = std::make_shared<Remote>(impl->viewport.get());
 
     impl->stopping.store(false);
@@ -207,6 +219,9 @@ Result Instance::destroy() {
 
     if (impl->render && impl->render->hasFont("default_mono")) {
         JST_CHECK(impl->render->removeFont("default_mono"));
+    }
+    if (impl->render && impl->render->hasFont("default_mono_bold")) {
+        JST_CHECK(impl->render->removeFont("default_mono_bold"));
     }
 
     // Destroy render and viewport resources.
