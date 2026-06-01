@@ -2,8 +2,6 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 // TODO: Implement borders.
-// TODO: Implement rounded corners.
-
 layout(location = 0) in vec2 inLocalPos;
 layout(location = 1) in vec4 inFillColor;
 layout(location = 2) in vec4 inBorderColor;
@@ -51,6 +49,17 @@ float alphaRect(vec2 p, vec2 size) {
     return coverage.x * coverage.y;
 }
 
+float alphaRoundedRect(vec2 p, vec2 size, float radiusPixels) {
+    vec2 localPixel = max(fwidth(p), vec2(1.0e-6));
+    vec2 halfSizePixels = (size * 0.5) / localPixel;
+    float radius = clamp(radiusPixels, 0.0, min(halfSizePixels.x, halfSizePixels.y));
+
+    vec2 pPixels = p / localPixel;
+    vec2 q = abs(pPixels) - (halfSizePixels - vec2(radius));
+    float signedDistance = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+    return clamp(0.5 - signedDistance, 0.0, 1.0);
+}
+
 void main() {
     int shapeType = int(inShapeParams.x);
 
@@ -60,7 +69,9 @@ void main() {
     if (shapeType == TYPE_CIRCLE) {
         fillAlpha = alphaFromSignedDistance(sdfCircle(inLocalPos, 0.5));
     } else if (shapeType == TYPE_RECT) {
-        fillAlpha = alphaRect(inLocalPos, vec2(1.0));
+        float cornerRadius = inShapeParams.z;
+        fillAlpha = cornerRadius > 0.0 ? alphaRoundedRect(inLocalPos, vec2(1.0), cornerRadius)
+                                       : alphaRect(inLocalPos, vec2(1.0));
     } else if (shapeType == TYPE_TRIANGLE) {
         fillAlpha = alphaFromSignedDistance(sdfTriangle(inLocalPos));
     }
