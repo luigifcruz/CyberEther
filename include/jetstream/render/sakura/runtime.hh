@@ -31,7 +31,7 @@ struct Runtime {
 
     struct Config {
         const Palette* palette = nullptr;
-        const Render::Window* render = nullptr;
+        Render::Window* render = nullptr;
     };
 
     Runtime();
