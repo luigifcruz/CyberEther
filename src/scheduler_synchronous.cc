@@ -151,8 +151,27 @@ Result SynchronousScheduler::add(const std::shared_ptr<Module>& module) {
         }
 
         modules[module->name()] = module;
-        JST_CHECK(this->rebuildOrder());
-        JST_CHECK(this->rebuildRuntimes());
+
+        const auto rollback = [&]() -> Result {
+            modules.erase(module->name());
+            JST_CHECK(this->rebuildOrder());
+            return this->rebuildRuntimes();
+        };
+
+        auto result = this->rebuildOrder();
+        if (result == Result::SUCCESS) {
+            result = this->rebuildRuntimes();
+        }
+
+        if (result != Result::SUCCESS) {
+            const auto rollbackResult = rollback();
+            if (rollbackResult != Result::SUCCESS) {
+                JST_ERROR("[SCHEDULER_SYNCHRONOUS] Failed to rollback add for module '{}'.", module->name());
+                return rollbackResult;
+            }
+
+            return result;
+        }
 
         return Result::SUCCESS;
     }));
