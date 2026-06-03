@@ -26,6 +26,7 @@ struct FlowgraphWindow : public Sakura::Component {
         std::vector<FlowgraphStackWindow::Config> stacks;
         std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
         bool empty = false;
+        std::function<void()> onFocus;
         std::function<void()> onSave;
         std::function<void()> onClose;
         std::function<void()> onCreateStack;
@@ -53,6 +54,7 @@ struct FlowgraphWindow : public Sakura::Component {
             .size = {640.0f, 480.0f},
             .dockId = this->config.dockId,
             .padding = Extent2D<F32>{8.0f, 8.0f},
+            .onFocus = this->config.onFocus,
             .onClose = this->config.onClose,
         });
         toolbar.update({

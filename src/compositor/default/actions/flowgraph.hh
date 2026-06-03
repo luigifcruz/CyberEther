@@ -29,6 +29,7 @@ struct FlowgraphActions {
                               MailOpenFlowgraph,
                               MailOpenFlowgraphPath,
                               MailOpenFlowgraphBlob,
+                              MailFocusFlowgraph,
                               MailSaveFlowgraph,
                               MailCloseFlowgraph,
                               MailSaveFlowgraphPath,
@@ -124,6 +125,14 @@ struct FlowgraphActions {
         }, false);
 
         state.interface.pendingFocusedFlowgraph = name;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailFocusFlowgraph& msg) {
+        if (state.flowgraph.items.contains(msg.flowgraph)) {
+            state.interface.focusedFlowgraph = msg.flowgraph;
+        }
+
         return Result::SUCCESS;
     }
 

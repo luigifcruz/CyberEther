@@ -42,6 +42,10 @@ struct MailOpenFlowgraphBlob {
     std::vector<char> blob;
 };
 
+struct MailFocusFlowgraph {
+    std::string flowgraph;
+};
+
 struct MailApplyTheme {
     std::string themeKey;
 };
@@ -335,6 +339,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSaveFlowgraph,
                           MailOpenFlowgraphPath,
                           MailOpenFlowgraphBlob,
+                          MailFocusFlowgraph,
                           MailApplyTheme,
                           MailOpenModal,
                           MailSetSettingsSection,
