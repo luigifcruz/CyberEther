@@ -15,7 +15,8 @@ struct NativeCpuRuntime : public Runtime::Impl {
     Result destroy() override;
 
     Result compute(const std::vector<std::string>& modules,
-                   std::unordered_set<std::string>& skippedModules) override;
+                   std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& failedModules) override;
 
  private:
     static inline std::shared_ptr<NativeCpuRuntimeContext> getRuntimeContext(const std::shared_ptr<Module>& module) {
@@ -89,11 +90,13 @@ Result NativeCpuRuntime::destroy() {
 }
 
 Result NativeCpuRuntime::compute(const std::vector<std::string>& modules,
-                                 std::unordered_set<std::string>& skippedModules) {
+                                 std::unordered_set<std::string>& skippedModules,
+                                 std::unordered_set<std::string>& failedModules) {
     const auto& targetNames = modules.empty() ? moduleNames : modules;
 
     for (const auto& name : targetNames) {
         if (!modulesMap.contains(name)) {
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CPU] Context for module '{}' not found.", name);
             return Result::ERROR;
         }
@@ -114,6 +117,7 @@ Result NativeCpuRuntime::compute(const std::vector<std::string>& modules,
         }
 
         if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {
+            failedModules.insert(name);
             return result;
         }
 

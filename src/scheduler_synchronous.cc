@@ -36,8 +36,8 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result reload(const std::shared_ptr<Module>& module) override;
     Result synchronize(const std::function<Result()>& fn) override;
 
-    Result present() override;
-    Result compute() override;
+    Result present(std::unordered_set<std::string>& failedModules) override;
+    Result compute(std::unordered_set<std::string>& failedModules) override;
 
  private:
     void haltAll();
@@ -213,7 +213,9 @@ Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
     return lockState(fn);
 }
 
-Result SynchronousScheduler::present() {
+Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModules) {
+    failedModules.clear();
+
     if (isStopping() || isPresentHalted()) {
         clearPresentRequest();
         return Result::SUCCESS;
@@ -271,6 +273,7 @@ Result SynchronousScheduler::present() {
             const auto& mod = modules.at(name);
             res = mod->context()->scheduler()->presentSubmit();
             if (res != Result::SUCCESS && res != Result::RELOAD) {
+                failedModules.insert(name);
                 break;
             }
         }
@@ -287,7 +290,9 @@ Result SynchronousScheduler::present() {
     return Result::SUCCESS;
 }
 
-Result SynchronousScheduler::compute() {
+Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModules) {
+    failedModules.clear();
+
     if (isComputeHalted()) {
         waitComputeHalt();
         return Result::SUCCESS;
@@ -376,7 +381,10 @@ Result SynchronousScheduler::compute() {
                     break;
                 }
 
-                JST_CHECK(res);
+                if (res != Result::SUCCESS && res != Result::RELOAD) {
+                    failedModules.insert(mod->name());
+                    return res;
+                }
             }
 
             if (allReady) {
@@ -436,7 +444,7 @@ Result SynchronousScheduler::compute() {
 
             setComputeActive();
 
-            res = runtimes[i].runtime->compute(runtimes[i].modules, skippedModules);
+            res = runtimes[i].runtime->compute(runtimes[i].modules, skippedModules, failedModules);
 
             clearComputeActive();
         }
@@ -444,6 +452,11 @@ Result SynchronousScheduler::compute() {
         notifyPresent();
 
         if (res != Result::SUCCESS && res != Result::YIELD) {
+            if (res == Result::ERROR && failedModules.empty()) {
+                for (const auto& name : runtimes[i].modules) {
+                    failedModules.insert(name);
+                }
+            }
             break;
         }
     }

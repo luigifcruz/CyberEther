@@ -363,7 +363,8 @@ TEST_CASE("Scheduler propagates SKIP to downstream modules", "[runtime][schedule
 
     state.setResult("source_skip", Result::SKIP);
 
-    REQUIRE(scheduler.compute() == Result::SUCCESS);
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(scheduler.compute(failedModules) == Result::SUCCESS);
 
     REQUIRE(state.callCount("source_skip") == 1);
     REQUIRE(state.callCount("source_run") == 1);
@@ -388,13 +389,14 @@ TEST_CASE("Scheduler preserves runtimes when add fails during runtime initializa
     auto source = createModule("skip_test_source", "rollback_source");
     auto failInit = createModule("skip_test_fail_init", "rollback_fail_init");
 
+    std::unordered_set<std::string> failedModules;
     REQUIRE(scheduler.add(source) == Result::SUCCESS);
-    REQUIRE(scheduler.compute() == Result::SUCCESS);
+    REQUIRE(scheduler.compute(failedModules) == Result::SUCCESS);
     REQUIRE(state.callCount("rollback_source") == 1);
 
     REQUIRE(scheduler.add(failInit) == Result::ERROR);
 
-    REQUIRE(scheduler.compute() == Result::SUCCESS);
+    REQUIRE(scheduler.compute(failedModules) == Result::SUCCESS);
     REQUIRE(state.callCount("rollback_source") == 2);
     REQUIRE(state.callCount("rollback_fail_init") == 0);
 
@@ -430,6 +432,26 @@ TEST_CASE("Runtime cleans up partial initialization failures", "[runtime][rollba
     REQUIRE(sourceA->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Runtime reports failed modules", "[runtime][failure]") {
+    auto& state = skipTestState();
+    state.reset();
+
+    auto source = createModule("skip_test_source", "failed_module_source");
+
+    Runtime runtime("failed_module", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"failed_module_source", source}}) == Result::SUCCESS);
+
+    state.setResult("failed_module_source", Result::ERROR);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::ERROR);
+    REQUIRE(failedModules.contains("failed_module_source"));
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(source->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Runtime propagates SKIP across compute barriers", "[runtime][skip][barrier]") {
     auto& state = skipTestState();
     state.reset();
@@ -449,8 +471,9 @@ TEST_CASE("Runtime propagates SKIP across compute barriers", "[runtime][skip][ba
     state.setResult("barrier_source", Result::SKIP);
 
     std::unordered_set<std::string> skippedModules;
-    REQUIRE(upstream.compute({"barrier_source"}, skippedModules) == Result::SUCCESS);
-    REQUIRE(downstream.compute({"barrier_sink"}, skippedModules) == Result::SUCCESS);
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(upstream.compute({"barrier_source"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(downstream.compute({"barrier_sink"}, skippedModules, failedModules) == Result::SUCCESS);
 
     REQUIRE(state.callCount("barrier_source") == 1);
     REQUIRE(state.callCount("barrier_sink") == 0);
@@ -483,11 +506,12 @@ TEST_CASE("Runtime skips multi-input consumers when any upstream module skips", 
     state.setResult("fanin_source_skip", Result::SKIP);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
     REQUIRE(runtime.compute({
         "fanin_source_skip",
         "fanin_source_run",
         "fanin_merge",
-    }, skippedModules) == Result::SUCCESS);
+    }, skippedModules, failedModules) == Result::SUCCESS);
 
     REQUIRE(state.callCount("fanin_source_skip") == 1);
     REQUIRE(state.callCount("fanin_source_run") == 1);

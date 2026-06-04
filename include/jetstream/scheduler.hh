@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "jetstream/macros.hh"
 #include "jetstream/types.hh"
@@ -35,8 +36,8 @@ class JETSTREAM_API Scheduler {
     Result reload(const std::shared_ptr<Module>& module);
     Result synchronize(const std::function<Result()>& fn);
 
-    Result present();
-    Result compute();
+    Result present(std::unordered_set<std::string>& failedModules);
+    Result compute(std::unordered_set<std::string>& failedModules);
 
  private:
     std::shared_ptr<Impl> impl;

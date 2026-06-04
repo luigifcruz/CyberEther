@@ -54,12 +54,12 @@ Result Scheduler::synchronize(const std::function<Result()>& fn) {
     return impl->synchronize(fn);
 }
 
-Result Scheduler::present() {
-    return impl->present();
+Result Scheduler::present(std::unordered_set<std::string>& failedModules) {
+    return impl->present(failedModules);
 }
 
-Result Scheduler::compute() {
-    return impl->compute();
+Result Scheduler::compute(std::unordered_set<std::string>& failedModules) {
+    return impl->compute(failedModules);
 }
 
 const char* GetSchedulerName(const SchedulerType& scheduler) {

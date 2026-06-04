@@ -16,7 +16,8 @@ struct NativeCudaRuntime : public Runtime::Impl {
     Result destroy() override;
 
     Result compute(const std::vector<std::string>& modules,
-                   std::unordered_set<std::string>& skippedModules) override;
+                   std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& failedModules) override;
 
  private:
     static inline std::shared_ptr<NativeCudaRuntimeContext> getRuntimeContext(const std::shared_ptr<Module>& module) {
@@ -153,12 +154,14 @@ Result NativeCudaRuntime::destroy() {
 }
 
 Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
-                                  std::unordered_set<std::string>& skippedModules) {
+                                  std::unordered_set<std::string>& skippedModules,
+                                  std::unordered_set<std::string>& failedModules) {
     const auto& targetNames = modules.empty() ? moduleNames : modules;
     std::vector<std::string> executedModules;
 
     for (const auto& name : targetNames) {
         if (!modulesMap.contains(name)) {
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Context for module '{}' not found.", name);
             return Result::ERROR;
         }
@@ -173,6 +176,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
         auto& [startEvent, endEvent] = eventMap[name];
 
         JST_CUDA_CHECK(cudaEventRecord(startEvent, stream), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't record start event for '{}': {}", name, err);
         });
 
@@ -183,14 +187,17 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
         }
 
         if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {
+            failedModules.insert(name);
             return result;
         }
 
         JST_CUDA_CHECK(cudaEventRecord(endEvent, stream), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't record end event for '{}': {}", name, err);
         });
 
         JST_CUDA_CHECK(cudaGetLastError(), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Module kernel execution failed: {}", err);
         });
 
@@ -220,6 +227,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
 
         F32 elapsedMs = 0;
         JST_CUDA_CHECK(cudaEventElapsedTime(&elapsedMs, startEvent, endEvent), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't get elapsed time for '{}': {}", name, err);
         });
 

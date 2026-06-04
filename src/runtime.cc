@@ -63,15 +63,22 @@ Result Runtime::destroy() {
 }
 
 Result Runtime::compute(const std::vector<std::string>& modules,
-                        std::unordered_set<std::string>& skippedModules) {
+                        std::unordered_set<std::string>& skippedModules,
+                        std::unordered_set<std::string>& failedModules) {
+    failedModules.clear();
+
     if (impl->presentRunning.load(std::memory_order_acquire)) {
         JST_ERROR("[RUNTIME] Cannot call compute() while present() is running.");
         return Result::ERROR;
     }
 
     impl->computeRunning.store(true, std::memory_order_release);
-    Result result = impl->compute(modules, skippedModules);
+    Result result = impl->compute(modules, skippedModules, failedModules);
     impl->computeRunning.store(false, std::memory_order_release);
+
+    if (result == Result::SUCCESS) {
+        failedModules.clear();
+    }
 
     return result;
 }
