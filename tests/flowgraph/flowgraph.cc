@@ -3,6 +3,171 @@
 
 #include "common.hh"
 
+#include "jetstream/detail/block_impl.hh"
+
+namespace {
+
+using namespace Jetstream;
+
+struct RuntimeErrorTestState {
+    U64 calls = 0;
+    U64 sinkCalls = 0;
+
+    void reset() {
+        calls = 0;
+        sinkCalls = 0;
+    }
+};
+
+RuntimeErrorTestState& runtimeErrorTestState() {
+    static RuntimeErrorTestState state;
+    return state;
+}
+
+struct RuntimeErrorTestModuleConfig : Module::Config {
+    JST_MODULE_TYPE(runtime_error_test_module)
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct RuntimeErrorTestModule : Module::Impl,
+                                DynamicConfig<RuntimeErrorTestModuleConfig>,
+                                NativeCpuRuntimeContext,
+                                Scheduler::Context {
+    Result define() override {
+        return defineInterfaceOutput("out");
+    }
+
+    Result create() override {
+        JST_CHECK(output.create(DeviceType::CPU, DataType::F32, {1}));
+        output.at<F32>(0) = 1.0f;
+        outputs()["out"].produced(name(), "out", output);
+        return Result::SUCCESS;
+    }
+
+    Result computeSubmit() override {
+        runtimeErrorTestState().calls += 1;
+        JST_ERROR("[RUNTIME_ERROR_TEST] Forced runtime failure.");
+        return Result::ERROR;
+    }
+
+    Tensor output;
+};
+
+struct RuntimeErrorSinkTestModuleConfig : Module::Config {
+    JST_MODULE_TYPE(runtime_error_sink_test_module)
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct RuntimeErrorSinkTestModule : Module::Impl,
+                                    DynamicConfig<RuntimeErrorSinkTestModuleConfig>,
+                                    NativeCpuRuntimeContext,
+                                    Scheduler::Context {
+    Result define() override {
+        return defineInterfaceInput("in");
+    }
+
+    Result computeSubmit() override {
+        runtimeErrorTestState().sinkCalls += 1;
+        return Result::SUCCESS;
+    }
+};
+
+struct RuntimeErrorTestBlockConfig : Block::Config {
+    JST_BLOCK_TYPE(runtime_error_test)
+    JST_BLOCK_DOMAIN("test")
+    JST_BLOCK_DESCRIPTION("Runtime Error Test",
+                          "Fails during compute.",
+                          "A test-only block used to verify runtime module failures mark blocks errored.")
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct RuntimeErrorTestBlock : Block::Impl,
+                               DynamicConfig<RuntimeErrorTestBlockConfig> {
+    Result define() override {
+        return defineInterfaceOutput("out", "Output", "Output tensor.");
+    }
+
+    Result create() override {
+        const auto moduleConfig = std::make_shared<RuntimeErrorTestModuleConfig>();
+        JST_CHECK(moduleCreate("source", moduleConfig, {}));
+        JST_CHECK(moduleExposeOutput("out", {"source", "out"}));
+        return Result::SUCCESS;
+    }
+};
+
+struct RuntimeErrorSinkTestBlockConfig : Block::Config {
+    JST_BLOCK_TYPE(runtime_error_sink_test)
+    JST_BLOCK_DOMAIN("test")
+    JST_BLOCK_DESCRIPTION("Runtime Error Sink Test",
+                          "Consumes test output.",
+                          "A test-only sink block used to verify runtime failures invalidate downstream blocks.")
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct RuntimeErrorSinkTestBlock : Block::Impl,
+                                   DynamicConfig<RuntimeErrorSinkTestBlockConfig> {
+    Result define() override {
+        return defineInterfaceInput("in", "Input", "Input tensor.");
+    }
+
+    Result create() override {
+        const auto moduleConfig = std::make_shared<RuntimeErrorSinkTestModuleConfig>();
+        JST_CHECK(moduleCreate("sink", moduleConfig, {{"in", inputs().at("in")}}));
+        return Result::SUCCESS;
+    }
+};
+
+JST_REGISTER_MODULE(RuntimeErrorTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
+JST_REGISTER_MODULE(RuntimeErrorSinkTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
+JST_REGISTER_BLOCK(RuntimeErrorTestBlock);
+JST_REGISTER_BLOCK(RuntimeErrorSinkTestBlock);
+
+}  // namespace
+
 using namespace Jetstream;
 using namespace TestFlowgraph;
 
@@ -42,6 +207,32 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block creation and destruction", "[flowgraph
         auto result = flowgraph->blockCreate("invalid1", "nonexistent_type", {}, {});
         REQUIRE(result == Result::ERROR);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Runtime module failure marks block errored", "[flowgraph][runtime]") {
+    auto& state = runtimeErrorTestState();
+    state.reset();
+
+    REQUIRE(flowgraph->blockCreate("fail", "runtime_error_test", {}, {}) == Result::SUCCESS);
+    TensorMap sinkInputs;
+    sinkInputs["in"].requested("fail", "out");
+    REQUIRE(flowgraph->blockCreate("sink", "runtime_error_sink_test", {}, sinkInputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("fail").state == Block::State::Created);
+    REQUIRE(viewBlock("sink").state == Block::State::Created);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const auto errored = viewBlock("fail");
+    REQUIRE(errored.state == Block::State::Errored);
+    REQUIRE(errored.diagnostic.find("Forced runtime failure") != std::string::npos);
+    REQUIRE(errored.outputs.empty());
+    REQUIRE(viewBlock("sink").state == Block::State::Incomplete);
+    REQUIRE(state.calls == 1);
+    REQUIRE(state.sinkCalls == 0);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(state.calls == 1);
+    REQUIRE(state.sinkCalls == 0);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {

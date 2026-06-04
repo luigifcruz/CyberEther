@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "jetstream/scheduler.hh"
 #include "jetstream/parser.hh"
@@ -108,6 +109,8 @@ class JETSTREAM_API Flowgraph {
     const View& view() const;
 
  private:
+    Result blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames);
+
     std::shared_ptr<Impl> impl;
 };
 

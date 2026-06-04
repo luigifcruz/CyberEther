@@ -81,7 +81,8 @@ TEST_CASE("Ones Tensor Module - Repeated compute keeps the same tensor",
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
-            REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto initialId = module->outputs().at("buffer").tensor.id();
@@ -92,7 +93,7 @@ TEST_CASE("Ones Tensor Module - Repeated compute keeps the same tensor",
             REQUIRE_THAT(firstOutput.at<F32>(0), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
 
             skippedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& secondOutput = module->outputs().at("buffer").tensor;

@@ -918,6 +918,123 @@ Result Flowgraph::blockConfig(const std::string name, Parser::Map& config) const
     return Result::SUCCESS;
 }
 
+Result Flowgraph::blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames) {
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+
+    if (moduleNames.empty()) {
+        JST_ERROR("[FLOWGRAPH] Cannot mark blocks errored without failed modules.");
+        return Result::ERROR;
+    }
+
+    const std::string diagnostic = JST_LOG_LAST_ERROR();
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    std::vector<std::pair<std::string, std::shared_ptr<Block>>> failedBlocks;
+    std::unordered_set<std::string> failedBlockNames;
+    std::vector<BlockState> downstreamStates;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        for (const auto& [name, candidate] : impl->blocks) {
+            for (const auto& [_, entry] : candidate->impl->_modules) {
+                if (entry.module && moduleNames.contains(entry.module->name())) {
+                    if (!failedBlockNames.contains(name)) {
+                        failedBlocks.push_back({name, candidate});
+                        failedBlockNames.insert(name);
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (failedBlocks.empty()) {
+            JST_ERROR("[FLOWGRAPH] Failed modules do not belong to active blocks.");
+            return Result::ERROR;
+        }
+
+        std::unordered_set<std::string> downstreamNames;
+        for (const auto& [name, _] : failedBlocks) {
+            for (const auto& depName : impl->collectDownstream(name)) {
+                if (!failedBlockNames.contains(depName)) {
+                    downstreamNames.insert(depName);
+                }
+            }
+        }
+
+        for (const auto& depName : impl->blockOrder) {
+            if (!downstreamNames.contains(depName) || !impl->blocks.contains(depName)) {
+                continue;
+            }
+
+            const auto& dep = impl->blocks.at(depName);
+
+            BlockState state;
+            state.name = depName;
+            state.type = dep->config().type();
+            state.device = dep->device();
+            state.runtime = dep->runtime();
+            state.provider = dep->provider();
+            JST_CHECK(dep->config().serialize(state.config));
+
+            for (const auto& [slot, link] : dep->inputs()) {
+                if (link.external.has_value()) {
+                    state.inputs[slot].requested(link.external->block, link.external->port);
+                }
+            }
+
+            downstreamStates.push_back(std::move(state));
+        }
+
+        for (const auto& [name, block] : failedBlocks) {
+            Flowgraph::View::BlockData transient;
+            JST_CHECK(CopyBlockViewData(name, block, Block::State::Errored, transient));
+            transient.diagnostic = diagnostic;
+            transient.outputs.clear();
+            impl->transientBlocks[name] = std::move(transient);
+            impl->blocks.erase(name);
+        }
+    }
+
+    Result cleanupResult = Result::SUCCESS;
+    for (const auto& [_, block] : failedBlocks) {
+        while (!block->impl->_moduleOrder.empty()) {
+            const auto childModuleName = block->impl->_moduleOrder.back();
+            const auto result = block->impl->moduleDestroy(childModuleName);
+            if (result != Result::SUCCESS && result != Result::RELOAD && cleanupResult == Result::SUCCESS) {
+                cleanupResult = result;
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        for (const auto& [name, block] : failedBlocks) {
+            block->impl->_diagnostic = diagnostic;
+            block->impl->_state = Block::State::Errored;
+            block->impl->_outputs.clear();
+            impl->transientBlocks.erase(name);
+            impl->blocks[name] = block;
+        }
+    }
+
+    for (const auto& state : std::ranges::reverse_view(downstreamStates)) {
+        JST_CHECK(blockDestroy(state.name, false));
+    }
+
+    for (const auto& state : downstreamStates) {
+        JST_CHECK_ALLOW(blockCreate(state.name, state.type, state.config,
+                                    state.inputs, state.device, state.runtime, state.provider),
+                        Result::INCOMPLETE);
+    }
+
+    if (cleanupResult != Result::SUCCESS && cleanupResult != Result::RELOAD) {
+        JST_ERROR("[FLOWGRAPH] Failed to clean up modules after runtime failure.");
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Flowgraph::importFromFile(const std::string& path) {
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
     {
@@ -1291,7 +1408,14 @@ Result Flowgraph::compute() {
     }
 
     if (impl->scheduler) {
-        JST_CHECK(impl->scheduler->compute());
+        std::unordered_set<std::string> failedModules;
+        const auto result = impl->scheduler->compute(failedModules);
+        if (result == Result::ERROR && !failedModules.empty()) {
+            JST_CHECK(blockSetErroredFromModules(failedModules));
+            return Result::SUCCESS;
+        }
+
+        JST_CHECK(result);
     }
 
     return Result::SUCCESS;
@@ -1303,7 +1427,14 @@ Result Flowgraph::present() {
     }
 
     if (impl->scheduler) {
-        JST_CHECK(impl->scheduler->present());
+        std::unordered_set<std::string> failedModules;
+        const auto result = impl->scheduler->present(failedModules);
+        if (result == Result::ERROR && !failedModules.empty()) {
+            JST_CHECK(blockSetErroredFromModules(failedModules));
+            return Result::SUCCESS;
+        }
+
+        JST_CHECK(result);
     }
 
     return Result::SUCCESS;

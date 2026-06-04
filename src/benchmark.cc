@@ -128,7 +128,8 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
                 bench.run(benchName, [&]() {
                     std::unordered_set<std::string> skippedModules;
-                    runtime.compute({}, skippedModules);
+                    std::unordered_set<std::string> failedModules;
+                    runtime.compute({}, skippedModules, failedModules);
                 });
 
                 runtime.destroy();

@@ -127,10 +127,30 @@ Result Block::create(const std::string& name,
 
     // Create block.
 
+    const auto cleanupModules = [&]() -> Result {
+        Result cleanupResult = Result::SUCCESS;
+
+        while (!impl->_moduleOrder.empty()) {
+            const auto moduleName = impl->_moduleOrder.back();
+            const auto result = impl->moduleDestroy(moduleName);
+            if (result != Result::SUCCESS && result != Result::RELOAD && cleanupResult == Result::SUCCESS) {
+                cleanupResult = result;
+            }
+        }
+
+        return cleanupResult;
+    };
+
     const auto result = impl->create();
 
     if (result != Result::SUCCESS && result != Result::RELOAD) {
         impl->_diagnostic = JST_LOG_LAST_ERROR();
+        if (result != Result::INCOMPLETE) {
+            const auto cleanupResult = cleanupModules();
+            if (cleanupResult != Result::SUCCESS && cleanupResult != Result::RELOAD) {
+                JST_ERROR("[BLOCK] Failed to clean up modules after create failure for block '{}'.", impl->_name);
+            }
+        }
         impl->_state = (result == Result::INCOMPLETE) ? State::Incomplete : State::Errored;
         return result;
     }
@@ -145,6 +165,10 @@ Result Block::create(const std::string& name,
         if (!impl->_outputs.contains(key)) {
             JST_ERROR("[BLOCK] Block '{}' didn't create an expected output '{}'.", impl->_name, key);
             impl->_diagnostic = JST_LOG_LAST_ERROR();
+            const auto cleanupResult = cleanupModules();
+            if (cleanupResult != Result::SUCCESS && cleanupResult != Result::RELOAD) {
+                JST_ERROR("[BLOCK] Failed to clean up modules after output validation failure for block '{}'.", impl->_name);
+            }
             impl->_state = State::Errored;
             return Result::ERROR;
         }
