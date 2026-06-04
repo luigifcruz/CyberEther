@@ -1,4 +1,4 @@
-if jst_is_browser
+if jst_is_browser or cfg_lst.get('JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE', false)
     cfg_lst.set('JETSTREAM_MODULE_WEBSOCKET_AVAILABLE', true)
     cfg_lst.set('JETSTREAM_MODULE_WEBSOCKET_CPU_AVAILABLE', true)
 

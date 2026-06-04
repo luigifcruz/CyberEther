@@ -31,7 +31,8 @@ class JETSTREAM_API Runtime {
     Result destroy();
 
     Result compute(const std::vector<std::string>& modules,
-                   std::unordered_set<std::string>& skippedModules);
+                   std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& failedModules);
 
  private:
     std::shared_ptr<Impl> impl;

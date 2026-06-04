@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace Jetstream {
 
@@ -33,13 +34,21 @@ struct FlowgraphWindowPresenter {
     FlowgraphWindow::Config build(const std::string& flowgraphId,
                                   const std::shared_ptr<Flowgraph>& flowgraph) const {
         const auto enqueue = context.callbacks.enqueueMail;
+        std::string title = MakeFlowgraphWindowTitle(flowgraphId, flowgraph);
+        if (context.state.interface.focusedFlowgraph == flowgraphId) {
+            title = "• " + title;
+        }
+
         return FlowgraphWindow::Config{
             .id = MakeFlowgraphWindowId(flowgraphId),
-            .title = MakeFlowgraphWindowTitle(flowgraphId, flowgraph),
+            .title = std::move(title),
             .editor = editor.build(flowgraphId, flowgraph),
             .stacks = stacks.build(flowgraphId, flowgraph),
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
             .empty = flowgraph->view().empty(),
+            .onFocus = [enqueue, flowgraphId]() {
+                enqueue(MailFocusFlowgraph{flowgraphId});
+            },
             .onSave = [enqueue, flowgraphId]() {
                 enqueue(MailSaveFlowgraph{.flowgraph = flowgraphId});
             },

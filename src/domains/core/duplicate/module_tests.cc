@@ -119,7 +119,8 @@ TEST_CASE("Duplicate Module - CUDA preserves non-contiguous views", "[modules][d
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
-            REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& output = module->outputs().at("buffer").tensor;
@@ -183,7 +184,8 @@ TEST_CASE("Duplicate Module - CPU runtime can target CUDA output", "[modules][du
     REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
-    REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const auto& output = module->outputs().at("buffer").tensor;
@@ -238,7 +240,8 @@ TEST_CASE("Duplicate Module - CUDA runtime can target CPU output", "[modules][du
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
-            REQUIRE(runtime.compute({}, skippedModules) == Result::SUCCESS);
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& output = module->outputs().at("buffer").tensor;

@@ -51,9 +51,6 @@ Result Block::Impl::moduleCreate(const std::string name,
                                     module,
                                     _context->impl->environment,
                                     _context->impl->view));
-    _modules[name] = {module, config};
-    _moduleOrder.push_back(name);
-
     // Clone input tensors to give each module an independent layout.
 
     TensorMap clonedInputs;
@@ -65,11 +62,34 @@ Result Block::Impl::moduleCreate(const std::string name,
     // Create module.
 
     const auto& blockModuleName = jst::fmt::format("{}-{}", _name, name);
-    JST_CHECK(module->create(blockModuleName, *config, clonedInputs, render()));
+    const auto createResult = module->create(blockModuleName, *config, clonedInputs, render());
+    if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
+        if (createResult == Result::INCOMPLETE) {
+            _modules[name] = {module, config};
+            _moduleOrder.push_back(name);
+            return createResult;
+        }
+
+        const auto destroyResult = module->destroy();
+        if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+            JST_ERROR("[BLOCK] Failed to clean up module '{}' inside block '{}'.", name, _name);
+        }
+        return createResult;
+    }
 
     // Add module to scheduler.
 
-    JST_CHECK(scheduler()->add(module));
+    const auto addResult = scheduler()->add(module);
+    if (addResult != Result::SUCCESS && addResult != Result::RELOAD) {
+        const auto destroyResult = module->destroy();
+        if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+            JST_ERROR("[BLOCK] Failed to clean up module '{}' after scheduler add failure inside block '{}'.", name, _name);
+        }
+        return addResult;
+    }
+
+    _modules[name] = {module, config};
+    _moduleOrder.push_back(name);
 
     // Cache surface providers.
 

@@ -16,7 +16,8 @@ struct NativeCudaRuntime : public Runtime::Impl {
     Result destroy() override;
 
     Result compute(const std::vector<std::string>& modules,
-                   std::unordered_set<std::string>& skippedModules) override;
+                   std::unordered_set<std::string>& skippedModules,
+                   std::unordered_set<std::string>& failedModules) override;
 
  private:
     static inline std::shared_ptr<NativeCudaRuntimeContext> getRuntimeContext(const std::shared_ptr<Module>& module) {
@@ -26,7 +27,7 @@ struct NativeCudaRuntime : public Runtime::Impl {
     Runtime::Modules modulesMap;
     std::vector<std::string> moduleNames;
 
-    cudaStream_t stream;
+    cudaStream_t stream = nullptr;
     std::unordered_map<std::string, std::pair<cudaEvent_t, cudaEvent_t>> eventMap;
 };
 
@@ -41,6 +42,24 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
 
     modulesMap.clear();
     moduleNames.clear();
+    eventMap.clear();
+
+    const auto cleanupModule = [&](const std::string& name,
+                                   const std::shared_ptr<Module>& module) -> void {
+        const auto result = getRuntimeContext(module)->computeDeinitialize();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Failed to clean up module '{}' while creating runtime '{}'.",
+                      name, this->name);
+        }
+    };
+
+    const auto cleanupRuntime = [&]() -> void {
+        const auto result = destroy();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Failed to clean up partially created runtime '{}'.",
+                      this->name);
+        }
+    };
 
     for (const auto& [name, module] : modules) {
         // Check module and runtime compatibility.
@@ -48,12 +67,18 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
         if (module->device() != DeviceType::CUDA || module->runtime() != RuntimeType::NATIVE) {
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Module '{}' is incompatible "
                       "(DeviceType::{}, RuntimeType::{}).", name, module->device(), module->runtime());
+            cleanupRuntime();
             return Result::ERROR;
         }
 
         // Initialize module.
 
-        JST_CHECK(getRuntimeContext(module)->computeInitialize());
+        const auto result = getRuntimeContext(module)->computeInitialize();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            cleanupModule(name, module);
+            cleanupRuntime();
+            return result;
+        }
 
         Module::Timing timing;
         timing.runtime = this->name;
@@ -67,11 +92,15 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
         cudaEvent_t endEvent;
 
         JST_CUDA_CHECK(cudaEventCreate(&startEvent), [&]{
+            cleanupModule(name, module);
+            cleanupRuntime();
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't create start event for '{}': {}", name, err);
         });
 
         JST_CUDA_CHECK(cudaEventCreate(&endEvent), [&]{
             cudaEventDestroy(startEvent);
+            cleanupModule(name, module);
+            cleanupRuntime();
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't create end event for '{}': {}", name, err);
         });
 
@@ -108,9 +137,12 @@ Result NativeCudaRuntime::destroy() {
 
     // Destroy stream.
 
-    JST_CUDA_CHECK(cudaStreamDestroy(stream), [&]{
-        JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy stream: {}", err);
-    });
+    if (stream != nullptr) {
+        JST_CUDA_CHECK(cudaStreamDestroy(stream), [&]{
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy stream: {}", err);
+        });
+        stream = nullptr;
+    }
 
     // Clear module state.
 
@@ -122,12 +154,14 @@ Result NativeCudaRuntime::destroy() {
 }
 
 Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
-                                  std::unordered_set<std::string>& skippedModules) {
+                                  std::unordered_set<std::string>& skippedModules,
+                                  std::unordered_set<std::string>& failedModules) {
     const auto& targetNames = modules.empty() ? moduleNames : modules;
     std::vector<std::string> executedModules;
 
     for (const auto& name : targetNames) {
         if (!modulesMap.contains(name)) {
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Context for module '{}' not found.", name);
             return Result::ERROR;
         }
@@ -142,6 +176,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
         auto& [startEvent, endEvent] = eventMap[name];
 
         JST_CUDA_CHECK(cudaEventRecord(startEvent, stream), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't record start event for '{}': {}", name, err);
         });
 
@@ -152,14 +187,17 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
         }
 
         if (result != Result::SUCCESS && result != Result::RELOAD && result != Result::SKIP) {
+            failedModules.insert(name);
             return result;
         }
 
         JST_CUDA_CHECK(cudaEventRecord(endEvent, stream), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't record end event for '{}': {}", name, err);
         });
 
         JST_CUDA_CHECK(cudaGetLastError(), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Module kernel execution failed: {}", err);
         });
 
@@ -189,6 +227,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
 
         F32 elapsedMs = 0;
         JST_CUDA_CHECK(cudaEventElapsedTime(&elapsedMs, startEvent, endEvent), [&]{
+            failedModules.insert(name);
             JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't get elapsed time for '{}': {}", name, err);
         });
 

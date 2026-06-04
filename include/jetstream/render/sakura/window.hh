@@ -23,6 +23,7 @@ struct Window : public Component {
         std::optional<Extent2D<F32>> padding;
         std::optional<Color> backgroundColor;
         std::function<void()> onOpen;
+        std::function<void()> onFocus;
         std::function<void()> onClose;
     };
 
