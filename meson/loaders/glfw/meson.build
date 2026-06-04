@@ -1,14 +1,20 @@
 deps = []
 
 if not jst_is_browser
+    glfw_default_options = [
+        'default_library=static',
+        'install=false',
+    ]
+
+    if jst_is_linux
+        glfw_default_options += ['display-api=x11,wayland']
+    endif
+
     deps += [
         subproject(
             'glfw',
             required: true,
-            default_options: [
-                'default_library=static',
-                'install=false',
-            ]
+            default_options: glfw_default_options
         ).get_variable('glfw_dep'),
     ]
 endif
