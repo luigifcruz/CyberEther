@@ -311,21 +311,21 @@ inline bool WindowMightBeWayland() {
     const char* xdgSessionType = std::getenv("XDG_SESSION_TYPE");
     if (xdgSessionType != nullptr) {
         std::string sessionTypeStr(xdgSessionType);
-        if (sessionTypeStr == "x11") {
-            return false;
-        } else if (sessionTypeStr == "wayland") {
+        if (sessionTypeStr == "wayland" && std::getenv("WAYLAND_DISPLAY") != nullptr) {
             return true;
+        } else if (sessionTypeStr == "x11" && std::getenv("DISPLAY") != nullptr) {
+            return false;
         }
-    }
-
-    const char* displayEnv = std::getenv("DISPLAY");
-    if (displayEnv != nullptr) {
-        return false;
     }
 
     const char* waylandDisplayEnv = std::getenv("WAYLAND_DISPLAY");
     if (waylandDisplayEnv != nullptr) {
         return true;
+    }
+
+    const char* displayEnv = std::getenv("DISPLAY");
+    if (displayEnv != nullptr) {
+        return false;
     }
 
     // If we can't get the session type, default to true.

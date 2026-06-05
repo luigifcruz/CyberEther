@@ -11,6 +11,14 @@ static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
 
+static bool IsWaylandPlatform() {
+#ifdef GLFW_PLATFORM_WAYLAND
+    return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
+#else
+    return false;
+#endif
+}
+
 static bool keepRunningFlag;
 
 namespace Jetstream::Viewport {
@@ -41,12 +49,6 @@ Result Implementation::create() {
     JST_ASSERT(!Backend::State<DeviceType::Vulkan>()->headless(), "Headless mode is not supported.");
 
     // Initialize and configure GLFW.
-
-#ifdef GLFW_PLATFORM_WAYLAND
-    if (Backend::WindowMightBeWayland()) {
-        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
-    }
-#endif
 
     if (!glfwInit()) {
         JST_ERROR("[VULKAN] Failed to initialize GLFW.");
@@ -376,7 +378,7 @@ VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPrese
 #ifndef JST_OS_WINDOWS
         for (const auto &availablePresentMode : availablePresentModes) {
             // HACK: Mailbox is not currently supported on Wayland.
-            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR &&!Backend::WindowMightBeWayland()) {
+            if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR && !IsWaylandPlatform()) {
                 JST_DEBUG("[VULKAN] Swap mailbox presentation mode is available.");
                 return availablePresentMode;
             }
