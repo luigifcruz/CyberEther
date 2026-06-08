@@ -55,6 +55,12 @@ pacman -S gstreamer gst-plugins-base gst-libav
 pacman -S gst-plugins-good gst-plugins-bad gst-plugins-ugly
 ```
 
+ONNX Runtime inference block (`-Dinference=enabled`).
+```bash
+pip install onnxruntime        # CPU only
+pip install onnxruntime-gpu    # CUDA + TensorRT
+```
+
 Examples metadata.
 ```bash
 pacman -S python-yaml
@@ -96,6 +102,12 @@ apt install libgstreamer1.0-dev gstreamer1.0-libav \
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 ```
 
+ONNX Runtime inference block (`-Dinference=enabled`).
+```bash
+pip install onnxruntime        # CPU only
+pip install onnxruntime-gpu    # CUDA + TensorRT
+```
+
 Examples metadata.
 ```bash
 apt install python3-yaml
@@ -129,6 +141,11 @@ brew install soapysdr soapyrtlsdr
 Remote capabilities.
 ```bash
 brew install gstreamer
+```
+
+ONNX Runtime inference block (`-Dinference=enabled`). Includes the CoreML execution provider for Apple Neural Engine acceleration.
+```bash
+brew install onnxruntime
 ```
 
 Examples metadata.
@@ -183,6 +200,19 @@ ninja install
 ```
 
 Done! The executable will be installed in the default terminal path. For usage instructions, run `cyberether --help`.
+
+To enable optional features, pass flags to `meson setup`:
+
+| Flag | Values | Description |
+|---|---|---|
+| `-Dinference` | `auto` (default) / `enabled` / `disabled` | ONNX Runtime inference. `auto` silently skips the Infer block if ONNX Runtime is not installed; `enabled` fails the build if it is missing. |
+| `-Dremote` | `auto` (default) / `enabled` / `disabled` | GStreamer-based remote streaming. |
+
+Example — build with inference required:
+```bash
+meson setup -Dbuildtype=debugoptimized -Dinference=enabled build && cd build
+ninja install
+```
 
 </details>
 

@@ -1,4 +1,5 @@
 subdir('core')
 subdir('dsp')
 subdir('io')
+subdir('ml')
 subdir('visualization')
