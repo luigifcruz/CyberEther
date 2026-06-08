@@ -5,9 +5,22 @@ order: 2
 category: Getting Started
 ---
 
-CyberEther is currently installed by building from source. Follow the instructions below to compile it on your system. More installation methods are coming soon.
+CyberEther can be installed through pre-built binaries, container images, or by building from source. Pick the option that matches your platform and workflow.
 
-<!-- TODO: Add Docker installation section -->
+## Pre-built Binaries
+
+The easiest way to install CyberEther is to download a pre-built binary from the [CyberEther website](https://cyberether.org).
+
+If your platform is not listed or you want to customize the build, follow the [Build From Source](#build-from-source) instructions below.
+
+## Container Images
+
+Docker images are also published to the GitHub Container Registry (`ghcr.io`) for each release:
+
+```bash
+docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-x86_64
+docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64
+```
 
 ## Build From Source
 
