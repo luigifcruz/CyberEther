@@ -189,13 +189,34 @@ cd CyberEther
 
 #### Linux or macOS
 
-Build and install.
+Create a debug-optimized build directory, compile CyberEther, and install the resulting binary and libraries.
 ```bash
-meson setup -Dbuildtype=debugoptimized build && cd build
-ninja install
+meson setup -Dbuildtype=debugoptimized build
+meson compile -C build
+meson install -C build
 ```
 
-Done! The executable will be installed in the default terminal path. For usage instructions, run `cyberether --help`.
+To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
+
+After installation, run `cyberether --help` for usage instructions.
+
+</details>
+
+<details>
+<summary>Windows</summary>
+
+#### Windows
+
+Configure, build, and install from a Visual Studio Developer PowerShell or any shell where the Visual Studio toolchain is available.
+```powershell
+meson setup --vsenv -Dbuildtype=debugoptimized build
+meson compile -C build
+meson install -C build
+```
+
+To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
+
+After installation, run `cyberether --help` for usage instructions.
 
 </details>
 
@@ -204,24 +225,23 @@ Done! The executable will be installed in the default terminal path. For usage i
 
 #### Browser (Chrome)
 
-Build project with cross-compilation to WebAssembly.
+Build the project with cross-compilation to WebAssembly.
 ```bash
 meson setup --cross-file meson/crosscompile/emscripten.ini \
-            -Dbuildtype=debugoptimized build-browser && \
-            cd build-browser
-ninja
+            -Dbuildtype=debugoptimized \
+            build-wasm
+meson compile -C build-wasm
 ```
 
-Copy dependencies to the build directory.
-```bash
-cp ../resources/web/cyberether.html .
-cp ../resources/images/cyberether.png .
+The browser build does not have an install target. The distributable outputs are generated in `build-wasm/`.
+```text
+build-wasm/cyberether.js
+build-wasm/cyberether.wasm
+build-wasm/cyberether.js.symbols
+build-wasm/cyberether.wasm.map
 ```
 
-Start the web server and navigate to [http://localhost:8000/cyberether.html](http://localhost:8000/cyberether.html).
-```bash
-python ../resources/web/local_server.py
-```
+Serve those files from a WebGPU-capable website with cross-origin isolation enabled, which is required by Emscripten pthreads. The hosted browser app at [cyberether.org/web](https://cyberether.org/web) can also load custom builds, so you can test your own `cyberether.js` and `cyberether.wasm` files. A fully offline browser version is on the roadmap.
 
 </details>
 
@@ -233,10 +253,13 @@ python ../resources/web/local_server.py
 Build the project with cross-compilation to iOS and install binaries in the Xcode project.
 ```bash
 meson setup --cross-file meson/crosscompile/ios.ini \
-            --prefix $(pwd)/apps/ios/CyberEtherMobile/Library \
-            -Dbuildtype=debugoptimized build-ios && \
-            cd build-ios
-ninja install
+            --prefix "$(pwd)/apps/ios/CyberEtherMobile/Library" \
+            -Dbuildtype=debugoptimized \
+            -Dtests=false \
+            -Dexamples=false \
+            build-ios
+meson compile -C build-ios
+meson install -C build-ios
 ```
 
 After the build is complete, open the Xcode project in `apps/ios/` and run it on your device.
