@@ -24,7 +24,9 @@ docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64
 
 ## Build From Source
 
-CyberEther requires a C++20 compiler (GCC 11+ or Clang 14+), [Meson](https://mesonbuild.com), and [Ninja](https://ninja-build.org).
+CyberEther requires a C++20 compiler (GCC 11+ or Clang 14+), [Meson](https://mesonbuild.com) 1.11+, and [Ninja](https://ninja-build.org). Most third-party libraries are bundled as Meson subprojects, so the packages below focus on the platform toolchain, graphics headers or SDKs, shader tools, and Python modules used during resource generation.
+
+If your system blocks global `pip` installs, use a Python virtual environment or equivalent distribution packages.
 
 ### Dependencies
 <!-- [NEW DEPENDENCY HOOK] -->
@@ -33,45 +35,31 @@ CyberEther requires a C++20 compiler (GCC 11+ or Clang 14+), [Meson](https://mes
 <summary>Linux (Arch Linux)</summary>
 
 #### Linux (Arch Linux)
-Core dependencies.
+Core build tools, graphics headers, and desktop integration.
 ```bash
-pacman -S git base-devel cmake pkg-config ninja meson git zenity
+pacman -S git base-devel pkgconf python python-pip glslang \
+          vulkan-headers vulkan-icd-loader zenity
 ```
 
-Graphical dependencies for **X11**-based display servers.
+Display server headers used by the bundled GLFW build.
 ```bash
-pacman -S glslang glfw-x11
-yay -S spirv-cross
+pacman -S libx11 libxcursor libxi libxinerama libxrandr \
+          libxkbcommon wayland wayland-protocols systemd
 ```
 
-Graphical dependencies for **Wayland**-based display servers.
+Python build modules.
 ```bash
-pacman -S glslang glfw-wayland
-yay -S spirv-cross
-```
-
-Vulkan backend dependencies.
-```bash
-pacman -S vulkan-icd-loader vulkan-validation-layers
+python -m pip install meson ninja numpy mapbox_earcut pyyaml
 ```
 
 #### Optional
 
-SoapySDR block with RTL-SDR support.
+Remote streaming support uses bundled GStreamer sources, but still needs a few generator tools.
 ```bash
-pacman -S soapysdr soapyrtlsdr
+pacman -S bison flex nasm
 ```
 
-Remote capabilities.
-```bash
-pacman -S gstreamer gst-plugins-base gst-libav
-pacman -S gst-plugins-good gst-plugins-bad gst-plugins-ugly
-```
-
-Examples metadata.
-```bash
-pacman -S python-yaml
-```
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 </details>
 
@@ -79,40 +67,31 @@ pacman -S python-yaml
 <summary>Linux (Ubuntu 22.04)</summary>
 
 #### Linux (Ubuntu 22.04)
-Core dependencies.
+Core build tools, graphics headers, and desktop integration.
 ```bash
-apt install git build-essential cmake pkg-config ninja-build meson git zenity
+apt install git build-essential pkg-config python3 python3-pip glslang-tools \
+            libvulkan-dev mesa-vulkan-drivers zenity
 ```
 
-Graphical dependencies.
+Display server headers used by the bundled GLFW build.
 ```bash
-apt install spirv-cross glslang-tools libglfw3-dev
+apt install libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libudev-dev
 ```
 
-Vulkan backend dependencies.
+Python build modules.
 ```bash
-apt install mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
+python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
 ```
 
 #### Optional
 
-SoapySDR block with RTL-SDR support.
+Remote streaming support uses bundled GStreamer sources, but still needs a few generator tools.
 ```bash
-apt install libsoapysdr-dev soapysdr-module-rtlsdr
+apt install bison flex nasm
 ```
 
-Remote capabilities.
-```bash
-apt install libgstreamer1.0-dev gstreamer1.0-libav \
-            gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev \
-            libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev \
-            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
-```
-
-Examples metadata.
-```bash
-apt install python3-yaml
-```
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 </details>
 
@@ -120,34 +99,26 @@ apt install python3-yaml
 <summary>macOS 13+ (Apple Silicon)</summary>
 
 #### macOS 13+ (Apple Silicon)
-This assumes [Homebrew](https://brew.sh) is installed. Older versions of macOS might work but installing a newer Clang compiler (14+) will be necessary. Metal on Intel-based Macs is not supported by CyberEther. As a workaround, make sure to install the optional Vulkan dependencies listed below.
+This assumes [Homebrew](https://brew.sh) and Xcode Command Line Tools are installed. Older versions of macOS might work but installing a newer Clang compiler (14+) will be necessary. Metal on Intel-based Macs is not supported by CyberEther. As a workaround, make sure to install the optional Vulkan dependencies listed below.
 
-Core dependencies.
+Core build and shader tools.
 ```bash
-brew install cmake pkg-config ninja meson
+brew install pkg-config glslang spirv-cross
 ```
 
-Graphical dependencies.
+Python build modules.
 ```bash
-brew install spirv-cross glslang glfw
+python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
 ```
 
 #### Optional
 
-SoapySDR block with RTL-SDR support.
+Remote streaming support uses bundled GStreamer sources, but still needs NASM.
 ```bash
-brew install soapysdr soapyrtlsdr
+brew install nasm
 ```
 
-Remote capabilities.
-```bash
-brew install gstreamer
-```
-
-Examples metadata.
-```bash
-python -m pip install PyYAML
-```
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 Vulkan backend (required for Intel-based Macs).
 ```bash
@@ -157,11 +128,41 @@ brew install molten-vk vulkan-tools vulkan-headers
 </details>
 
 <details>
+<summary>Windows</summary>
+
+#### Windows
+
+Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the C++ workload, [Python 3](https://www.python.org), and the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home). If you use Chocolatey, install the remaining build helper with:
+```powershell
+choco install pkgconfiglite -y
+```
+
+Python build modules.
+```powershell
+python -m pip install meson ninja numpy mapbox_earcut pyyaml
+```
+
+#### Optional
+
+Remote streaming support uses bundled GStreamer sources, but still needs NASM and WinFlexBison.
+```powershell
+choco install nasm winflexbison3 -y
+```
+
+</details>
+
+<details>
 <summary>Browser (Chrome)</summary>
 
 #### Browser (Chrome)
 
-All CyberEther runtime dependencies for the browser are included in the repository. You only need to make sure you have [Python 3](https://www.python.org), [Emscripten](https://emscripten.org/docs/getting_started/downloads.html), and [Rust Cargo](https://www.rust-lang.org/tools/install) installed.
+All CyberEther runtime dependencies for the browser are included in the repository. Make sure [Emscripten](https://emscripten.org/docs/getting_started/downloads.html), [Rust Cargo](https://www.rust-lang.org/tools/install), Python 3, `pkg-config`, `glslangValidator`, and `spirv-cross` are available.
+
+On Debian or Ubuntu, the CI-equivalent packages are:
+```bash
+apt install git build-essential pkg-config python3-pip glslang-tools spirv-cross cargo
+python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
+```
 
 </details>
 
@@ -170,7 +171,11 @@ All CyberEther runtime dependencies for the browser are included in the reposito
 
 #### iOS (iPhone & iPad)
 
-All CyberEther dependencies for iOS are included in the repository. You only need to make sure you have the latest [Xcode](https://developer.apple.com/xcode/) installed.
+Build iOS from macOS with the latest [Xcode](https://developer.apple.com/xcode/) installed. You also need the same Homebrew shader tools and Python build modules used by the macOS build.
+```bash
+brew install pkg-config glslang spirv-cross
+python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
+```
 
 </details>
 
