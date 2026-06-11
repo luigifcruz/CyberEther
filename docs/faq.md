@@ -1,7 +1,7 @@
 ---
 title: Frequent Questions
 description: Commonly asked questions about CyberEther, its design choices, and future plans.
-order: 3
+order: 5
 category: Getting Started
 ---
 
