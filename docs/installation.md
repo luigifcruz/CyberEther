@@ -133,19 +133,19 @@ brew install molten-vk vulkan-tools vulkan-headers
 #### Windows
 
 Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the C++ workload, [Python 3](https://www.python.org), and the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home). If you use Chocolatey, install the remaining build helper with:
-```powershell
+```bash
 choco install pkgconfiglite -y
 ```
 
 Python build modules.
-```powershell
+```bash
 python -m pip install meson ninja numpy mapbox_earcut pyyaml
 ```
 
 #### Optional
 
 Remote streaming support uses bundled GStreamer sources, but still needs NASM and WinFlexBison.
-```powershell
+```bash
 choco install nasm winflexbison3 -y
 ```
 
@@ -213,7 +213,7 @@ After installation, run `cyberether --help` for usage instructions.
 #### Windows
 
 Configure, build, and install from a Visual Studio Developer PowerShell or any shell where the Visual Studio toolchain is available.
-```powershell
+```bash
 meson setup --vsenv -Dbuildtype=debugoptimized build
 meson compile -C build
 meson install -C build
