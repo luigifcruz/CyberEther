@@ -158,7 +158,6 @@ ONNX Runtime inference block (`-Dinference=enabled`). Includes the CoreML execut
 brew install onnxruntime
 ```
 
-Examples metadata.
 </details>
 
 <details>
