@@ -1,8 +1,8 @@
 ---
 title: Typography Test
 description: A comprehensive test of all markdown features and styling.
-order: 99
-category: Testing
+order: 900
+category: Internal
 ---
 
 > [!NOTE]

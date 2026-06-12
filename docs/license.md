@@ -1,7 +1,7 @@
 ---
 title: License
 description: CyberEther licensing terms and commercial use guidelines.
-order: 12
+order: 120
 category: Resources
 ---
 

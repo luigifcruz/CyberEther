@@ -1,8 +1,8 @@
 ---
 title: Contributing
 description: Guidelines for contributing to CyberEther.
-order: 10
-category: Resources
+order: 83
+category: Development
 ---
 
 Contributions are welcome! Pull requests are the best way to propose changes to the codebase. We actively welcome your pull requests and invite you to submit pull requests directly in this repository.

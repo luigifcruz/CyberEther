@@ -38,10 +38,11 @@ See the current compatibility table in the [Overview](https://cyberether.org/doc
 
 ## Installation
 
-CyberEther runs on macOS, Linux, Windows, iOS/iPadOS, Android, Raspberry Pi, and the browser. It is currently installed by building from source, but more installation methods are coming soon.
+CyberEther runs on macOS, Linux, Windows, iOS/iPadOS, Android, Raspberry Pi, and the browser.
 
+- [**Pre-built Binaries**](https://github.com/luigifcruz/CyberEther/releases): Download official releases for Linux (AppImage & tar.gz), Windows (MSI), and macOS (DMG).
 - [**Try Online**](https://cyberether.org/web): Run the browser build powered by **WebAssembly** and **WebGPU**.
-- [**Build From Source**](https://cyberether.org/docs/installation): Follow the dependency and build guide.
+- [**Build From Source**](https://cyberether.org/docs/installation): Follow the dependency and build guide for custom builds or unsupported platforms.
 
 ## FAQ
 
