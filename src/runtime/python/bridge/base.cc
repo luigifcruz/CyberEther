@@ -180,9 +180,9 @@ Result Bridge::run() {
     }
 
     if (!runner || !globals) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python compute entry has not been created.");
         const auto current = diagnostic();
         if (current.healthy || current.console.empty()) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python compute entry has not been created.");
             setError("Inactive.", "No valid compute() function is currently loaded.");
         }
         return Result::SKIP;
