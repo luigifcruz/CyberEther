@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "jetstream/module_interface.hh"
 #include "jetstream/runtime.hh"
@@ -11,9 +12,24 @@
 
 namespace Jetstream {
 
-struct PythonRuntimeContext : Runtime::Context {
+struct JETSTREAM_API PythonRuntimeContext : Runtime::Context {
  public:
     using Diagnostic = Runtime::Context::Diagnostic;
+
+    struct Candidate {
+        std::string label;
+        std::string path;
+        std::string libraryPath;
+    };
+
+    struct Validation {
+        bool valid = false;
+        std::string inputPath;
+        std::string libraryPath;
+        std::string programPath;
+        std::string message;
+        std::vector<std::string> attempts;
+    };
 
     PythonRuntimeContext();
     ~PythonRuntimeContext();
@@ -30,6 +46,9 @@ struct PythonRuntimeContext : Runtime::Context {
     virtual Result computeInitialize();
     virtual Result computeSubmit();
     virtual Result computeDeinitialize();
+
+    static Validation ValidateRuntimePath(const std::string& path);
+    static std::vector<Candidate> DiscoverRuntimes();
 
  private:
     struct Impl;

@@ -93,6 +93,13 @@ Result DefaultCompositor::create() {
     state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
     state.remote.framerate = static_cast<U32>(settings.remote.framerate);
 
+    // Restore runtime preferences.
+
+    state.runtime.pythonPath = settings.runtime.python.path;
+    state.runtime.pythonCandidates = PythonRuntimeContext::DiscoverRuntimes();
+    state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(state.runtime.pythonPath);
+    state.runtime.initialPythonValidation = state.runtime.pythonValidation;
+
     try {
         state.remote.codec = StringToRemoteCodec(settings.remote.codec);
     } catch (const Result&) {

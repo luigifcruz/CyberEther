@@ -95,7 +95,10 @@ bool optionalPythonRuntimeUnavailable() {
     const auto& error = JST_LOG_LAST_ERROR();
     return error.find("Can't load Python library") != std::string::npos ||
            error.find("Can't initialize Python runtime helpers") != std::string::npos ||
-           error.find("Can't load Python symbol") != std::string::npos;
+           error.find("Can't load Python symbol") != std::string::npos ||
+           error.find("Auto could not find a valid Python runtime") != std::string::npos ||
+           error.find("No libpython was found") != std::string::npos ||
+           error.find("No loadable libpython was found") != std::string::npos;
 }
 
 }  // namespace

@@ -1,15 +1,33 @@
-#include <dlfcn.h>
 #include <mutex>
+#include <string>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef FATAL
+#undef FATAL
+#endif
+#else
+#include <dlfcn.h>
+#endif
 
 #include "runtime/python/bridge/cpython/base.hh"
 
+#include "jetstream/backend/base.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/runtime_context_python.hh"
 
 namespace Jetstream::CPython {
 
 namespace {
-
-constexpr const char* kPythonLibraryPath = "/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/3.14/Python";
 
 std::mutex& LoaderMutex() {
     static std::mutex mutex;
@@ -18,7 +36,11 @@ std::mutex& LoaderMutex() {
 
 template<typename T>
 Result LoadSymbol(void* handle, T& target, const char* symbol) {
+#if defined(_WIN32)
+    target = reinterpret_cast<T>(GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol));
+#else
     target = reinterpret_cast<T>(dlsym(handle, symbol));
+#endif
     if (!target) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't load Python symbol '{}'.", symbol);
         return Result::ERROR;
@@ -26,8 +48,86 @@ Result LoadSymbol(void* handle, T& target, const char* symbol) {
     return Result::SUCCESS;
 }
 
+template<typename T>
+Result LoadOptionalSymbol(void* handle, T& target, const char* symbol) {
+#if defined(_WIN32)
+    target = reinterpret_cast<T>(GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol));
+#else
+    target = reinterpret_cast<T>(dlsym(handle, symbol));
+#endif
+    return Result::SUCCESS;
+}
+
+void CloseLibrary(void* handle) {
+    if (!handle) {
+        return;
+    }
+
+#if defined(_WIN32)
+    FreeLibrary(reinterpret_cast<HMODULE>(handle));
+#else
+    dlclose(handle);
+#endif
+}
+
+std::string ConfiguredPythonPath() {
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    return Backend::State<DeviceType::CPU>()->getPythonRuntimePath();
+#else
+    return {};
+#endif
+}
+
+bool TryOpenLibrary(const std::string& path, void*& handle, std::string& error) {
+#if defined(_WIN32)
+    handle = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
+    if (handle) {
+        return true;
+    }
+
+    error = "Windows error " + std::to_string(GetLastError());
+    return false;
+#else
+    dlerror();
+    handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    if (handle) {
+        return true;
+    }
+
+    if (const char* dlError = dlerror()) {
+        error = dlError;
+    } else {
+        error = "unknown dlopen error";
+    }
+    return false;
+#endif
+}
+
+Result OpenPythonLibrary(PythonRuntimeContext::Validation& validation, void*& handle) {
+    validation = PythonRuntimeContext::ValidateRuntimePath(ConfiguredPythonPath());
+    if (!validation.valid) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] {}", validation.message);
+        for (const auto& attempt : validation.attempts) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Attempted {}", attempt);
+        }
+        return Result::ERROR;
+    }
+
+    std::string error;
+    if (!TryOpenLibrary(validation.libraryPath, handle, error)) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't load Python library '{}': {}.",
+                  validation.libraryPath,
+                  error);
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 using PyInitializeFn = void (*)();
 using PyIsInitializedFn = int (*)();
+using PySetProgramNameFn = void (*)(const wchar_t*);
+using PyDecodeLocaleFn = wchar_t* (*)(const char*, size_t*);
 using PyGILStateEnsureFn = int (*)();
 using PyGILStateReleaseFn = void (*)(int);
 using PyEvalSaveThreadFn = PyThreadState* (*)();
@@ -53,6 +153,8 @@ using PyUnicodeAsUTF8Fn = const char* (*)(PyObject*);
 struct PythonApi {
     PyInitializeFn Py_Initialize = nullptr;
     PyIsInitializedFn Py_IsInitialized = nullptr;
+    PySetProgramNameFn Py_SetProgramName = nullptr;
+    PyDecodeLocaleFn Py_DecodeLocale = nullptr;
     PyGILStateEnsureFn PyGILState_Ensure = nullptr;
     PyGILStateReleaseFn PyGILState_Release = nullptr;
     PyEvalSaveThreadFn PyEval_SaveThread = nullptr;
@@ -79,6 +181,8 @@ struct PythonApi {
 Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadSymbol(handle, api.Py_Initialize, "Py_Initialize"));
     JST_CHECK(LoadSymbol(handle, api.Py_IsInitialized, "Py_IsInitialized"));
+    JST_CHECK(LoadOptionalSymbol(handle, api.Py_SetProgramName, "Py_SetProgramName"));
+    JST_CHECK(LoadOptionalSymbol(handle, api.Py_DecodeLocale, "Py_DecodeLocale"));
     JST_CHECK(LoadSymbol(handle, api.PyGILState_Ensure, "PyGILState_Ensure"));
     JST_CHECK(LoadSymbol(handle, api.PyGILState_Release, "PyGILState_Release"));
     JST_CHECK(LoadSymbol(handle, api.PyEval_SaveThread, "PyEval_SaveThread"));
@@ -107,6 +211,21 @@ Result LoadSymbols(void* handle, PythonApi& api) {
 PythonApi s_api;
 void* s_libraryHandle = nullptr;
 bool s_libraryLoaded = false;
+wchar_t* s_programName = nullptr;
+
+void SetPythonProgramName(const PythonApi& api, const std::string& programPath) {
+    if (programPath.empty() || s_programName || !api.Py_SetProgramName || !api.Py_DecodeLocale) {
+        return;
+    }
+
+    s_programName = api.Py_DecodeLocale(programPath.c_str(), nullptr);
+    if (!s_programName) {
+        JST_WARN("[RUNTIME_CONTEXT_PYTHON] Can't decode Python program path '{}'.", programPath);
+        return;
+    }
+
+    api.Py_SetProgramName(s_programName);
+}
 
 }  // namespace
 
@@ -129,21 +248,19 @@ Result Py_Load() {
         return Result::SUCCESS;
     }
 
-    auto* handle = dlopen(kPythonLibraryPath, RTLD_NOW | RTLD_GLOBAL);
-    if (!handle) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't load Python library '{}': {}.",
-                  kPythonLibraryPath, dlerror());
-        return Result::ERROR;
-    }
+    PythonRuntimeContext::Validation validation;
+    void* handle = nullptr;
+    JST_CHECK(OpenPythonLibrary(validation, handle));
 
     PythonApi api;
     const auto symbolsResult = LoadSymbols(handle, api);
     if (symbolsResult != Result::SUCCESS) {
-        dlclose(handle);
+        CloseLibrary(handle);
         return symbolsResult;
     }
 
     if (!api.Py_IsInitialized()) {
+        SetPythonProgramName(api, validation.programPath);
         api.Py_Initialize();
         api.PyEval_SaveThread();
     }
@@ -151,6 +268,7 @@ Result Py_Load() {
     s_api = api;
     s_libraryHandle = handle;
     s_libraryLoaded = true;
+    JST_INFO("[RUNTIME_CONTEXT_PYTHON] Loaded Python library '{}'.", validation.libraryPath);
     return Result::SUCCESS;
 }
 
