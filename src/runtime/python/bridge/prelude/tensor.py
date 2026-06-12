@@ -1,4 +1,4 @@
-import numpy as _jetstream_np
+import importlib as _jetstream_importlib
 
 
 class _JetstreamBridge:
@@ -15,6 +15,8 @@ class _JetstreamBridge:
 
 
 def _jetstream_tensor_from_memory(memory, dtype, shape):
+    _jetstream_np = _jetstream_importlib.import_module("numpy")
+
     return _jetstream_np.frombuffer(memory, dtype=_jetstream_np.dtype(dtype)).reshape(shape)
 
 
