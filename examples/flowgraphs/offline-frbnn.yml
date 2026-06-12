@@ -1,0 +1,93 @@
+---
+version: 2
+
+title: Offline FRB Inference
+summary: Offline Fast Radio Burst detection from archival FBH5 filterbank data.
+author: Paolo Oliveira
+license: MIT
+description: >
+  Reads channelized filterbank data from an FBH5 archive, runs the FRBNN
+  model via ONNX Runtime, and plots the per-sample FRB probability.
+  Set `filepath` on the fbh_reader node to your .fbh5 file and
+  `modelPath` on the frbnn_model node to your frbnn.onnx model.
+
+graph:
+  - name: fbh_reader
+    module: fbh_reader
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      filepath: ""
+      batchSize: 256
+      loop: true
+      playing: true
+    meta:
+      node:
+        x: 80
+        y: 120
+        width: 140
+        height: 60
+
+  - name: frbnn_model
+    module: infer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      modelPath: ""
+      inputName: "modelInput"
+      outputName: "output"
+      batchSize: 256
+      executionProvider: "cpu"
+    input:
+      input: '${graph.fbh_reader.output.signal}'
+    meta:
+      node:
+        x: 320
+        y: 120
+        width: 200
+        height: 60
+
+  - name: detector
+    module: frbnn_detect
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      threshold: 0.5
+      classIndex: 0
+    input:
+      probabilities: '${graph.frbnn_model.output.output}'
+    meta:
+      node:
+        x: 620
+        y: 120
+        width: 160
+        height: 60
+
+  - name: lineplot
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      thickness: 1
+      decimation: 1
+      numberOfHorizontalLines: 5
+      numberOfVerticalLines: 11
+      averaging: 1
+    input:
+      signal: '${graph.detector.output.signal}'
+    meta:
+      surface_default:
+        detached: false
+        attachedWidth: 512
+        attachedHeight: 256
+        detachedWidth: 640
+        detachedHeight: 400
+      node:
+        x: 880
+        y: 80
+        width: 512
+        height: 300

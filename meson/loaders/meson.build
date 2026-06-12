@@ -21,6 +21,7 @@ subdir('rapidyaml')
 subdir('qrencode')
 subdir('libmodes')
 subdir('onnxruntime')
+subdir('hdf5')
 # [NEW DEPENDENCY HOOK]
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)
