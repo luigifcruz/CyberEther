@@ -4,7 +4,7 @@ if not jst_is_ios and \
     catch2_dep = dependency(
         'catch2', 
         fallback: 'catch2', 
-        version: '>=3.0.0', 
+        version: '>=3.5.0', 
         required: false, 
         default_options: [
             'default_library=static',
