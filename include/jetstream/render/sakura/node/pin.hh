@@ -20,6 +20,9 @@ struct NodePin : public Component {
         std::string label;
         std::string help;
         bool enableDetach = false;
+        Shape dataShape;
+        DataType dataType;
+        DeviceType dataDevice;
     };
 
     NodePin();

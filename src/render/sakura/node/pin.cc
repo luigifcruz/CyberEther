@@ -1,5 +1,6 @@
 #include <jetstream/render/sakura/node/pin.hh>
 
+#include <jetstream/render/sakura/table.hh>
 #include <jetstream/render/sakura/text.hh>
 #include <jetstream/render/sakura/tooltip.hh>
 
@@ -12,6 +13,9 @@ struct NodePin::Impl {
     Text label;
     Text help;
     Tooltip helpTooltip;
+    bool tensorTooltip;
+    Text tensorSection;
+    Table tensorMetadataTable;
 };
 
 NodePin::NodePin() {
@@ -39,6 +43,27 @@ bool NodePin::update(Config config) {
         .id = id + "HelpTooltip",
         .wrapWidth = 560.0f,
     });
+    impl->tensorTooltip = false;
+    if (impl->config.dataShape.size() > 0) {
+        impl->tensorTooltip = true;
+        impl->tensorSection.update({
+            .id = impl->config.id + ":tooltip:tensor-section",
+            .str = "Layout",
+            .font = Sakura::Text::Font::Bold,
+        });
+        impl->tensorMetadataTable.update({
+            .id = impl->config.id + ":tooltip:tensor-table",
+            .columns = {"", ""},
+            .rows = {
+                {"Device", jst::fmt::format("{}", impl->config.dataDevice)},
+                {"Type", jst::fmt::format("{}", impl->config.dataType)},
+                {"Shape", jst::fmt::format("{}", impl->config.dataShape)}
+            },
+            .fixedColumnWidths = {72.0f},
+            .showHeaders = false,
+            .wrapped = true,
+        });
+    }
     return true;
 }
 
@@ -50,6 +75,10 @@ void NodePin::render(const Context& ctx) const {
         if (!config.help.empty()) {
             impl->helpTooltip.render(ctx, [this](const Context& ctx) {
                 this->impl->help.render(ctx);
+                if (this->impl->tensorTooltip) {
+                    this->impl->tensorSection.render(ctx);
+                    this->impl->tensorMetadataTable.render(ctx);
+                }
             });
         }
     };

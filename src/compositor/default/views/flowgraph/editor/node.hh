@@ -246,6 +246,9 @@ struct FlowgraphNode : public Sakura::Component {
                 .label = input.port.label,
                 .help = input.port.help,
                 .enableDetach = true,
+                .dataShape = Shape(),
+                .dataType = DataType::None,
+                .dataDevice = block.device
             });
         }
         for (const auto& output : block.outputs) {
@@ -254,6 +257,9 @@ struct FlowgraphNode : public Sakura::Component {
                 .direction = Sakura::NodePin::Direction::Output,
                 .label = output.port.label,
                 .help = output.port.help,
+                .dataShape = output.tensor.shape(),
+                .dataType = output.tensor.dtype(),
+                .dataDevice = output.tensor.device()
             });
         }
 
