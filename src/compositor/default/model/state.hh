@@ -9,6 +9,7 @@
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/runtime_context_python.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
 #include "ui.hh"
@@ -58,6 +59,13 @@ struct DefaultCompositorState {
 
     struct SettingsState {
         SettingsSection section = SettingsSection::General;
+    };
+
+    struct RuntimeState {
+        std::string pythonPath;
+        std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
+        PythonRuntimeContext::Validation pythonValidation;
+        PythonRuntimeContext::Validation initialPythonValidation;
     };
 
     struct ModalState {
@@ -128,6 +136,7 @@ struct DefaultCompositorState {
     InterfaceState interface;
     GraphicsState graphics;
     SettingsState settings;
+    RuntimeState runtime;
     ModalState modal;
     DebugState debug;
     UpdateState update;

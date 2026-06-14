@@ -16,6 +16,7 @@ enum class JETSTREAM_API RuntimeType : uint8_t {
     NONE = 0,
     NATIVE = 1 << 0,
     MLIR   = 1 << 1,
+    PYTHON = 1 << 2,
 };
 
 class JETSTREAM_API Runtime {

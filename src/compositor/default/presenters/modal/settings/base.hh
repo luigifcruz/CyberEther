@@ -7,6 +7,7 @@
 #include "legal.hh"
 #include "registry.hh"
 #include "remote.hh"
+#include "runtime.hh"
 
 #include "../../context.hh"
 
@@ -19,6 +20,7 @@ struct SettingsModalPresenter {
     const PresenterContext& context;
     GeneralSettingsPresenter general;
     RemoteSettingsPresenter remote;
+    RuntimeSettingsPresenter runtime;
     RegistrySettingsPresenter registry;
     DeveloperSettingsPresenter developer;
     AboutPresenter about;
@@ -27,6 +29,7 @@ struct SettingsModalPresenter {
     explicit SettingsModalPresenter(const PresenterContext& context) : context(context),
                                                                        general(context),
                                                                        remote(context),
+                                                                       runtime(context),
                                                                        registry(context),
                                                                        developer(context),
                                                                        about(context),
@@ -38,6 +41,7 @@ struct SettingsModalPresenter {
         config.section = context.state.settings.section;
         config.general = general.build();
         config.remote = remote.build();
+        config.runtime = runtime.build();
         config.registry = registry.build();
         config.developer = developer.build();
         config.about = about.build();

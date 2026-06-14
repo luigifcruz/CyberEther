@@ -171,6 +171,10 @@ struct MailSetRemoteAutoJoinSessions {
     bool value = false;
 };
 
+struct MailSetPythonRuntimePath {
+    std::string value;
+};
+
 struct MailSaveFlowgraphPath {
     std::string flowgraph;
     std::string path;
@@ -372,6 +376,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
                           MailSetRemoteAutoJoinSessions,
+                          MailSetPythonRuntimePath,
                           MailSaveFlowgraphPath,
                           MailBrowseConfigPath,
                           MailRunBenchmark,

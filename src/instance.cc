@@ -69,6 +69,7 @@ Result Instance::create(const Config& config) {
     {
         auto backendConfig = Backend::Config {
             .headless = config.headless,
+            .pythonRuntimePath = config.pythonRuntimePath,
         };
         auto viewportConfig = Viewport::Config {
             .size = config.size,
@@ -77,6 +78,10 @@ Result Instance::create(const Config& config) {
         auto renderConfig = Render::Window::Config {
             .scale = config.scale,
         };
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        JST_CHECK(Backend::Initialize<DeviceType::CPU>(backendConfig));
+#endif
 
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
         auto buildGlfw = [&]<DeviceType D>() -> Result {
