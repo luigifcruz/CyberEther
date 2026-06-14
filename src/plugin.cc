@@ -16,7 +16,19 @@
 #include <vector>
 
 #if defined(JST_OS_WINDOWS)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef FATAL
+#undef FATAL
+#endif
 #elif !defined(JST_OS_BROWSER)
 #include <dlfcn.h>
 #endif

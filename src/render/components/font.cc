@@ -93,6 +93,19 @@ Result Font::create(Window* window) {
     for (int ch = 32; ch < 128; ch++) {
         uint8_t* sdf;
         int width, height, xoffset, yoffset;
+        int advanceWidth, leftSideBearing;
+
+        stbtt_GetCodepointHMetrics(&pimpl->font, ch, &advanceWidth, &leftSideBearing);
+
+        glyphs[ch - 32] = {
+            .x0 = 0,
+            .y0 = 0,
+            .x1 = 0,
+            .y1 = 0,
+            .xOffset = 0.0f,
+            .yOffset = 0.0f,
+            .xAdvance = static_cast<F32>(advanceWidth * scale)
+        };
 
         if (!(sdf = stbtt_GetCodepointSDF(&pimpl->font,
                                           scale,
@@ -122,9 +135,6 @@ Result Font::create(Window* window) {
                 atlas[(y + j) * pimpl->atlasSize.x + (x + i)] = sdf[j * width + i];
             }
         }
-
-        int advanceWidth, leftSideBearing;
-        stbtt_GetCodepointHMetrics(&pimpl->font, ch, &advanceWidth, &leftSideBearing);
 
         glyphs[ch - 32] = {
             .x0 = x,
@@ -177,6 +187,18 @@ Result Font::destroy(Window* window) {
 
 const Font::Glyph& Font::glyph(const I32& code) const {
     return glyphs.at(code);
+}
+
+I32 Font::ascent() const {
+    return pimpl->ascent;
+}
+
+I32 Font::descent() const {
+    return pimpl->descent;
+}
+
+I32 Font::lineHeight() const {
+    return pimpl->ascent - pimpl->descent;
 }
 
 const std::shared_ptr<Render::Texture>& Font::atlas() const {

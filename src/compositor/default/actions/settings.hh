@@ -28,6 +28,7 @@ struct SettingsActions {
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
                               MailDismissUpdate,
+                              MailSetPythonRuntimePath,
                               MailAddPluginPath,
                               MailRemovePluginPath,
                               MailReloadPlugin,
@@ -145,6 +146,22 @@ struct SettingsActions {
 
     Result handle(const MailDismissUpdate&) {
         state.update.available = false;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetPythonRuntimePath& msg) {
+        state.runtime.pythonPath = msg.value;
+        state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(msg.value);
+
+        if (!state.runtime.pythonValidation.valid) {
+            return Result::SUCCESS;
+        }
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.runtime.python.path = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 

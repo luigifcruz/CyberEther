@@ -369,8 +369,6 @@ struct ImNodesContext
     bool  AltMouseClicked;
     bool  LeftMouseDragging;
     bool  AltMouseDragging;
-    float AltMouseScrollDelta;
-    float AltMouseScrollDeltaH;
     bool  MultipleSelectModifier;
 };
 

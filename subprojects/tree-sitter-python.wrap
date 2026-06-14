@@ -1,0 +1,10 @@
+[wrap-file]
+directory = tree-sitter-python-0.25.0
+lead_directory_missing = true
+source_url = https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.25.0/tree-sitter-python.tar.gz
+source_filename = tree-sitter-python-0.25.0.tar.gz
+source_hash = 7bce887eb2f33e94bf74a69645cf5138d4096720e54fd3269a6124c06b93c584
+patch_directory = tree-sitter-python
+
+[provide]
+tree-sitter-python = tree_sitter_python_dep

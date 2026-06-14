@@ -31,7 +31,7 @@ struct MarkdownConfigHandle {
 
 struct Context {
     std::reference_wrapper<const Palette> palette = EmptyPalette();
-    const Render::Window* render = nullptr;
+    Render::Window* render = nullptr;
     Fonts fonts;
     MarkdownConfigHandle markdownConfig;
 };

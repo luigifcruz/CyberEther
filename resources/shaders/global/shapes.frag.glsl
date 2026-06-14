@@ -2,8 +2,6 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 // TODO: Implement borders.
-// TODO: Implement rounded corners.
-
 layout(location = 0) in vec2 inLocalPos;
 layout(location = 1) in vec4 inFillColor;
 layout(location = 2) in vec4 inBorderColor;
@@ -21,11 +19,6 @@ float sdfCircle(vec2 p, float radius) {
     return length(p) - radius;
 }
 
-float sdfRect(vec2 p, vec2 size) {
-    vec2 d = abs(p) - size * 0.5;
-    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
-}
-
 float sdfTriangle(vec2 p) {
     // Optimized equilateral triangle for better antialiasing
     const float k = sqrt(3.0);
@@ -38,31 +31,51 @@ float sdfTriangle(vec2 p) {
     return -length(p) * sign(p.y);
 }
 
+float alphaFromSignedDistance(float signedDistance) {
+    // Convert local SDF distance to stable one-pixel screen coverage.
+    float distancePerPixel = length(vec2(dFdx(signedDistance), dFdy(signedDistance)));
+    distancePerPixel = max(distancePerPixel, 1.0e-6);
+    return clamp(0.5 - signedDistance / distancePerPixel, 0.0, 1.0);
+}
+
+float alphaRect(vec2 p, vec2 size) {
+    // Use separable box coverage to keep thin rectangles crisp.
+    vec2 halfSize = size * 0.5;
+    vec2 insideDistance = halfSize - abs(p);
+
+    vec2 localPixel = max(fwidth(p), vec2(1.0e-6));
+
+    vec2 coverage = clamp(insideDistance / localPixel + 0.5, 0.0, 1.0);
+    return coverage.x * coverage.y;
+}
+
+float alphaRoundedRect(vec2 p, vec2 size, float radiusPixels) {
+    vec2 localPixel = max(fwidth(p), vec2(1.0e-6));
+    vec2 halfSizePixels = (size * 0.5) / localPixel;
+    float radius = clamp(radiusPixels, 0.0, min(halfSizePixels.x, halfSizePixels.y));
+
+    vec2 pPixels = p / localPixel;
+    vec2 q = abs(pPixels) - (halfSizePixels - vec2(radius));
+    float signedDistance = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+    return clamp(0.5 - signedDistance, 0.0, 1.0);
+}
+
 void main() {
     int shapeType = int(inShapeParams.x);
-    float borderWidth = inShapeParams.y;
-    float cornerRadius = inShapeParams.z;
 
-    float distance = 0.0;
+    float fillAlpha = 0.0;
 
-    // Calculate signed distance based on shape type
+    // Calculate analytical coverage based on shape type.
     if (shapeType == TYPE_CIRCLE) {
-        distance = sdfCircle(inLocalPos, 0.5);
+        fillAlpha = alphaFromSignedDistance(sdfCircle(inLocalPos, 0.5));
     } else if (shapeType == TYPE_RECT) {
-        distance = sdfRect(inLocalPos, vec2(1.0));
+        float cornerRadius = inShapeParams.z;
+        fillAlpha = cornerRadius > 0.0 ? alphaRoundedRect(inLocalPos, vec2(1.0), cornerRadius)
+                                       : alphaRect(inLocalPos, vec2(1.0));
     } else if (shapeType == TYPE_TRIANGLE) {
-        distance = sdfTriangle(inLocalPos);
+        fillAlpha = alphaFromSignedDistance(sdfTriangle(inLocalPos));
     }
 
-    // Calculate the gradient of the distance field for antialiasing
-    float width = fwidth(distance);
-
-    // Edge sharpness control
-    float edgeSharpness = 0.75;
-
-    // Shape fill with improved antialiasing
-    float fillAlpha = smoothstep(edgeSharpness * width, -edgeSharpness * width, distance);
-
-    // Combine fill and border
-    outColor = vec4(inFillColor.r, inFillColor.g, inFillColor.b, inFillColor.a * fillAlpha);
+    // Apply fill coverage. Borders are still not implemented.
+    outColor = vec4(inFillColor.rgb, inFillColor.a * fillAlpha);
 }

@@ -341,7 +341,7 @@ Result AdsbImpl::createPresent() {
             cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
             cfg.font = window->font("default_mono");
             cfg.elements = {
-                {"flight", {0.9f, {0.0f, 0.0f}, {0, 2}, 0.0f, ""}},
+                {"flight", {.scale = 0.9f, .alignment = {0, 2}}},
             };
             JST_CHECK(window->build(hoverText, cfg));
             JST_CHECK(window->bind(hoverText));

@@ -23,6 +23,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
         std::vector<std::shared_ptr<Program>> programs;
         ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         bool multisampled = false;
+        bool retained = false;
     };
 
     explicit Surface(const Config& config) : config(config) {}
@@ -40,8 +41,22 @@ class JETSTREAM_API Surface : public WindowAttachment {
         return config.multisampled;
     }
 
+    constexpr const bool& retained() const {
+        return config.retained;
+    }
+
     void clearColor(const ColorRGBA<F32>& color) {
+        if (config.clearColor.r != color.r ||
+            config.clearColor.g != color.g ||
+            config.clearColor.b != color.b ||
+            config.clearColor.a != color.a) {
+            invalidate();
+        }
         config.clearColor = color;
+    }
+
+    void invalidate() {
+        dirty = true;
     }
 
     const Extent2D<U64>& size() const {
@@ -59,6 +74,15 @@ class JETSTREAM_API Surface : public WindowAttachment {
 
  protected:
     Config config;
+    bool dirty = true;
+
+    bool shouldDraw(bool framebufferChanged = false) const {
+        return !config.retained || dirty || framebufferChanged;
+    }
+
+    void markDrawn() {
+        dirty = false;
+    }
 };
 
 }  // namespace Jetstream::Render

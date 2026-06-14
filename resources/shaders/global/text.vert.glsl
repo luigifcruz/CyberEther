@@ -14,11 +14,14 @@ layout(location = 2) in vec4 inTransform0;
 layout(location = 3) in vec4 inTransform1;
 layout(location = 4) in vec4 inTransform2;
 layout(location = 5) in vec4 inTransform3;
+layout(location = 6) in vec4 inColor;
 
 layout(location = 0) out vec2 outTexcoord;
+layout(location = 1) out vec4 outColor;
 
 void main() {
     mat4 inTransform = mat4(inTransform0, inTransform1, inTransform2, inTransform3);
     gl_Position = inTransform * vec4(inPosition, 1.0, 1.0);
     outTexcoord = inTexcoord;
+    outColor = inColor;
 }
