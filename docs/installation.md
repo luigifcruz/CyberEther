@@ -198,7 +198,7 @@ Create a debug-optimized build directory, compile CyberEther, and install the re
 ```bash
 meson setup -Dbuildtype=debugoptimized build
 meson compile -C build
-meson install -C build
+meson install -C build --skip-subprojects
 ```
 
 To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
@@ -216,7 +216,7 @@ Configure, build, and install from a Visual Studio Developer PowerShell or any s
 ```bash
 meson setup --vsenv -Dbuildtype=debugoptimized build
 meson compile -C build
-meson install -C build
+meson install -C build --skip-subprojects
 ```
 
 To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
