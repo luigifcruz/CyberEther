@@ -7,6 +7,7 @@
 #include "metrics/base.hh"
 
 #include "jetstream/block.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
 
 #include <functional>
@@ -246,14 +247,36 @@ struct FlowgraphNode : public Sakura::Component {
                 .label = input.port.label,
                 .help = input.port.help,
                 .enableDetach = true,
+                .dataShape = Shape(),
+                .dataStride = Shape(),
+                .dataType = DataType::None,
+                .dataDevice = block.device,
+                .dataOffsetBytes = 0,
+                .dataContiguous = false,
             });
         }
         for (const auto& output : block.outputs) {
+            const auto& tensor = output.tensor;
+            std::vector<std::vector<std::string>> attributeRows;
+            for (const auto& key : tensor.attributeKeys()) {
+                std::string encoded;
+                if (Parser::TypedToString(tensor.attribute(key), encoded) != Result::SUCCESS) {
+                    encoded = "?";
+                }
+                attributeRows.push_back({key, encoded});
+            }
             pins[pinIndex++].update({
                 .id = FlowgraphPinId(output.port.id),
                 .direction = Sakura::NodePin::Direction::Output,
                 .label = output.port.label,
                 .help = output.port.help,
+                .dataShape = tensor.shape(),
+                .dataStride = tensor.stride(),
+                .dataType = tensor.dtype(),
+                .dataDevice = tensor.device(),
+                .dataOffsetBytes = tensor.offsetBytes(),
+                .dataContiguous = tensor.contiguous(),
+                .dataAttributes = std::move(attributeRows),
             });
         }
 
