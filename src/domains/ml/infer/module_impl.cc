@@ -11,9 +11,12 @@
 namespace Jetstream::Modules {
 
 Result InferImpl::define() {
-    JST_CHECK(defineInterfaceInput("input"));
-    JST_CHECK(defineInterfaceOutput("output"));
-
+    for (size_t i = 0; i < inputNames.size(); ++i) {
+        JST_CHECK(defineInterfaceInput(portKey("input", i, inputNames.size())));
+    }
+    for (size_t i = 0; i < outputNames.size(); ++i) {
+        JST_CHECK(defineInterfaceOutput(portKey("output", i, outputNames.size())));
+    }
     return Result::SUCCESS;
 }
 
@@ -58,76 +61,81 @@ Result InferImpl::configureSessionOptions() {
 }
 
 Result InferImpl::readModelShapes() {
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[INFER] Input tensor must be F32, got {}.", input.dtype());
-        return Result::ERROR;
+    inputShapes.assign(inputTensors.size(), {});
+    for (size_t i = 0; i < inputTensors.size(); ++i) {
+        if (inputTensors[i].dtype() != DataType::F32) {
+            JST_ERROR("[INFER] Input port '{}' must be F32, got {}.",
+                      portKey("input", i, inputTensors.size()), inputTensors[i].dtype());
+            return Result::ERROR;
+        }
+        for (const auto d : inputTensors[i].shape()) {
+            inputShapes[i].push_back(static_cast<int64_t>(d));
+        }
+        if (inputShapes[i].empty()) {
+            JST_ERROR("[INFER] Input tensor {} has an empty shape.", i);
+            return Result::ERROR;
+        }
     }
 
-    // Use the upstream tensor's concrete shape rather than model metadata —
-    // the model may declare symbolic dims (-1) that the tensor already resolves.
-    inputShape.clear();
-    for (const auto d : input.shape()) {
-        inputShape.push_back(static_cast<int64_t>(d));
-    }
-    if (inputShape.empty()) {
-        JST_ERROR("[INFER] Input tensor shape cannot be empty.");
-        return Result::ERROR;
-    }
+    outputShapes.assign(outputNames.size(), {});
+    bool hasDynamicNonBatch = false;
 
-    // IMPORTANT: TensorTypeAndShapeInfo holds a non-owning pointer into TypeInfo;
-    // keep TypeInfo alive until GetShape() returns.
     try {
-        Ort::TypeInfo inTypeInfo = session->GetInputTypeInfo(0);
-        const auto inTensorInfo = inTypeInfo.GetTensorTypeAndShapeInfo();
-        if (inTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-            JST_ERROR("[INFER] Model input must be F32.");
-            return Result::ERROR;
-        }
+        for (size_t i = 0; i < outputNames.size(); ++i) {
+            Ort::TypeInfo inTypeInfo = session->GetInputTypeInfo(inputSessionIdx[i < inputSessionIdx.size() ? i : 0]);
+            if (inTypeInfo.GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+                JST_ERROR("[INFER] Model input '{}' must be F32.", inputNames[i < inputNames.size() ? i : 0]);
+                return Result::ERROR;
+            }
 
-        Ort::TypeInfo outTypeInfo = session->GetOutputTypeInfo(0);
-        const auto outTensorInfo = outTypeInfo.GetTensorTypeAndShapeInfo();
-        if (outTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-            JST_ERROR("[INFER] Model output must be F32.");
-            return Result::ERROR;
+            Ort::TypeInfo outTypeInfo = session->GetOutputTypeInfo(outputSessionIdx[i]);
+            const auto outTensorInfo = outTypeInfo.GetTensorTypeAndShapeInfo();
+            if (outTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+                JST_ERROR("[INFER] Model output '{}' must be F32.", outputNames[i]);
+                return Result::ERROR;
+            }
+            outputShapes[i] = outTensorInfo.GetShape();
+
+            if (!outputShapes[i].empty() && outputShapes[i][0] < 0) {
+                outputShapes[i][0] = inputShapes[0][0];
+            }
+            for (size_t j = 1; j < outputShapes[i].size(); ++j) {
+                if (outputShapes[i][j] < 0) { hasDynamicNonBatch = true; break; }
+            }
         }
-        outputShape = outTensorInfo.GetShape();
     } catch (const Ort::Exception& e) {
         JST_ERROR("[INFER] Failed to read model metadata for '{}': {}", modelPath, e.what());
         return Result::ERROR;
     }
 
-    if (!outputShape.empty() && outputShape[0] < 0) {
-        outputShape[0] = inputShape[0];
-    }
-
-    // If non-batch dims are still symbolic, probe-run to discover the real shape.
-    bool hasDynamicNonBatch = false;
-    for (size_t i = 1; i < outputShape.size(); ++i) {
-        if (outputShape[i] < 0) { hasDynamicNonBatch = true; break; }
-    }
-
     if (hasDynamicNonBatch) {
         auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        std::vector<float> probeData(input.size(), 0.0f);
         std::vector<Ort::Value> probeVals;
-        probeVals.emplace_back(Ort::Value::CreateTensor<float>(memInfo, probeData.data(), probeData.size(),
-                                                               inputShape.data(), inputShape.size()));
+        for (size_t i = 0; i < inputTensors.size(); ++i) {
+            std::vector<float> probeData(inputTensors[i].size(), 0.0f);
+            probeVals.emplace_back(Ort::Value::CreateTensor<float>(
+                memInfo, probeData.data(), probeData.size(),
+                inputShapes[i].data(), inputShapes[i].size()));
+        }
         try {
             auto probeResult = session->Run(Ort::RunOptions{nullptr},
-                                            inputNames.data(),
-                                            probeVals.data(), 1,
-                                            outputNames.data(), 1);
-            outputShape = probeResult[0].GetTensorTypeAndShapeInfo().GetShape();
+                                            ortInputNames.data(), probeVals.data(), probeVals.size(),
+                                            ortOutputNames.data(), ortOutputNames.size());
+            for (size_t i = 0; i < outputNames.size(); ++i) {
+                outputShapes[i] = probeResult[i].GetTensorTypeAndShapeInfo().GetShape();
+            }
         } catch (const Ort::Exception& e) {
             JST_ERROR("[INFER] Shape probe failed for '{}': {}", modelPath, e.what());
             return Result::ERROR;
         }
     }
 
-    for (const auto d : outputShape) {
-        if (d < 0) {
-            JST_ERROR("[INFER] Output shape for '{}' still contains symbolic dimensions.", modelPath);
-            return Result::ERROR;
+    for (size_t i = 0; i < outputNames.size(); ++i) {
+        for (const auto d : outputShapes[i]) {
+            if (d < 0) {
+                JST_ERROR("[INFER] Output '{}' still has symbolic dimensions after probe.", outputNames[i]);
+                return Result::ERROR;
+            }
         }
     }
 
@@ -137,33 +145,44 @@ Result InferImpl::readModelShapes() {
 Result InferImpl::rebuildOrtValues() {
     auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    auto* inputData = input.data<F32>();
-    if (inputData == nullptr) {
-        JST_ERROR("[INFER] Input tensor data is not available.");
-        return Result::ERROR;
-    }
-
-    auto* outputData = output.data<F32>();
-    if (outputData == nullptr) {
-        JST_ERROR("[INFER] Output tensor data is not available.");
-        return Result::ERROR;
-    }
-
     inputValues.clear();
-    inputValues.emplace_back(Ort::Value::CreateTensor<float>(
-        memInfo, inputData, input.size(),
-        inputShape.data(), inputShape.size()));
+    for (size_t i = 0; i < inputTensors.size(); ++i) {
+        auto* data = inputTensors[i].data<F32>();
+        if (data == nullptr) {
+            JST_ERROR("[INFER] Input tensor {} data is not available.", i);
+            return Result::ERROR;
+        }
+        inputValues.emplace_back(Ort::Value::CreateTensor<float>(
+            memInfo, data, inputTensors[i].size(),
+            inputShapes[i].data(), inputShapes[i].size()));
+    }
 
     outputValues.clear();
-    outputValues.emplace_back(Ort::Value::CreateTensor<float>(
-        memInfo, outputData, output.size(),
-        outputShape.data(), outputShape.size()));
+    for (size_t i = 0; i < outputTensors.size(); ++i) {
+        auto* data = outputTensors[i].data<F32>();
+        if (data == nullptr) {
+            JST_ERROR("[INFER] Output tensor {} data is not available.", i);
+            return Result::ERROR;
+        }
+        outputValues.emplace_back(Ort::Value::CreateTensor<float>(
+            memInfo, data, outputTensors[i].size(),
+            outputShapes[i].data(), outputShapes[i].size()));
+    }
 
     return Result::SUCCESS;
 }
 
 Result InferImpl::create() {
-    input = inputs().at("input").tensor;
+    // Empty model path — wait for user to select a file.
+    if (modelPath.empty()) {
+        return Result::INCOMPLETE;
+    }
+
+    // Gather and validate input tensors.
+    inputTensors.clear();
+    for (size_t i = 0; i < inputNames.size(); ++i) {
+        inputTensors.push_back(inputs().at(portKey("input", i, inputNames.size())).tensor);
+    }
 
     JST_CHECK(configureSessionOptions());
 
@@ -180,13 +199,50 @@ Result InferImpl::create() {
         return Result::ERROR;
     }
 
+    // Find each named tensor in the session by name (not by index 0).
     try {
         inputNameAllocs.clear();
         outputNameAllocs.clear();
-        inputNameAllocs.push_back(session->GetInputNameAllocated(0, allocator));
-        outputNameAllocs.push_back(session->GetOutputNameAllocated(0, allocator));
-        inputNames  = {inputNameAllocs[0].get()};
-        outputNames = {outputNameAllocs[0].get()};
+        ortInputNames.clear();
+        ortOutputNames.clear();
+        inputSessionIdx.clear();
+        outputSessionIdx.clear();
+
+        for (const auto& name : inputNames) {
+            bool found = false;
+            for (size_t j = 0; j < session->GetInputCount(); ++j) {
+                auto alloc = session->GetInputNameAllocated(j, allocator);
+                if (std::string(alloc.get()) == name) {
+                    inputSessionIdx.push_back(j);
+                    ortInputNames.push_back(alloc.get());
+                    inputNameAllocs.push_back(std::move(alloc));
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                JST_ERROR("[INFER] Input '{}' not found in model '{}'.", name, modelPath);
+                return Result::ERROR;
+            }
+        }
+
+        for (const auto& name : outputNames) {
+            bool found = false;
+            for (size_t j = 0; j < session->GetOutputCount(); ++j) {
+                auto alloc = session->GetOutputNameAllocated(j, allocator);
+                if (std::string(alloc.get()) == name) {
+                    outputSessionIdx.push_back(j);
+                    ortOutputNames.push_back(alloc.get());
+                    outputNameAllocs.push_back(std::move(alloc));
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                JST_ERROR("[INFER] Output '{}' not found in model '{}'.", name, modelPath);
+                return Result::ERROR;
+            }
+        }
     } catch (const Ort::Exception& e) {
         JST_ERROR("[INFER] Failed to read model node names for '{}': {}", modelPath, e.what());
         return Result::ERROR;
@@ -194,16 +250,21 @@ Result InferImpl::create() {
 
     JST_CHECK(readModelShapes());
 
-    Shape outputShapeVec;
-    outputShapeVec.reserve(outputShape.size());
-    for (const auto d : outputShape) {
-        outputShapeVec.push_back(static_cast<U64>(d));
+    // Allocate output tensors and register them.
+    outputTensors.resize(outputNames.size());
+    for (size_t i = 0; i < outputNames.size(); ++i) {
+        Shape shapeVec;
+        shapeVec.reserve(outputShapes[i].size());
+        for (const auto d : outputShapes[i]) {
+            shapeVec.push_back(static_cast<U64>(d));
+        }
+        JST_CHECK(outputTensors[i].create(DeviceType::CPU, DataType::F32, shapeVec));
+
+        const std::string key = portKey("output", i, outputNames.size());
+        outputs()[key].produced(name(), key, outputTensors[i]);
     }
-    JST_CHECK(output.create(DeviceType::CPU, DataType::F32, outputShapeVec));
 
     JST_CHECK(rebuildOrtValues());
-
-    outputs()["output"].produced(name(), "output", output);
 
     return Result::SUCCESS;
 }
@@ -216,8 +277,8 @@ Result InferImpl::runInference() {
 
     try {
         session->Run(Ort::RunOptions{nullptr},
-                     inputNames.data(),  inputValues.data(),  inputValues.size(),
-                     outputNames.data(), outputValues.data(), outputValues.size());
+                     ortInputNames.data(),  inputValues.data(),  inputValues.size(),
+                     ortOutputNames.data(), outputValues.data(), outputValues.size());
     } catch (const Ort::Exception& e) {
         JST_ERROR("[INFER] Inference failed for '{}': {}", modelPath, e.what());
         return Result::ERROR;
@@ -232,16 +293,22 @@ Result InferImpl::destroy() {
     session.reset();
     inputNameAllocs.clear();
     outputNameAllocs.clear();
-    inputNames.clear();
-    outputNames.clear();
+    ortInputNames.clear();
+    ortOutputNames.clear();
+    inputSessionIdx.clear();
+    outputSessionIdx.clear();
+    inputTensors.clear();
+    outputTensors.clear();
     return Result::SUCCESS;
 }
 
 Result InferImpl::reconfigure() {
     const auto& cfg = *candidate();
 
-    if (cfg.modelPath != modelPath || cfg.inputName != inputName ||
-        cfg.outputName != outputName || cfg.batchSize != batchSize ||
+    if (cfg.modelPath         != modelPath         ||
+        cfg.inputNames        != inputNames        ||
+        cfg.outputNames       != outputNames       ||
+        cfg.batchSize         != batchSize         ||
         cfg.executionProvider != executionProvider) {
         return Result::RECREATE;
     }

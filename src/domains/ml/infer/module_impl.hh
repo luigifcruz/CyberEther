@@ -19,31 +19,41 @@ struct InferImpl : public Module::Impl, public DynamicConfig<Infer> {
     Result destroy() override;
     Result reconfigure() override;
 
+    Result runInference();
+
  protected:
-    Tensor input;
-    Tensor output;
+    // One tensor per port (parallel to inputNames / outputNames config vectors).
+    std::vector<Tensor> inputTensors;
+    std::vector<Tensor> outputTensors;
 
     Ort::Env ortEnv{ORT_LOGGING_LEVEL_WARNING, "jetstream"};
     Ort::SessionOptions sessionOptions;
     Ort::AllocatorWithDefaultOptions allocator;
     std::unique_ptr<Ort::Session> session;
 
+    // Raw ORT name pointers — kept alive by the alloc objects below.
+    std::vector<const char*> ortInputNames;
+    std::vector<const char*> ortOutputNames;
     std::vector<Ort::AllocatedStringPtr> inputNameAllocs;
     std::vector<Ort::AllocatedStringPtr> outputNameAllocs;
-    std::vector<const char*> inputNames;
-    std::vector<const char*> outputNames;
+    // Session-internal index for each configured name (used for GetTypeInfo).
+    std::vector<size_t> inputSessionIdx;
+    std::vector<size_t> outputSessionIdx;
 
-    std::vector<int64_t> inputShape;
-    std::vector<int64_t> outputShape;
+    std::vector<std::vector<int64_t>> inputShapes;
+    std::vector<std::vector<int64_t>> outputShapes;
     std::vector<Ort::Value> inputValues;
     std::vector<Ort::Value> outputValues;
-
-    Result runInference();
 
   private:
     Result configureSessionOptions();
     Result readModelShapes();
     Result rebuildOrtValues();
+
+    // "input" for a single-entry vector, "input_N" for multi-entry.
+    static std::string portKey(const std::string& base, size_t idx, size_t total) {
+        return (total == 1) ? base : (base + "_" + std::to_string(idx));
+    }
 };
 
 }  // namespace Jetstream::Modules

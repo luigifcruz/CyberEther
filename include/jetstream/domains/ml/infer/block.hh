@@ -6,36 +6,38 @@
 namespace Jetstream::Blocks {
 
 struct Infer : public Block::Config {
-    std::string modelPath = "";
-    std::string inputName = "modelInput";
-    std::string outputName = "output";
-    U64 batchSize = 1;
-    std::string executionProvider = "cpu";
+    std::string              modelPath         = "";
+    std::vector<std::string> inputNames        = {"modelInput"};
+    std::vector<std::string> outputNames       = {"output"};
+    U64                      batchSize         = 1;
+    std::string              executionProvider = "cpu";
 
     JST_BLOCK_TYPE(infer);
     JST_BLOCK_DOMAIN("ML");
-    JST_BLOCK_PARAMS(modelPath, inputName, outputName, batchSize, executionProvider);
+    JST_BLOCK_PARAMS(modelPath, inputNames, outputNames, batchSize, executionProvider);
     JST_BLOCK_DESCRIPTION(
-        "Infer",
-        "Runs an ONNX model on the input tensor.",
-        "# Infer\n"
+        "ONNX Inference",
+        "Runs an ONNX model on input tensors.",
+        "# ONNX Inference\n"
         "Loads an ONNX model and runs inference on every incoming tensor. "
         "Supports CPU, Core ML, and TensorRT execution providers.\n\n"
 
         "## Arguments\n"
         "- **Model Path**: Filesystem path to the `.onnx` model file.\n"
-        "- **Model Input Name**: ONNX model input tensor name (e.g. `modelInput`).\n"
-        "- **Model Output Name**: ONNX model output tensor name (e.g. `output`).\n"
-        "- **Batch Size**: Expected batch dimension — used for shape display.\n"
+        "- **Input Names**: ONNX model input tensor name(s). One port is declared per entry.\n"
+        "- **Output Names**: ONNX model output tensor name(s). One port is declared per entry.\n"
+        "- **Batch Size**: Expected batch dimension — used when the model declares a dynamic batch dim.\n"
         "- **Execution Provider**: Hardware backend for inference. "
         "Core ML routes ops to the Apple Neural Engine on Apple Silicon. "
         "Switching to Core ML triggers a one-time model compile (~minutes for large models).\n\n"
 
         "## Inputs\n"
-        "- **Input**: F32 tensor matching the model's expected input shape.\n\n"
+        "- **input** (single) or **input_0, input_1, …** (multiple): "
+        "F32 tensor(s) matching the model's expected input shape(s).\n\n"
 
         "## Outputs\n"
-        "- **Output**: F32 tensor with the model's output shape."
+        "- **output** (single) or **output_0, output_1, …** (multiple): "
+        "F32 tensor(s) with the model's output shape(s)."
     );
 };
 
