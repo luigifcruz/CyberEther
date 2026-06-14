@@ -11,15 +11,18 @@ struct InferImplNativeCpu : public InferImpl,
                             public NativeCpuRuntimeContext,
                             public Scheduler::Context {
  public:
-    Result create() final { return InferImpl::create(); }
+    Result create() final;
 
-    Result computeSubmit() override {
-        session->Run(Ort::RunOptions{nullptr},
-                     inputNames.data(),  inputValues.data(),  inputValues.size(),
-                     outputNames.data(), outputValues.data(), outputValues.size());
-        return Result::SUCCESS;
-    }
+    Result computeSubmit() override;
 };
+
+Result InferImplNativeCpu::create() {
+    return InferImpl::create();
+}
+
+Result InferImplNativeCpu::computeSubmit() {
+    return runInference();
+}
 
 JST_REGISTER_MODULE(InferImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 

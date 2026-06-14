@@ -23,24 +23,25 @@ struct InferImpl : public Module::Impl, public DynamicConfig<Infer> {
     Tensor input;
     Tensor output;
 
-    Ort::Env            ortEnv{ORT_LOGGING_LEVEL_WARNING, "jetstream"};
+    Ort::Env ortEnv{ORT_LOGGING_LEVEL_WARNING, "jetstream"};
     Ort::SessionOptions sessionOptions;
     Ort::AllocatorWithDefaultOptions allocator;
     std::unique_ptr<Ort::Session> session;
 
     std::vector<Ort::AllocatedStringPtr> inputNameAllocs;
     std::vector<Ort::AllocatedStringPtr> outputNameAllocs;
-    std::vector<const char*>             inputNames;
-    std::vector<const char*>             outputNames;
+    std::vector<const char*> inputNames;
+    std::vector<const char*> outputNames;
 
-    std::vector<int64_t>  inputShape;
-    std::vector<int64_t>  outputShape;
+    std::vector<int64_t> inputShape;
+    std::vector<int64_t> outputShape;
     std::vector<Ort::Value> inputValues;
     std::vector<Ort::Value> outputValues;
 
-    virtual Result configureSessionOptions();
+    Result runInference();
 
- private:
+  private:
+    Result configureSessionOptions();
     Result readModelShapes();
     Result rebuildOrtValues();
 };

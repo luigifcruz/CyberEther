@@ -8,9 +8,5 @@ if cfg_lst.get('JETSTREAM_LOADER_ONNXRUNTIME_AVAILABLE', false)
         'module_impl_native_cpu.cc',
     ])
 
-    if cfg_lst.get('JETSTREAM_LOADER_ONNXRUNTIME_COREML_AVAILABLE', false)
-        src_lst += files(['module_impl_metal.cc'])
-    endif
-
     sum_lst += {'Infer': ['CPU']}
 endif

@@ -7,10 +7,10 @@
 namespace Jetstream::Modules {
 
 struct Infer : public Module::Config {
-    std::string modelPath;
-    std::string inputName         = "modelInput";
-    std::string outputName        = "output";
-    U64         batchSize         = 1;
+    std::string modelPath = "";
+    std::string inputName = "modelInput";
+    std::string outputName = "output";
+    U64 batchSize = 1;
     std::string executionProvider = "cpu";
 
     JST_MODULE_TYPE(infer);

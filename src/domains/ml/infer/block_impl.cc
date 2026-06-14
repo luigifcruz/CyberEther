@@ -15,44 +15,43 @@ struct InferImpl : public Block::Impl, public DynamicConfig<Blocks::Infer> {
 };
 
 Result InferImpl::configure() {
-    moduleConfig->modelPath         = modelPath;
-    moduleConfig->inputName         = inputName;
-    moduleConfig->outputName        = outputName;
-    moduleConfig->batchSize         = batchSize;
+    moduleConfig->modelPath = modelPath;
+    moduleConfig->inputName = inputName;
+    moduleConfig->outputName = outputName;
+    moduleConfig->batchSize = batchSize;
     moduleConfig->executionProvider = executionProvider;
+
     return Result::SUCCESS;
 }
 
 Result InferImpl::define() {
     JST_CHECK(defineInterfaceInput("input",
                                    "Input",
-                                   "F32 tensor matching the model's expected input shape."));
+                                   "Tensor matching the model's expected input shape."));
     JST_CHECK(defineInterfaceOutput("output",
                                     "Output",
-                                    "F32 tensor with the model's output shape."));
+                                    "Tensor with the model's output shape."));
 
     JST_CHECK(defineInterfaceConfig("modelPath",
                                     "Model Path",
                                     "Filesystem path to the .onnx model file.",
-                                    "text"));
+                                    "filepicker:onnx"));
     JST_CHECK(defineInterfaceConfig("inputName",
-                                    "Input Name",
-                                    "ONNX graph input node name.",
+                                    "Model Input Name",
+                                    "ONNX model input tensor name.",
                                     "text"));
     JST_CHECK(defineInterfaceConfig("outputName",
-                                    "Output Name",
-                                    "ONNX graph output node name.",
+                                    "Model Output Name",
+                                    "ONNX model output tensor name.",
                                     "text"));
     JST_CHECK(defineInterfaceConfig("batchSize",
                                     "Batch Size",
-                                    "Expected batch dimension (for display only).",
+                                    "Expected batch dimension.",
                                     "int:batches"));
     JST_CHECK(defineInterfaceConfig("executionProvider",
                                     "Execution Provider",
-                                    "Hardware backend used for inference. "
-                                    "CoreML routes ops to the Apple Neural Engine on Apple Silicon. "
-                                    "First switch to CoreML triggers a one-time model compile (~minutes for large models).",
-                                    "dropdown:CPU(cpu),CoreML / ANE(coreml),CUDA + TensorRT(cuda_trt)"));
+                                    "Execution backend for running the ONNX model.",
+                                    "dropdown:cpu(CPU),coreml(Core ML),tensorrt(TensorRT)"));
 
     return Result::SUCCESS;
 }
@@ -62,6 +61,7 @@ Result InferImpl::create() {
         {"input", inputs().at("input")},
     }));
     JST_CHECK(moduleExposeOutput("output", {"infer", "output"}));
+
     return Result::SUCCESS;
 }
 
