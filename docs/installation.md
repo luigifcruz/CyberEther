@@ -59,6 +59,16 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 pacman -S bison flex nasm
 ```
 
+ONNX Runtime inference block (`-Dinference=enabled`).
+```bash
+pip install onnxruntime        # CPU only
+pip install onnxruntime-gpu    # CUDA + TensorRT
+```
+
+Examples metadata.
+```bash
+pacman -S python-yaml
+```
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 </details>
@@ -91,6 +101,24 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 apt install bison flex nasm
 ```
 
+Remote capabilities.
+```bash
+apt install libgstreamer1.0-dev gstreamer1.0-libav \
+            gstreamer1.0-plugins-base libgstreamer-plugins-bad1.0-dev \
+            libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+```
+
+ONNX Runtime inference block (`-Dinference=enabled`).
+```bash
+pip install onnxruntime        # CPU only
+pip install onnxruntime-gpu    # CUDA + TensorRT
+```
+
+Examples metadata.
+```bash
+apt install python3-yaml
+```
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 </details>
@@ -123,6 +151,11 @@ No system GLFW, SoapySDR, or GStreamer packages are required for the normal sour
 Vulkan backend (required for Intel-based Macs).
 ```bash
 brew install molten-vk vulkan-tools vulkan-headers
+```
+
+ONNX Runtime inference block (`-Dinference=enabled`). Includes the CoreML execution provider for Apple Neural Engine acceleration.
+```bash
+brew install onnxruntime
 ```
 
 </details>
@@ -222,6 +255,19 @@ meson install -C build --skip-subprojects
 To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
 
 After installation, run `cyberether --help` for usage instructions.
+
+To enable optional features, pass flags to `meson setup`:
+
+| Flag | Values | Description |
+|---|---|---|
+| `-Dinference` | `auto` (default) / `enabled` / `disabled` | ONNX Runtime inference. `auto` silently skips the Infer block if ONNX Runtime is not installed; `enabled` fails the build if it is missing. |
+| `-Dremote` | `auto` (default) / `enabled` / `disabled` | GStreamer-based remote streaming. |
+
+Example — build with inference required:
+```bash
+meson setup -Dbuildtype=debugoptimized -Dinference=enabled build && cd build
+ninja install
+```
 
 </details>
 

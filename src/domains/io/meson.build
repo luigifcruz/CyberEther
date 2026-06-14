@@ -1,4 +1,5 @@
 subdir('audio')
+subdir('fbh_reader')
 subdir('file_reader')
 subdir('file_writer')
 subdir('soapy')
