@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -21,8 +22,12 @@ struct NodePin : public Component {
         std::string help;
         bool enableDetach = false;
         Shape dataShape;
-        DataType dataType;
-        DeviceType dataDevice;
+        Shape dataStride;
+        DataType dataType = DataType::None;
+        DeviceType dataDevice = DeviceType::None;
+        U64 dataOffsetBytes = 0;
+        bool dataContiguous = false;
+        std::vector<std::vector<std::string>> dataAttributes;
     };
 
     NodePin();
