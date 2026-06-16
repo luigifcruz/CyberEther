@@ -45,7 +45,7 @@ DeviceType StringToDevice(const std::string& device) {
     if (!deviceNames.contains(deviceL)) {
         return DeviceType::None;
     }
-    return deviceNames.at(device);
+    return deviceNames.at(deviceL);
 }
 
 std::string_view LocationName(const Location& loc) {
