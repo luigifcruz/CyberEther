@@ -11,6 +11,8 @@
 
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
+#include "resources/fonts/compressed_sg.hh"
+#include "resources/fonts/compressed_inter.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -186,6 +188,34 @@ Result Instance::create(const Config& config) {
         JST_CHECK(impl->render->addFont("default_mono_bold", font));
     }
 
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = sg_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_display", font));
+    }
+
+    {
+        const std::pair<const char*, const unsigned int*> faces[] = {
+            {"default_body", inter_regular_compressed_data},
+            {"default_body_italic", inter_italic_compressed_data},
+            {"default_body_bold", inter_bold_compressed_data},
+            {"default_body_bold_italic", inter_bold_italic_compressed_data},
+        };
+        for (const auto& [name, data] : faces) {
+            std::shared_ptr<Render::Components::Font> font;
+            Render::Components::Font::Config cfg;
+            cfg.data = data;
+            cfg.size = 32.0f;
+            JST_CHECK(impl->render->build(font, cfg));
+            JST_CHECK(impl->render->addFont(name, font));
+        }
+    }
+
     impl->remote = std::make_shared<Remote>(impl->viewport.get());
 
     impl->stopping.store(false);
@@ -227,6 +257,21 @@ Result Instance::destroy() {
     }
     if (impl->render && impl->render->hasFont("default_mono_bold")) {
         JST_CHECK(impl->render->removeFont("default_mono_bold"));
+    }
+    if (impl->render && impl->render->hasFont("default_display")) {
+        JST_CHECK(impl->render->removeFont("default_display"));
+    }
+    if (impl->render && impl->render->hasFont("default_body")) {
+        JST_CHECK(impl->render->removeFont("default_body"));
+    }
+    if (impl->render && impl->render->hasFont("default_body_italic")) {
+        JST_CHECK(impl->render->removeFont("default_body_italic"));
+    }
+    if (impl->render && impl->render->hasFont("default_body_bold")) {
+        JST_CHECK(impl->render->removeFont("default_body_bold"));
+    }
+    if (impl->render && impl->render->hasFont("default_body_bold_italic")) {
+        JST_CHECK(impl->render->removeFont("default_body_bold_italic"));
     }
 
     // Destroy render and viewport resources.
