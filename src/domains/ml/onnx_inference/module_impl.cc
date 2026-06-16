@@ -22,6 +22,7 @@ Result OnnxInferenceImpl::define() {
 
 Result OnnxInferenceImpl::configureSessionOptions() {
     sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+    sessionOptions.SetIntraOpNumThreads(0);  // 0 = use all available cores
 
     try {
         const auto providers = Ort::GetAvailableProviders();
