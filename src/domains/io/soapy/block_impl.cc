@@ -99,8 +99,8 @@ Result SoapyImpl::configure() {
     if (isHackRF(deviceString) || isHackRF(resolvedDeviceString)) {
         if (sampleRate < 1.0e6f) {
             sampleRate = 1.0e6f;
-        } else if (sampleRate == 2.0e6f) {
-            sampleRate = 1.0e6f;
+        } else if (sampleRate > 20.0e6f) {
+            sampleRate = 20.0e6f;
         }
     }
 
