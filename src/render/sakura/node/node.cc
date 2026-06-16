@@ -315,6 +315,10 @@ void Node::render(const Context& ctx, Child child) const {
     const ImVec2 nodeGridPosition = ImNodes::GetNodeGridSpacePos(imNodesId);
     const ImVec2 nodeScreenPosition = ImNodes::GetNodeScreenSpacePos(imNodesId);
     const ImVec2 nodeDimensions = ImNodes::GetNodeDimensions(imNodesId);
+    const F32 measuredContentWidth = std::max(0.0f, nodeDimensions.x - ImNodes::GetStyle().NodePadding.x * 2.0f);
+    if (measuredContentWidth > impl->contentSize.x + Scale(ctx, 0.5f)) {
+        impl->contentSize.x = measuredContentWidth;
+    }
     if (config.state == State::Loading) {
         DrawBorderChase(ctx, nodeScreenPosition, nodeDimensions);
         DrawLoadingBadge(ctx, nodeScreenPosition, nodeDimensions);

@@ -1018,7 +1018,7 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
             ImNodeData& node = editor.Nodes.Pool[GImNodes->NodeResizeIdx.Value()];
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
 
-            const float min_content_width = 120.0f;
+            const float min_content_width = ImMax(120.0f, node.TitleBarContentRect.GetWidth());
             const float width_delta = GImNodes->MousePos.x - GImNodes->NodeResizeStartMousePos.x;
             node.ContentSize.x =
                 ImMax(min_content_width, GImNodes->NodeResizeStartContentWidth + width_delta);
