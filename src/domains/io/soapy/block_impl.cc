@@ -7,6 +7,9 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
+#include <algorithm>
+#include <cctype>
+
 namespace Jetstream::Blocks {
 
 using DeviceEntry = std::map<std::string, std::string>;
@@ -85,6 +88,20 @@ Result SoapyImpl::configure() {
         }
     } else if (!availableDeviceList.empty()) {
         selectFirstAvailable(availableDeviceList);
+    }
+
+    // HackRF supports sample rates from 1 MHz to 20 MHz; enforce minimum of 1 MHz.
+    const auto isHackRF = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return text.find("hackrf") != std::string::npos;
+    };
+    if (isHackRF(deviceString) || isHackRF(resolvedDeviceString)) {
+        if (sampleRate < 1.0e6f) {
+            sampleRate = 1.0e6f;
+        } else if (sampleRate == 2.0e6f) {
+            sampleRate = 1.0e6f;
+        }
     }
 
     moduleConfig->deviceString = resolvedDeviceString;
