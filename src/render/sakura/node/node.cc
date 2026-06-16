@@ -136,8 +136,14 @@ void DrawLoadingBadge(const Context& ctx, const ImVec2& pos, const ImVec2& size)
     const ImU32 textColor = ColorWithAlpha(color, 1.0f);
     const ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label);
     const ImVec2 badgeSize(textSize.x + padding.x * 2.0f, textSize.y + padding.y * 2.0f);
-    const ImVec2 badgePosition(pos.x + (size.x - badgeSize.x) * 0.5f,
-                               pos.y + (size.y - badgeSize.y) * 0.5f);
+    const F32 titleClearance = Scale(ctx, 48.0f);
+    const F32 bottomMargin = Scale(ctx, 8.0f);
+    const F32 centeredY = pos.y + (size.y - badgeSize.y) * 0.5f + Scale(ctx, 12.0f);
+    const F32 maxY = pos.y + size.y - badgeSize.y - bottomMargin;
+    const F32 badgeY = maxY >= pos.y + titleClearance
+        ? std::clamp(centeredY, pos.y + titleClearance, maxY)
+        : centeredY;
+    const ImVec2 badgePosition(pos.x + (size.x - badgeSize.x) * 0.5f, badgeY);
     const ImVec2 badgeMax(badgePosition.x + badgeSize.x, badgePosition.y + badgeSize.y);
     const ImVec2 textPosition(badgePosition.x + padding.x, badgePosition.y + padding.y);
 
@@ -272,7 +278,10 @@ void Node::render(const Context& ctx, Child child) const {
     }
 
     ImNodes::SetNodeVerticalResizeEnabled(imNodesId, config.verticalResize);
-    const ImVec2 requestedContentSize = Private::ToImVec2(Scale(ctx, config.dimensions));
+    ImVec2 requestedContentSize = Private::ToImVec2(Scale(ctx, config.dimensions));
+    if (config.state == State::Loading) {
+        requestedContentSize.y = std::max(requestedContentSize.y, Scale(ctx, 96.0f));
+    }
     if (!impl->hasContentSize || !impl->hasRequestedContentSize ||
         impl->contentSizeScale != ScalingFactor(ctx) ||
         impl->requestedContentSize.x != requestedContentSize.x ||
