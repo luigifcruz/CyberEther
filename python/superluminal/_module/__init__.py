@@ -276,19 +276,6 @@ def slider(label: str, min_val: float, max_val: float, value: list):
     lm.slider(label, min_val, max_val, value)
 
 
-def markdown(content: str):
-    """
-    Display markdown formatted text.
-
-    Args:
-        content: The markdown content to display
-    """
-    if not isinstance(content, str):
-        raise TypeError("Content must be a string.")
-
-    lm.markdown(content)
-
-
 def remote_room_id() -> str:
     return lm.remote_room_id()
 
