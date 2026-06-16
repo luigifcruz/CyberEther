@@ -1,1 +1,1 @@
-subdir('infer')
+subdir('onnx_inference')

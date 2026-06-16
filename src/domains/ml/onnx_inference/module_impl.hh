@@ -1,18 +1,18 @@
-#ifndef JETSTREAM_DOMAINS_ML_INFER_MODULE_IMPL_HH
-#define JETSTREAM_DOMAINS_ML_INFER_MODULE_IMPL_HH
+#ifndef JETSTREAM_DOMAINS_ML_ONNX_INFERENCE_MODULE_IMPL_HH
+#define JETSTREAM_DOMAINS_ML_ONNX_INFERENCE_MODULE_IMPL_HH
 
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <jetstream/domains/ml/infer/module.hh>
+#include <jetstream/domains/ml/onnx_inference/module.hh>
 #include <jetstream/detail/module_impl.hh>
 
 #include <onnxruntime_cxx_api.h>
 
 namespace Jetstream::Modules {
 
-struct InferImpl : public Module::Impl, public DynamicConfig<Infer> {
+struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInference> {
  public:
     Result define() override;
     Result create() override;
@@ -58,4 +58,4 @@ struct InferImpl : public Module::Impl, public DynamicConfig<Infer> {
 
 }  // namespace Jetstream::Modules
 
-#endif  // JETSTREAM_DOMAINS_ML_INFER_MODULE_IMPL_HH
+#endif  // JETSTREAM_DOMAINS_ML_ONNX_INFERENCE_MODULE_IMPL_HH

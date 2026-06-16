@@ -1,17 +1,17 @@
-#include <jetstream/domains/ml/infer/block.hh>
+#include <jetstream/domains/ml/onnx_inference/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
-#include <jetstream/domains/ml/infer/module.hh>
+#include <jetstream/domains/ml/onnx_inference/module.hh>
 
 namespace Jetstream::Blocks {
 
-struct InferImpl : public Block::Impl, public DynamicConfig<Blocks::Infer> {
+struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::OnnxInference> {
     Result configure() override;
     Result define() override;
     Result create() override;
 
   protected:
-    std::shared_ptr<Modules::Infer> moduleConfig = std::make_shared<Modules::Infer>();
+    std::shared_ptr<Modules::OnnxInference> moduleConfig = std::make_shared<Modules::OnnxInference>();
 
   private:
     // "input" for a single-entry vector, "input_N" for multi-entry.
@@ -20,7 +20,7 @@ struct InferImpl : public Block::Impl, public DynamicConfig<Blocks::Infer> {
     }
 };
 
-Result InferImpl::configure() {
+Result OnnxInferenceImpl::configure() {
     moduleConfig->modelPath         = modelPath;
     moduleConfig->inputNames        = inputNames;
     moduleConfig->outputNames       = outputNames;
@@ -30,7 +30,7 @@ Result InferImpl::configure() {
     return Result::SUCCESS;
 }
 
-Result InferImpl::define() {
+Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
         JST_CHECK(defineInterfaceInput(portKey("input", i, inputNames.size()),
                                        "Input",
@@ -66,22 +66,22 @@ Result InferImpl::define() {
     return Result::SUCCESS;
 }
 
-Result InferImpl::create() {
+Result OnnxInferenceImpl::create() {
     TensorMap portMap;
     for (size_t i = 0; i < inputNames.size(); ++i) {
         const std::string key = portKey("input", i, inputNames.size());
         portMap[key] = inputs().at(key);
     }
-    JST_CHECK(moduleCreate("infer", moduleConfig, portMap));
+    JST_CHECK(moduleCreate("onnx_inference", moduleConfig, portMap));
 
     for (size_t i = 0; i < outputNames.size(); ++i) {
         const std::string key = portKey("output", i, outputNames.size());
-        JST_CHECK(moduleExposeOutput(key, {"infer", key}));
+        JST_CHECK(moduleExposeOutput(key, {"onnx_inference", key}));
     }
 
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(InferImpl);
+JST_REGISTER_BLOCK(OnnxInferenceImpl);
 
 }  // namespace Jetstream::Blocks

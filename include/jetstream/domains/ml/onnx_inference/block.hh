@@ -1,18 +1,18 @@
-#ifndef JETSTREAM_DOMAINS_ML_INFER_BLOCK_HH
-#define JETSTREAM_DOMAINS_ML_INFER_BLOCK_HH
+#ifndef JETSTREAM_DOMAINS_ML_ONNX_INFERENCE_BLOCK_HH
+#define JETSTREAM_DOMAINS_ML_ONNX_INFERENCE_BLOCK_HH
 
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {
 
-struct Infer : public Block::Config {
+struct OnnxInference : public Block::Config {
     std::string              modelPath         = "";
     std::vector<std::string> inputNames        = {"modelInput"};
     std::vector<std::string> outputNames       = {"output"};
     U64                      batchSize         = 1;
     std::string              executionProvider = "cpu";
 
-    JST_BLOCK_TYPE(infer);
+    JST_BLOCK_TYPE(onnx_inference);
     JST_BLOCK_DOMAIN("ML");
     JST_BLOCK_PARAMS(modelPath, inputNames, outputNames, batchSize, executionProvider);
     JST_BLOCK_DESCRIPTION(
@@ -43,4 +43,4 @@ struct Infer : public Block::Config {
 
 }  // namespace Jetstream::Blocks
 
-#endif  // JETSTREAM_DOMAINS_ML_INFER_BLOCK_HH
+#endif  // JETSTREAM_DOMAINS_ML_ONNX_INFERENCE_BLOCK_HH
