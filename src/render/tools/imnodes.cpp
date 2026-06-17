@@ -605,12 +605,6 @@ void BeginNodeSelection(ImNodesEditorContext& editor, const int node_idx)
         }
         editor.SelectedNodeIndices.push_back(node_idx);
 
-        // Ensure that individually selected nodes get rendered on top
-        ImVector<int>&   depth_stack = editor.NodeDepthOrder;
-        const int* const elem = depth_stack.find(node_idx);
-        IM_ASSERT(elem != depth_stack.end());
-        depth_stack.erase(elem);
-        depth_stack.push_back(node_idx);
     }
     // Deselect a previously-selected node
     else if (GImNodes->MultipleSelectModifier)
@@ -620,6 +614,19 @@ void BeginNodeSelection(ImNodesEditorContext& editor, const int node_idx)
 
         // Don't allow dragging after deselecting
         editor.ClickInteraction.Type = ImNodesClickInteractionType_None;
+    }
+
+    if (editor.ClickInteraction.Type == ImNodesClickInteractionType_Node)
+    {
+        ImVector<int>& depth_stack = editor.NodeDepthOrder;
+        for (int idx = 0; idx < editor.SelectedNodeIndices.Size; ++idx)
+        {
+            const int        selected_node_idx = editor.SelectedNodeIndices[idx];
+            const int* const elem = depth_stack.find(selected_node_idx);
+            IM_ASSERT(elem != depth_stack.end());
+            depth_stack.erase(elem);
+            depth_stack.push_back(selected_node_idx);
+        }
     }
 
     // To support snapping of multiple nodes, we need to store the offset of
@@ -935,6 +942,8 @@ bool ShouldLinkSnapToPin(
     return true;
 }
 
+ImOptionalIndex ResolveHoveredNode(const ImVector<int>& depth_stack);
+
 void ClickInteractionUpdate(ImNodesEditorContext& editor)
 {
     switch (editor.ClickInteraction.Type)
@@ -993,11 +1002,14 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
         TranslateSelectedNodes(editor);
 
         // UPDATE-ME: Hover return false.
-        GImNodes->HoveredNodeIdx = editor.ClickInteraction.HoveredNodeIdx;
-
         if (GImNodes->LeftMouseReleased)
         {
             editor.ClickInteraction.Type = ImNodesClickInteractionType_None;
+            GImNodes->HoveredNodeIdx = ResolveHoveredNode(editor.NodeDepthOrder);
+        }
+        else
+        {
+            GImNodes->HoveredNodeIdx = editor.ClickInteraction.HoveredNodeIdx;
         }
     }
     break;
@@ -1364,6 +1376,45 @@ ImOptionalIndex ResolveHoveredNodeResizeHandle(const ImNodesEditorContext& edito
         }
     }
     return ImOptionalIndex();
+}
+
+ImRect GetNodeRectAtCurrentOrigin(const ImNodesEditorContext& editor, const ImNodeData& node)
+{
+    const ImVec2 min = GridSpaceToScreenSpace(editor, node.Origin);
+    return ImRect(min, min + node.Rect.GetSize());
+}
+
+bool IsNodeInputOccluded(const ImNodesEditorContext& editor, const int node_idx)
+{
+    if (!GImNodes->CanvasRectScreenSpace.Contains(GImNodes->MousePos))
+    {
+        return false;
+    }
+
+    const ImVector<int>& depth_stack = editor.NodeDepthOrder;
+    for (int depth_idx = 0; depth_idx < depth_stack.Size; ++depth_idx)
+    {
+        if (depth_stack[depth_idx] != node_idx)
+        {
+            continue;
+        }
+
+        for (int above_depth_idx = depth_idx + 1; above_depth_idx < depth_stack.Size;
+             ++above_depth_idx)
+        {
+            const int above_node_idx = depth_stack[above_depth_idx];
+            const ImRect rect_above =
+                GetNodeRectAtCurrentOrigin(editor, editor.Nodes.Pool[above_node_idx]);
+            if (rect_above.Contains(GImNodes->MousePos))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    return false;
 }
 
 // [SECTION] render helpers
@@ -1784,6 +1835,7 @@ void Initialize(ImNodesContext* context)
 
     context->CurrentPinIdx = INT_MAX;
     context->CurrentNodeIdx = INT_MAX;
+    context->CurrentNodeInputDisabled = false;
 
     context->DefaultEditorCtx = EditorContextCreate();
     context->EditorCtx = context->DefaultEditorCtx;
@@ -2380,6 +2432,11 @@ void BeginNodeEditor()
                 DrawGrid(editor, canvas_size);
             }
         }
+
+        if (editor.ClickInteraction.Type == ImNodesClickInteractionType_Node)
+        {
+            TranslateSelectedNodes(editor);
+        }
     }
 
     ImGui::PopStyleVar(2);
@@ -2635,6 +2692,12 @@ void BeginNode(const int node_id)
 
     ImGui::PushID(node.Id);
     ImGui::BeginGroup();
+
+    GImNodes->CurrentNodeInputDisabled = IsNodeInputOccluded(editor, node_idx);
+    if (GImNodes->CurrentNodeInputDisabled)
+    {
+        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+    }
 }
 
 void EndNode()
@@ -2645,6 +2708,12 @@ void EndNode()
     ImNodesEditorContext& editor = EditorContextGet();
 
     // The node's rectangle depends on the ImGui UI group size.
+    if (GImNodes->CurrentNodeInputDisabled)
+    {
+        ImGui::PopItemFlag();
+        GImNodes->CurrentNodeInputDisabled = false;
+    }
+
     ImGui::EndGroup();
     ImGui::PopID();
 

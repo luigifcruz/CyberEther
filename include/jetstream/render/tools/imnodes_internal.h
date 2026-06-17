@@ -333,6 +333,7 @@ struct ImNodesContext
     int CurrentNodeIdx;
     int CurrentPinIdx;
     int CurrentAttributeId;
+    bool CurrentNodeInputDisabled;
 
     ImOptionalIndex HoveredNodeIdx;
     ImOptionalIndex HoveredLinkIdx;
