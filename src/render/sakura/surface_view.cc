@@ -145,10 +145,15 @@ void SurfaceView::render(const Context& ctx) const {
                                                 IM_COL32_WHITE,
                                                 rounding);
 
-    ImGui::InvisibleButton(config.id.c_str(), surfaceSize);
-    state.hovered = ImGui::IsItemHovered();
-    state.active = ImGui::IsItemActive();
-    state.deactivated = ImGui::IsItemDeactivated();
+    if (config.onMouse) {
+        ImGui::InvisibleButton(config.id.c_str(), surfaceSize);
+        state.hovered = ImGui::IsItemHovered();
+        state.active = ImGui::IsItemActive();
+        state.deactivated = ImGui::IsItemDeactivated();
+    } else {
+        ImGui::Dummy(surfaceSize);
+        state.hovered = ImGui::IsItemHovered();
+    }
     if (state.hovered || state.active || state.deactivated) {
         const ImVec2 mousePos = ImGui::GetMousePos();
         state.normalizedMouse = {(mousePos.x - cursorPos.x) / surfaceSize.x,
