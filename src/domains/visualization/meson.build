@@ -1,4 +1,5 @@
 subdir('constellation')
+subdir('frame')
 subdir('lineplot')
 subdir('note')
 subdir('spectrogram')
