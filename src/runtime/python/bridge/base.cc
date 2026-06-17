@@ -2,6 +2,8 @@
 #include "runtime/python/bridge/cpython/base.hh"
 #include "runtime/python/bridge/prelude/bridge.hh"
 
+#include <cstddef>
+
 #include "jetstream/logger.hh"
 
 namespace Jetstream {
@@ -12,18 +14,103 @@ namespace {
 
 constexpr const char* kComputeErrorStatus = "Compute error.";
 
+struct ThreadStateScope {
+    CPython::PyThreadState* state = nullptr;
+    std::size_t depth = 0;
+};
+
+thread_local ThreadStateScope s_threadState;
+
+std::mutex s_activeBridgeMutex;
+std::size_t s_activeBridgeCount = 0;
+
+void RegisterPythonGlobals() {
+    std::lock_guard<std::mutex> lock(s_activeBridgeMutex);
+    ++s_activeBridgeCount;
+}
+
+bool UnregisterPythonGlobals() {
+    std::lock_guard<std::mutex> lock(s_activeBridgeMutex);
+    if (s_activeBridgeCount == 0) {
+        return true;
+    }
+
+    --s_activeBridgeCount;
+    return s_activeBridgeCount == 0;
+}
+
 struct GilScope {
-    explicit GilScope() : state(PyGILState_Ensure()) {}
+    explicit GilScope() {
+        if (s_threadState.depth == 0) {
+            if (!s_threadState.state) {
+                // Some extension modules cache CPython thread states; deleting
+                // and recreating them between computes can leave stale TLS behind.
+                s_threadState.state = PyThreadState_New();
+                if (!s_threadState.state) {
+                    JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python thread state.");
+                    status = Result::ERROR;
+                    return;
+                }
+            }
+
+            PyEval_RestoreThread(s_threadState.state);
+            ownsGil = true;
+        }
+
+        ++s_threadState.depth;
+        active = true;
+    }
 
     ~GilScope() {
-        PyGILState_Release(state);
+        if (!active) {
+            return;
+        }
+
+        --s_threadState.depth;
+        if (ownsGil && s_threadState.depth == 0) {
+            s_threadState.state = PyEval_SaveThread();
+        }
     }
 
     GilScope(const GilScope&) = delete;
     GilScope& operator=(const GilScope&) = delete;
 
-    int state;
+    Result result() const {
+        return status;
+    }
+
+    bool active = false;
+    bool ownsGil = false;
+    Result status = Result::SUCCESS;
 };
+
+void CallPythonShutdown(PyObject* globals, const char* name) {
+    if (!globals) {
+        return;
+    }
+
+    auto* shutdown = PyDict_GetItemString(globals, name);
+    if (!shutdown || !PyCallable_Check(shutdown)) {
+        return;
+    }
+
+    auto* result = PyObject_CallFunctionObjArgs(shutdown);
+    if (!result) {
+        PyObject* type = nullptr;
+        PyObject* value = nullptr;
+        PyObject* traceback = nullptr;
+        PyErr_Fetch(&type, &value, &traceback);
+
+        if (type) { Py_DecRef(type); }
+        if (value) { Py_DecRef(value); }
+        if (traceback) { Py_DecRef(traceback); }
+
+        JST_WARN("[RUNTIME_CONTEXT_PYTHON] Python cleanup helper '{}' failed during shutdown.", name);
+        return;
+    }
+
+    Py_DecRef(result);
+}
 
 }  // namespace
 
@@ -53,6 +140,8 @@ Result Bridge::start(const std::string& source,
                      const TensorMap& inputs,
                      const Module::Interface::EntryList& outputOrder,
                      const TensorMap& outputs) {
+    std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
+
     const auto loadResult = Py_Load();
     if (loadResult != Result::SUCCESS) {
         setError("Runtime unavailable.");
@@ -63,6 +152,7 @@ Result Bridge::start(const std::string& source,
     JST_CHECK(stop());
 
     GilScope gil;
+    JST_CHECK(gil.result());
 
     globals = PyDict_New();
     if (!globals) {
@@ -70,6 +160,7 @@ Result Bridge::start(const std::string& source,
         setError("Initialization error.");
         return Result::ERROR;
     }
+    RegisterPythonGlobals();
 
     auto* bridgeResult = PyRun_StringFlags(kPythonBridge, 257, globals, globals, nullptr);
     if (!bridgeResult) {
@@ -150,6 +241,8 @@ Result Bridge::start(const std::string& source,
 }
 
 Result Bridge::stop() {
+    std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
+
     if (!Py_IsLoaded()) {
         globals = nullptr;
         runner = nullptr;
@@ -157,6 +250,7 @@ Result Bridge::stop() {
     }
 
     GilScope gil;
+    JST_CHECK(gil.result());
 
     if (runner) {
         Py_DecRef(runner);
@@ -164,6 +258,11 @@ Result Bridge::stop() {
     }
 
     if (globals) {
+        CallPythonShutdown(globals, "_jetstream_shutdown");
+        if (UnregisterPythonGlobals()) {
+            CallPythonShutdown(globals, "_jetstream_shutdown_runtime");
+        }
+        (void)consoleRefresh();
         Py_DecRef(globals);
         globals = nullptr;
     }
@@ -172,6 +271,8 @@ Result Bridge::stop() {
 }
 
 Result Bridge::run() {
+    std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
+
     {
         std::lock_guard<std::mutex> lock(statusMutex);
         if (!healthy && status == kComputeErrorStatus) {
@@ -195,6 +296,7 @@ Result Bridge::run() {
     }
 
     GilScope gil;
+    JST_CHECK(gil.result());
 
     auto* result = PyObject_CallFunctionObjArgs(runner);
     if (!result) {

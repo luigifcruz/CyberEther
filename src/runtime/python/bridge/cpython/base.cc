@@ -130,6 +130,9 @@ using PySetProgramNameFn = void (*)(const wchar_t*);
 using PyDecodeLocaleFn = wchar_t* (*)(const char*, size_t*);
 using PyGILStateEnsureFn = int (*)();
 using PyGILStateReleaseFn = void (*)(int);
+using PyInterpreterStateMainFn = PyInterpreterState* (*)();
+using PyThreadStateNewFn = PyThreadState* (*)(PyInterpreterState*);
+using PyEvalRestoreThreadFn = void (*)(PyThreadState*);
 using PyEvalSaveThreadFn = PyThreadState* (*)();
 using PyRunStringFlagsFn = PyObject* (*)(const char*, int, PyObject*, PyObject*, void*);
 using PyDictNewFn = PyObject* (*)();
@@ -157,6 +160,9 @@ struct PythonApi {
     PyDecodeLocaleFn Py_DecodeLocale = nullptr;
     PyGILStateEnsureFn PyGILState_Ensure = nullptr;
     PyGILStateReleaseFn PyGILState_Release = nullptr;
+    PyInterpreterStateMainFn PyInterpreterState_Main = nullptr;
+    PyThreadStateNewFn PyThreadState_New = nullptr;
+    PyEvalRestoreThreadFn PyEval_RestoreThread = nullptr;
     PyEvalSaveThreadFn PyEval_SaveThread = nullptr;
     PyRunStringFlagsFn PyRun_StringFlags = nullptr;
     PyDictNewFn PyDict_New = nullptr;
@@ -185,6 +191,9 @@ Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadOptionalSymbol(handle, api.Py_DecodeLocale, "Py_DecodeLocale"));
     JST_CHECK(LoadSymbol(handle, api.PyGILState_Ensure, "PyGILState_Ensure"));
     JST_CHECK(LoadSymbol(handle, api.PyGILState_Release, "PyGILState_Release"));
+    JST_CHECK(LoadSymbol(handle, api.PyInterpreterState_Main, "PyInterpreterState_Main"));
+    JST_CHECK(LoadSymbol(handle, api.PyThreadState_New, "PyThreadState_New"));
+    JST_CHECK(LoadSymbol(handle, api.PyEval_RestoreThread, "PyEval_RestoreThread"));
     JST_CHECK(LoadSymbol(handle, api.PyEval_SaveThread, "PyEval_SaveThread"));
     JST_CHECK(LoadSymbol(handle, api.PyRun_StringFlags, "PyRun_StringFlags"));
     JST_CHECK(LoadSymbol(handle, api.PyDict_New, "PyDict_New"));
@@ -211,6 +220,7 @@ Result LoadSymbols(void* handle, PythonApi& api) {
 PythonApi s_api;
 void* s_libraryHandle = nullptr;
 bool s_libraryLoaded = false;
+PyInterpreterState* s_interpreter = nullptr;
 wchar_t* s_programName = nullptr;
 
 void SetPythonProgramName(const PythonApi& api, const std::string& programPath) {
@@ -259,15 +269,37 @@ Result Py_Load() {
         return symbolsResult;
     }
 
-    if (!api.Py_IsInitialized()) {
+    const bool initializedHere = !api.Py_IsInitialized();
+    if (initializedHere) {
         SetPythonProgramName(api, validation.programPath);
         api.Py_Initialize();
+    }
+
+    int gilState = 0;
+    if (!initializedHere) {
+        gilState = api.PyGILState_Ensure();
+    }
+
+    auto* interpreter = api.PyInterpreterState_Main();
+    if (!interpreter) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't access Python main interpreter state.");
+        if (!initializedHere) {
+            api.PyGILState_Release(gilState);
+        }
+        CloseLibrary(handle);
+        return Result::ERROR;
+    }
+
+    if (initializedHere) {
         api.PyEval_SaveThread();
+    } else {
+        api.PyGILState_Release(gilState);
     }
 
     s_api = api;
     s_libraryHandle = handle;
     s_libraryLoaded = true;
+    s_interpreter = interpreter;
     JST_INFO("[RUNTIME_CONTEXT_PYTHON] Loaded Python library '{}'.", validation.libraryPath);
     return Result::SUCCESS;
 }
@@ -347,6 +379,14 @@ int PyGILState_Ensure() {
 
 void PyGILState_Release(int state) {
     s_api.PyGILState_Release(state);
+}
+
+PyThreadState* PyThreadState_New() {
+    return s_interpreter ? s_api.PyThreadState_New(s_interpreter) : nullptr;
+}
+
+void PyEval_RestoreThread(PyThreadState* state) {
+    s_api.PyEval_RestoreThread(state);
 }
 
 PyThreadState* PyEval_SaveThread() {

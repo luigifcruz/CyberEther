@@ -32,6 +32,8 @@ struct Bridge {
     Bridge& operator=(const Bridge&) = delete;
 
  private:
+    mutable std::recursive_mutex lifecycleMutex;
+
     CPython::PyObject* globals = nullptr;
     CPython::PyObject* runner = nullptr;
 

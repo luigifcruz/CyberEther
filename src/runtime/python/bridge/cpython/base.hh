@@ -10,6 +10,7 @@ namespace Jetstream::CPython {
 using Py_ssize_t = std::intptr_t;
 
 struct PyObject;
+struct PyInterpreterState;
 struct PyThreadState;
 
 Result Py_Load();
@@ -33,6 +34,8 @@ void Py_Initialize();
 int Py_IsInitialized();
 int PyGILState_Ensure();
 void PyGILState_Release(int state);
+PyThreadState* PyThreadState_New();
+void PyEval_RestoreThread(PyThreadState* state);
 PyThreadState* PyEval_SaveThread();
 PyObject* PyRun_StringFlags(const char* str, int start, PyObject* globals, PyObject* locals, void* flags);
 PyObject* PyDict_New();
