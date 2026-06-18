@@ -21,10 +21,10 @@ struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::Onnx
 };
 
 Result OnnxInferenceImpl::configure() {
-    moduleConfig->modelPath         = modelPath;
-    moduleConfig->inputNames        = inputNames;
-    moduleConfig->outputNames       = outputNames;
-    moduleConfig->batchSize         = batchSize;
+    moduleConfig->modelPath = modelPath;
+    moduleConfig->inputNames = inputNames;
+    moduleConfig->outputNames = outputNames;
+    moduleConfig->batchSize = batchSize;
     moduleConfig->executionProvider = executionProvider;
 
     return Result::SUCCESS;

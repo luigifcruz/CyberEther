@@ -278,7 +278,7 @@ Result OnnxInferenceImpl::runInference() {
 
     try {
         session->Run(Ort::RunOptions{nullptr},
-                     ortInputNames.data(),  inputValues.data(),  inputValues.size(),
+                     ortInputNames.data(), inputValues.data(), inputValues.size(),
                      ortOutputNames.data(), outputValues.data(), outputValues.size());
     } catch (const Ort::Exception& e) {
         JST_ERROR("[ONNX_INFERENCE] Inference failed for '{}': {}", modelPath, e.what());
@@ -306,10 +306,10 @@ Result OnnxInferenceImpl::destroy() {
 Result OnnxInferenceImpl::reconfigure() {
     const auto& cfg = *candidate();
 
-    if (cfg.modelPath         != modelPath         ||
-        cfg.inputNames        != inputNames        ||
-        cfg.outputNames       != outputNames       ||
-        cfg.batchSize         != batchSize         ||
+    if (cfg.modelPath != modelPath ||
+        cfg.inputNames != inputNames ||
+        cfg.outputNames != outputNames ||
+        cfg.batchSize != batchSize ||
         cfg.executionProvider != executionProvider) {
         return Result::RECREATE;
     }
