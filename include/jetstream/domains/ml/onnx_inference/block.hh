@@ -6,11 +6,11 @@
 namespace Jetstream::Blocks {
 
 struct OnnxInference : public Block::Config {
-    std::string              modelPath         = "";
-    std::vector<std::string> inputNames        = {"modelInput"};
-    std::vector<std::string> outputNames       = {"output"};
-    U64                      batchSize         = 1;
-    std::string              executionProvider = "cpu";
+    std::string modelPath = "";
+    std::vector<std::string> inputNames = {"modelInput"};
+    std::vector<std::string> outputNames = {"output"};
+    U64 batchSize = 1;
+    std::string executionProvider = "cpu";
 
     JST_BLOCK_TYPE(onnx_inference);
     JST_BLOCK_DOMAIN("ML");
