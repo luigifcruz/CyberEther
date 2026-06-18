@@ -223,6 +223,12 @@ Result Block::reconfigure(const Parser::Map& config) {
 
     JST_CHECK(impl->validate());
 
+    // If no modules exist (e.g. block failed during creation), recreate rather than
+    // attempting an in-place reconfigure that would silently succeed without reconnecting.
+    if (impl->_moduleOrder.empty()) {
+        return Result::RECREATE;
+    }
+
     // Backup previous configuration and commit.
 
     Parser::Map previousConfig;
