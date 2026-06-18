@@ -89,7 +89,7 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
             for (U64 i = 0; i < floatValues.size(); ++i) {
                 floatFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = config.label,
+                    .label = fieldLabel(i, floatValues.size()),
                     .help = config.help,
                 });
                 floatInputs[i].update({
@@ -116,7 +116,7 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
             for (U64 i = 0; i < intValues.size(); ++i) {
                 intFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = config.label,
+                    .label = fieldLabel(i, intValues.size()),
                     .help = config.help,
                 });
                 intInputs[i].update({
@@ -142,7 +142,7 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
             for (U64 i = 0; i < textValues.size(); ++i) {
                 textFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = config.label,
+                    .label = fieldLabel(i, textValues.size()),
                     .help = config.help,
                 });
                 textInputs[i].update({
@@ -167,6 +167,10 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
                 });
             }
         }
+    }
+
+    std::string fieldLabel(U64 index, size_t total) const {
+        return total > 1 ? jst::fmt::format("{} {}", config.label, index) : config.label;
     }
 
     Config config;

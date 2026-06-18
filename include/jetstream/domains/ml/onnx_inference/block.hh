@@ -7,6 +7,8 @@ namespace Jetstream::Blocks {
 
 struct OnnxInference : public Block::Config {
     std::string modelPath = "";
+    U64 modelInputCount = 1;
+    U64 modelOutputCount = 1;
     std::vector<std::string> inputNames = {"modelInput"};
     std::vector<std::string> outputNames = {"output"};
     U64 batchSize = 1;
@@ -14,7 +16,8 @@ struct OnnxInference : public Block::Config {
 
     JST_BLOCK_TYPE(onnx_inference);
     JST_BLOCK_DOMAIN("ML");
-    JST_BLOCK_PARAMS(modelPath, inputNames, outputNames, batchSize, executionProvider);
+    JST_BLOCK_PARAMS(modelPath, modelInputCount, modelOutputCount,
+                     inputNames, outputNames, batchSize, executionProvider);
     JST_BLOCK_DESCRIPTION(
         "ONNX Inference",
         "Runs an ONNX model on input tensors.",
@@ -24,8 +27,10 @@ struct OnnxInference : public Block::Config {
 
         "## Arguments\n"
         "- **Model Path**: Filesystem path to the `.onnx` model file.\n"
-        "- **Input Names**: ONNX model input tensor name(s). One port is declared per entry.\n"
-        "- **Output Names**: ONNX model output tensor name(s). One port is declared per entry.\n"
+        "- **Model Input Count**: Number of ONNX model input tensors.\n"
+        "- **Model Output Count**: Number of ONNX model output tensors.\n"
+        "- **Model Input Tensor**: ONNX model input tensor name(s). One port is declared per entry.\n"
+        "- **Model Output Tensor**: ONNX model output tensor name(s). One port is declared per entry.\n"
         "- **Batch Size**: Expected batch dimension — used when the model declares a dynamic batch dim.\n"
         "- **Execution Provider**: Hardware backend for inference. "
         "Core ML routes ops to the Apple Neural Engine on Apple Silicon. "
