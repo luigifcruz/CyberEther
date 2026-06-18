@@ -8,5 +8,7 @@ if cfg_lst.get('JETSTREAM_LOADER_ONNXRUNTIME_AVAILABLE', false)
         'module_impl_native_cpu.cc',
     ])
 
+    module_test_lst += files(['block_tests.cc'])
+
     sum_lst += {'ONNX Inference': ['CPU']}
 endif
