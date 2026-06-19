@@ -32,7 +32,7 @@ Result OnesTensorImpl::define() {
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
                                     "Output tensor type.",
-                                    "dropdown:F32(F32),CF32(CF32)"));
+                                    "dropdown:F32(F32),CF32(CF32),F64(F64),CF64(CF64)"));
 
     return Result::SUCCESS;
 }
