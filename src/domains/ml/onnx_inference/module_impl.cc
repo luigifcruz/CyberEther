@@ -12,10 +12,10 @@ namespace Jetstream::Modules {
 
 Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
-        JST_CHECK(defineInterfaceInput(portKey("input", i, inputNames.size())));
+        JST_CHECK(defineInterfaceInput(portKey("input", i)));
     }
     for (size_t i = 0; i < outputNames.size(); ++i) {
-        JST_CHECK(defineInterfaceOutput(portKey("output", i, outputNames.size())));
+        JST_CHECK(defineInterfaceOutput(portKey("output", i)));
     }
     return Result::SUCCESS;
 }
@@ -66,7 +66,7 @@ Result OnnxInferenceImpl::readModelShapes() {
     for (size_t i = 0; i < inputTensors.size(); ++i) {
         if (inputTensors[i].dtype() != DataType::F32) {
             JST_ERROR("[ONNX_INFERENCE] Input port '{}' must be F32, got {}.",
-                      portKey("input", i, inputTensors.size()), inputTensors[i].dtype());
+                      portKey("input", i), inputTensors[i].dtype());
             return Result::ERROR;
         }
         for (const auto d : inputTensors[i].shape()) {
@@ -182,7 +182,7 @@ Result OnnxInferenceImpl::create() {
     // Gather and validate input tensors.
     inputTensors.clear();
     for (size_t i = 0; i < inputNames.size(); ++i) {
-        inputTensors.push_back(inputs().at(portKey("input", i, inputNames.size())).tensor);
+        inputTensors.push_back(inputs().at(portKey("input", i)).tensor);
     }
 
     JST_CHECK(configureSessionOptions());
@@ -261,7 +261,7 @@ Result OnnxInferenceImpl::create() {
         }
         JST_CHECK(outputTensors[i].create(DeviceType::CPU, DataType::F32, shapeVec));
 
-        const std::string key = portKey("output", i, outputNames.size());
+        const std::string key = portKey("output", i);
         outputs()[key].produced(name(), key, outputTensors[i]);
     }
 

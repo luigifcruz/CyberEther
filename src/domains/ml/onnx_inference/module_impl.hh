@@ -50,9 +50,8 @@ struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInferen
     Result readModelShapes();
     Result rebuildOrtValues();
 
-    // "input" for a single-entry vector, "input_N" for multi-entry.
-    static std::string portKey(const std::string& base, size_t idx, size_t total) {
-        return (total == 1) ? base : (base + "_" + std::to_string(idx));
+    static std::string portKey(const std::string& base, size_t idx) {
+        return base + "_" + std::to_string(idx);
     }
 };
 

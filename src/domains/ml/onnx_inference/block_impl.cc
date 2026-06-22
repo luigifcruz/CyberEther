@@ -1,8 +1,6 @@
 #include <jetstream/domains/ml/onnx_inference/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
-#include <algorithm>
-
 #include <jetstream/domains/ml/onnx_inference/module.hh>
 
 namespace Jetstream::Blocks {
@@ -17,40 +15,25 @@ struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::Onnx
     std::shared_ptr<Modules::OnnxInference> moduleConfig = std::make_shared<Modules::OnnxInference>();
 
   private:
-    U64 pendingModelInputCount = 1;
-    U64 pendingModelOutputCount = 1;
-
-    // "input" for a single-entry vector, "input_N" for multi-entry.
-    static std::string portKey(const std::string& base, size_t idx, size_t total) {
-        return (total == 1) ? base : (base + "_" + std::to_string(idx));
+    static std::string portKey(const std::string& base, size_t idx) {
+        return base + "_" + std::to_string(idx);
     }
 };
 
 Result OnnxInferenceImpl::validate() {
     const auto& config = *candidate();
-    const bool inputCountChanged = config.modelInputCount != modelInputCount;
-    const bool outputCountChanged = config.modelOutputCount != modelOutputCount;
-    const U64 effectiveInputCount = inputCountChanged
-        ? config.modelInputCount
-        : std::max(config.modelInputCount, static_cast<U64>(config.inputNames.size()));
-    const U64 effectiveOutputCount = outputCountChanged
-        ? config.modelOutputCount
-        : std::max(config.modelOutputCount, static_cast<U64>(config.outputNames.size()));
 
-    if (effectiveInputCount == 0) {
+    if (config.modelInputCount == 0) {
         JST_ERROR("[BLOCK_ONNX_INFERENCE] Model input count must be greater than 0.");
         return Result::ERROR;
     }
-    if (effectiveOutputCount == 0) {
+    if (config.modelOutputCount == 0) {
         JST_ERROR("[BLOCK_ONNX_INFERENCE] Model output count must be greater than 0.");
         return Result::ERROR;
     }
 
-    pendingModelInputCount = effectiveInputCount;
-    pendingModelOutputCount = effectiveOutputCount;
-
-    if (modelInputCount != effectiveInputCount ||
-        modelOutputCount != effectiveOutputCount) {
+    if (modelInputCount != config.modelInputCount ||
+        modelOutputCount != config.modelOutputCount) {
         return Result::RECREATE;
     }
 
@@ -58,8 +41,6 @@ Result OnnxInferenceImpl::validate() {
 }
 
 Result OnnxInferenceImpl::configure() {
-    modelInputCount = pendingModelInputCount;
-    modelOutputCount = pendingModelOutputCount;
     inputNames.resize(modelInputCount);
     outputNames.resize(modelOutputCount);
 
@@ -74,12 +55,12 @@ Result OnnxInferenceImpl::configure() {
 
 Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
-        JST_CHECK(defineInterfaceInput(portKey("input", i, inputNames.size()),
+        JST_CHECK(defineInterfaceInput(portKey("input", i),
                                        "Input",
                                        "Tensor matching the model's expected input shape."));
     }
     for (size_t i = 0; i < outputNames.size(); ++i) {
-        JST_CHECK(defineInterfaceOutput(portKey("output", i, outputNames.size()),
+        JST_CHECK(defineInterfaceOutput(portKey("output", i),
                                         "Output",
                                         "Tensor with the model's output shape."));
     }
@@ -119,13 +100,13 @@ Result OnnxInferenceImpl::define() {
 Result OnnxInferenceImpl::create() {
     TensorMap portMap;
     for (size_t i = 0; i < inputNames.size(); ++i) {
-        const std::string key = portKey("input", i, inputNames.size());
+        const std::string key = portKey("input", i);
         portMap[key] = inputs().at(key);
     }
     JST_CHECK(moduleCreate("onnx_inference", moduleConfig, portMap));
 
     for (size_t i = 0; i < outputNames.size(); ++i) {
-        const std::string key = portKey("output", i, outputNames.size());
+        const std::string key = portKey("output", i);
         JST_CHECK(moduleExposeOutput(key, {"onnx_inference", key}));
     }
 

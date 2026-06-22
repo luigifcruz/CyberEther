@@ -48,8 +48,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block exposes ports from tens
     REQUIRE(HasInterfaceKey(block.interfaceConfigs, "outputNames"));
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block keeps legacy vector-only counts",
-                 "[modules][onnx_inference][block][compat]") {
+TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block uses counts over vector lengths",
+                 "[modules][onnx_inference][block]") {
     Parser::Map config;
     config["inputNames"] = std::vector<std::string>{"input_a", "input_b"};
     config["outputNames"] = std::vector<std::string>{"output_a", "output_b"};
@@ -59,14 +59,16 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block keeps legacy vector-onl
     REQUIRE(block.state == Block::State::Incomplete);
 
     REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_0"));
-    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_1"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input_1"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input"));
     REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_1"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output_1"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output"));
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("onnx_legacy", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<U64>(saved.at("modelInputCount")) == 2);
-    REQUIRE(std::any_cast<U64>(saved.at("modelOutputCount")) == 2);
+    REQUIRE(std::any_cast<U64>(saved.at("modelInputCount")) == 1);
+    REQUIRE(std::any_cast<U64>(saved.at("modelOutputCount")) == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference tensor counts can shrink vectors",
@@ -88,10 +90,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference tensor counts can shrink vect
     const auto block = viewBlock("onnx_shrink");
     REQUIRE(block.state == Block::State::Incomplete);
 
-    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input_0"));
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
+    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_0"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input_1"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input"));
+    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output_1"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output"));
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("onnx_shrink", saved) == Result::SUCCESS);
@@ -101,7 +105,12 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference tensor counts can shrink vect
 
 TEST_CASE_METHOD(FlowgraphFixture, "ONNX multi-IO example flowgraph imports",
                  "[modules][onnx_inference][block][flowgraph]") {
-    REQUIRE(flowgraph->importFromFile("examples/flowgraphs/onnx-multi-io.yml") == Result::SUCCESS);
+    const std::string path = "examples/flowgraphs/onnx-multi-io.yml";
+    if (!std::filesystem::exists(path)) {
+        SKIP("ONNX multi-IO example flowgraph is not available.");
+    }
+
+    REQUIRE(flowgraph->importFromFile(path) == Result::SUCCESS);
 
     const auto block = viewBlock("infer");
     REQUIRE(block.state == Block::State::Incomplete);
@@ -123,11 +132,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "FRBNN ONNX example imports when local resour
 
     const auto preprocessor = viewBlock("preprocessor");
     REQUIRE(preprocessor.state == Block::State::Created);
-    REQUIRE(HasInterfaceKey(preprocessor.interfaceInputs, "input"));
-    REQUIRE(HasInterfaceKey(preprocessor.interfaceOutputs, "output"));
+    REQUIRE(HasInterfaceKey(preprocessor.interfaceInputs, "input_0"));
+    REQUIRE(HasInterfaceKey(preprocessor.interfaceOutputs, "output_0"));
 
     const auto frbnn = viewBlock("frbnn");
     REQUIRE(frbnn.state == Block::State::Created);
-    REQUIRE(HasInterfaceKey(frbnn.interfaceInputs, "input"));
-    REQUIRE(HasInterfaceKey(frbnn.interfaceOutputs, "output"));
+    REQUIRE(HasInterfaceKey(frbnn.interfaceInputs, "input_0"));
+    REQUIRE(HasInterfaceKey(frbnn.interfaceOutputs, "output_0"));
 }
