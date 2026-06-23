@@ -82,13 +82,15 @@ Result OnnxInferenceImpl::readModelShapes() {
     bool hasDynamicNonBatch = false;
 
     try {
-        for (size_t i = 0; i < outputNames.size(); ++i) {
-            Ort::TypeInfo inTypeInfo = session->GetInputTypeInfo(inputSessionIdx[i < inputSessionIdx.size() ? i : 0]);
+        for (size_t i = 0; i < inputNames.size(); ++i) {
+            Ort::TypeInfo inTypeInfo = session->GetInputTypeInfo(inputSessionIdx[i]);
             if (inTypeInfo.GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                JST_ERROR("[ONNX_INFERENCE] Model input '{}' must be F32.", inputNames[i < inputNames.size() ? i : 0]);
+                JST_ERROR("[ONNX_INFERENCE] Model input '{}' must be F32.", inputNames[i]);
                 return Result::ERROR;
             }
+        }
 
+        for (size_t i = 0; i < outputNames.size(); ++i) {
             Ort::TypeInfo outTypeInfo = session->GetOutputTypeInfo(outputSessionIdx[i]);
             const auto outTensorInfo = outTypeInfo.GetTensorTypeAndShapeInfo();
             if (outTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
