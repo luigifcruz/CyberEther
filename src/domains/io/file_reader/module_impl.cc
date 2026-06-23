@@ -10,6 +10,8 @@ Result FileReaderImpl::validate() {
         return Result::ERROR;
     }
 
+    const bool isDoubleType = config.dataType == "CF64" ||
+                              config.dataType == "F64";
     const bool isFloatType = config.dataType == "CF32" ||
                              config.dataType == "F32";
     const bool isI8Type = config.dataType == "CI8" ||
@@ -21,7 +23,7 @@ Result FileReaderImpl::validate() {
     const bool isU16Type = config.dataType == "CU16" ||
                            config.dataType == "U16";
 
-    if (!isFloatType && !isI8Type && !isU8Type && !isI16Type && !isU16Type) {
+    if (!isDoubleType && !isFloatType && !isI8Type && !isU8Type && !isI16Type && !isU16Type) {
         JST_ERROR("[MODULE_FILE_READER] Invalid data type '{}'.", config.dataType);
         return Result::ERROR;
     }

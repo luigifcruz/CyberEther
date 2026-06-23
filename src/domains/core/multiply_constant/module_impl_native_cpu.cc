@@ -19,6 +19,8 @@ struct MultiplyConstantImplNativeCpu : public MultiplyConstantImpl,
  private:
     Result kernelF32();
     Result kernelCF32();
+    Result kernelF64();
+    Result kernelCF64();
 
     std::function<Result()> kernel;
 };
@@ -33,6 +35,15 @@ Result MultiplyConstantImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
+        return Result::SUCCESS;
+    }
+    if (input.dtype() == DataType::F64 && output.dtype() == DataType::F64) {
+        kernel = [this]() { return kernelF64(); };
+        return Result::SUCCESS;
+    }
+
+    if (input.dtype() == DataType::CF64 && output.dtype() == DataType::CF64) {
+        kernel = [this]() { return kernelCF64(); };
         return Result::SUCCESS;
     }
 
@@ -58,6 +69,26 @@ Result MultiplyConstantImplNativeCpu::kernelCF32() {
     const F32 c = constant;
 
     return AutomaticIterator<CF32, CF32>(
+        [c](const auto& in, auto& out) {
+            out = in * c;
+        },
+    input, output);
+}
+
+Result MultiplyConstantImplNativeCpu::kernelF64() {
+    const F64 c = constant;
+
+    return AutomaticIterator<F64, F64>(
+        [c](const auto& in, auto& out) {
+            out = in * c;
+        },
+    input, output);
+}
+
+Result MultiplyConstantImplNativeCpu::kernelCF64() {
+    const F64 c = constant;
+
+    return AutomaticIterator<CF64, CF64>(
         [c](const auto& in, auto& out) {
             out = in * c;
         },

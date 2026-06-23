@@ -29,7 +29,8 @@ Result OnesTensorImpl::validate() {
         }
     }
 
-    if (config.dataType != "F32" && config.dataType != "CF32") {
+    if (config.dataType != "F32" && config.dataType != "CF32" &&
+        config.dataType != "F64" && config.dataType != "CF64") {
         JST_ERROR("[MODULE_ONES_TENSOR] Invalid data type '{}'.", config.dataType);
         return Result::ERROR;
     }
@@ -53,6 +54,10 @@ Result OnesTensorImpl::create() {
         FillTensor(output, 1.0f);
     } else if (output.dtype() == DataType::CF32) {
         FillTensor(output, CF32(1.0f, 0.0f));
+    } else if (output.dtype() == DataType::F64) {
+        FillTensor(output, 1.0);
+    } else if (output.dtype() == DataType::CF64) {
+        FillTensor(output, CF32(1.0, 0.0));
     } else {
         JST_ERROR("[MODULE_ONES_TENSOR] Unsupported data type '{}'.", output.dtype());
         return Result::ERROR;
