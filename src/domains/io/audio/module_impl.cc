@@ -1,5 +1,6 @@
 #include "module_impl.hh"
 
+#include <any>
 #include <cmath>
 #include <numeric>
 
@@ -159,12 +160,28 @@ Result AudioImpl::create() {
 
     const auto& inputBuffer = inputs().at("buffer").tensor;
 
+    // Derive the effective input sample rate from the incoming buffer when available so
+    // the resampler ratio always matches the actual source rate. Relying solely on the
+    // static config causes a sampling mismatch (slow/distorted audio) when the SDR runs
+    // at a different rate than configured. The config member is left untouched so that
+    // reconfigure() comparisons remain stable.
+    F32 effectiveInSampleRate = inSampleRate;
+    if (inputBuffer.hasAttribute("sampleRate")) {
+        const F32 bufferSampleRate = std::any_cast<F32>(inputBuffer.attribute("sampleRate"));
+        if (bufferSampleRate > 0.0f && bufferSampleRate != effectiveInSampleRate) {
+            JST_DEBUG("[MODULE_AUDIO] Using input buffer sample rate ({:.1f} kHz) "
+                      "instead of configured value ({:.1f} kHz).",
+                      bufferSampleRate / 1e3f, inSampleRate / 1e3f);
+            effectiveInSampleRate = bufferSampleRate;
+        }
+    }
+
     // Configure audio resampler.
 
     pimpl->resamplerConfig = ma_resampler_config_init(
         ma_format_f32,
         1,
-        static_cast<U32>(inSampleRate),
+        static_cast<U32>(effectiveInSampleRate),
         static_cast<U32>(outSampleRate),
         ma_resample_algorithm_linear
     );
@@ -238,7 +255,7 @@ Result AudioImpl::create() {
 
     // Allocate resampler scratch buffer.
 
-    const U64 outputSize = static_cast<U64>(inputBuffer.size() * (outSampleRate / inSampleRate));
+    const U64 outputSize = static_cast<U64>(inputBuffer.size() * (outSampleRate / effectiveInSampleRate));
     JST_CHECK(buffer.create(device(), DataType::F32, {outputSize}));
 
     // Initialize circular buffer.
