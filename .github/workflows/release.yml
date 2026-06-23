@@ -26,7 +26,6 @@ jobs:
     uses: ./.github/workflows/macos.yml
     with:
       package_dmg: true
-    secrets: inherit
 
   emscripten:
     uses: ./.github/workflows/emscripten.yml
