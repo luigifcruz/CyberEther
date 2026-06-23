@@ -19,6 +19,7 @@ ICON_SOURCE="${ICON_SOURCE:-$ROOT_DIR/resources/assets/icon.png}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/.dist/linux}"
 APPIMAGETOOL="${APPIMAGETOOL:-}"
 APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-}"
+APPIMAGE_SUFFIX="${APPIMAGE_SUFFIX:-}"
 JETSTREAM_SO_NAME="libjetstream.so"
 
 die() {
@@ -219,6 +220,7 @@ else
 fi
 
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || die "VERSION contains unsupported characters"
+[[ "$APPIMAGE_SUFFIX" =~ ^(-[A-Za-z0-9][A-Za-z0-9._+-]*)?$ ]] || die "APPIMAGE_SUFFIX contains unsupported characters"
 validate_metadata
 
 CYBERETHER_BINARY="$(abs_path "$CYBERETHER_BINARY")"
@@ -226,7 +228,7 @@ JETSTREAM_SO="$(abs_path "$JETSTREAM_SO")"
 ICON_SOURCE="$(abs_path "$ICON_SOURCE")"
 OUTPUT_DIR="$(abs_path "$OUTPUT_DIR")"
 APPDIR_PATH="$(abs_path "${APPDIR_PATH:-$OUTPUT_DIR/$APP_NAME.AppDir}")"
-APPIMAGE_PATH="$(abs_path "${APPIMAGE_PATH:-$OUTPUT_DIR/$APP_NAME-$VERSION-$ARCH.AppImage}")"
+APPIMAGE_PATH="$(abs_path "${APPIMAGE_PATH:-$OUTPUT_DIR/$APP_NAME-$VERSION-$ARCH$APPIMAGE_SUFFIX.AppImage}")"
 
 validate_inputs
 mkdir -p "$OUTPUT_DIR"

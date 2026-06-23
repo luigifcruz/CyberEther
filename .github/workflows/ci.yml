@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   linux-build:
-    uses: ./.github/workflows/linux-build.yml
+    uses: ./.github/workflows/linux.yml
 
   windows-build:
     uses: ./.github/workflows/windows-build.yml

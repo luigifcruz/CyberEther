@@ -1,0 +1,229 @@
+name: Linux Build
+
+on:
+  workflow_call:
+    inputs:
+      package_appimage:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  SYSTEM_SHARED_LIBS: |
+    libc.so.6
+    libm.so.6
+    libstdc++.so.6
+    libgcc_s.so.1
+    libpthread.so.0
+    libdl.so.2
+    librt.so.1
+    ld-linux-x86-64.so.2
+    ld-linux-aarch64.so.1
+    libvulkan.so.1
+    libX11.so.6
+    libXrandr.so.2
+    libXi.so.6
+    libXinerama.so.1
+    libXcursor.so.1
+    libxkbcommon.so.0
+    libwayland-client.so.0
+    libwayland-cursor.so.0
+    libwayland-egl.so.1
+    libudev.so.1
+    libgudev-1.0.so.0
+  BUNDLED_LINUX_LIBS: |
+    libjetstream.so
+  CUDA_SHARED_LIBS: |
+    libcuda.so.1
+    libcudart.so.13
+    libnvrtc.so.13
+    libnvrtc-builtins.so.13.0
+    libnvJitLink.so.13
+    libcufft.so.12
+
+jobs:
+  bin:
+    name: bin (${{ matrix.tag }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: &linux_variants
+          - tag: x86_64
+            arch: x86_64
+            image: ubuntu:22.04
+            artifact: cyberether-bin-linux-x86_64
+            archive: cyberether-linux-x86_64.tar.gz
+            appimage_suffix: ''
+            runner: ubuntu-latest
+          - tag: aarch64
+            arch: aarch64
+            image: ubuntu:22.04
+            artifact: cyberether-bin-linux-aarch64
+            archive: cyberether-linux-aarch64.tar.gz
+            appimage_suffix: ''
+            runner: ubuntu-24.04-arm
+          - tag: x86_64-cuda
+            arch: x86_64
+            image: nvidia/cuda:13.0.2-devel-ubuntu22.04
+            artifact: cyberether-bin-linux-x86_64-cuda
+            archive: cyberether-linux-x86_64-cuda.tar.gz
+            appimage_suffix: -cuda
+            runner: ubuntu-latest
+          - tag: aarch64-cuda
+            arch: aarch64
+            image: nvidia/cuda:13.0.2-devel-ubuntu22.04
+            artifact: cyberether-bin-linux-aarch64-cuda
+            archive: cyberether-linux-aarch64-cuda.tar.gz
+            appimage_suffix: -cuda
+            runner: ubuntu-24.04-arm
+    container:
+      image: ${{ matrix.image }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PATH: /opt/python/cp312-cp312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      ARCH: ${{ matrix.arch }}
+      APPIMAGE_SUFFIX: ${{ matrix.appimage_suffix }}
+      ARCHIVE: ${{ matrix.archive }}
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          apt-get update --fix-missing
+          apt-get install -y --no-install-recommends \
+            git build-essential pkg-config python3-pip python-is-python3 \
+            curl ca-certificates bison flex nasm patchelf binutils \
+            glslang-tools \
+            libudev-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev \
+            libglvnd-dev libx11-xcb-dev libdrm-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            mesa-vulkan-drivers libvulkan-dev vulkan-validationlayers
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install meson ninja numpy mapbox_earcut pyyaml
+
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          rm -rf build
+          meson setup build \
+            --default-library=shared \
+            -Dprefix=/opt/cyberether \
+            -Dbuildtype=release \
+            -Dexamples=false \
+            -Dremote=enabled
+          meson compile -C build
+
+      - name: Validate binary
+        run: |
+          set -euo pipefail
+          test -f build/cyberether
+          test -f build/libjetstream.so
+
+      - name: Meson tests
+        if: ${{ !contains(matrix.tag, 'cuda') }}
+        run: |
+          set -euo pipefail
+          meson test -C build --print-errorlogs
+
+      - name: Upload Meson test logs
+        if: ${{ failure() && !contains(matrix.tag, 'cuda') }}
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: linux-${{ matrix.tag }}-meson-test-logs
+          path: |
+            build/meson-logs/testlog.txt
+            build/meson-logs/testlog.json
+          if-no-files-found: ignore
+
+      - name: Package binary
+        run: |
+          set -euo pipefail
+          mkdir -p .dist/artifacts .dist/bin
+          cp build/cyberether .dist/bin/cyberether
+          cp build/libjetstream.so .dist/bin/libjetstream.so
+          chmod 755 .dist/bin/cyberether .dist/bin/libjetstream.so
+
+          patchelf --set-soname libjetstream.so .dist/bin/libjetstream.so
+
+          load_path="$(readelf -d .dist/bin/cyberether | awk -F'[][]' '/NEEDED/ && $2 ~ /libjetstream\.so/ { print $2; exit }')"
+          test -n "$load_path"
+          if [ "$load_path" != "libjetstream.so" ]; then
+            patchelf --replace-needed "$load_path" libjetstream.so .dist/bin/cyberether
+          fi
+
+          patchelf --set-rpath '$ORIGIN' .dist/bin/cyberether
+          tar -C .dist/bin -czf ".dist/artifacts/${ARCHIVE}" cyberether libjetstream.so
+
+      - name: Check binary dynamic dependencies
+        uses: ./.github/actions/check-dynamic-deps
+        with:
+          format: elf
+          targets: |
+            .dist/bin/cyberether
+            .dist/bin/libjetstream.so
+          allowlist: |
+            ${{ env.SYSTEM_SHARED_LIBS }}
+            ${{ env.BUNDLED_LINUX_LIBS }}
+            ${{ env.CUDA_SHARED_LIBS }}
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: .dist/artifacts/${{ matrix.archive }}
+
+  appimage:
+    if: ${{ inputs.package_appimage }}
+    needs: bin
+    name: appimage (${{ matrix.tag }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: *linux_variants
+    env:
+      ARCH: ${{ matrix.arch }}
+      APPIMAGE_SUFFIX: ${{ matrix.appimage_suffix }}
+      CYBERETHER_BINARY: .dist/bin/cyberether
+      JETSTREAM_SO: .dist/bin/libjetstream.so
+      OUTPUT_DIR: .dist/linux
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: ${{ matrix.artifact }}
+          path: .dist/artifacts
+
+      - name: Extract Linux binary archive
+        run: |
+          set -euo pipefail
+          mkdir -p .dist/bin
+          tar -C .dist/bin -xzf ".dist/artifacts/${{ matrix.archive }}"
+          test -f .dist/bin/cyberether
+          test -f .dist/bin/libjetstream.so
+
+      - name: Install packaging dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y binutils curl patchelf
+
+      - name: Package AppImage
+        run: apps/linux/create-appimage.sh
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: cyberether-appimage-linux-${{ matrix.tag }}
+          path: .dist/linux/*.AppImage
