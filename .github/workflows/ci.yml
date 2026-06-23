@@ -22,6 +22,3 @@ jobs:
 
   emscripten:
     uses: ./.github/workflows/emscripten.yml
-
-  containers:
-    uses: ./.github/workflows/container.yml
