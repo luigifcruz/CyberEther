@@ -1,7 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <any>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -21,36 +20,31 @@ bool HasInterfaceKey(const std::vector<Flowgraph::View::InterfaceEntry>& entries
 
 }  // namespace
 
-TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block exposes ports from tensor counts",
+TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block waits for a model before exposing tensor ports",
                  "[modules][onnx_inference][block]") {
     Blocks::OnnxInference config;
-    config.modelInputCount = 2;
-    config.modelOutputCount = 3;
-    config.inputNames = {"input_a", "input_b"};
-    config.outputNames = {"output_a", "output_b", "output_c"};
 
-    REQUIRE(flowgraph->blockCreate("onnx_multi", config, {}) == Result::SUCCESS);
-    const auto block = viewBlock("onnx_multi");
+    REQUIRE(flowgraph->blockCreate("onnx_empty", config, {}) == Result::SUCCESS);
+    const auto block = viewBlock("onnx_empty");
     REQUIRE(block.state == Block::State::Incomplete);
 
-    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_0"));
-    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_1"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input"));
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
 
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_1"));
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_2"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output"));
+    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "modelPath"));
+    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "executionProvider"));
 
-    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "modelInputCount"));
-    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "modelOutputCount"));
-    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "inputNames"));
-    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "outputNames"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceConfigs, "modelInputCount"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceConfigs, "modelOutputCount"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceConfigs, "inputNames"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceConfigs, "outputNames"));
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block uses counts over vector lengths",
+TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block ignores legacy manual tensor fields",
                  "[modules][onnx_inference][block]") {
     Parser::Map config;
+    config["modelInputCount"] = U64{2};
+    config["modelOutputCount"] = U64{2};
     config["inputNames"] = std::vector<std::string>{"input_a", "input_b"};
     config["outputNames"] = std::vector<std::string>{"output_a", "output_b"};
 
@@ -58,49 +52,36 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block uses counts over vector
     const auto block = viewBlock("onnx_legacy");
     REQUIRE(block.state == Block::State::Incomplete);
 
-    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_0"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input_1"));
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
     REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input"));
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output_1"));
     REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output"));
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("onnx_legacy", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<U64>(saved.at("modelInputCount")) == 1);
-    REQUIRE(std::any_cast<U64>(saved.at("modelOutputCount")) == 1);
+    REQUIRE_FALSE(saved.contains("modelInputCount"));
+    REQUIRE_FALSE(saved.contains("modelOutputCount"));
+    REQUIRE_FALSE(saved.contains("inputNames"));
+    REQUIRE_FALSE(saved.contains("outputNames"));
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference tensor counts can shrink vectors",
-                 "[modules][onnx_inference][block][reconfigure]") {
-    Blocks::OnnxInference config;
-    config.modelInputCount = 2;
-    config.modelOutputCount = 2;
-    config.inputNames = {"input_a", "input_b"};
-    config.outputNames = {"output_a", "output_b"};
+TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block keeps config UI when model metadata cannot be read",
+                 "[modules][onnx_inference][block]") {
+    const std::string missingModel = "missing-jetstream-onnx-model-for-test.onnx";
+    REQUIRE_FALSE(std::filesystem::exists(missingModel));
 
-    REQUIRE(flowgraph->blockCreate("onnx_shrink", config, {}) == Result::SUCCESS);
-    REQUIRE(viewBlock("onnx_shrink").state == Block::State::Incomplete);
+    Parser::Map config;
+    config["modelPath"] = missingModel;
 
-    Parser::Map update;
-    update["modelInputCount"] = static_cast<U64>(1);
-    update["modelOutputCount"] = static_cast<U64>(1);
-
-    REQUIRE(flowgraph->blockReconfigure("onnx_shrink", update) == Result::SUCCESS);
-    const auto block = viewBlock("onnx_shrink");
+    REQUIRE(flowgraph->blockCreate("onnx_missing", "onnx_inference", config, {}) == Result::SUCCESS);
+    const auto block = viewBlock("onnx_missing");
     REQUIRE(block.state == Block::State::Incomplete);
 
-    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_0"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input_1"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input"));
-    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output_1"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output"));
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
 
-    Parser::Map saved;
-    REQUIRE(flowgraph->blockConfig("onnx_shrink", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<U64>(saved.at("modelInputCount")) == 1);
-    REQUIRE(std::any_cast<U64>(saved.at("modelOutputCount")) == 1);
+    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "modelPath"));
+    REQUIRE(HasInterfaceKey(block.interfaceConfigs, "executionProvider"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "ONNX multi-IO example flowgraph imports",
@@ -121,14 +102,16 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX multi-IO example flowgraph imports",
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "FRBNN ONNX example imports when local resources exist",
-                 "[modules][onnx_inference][block][flowgraph][frbnn]") {
-    if (!std::filesystem::exists("../stelline/resources/frbnn/model/frbnn_preprocessor.onnx") ||
+                  "[modules][onnx_inference][block][flowgraph][frbnn]") {
+    const std::string path = "examples/flowgraphs/frbnn-inference.yml";
+    if (!std::filesystem::exists(path) ||
+        !std::filesystem::exists("../stelline/resources/frbnn/model/frbnn_preprocessor.onnx") ||
         !std::filesystem::exists("../stelline/resources/frbnn/model/frbnn.onnx") ||
         !std::filesystem::exists("../cyberether-blocks/inference/frb_test_data.bin")) {
-        SKIP("FRBNN sibling resources are not available.");
+        SKIP("FRBNN example flowgraph or sibling resources are not available.");
     }
 
-    REQUIRE(flowgraph->importFromFile("examples/flowgraphs/frbnn-inference.yml") == Result::SUCCESS);
+    REQUIRE(flowgraph->importFromFile(path) == Result::SUCCESS);
 
     const auto preprocessor = viewBlock("preprocessor");
     REQUIRE(preprocessor.state == Block::State::Created);

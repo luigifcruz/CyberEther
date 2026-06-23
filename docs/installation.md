@@ -59,10 +59,10 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 pacman -S bison flex nasm
 ```
 
-ONNX Runtime inference block (`-Dinference=enabled`).
+Machine learning inference support depends on the ONNX Runtime.
 ```bash
-pip install onnxruntime        # CPU only
-pip install onnxruntime-gpu    # CUDA + TensorRT
+python -m pip install onnxruntime        # CPU
+python -m pip install onnxruntime-gpu    # CPU+CUDA
 ```
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
@@ -97,17 +97,10 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 apt install bison flex nasm
 ```
 
-ONNX Runtime inference block (`-Dinference=enabled`).
+Machine learning inference support depends on the ONNX Runtime.
 ```bash
-pip install onnxruntime        # CPU only
-pip install onnxruntime-gpu    # CUDA + TensorRT
-```
-
-If Meson cannot locate the pip install, provide the path explicitly:
-```bash
-PKG_CONFIG_PATH=$(python3 -c "import onnxruntime, os; \
-  print(os.path.join(os.path.dirname(onnxruntime.__file__), 'capi'))") \
-  meson setup build -Dinference=enabled
+python -m pip install onnxruntime        # CPU
+python -m pip install onnxruntime-gpu    # CPU+CUDA
 ```
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
@@ -137,7 +130,7 @@ Remote streaming support uses bundled GStreamer sources, but still needs NASM.
 brew install nasm
 ```
 
-ONNX Runtime inference block (`-Dinference=enabled`). Includes the CoreML execution provider for Apple Neural Engine acceleration.
+Machine learning inference support depends on the ONNX Runtime.
 ```bash
 brew install onnxruntime
 ```
@@ -213,6 +206,13 @@ cd CyberEther
 
 ### Build & Install
 
+To enable optional features, pass flags to `meson setup`:
+
+| Flag | Values | Description |
+|---|---|---|
+| `-Dinference` | `enabled` / `disabled` | Machine learning inference feature. |
+| `-Dremote` | `enabled` / `disabled` | Remote streaming feature. |
+
 <details>
 <summary>Linux or macOS</summary>
 
@@ -224,8 +224,6 @@ meson setup -Dbuildtype=debugoptimized build
 meson compile -C build
 meson install -C build --skip-subprojects
 ```
-
-To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
 
 After installation, run `cyberether --help` for usage instructions.
 
@@ -243,22 +241,7 @@ meson compile -C build
 meson install -C build --skip-subprojects
 ```
 
-To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
-
 After installation, run `cyberether --help` for usage instructions.
-
-To enable optional features, pass flags to `meson setup`:
-
-| Flag | Values | Description |
-|---|---|---|
-| `-Dinference` | `auto` (default) / `enabled` / `disabled` | ONNX Runtime inference. `auto` silently skips the Infer block if ONNX Runtime is not installed; `enabled` fails the build if it is missing. |
-| `-Dremote` | `auto` (default) / `enabled` / `disabled` | GStreamer-based remote streaming. |
-
-Example — build with inference required:
-```bash
-meson setup -Dbuildtype=debugoptimized -Dinference=enabled build && cd build
-ninja install
-```
 
 </details>
 

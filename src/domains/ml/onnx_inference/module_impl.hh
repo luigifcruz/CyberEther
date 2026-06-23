@@ -22,7 +22,6 @@ struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInferen
     Result runInference();
 
  protected:
-    // One tensor per port (parallel to inputNames / outputNames config vectors).
     std::vector<Tensor> inputTensors;
     std::vector<Tensor> outputTensors;
 
@@ -31,12 +30,10 @@ struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInferen
     Ort::AllocatorWithDefaultOptions allocator;
     std::unique_ptr<Ort::Session> session;
 
-    // Raw ORT name pointers — kept alive by the alloc objects below.
     std::vector<const char*> ortInputNames;
     std::vector<const char*> ortOutputNames;
     std::vector<Ort::AllocatedStringPtr> inputNameAllocs;
     std::vector<Ort::AllocatedStringPtr> outputNameAllocs;
-    // Session-internal index for each configured name (used for GetTypeInfo).
     std::vector<size_t> inputSessionIdx;
     std::vector<size_t> outputSessionIdx;
 
@@ -49,10 +46,6 @@ struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInferen
     Result configureSessionOptions();
     Result readModelShapes();
     Result rebuildOrtValues();
-
-    static std::string portKey(const std::string& base, size_t idx) {
-        return base + "_" + std::to_string(idx);
-    }
 };
 
 }  // namespace Jetstream::Modules

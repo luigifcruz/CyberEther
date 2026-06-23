@@ -12,36 +12,36 @@ namespace Jetstream::Modules {
 
 Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
-        JST_CHECK(defineInterfaceInput(portKey("input", i)));
+        JST_CHECK(defineInterfaceInput(jst::fmt::format("input_{}", i)));
     }
     for (size_t i = 0; i < outputNames.size(); ++i) {
-        JST_CHECK(defineInterfaceOutput(portKey("output", i)));
+        JST_CHECK(defineInterfaceOutput(jst::fmt::format("output_{}", i)));
     }
     return Result::SUCCESS;
 }
 
 Result OnnxInferenceImpl::configureSessionOptions() {
     sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-    sessionOptions.SetIntraOpNumThreads(0);  // 0 = use all available cores
+    sessionOptions.SetIntraOpNumThreads(0);
 
     try {
         const auto providers = Ort::GetAvailableProviders();
 
         if (executionProvider == "coreml") {
             if (std::find(providers.begin(), providers.end(), "CoreMLExecutionProvider") == providers.end()) {
-                JST_ERROR("[ONNX_INFERENCE] Core ML execution provider requested, but this ONNX Runtime build does not provide CoreMLExecutionProvider.");
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Execution provider 'coreml' requires CoreMLExecutionProvider, but it is not available in this ONNX Runtime build.");
                 return Result::ERROR;
             }
 
             sessionOptions.AppendExecutionProvider("CoreMLExecutionProvider");
-            JST_DEBUG("[ONNX_INFERENCE] Using Core ML execution provider.");
+            JST_DEBUG("[MODULE_ONNX_INFERENCE] Using Core ML execution provider.");
         } else if (executionProvider == "tensorrt") {
             if (std::find(providers.begin(), providers.end(), "TensorrtExecutionProvider") == providers.end()) {
-                JST_ERROR("[ONNX_INFERENCE] TensorRT execution provider requested, but this ONNX Runtime build does not provide TensorrtExecutionProvider.");
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Execution provider 'tensorrt' requires TensorrtExecutionProvider, but it is not available in this ONNX Runtime build.");
                 return Result::ERROR;
             }
             if (std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") == providers.end()) {
-                JST_ERROR("[ONNX_INFERENCE] TensorRT execution provider requested, but this ONNX Runtime build does not provide CUDAExecutionProvider.");
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Execution provider 'tensorrt' requires CUDAExecutionProvider, but it is not available in this ONNX Runtime build.");
                 return Result::ERROR;
             }
 
@@ -50,10 +50,13 @@ Result OnnxInferenceImpl::configureSessionOptions() {
             sessionOptions.AppendExecutionProvider_TensorRT(trtOptions);
             OrtCUDAProviderOptions cudaOptions{};
             sessionOptions.AppendExecutionProvider_CUDA(cudaOptions);
-            JST_DEBUG("[ONNX_INFERENCE] Using TensorRT execution provider.");
+            JST_DEBUG("[MODULE_ONNX_INFERENCE] Using TensorRT execution provider.");
+        } else if (executionProvider != "cpu") {
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Unknown execution provider '{}'.", executionProvider);
+            return Result::ERROR;
         }
     } catch (const Ort::Exception& e) {
-        JST_ERROR("[ONNX_INFERENCE] Failed to configure execution provider '{}': {}",
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Failed to configure execution provider '{}': {}",
                   executionProvider, e.what());
         return Result::ERROR;
     }
@@ -64,29 +67,44 @@ Result OnnxInferenceImpl::configureSessionOptions() {
 Result OnnxInferenceImpl::readModelShapes() {
     inputShapes.assign(inputTensors.size(), {});
     for (size_t i = 0; i < inputTensors.size(); ++i) {
+        const std::string inputKey = jst::fmt::format("input_{}", i);
         if (inputTensors[i].dtype() != DataType::F32) {
-            JST_ERROR("[ONNX_INFERENCE] Input port '{}' must be F32, got {}.",
-                      portKey("input", i), inputTensors[i].dtype());
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' must be F32, got {}.",
+                      inputKey, inputTensors[i].dtype());
             return Result::ERROR;
         }
         for (const auto d : inputTensors[i].shape()) {
             inputShapes[i].push_back(static_cast<int64_t>(d));
         }
         if (inputShapes[i].empty()) {
-            JST_ERROR("[ONNX_INFERENCE] Input tensor {} has an empty shape.", i);
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' has an empty shape.", inputKey);
             return Result::ERROR;
         }
     }
 
     outputShapes.assign(outputNames.size(), {});
-    bool hasDynamicNonBatch = false;
+    bool needsShapeProbe = false;
 
     try {
         for (size_t i = 0; i < inputNames.size(); ++i) {
             Ort::TypeInfo inTypeInfo = session->GetInputTypeInfo(inputSessionIdx[i]);
-            if (inTypeInfo.GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                JST_ERROR("[ONNX_INFERENCE] Model input '{}' must be F32.", inputNames[i]);
+            const auto inTensorInfo = inTypeInfo.GetTensorTypeAndShapeInfo();
+            if (inTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Model input '{}' must be F32.", inputNames[i]);
                 return Result::ERROR;
+            }
+            const auto modelInputShape = inTensorInfo.GetShape();
+            if (modelInputShape.size() != inputShapes[i].size()) {
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Invalid rank ({}) for input '{}' (expected {}).",
+                          inputShapes[i].size(), inputNames[i], modelInputShape.size());
+                return Result::ERROR;
+            }
+            for (size_t j = 0; j < modelInputShape.size(); ++j) {
+                if (modelInputShape[j] >= 0 && modelInputShape[j] != inputShapes[i][j]) {
+                    JST_ERROR("[MODULE_ONNX_INFERENCE] Invalid dimension {} ({}) for input '{}' (expected {}).",
+                              j, inputShapes[i][j], inputNames[i], modelInputShape[j]);
+                    return Result::ERROR;
+                }
             }
         }
 
@@ -94,52 +112,60 @@ Result OnnxInferenceImpl::readModelShapes() {
             Ort::TypeInfo outTypeInfo = session->GetOutputTypeInfo(outputSessionIdx[i]);
             const auto outTensorInfo = outTypeInfo.GetTensorTypeAndShapeInfo();
             if (outTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                JST_ERROR("[ONNX_INFERENCE] Model output '{}' must be F32.", outputNames[i]);
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Model output '{}' must be F32.", outputNames[i]);
                 return Result::ERROR;
             }
             outputShapes[i] = outTensorInfo.GetShape();
 
-            if (!outputShapes[i].empty() && outputShapes[i][0] < 0) {
-                outputShapes[i][0] = inputShapes[0][0];
-            }
-            for (size_t j = 1; j < outputShapes[i].size(); ++j) {
-                if (outputShapes[i][j] < 0) { hasDynamicNonBatch = true; break; }
+            for (size_t j = 0; j < outputShapes[i].size(); ++j) {
+                if (outputShapes[i][j] >= 0) {
+                    continue;
+                }
+                if (j == 0) {
+                    outputShapes[i][j] = inputShapes[0][0];
+                    continue;
+                }
+                needsShapeProbe = true;
+                break;
             }
         }
     } catch (const Ort::Exception& e) {
-        JST_ERROR("[ONNX_INFERENCE] Failed to read model metadata for '{}': {}", modelPath, e.what());
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Failed to read model metadata: {}", e.what());
         return Result::ERROR;
     }
 
-    if (hasDynamicNonBatch) {
+    if (needsShapeProbe) {
         auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         std::vector<std::vector<float>> probeData;
-        std::vector<Ort::Value> probeVals;
+        std::vector<Ort::Value> probeValues;
         probeData.reserve(inputTensors.size());
-        probeVals.reserve(inputTensors.size());
+        probeValues.reserve(inputTensors.size());
+
         for (size_t i = 0; i < inputTensors.size(); ++i) {
             probeData.emplace_back(inputTensors[i].size(), 0.0f);
-            probeVals.emplace_back(Ort::Value::CreateTensor<float>(
+            probeValues.emplace_back(Ort::Value::CreateTensor<float>(
                 memInfo, probeData.back().data(), probeData.back().size(),
                 inputShapes[i].data(), inputShapes[i].size()));
         }
+
         try {
-            auto probeResult = session->Run(Ort::RunOptions{nullptr},
-                                            ortInputNames.data(), probeVals.data(), probeVals.size(),
-                                            ortOutputNames.data(), ortOutputNames.size());
+            auto probeResults = session->Run(Ort::RunOptions{nullptr},
+                                             ortInputNames.data(), probeValues.data(), probeValues.size(),
+                                             ortOutputNames.data(), ortOutputNames.size());
             for (size_t i = 0; i < outputNames.size(); ++i) {
-                outputShapes[i] = probeResult[i].GetTensorTypeAndShapeInfo().GetShape();
+                outputShapes[i] = probeResults[i].GetTensorTypeAndShapeInfo().GetShape();
             }
         } catch (const Ort::Exception& e) {
-            JST_ERROR("[ONNX_INFERENCE] Shape probe failed for '{}': {}", modelPath, e.what());
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Shape probe failed: {}", e.what());
             return Result::ERROR;
         }
     }
 
     for (size_t i = 0; i < outputNames.size(); ++i) {
-        for (const auto d : outputShapes[i]) {
-            if (d < 0) {
-                JST_ERROR("[ONNX_INFERENCE] Output '{}' still has symbolic dimensions after probe.", outputNames[i]);
+        for (const auto dim : outputShapes[i]) {
+            if (dim < 0) {
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Output '{}' still has symbolic dimensions after shape resolution.",
+                          outputNames[i]);
                 return Result::ERROR;
             }
         }
@@ -155,7 +181,8 @@ Result OnnxInferenceImpl::rebuildOrtValues() {
     for (size_t i = 0; i < inputTensors.size(); ++i) {
         auto* data = inputTensors[i].data<F32>();
         if (data == nullptr) {
-            JST_ERROR("[ONNX_INFERENCE] Input tensor {} data is not available.", i);
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' data is not available.",
+                      jst::fmt::format("input_{}", i));
             return Result::ERROR;
         }
         inputValues.emplace_back(Ort::Value::CreateTensor<float>(
@@ -167,7 +194,8 @@ Result OnnxInferenceImpl::rebuildOrtValues() {
     for (size_t i = 0; i < outputTensors.size(); ++i) {
         auto* data = outputTensors[i].data<F32>();
         if (data == nullptr) {
-            JST_ERROR("[ONNX_INFERENCE] Output tensor {} data is not available.", i);
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Output port '{}' data is not available.",
+                      jst::fmt::format("output_{}", i));
             return Result::ERROR;
         }
         outputValues.emplace_back(Ort::Value::CreateTensor<float>(
@@ -179,15 +207,13 @@ Result OnnxInferenceImpl::rebuildOrtValues() {
 }
 
 Result OnnxInferenceImpl::create() {
-    // Empty model path — wait for user to select a file.
     if (modelPath.empty()) {
         return Result::INCOMPLETE;
     }
 
-    // Gather and validate input tensors.
     inputTensors.clear();
     for (size_t i = 0; i < inputNames.size(); ++i) {
-        inputTensors.push_back(inputs().at(portKey("input", i)).tensor);
+        inputTensors.push_back(inputs().at(jst::fmt::format("input_{}", i)).tensor);
     }
 
     JST_CHECK(configureSessionOptions());
@@ -201,11 +227,10 @@ Result OnnxInferenceImpl::create() {
 #endif
         session = std::make_unique<Ort::Session>(ortEnv, ortModelPathData, sessionOptions);
     } catch (const Ort::Exception& e) {
-        JST_ERROR("[ONNX_INFERENCE] Failed to load ONNX model '{}': {}", modelPath, e.what());
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Failed to load ONNX model: {}", e.what());
         return Result::ERROR;
     }
 
-    // Find each named tensor in the session by name (not by index 0).
     try {
         inputNameAllocs.clear();
         outputNameAllocs.clear();
@@ -227,7 +252,14 @@ Result OnnxInferenceImpl::create() {
                 }
             }
             if (!found) {
-                JST_ERROR("[ONNX_INFERENCE] Input '{}' not found in model '{}'.", name, modelPath);
+                std::vector<std::string> availableInputs;
+                availableInputs.reserve(session->GetInputCount());
+                for (size_t j = 0; j < session->GetInputCount(); ++j) {
+                    auto alloc = session->GetInputNameAllocated(j, allocator);
+                    availableInputs.emplace_back(alloc.get());
+                }
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Input '{}' not found. Available inputs: [{}].",
+                          name, jst::fmt::join(availableInputs, ", "));
                 return Result::ERROR;
             }
         }
@@ -245,18 +277,24 @@ Result OnnxInferenceImpl::create() {
                 }
             }
             if (!found) {
-                JST_ERROR("[ONNX_INFERENCE] Output '{}' not found in model '{}'.", name, modelPath);
+                std::vector<std::string> availableOutputs;
+                availableOutputs.reserve(session->GetOutputCount());
+                for (size_t j = 0; j < session->GetOutputCount(); ++j) {
+                    auto alloc = session->GetOutputNameAllocated(j, allocator);
+                    availableOutputs.emplace_back(alloc.get());
+                }
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Output '{}' not found. Available outputs: [{}].",
+                          name, jst::fmt::join(availableOutputs, ", "));
                 return Result::ERROR;
             }
         }
     } catch (const Ort::Exception& e) {
-        JST_ERROR("[ONNX_INFERENCE] Failed to read model node names for '{}': {}", modelPath, e.what());
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Failed to read model input/output names: {}", e.what());
         return Result::ERROR;
     }
 
     JST_CHECK(readModelShapes());
 
-    // Allocate output tensors and register them.
     outputTensors.resize(outputNames.size());
     for (size_t i = 0; i < outputNames.size(); ++i) {
         Shape shapeVec;
@@ -266,7 +304,7 @@ Result OnnxInferenceImpl::create() {
         }
         JST_CHECK(outputTensors[i].create(DeviceType::CPU, DataType::F32, shapeVec));
 
-        const std::string key = portKey("output", i);
+        const std::string key = jst::fmt::format("output_{}", i);
         outputs()[key].produced(name(), key, outputTensors[i]);
     }
 
@@ -277,7 +315,7 @@ Result OnnxInferenceImpl::create() {
 
 Result OnnxInferenceImpl::runInference() {
     if (!session) {
-        JST_ERROR("[ONNX_INFERENCE] Cannot run inference before session creation.");
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Cannot run inference before session creation.");
         return Result::ERROR;
     }
 
@@ -286,7 +324,7 @@ Result OnnxInferenceImpl::runInference() {
                      ortInputNames.data(), inputValues.data(), inputValues.size(),
                      ortOutputNames.data(), outputValues.data(), outputValues.size());
     } catch (const Ort::Exception& e) {
-        JST_ERROR("[ONNX_INFERENCE] Inference failed for '{}': {}", modelPath, e.what());
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Inference failed: {}", e.what());
         return Result::ERROR;
     }
 
@@ -314,7 +352,6 @@ Result OnnxInferenceImpl::reconfigure() {
     if (cfg.modelPath != modelPath ||
         cfg.inputNames != inputNames ||
         cfg.outputNames != outputNames ||
-        cfg.batchSize != batchSize ||
         cfg.executionProvider != executionProvider) {
         return Result::RECREATE;
     }

@@ -8,13 +8,12 @@ namespace Jetstream::Modules {
 
 struct OnnxInference : public Module::Config {
     std::string modelPath = "";
-    std::vector<std::string> inputNames = {"modelInput"};
-    std::vector<std::string> outputNames = {"output"};
-    U64 batchSize = 1;
+    std::vector<std::string> inputNames;
+    std::vector<std::string> outputNames;
     std::string executionProvider = "cpu";
 
     JST_MODULE_TYPE(onnx_inference);
-    JST_MODULE_PARAMS(modelPath, inputNames, outputNames, batchSize, executionProvider);
+    JST_MODULE_PARAMS(modelPath, inputNames, outputNames, executionProvider);
 };
 
 }  // namespace Jetstream::Modules

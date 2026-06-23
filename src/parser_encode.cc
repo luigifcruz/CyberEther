@@ -66,27 +66,6 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         return Result::SUCCESS;
     }
 
-    if (variable.type() == typeid(Parser::Sequence)) {
-        const auto& seq = std::any_cast<const Parser::Sequence&>(variable);
-        std::vector<std::string> parts;
-        parts.reserve(seq.size());
-        for (const auto& entry : seq) {
-            std::string entryStr;
-            if (TypedToString(entry, entryStr) != Result::SUCCESS) {
-                entryStr = "?";
-            }
-            parts.push_back(std::move(entryStr));
-        }
-        encoded = jst::fmt::format("[{}]", jst::fmt::join(parts, ", "));
-        return Result::SUCCESS;
-    }
-
-    if (variable.type() == typeid(std::vector<std::string>)) {
-        const auto& values = std::any_cast<std::vector<std::string>>(variable);
-        encoded = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
-        return Result::SUCCESS;
-    }
-
     if (variable.type() == typeid(std::vector<U64>)) {
         const auto& values = std::any_cast<std::vector<U64>>(variable);
         encoded = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));

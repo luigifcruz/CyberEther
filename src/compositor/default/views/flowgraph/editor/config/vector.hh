@@ -18,24 +18,11 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
         if (this->config.encoded != parsedEncoded) {
             floatValues.clear();
             intValues.clear();
-            textValues.clear();
             if (!this->config.encoded.empty()) {
                 if (valueType == "float") {
                     Parser::StringToTyped(this->config.encoded, floatValues);
                 } else if (valueType == "int") {
                     Parser::StringToTyped(this->config.encoded, intValues);
-                } else if (valueType == "text") {
-                    if (this->config.values.contains(this->config.name)) {
-                        const auto& raw = this->config.values.at(this->config.name);
-                        if (raw.type() == typeid(Parser::Sequence)) {
-                            const auto& seq = std::any_cast<const Parser::Sequence&>(raw);
-                            for (const auto& entry : seq) {
-                                if (entry.type() == typeid(std::string)) {
-                                    textValues.push_back(std::any_cast<std::string>(entry));
-                                }
-                            }
-                        }
-                    }
                 }
             }
             parsedEncoded = this->config.encoded;
@@ -56,12 +43,6 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
                     intInputs[i].render(ctx);
                 });
             }
-        } else if (valueType == "text") {
-            for (U64 i = 0; i < textInputs.size(); ++i) {
-                textFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
-                    textInputs[i].render(ctx);
-                });
-            }
         }
     }
 
@@ -79,8 +60,6 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
         floatInputs.clear();
         intFrames.clear();
         intInputs.clear();
-        textFrames.clear();
-        textInputs.clear();
 
         if (valueType == "float") {
             floatFrames.resize(floatValues.size());
@@ -136,36 +115,6 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
                     },
                 });
             }
-        } else if (valueType == "text") {
-            textFrames.resize(textValues.size());
-            textInputs.resize(textValues.size());
-            for (U64 i = 0; i < textValues.size(); ++i) {
-                textFrames[i].update({
-                    .id = config.id + "Frame" + std::to_string(i),
-                    .label = fieldLabel(i, textValues.size()),
-                    .help = config.help,
-                });
-                textInputs[i].update({
-                    .id = config.id + "Text" + std::to_string(i),
-                    .value = textValues[i],
-                    .onChange = [this, i](const std::string& value) {
-                        auto values = config.values;
-                        auto nextValues = textValues;
-                        if (i < nextValues.size()) {
-                            nextValues[i] = value;
-                        }
-                        Parser::Sequence seq;
-                        seq.reserve(nextValues.size());
-                        for (const auto& s : nextValues) {
-                            seq.emplace_back(s);
-                        }
-                        values[config.name] = std::move(seq);
-                        if (config.onApply) {
-                            config.onApply(std::move(values), false);
-                        }
-                    },
-                });
-            }
         }
     }
 
@@ -181,13 +130,10 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
     int precision = 2;
     std::vector<F32> floatValues;
     std::vector<U64> intValues;
-    std::vector<std::string> textValues;
     std::vector<Sakura::NodeField> floatFrames;
     std::vector<Sakura::NodeFloatInput> floatInputs;
     std::vector<Sakura::NodeField> intFrames;
     std::vector<Sakura::NodeIntInput> intInputs;
-    std::vector<Sakura::NodeField> textFrames;
-    std::vector<Sakura::NodeTextInput> textInputs;
 };
 
 }  // namespace Jetstream
