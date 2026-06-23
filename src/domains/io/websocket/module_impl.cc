@@ -93,6 +93,7 @@ Result WebsocketImpl::create() {
 
     auto client = std::make_unique<httplib::ws::WebSocketClient>(clientUrl);
     client->set_write_timeout(1);
+    client->enable_server_certificate_verification(false);
     client->set_tcp_nodelay(true);
 
     if (!client->is_valid()) {
