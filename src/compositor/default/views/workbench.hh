@@ -22,10 +22,10 @@ struct WorkbenchView : public Sakura::Component {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;
-        bool debugLatencyVisible = false;
-        InfoHudView::Config infoHud;
-        WelcomeHudView::Config welcomeHud;
-        RemoteHudView::Config remoteHud;
+        std::optional<Sakura::DebugWindow::Config> debugWindow;
+        std::optional<InfoHudView::Config> infoHud;
+        std::optional<WelcomeHudView::Config> welcomeHud;
+        std::optional<RemoteHudView::Config> remoteHud;
         MenubarView::Config menubar;
         ModalView::Config modal;
         std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
@@ -56,14 +56,19 @@ struct WorkbenchView : public Sakura::Component {
             return;
         }
 
-        infoHud.update(std::move(this->config.infoHud));
-        welcomeHud.update(std::move(this->config.welcomeHud));
-        remoteHud.update(std::move(this->config.remoteHud));
+        if (this->config.infoHud.has_value()) {
+            infoHud.update(std::move(this->config.infoHud.value()));
+        }
+        if (this->config.welcomeHud.has_value()) {
+            welcomeHud.update(std::move(this->config.welcomeHud.value()));
+        }
+        if (this->config.remoteHud.has_value()) {
+            remoteHud.update(std::move(this->config.remoteHud.value()));
+        }
         notifications.update({.id = "notifications"});
-        debugWindow.update({
-            .id = "latency-debug-window",
-            .visible = this->config.debugLatencyVisible,
-        });
+        if (this->config.debugWindow.has_value()) {
+            debugWindow.update(std::move(this->config.debugWindow.value()));
+        }
 
         auto menubarConfig = std::move(this->config.menubar);
         auto onHeight = std::move(menubarConfig.onHeight);
@@ -113,11 +118,19 @@ struct WorkbenchView : public Sakura::Component {
             return;
         }
 
-        infoHud.render(ctx);
-        welcomeHud.render(ctx);
-        remoteHud.render(ctx);
+        if (config.infoHud.has_value()) {
+            infoHud.render(ctx);
+        }
+        if (config.welcomeHud.has_value()) {
+            welcomeHud.render(ctx);
+        }
+        if (config.remoteHud.has_value()) {
+            remoteHud.render(ctx);
+        }
         notifications.render(ctx);
-        debugWindow.render(ctx);
+        if (config.debugWindow.has_value()) {
+            debugWindow.render(ctx);
+        }
 
         menubar.render(ctx);
         workspaceBackground.render(ctx);

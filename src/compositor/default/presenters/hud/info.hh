@@ -5,6 +5,8 @@
 
 #include "../../views/hud/info.hh"
 
+#include <optional>
+
 namespace Jetstream {
 
 struct InfoHudPresenter {
@@ -12,9 +14,12 @@ struct InfoHudPresenter {
 
     explicit InfoHudPresenter(const PresenterContext& context) : context(context) {}
 
-    InfoHudView::Config build() const {
+    std::optional<InfoHudView::Config> build() const {
+        if (!context.state.interface.infoPanelEnabled) {
+            return std::nullopt;
+        }
+
         return InfoHudView::Config{
-            .visible = context.state.interface.infoPanelEnabled,
             .frameRate = Sakura::FrameRate(),
             .viewportName = context.state.system.viewport->name(),
             .renderInfo = context.state.system.render->info(),
