@@ -11,17 +11,17 @@ permissions:
   contents: read
 
 jobs:
-  linux-build:
+  linux:
     uses: ./.github/workflows/linux.yml
 
-  windows-build:
+  windows:
     uses: ./.github/workflows/windows.yml
 
   macos:
     uses: ./.github/workflows/macos.yml
 
   emscripten:
-    uses: ./.github/workflows/emscripten-build.yml
+    uses: ./.github/workflows/emscripten.yml
 
   containers:
-    uses: ./.github/workflows/container-build.yml
+    uses: ./.github/workflows/container.yml

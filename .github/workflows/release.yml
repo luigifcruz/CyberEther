@@ -15,7 +15,7 @@ jobs:
       package_appimage: true
 
   wheel:
-    uses: ./.github/workflows/wheel-build.yml
+    uses: ./.github/workflows/wheel.yml
 
   windows:
     uses: ./.github/workflows/windows.yml
@@ -29,10 +29,10 @@ jobs:
     secrets: inherit
 
   emscripten:
-    uses: ./.github/workflows/emscripten-build.yml
+    uses: ./.github/workflows/emscripten.yml
 
   containers:
-    uses: ./.github/workflows/container-build.yml
+    uses: ./.github/workflows/container.yml
 
   github-release:
     if: github.event_name == 'push'
