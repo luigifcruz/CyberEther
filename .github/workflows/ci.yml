@@ -15,7 +15,7 @@ jobs:
     uses: ./.github/workflows/linux.yml
 
   windows-build:
-    uses: ./.github/workflows/windows-build.yml
+    uses: ./.github/workflows/windows.yml
 
   macos:
     uses: ./.github/workflows/macos.yml

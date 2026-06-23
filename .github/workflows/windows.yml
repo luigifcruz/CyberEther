@@ -2,6 +2,10 @@ name: Windows Build
 
 on:
   workflow_call:
+    inputs:
+      package_msi:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -146,3 +150,41 @@ jobs:
         with:
           name: cyberether-bin-windows-x86_64
           path: .dist/artifacts/cyberether-windows-x86_64.tar.gz
+
+  msi:
+    if: ${{ inputs.package_msi }}
+    needs: bin
+    runs-on: windows-latest
+    env:
+      ARCH: x86_64
+      CYBERETHER_BINARY: .dist\bin\cyberether.exe
+      JETSTREAM_DLL: .dist\bin\jetstream.dll
+      OUTPUT_DIR: .dist\windows
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cyberether-bin-windows-x86_64
+          path: .dist/artifacts
+
+      - name: Extract Windows binary archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .dist\bin | Out-Null
+          tar -C .dist\bin -xzf .dist\artifacts\cyberether-windows-x86_64.tar.gz
+          if (!(Test-Path .dist\bin\cyberether.exe)) {
+            throw 'cyberether.exe was not extracted.'
+          }
+          if (!(Test-Path .dist\bin\jetstream.dll)) {
+            throw 'jetstream.dll was not extracted.'
+          }
+
+      - name: Package MSI
+        shell: pwsh
+        run: apps/windows/create-msi.ps1
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cyberether-msi-windows-x86_64
+          path: .dist/windows/*.msi
