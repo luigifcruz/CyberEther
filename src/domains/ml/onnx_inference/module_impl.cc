@@ -111,11 +111,14 @@ Result OnnxInferenceImpl::readModelShapes() {
 
     if (hasDynamicNonBatch) {
         auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        std::vector<std::vector<float>> probeData;
         std::vector<Ort::Value> probeVals;
+        probeData.reserve(inputTensors.size());
+        probeVals.reserve(inputTensors.size());
         for (size_t i = 0; i < inputTensors.size(); ++i) {
-            std::vector<float> probeData(inputTensors[i].size(), 0.0f);
+            probeData.emplace_back(inputTensors[i].size(), 0.0f);
             probeVals.emplace_back(Ort::Value::CreateTensor<float>(
-                memInfo, probeData.data(), probeData.size(),
+                memInfo, probeData.back().data(), probeData.back().size(),
                 inputShapes[i].data(), inputShapes[i].size()));
         }
         try {
