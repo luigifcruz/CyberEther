@@ -11,6 +11,8 @@ CyberEther can be installed through pre-built binaries, container images, or by 
 
 The easiest way to install CyberEther is to download a pre-built binary from the [CyberEther website](https://cyberether.org).
 
+Linux releases include CPU and CUDA variants for `x86_64` and `aarch64`. The CUDA artifacts use a `-cuda` suffix and require a compatible NVIDIA driver and CUDA 13 runtime libraries on the target system.
+
 If your platform is not listed or you want to customize the build, follow the [Build From Source](#build-from-source) instructions below.
 
 ## Container Images
@@ -20,7 +22,11 @@ Docker images are also published to the GitHub Container Registry (`ghcr.io`) fo
 ```bash
 docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-x86_64
 docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64
+docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-x86_64-cuda
+docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64-cuda
 ```
+
+The CUDA container images include the CUDA 13 user-space libraries, but still require a compatible NVIDIA driver and NVIDIA Container Toolkit on the host. Run them with GPU access enabled, for example `docker run --gpus all ...`.
 
 ## Build From Source
 
