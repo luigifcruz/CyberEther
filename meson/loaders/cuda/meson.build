@@ -8,7 +8,6 @@ foreach x_dep : deps
 endforeach
 
 if all_deps_found
-    add_languages('cuda')
     cfg_lst.set('JETSTREAM_LOADER_CUDA_AVAILABLE', true)
     dep_lst += deps
 endif
