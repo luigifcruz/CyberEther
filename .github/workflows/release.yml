@@ -57,55 +57,11 @@ jobs:
           name: cyberether-msi-windows-x86_64
           path: .dist/windows/*.msi
 
-  macos-build:
-    uses: ./.github/workflows/macos-build.yml
-
-  macos-package:
-    needs: macos-build
-    runs-on: macos-14
-    environment: macos-notarization
-    env:
-      CYBERETHER_BINARY: .dist/bin/cyberether
-      JETSTREAM_DYLIB: .dist/bin/libjetstream.dylib
-      OUTPUT_DIR: .dist/macos
-      APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-      APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: cyberether-bin-macos-arm64
-          path: .dist/artifacts
-
-      - name: Extract macOS binary archive
-        run: |
-          set -euo pipefail
-          mkdir -p .dist/bin
-          tar -C .dist/bin -xzf .dist/artifacts/cyberether-macos-arm64.tar.gz
-          test -f .dist/bin/cyberether
-          test -f .dist/bin/libjetstream.dylib
-
-      - name: Package app bundle
-        run: apps/macos/create-app.sh
-
-      - name: Package app notarization
-        run: apps/macos/sign-notarize-app.sh
-
-      - name: Package DMG
-        run: apps/macos/create-dmg.sh
-
-      - name: Package DMG notarization
-        run: apps/macos/sign-notarize-dmg.sh
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cyberether-dmg-macos-arm64
-          path: .dist/macos/*.dmg
+  macos:
+    uses: ./.github/workflows/macos.yml
+    with:
+      package_dmg: true
+    secrets: inherit
 
   emscripten:
     uses: ./.github/workflows/emscripten-build.yml
@@ -115,7 +71,7 @@ jobs:
 
   github-release:
     if: github.event_name == 'push'
-    needs: [linux, wheel, windows-build, windows-release, macos-build, macos-package, emscripten]
+    needs: [linux, wheel, windows-build, windows-release, macos, emscripten]
     runs-on: ubuntu-latest
     permissions:
       contents: write

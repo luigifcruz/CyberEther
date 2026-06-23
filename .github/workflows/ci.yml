@@ -18,7 +18,7 @@ jobs:
     uses: ./.github/workflows/windows-build.yml
 
   macos:
-    uses: ./.github/workflows/macos-build.yml
+    uses: ./.github/workflows/macos.yml
 
   emscripten:
     uses: ./.github/workflows/emscripten-build.yml
