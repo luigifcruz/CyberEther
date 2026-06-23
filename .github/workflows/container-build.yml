@@ -8,18 +8,24 @@ permissions:
 
 jobs:
   build:
-    name: build (${{ matrix.arch }})
+    name: build (${{ matrix.tag }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
+          - tag: x86_64
             runner: ubuntu-latest
             base: amd64/ubuntu:24.04@sha256:cdb5fd928fced577cfecf12c8966e830fcdf42ee481fb0b91904eeddc2fe5eff
-          - arch: aarch64
+          - tag: aarch64
             runner: ubuntu-24.04-arm
             base: arm64v8/ubuntu:24.04@sha256:7607b6f97024ef850f1bd6e91a89273beb5973d04432c5b87f15f813d64b9c05
+          - tag: x86_64-cuda
+            runner: ubuntu-latest
+            base: nvidia/cuda:13.0.2-devel-ubuntu24.04
+          - tag: aarch64-cuda
+            runner: ubuntu-24.04-arm
+            base: nvidia/cuda:13.0.2-devel-ubuntu24.04
 
     steps:
       - name: Checkout
@@ -34,26 +40,27 @@ jobs:
           context: .
           file: ./Dockerfile
           load: true
-          tags: local/cyberether:${{ matrix.arch }}
+          tags: local/cyberether:${{ matrix.tag }}
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             BUILD_TYPE=release
 
       - name: Smoke test
         run: |
-          docker run --rm local/cyberether:${{ matrix.arch }} test -f /usr/bin/cyberether
+          docker run --rm local/cyberether:${{ matrix.tag }} test -f /usr/bin/cyberether
 
       - name: Meson tests
+        if: ${{ !contains(matrix.tag, 'cuda') }}
         run: |
-          docker run --rm local/cyberether:${{ matrix.arch }} meson test -C /workspace/build --print-errorlogs
+          docker run --rm local/cyberether:${{ matrix.tag }} meson test -C /workspace/build --print-errorlogs
 
       - name: Save image artifact
         run: |
           set -euo pipefail
           mkdir -p .dist/images
-          docker save local/cyberether:${{ matrix.arch }} | gzip > .dist/images/cyberether-ubuntu24-${{ matrix.arch }}.tar.gz
+          docker save local/cyberether:${{ matrix.tag }} | gzip > .dist/images/cyberether-ubuntu24-${{ matrix.tag }}.tar.gz
 
       - uses: actions/upload-artifact@v4.6.2
         with:
-          name: cyberether-container-ubuntu24-${{ matrix.arch }}
-          path: .dist/images/cyberether-ubuntu24-${{ matrix.arch }}.tar.gz
+          name: cyberether-container-ubuntu24-${{ matrix.tag }}
+          path: .dist/images/cyberether-ubuntu24-${{ matrix.tag }}.tar.gz
