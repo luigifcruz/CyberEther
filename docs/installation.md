@@ -82,7 +82,8 @@ apt install git build-essential pkg-config python3 python3-pip glslang-tools \
 Display server headers used by the bundled GLFW build.
 ```bash
 apt install libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
-            libxkbcommon-dev libwayland-dev wayland-protocols libudev-dev
+            libxkbcommon-dev libwayland-dev wayland-protocols libudev-dev \
+            libgudev-1.0-dev
 ```
 
 Python build modules.
