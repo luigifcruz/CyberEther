@@ -186,7 +186,14 @@ Result Font::destroy(Window* window) {
 }
 
 const Font::Glyph& Font::glyph(const I32& code) const {
-    return glyphs.at(code);
+    // TODO: Implement full UTF-8 support.
+    // The atlas only covers printable ASCII (codes 0..95 == chars 32..127); any
+    // other byte (a UTF-8 multi-byte lead/continuation, or a control char) has no
+    // glyph. Return a blank one instead of throwing so non-ASCII text renders as
+    // empty space rather than crashing the renderer.
+    static const Glyph kEmpty = {};
+    const auto it = glyphs.find(code);
+    return it != glyphs.end() ? it->second : kEmpty;
 }
 
 I32 Font::ascent() const {
