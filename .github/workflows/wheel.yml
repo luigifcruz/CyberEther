@@ -69,7 +69,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           set -euo pipefail
-          python -m pip install --break-system-packages meson ninja numpy mapbox_earcut meson-python auditwheel pyyaml
+          python -m pip install --break-system-packages meson ninja numpy mapbox_earcut meson-python auditwheel
 
       - name: Build wheel
         run: |
