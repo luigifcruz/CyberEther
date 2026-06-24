@@ -3,6 +3,7 @@
 
 #include <jetstream/config.hh>
 #include <jetstream/domains/ml/onnx_inference/module.hh>
+#include <jetstream/domains/ml/onnx_inference/onnx_types.hh>
 
 #ifdef JST_OS_WINDOWS
 #include <filesystem>
@@ -64,7 +65,10 @@ struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::Onnx
     std::shared_ptr<Modules::OnnxInference> moduleConfig = std::make_shared<Modules::OnnxInference>();
     std::vector<std::string> inputNames;
     std::vector<std::vector<int64_t>> inputShapes;
+    std::vector<DataType> inputDtypes;
     std::vector<std::string> outputNames;
+    std::vector<DataType> outputDtypes;
+    bool unsupportedModelDtypes = false;
 
   private:
     Result readModelTensorNames();
@@ -73,7 +77,10 @@ struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::Onnx
 Result OnnxInferenceImpl::readModelTensorNames() {
     inputNames.clear();
     inputShapes.clear();
+    inputDtypes.clear();
     outputNames.clear();
+    outputDtypes.clear();
+    unsupportedModelDtypes = false;
 
     if (modelPath.empty()) {
         return Result::SUCCESS;
@@ -99,21 +106,56 @@ Result OnnxInferenceImpl::readModelTensorNames() {
         }
         inputNames.reserve(inputCount);
         inputShapes.reserve(inputCount);
+        inputDtypes.reserve(inputCount);
         for (size_t i = 0; i < inputCount; ++i) {
             auto name = session.GetInputNameAllocated(i, allocator);
             inputNames.emplace_back(name.get());
-            inputShapes.push_back(session.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape());
+            // NOTE: GetTensorTypeAndShapeInfo() returns a non-owning view into the
+            // Ort::TypeInfo, so the TypeInfo must outlive every read below.
+            Ort::TypeInfo typeInfo = session.GetInputTypeInfo(i);
+            const auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+            const auto elementType = tensorInfo.GetElementType();
+            const auto dtype = OnnxTensorElementTypeToDataType(elementType);
+            if (!dtype.has_value()) {
+                JST_WARN("[BLOCK_ONNX_INFERENCE] Model input '{}' uses unsupported dtype '{}' (ONNX enum {}). The block will still expose its ports, but the runtime may reject the model until the dtype is supported.",
+                         inputNames.back(),
+                         OnnxTensorElementTypeName(elementType),
+                         static_cast<int>(elementType));
+                inputShapes.push_back(tensorInfo.GetShape());
+                inputDtypes.push_back(DataType::None);
+                unsupportedModelDtypes = true;
+                continue;
+            }
+            inputShapes.push_back(tensorInfo.GetShape());
+            inputDtypes.push_back(*dtype);
         }
 
         const auto outputCount = session.GetOutputCount();
         if (outputCount == 0) {
-            JST_ERROR("[BLOCK_ONNX_INFERENCE] Model does not expose any outputs.");
-            return Result::ERROR;
+            JST_WARN("[BLOCK_ONNX_INFERENCE] Model does not expose any outputs. Input ports will still be exposed.");
+            return Result::SUCCESS;
         }
         outputNames.reserve(outputCount);
+        outputDtypes.reserve(outputCount);
         for (size_t i = 0; i < outputCount; ++i) {
             auto name = session.GetOutputNameAllocated(i, allocator);
             outputNames.emplace_back(name.get());
+            // NOTE: GetTensorTypeAndShapeInfo() returns a non-owning view into the
+            // Ort::TypeInfo, so the TypeInfo must outlive every read below.
+            Ort::TypeInfo typeInfo = session.GetOutputTypeInfo(i);
+            const auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
+            const auto elementType = tensorInfo.GetElementType();
+            const auto dtype = OnnxTensorElementTypeToDataType(elementType);
+            if (!dtype.has_value()) {
+                JST_WARN("[BLOCK_ONNX_INFERENCE] Model output '{}' uses unsupported dtype '{}' (ONNX enum {}). The block will still expose its ports, but the runtime may reject the model until the dtype is supported.",
+                         outputNames.back(),
+                         OnnxTensorElementTypeName(elementType),
+                         static_cast<int>(elementType));
+                outputDtypes.push_back(DataType::None);
+                unsupportedModelDtypes = true;
+                continue;
+            }
+            outputDtypes.push_back(*dtype);
         }
     } catch (const Ort::Exception& e) {
         JST_ERROR("[BLOCK_ONNX_INFERENCE] Failed to read ONNX model metadata: {}", e.what());
@@ -143,7 +185,9 @@ Result OnnxInferenceImpl::configure() {
     if (readModelTensorNames() != Result::SUCCESS) {
         inputNames.clear();
         inputShapes.clear();
+        inputDtypes.clear();
         outputNames.clear();
+        outputDtypes.clear();
     }
 
     moduleConfig->modelPath = modelPath;
@@ -158,13 +202,14 @@ Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
         JST_CHECK(defineInterfaceInput(jst::fmt::format("input_{}", i),
                                        inputNames[i],
-                                       jst::fmt::format("ONNX model input tensor '{}'. Expected shape: {}.",
-                                                        inputNames[i], FormatShape(inputShapes[i]))));
+                                       jst::fmt::format("ONNX model input tensor '{}'. Expected shape: {}, dtype: {}.",
+                                                        inputNames[i], FormatShape(inputShapes[i]), inputDtypes[i])));
     }
     for (size_t i = 0; i < outputNames.size(); ++i) {
         JST_CHECK(defineInterfaceOutput(jst::fmt::format("output_{}", i),
                                         outputNames[i],
-                                        jst::fmt::format("ONNX model output tensor '{}'.", outputNames[i])));
+                                        jst::fmt::format("ONNX model output tensor '{}'. dtype: {}.",
+                                                        outputNames[i], outputDtypes[i])));
     }
 
     JST_CHECK(defineInterfaceConfig("modelPath",
@@ -180,7 +225,12 @@ Result OnnxInferenceImpl::define() {
 }
 
 Result OnnxInferenceImpl::create() {
-    if (modelPath.empty() || inputNames.empty() || outputNames.empty()) {
+    if (modelPath.empty() || inputNames.empty()) {
+        return Result::INCOMPLETE;
+    }
+
+    if (unsupportedModelDtypes) {
+        JST_WARN("[BLOCK_ONNX_INFERENCE] Skipping runtime module creation because the model metadata contains unsupported dtypes. The block ports remain visible for wiring, but inference is disabled until a supported model is selected.");
         return Result::INCOMPLETE;
     }
 

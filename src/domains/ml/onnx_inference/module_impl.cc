@@ -3,12 +3,30 @@
 #include <algorithm>
 
 #include <jetstream/config.hh>
+#include <jetstream/domains/ml/onnx_inference/onnx_types.hh>
 
 #ifdef JST_OS_WINDOWS
 #include <filesystem>
 #endif
 
 namespace Jetstream::Modules {
+
+namespace {
+
+std::string SupportedDtypes() {
+    return "F32, F64, F16, I8, I16, I32, I64, U8, U16, U32, U64";
+}
+
+std::string DtypeMismatchMessage(const std::string& tensorName,
+                                 const DataType expected,
+                                 const DataType actual) {
+    return jst::fmt::format(
+        "[MODULE_ONNX_INFERENCE] Tensor '{}' has dtype '{}' but the model expects '{}'. "
+        "Use a conversion block before ONNX Inference.",
+        tensorName, actual, expected);
+}
+
+}  // namespace
 
 Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
@@ -66,11 +84,12 @@ Result OnnxInferenceImpl::configureSessionOptions() {
 
 Result OnnxInferenceImpl::readModelShapes() {
     inputShapes.assign(inputTensors.size(), {});
+    inputDtypes.assign(inputTensors.size(), DataType::None);
     for (size_t i = 0; i < inputTensors.size(); ++i) {
         const std::string inputKey = jst::fmt::format("input_{}", i);
-        if (inputTensors[i].dtype() != DataType::F32) {
-            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' must be F32, got {}.",
-                      inputKey, inputTensors[i].dtype());
+        if (!IsSupportedOnnxInferenceTensorType(inputTensors[i].dtype())) {
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' uses unsupported dtype '{}'. Supported dtypes: {}.",
+                      inputKey, inputTensors[i].dtype(), SupportedDtypes());
             return Result::ERROR;
         }
         for (const auto d : inputTensors[i].shape()) {
@@ -83,14 +102,23 @@ Result OnnxInferenceImpl::readModelShapes() {
     }
 
     outputShapes.assign(outputNames.size(), {});
+    outputDtypes.assign(outputNames.size(), DataType::None);
     bool needsShapeProbe = false;
 
     try {
         for (size_t i = 0; i < inputNames.size(); ++i) {
             Ort::TypeInfo inTypeInfo = session->GetInputTypeInfo(inputSessionIdx[i]);
             const auto inTensorInfo = inTypeInfo.GetTensorTypeAndShapeInfo();
-            if (inTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                JST_ERROR("[MODULE_ONNX_INFERENCE] Model input '{}' must be F32.", inputNames[i]);
+            const auto modelInputDtype = OnnxTensorElementTypeToDataType(inTensorInfo.GetElementType());
+            if (!modelInputDtype.has_value()) {
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Model input '{}' uses unsupported dtype '{}' (ONNX enum {}). Supported dtypes: {}.",
+                          inputNames[i], OnnxTensorElementTypeName(inTensorInfo.GetElementType()),
+                          static_cast<int>(inTensorInfo.GetElementType()), SupportedDtypes());
+                return Result::ERROR;
+            }
+            inputDtypes[i] = *modelInputDtype;
+            if (inputTensors[i].dtype() != inputDtypes[i]) {
+                JST_ERROR("{}", DtypeMismatchMessage(inputNames[i], inputDtypes[i], inputTensors[i].dtype()));
                 return Result::ERROR;
             }
             const auto modelInputShape = inTensorInfo.GetShape();
@@ -111,10 +139,14 @@ Result OnnxInferenceImpl::readModelShapes() {
         for (size_t i = 0; i < outputNames.size(); ++i) {
             Ort::TypeInfo outTypeInfo = session->GetOutputTypeInfo(outputSessionIdx[i]);
             const auto outTensorInfo = outTypeInfo.GetTensorTypeAndShapeInfo();
-            if (outTensorInfo.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                JST_ERROR("[MODULE_ONNX_INFERENCE] Model output '{}' must be F32.", outputNames[i]);
+            const auto modelOutputDtype = OnnxTensorElementTypeToDataType(outTensorInfo.GetElementType());
+            if (!modelOutputDtype.has_value()) {
+                JST_ERROR("[MODULE_ONNX_INFERENCE] Model output '{}' uses unsupported dtype '{}' (ONNX enum {}). Supported dtypes: {}.",
+                          outputNames[i], OnnxTensorElementTypeName(outTensorInfo.GetElementType()),
+                          static_cast<int>(outTensorInfo.GetElementType()), SupportedDtypes());
                 return Result::ERROR;
             }
+            outputDtypes[i] = *modelOutputDtype;
             outputShapes[i] = outTensorInfo.GetShape();
 
             for (size_t j = 0; j < outputShapes[i].size(); ++j) {
@@ -136,16 +168,20 @@ Result OnnxInferenceImpl::readModelShapes() {
 
     if (needsShapeProbe) {
         auto memInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        std::vector<std::vector<float>> probeData;
+        std::vector<std::vector<U8>> probeData;
         std::vector<Ort::Value> probeValues;
         probeData.reserve(inputTensors.size());
         probeValues.reserve(inputTensors.size());
 
         for (size_t i = 0; i < inputTensors.size(); ++i) {
-            probeData.emplace_back(inputTensors[i].size(), 0.0f);
-            probeValues.emplace_back(Ort::Value::CreateTensor<float>(
-                memInfo, probeData.back().data(), probeData.back().size(),
-                inputShapes[i].data(), inputShapes[i].size()));
+            probeData.emplace_back(inputTensors[i].sizeBytes(), U8{0});
+            probeValues.emplace_back(Ort::Value::CreateTensor(
+                memInfo,
+                probeData.back().data(),
+                probeData.back().size(),
+                inputShapes[i].data(),
+                inputShapes[i].size(),
+                DataTypeToOnnxTensorElementType(inputDtypes[i])));
         }
 
         try {
@@ -179,28 +215,36 @@ Result OnnxInferenceImpl::rebuildOrtValues() {
 
     inputValues.clear();
     for (size_t i = 0; i < inputTensors.size(); ++i) {
-        auto* data = inputTensors[i].data<F32>();
+        auto* data = inputTensors[i].data();
         if (data == nullptr) {
             JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' data is not available.",
                       jst::fmt::format("input_{}", i));
             return Result::ERROR;
         }
-        inputValues.emplace_back(Ort::Value::CreateTensor<float>(
-            memInfo, data, inputTensors[i].size(),
-            inputShapes[i].data(), inputShapes[i].size()));
+        inputValues.emplace_back(Ort::Value::CreateTensor(
+            memInfo,
+            data,
+            inputTensors[i].sizeBytes(),
+            inputShapes[i].data(),
+            inputShapes[i].size(),
+            DataTypeToOnnxTensorElementType(inputDtypes[i])));
     }
 
     outputValues.clear();
     for (size_t i = 0; i < outputTensors.size(); ++i) {
-        auto* data = outputTensors[i].data<F32>();
+        auto* data = outputTensors[i].data();
         if (data == nullptr) {
             JST_ERROR("[MODULE_ONNX_INFERENCE] Output port '{}' data is not available.",
                       jst::fmt::format("output_{}", i));
             return Result::ERROR;
         }
-        outputValues.emplace_back(Ort::Value::CreateTensor<float>(
-            memInfo, data, outputTensors[i].size(),
-            outputShapes[i].data(), outputShapes[i].size()));
+        outputValues.emplace_back(Ort::Value::CreateTensor(
+            memInfo,
+            data,
+            outputTensors[i].sizeBytes(),
+            outputShapes[i].data(),
+            outputShapes[i].size(),
+            DataTypeToOnnxTensorElementType(outputDtypes[i])));
     }
 
     return Result::SUCCESS;
@@ -302,7 +346,7 @@ Result OnnxInferenceImpl::create() {
         for (const auto d : outputShapes[i]) {
             shapeVec.push_back(static_cast<U64>(d));
         }
-        JST_CHECK(outputTensors[i].create(DeviceType::CPU, DataType::F32, shapeVec));
+        JST_CHECK(outputTensors[i].create(DeviceType::CPU, outputDtypes[i], shapeVec));
 
         const std::string key = jst::fmt::format("output_{}", i);
         outputs()[key].produced(name(), key, outputTensors[i]);
@@ -320,9 +364,11 @@ Result OnnxInferenceImpl::runInference() {
     }
 
     try {
+        const char* const* outputNames = ortOutputNames.empty() ? nullptr : ortOutputNames.data();
+        Ort::Value* outputValuesPtr = outputValues.empty() ? nullptr : outputValues.data();
         session->Run(Ort::RunOptions{nullptr},
                      ortInputNames.data(), inputValues.data(), inputValues.size(),
-                     ortOutputNames.data(), outputValues.data(), outputValues.size());
+                     outputNames, outputValuesPtr, outputValues.size());
     } catch (const Ort::Exception& e) {
         JST_ERROR("[MODULE_ONNX_INFERENCE] Inference failed: {}", e.what());
         return Result::ERROR;
@@ -343,6 +389,10 @@ Result OnnxInferenceImpl::destroy() {
     outputSessionIdx.clear();
     inputTensors.clear();
     outputTensors.clear();
+    inputShapes.clear();
+    outputShapes.clear();
+    inputDtypes.clear();
+    outputDtypes.clear();
     return Result::SUCCESS;
 }
 

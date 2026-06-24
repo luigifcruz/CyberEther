@@ -39,6 +39,8 @@ struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInferen
 
     std::vector<std::vector<int64_t>> inputShapes;
     std::vector<std::vector<int64_t>> outputShapes;
+    std::vector<DataType> inputDtypes;
+    std::vector<DataType> outputDtypes;
     std::vector<Ort::Value> inputValues;
     std::vector<Ort::Value> outputValues;
 

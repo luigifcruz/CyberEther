@@ -65,6 +65,7 @@ std::string_view LocationName(const Location& loc) {
 std::size_t DataTypeSize(const DataType& type) {
     switch (type) {
         case DataType::F32:  return sizeof(F32);
+        case DataType::F16:  return sizeof(F16);
         case DataType::F64:  return sizeof(F64);
         case DataType::I8:   return sizeof(I8);
         case DataType::I16:  return sizeof(I16);
@@ -112,6 +113,7 @@ std::string_view DataTypeToName(const DataType& type) {
     static const std::unordered_map<DataType, std::string_view> names = {
         {DataType::None, "NONE"},
         {DataType::F32,  "F32"},
+        {DataType::F16,  "F16"},
         {DataType::F64,  "F64"},
         {DataType::I8,   "I8"},
         {DataType::I16,  "I16"},
@@ -143,6 +145,7 @@ DataType NameToDataType(const std::string_view& name) {
     static const std::unordered_map<std::string_view, DataType> names = {
         {"NONE", DataType::None},
         {"F32",  DataType::F32},
+        {"F16",  DataType::F16},
         {"F64",  DataType::F64},
         {"I8",   DataType::I8},
         {"I16",  DataType::I16},

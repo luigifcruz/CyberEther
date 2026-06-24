@@ -17,7 +17,9 @@ struct OnnxInference : public Block::Config {
         "Runs an ONNX model on input tensors.",
         "# ONNX Inference\n"
         "Loads an ONNX model and runs inference on every incoming tensor. "
-        "Supports CPU, Core ML, and TensorRT execution providers.\n\n"
+        "Supports CPU, Core ML, and TensorRT execution providers. "
+        "Supported tensor dtypes include F32, F64, F16, I8, I16, I32, I64, U8, U16, U32, and U64, and the connected tensors must match the model exactly. "
+        "If a model reports a newer ONNX dtype that CyberEther cannot execute yet, the block keeps its ports visible but stays incomplete until you pick a supported model.\n\n"
 
         "## Arguments\n"
         "- **Model Path**: Filesystem path to the `.onnx` model file.\n"
@@ -38,7 +40,7 @@ struct OnnxInference : public Block::Config {
         "Inputs -> ONNX Runtime Session -> Outputs\n"
         "1. Reads ONNX graph input and output names from the selected model.\n"
         "2. Creates one input port and one output port per model tensor.\n"
-        "3. Validates F32 input and output tensors, then allocates output buffers.\n"
+        "3. Validates input and output tensor dtypes against the model, then allocates output buffers.\n"
         "4. Runs inference each cycle using the selected execution provider."
     );
 };

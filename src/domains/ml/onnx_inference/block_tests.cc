@@ -7,6 +7,8 @@
 
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/ml/onnx_inference/block.hh"
+#include "jetstream/registry.hh"
+#include "onnx_model_helpers.hh"
 
 using namespace Jetstream;
 
@@ -54,8 +56,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block ignores legacy manual t
 
     REQUIRE(block.interfaceInputs.empty());
     REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input"));
-    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceInputs, "input_0"));
+    REQUIRE_FALSE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("onnx_legacy", saved) == Result::SUCCESS);
@@ -82,6 +84,25 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block keeps config UI when mo
 
     REQUIRE(HasInterfaceKey(block.interfaceConfigs, "modelPath"));
     REQUIRE(HasInterfaceKey(block.interfaceConfigs, "executionProvider"));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block still exposes ports for newer ONNX dtypes",
+                 "[modules][onnx_inference][block][dtype]") {
+    const auto modelPath = Jetstream::Tests::CreateIdentityOnnxModelWithDtypes("BFLOAT16", "BFLOAT16",
+                                                                              "onnx-bf16");
+    REQUIRE(flowgraph->blockCreate("src", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    Parser::Map config;
+    config["modelPath"] = modelPath.string();
+
+    TensorMap inputs;
+    inputs["input_0"].requested("src", "signal");
+
+    REQUIRE(flowgraph->blockCreate("onnx_bf16", "onnx_inference", config, inputs) == Result::SUCCESS);
+    const auto block = viewBlock("onnx_bf16");
+    REQUIRE(block.state == Block::State::Incomplete);
+    REQUIRE(HasInterfaceKey(block.interfaceInputs, "input_0"));
+    REQUIRE(HasInterfaceKey(block.interfaceOutputs, "output_0"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "ONNX multi-IO example flowgraph imports",
