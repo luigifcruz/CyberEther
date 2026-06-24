@@ -59,42 +59,18 @@ lives in `src/plugin.cc`:
 
 ```cpp
 #include <jetstream/plugin.hh>
-#include <jetstream/runtime.hh>
 
-JST_PLUGIN_ABI(
-    "cyberether-blueprint-plugin",
-    "0.1.0",
-    JETSTREAM_VERSION_CURRENT,
-    Jetstream::DeviceType::CPU,
-    Jetstream::RuntimeType::NATIVE
-)
+JST_REGISTER_PLUGIN();
 ```
 
-The ABI record tells CyberEther which plugin was loaded and which CyberEther
-version, devices, and runtimes it requires.
+The ABI record only identifies the shared library as a compatible CyberEther
+plugin ABI.
 
 | Field | Purpose |
 |-------|---------|
-| Plugin name | Human-readable plugin identifier. |
-| Plugin version | Version of the plugin itself. |
-| Minimum CyberEther version | Oldest CyberEther version that can load the plugin. |
-| Required devices | Device backends required by the plugin. |
-| Required runtimes | Runtime backends required by the plugin. |
-
-To require a specific minimum CyberEther version, replace
-`JETSTREAM_VERSION_CURRENT` with an encoded version:
-
-```cpp
-JST_PLUGIN_ABI(
-    "my-plugin",
-    "0.1.0",
-    JETSTREAM_VERSION_ENCODE(1, 4, 0),
-    Jetstream::DeviceType::CPU,
-    Jetstream::RuntimeType::NATIVE
-)
-```
-
-This prevents the plugin from loading on CyberEther versions older than `1.4.0`.
+| Magic | Identifies the exported record as CyberEther's plugin ABI. |
+| Size | Size of the ABI record exported by the plugin. |
+| ABI version | Plugin ABI version expected by CyberEther. |
 
 ## Blocks And Modules
 
@@ -165,7 +141,7 @@ CyberEther loads plugins through its plugin loader. At load time, CyberEther:
 
 1. Opens the shared library.
 2. Looks up the exported plugin ABI symbol.
-3. Validates ABI magic, ABI version, CyberEther version, devices, and runtimes.
+3. Validates ABI magic, size, and ABI version.
 4. Drains the plugin's static block and module registrations into the registry.
 
 After the plugin is loaded, its registered blocks can be built like other

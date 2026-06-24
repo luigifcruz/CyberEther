@@ -70,10 +70,6 @@ struct Plugin::Impl {
 
     static void closeHandle(void* handle);
     static const JetstreamPluginAbi* loadAbi(void* handle);
-    static uint64_t abiMask(DeviceType device);
-    static uint64_t abiMask(RuntimeType runtime);
-    static uint64_t availableDeviceMask();
-    static uint64_t availableRuntimeMask();
 
     static bool containsModule(const std::vector<Registrations::Module>& modules,
                                const Registrations::Module& module);
@@ -178,46 +174,6 @@ const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle) {
     (void)handle;
     return nullptr;
 #endif
-}
-
-uint64_t Plugin::Impl::abiMask(DeviceType device) {
-    return static_cast<uint64_t>(static_cast<uint8_t>(device));
-}
-
-uint64_t Plugin::Impl::abiMask(RuntimeType runtime) {
-    return static_cast<uint64_t>(static_cast<uint8_t>(runtime));
-}
-
-uint64_t Plugin::Impl::availableDeviceMask() {
-    uint64_t mask = 0;
-
-#if defined(JETSTREAM_BACKEND_CPU_AVAILABLE)
-    mask |= abiMask(DeviceType::CPU);
-#endif
-#if defined(JETSTREAM_BACKEND_CUDA_AVAILABLE)
-    mask |= abiMask(DeviceType::CUDA);
-#endif
-#if defined(JETSTREAM_BACKEND_METAL_AVAILABLE)
-    mask |= abiMask(DeviceType::Metal);
-#endif
-#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE)
-    mask |= abiMask(DeviceType::Vulkan);
-#endif
-#if defined(JETSTREAM_BACKEND_WEBGPU_AVAILABLE)
-    mask |= abiMask(DeviceType::WebGPU);
-#endif
-
-    return mask;
-}
-
-uint64_t Plugin::Impl::availableRuntimeMask() {
-    uint64_t mask = abiMask(RuntimeType::NATIVE);
-
-#if defined(JETSTREAM_LOADER_MLIR_AVAILABLE)
-    mask |= abiMask(RuntimeType::MLIR);
-#endif
-
-    return mask;
 }
 
 bool Plugin::Impl::containsModule(const std::vector<Registrations::Module>& modules,
@@ -638,8 +594,8 @@ Result Plugin::Impl::validatePluginAbi(const std::string& path, void* handle) {
         return Result::ERROR;
     }
 
-    if (abi->size < sizeof(JetstreamPluginAbi)) {
-        JST_ERROR("[PLUGIN] Plugin '{}' reports an unsupported plugin ABI size ({} < {}).",
+    if (abi->size != sizeof(JetstreamPluginAbi)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' reports an unsupported plugin ABI size ({} != {}).",
                   path,
                   abi->size,
                   sizeof(JetstreamPluginAbi));
@@ -654,30 +610,7 @@ Result Plugin::Impl::validatePluginAbi(const std::string& path, void* handle) {
         return Result::ERROR;
     }
 
-    if (abi->min_jetstream_version > JETSTREAM_VERSION_CURRENT) {
-        JST_ERROR("[PLUGIN] Plugin '{}' requires Jetstream version {}, current version is {}.",
-                  path,
-                  abi->min_jetstream_version,
-                  JETSTREAM_VERSION_CURRENT);
-        return Result::ERROR;
-    }
-
-    const auto missingDevices = abi->required_devices & ~availableDeviceMask();
-    if (missingDevices != 0) {
-        JST_ERROR("[PLUGIN] Plugin '{}' requires unavailable devices [Mask: {}].", path, missingDevices);
-        return Result::ERROR;
-    }
-
-    const auto missingRuntimes = abi->required_runtimes & ~availableRuntimeMask();
-    if (missingRuntimes != 0) {
-        JST_ERROR("[PLUGIN] Plugin '{}' requires unavailable runtimes [Mask: {}].", path, missingRuntimes);
-        return Result::ERROR;
-    }
-
-    JST_TRACE("[PLUGIN] Plugin '{}' ABI validated [Name: {}, Version: {}].",
-              path,
-              abi->name != nullptr ? abi->name : "unknown",
-              abi->version != nullptr ? abi->version : "unknown");
+    JST_TRACE("[PLUGIN] Plugin '{}' ABI validated.", path);
     return Result::SUCCESS;
 }
 

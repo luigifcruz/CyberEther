@@ -32,13 +32,6 @@ typedef struct JetstreamPluginAbi {
     uint32_t magic;
     uint32_t size;
     uint32_t abi_version;
-    uint32_t min_jetstream_version;
-
-    const char* name;
-    const char* version;
-
-    uint64_t required_devices;
-    uint64_t required_runtimes;
 } JetstreamPluginAbi;
 
 #ifdef __cplusplus
@@ -61,16 +54,11 @@ typedef struct JetstreamPluginAbi {
 #define JETSTREAM_PLUGIN_EXTERN_C
 #endif
 
-#define JST_PLUGIN_ABI(plugin_name, plugin_version, minimum_jetstream_version, devices, runtimes) \
+#define JST_REGISTER_PLUGIN() \
     JETSTREAM_PLUGIN_EXTERN_C JETSTREAM_PLUGIN_API const JetstreamPluginAbi jetstream_plugin_abi = { \
         JETSTREAM_PLUGIN_ABI_MAGIC, \
         (uint32_t)sizeof(JetstreamPluginAbi), \
         JETSTREAM_PLUGIN_ABI_VERSION, \
-        minimum_jetstream_version, \
-        plugin_name, \
-        plugin_version, \
-        (uint64_t)(devices), \
-        (uint64_t)(runtimes), \
-    };
+    }
 
 #endif  // JETSTREAM_PLUGIN_HH
