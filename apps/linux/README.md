@@ -18,6 +18,13 @@ The default output is:
 .dist/linux/CyberEther-<version>-<arch>.AppImage
 ```
 
+Set `APPIMAGE_SUFFIX` to add a variant suffix, such as `-cuda`:
+
+```sh
+export APPIMAGE_SUFFIX="-cuda"
+apps/linux/create-appimage.sh
+```
+
 The AppImage contains `usr/bin/cyberether` and `usr/lib/libjetstream.so`. `cyberether` is patched to load `libjetstream.so` from the bundled `usr/lib` directory, and AppRun exports that directory through `LD_LIBRARY_PATH` so plugins can resolve the same library.
 
 Use environment variables to override packaging inputs when needed:
