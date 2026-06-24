@@ -111,7 +111,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           set -euo pipefail
-          python -m pip install meson ninja numpy mapbox_earcut pyyaml
+          python -m pip install meson ninja numpy mapbox_earcut
 
       - name: Build binary
         run: |

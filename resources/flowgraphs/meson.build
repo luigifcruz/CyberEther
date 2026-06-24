@@ -1,10 +1,4 @@
 if py.found()
-    python_with_modules = pymod.find_installation(
-        py.full_path(),
-        required : true,
-        modules : ['yaml'],
-    )
-
     flowgraph_examples = custom_target(
         input : files([
             meson.project_source_root() / 'examples/flowgraphs/flight-tracker.yml',
@@ -16,7 +10,7 @@ if py.found()
             meson.project_source_root() / 'examples/flowgraphs/signal-generator.yml',
         ]),
         output : ['examples.cc'],
-        command : [python_with_modules, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],
+        command : [py, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],
     )
     src_lst += flowgraph_examples
 endif

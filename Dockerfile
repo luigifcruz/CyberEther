@@ -15,7 +15,7 @@ RUN apt-get update --fix-missing && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut pyyaml
+RUN python3 -m pip install --break-system-packages meson ninja numpy mapbox_earcut
 
 COPY . /workspace
 WORKDIR /workspace
