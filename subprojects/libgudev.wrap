@@ -1,0 +1,8 @@
+[wrap-file]
+directory = libgudev-237
+source_url = https://gitlab.gnome.org/GNOME/libgudev/-/archive/237/libgudev-237.tar.bz2
+source_filename = libgudev-237.tar.bz2
+source_hash = 1cec460f8afaa0e613f92202699b31b5560843a4a86e019ebb1ef437675b74d8
+
+[provide]
+gudev-1.0 = libgudev_dep
