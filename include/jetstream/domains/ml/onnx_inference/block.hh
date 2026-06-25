@@ -18,7 +18,7 @@ struct OnnxInference : public Block::Config {
         "# ONNX Inference\n"
         "Loads an ONNX model and runs inference on every incoming tensor. "
         "Supports CPU, Core ML, and TensorRT execution providers. "
-        "Supported tensor dtypes include F32, F64, F16, I8, I16, I32, I64, U8, U16, U32, and U64, and the connected tensors must match the model exactly. "
+        "Supported tensor dtypes include F32, F64, I8, I16, I32, I64, U8, U16, U32, and U64, and the connected tensors must match the model exactly. "
         "If a model reports a newer ONNX dtype that CyberEther cannot execute yet, the block keeps its ports visible but stays incomplete until you pick a supported model.\n\n"
 
         "## Arguments\n"

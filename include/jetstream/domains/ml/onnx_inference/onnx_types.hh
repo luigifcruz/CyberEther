@@ -14,7 +14,6 @@ inline std::optional<DataType> OnnxTensorElementTypeToDataType(const ONNXTensorE
     switch (type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:    return DataType::F32;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:   return DataType::F64;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:  return DataType::F16;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:    return DataType::I16;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:    return DataType::I32;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:    return DataType::I64;
@@ -31,7 +30,6 @@ inline ONNXTensorElementDataType DataTypeToOnnxTensorElementType(const DataType 
     switch (type) {
         case DataType::F32: return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
         case DataType::F64: return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-        case DataType::F16: return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
         case DataType::I16: return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
         case DataType::I32: return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
         case DataType::I64: return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
@@ -48,7 +46,6 @@ inline bool IsSupportedOnnxInferenceTensorType(const DataType type) {
     switch (type) {
         case DataType::F32:
         case DataType::F64:
-        case DataType::F16:
         case DataType::I16:
         case DataType::I32:
         case DataType::I64:
@@ -67,7 +64,6 @@ inline std::string_view OnnxTensorElementTypeName(const ONNXTensorElementDataTyp
     switch (type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:   return "F32";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  return "F64";
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return "F16";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   return "I16";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   return "I32";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:   return "I64";

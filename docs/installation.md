@@ -65,7 +65,7 @@ python -m pip install onnxruntime        # CPU
 python -m pip install onnxruntime-gpu    # CPU+CUDA
 ```
 
-CyberEther's ONNX inference block accepts models and tensors using `F32`, `F64`, `F16`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, and `U64` dtypes. TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
+CyberEther's ONNX inference block accepts models and tensors using `F32`, `F64`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, and `U64` dtypes. TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
@@ -105,7 +105,7 @@ python -m pip install onnxruntime        # CPU
 python -m pip install onnxruntime-gpu    # CPU+CUDA
 ```
 
-CyberEther's ONNX inference block accepts models and tensors using `F32`, `F64`, `F16`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, and `U64` dtypes. TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
+CyberEther's ONNX inference block accepts models and tensors using `F32`, `F64`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, and `U64` dtypes. TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 

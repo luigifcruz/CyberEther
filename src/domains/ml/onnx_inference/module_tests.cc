@@ -74,11 +74,6 @@ TEST_CASE("ONNX inference module - UINT8 round trip", "[modules][onnx_inference]
     ExpectIdentityRoundTrip<U8>("UINT8", std::array<U8, 4>{1, 2, 3, 0});
 }
 
-TEST_CASE("ONNX inference module - F16 round trip", "[modules][onnx_inference][F16]") {
-    ExpectIdentityRoundTrip<F16>("FLOAT16",
-                                 std::array<F16, 4>{F16{0x3c00}, F16{0xc000}, F16{0x4200}, F16{0x0000}});
-}
-
 TEST_CASE("ONNX inference module - rejects mismatched input dtype",
           "[modules][onnx_inference][error][mixed]") {
     const auto modelPath = Jetstream::Tests::CreateIdentityOnnxModel("INT8", "onnx-int8-mismatch");

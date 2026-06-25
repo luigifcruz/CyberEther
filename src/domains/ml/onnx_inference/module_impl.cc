@@ -14,7 +14,7 @@ namespace Jetstream::Modules {
 namespace {
 
 std::string SupportedDtypes() {
-    return "F32, F64, F16, I8, I16, I32, I64, U8, U16, U32, U64";
+    return "F32, F64, I8, I16, I32, I64, U8, U16, U32, U64";
 }
 
 std::string DtypeMismatchMessage(const std::string& tensorName,

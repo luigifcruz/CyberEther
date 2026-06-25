@@ -53,9 +53,6 @@ inline std::ostream& operator<<(std::ostream& os, const DeviceType& device) {
 //
 
 typedef float    F32;
-struct F16 {
-    uint16_t bits = 0;
-};
 typedef double   F64;
 typedef int8_t   I8;
 typedef int16_t  I16;
@@ -87,18 +84,6 @@ struct JETSTREAM_API NumericTypeInfo<F32> {
     using surtype = CF32;
     inline static const char* name = "F32";
 };
-
-template<>
-struct JETSTREAM_API NumericTypeInfo<F16> {
-    using type = F16;
-    using subtype = F16;
-    using surtype = F16;
-    inline static const char* name = "F16";
-};
-
-inline constexpr bool operator==(const F16& lhs, const F16& rhs) {
-    return lhs.bits == rhs.bits;
-}
 
 template<>
 struct JETSTREAM_API NumericTypeInfo<F64> {
@@ -318,7 +303,6 @@ enum class DataType : uint8_t {
     CU16,
     CU32,
     CU64,
-    F16,
 };
 
 JETSTREAM_API std::size_t DataTypeSize(const DataType& type);
@@ -336,7 +320,6 @@ inline constexpr DataType TypeToDataType() {
 }
 
 template<> inline constexpr DataType TypeToDataType<F32>() { return DataType::F32; }
-template<> inline constexpr DataType TypeToDataType<F16>() { return DataType::F16; }
 template<> inline constexpr DataType TypeToDataType<F64>() { return DataType::F64; }
 template<> inline constexpr DataType TypeToDataType<I8>() { return DataType::I8; }
 template<> inline constexpr DataType TypeToDataType<I16>() { return DataType::I16; }
@@ -363,7 +346,6 @@ struct DataTypeToType {
 };
 
 template<> struct DataTypeToType<DataType::F32> { using type = F32; };
-template<> struct DataTypeToType<DataType::F16> { using type = F16; };
 template<> struct DataTypeToType<DataType::F64> { using type = F64; };
 template<> struct DataTypeToType<DataType::I8> { using type = I8; };
 template<> struct DataTypeToType<DataType::I16> { using type = I16; };
