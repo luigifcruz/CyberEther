@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -47,6 +48,8 @@ class JETSTREAM_API Text : public Generic {
     Result update(const std::string& elementId, const ElementConfig& elementConfig);
 
     F32 advance(const std::string& fill) const;
+    std::vector<F32> advances(const std::string& fill) const;
+
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
 

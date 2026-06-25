@@ -333,6 +333,21 @@ F32 Text::advance(const std::string& fill) const {
     return x;
 }
 
+std::vector<F32> Text::advances(const std::string& fill) const {
+    std::vector<F32> result(fill.size(), 0.0f);
+    if (!config.font) {
+        return result;
+    }
+    for (U64 i = 0; i < fill.size(); ++i) {
+        const char c = fill[i];
+        if (c < 32 || c >= 127) {
+            continue;
+        }
+        result[i] = config.font->glyph(c - 32).xAdvance;
+    }
+    return result;
+}
+
 Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
     // Check if pixel size has changed. Use epsilon to avoid tiny float jitter.
     constexpr F32 pixelSizeEpsilon = 1e-6f;
