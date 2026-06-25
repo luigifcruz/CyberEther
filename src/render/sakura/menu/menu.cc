@@ -9,12 +9,28 @@ struct Menu::Impl {
 
     ImFont* resolveFont(const Context& ctx) const {
         switch (config.font) {
-            case Text::Font::Body: return Private::NativeFont(ctx.fonts.body) ? Private::NativeFont(ctx.fonts.body) : ImGui::GetFont();
-            case Text::Font::H1: return Private::NativeFont(ctx.fonts.h1) ? Private::NativeFont(ctx.fonts.h1) : ImGui::GetFont();
-            case Text::Font::H2: return Private::NativeFont(ctx.fonts.h2) ? Private::NativeFont(ctx.fonts.h2) : ImGui::GetFont();
-            case Text::Font::Bold: return Private::NativeFont(ctx.fonts.bold) ? Private::NativeFont(ctx.fonts.bold) : ImGui::GetFont();
-            case Text::Font::Display: return Private::NativeFont(ctx.fonts.display) ? Private::NativeFont(ctx.fonts.display) : ImGui::GetFont();
-            case Text::Font::Current: return ImGui::GetFont();
+            case Text::Font::Body: {
+                ImFont* font = Private::NativeFont(ctx.fonts.body);
+                return font ? font : ImGui::GetFont();
+            }
+            case Text::Font::H1: {
+                ImFont* font = Private::NativeFont(ctx.fonts.h1);
+                return font ? font : ImGui::GetFont();
+            }
+            case Text::Font::H2: {
+                ImFont* font = Private::NativeFont(ctx.fonts.h2);
+                return font ? font : ImGui::GetFont();
+            }
+            case Text::Font::Bold: {
+                ImFont* font = Private::NativeFont(ctx.fonts.bold);
+                return font ? font : ImGui::GetFont();
+            }
+            case Text::Font::Display: {
+                ImFont* font = Private::NativeFont(ctx.fonts.display);
+                return font ? font : ImGui::GetFont();
+            }
+            case Text::Font::Current:
+                return ImGui::GetFont();
         }
         return ImGui::GetFont();
     }

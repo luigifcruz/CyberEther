@@ -21,18 +21,27 @@ struct KeyboardInput::Impl {
 
     bool pressed(Key key) const {
         switch (key) {
-            case Key::Down: return ImGui::IsKeyPressed(ImGuiKey_DownArrow, config.repeat);
-            case Key::Up: return ImGui::IsKeyPressed(ImGuiKey_UpArrow, config.repeat);
+            case Key::Down:
+                return ImGui::IsKeyPressed(ImGuiKey_DownArrow, config.repeat);
+            case Key::Up:
+                return ImGui::IsKeyPressed(ImGuiKey_UpArrow, config.repeat);
             case Key::Submit:
                 return ImGui::IsKeyPressed(ImGuiKey_Enter, config.repeat) ||
                        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, config.repeat);
-            case Key::Escape: return ImGui::IsKeyPressed(ImGuiKey_Escape, config.repeat);
-            case Key::N: return ImGui::IsKeyPressed(ImGuiKey_N, config.repeat);
-            case Key::O: return ImGui::IsKeyPressed(ImGuiKey_O, config.repeat);
-            case Key::S: return ImGui::IsKeyPressed(ImGuiKey_S, config.repeat);
-            case Key::W: return ImGui::IsKeyPressed(ImGuiKey_W, config.repeat);
-            case Key::I: return ImGui::IsKeyPressed(ImGuiKey_I, config.repeat);
-            case Key::Comma: return ImGui::IsKeyPressed(ImGuiKey_Comma, config.repeat);
+            case Key::Escape:
+                return ImGui::IsKeyPressed(ImGuiKey_Escape, config.repeat);
+            case Key::N:
+                return ImGui::IsKeyPressed(ImGuiKey_N, config.repeat);
+            case Key::O:
+                return ImGui::IsKeyPressed(ImGuiKey_O, config.repeat);
+            case Key::S:
+                return ImGui::IsKeyPressed(ImGuiKey_S, config.repeat);
+            case Key::W:
+                return ImGui::IsKeyPressed(ImGuiKey_W, config.repeat);
+            case Key::I:
+                return ImGui::IsKeyPressed(ImGuiKey_I, config.repeat);
+            case Key::Comma:
+                return ImGui::IsKeyPressed(ImGuiKey_Comma, config.repeat);
         }
         return false;
     }

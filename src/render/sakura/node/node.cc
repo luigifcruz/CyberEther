@@ -300,8 +300,6 @@ void Node::render(const Context& ctx, Child child) const {
     impl->contentSizeScale = ScalingFactor(ctx);
     impl->hasContentSize = true;
     impl->hasRequestedContentSize = true;
-    // Keep this storage alive through EndNodeEditor(); ImNodes writes manual resize results and
-    // measured auto-axis sizes after the node body has rendered.
     ImNodes::SetNodeDimensions(imNodesId, impl->contentSize);
 
     if (config.state != State::Normal) {

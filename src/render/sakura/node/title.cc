@@ -76,7 +76,8 @@ bool NodeTitle::update(Config config) {
 }
 
 void NodeTitle::render(const Context& ctx) const {
-    const auto& config = impl->config;
+    auto& impl = *this->impl;
+    const auto& config = impl.config;
 
     ImNodes::BeginNodeTitleBar();
 
@@ -84,19 +85,23 @@ void NodeTitle::render(const Context& ctx) const {
     const F32 titleStartX = ImGui::GetCursorPosX();
     const F32 availWidth = ImGui::GetContentRegionAvail().x;
 
-    impl->title.render(ctx);
+    impl.title.render(ctx);
 
     if (hasDiagnostic) {
         ImGui::SameLine();
         ImGui::SetCursorPosX(titleStartX + availWidth - ImGui::CalcTextSize(ICON_FA_SKULL).x);
-        impl->diagnosticIcon.render(ctx);
-        impl->diagnosticTooltip.render(ctx, [this](const Context& ctx) {
-            impl->diagnosticHeader.render(ctx, {
-                [this](const Context& ctx) { this->impl->diagnosticHeaderIcon.render(ctx); },
-                [this](const Context& ctx) { this->impl->diagnosticHeaderLabel.render(ctx); },
+        impl.diagnosticIcon.render(ctx);
+        impl.diagnosticTooltip.render(ctx, [&impl](const Context& ctx) {
+            impl.diagnosticHeader.render(ctx, {
+                [&impl](const Context& ctx) {
+                    impl.diagnosticHeaderIcon.render(ctx);
+                },
+                [&impl](const Context& ctx) {
+                    impl.diagnosticHeaderLabel.render(ctx);
+                },
             });
-            impl->diagnosticDivider.render(ctx);
-            impl->diagnosticMessage.render(ctx);
+            impl.diagnosticDivider.render(ctx);
+            impl.diagnosticMessage.render(ctx);
         });
     }
 
