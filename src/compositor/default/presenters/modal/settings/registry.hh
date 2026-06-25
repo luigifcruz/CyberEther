@@ -7,6 +7,7 @@
 #include "../../../views/modal/settings/registry.hh"
 
 #include "jetstream/registry.hh"
+#include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
 #include <algorithm>
@@ -21,6 +22,27 @@ struct RegistrySettingsPresenter {
     const PresenterContext& context;
 
     explicit RegistrySettingsPresenter(const PresenterContext& context) : context(context) {}
+
+    static std::string normalizePluginPath(const std::string& path) {
+        std::error_code ec;
+        const auto canonical = std::filesystem::weakly_canonical(path, ec);
+        if (!ec) {
+            return canonical.string();
+        }
+
+        ec.clear();
+        const auto absolute = std::filesystem::absolute(path, ec);
+        if (!ec) {
+            return absolute.lexically_normal().string();
+        }
+
+        return path;
+    }
+
+    static std::string fileName(const std::string& path) {
+        const auto name = std::filesystem::path(path).filename().string();
+        return name.empty() ? path : name;
+    }
 
     RegistrySettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
@@ -43,9 +65,38 @@ struct RegistrySettingsPresenter {
         std::vector<RegistrySettingsPanel::PluginRow> plugins;
         Settings settings;
         if (Settings::Get(settings) == Result::SUCCESS) {
+            std::map<std::string, Plugin::Info> loadedPlugins;
+            for (const auto& plugin : Plugin::List()) {
+                loadedPlugins[normalizePluginPath(plugin.path)] = plugin;
+            }
+
             plugins.reserve(settings.registry.plugins.size());
             for (const auto& path : settings.registry.plugins) {
+                const auto normalizedPath = normalizePluginPath(path);
+                const auto loaded = loadedPlugins.find(normalizedPath);
+
+                if (loaded != loadedPlugins.end()) {
+                    const auto& info = loaded->second;
+                    plugins.push_back({
+                        .name = info.name.empty() ? fileName(path) : info.name,
+                        .version = info.version.empty() ? "-" : info.version,
+                        .status = info.status.empty() ? "Loaded" : info.status,
+                        .path = path,
+                    });
+                    continue;
+                }
+
+                std::string status = "Not loaded";
+                if (std::filesystem::path(path).extension() != ".cep") {
+                    status = "Invalid extension";
+                } else if (!std::filesystem::exists(path)) {
+                    status = "Missing";
+                }
+
                 plugins.push_back({
+                    .name = fileName(path),
+                    .version = "-",
+                    .status = status,
                     .path = path,
                 });
             }

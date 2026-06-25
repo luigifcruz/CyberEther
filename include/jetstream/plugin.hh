@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 #include "jetstream/types.hh"
 
@@ -10,8 +11,31 @@ namespace Jetstream {
 
 class JETSTREAM_API Plugin {
  public:
+    struct TargetInfo {
+        std::string path;
+        std::string system;
+        std::string device;
+        std::string arch;
+        bool compatible = false;
+        bool loaded = false;
+    };
+
+    struct Info {
+        std::string path;
+        std::string name;
+        std::string version;
+        std::string minimumJetstreamVersion;
+        std::string status;
+        std::vector<TargetInfo> targets;
+        U64 registeredModules = 0;
+        U64 registeredBlocks = 0;
+        U64 registeredExamples = 0;
+        U64 registeredBenchmarks = 0;
+    };
+
     static Result Load(const std::string& path);
     static Result Reload(const std::string& path);
+    static std::vector<Info> List();
 
  private:
     struct Impl;

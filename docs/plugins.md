@@ -5,10 +5,14 @@ order: 80
 category: Development
 ---
 
-CyberEther plugins are shared libraries that register blocks and modules when
-loaded. They are useful for keeping custom processing blocks outside the main
-CyberEther source tree while still using CyberEther's block, module, scheduler,
-runtime, and memory APIs.
+> [!WARNING]
+>
+> Plugin bundles are experimental. The format, ABI, tooling, and loader behavior can change at any time.
+
+CyberEther plugins are `.cep` bundles that contain one or more shared libraries,
+a manifest, and optional example flowgraphs. They are useful for keeping custom
+processing blocks outside the main CyberEther source tree while still using
+CyberEther's block, module, scheduler, runtime, and memory APIs.
 
 ## Starting From The Blueprint
 
@@ -33,6 +37,8 @@ blocks:
 |       `-- gain/
 |           |-- block.hh
 |           `-- module.hh
+|-- examples/
+|   `-- blueprint_gain.yml
 |-- src/
 |   |-- plugin.cc
 |   |-- meson.build
@@ -45,17 +51,58 @@ blocks:
 |           `-- module_impl_native_cpu.cc
 |-- subprojects/
 |   `-- cyberether.wrap
+|-- tools/
+|   `-- bundler
 `-- meson.build
 ```
 
 The public headers in `include/` define the block and module configuration.
 The source files in `src/` implement the block, implement the module, and
-register the native CPU provider.
+register the native CPU provider. Files in `examples/` are bundled as plugin
+examples. The `tools/bundler` script creates the `.cep` bundle for the copied
+blueprint.
+
+## CEP Bundles
+
+A `.cep` file is a `tar.gz` archive with a `.cep` extension. It must include a
+`manifest.yml` at the archive root:
+
+```yaml
+metadata:
+  name: cyberether-blueprint-plugin
+  version: 0.1.0
+  minimumJetstreamVersion: 1.5.0
+
+targets:
+  - path: targets/macos-arm64-cpu/cyberether_blueprint_plugin.dylib
+    system: macos
+    device: cpu
+    arch: arm64
+
+examples:
+  - path: examples/blueprint_gain.yml
+```
+
+| Field | Purpose |
+|-------|---------|
+| `metadata.name` | Plugin bundle name. |
+| `metadata.version` | Plugin bundle version. |
+| `metadata.minimumJetstreamVersion` | Minimum CyberEther/Jetstream version required to load the bundle. |
+| `targets[].path` | Shared library path inside the bundle. |
+| `targets[].system` | Target system, such as `macos`, `linux`, or `windows`. |
+| `targets[].device` | Device backend, such as `cpu`, `cuda`, `metal`, `vulkan`, or `webgpu`. |
+| `targets[].arch` | Target architecture, such as `arm64` or `x86_64`. |
+| `examples[].path` | Example flowgraph path inside the bundle. |
+
+CyberEther loads every target that matches the current system, architecture,
+and compiled device backends. Development builds usually package one target;
+release automation can package multiple systems, architectures, and devices in
+the same `.cep`.
 
 ## Plugin ABI
 
-Every plugin must export CyberEther's plugin ABI symbol. In the blueprint this
-lives in `src/plugin.cc`:
+Every target shared library must export CyberEther's plugin ABI symbol. In the
+blueprint this lives in `src/plugin.cc`:
 
 ```cpp
 #include <jetstream/plugin.hh>
@@ -63,7 +110,7 @@ lives in `src/plugin.cc`:
 JST_REGISTER_PLUGIN();
 ```
 
-The ABI record only identifies the shared library as a compatible CyberEther
+The ABI record only identifies the target library as a compatible CyberEther
 plugin ABI.
 
 | Field | Purpose |
@@ -95,8 +142,26 @@ JST_REGISTER_MODULE(BlueprintGainImplNativeCpu,
                     "generic");
 ```
 
-When CyberEther loads the plugin, those static registrations are drained into
-the CyberEther registry.
+When CyberEther loads a compatible target from the bundle, those static
+registrations are drained into the CyberEther registry.
+
+## Bundling
+
+Use the blueprint's `tools/bundler` to create `.cep` files. From your copied
+blueprint directory:
+
+```sh
+./tools/bundler \
+  --output build/cyberether_blueprint_plugin.cep \
+  --name cyberether-blueprint-plugin \
+  --version 0.1.0 \
+  --minimum-jetstream-version 1.5.0 \
+  --target path=build/cyberether_blueprint_plugin.dylib,system=macos,device=cpu,arch=arm64 \
+  --example examples/blueprint_gain.yml
+```
+
+Repeat `--target` for production bundles that include multiple compatible
+libraries. Repeat `--example` to include more example flowgraphs.
 
 ## Building Standalone
 
@@ -111,7 +176,7 @@ meson compile -C build
 On Linux, the output is:
 
 ```text
-examples/plugins/blueprint/build/cyberether_blueprint_plugin.so
+build/cyberether_blueprint_plugin.cep
 ```
 
 The blueprint includes `subprojects/cyberether.wrap`, so Meson can fetch
@@ -123,26 +188,31 @@ When building CyberEther itself with examples enabled, the blueprint is also
 available as a root build target:
 
 ```sh
-meson compile -C build-release cyberether_blueprint_plugin
+meson compile -C build-release cyberether_blueprint_plugin_cep
 ```
 
 On Linux, the output is:
 
 ```text
-build-release/examples/plugins/cyberether_blueprint_plugin.so
+build-release/examples/plugins/cyberether_blueprint_plugin.cep
 ```
 
-The `.so.p` directories in the build tree are Meson's private object directories.
-They are not the final plugin shared library.
+The shared library in the build tree is an intermediate target. The `.cep` file
+is the user-facing plugin artifact.
 
 ## Loading A Plugin
 
 CyberEther loads plugins through its plugin loader. At load time, CyberEther:
 
-1. Opens the shared library.
-2. Looks up the exported plugin ABI symbol.
-3. Validates ABI magic, size, and ABI version.
-4. Drains the plugin's static block and module registrations into the registry.
+1. Copies the `.cep` bundle into the plugin cache.
+2. Extracts the bundled `tar.gz` into a cache folder.
+3. Reads and validates `manifest.yml`.
+4. Selects targets matching the current system, architecture, and device support.
+5. Opens every compatible shared library.
+6. Looks up the exported plugin ABI symbol for each target.
+7. Validates ABI magic, size, and ABI version.
+8. Drains static block and module registrations into the registry.
+9. Registers bundled examples from `examples[].path`.
 
 After the plugin is loaded, its registered blocks can be built like other
 CyberEther blocks.

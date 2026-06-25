@@ -12,6 +12,8 @@ This is a standalone CyberEther plugin blueprint. Copy this directory, rename
 |       `-- gain/
 |           |-- block.hh
 |           `-- module.hh
+|-- examples/
+|   `-- blueprint_gain.yml
 |-- src/
 |   |-- plugin.cc
 |   |-- meson.build
@@ -22,12 +24,14 @@ This is a standalone CyberEther plugin blueprint. Copy this directory, rename
 |           |-- module_impl.cc
 |           |-- module_impl.hh
 |           `-- module_impl_native_cpu.cc
+|-- tools/
+|   `-- bundler
 `-- meson.build
 ```
 
-`src/plugin.cc` exports the CyberEther plugin ABI symbol. The C++ files register
-the block and module using the same registry macros as built-in CyberEther
-blocks.
+The `src/plugin.cc` exports the CyberEther plugin ABI symbol for the target shared
+library. The build packages that library, `manifest.yml`, and bundled examples
+into a `.cep` plugin bundle using `tools/bundler`.
 
 ## Build
 
@@ -40,10 +44,8 @@ meson setup build
 meson compile -C build
 ```
 
-On Linux, the compiled plugin is written to
-`examples/plugins/blueprint/build/cyberether_blueprint_plugin.so`.
+The compiled plugin bundle is written to `build/cyberether_blueprint_plugin.cep`.
 
-The compiled shared module can be loaded with CyberEther's plugin loader.
+The `.cep` bundle can be loaded with CyberEther's plugin loader.
 
-When building CyberEther from the repository root with examples enabled, the
-same plugin is written to `build-release/examples/plugins/cyberether_blueprint_plugin.so`.
+For more details, see the [CyberEther plugin documentation](https://cyberether.org/docs/plugins).
