@@ -8,6 +8,7 @@ namespace Jetstream::Blocks {
 
 struct WebsocketImpl : public Block::Impl,
                        public DynamicConfig<Blocks::Websocket> {
+    Result validate() override;
     Result configure() override;
     Result define() override;
     Result create() override;
@@ -17,6 +18,35 @@ struct WebsocketImpl : public Block::Impl,
         std::make_shared<Modules::Websocket>();
     Modules::WebsocketImpl* moduleImpl = nullptr;
 };
+
+Result WebsocketImpl::validate() {
+    const auto& config = *candidate();
+
+    if (config.numberOfBatches == 0) {
+        JST_ERROR("[BLOCK_WEBSOCKET] Number of batches cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (config.numberOfTimeSamples == 0) {
+        JST_ERROR("[BLOCK_WEBSOCKET] Number of time samples cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (config.bufferMultiplier == 0) {
+        JST_ERROR("[BLOCK_WEBSOCKET] Buffer multiplier cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (url != config.url ||
+        dataType != config.dataType ||
+        numberOfBatches != config.numberOfBatches ||
+        numberOfTimeSamples != config.numberOfTimeSamples ||
+        bufferMultiplier != config.bufferMultiplier) {
+        return Result::RECREATE;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result WebsocketImpl::configure() {
     moduleConfig->url = url;
