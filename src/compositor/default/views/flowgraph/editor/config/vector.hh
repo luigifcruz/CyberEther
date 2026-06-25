@@ -21,7 +21,7 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
             if (!this->config.encoded.empty()) {
                 if (valueType == "float") {
                     Parser::StringToTyped(this->config.encoded, floatValues);
-                } else if (valueType == "int") {
+                } else {
                     Parser::StringToTyped(this->config.encoded, intValues);
                 }
             }
@@ -68,7 +68,7 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
             for (U64 i = 0; i < floatValues.size(); ++i) {
                 floatFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = fieldLabel(i, floatValues.size()),
+                    .label = config.label,
                     .help = config.help,
                 });
                 floatInputs[i].update({
@@ -95,7 +95,7 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
             for (U64 i = 0; i < intValues.size(); ++i) {
                 intFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
-                    .label = fieldLabel(i, intValues.size()),
+                    .label = config.label,
                     .help = config.help,
                 });
                 intInputs[i].update({
@@ -116,10 +116,6 @@ struct FlowgraphConfigVectorField : public Sakura::Component {
                 });
             }
         }
-    }
-
-    std::string fieldLabel(U64 index, size_t total) const {
-        return total > 1 ? jst::fmt::format("{} {}", config.label, index) : config.label;
     }
 
     Config config;
