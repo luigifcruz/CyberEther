@@ -31,7 +31,7 @@ struct PluginView : public Sakura::Component {
         pathField.update({
             .id = "RegistryPluginPathField",
             .label = "Plugin Path",
-            .description = "Path to a .so, .dylib, or .dll file that registers additional blocks.",
+            .description = "Path to a .cep plugin bundle that registers additional blocks.",
         });
 
         pathInput.update({

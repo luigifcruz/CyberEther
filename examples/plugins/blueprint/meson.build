@@ -21,16 +21,39 @@ endif
 
 plugin_inc = include_directories('include', 'src')
 plugin_sources = []
+plugin_example = files('examples/blueprint_gain.yml')
+plugin_bundler = files('tools/bundler')
+
+pymod = import('python')
+py = pymod.find_installation(required: true)
 
 subdir('src')
 
-shared_module(
+plugin_module = shared_module(
     'cyberether_blueprint_plugin',
     plugin_sources,
     include_directories: plugin_inc,
     dependencies: cyberether_dep,
     gnu_symbol_visibility: 'hidden',
     name_prefix: '',
+    build_by_default: false,
+    install: false,
+)
+
+custom_target(
+    'cyberether_blueprint_plugin_cep',
+    input: [plugin_module, plugin_example],
+    output: 'cyberether_blueprint_plugin.cep',
+    command: [
+        py,
+        plugin_bundler,
+        '--output', '@OUTPUT@',
+        '--name', 'cyberether-blueprint-plugin',
+        '--version', meson.project_version(),
+        '--minimum-jetstream-version', '1.5.0',
+        '--target', 'path=@INPUT0@,system=' + host_machine.system() + ',device=cpu,arch=' + host_machine.cpu_family(),
+        '--example', '@INPUT1@',
+    ],
     build_by_default: true,
     install: false,
 )

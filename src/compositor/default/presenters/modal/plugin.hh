@@ -24,7 +24,7 @@ struct PluginPresenter {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
                     .save = false,
-                    .extensions = {"so", "so.*", "dylib", "dll"},
+                    .extensions = {"cep"},
                     .onSelect = std::move(onSelect),
                 });
             },

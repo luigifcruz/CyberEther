@@ -17,6 +17,9 @@ struct RegistrySettingsPanel : public Sakura::Component {
     };
 
     struct PluginRow {
+        std::string name;
+        std::string version;
+        std::string status;
         std::string path;
     };
 
@@ -85,25 +88,42 @@ struct RegistrySettingsPanel : public Sakura::Component {
         pluginTable.update({
             .id = "RegistryPluginTable",
             .columns = {
-                "Path",
+                "Plugin",
+                "Version",
+                "Status",
                 "Action",
             },
             .fixedColumnWidths = {
                 0.0f,
+                80.0f,
+                110.0f,
                 128.0f,
             },
             .wrapped = true,
         });
 
-        pluginPathTexts.resize(this->config.plugins.size());
+        pluginNameTexts.resize(this->config.plugins.size());
+        pluginVersionTexts.resize(this->config.plugins.size());
+        pluginStatusTexts.resize(this->config.plugins.size());
         pluginActionRows.resize(this->config.plugins.size());
         pluginReloadButtons.resize(this->config.plugins.size());
         pluginDeleteButtons.resize(this->config.plugins.size());
         for (U64 i = 0; i < this->config.plugins.size(); ++i) {
             const auto& plugin = this->config.plugins[i];
-            pluginPathTexts[i].update({
-                .id = "RegistryPluginPathText" + std::to_string(i),
-                .str = plugin.path,
+            pluginNameTexts[i].update({
+                .id = "RegistryPluginNameText" + std::to_string(i),
+                .str = plugin.name,
+                .wrapped = true,
+            });
+            pluginVersionTexts[i].update({
+                .id = "RegistryPluginVersionText" + std::to_string(i),
+                .str = plugin.version,
+                .wrapped = true,
+            });
+            pluginStatusTexts[i].update({
+                .id = "RegistryPluginStatusText" + std::to_string(i),
+                .str = plugin.status,
+                .tone = statusTone(plugin.status),
                 .wrapped = true,
             });
             pluginActionRows[i].update({
@@ -175,6 +195,18 @@ struct RegistrySettingsPanel : public Sakura::Component {
         return value;
     }
 
+    static Sakura::Text::Tone statusTone(const std::string& status) {
+        if (status == "Loaded") {
+            return Sakura::Text::Tone::Success;
+        }
+
+        if (status == "Not loaded") {
+            return Sakura::Text::Tone::Disabled;
+        }
+
+        return Sakura::Text::Tone::Warning;
+    }
+
     std::vector<std::vector<std::string>> buildRows() const {
         std::vector<std::vector<std::string>> rows;
         rows.reserve(config.domains.size());
@@ -204,7 +236,13 @@ struct RegistrySettingsPanel : public Sakura::Component {
         for (U64 i = 0; i < config.plugins.size(); ++i) {
             Sakura::Table::Row row;
             row.push_back([this, i](const Sakura::Context& ctx) {
-                pluginPathTexts[i].render(ctx);
+                pluginNameTexts[i].render(ctx);
+            });
+            row.push_back([this, i](const Sakura::Context& ctx) {
+                pluginVersionTexts[i].render(ctx);
+            });
+            row.push_back([this, i](const Sakura::Context& ctx) {
+                pluginStatusTexts[i].render(ctx);
             });
             row.push_back([this, i](const Sakura::Context& ctx) {
                 pluginActionRows[i].render(ctx, {
@@ -228,7 +266,9 @@ struct RegistrySettingsPanel : public Sakura::Component {
     Sakura::Button pluginButton;
     Sakura::Table pluginTable;
     Sakura::Text emptyPluginText;
-    std::vector<Sakura::Text> pluginPathTexts;
+    std::vector<Sakura::Text> pluginNameTexts;
+    std::vector<Sakura::Text> pluginVersionTexts;
+    std::vector<Sakura::Text> pluginStatusTexts;
     std::vector<Sakura::HStack> pluginActionRows;
     std::vector<Sakura::Button> pluginReloadButtons;
     std::vector<Sakura::Button> pluginDeleteButtons;

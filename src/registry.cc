@@ -218,6 +218,13 @@ Result Registry::Impl::registerBlock(const std::string& type,
     });
 
     if (duplicate != blocks.end()) {
+        if (duplicate->domain == domain &&
+            duplicate->title == title &&
+            duplicate->summary == summary &&
+            duplicate->description == description) {
+            return Result::SUCCESS;
+        }
+
         JST_ERROR("[REGISTRY] Block already registered [Type: {}].", type);
         return Result::ERROR;
     }
