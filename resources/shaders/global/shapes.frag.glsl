@@ -1,7 +1,6 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-// TODO: Implement borders.
 layout(location = 0) in vec2 inLocalPos;
 layout(location = 1) in vec4 inFillColor;
 layout(location = 2) in vec4 inBorderColor;
@@ -60,22 +59,53 @@ float alphaRoundedRect(vec2 p, vec2 size, float radiusPixels) {
     return clamp(0.5 - signedDistance, 0.0, 1.0);
 }
 
+float roundedRectSdPixels(vec2 p, float radiusPixels) {
+    vec2 localPixel = max(fwidth(p), vec2(1.0e-6));
+    vec2 halfSizePixels = (vec2(0.5)) / localPixel;
+    float radius = clamp(radiusPixels, 0.0, min(halfSizePixels.x, halfSizePixels.y));
+
+    vec2 pPixels = p / localPixel;
+    vec2 q = abs(pPixels) - (halfSizePixels - vec2(radius));
+    return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+float shapeSdPixels(float localSignedDistance) {
+    float distancePerPixel = max(length(vec2(dFdx(localSignedDistance), dFdy(localSignedDistance))), 1.0e-6);
+    return localSignedDistance / distancePerPixel;
+}
+
 void main() {
     int shapeType = int(inShapeParams.x);
+    float borderWidth = inShapeParams.y;
+    float cornerRadius = inShapeParams.z;
 
-    float fillAlpha = 0.0;
-
-    // Calculate analytical coverage based on shape type.
-    if (shapeType == TYPE_CIRCLE) {
-        fillAlpha = alphaFromSignedDistance(sdfCircle(inLocalPos, 0.5));
-    } else if (shapeType == TYPE_RECT) {
-        float cornerRadius = inShapeParams.z;
-        fillAlpha = cornerRadius > 0.0 ? alphaRoundedRect(inLocalPos, vec2(1.0), cornerRadius)
-                                       : alphaRect(inLocalPos, vec2(1.0));
-    } else if (shapeType == TYPE_TRIANGLE) {
-        fillAlpha = alphaFromSignedDistance(sdfTriangle(inLocalPos));
+    if (borderWidth <= 0.0) {
+        float fillAlpha = 0.0;
+        if (shapeType == TYPE_CIRCLE) {
+            fillAlpha = alphaFromSignedDistance(sdfCircle(inLocalPos, 0.5));
+        } else if (shapeType == TYPE_RECT) {
+            fillAlpha = cornerRadius > 0.0 ? alphaRoundedRect(inLocalPos, vec2(1.0), cornerRadius)
+                                           : alphaRect(inLocalPos, vec2(1.0));
+        } else if (shapeType == TYPE_TRIANGLE) {
+            fillAlpha = alphaFromSignedDistance(sdfTriangle(inLocalPos));
+        }
+        outColor = vec4(inFillColor.rgb, inFillColor.a * fillAlpha);
+        return;
     }
 
-    // Apply fill coverage. Borders are still not implemented.
-    outColor = vec4(inFillColor.rgb, inFillColor.a * fillAlpha);
+    float sdPixels;
+    if (shapeType == TYPE_RECT) {
+        sdPixels = roundedRectSdPixels(inLocalPos, cornerRadius);
+    } else if (shapeType == TYPE_CIRCLE) {
+        sdPixels = shapeSdPixels(sdfCircle(inLocalPos, 0.5));
+    } else { // TYPE_TRIANGLE
+        sdPixels = shapeSdPixels(sdfTriangle(inLocalPos));
+    }
+
+    float outer = clamp(0.5 - sdPixels, 0.0, 1.0);
+    float inner = clamp(0.5 - (sdPixels + borderWidth), 0.0, 1.0);
+
+    vec3 rgb = mix(inBorderColor.rgb, inFillColor.rgb, inner);
+    float alpha = outer * mix(inBorderColor.a, inFillColor.a, inner);
+    outColor = vec4(rgb, alpha);
 }
