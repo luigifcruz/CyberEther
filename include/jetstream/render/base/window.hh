@@ -146,6 +146,9 @@ class JETSTREAM_API Window {
     void updateScalingFactor(const Viewport::Generic& viewport);
 
  private:
+    bool shouldDeferAttachmentQueueProcessing();
+    bool attachmentQueueEmpty() const;
+
     std::vector<std::shared_ptr<Components::Generic>> components;
 
     std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
@@ -165,6 +168,7 @@ class JETSTREAM_API Window {
 
     Result processAttachmentQueues();
 
+    mutable std::mutex attachmentStateMutex;
     std::queue<std::shared_ptr<WindowAttachment>> bindQueue;
     std::queue<std::shared_ptr<WindowAttachment>> unbindQueue;
     std::queue<PendingDestruction> destroyQueue;
