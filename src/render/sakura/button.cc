@@ -104,17 +104,23 @@ void Button::render(const Context& ctx) const {
     const bool customColors = !config.colorKey.empty() ||
                               !config.hoveredColorKey.empty() ||
                               !config.activeColorKey.empty();
+    const auto colorKey = config.colorKey.empty() ? defaultColorKey : config.colorKey;
+    const auto hoveredColorKey = config.hoveredColorKey.empty() ? defaultHoveredColorKey : config.hoveredColorKey;
+    const auto activeColorKey = config.activeColorKey.empty() ? defaultActiveColorKey : config.activeColorKey;
+    const auto textColorKey = config.textColorKey.empty() ? defaultTextColorKey : config.textColorKey;
+    const auto borderColorKey = config.borderColorKey.empty() ? defaultBorderColorKey : config.borderColorKey;
+
     if (config.variant != Variant::Default || customColors) {
-        ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, config.colorKey.empty() ? defaultColorKey : config.colorKey));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, config.hoveredColorKey.empty() ? defaultHoveredColorKey : config.hoveredColorKey));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Private::ImColor(ctx, config.activeColorKey.empty() ? defaultActiveColorKey : config.activeColorKey));
+        ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, colorKey));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, hoveredColorKey));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Private::ImColor(ctx, activeColorKey));
         styleColorCount += 3;
     }
 
-    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, config.textColorKey.empty() ? defaultTextColorKey : config.textColorKey));
+    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, textColorKey));
     styleColorCount += 1;
 
-    ImGui::PushStyleColor(ImGuiCol_Border, Private::ImColor(ctx, config.borderColorKey.empty() ? defaultBorderColorKey : config.borderColorKey));
+    ImGui::PushStyleColor(ImGuiCol_Border, Private::ImColor(ctx, borderColorKey));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, Scale(ctx, 1.0f));
     styleColorCount += 1;
 

@@ -12,7 +12,6 @@ namespace Jetstream::Sakura {
 struct DebugWindow : public Component {
     struct Config {
         std::string id;
-        bool visible = false;
         std::string title = "Latency Debug";
         Extent2D<F32> size = {200.0f, 120.0f};
         F32 verticalRatio = 0.25f;

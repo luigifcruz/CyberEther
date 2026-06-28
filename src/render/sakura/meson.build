@@ -5,7 +5,6 @@ src_lst += files([
     'runtime.cc',
     'toast.cc',
     'surface_size.cc',
-    'component.cc',
     'vstack.cc',
     'hstack.cc',
     'text.cc',
@@ -41,7 +40,6 @@ src_lst += files([
     'surface_view.cc',
     'workspace_background.cc',
     'dockspace.cc',
-    'dock_layout.cc',
     'dockspace_window.cc',
 ])
 

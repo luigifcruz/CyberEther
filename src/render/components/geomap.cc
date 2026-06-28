@@ -877,11 +877,8 @@ Result GeoMap::create(Window* window) {
         for (U64 i = 0; i < pimpl->LabelPoolSize; ++i) {
             const auto id = jst::fmt::format("l{:03d}", i);
             cfg.elements[id] = {
-                0.7f,           // scale
-                {0.0f, 0.0f},   // position
-                {1, 1},          // alignment (center, center)
-                0.0f,            // rotation
-                "",              // fill (empty initially)
+                .scale = 0.7f,
+                .alignment = {1, 1},
             };
         }
 

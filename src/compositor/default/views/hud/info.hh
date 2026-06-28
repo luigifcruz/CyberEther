@@ -10,7 +10,6 @@ namespace Jetstream {
 
 struct InfoHudView : public Sakura::Component {
     struct Config {
-        bool visible = false;
         F32 frameRate = 0.0f;
         std::string viewportName;
         std::string renderInfo;
@@ -44,10 +43,6 @@ struct InfoHudView : public Sakura::Component {
     }
 
     void render(const Sakura::Context& ctx) const {
-        if (!config.visible) {
-            return;
-        }
-
         hud.render(ctx, [this](const Sakura::Context& ctx) {
             row.render(ctx, {
                 [this](const Sakura::Context& ctx) { frameRateText.render(ctx); },

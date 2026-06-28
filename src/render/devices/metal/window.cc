@@ -72,9 +72,6 @@ Result Implementation::createImgui() {
     style = &ImGui::GetStyle();
     io->IniFilename = nullptr;
 
-#ifndef JST_OS_IOS
-    io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-#endif
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     JST_CHECK(viewport->createImgui());

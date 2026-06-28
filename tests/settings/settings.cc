@@ -10,6 +10,7 @@
 #include <string>
 
 #include "jetstream/platform.hh"
+#include "jetstream/runtime_context_python.hh"
 #include "jetstream/settings.hh"
 
 using namespace Jetstream;
@@ -260,4 +261,22 @@ TEST_CASE("Settings can update memory without persisting", "[settings]") {
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
     REQUIRE(restored.interface.themeKey == "Transient");
     REQUIRE(restored.developer.timingEnabled);
+}
+
+TEST_CASE("Python runtime validation treats framework binaries as libraries", "[settings][runtime][python]") {
+    TempPathRoot sandbox("fake-python-framework-runtime");
+    const auto fakeLibraryPath = sandbox.root / "Python.framework" / "Versions" / "3.14" / "Python";
+    WriteFile(fakeLibraryPath, "not a dynamic library");
+
+    const auto validation = PythonRuntimeContext::ValidateRuntimePath(fakeLibraryPath.string());
+
+    bool attemptedFrameworkLibrary = false;
+    for (const auto& attempt : validation.attempts) {
+        attemptedFrameworkLibrary = attemptedFrameworkLibrary || attempt == fakeLibraryPath.string();
+    }
+
+    REQUIRE(validation.valid);
+    REQUIRE(validation.libraryPath == fakeLibraryPath.string());
+    REQUIRE(validation.programPath.empty());
+    REQUIRE(attemptedFrameworkLibrary);
 }

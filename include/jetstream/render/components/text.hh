@@ -2,6 +2,8 @@
 #define JETSTREAM_RENDER_COMPONENTS_TEXT_HH
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -20,6 +22,7 @@ class JETSTREAM_API Text : public Generic {
         Extent2D<I32> alignment = {0, 0};
         F32 rotationDeg = 0.0f;
         std::string fill = "";
+        std::optional<ColorRGBA<F32>> color;
     };
 
     struct Config {
@@ -44,7 +47,11 @@ class JETSTREAM_API Text : public Generic {
     const ElementConfig& get(const std::string& elementId) const;
     Result update(const std::string& elementId, const ElementConfig& elementConfig);
 
+    F32 advance(const std::string& fill) const;
+    std::vector<F32> advances(const std::string& fill) const;
+
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
+    Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
 
     constexpr const Config& getConfig() const {
         return config;

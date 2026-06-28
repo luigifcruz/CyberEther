@@ -1,11 +1,13 @@
 #include "jetstream/runtime.hh"
 #include "jetstream/detail/runtime_impl.hh"
 #include "jetstream/module.hh"
+#include "jetstream/runtime_context.hh"
 
 namespace Jetstream {
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
 std::shared_ptr<Runtime::Impl> NativeCpuRuntimeFactory();
+std::shared_ptr<Runtime::Impl> PythonRuntimeFactory();
 #endif
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
@@ -19,6 +21,12 @@ Runtime::Runtime(const std::string& name, const DeviceType& device, const Runtim
             switch (type) {
                 case RuntimeType::NATIVE:
                     impl = NativeCpuRuntimeFactory();
+                    impl->name = name;
+                    impl->device = device;
+                    impl->backend = type;
+                    return;
+                case RuntimeType::PYTHON:
+                    impl = PythonRuntimeFactory();
                     impl->name = name;
                     impl->device = device;
                     impl->backend = type;
@@ -60,6 +68,10 @@ Result Runtime::create(const Modules& modules) {
 Result Runtime::destroy() {
     JST_DEBUG("[RUNTIME] Destroying runtime.");
     return impl->destroy();
+}
+
+Runtime::Context::Diagnostic Runtime::Context::diagnostic() const {
+    return {};
 }
 
 Result Runtime::compute(const std::vector<std::string>& modules,
@@ -104,6 +116,8 @@ const char* GetRuntimeName(const RuntimeType& runtime) {
             return "native";
         case RuntimeType::MLIR:
             return "mlir";
+        case RuntimeType::PYTHON:
+            return "python";
         default:
             return "none";
     }
@@ -115,6 +129,8 @@ const char* GetRuntimePrettyName(const RuntimeType& runtime){
             return "Native";
         case RuntimeType::MLIR:
             return "MLIR";
+        case RuntimeType::PYTHON:
+            return "Python";
         default:
             return "None";
     }
@@ -125,6 +141,8 @@ RuntimeType StringToRuntime(const std::string& runtime) {
         return RuntimeType::NATIVE;
     } else if (runtime == "mlir") {
         return RuntimeType::MLIR;
+    } else if (runtime == "python") {
+        return RuntimeType::PYTHON;
     } else {
         return RuntimeType::NONE;
     }

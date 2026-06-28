@@ -282,18 +282,24 @@ void Node::render(const Context& ctx, Child child) const {
     if (config.state == State::Loading) {
         requestedContentSize.y = std::max(requestedContentSize.y, Scale(ctx, 96.0f));
     }
-    if (!impl->hasContentSize || !impl->hasRequestedContentSize ||
-        impl->contentSizeScale != ScalingFactor(ctx) ||
-        impl->requestedContentSize.x != requestedContentSize.x ||
-        impl->requestedContentSize.y != requestedContentSize.y) {
+    const bool requestedContentSizeChanged = !impl->hasContentSize ||
+                                             !impl->hasRequestedContentSize ||
+                                              impl->contentSizeScale != ScalingFactor(ctx) ||
+                                              impl->requestedContentSize.x != requestedContentSize.x ||
+                                              impl->requestedContentSize.y != requestedContentSize.y;
+    if (requestedContentSizeChanged) {
         impl->contentSize = requestedContentSize;
+    }
+    if (requestedContentSize.x <= 0.0f) {
+        impl->contentSize.x = 0.0f;
+    }
+    if (requestedContentSize.y <= 0.0f) {
+        impl->contentSize.y = 0.0f;
     }
     impl->requestedContentSize = requestedContentSize;
     impl->contentSizeScale = ScalingFactor(ctx);
     impl->hasContentSize = true;
     impl->hasRequestedContentSize = true;
-    // Keep this storage alive through EndNodeEditor(); ImNodes writes manual resize results after
-    // the node body has rendered, and the resolved size is reported on the following frame.
     ImNodes::SetNodeDimensions(imNodesId, impl->contentSize);
 
     if (config.state != State::Normal) {

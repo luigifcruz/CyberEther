@@ -25,11 +25,16 @@ void NavigationItem::render(const Context& ctx) const {
     const auto& config = this->impl->config;
 
     ImGui::PushID(config.id.c_str());
-    ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, config.selected ? config.selectedColorKey : config.colorKey));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, config.selected ? config.selectedColorKey : config.hoveredColorKey));
+    const auto buttonColorKey = config.selected ? config.selectedColorKey : config.colorKey;
+    const auto buttonHoveredColorKey = config.selected ? config.selectedColorKey : config.hoveredColorKey;
+    const auto textColorKey = config.selected ? config.selectedTextColorKey : config.textColorKey;
+    const auto borderColorKey = config.selected ? config.selectedBorderColorKey : config.borderColorKey;
+
+    ImGui::PushStyleColor(ImGuiCol_Button, Private::ImColor(ctx, buttonColorKey));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Private::ImColor(ctx, buttonHoveredColorKey));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, Private::ImColor(ctx, config.activeColorKey));
-    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, config.selected ? config.selectedTextColorKey : config.textColorKey));
-    ImGui::PushStyleColor(ImGuiCol_Border, Private::ImColor(ctx, config.selected ? config.selectedBorderColorKey : config.borderColorKey));
+    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, textColorKey));
+    ImGui::PushStyleColor(ImGuiCol_Border, Private::ImColor(ctx, borderColorKey));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, Private::ToImVec2(Scale(ctx, {12.0f, 10.0f})));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Scale(ctx, 10.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, Scale(ctx, 1.0f));

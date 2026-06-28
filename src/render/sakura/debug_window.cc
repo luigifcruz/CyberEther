@@ -26,10 +26,6 @@ bool DebugWindow::update(Config config) {
 void DebugWindow::render(const Context& ctx) {
     const auto& config = impl->config;
 
-    if (!config.visible) {
-        return;
-    }
-
     const ImGuiIO& io = ImGui::GetIO();
     const Extent2D<F32> size = Scale(ctx, config.size);
     impl->positionX += impl->directionX;

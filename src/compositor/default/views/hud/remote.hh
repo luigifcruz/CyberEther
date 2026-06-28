@@ -12,7 +12,6 @@ namespace Jetstream {
 
 struct RemoteHudView : public Sakura::Component {
     struct Config {
-        bool visible = false;
         U64 clientCount = 0;
         std::function<void()> onOpen;
     };
@@ -50,10 +49,6 @@ struct RemoteHudView : public Sakura::Component {
     }
 
     void render(const Sakura::Context& ctx) const {
-        if (!config.visible) {
-            return;
-        }
-
         hud.render(ctx, [this](const Sakura::Context& ctx) {
             row.render(ctx, {
                 [this](const Sakura::Context& ctx) { icon.render(ctx); },

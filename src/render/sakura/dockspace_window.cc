@@ -125,10 +125,14 @@ bool SameLayout(const std::optional<DockLayout>& lhs, const std::optional<DockLa
 
 ImGuiDir ToImGuiDir(const DockLayout::Direction direction) {
     switch (direction) {
-        case DockLayout::Direction::Left: return ImGuiDir_Left;
-        case DockLayout::Direction::Right: return ImGuiDir_Right;
-        case DockLayout::Direction::Up: return ImGuiDir_Up;
-        case DockLayout::Direction::Down: return ImGuiDir_Down;
+        case DockLayout::Direction::Left:
+            return ImGuiDir_Left;
+        case DockLayout::Direction::Right:
+            return ImGuiDir_Right;
+        case DockLayout::Direction::Up:
+            return ImGuiDir_Up;
+        case DockLayout::Direction::Down:
+            return ImGuiDir_Down;
     }
     return ImGuiDir_Left;
 }

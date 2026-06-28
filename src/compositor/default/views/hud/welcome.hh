@@ -121,7 +121,6 @@ struct WelcomeHudCell : public Sakura::Component {
 
 struct WelcomeHudView : public Sakura::Component {
     struct Config {
-        bool visible = false;
         std::string version;
         std::function<void()> onNewFlowgraph;
         std::function<void()> onOpenFlowgraph;
@@ -241,10 +240,6 @@ struct WelcomeHudView : public Sakura::Component {
     }
 
     void render(const Sakura::Context& ctx) const {
-        if (!config.visible) {
-            return;
-        }
-
         hud.render(ctx, [this](const Sakura::Context& ctx) {
             title.render(ctx);
             welcomeSpacing.render(ctx);

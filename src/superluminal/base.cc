@@ -10,7 +10,7 @@
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
-#include "jetstream/render/tools/imgui_markdown.hh"
+#include "imgui.h"
 
 #include "dmi_block.hh"
 
@@ -1197,10 +1197,5 @@ Result Superluminal::slider(const std::string& label, F32 min, F32 max, F32& val
     return Result::SUCCESS;
 }
 
-Result Superluminal::markdown(const std::string& content) {
-    ImGui::MarkdownConfig mdConfig;
-    ImGui::Markdown(content.c_str(), content.length(), mdConfig);
-    return Result::SUCCESS;
-}
 
 }  // namespace Jetstream
