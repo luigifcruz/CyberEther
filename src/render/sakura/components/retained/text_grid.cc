@@ -591,6 +591,14 @@ struct TextGrid::Impl {
     F32 contentWidthPixels() const {
         return (textLeftPixels() - rect.x) + maxLineAdvancePixels() + paddingPixels();
     }
+    F32 measuredContentWidthPixels() const {
+        ensureVisualRows();
+        F32 widest = 0.0f;
+        for (const auto& row : visualRows) {
+            widest = std::max(widest, columnXInRow(row.line, row.start, row.end) + lineIndentAt(row.line));
+        }
+        return (textLeftPixels() - rect.x) + widest + paddingPixels();
+    }
     Metrics computeMetrics() const {
         Metrics out;
         out.contentHeight = textContentHeightPixels();
@@ -1963,9 +1971,10 @@ Extent2D<F32> TextGrid::measure(const Context& ctx, Extent2D<F32> available) {
     const Rect savedRect = impl->rect;
     impl->rect = {0.0f, 0.0f, maxWidth, impl->rect.height};
     const F32 height = impl->textContentHeightPixels();
+    const F32 width = std::min(maxWidth, impl->measuredContentWidthPixels());
     impl->rect = savedRect;
 
-    return {maxWidth, height};
+    return {width, height};
 }
 
 void TextGrid::layout(const Context& ctx) {
