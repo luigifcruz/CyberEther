@@ -1,5 +1,10 @@
 #include "base.hh"
 
+#include "render/sakura/runtime.hh"
+
+#include "jetstream/render/sakura/clipboard.hh"
+#include "jetstream/render/sakura/toast.hh"
+
 #include "actions/base.hh"
 #include "presenters/base.hh"
 #include "themes.hh"
@@ -205,7 +210,8 @@ Result DefaultCompositor::present() {
         .render = state.system.render.get(),
     });
 
-    workbench.render(state.sakura.runtime.context());
+    const auto& ctx = state.sakura.runtime.context();
+    workbench.render(ctx);
 
     return Result::SUCCESS;
 }

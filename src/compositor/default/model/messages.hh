@@ -7,7 +7,7 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/sakura/toast.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
 #include <deque>

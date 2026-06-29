@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MODALS_RENAME_HH
 
 #include "../../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct RenameBlockView : public Sakura::Component {
+struct RenameBlockView {
     struct Config {
         std::string oldName;
         std::function<void(const std::string&)> onRename;

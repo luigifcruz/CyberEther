@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_PICKER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_PICKER_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include "jetstream/types.hh"
@@ -15,7 +15,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphBlockPicker : public Sakura::Component {
+struct FlowgraphBlockPicker {
     struct DeviceOption {
         DeviceType device = DeviceType::CPU;
         RuntimeType runtime = RuntimeType::NATIVE;
@@ -135,7 +135,7 @@ struct FlowgraphBlockPicker : public Sakura::Component {
 
         documentationPanel.update({
             .id = this->config.id + ":documentation",
-            .padding = 10.0f,
+            .padding = 7.0f,
             .rounding = 10.0f,
             .border = true,
             .scrollbar = false,
@@ -221,6 +221,8 @@ struct FlowgraphBlockPicker : public Sakura::Component {
             detailMarkdown.update({
                 .id = this->config.id + ":detail-md",
                 .value = selected.description,
+                .fontSize = 14.0f,
+                .backgroundColorKey = "card",
             });
         }
 
@@ -497,7 +499,7 @@ struct FlowgraphBlockPicker : public Sakura::Component {
     Sakura::Text noMatches;
     Sakura::Text footerText;
     Sakura::VStack detailLayout;
-    Sakura::Markdown detailMarkdown;
+    Sakura::Retained::MarkdownView detailMarkdown;
 };
 
 }  // namespace Jetstream

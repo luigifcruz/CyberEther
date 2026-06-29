@@ -12,7 +12,7 @@
 #include "../../model/ui.hh"
 #include "remote.hh"
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <optional>
@@ -20,7 +20,7 @@
 
 namespace Jetstream {
 
-struct ModalView : public Sakura::Component {
+struct ModalView {
     struct Config {
         std::optional<ModalContent> content;
         FlowgraphExamplesView::Config flowgraphExamples;

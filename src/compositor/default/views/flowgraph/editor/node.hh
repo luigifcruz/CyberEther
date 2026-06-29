@@ -27,7 +27,7 @@ inline std::string FlowgraphPinId(const std::string& pinName) {
     return pinName + "pin";
 }
 
-struct FlowgraphNode : public Sakura::Component {
+struct FlowgraphNode {
     struct Port {
         std::string id;
         std::string label;
@@ -369,8 +369,10 @@ struct FlowgraphNode : public Sakura::Component {
 
     void render(const Sakura::Context& ctx) {
         node.render(ctx, [this](const Sakura::Context& ctx) {
-            title.render(ctx);
-            subtitle.render(ctx);
+            if (config.block.module != "note") {
+                title.render(ctx);
+                subtitle.render(ctx);
+            }
 
             for (const auto& pin : pins) {
                 pin.render(ctx);

@@ -15,7 +15,8 @@
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/flowgraph_view.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/sakura/toast.hh"
+#include "jetstream/render/sakura/base.hh"
+#include "jetstream/runtime_context.hh"
 
 #include <algorithm>
 #include <any>
@@ -104,7 +105,7 @@ struct FlowgraphNodePresenter {
                 Parser::TypedToString(blockData.config.at(entry.name), encoded);
             }
 
-            block.configFields.push_back({
+            FlowgraphConfigFieldConfig field{
                 .id = nodeViewId + ":config:" + entry.name,
                 .name = entry.name,
                 .label = entry.label.empty() ? entry.name : entry.label,
@@ -112,7 +113,30 @@ struct FlowgraphNodePresenter {
                 .format = entry.format,
                 .encoded = encoded,
                 .values = blockData.config,
-            });
+            };
+
+            const auto formatParts = Parser::SplitString(entry.format, ":");
+            if (!formatParts.empty() && formatParts[0] == "python") {
+                for (const auto& metric : blockData.metrics) {
+                    if (metric.format != "private-python-diagnostic" || !metric.value.has_value()) {
+                        continue;
+                    }
+
+                    try {
+                        const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(metric.value);
+                        field.status = diagnostic.status;
+                        field.statusTone = diagnostic.healthy
+                            ? Sakura::NodeCodeEditor::StatusTone::Success
+                            : Sakura::NodeCodeEditor::StatusTone::Error;
+                        field.consoleOutput = diagnostic.console;
+                        field.consoleVisible = !field.consoleOutput.empty();
+                    } catch (const std::bad_any_cast&) {
+                    }
+                    break;
+                }
+            }
+
+            block.configFields.push_back(std::move(field));
         }
     }
 

@@ -3,7 +3,7 @@
 
 #include "../components/hint_overlay.hh"
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <optional>
@@ -13,7 +13,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphStackWindow : public Sakura::Component {
+struct FlowgraphStackWindow {
     struct Config {
         std::string id;
         std::string title;
@@ -22,11 +22,11 @@ struct FlowgraphStackWindow : public Sakura::Component {
         std::optional<U64> parentDockId;
         bool dockIntoParent = false;
         bool restoreLayout = false;
-        std::optional<Sakura::DockLayout> layout;
-        std::vector<Sakura::DockableWindow> dockables;
+        std::optional<Sakura::DockspaceWindow::DockLayout> layout;
+        std::vector<Sakura::DockspaceWindow::DockableWindow> dockables;
 
         std::function<void(Extent2D<F32>, Extent2D<F32>)> onGeometry;
-        std::function<void(std::optional<Sakura::DockLayout>)> onLayout;
+        std::function<void(std::optional<Sakura::DockspaceWindow::DockLayout>)> onLayout;
         std::function<void()> onClose;
     };
 

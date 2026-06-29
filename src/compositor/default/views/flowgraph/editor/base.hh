@@ -16,7 +16,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphEditor : public Sakura::Component {
+struct FlowgraphEditor {
     struct Config {
         std::string id;
         bool clipboardHasData = false;

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef JETSTREAM_RENDER_SAKURA_TOAST_HH
+#define JETSTREAM_RENDER_SAKURA_TOAST_HH
 
 #include <jetstream/types.hh>
 
@@ -18,3 +19,5 @@ void PushToast(ToastType type, I32 durationMs, const std::string& message);
 void PushToastResult(Result value, const std::string& message = "");
 
 }  // namespace Jetstream::Sakura
+
+#endif  // JETSTREAM_RENDER_SAKURA_TOAST_HH

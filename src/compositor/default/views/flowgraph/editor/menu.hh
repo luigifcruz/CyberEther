@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MENU_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MENU_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphNodeMenu : public Sakura::Component {
+struct FlowgraphNodeMenu {
     struct DeviceOption {
         std::string label;
         bool selected = false;

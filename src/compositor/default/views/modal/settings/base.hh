@@ -17,7 +17,7 @@
 
 namespace Jetstream {
 
-struct SettingsView : public Sakura::Component {
+struct SettingsView {
     struct Config {
         SettingsSection section = SettingsSection::General;
         GeneralSettingsPanel::Config general;
