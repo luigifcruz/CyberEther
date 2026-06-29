@@ -28,6 +28,7 @@ constexpr F32 kIndentEmRatio = 1.4f;
 constexpr F32 kCodePadRatio = 0.4f;
 constexpr F32 kRuleThicknessRatio = 0.12f;
 constexpr F32 kQuoteBarRatio = 0.18f;
+constexpr F32 kQuoteIndentEmRatio = 0.4f;
 constexpr const char* kBodyFont = "default_body";
 
 using StyleId = TextGrid::StyleId;
@@ -289,7 +290,7 @@ struct TextMarkdown::Impl {
             b.text = join(quoteLines);
             b.fontSize = body;
             b.topGap = gapAbove(kParagraphGapRatio);
-            b.indent = indentUnit;
+            b.indent = body * kQuoteIndentEmRatio;
             b.quote = true;
             blocks.push_back(std::move(b));
             prevHeading = prevList = false;
