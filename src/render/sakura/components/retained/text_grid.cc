@@ -1474,7 +1474,7 @@ struct TextGrid::Impl {
                     }
                     handledShortcut = true;
                 }
-                if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+                if (ImGui::IsKeyPressed(ImGuiKey_Z, true)) {
                     if (shiftPressed) {
                         redo();
                     } else {
@@ -1482,7 +1482,7 @@ struct TextGrid::Impl {
                     }
                     handledShortcut = true;
                 }
-                if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+                if (ImGui::IsKeyPressed(ImGuiKey_Y, true)) {
                     redo();
                     handledShortcut = true;
                 }
