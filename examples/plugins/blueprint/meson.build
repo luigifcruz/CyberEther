@@ -10,7 +10,7 @@ project(
 )
 
 cyberether_dep = dependency(
-    'cyberether',
+    'jetstream',
     required: false,
     fallback: ['cyberether', 'libjetstream_dep'],
 )
