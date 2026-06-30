@@ -34,9 +34,21 @@ void Combo::render(const Context& ctx) const {
     }
 
     if (ImGui::BeginCombo(comboId.c_str(), preview)) {
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float popupInset = style.WindowPadding.x > style.FramePadding.x
+                                     ? style.WindowPadding.x - style.FramePadding.x
+                                     : 0.0f;
+        if (popupInset > 0.0f) {
+            ImGui::Indent(popupInset);
+        }
+        const float availableWidth = ImGui::GetContentRegionAvail().x;
+        const float itemWidth = availableWidth > popupInset ? availableWidth - popupInset : 0.0f;
         for (const auto& option : config.options) {
             const bool selected = config.value == option;
-            if (ImGui::Selectable(option.c_str(), selected)) {
+            const bool activated = popupInset > 0.0f
+                                       ? ImGui::Selectable(option.c_str(), selected, ImGuiSelectableFlags_None, ImVec2(itemWidth, 0.0f))
+                                       : ImGui::Selectable(option.c_str(), selected);
+            if (activated) {
                 if (config.onChange) {
                     config.onChange(option);
                 }
@@ -45,6 +57,9 @@ void Combo::render(const Context& ctx) const {
             if (selected) {
                 ImGui::SetItemDefaultFocus();
             }
+        }
+        if (popupInset > 0.0f) {
+            ImGui::Unindent(popupInset);
         }
         ImGui::EndCombo();
     }
