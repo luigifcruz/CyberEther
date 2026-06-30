@@ -229,8 +229,12 @@ struct Canvas::Impl {
     void handleMouse(const MouseEvent& rawEvent) {
         const MouseEvent event = ConvertMouse(rawEvent, context.framebufferSize);
 
-        const bool handled = root && Impl::event(*root, event);
-        if (root && (handled || resourceDirty(*root) || paintDirty(*root))) {
+        if (!root) {
+            return;
+        }
+
+        Impl::event(*root, event);
+        if (resourceDirty(*root) || paintDirty(*root)) {
             invalidateSurface();
         }
     }
