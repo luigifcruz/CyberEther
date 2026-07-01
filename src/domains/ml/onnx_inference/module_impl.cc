@@ -153,10 +153,6 @@ Result OnnxInferenceImpl::readModelShapes() {
                 if (outputShapes[i][j] >= 0) {
                     continue;
                 }
-                if (j == 0) {
-                    outputShapes[i][j] = inputShapes[0][0];
-                    continue;
-                }
                 needsShapeProbe = true;
                 break;
             }
