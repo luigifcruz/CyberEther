@@ -3,7 +3,6 @@
 #include <jetstream/render/sakura/components/divider.hh>
 #include <jetstream/render/sakura/components/hstack.hh>
 #include <jetstream/render/sakura/components/text.hh>
-#include <jetstream/render/sakura/components/tooltip.hh>
 
 #include "base.hh"
 
@@ -12,12 +11,10 @@ namespace Jetstream::Sakura {
 struct NodeTitle::Impl {
     Config config;
     Text title;
-    Text diagnosticIcon;
     HStack diagnosticHeader;
     Text diagnosticHeaderIcon;
     Text diagnosticHeaderLabel;
     Divider diagnosticDivider;
-    Tooltip diagnosticTooltip;
     Text diagnosticMessage;
 
     std::string diagnosticColorKey() const {
@@ -43,11 +40,6 @@ bool NodeTitle::update(Config config) {
         .align = Text::Align::Center,
         .scale = impl->config.titleScale,
     });
-    impl->diagnosticIcon.update({
-        .id = id + "DiagnosticIcon",
-        .str = ICON_FA_SKULL,
-        .colorKey = impl->diagnosticColorKey(),
-    });
     impl->diagnosticHeader.update({
         .id = id + "DiagnosticHeader",
         .spacing = 4.0f,
@@ -65,9 +57,6 @@ bool NodeTitle::update(Config config) {
         .id = id + "DiagnosticDivider",
         .spacing = 0.0f,
     });
-    impl->diagnosticTooltip.update({
-        .id = id + "DiagnosticTooltip",
-    });
     impl->diagnosticMessage.update({
         .id = id + "DiagnosticMessage",
         .str = impl->config.diagnostic.message,
@@ -81,16 +70,33 @@ void NodeTitle::render(const Context& ctx) const {
     ImNodes::BeginNodeTitleBar();
 
     const bool hasDiagnostic = config.diagnostic.state != Node::State::Normal && !config.diagnostic.message.empty();
-    const F32 titleStartX = ImGui::GetCursorPosX();
+    const ImVec2 titleStartScreen = ImGui::GetCursorScreenPos();
     const F32 availWidth = ImGui::GetContentRegionAvail().x;
+    ImVec2 diagnosticIconMin(0.0f, 0.0f);
+    ImVec2 diagnosticIconMax(0.0f, 0.0f);
 
     impl->title.render(ctx);
 
     if (hasDiagnostic) {
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(titleStartX + availWidth - ImGui::CalcTextSize(ICON_FA_SKULL).x);
-        impl->diagnosticIcon.render(ctx);
-        impl->diagnosticTooltip.render(ctx, [&](const Context& ctx) {
+        const ImVec2 titleMin = ImGui::GetItemRectMin();
+        const ImVec2 titleMax = ImGui::GetItemRectMax();
+        const ImVec2 iconSize = ImGui::CalcTextSize(ICON_FA_SKULL);
+        diagnosticIconMin.x = titleStartScreen.x + ImMax(0.0f, availWidth - iconSize.x);
+        diagnosticIconMin.y = titleMin.y + ImMax(0.0f, (titleMax.y - titleMin.y - iconSize.y) * 0.5f);
+        diagnosticIconMax = ImVec2(diagnosticIconMin.x + iconSize.x,
+                                   diagnosticIconMin.y + iconSize.y);
+    }
+
+    ImNodes::EndNodeTitleBar();
+
+    if (hasDiagnostic) {
+        const ImU32 iconColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, impl->diagnosticColorKey()));
+        ImGui::GetWindowDrawList()->AddText(diagnosticIconMin, iconColor, ICON_FA_SKULL);
+
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+            ImGui::IsMouseHoveringRect(diagnosticIconMin, diagnosticIconMax)) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(Scale(ctx, 420.0f));
             impl->diagnosticHeader.render(ctx, {
                 [&](const Context& ctx) {
                     impl->diagnosticHeaderIcon.render(ctx);
@@ -101,10 +107,10 @@ void NodeTitle::render(const Context& ctx) const {
             });
             impl->diagnosticDivider.render(ctx);
             impl->diagnosticMessage.render(ctx);
-        });
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
     }
-
-    ImNodes::EndNodeTitleBar();
 }
 
 }  // namespace Jetstream::Sakura
