@@ -95,6 +95,7 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- fmtlib - MIT License\n"
                    "- SoapySDR - Boost Software License\n"
                    "- libmodes - BSD-2-Clause License\n"
+                   "- ONNX Runtime - MIT License\n"
                    "- GLFW - zlib/libpng License\n"
                    "- imgui-notify - MIT License\n"
                    "- spirv-cross - Apache License 2.0\n"
