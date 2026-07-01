@@ -65,6 +65,14 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 pacman -S bison flex nasm
 ```
 
+Machine learning inference support depends on the ONNX Runtime.
+```bash
+python -m pip install onnxruntime        # CPU
+python -m pip install onnxruntime-gpu    # CPU+CUDA
+```
+
+The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
+
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 </details>
@@ -97,6 +105,14 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 apt install bison flex nasm
 ```
 
+Machine learning inference support depends on the ONNX Runtime.
+```bash
+python -m pip install onnxruntime        # CPU
+python -m pip install onnxruntime-gpu    # CPU+CUDA
+```
+
+The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
+
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
 </details>
@@ -122,6 +138,11 @@ python3 -m pip install meson ninja numpy mapbox_earcut
 Remote streaming support uses bundled GStreamer sources, but still needs NASM.
 ```bash
 brew install nasm
+```
+
+Machine learning inference support depends on the ONNX Runtime.
+```bash
+brew install onnxruntime
 ```
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
@@ -195,6 +216,13 @@ cd CyberEther
 
 ### Build & Install
 
+To enable optional features, pass flags to `meson setup`:
+
+| Flag | Values | Description |
+|---|---|---|
+| `-Dinference` | `enabled` / `disabled` | Machine learning inference feature. |
+| `-Dremote` | `enabled` / `disabled` | Remote streaming feature. |
+
 <details>
 <summary>Linux or macOS</summary>
 
@@ -206,8 +234,6 @@ meson setup -Dbuildtype=debugoptimized build
 meson compile -C build
 meson install -C build --skip-subprojects
 ```
-
-To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
 
 After installation, run `cyberether --help` for usage instructions.
 
@@ -224,8 +250,6 @@ meson setup --vsenv -Dbuildtype=debugoptimized build
 meson compile -C build
 meson install -C build --skip-subprojects
 ```
-
-To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
 
 After installation, run `cyberether --help` for usage instructions.
 

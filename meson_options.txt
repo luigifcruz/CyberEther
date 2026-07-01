@@ -4,3 +4,4 @@ option('wheel', type : 'boolean', value : false, description: 'Enable Python whe
 option('tests', type : 'boolean', value : true, description: 'Enable tests.')
 option('examples', type : 'boolean', value : true, description: 'Enable examples.')
 option('remote', type : 'feature', value : 'auto', description: 'Enable remote streaming with bundled static GStreamer.')
+option('inference', type : 'feature', value : 'auto', description: 'Enable ONNX Runtime inference (Infer block in the ML domain).')
