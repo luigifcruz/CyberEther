@@ -35,8 +35,11 @@ void TextInput::render(const Context& ctx) const {
     if (!config.focusOutline) {
         ImGui::PushStyleColor(ImGuiCol_NavCursor, Private::ImColor(ctx, "transparent"));
     }
-    const ImGuiInputTextFlags flags = config.submit == Submit::OnEdit ? ImGuiInputTextFlags_None
-                                                                       : ImGuiInputTextFlags_EnterReturnsTrue;
+    ImGuiInputTextFlags flags = config.submit == Submit::OnEdit ? ImGuiInputTextFlags_None
+                                                                 : ImGuiInputTextFlags_EnterReturnsTrue;
+    if (config.selectAllOnFocus) {
+        flags |= ImGuiInputTextFlags_AutoSelectAll;
+    }
     if (config.hint.empty()) {
         changed = ImGui::InputText("##input", &value, flags);
     } else {
@@ -48,9 +51,15 @@ void TextInput::render(const Context& ctx) const {
     if (config.submit == Submit::OnCommit && ImGui::IsItemDeactivatedAfterEdit()) {
         changed = true;
     }
+    const bool submitted = ImGui::IsItemFocused() &&
+                           (ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter));
 
     if (changed && config.onChange) {
         config.onChange(value);
+    }
+    if (submitted && config.onSubmit) {
+        config.onSubmit(value);
     }
     ImGui::PopID();
 }

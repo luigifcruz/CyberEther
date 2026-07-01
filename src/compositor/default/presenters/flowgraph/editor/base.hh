@@ -58,6 +58,9 @@ struct FlowgraphEditorPresenter {
             .onPasteBlock = [enqueue, flowgraphId](std::optional<Extent2D<F32>> gridPosition) {
                 enqueue(MailPasteBlock{flowgraphId, gridPosition});
             },
+            .onRenameBlock = [enqueue, flowgraphId](const std::string& blockName) {
+                enqueue(MailOpenRenameBlock{flowgraphId, blockName});
+            },
             .onReloadBlock = [enqueue, flowgraphId](const std::string& blockName) {
                 enqueue(MailReloadBlock{flowgraphId, blockName});
             },

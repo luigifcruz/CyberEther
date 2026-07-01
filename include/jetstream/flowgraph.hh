@@ -72,6 +72,8 @@ class JETSTREAM_API Flowgraph {
                        const ProviderType& provider = "generic");
     Result blockDestroy(const std::string name,
                         bool propagate = true);
+    Result blockRename(const std::string oldName,
+                       const std::string newName);
     Result blockConnect(const std::string blockName,
                         const std::string inputPort,
                         const std::string sourceBlock,

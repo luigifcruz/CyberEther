@@ -35,6 +35,7 @@ struct FlowgraphEditor {
         std::function<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
         std::function<void(const std::string&)> onCopyBlock;
         std::function<void(std::optional<Extent2D<F32>>)> onPasteBlock;
+        std::function<void(const std::string&)> onRenameBlock;
         std::function<void(const std::string&)> onReloadBlock;
         std::function<void(const std::string&)> onDeleteBlock;
         std::function<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
@@ -171,6 +172,11 @@ struct FlowgraphEditor {
                 .onPaste = [this](Extent2D<F32> pastePos) {
                     if (this->config.onPasteBlock) {
                         this->config.onPasteBlock(pastePos);
+                    }
+                },
+                .onRename = [this, blockName = block.name]() {
+                    if (this->config.onRenameBlock) {
+                        this->config.onRenameBlock(blockName);
                     }
                 },
                 .onReload = [this, blockName = block.name]() {

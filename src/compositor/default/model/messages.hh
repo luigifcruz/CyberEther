@@ -215,6 +215,11 @@ struct MailRenameBlock {
     std::string newId;
 };
 
+struct MailOpenRenameBlock {
+    std::string flowgraph;
+    std::string blockId;
+};
+
 struct MailDeleteBlock {
     std::string flowgraph;
     std::string blockId;
@@ -382,6 +387,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailRunBenchmark,
                           MailResetBenchmark,
                           MailSetFlowgraphInfo,
+                          MailOpenRenameBlock,
                           MailRenameBlock,
                           MailDeleteBlock,
                           MailReloadBlock,
