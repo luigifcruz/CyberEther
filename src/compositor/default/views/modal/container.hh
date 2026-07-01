@@ -46,6 +46,11 @@ struct ModalView {
             },
         });
 
+        if (previousContent == ModalContent::RenameBlock &&
+            this->config.content != ModalContent::RenameBlock) {
+            renameBlockView.update({});
+        }
+
         if (!this->config.content.has_value()) {
             previousContent = this->config.content;
             return;

@@ -36,6 +36,7 @@ struct FlowgraphActions {
                               MailBrowseConfigPath,
                               MailSetFlowgraphInfo,
                               MailCreateBlock,
+                              MailOpenRenameBlock,
                               MailRenameBlock,
                               MailDeleteBlock,
                               MailReloadBlock,
@@ -299,8 +300,42 @@ struct FlowgraphActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailRenameBlock&) {
-        // TODO: Implement.
+    Result handle(const MailOpenRenameBlock& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Cannot rename block because the flowgraph doesn't exist.");
+            return Result::SUCCESS;
+        }
+
+        if (!state.flowgraph.items.at(msg.flowgraph)->view().has(msg.blockId)) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Cannot rename block because it doesn't exist.");
+            return Result::SUCCESS;
+        }
+
+        state.modal.flowgraph = msg.flowgraph;
+        state.modal.renameBlockOldName = msg.blockId;
+        state.modal.content = ModalContent::RenameBlock;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailRenameBlock& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Cannot rename block because the flowgraph doesn't exist.");
+            return Result::SUCCESS;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        const auto oldId = msg.oldId;
+        const auto newId = msg.newId;
+        callbacks.enqueueCommand([flowgraph, oldId, newId]() -> Result {
+            return flowgraph->blockRename(oldId, newId);
+        }, false);
+        callbacks.enqueueMail(MailCloseModal{});
         return Result::SUCCESS;
     }
 

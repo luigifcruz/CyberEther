@@ -85,6 +85,37 @@ OutputLookup BuildOutputLookup(const std::vector<std::string>& blockNames,
     return lookup;
 }
 
+void CopyRequestedInputs(const TensorMap& source,
+                         const OutputLookup& outputLookup,
+                         TensorMap& target,
+                         const std::string& oldBlockName = {},
+                         const std::string& newBlockName = {}) {
+    for (const auto& [slot, link] : source) {
+        std::string block;
+        std::string port;
+
+        if (link.external.has_value()) {
+            block = link.external->block;
+            port = link.external->port;
+        } else {
+            const U64 tensorId = link.tensor.id();
+            if (tensorId != 0 && outputLookup.contains(tensorId)) {
+                block = outputLookup.at(tensorId).block;
+                port = outputLookup.at(tensorId).port;
+            }
+        }
+
+        if (block.empty() || port.empty()) {
+            continue;
+        }
+
+        if (!oldBlockName.empty() && block == oldBlockName) {
+            block = newBlockName;
+        }
+        target[slot].requested(block, port);
+    }
+}
+
 void CopyInterfaceEntries(const Block::Interface::EntryList& source,
                           std::vector<Flowgraph::View::InterfaceEntry>& target) {
     target.clear();
@@ -390,6 +421,11 @@ Result Flowgraph::blockCreate(const std::string name,
     JST_INFO("[FLOWGRAPH] Creating block '{}' of type '{}'.", name, type);
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
+    if (name.empty() || name.find('.') != std::string::npos) {
+        JST_ERROR("[FLOWGRAPH] Invalid block name '{}'.", name);
+        return Result::ERROR;
+    }
+
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
     std::shared_ptr<Block> block;
@@ -589,6 +625,93 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
 
         impl->blockOrder.erase(std::remove(impl->blockOrder.begin(), impl->blockOrder.end(), name),
                                impl->blockOrder.end());
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::blockRename(const std::string oldName, const std::string newName) {
+    JST_INFO("[FLOWGRAPH] Renaming block '{}' to '{}'.", oldName, newName);
+    JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
+
+    if (newName.empty() || newName.find('.') != std::string::npos) {
+        JST_ERROR("[FLOWGRAPH] Invalid block name '{}'.", newName);
+        return Result::ERROR;
+    }
+    if (oldName == newName) {
+        return Result::SUCCESS;
+    }
+
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    std::vector<BlockState> blocksToRecreate;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        if (!impl->blocks.contains(oldName)) {
+            JST_ERROR("[FLOWGRAPH] Cannot rename block '{}' because it doesn't exist.", oldName);
+            return Result::ERROR;
+        }
+        if (impl->blocks.contains(newName) || impl->transientBlocks.contains(newName)) {
+            JST_ERROR("[FLOWGRAPH] Cannot rename block '{}' to '{}' because the target name already exists.",
+                      oldName,
+                      newName);
+            return Result::ERROR;
+        }
+
+        const auto outputLookup = BuildOutputLookup(impl->blockOrder, impl->blocks);
+
+        const auto& target = impl->blocks.at(oldName);
+        BlockState targetState;
+        targetState.name = newName;
+        targetState.type = target->config().type();
+        targetState.device = target->device();
+        targetState.runtime = target->runtime();
+        targetState.provider = target->provider();
+        JST_CHECK(target->config().serialize(targetState.config));
+        CopyRequestedInputs(target->inputs(), outputLookup, targetState.inputs);
+        blocksToRecreate.push_back(std::move(targetState));
+
+        for (const auto& depName : impl->collectDownstream(oldName)) {
+            const auto& dep = impl->blocks.at(depName);
+
+            BlockState state;
+            state.name = depName;
+            state.type = dep->config().type();
+            state.device = dep->device();
+            state.runtime = dep->runtime();
+            state.provider = dep->provider();
+            JST_CHECK(dep->config().serialize(state.config));
+            CopyRequestedInputs(dep->inputs(), outputLookup, state.inputs, oldName, newName);
+
+            blocksToRecreate.push_back(std::move(state));
+        }
+    }
+
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        if (impl->blockMetadataValues.contains(oldName)) {
+            impl->blockMetadataValues[newName] = impl->blockMetadataValues.at(oldName);
+        }
+    }
+
+    for (const auto& state : std::ranges::reverse_view(blocksToRecreate)) {
+        if (state.name != newName) {
+            JST_CHECK(blockDestroy(state.name, false));
+        }
+    }
+    JST_CHECK(blockDestroy(oldName, false));
+
+    for (const auto& state : blocksToRecreate) {
+        JST_CHECK_ALLOW(blockCreate(state.name, state.type, state.config,
+                                    state.inputs, state.device, state.runtime, state.provider),
+                        Result::INCOMPLETE);
+    }
+
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+        impl->blockMetadataValues.erase(oldName);
     }
 
     return Result::SUCCESS;
@@ -1118,8 +1241,8 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     nodeOrder.reserve(document.graph.size());
 
     for (const auto& blockEntry : document.graph) {
-        if (blockEntry.name.empty()) {
-            JST_ERROR("[FLOWGRAPH] Block without a name found.");
+        if (blockEntry.name.empty() || blockEntry.name.find('.') != std::string::npos) {
+            JST_ERROR("[FLOWGRAPH] Invalid block name '{}' found.", blockEntry.name);
             return Result::ERROR;
         }
 

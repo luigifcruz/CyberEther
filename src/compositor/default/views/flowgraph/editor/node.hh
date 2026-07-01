@@ -107,6 +107,7 @@ struct FlowgraphNode {
         bool timingEnabled = false;
         std::function<void()> onCopy;
         std::function<void(Extent2D<F32>)> onPaste;
+        std::function<void()> onRename;
         std::function<void()> onReload;
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
@@ -335,6 +336,7 @@ struct FlowgraphNode {
                     this->config.onPaste(pastePosition);
                 }
             },
+            .onRename = this->config.onRename,
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
             .onDocumentation = [this]() {

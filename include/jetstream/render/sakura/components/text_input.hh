@@ -23,7 +23,9 @@ struct TextInput {
         Submit submit = Submit::OnEnter;
         bool focus = false;
         bool focusOutline = true;
+        bool selectAllOnFocus = false;
         std::function<void(const std::string&)> onChange;
+        std::function<void(const std::string&)> onSubmit;
     };
 
     TextInput();
