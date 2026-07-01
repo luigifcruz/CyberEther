@@ -38,6 +38,7 @@ struct OnnxInference : public Block::Config {
 
         "## Implementation\n"
         "Inputs -> ONNX Runtime Session -> Outputs\n"
+        "CyberEther requires the concrete output tensor shape to be known and stable at block creation time.\n"
         "1. Reads ONNX graph input and output names from the selected model.\n"
         "2. Creates one input port and one output port per model tensor.\n"
         "3. Validates input and output tensor dtypes against the model, then allocates output buffers.\n"
