@@ -23,6 +23,16 @@ PyObject* PyTuple_New(Py_ssize_t size);
 int PyTuple_SetItem(PyObject* tuple, Py_ssize_t index, PyObject* item);
 PyObject* PyLong_FromLongLong(long long value);
 PyObject* PyLong_FromUnsignedLongLong(unsigned long long value);
+long long PyLong_AsLongLong(PyObject* object);
+unsigned long long PyLong_AsUnsignedLongLong(PyObject* object);
+PyObject* PyFloat_FromDouble(double value);
+double PyFloat_AsDouble(PyObject* object);
+PyObject* PyBool_FromLong(long value);
+int PyDict_SetItemString(PyObject* dict, const char* key, PyObject* value);
+int PyDict_DelItemString(PyObject* dict, const char* key);
+void PyDict_Clear(PyObject* dict);
+int PyDict_Next(PyObject* dict, Py_ssize_t* pos, PyObject** key, PyObject** value);
+void Py_IncRef(PyObject* object);
 PyObject* PyMemoryView_FromMemory(char* mem, Py_ssize_t size, int flags);
 Py_ssize_t PySequence_Size(PyObject* sequence);
 PyObject* PySequence_GetItem(PyObject* sequence, Py_ssize_t index);
@@ -45,6 +55,10 @@ PyObject* PyObject_GetAttrString(PyObject* object, const char* name);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1);
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2, PyObject* arg3);
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2, PyObject* arg3, PyObject* arg4);
 
 }  // namespace Jetstream::CPython
 

@@ -145,6 +145,16 @@ using PyTupleNewFn = PyObject* (*)(Py_ssize_t);
 using PyTupleSetItemFn = int (*)(PyObject*, Py_ssize_t, PyObject*);
 using PyLongFromLongLongFn = PyObject* (*)(long long);
 using PyLongFromUnsignedLongLongFn = PyObject* (*)(unsigned long long);
+using PyLongAsLongLongFn = long long (*)(PyObject*);
+using PyLongAsUnsignedLongLongFn = unsigned long long (*)(PyObject*);
+using PyFloatFromDoubleFn = PyObject* (*)(double);
+using PyFloatAsDoubleFn = double (*)(PyObject*);
+using PyBoolFromLongFn = PyObject* (*)(long);
+using PyDictSetItemStringFn = int (*)(PyObject*, const char*, PyObject*);
+using PyDictNextFn = int (*)(PyObject*, Py_ssize_t*, PyObject**, PyObject**);
+using PyDictDelItemStringFn = int (*)(PyObject*, const char*);
+using PyDictClearFn = void (*)(PyObject*);
+using PyIncRefFn = void (*)(PyObject*);
 using PyMemoryViewFromMemoryFn = PyObject* (*)(char*, Py_ssize_t, int);
 using PySequenceSizeFn = Py_ssize_t (*)(PyObject*);
 using PySequenceGetItemFn = PyObject* (*)(PyObject*, Py_ssize_t);
@@ -176,6 +186,16 @@ struct PythonApi {
     PyTupleSetItemFn PyTuple_SetItem = nullptr;
     PyLongFromLongLongFn PyLong_FromLongLong = nullptr;
     PyLongFromUnsignedLongLongFn PyLong_FromUnsignedLongLong = nullptr;
+    PyLongAsLongLongFn PyLong_AsLongLong = nullptr;
+    PyLongAsUnsignedLongLongFn PyLong_AsUnsignedLongLong = nullptr;
+    PyFloatFromDoubleFn PyFloat_FromDouble = nullptr;
+    PyFloatAsDoubleFn PyFloat_AsDouble = nullptr;
+    PyBoolFromLongFn PyBool_FromLong = nullptr;
+    PyDictSetItemStringFn PyDict_SetItemString = nullptr;
+    PyDictNextFn PyDict_Next = nullptr;
+    PyDictDelItemStringFn PyDict_DelItemString = nullptr;
+    PyDictClearFn PyDict_Clear = nullptr;
+    PyIncRefFn Py_IncRef = nullptr;
     PyMemoryViewFromMemoryFn PyMemoryView_FromMemory = nullptr;
     PySequenceSizeFn PySequence_Size = nullptr;
     PySequenceGetItemFn PySequence_GetItem = nullptr;
@@ -208,6 +228,16 @@ Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadSymbol(handle, api.PyTuple_SetItem, "PyTuple_SetItem"));
     JST_CHECK(LoadSymbol(handle, api.PyLong_FromLongLong, "PyLong_FromLongLong"));
     JST_CHECK(LoadSymbol(handle, api.PyLong_FromUnsignedLongLong, "PyLong_FromUnsignedLongLong"));
+    JST_CHECK(LoadSymbol(handle, api.PyLong_AsLongLong, "PyLong_AsLongLong"));
+    JST_CHECK(LoadSymbol(handle, api.PyLong_AsUnsignedLongLong, "PyLong_AsUnsignedLongLong"));
+    JST_CHECK(LoadSymbol(handle, api.PyFloat_FromDouble, "PyFloat_FromDouble"));
+    JST_CHECK(LoadSymbol(handle, api.PyFloat_AsDouble, "PyFloat_AsDouble"));
+    JST_CHECK(LoadSymbol(handle, api.PyBool_FromLong, "PyBool_FromLong"));
+    JST_CHECK(LoadSymbol(handle, api.PyDict_SetItemString, "PyDict_SetItemString"));
+    JST_CHECK(LoadSymbol(handle, api.PyDict_Next, "PyDict_Next"));
+    JST_CHECK(LoadSymbol(handle, api.PyDict_DelItemString, "PyDict_DelItemString"));
+    JST_CHECK(LoadSymbol(handle, api.PyDict_Clear, "PyDict_Clear"));
+    JST_CHECK(LoadSymbol(handle, api.Py_IncRef, "Py_IncRef"));
     JST_CHECK(LoadSymbol(handle, api.PyMemoryView_FromMemory, "PyMemoryView_FromMemory"));
     JST_CHECK(LoadSymbol(handle, api.PySequence_Size, "PySequence_Size"));
     JST_CHECK(LoadSymbol(handle, api.PySequence_GetItem, "PySequence_GetItem"));
@@ -252,6 +282,18 @@ PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0) {
 
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1) {
     return s_api.PyObject_CallFunctionObjArgs(callable, arg0, arg1, static_cast<PyObject*>(nullptr));
+}
+
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2, PyObject* arg3) {
+    return s_api.PyObject_CallFunctionObjArgs(callable, arg0, arg1, arg2, arg3,
+                                              static_cast<PyObject*>(nullptr));
+}
+
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2, PyObject* arg3, PyObject* arg4) {
+    return s_api.PyObject_CallFunctionObjArgs(callable, arg0, arg1, arg2, arg3, arg4,
+                                              static_cast<PyObject*>(nullptr));
 }
 
 Result Py_Load() {
@@ -338,6 +380,46 @@ PyObject* PyLong_FromLongLong(long long value) {
 
 PyObject* PyLong_FromUnsignedLongLong(unsigned long long value) {
     return s_api.PyLong_FromUnsignedLongLong(value);
+}
+
+long long PyLong_AsLongLong(PyObject* object) {
+    return s_api.PyLong_AsLongLong(object);
+}
+
+unsigned long long PyLong_AsUnsignedLongLong(PyObject* object) {
+    return s_api.PyLong_AsUnsignedLongLong(object);
+}
+
+PyObject* PyFloat_FromDouble(double value) {
+    return s_api.PyFloat_FromDouble(value);
+}
+
+double PyFloat_AsDouble(PyObject* object) {
+    return s_api.PyFloat_AsDouble(object);
+}
+
+PyObject* PyBool_FromLong(long value) {
+    return s_api.PyBool_FromLong(value);
+}
+
+int PyDict_SetItemString(PyObject* dict, const char* key, PyObject* value) {
+    return s_api.PyDict_SetItemString(dict, key, value);
+}
+
+int PyDict_Next(PyObject* dict, Py_ssize_t* pos, PyObject** key, PyObject** value) {
+    return s_api.PyDict_Next(dict, pos, key, value);
+}
+
+int PyDict_DelItemString(PyObject* dict, const char* key) {
+    return s_api.PyDict_DelItemString(dict, key);
+}
+
+void PyDict_Clear(PyObject* dict) {
+    s_api.PyDict_Clear(dict);
+}
+
+void Py_IncRef(PyObject* object) {
+    s_api.Py_IncRef(object);
 }
 
 PyObject* PyMemoryView_FromMemory(char* mem, Py_ssize_t size, int flags) {
