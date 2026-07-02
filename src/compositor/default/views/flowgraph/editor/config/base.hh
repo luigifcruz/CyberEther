@@ -10,6 +10,7 @@
 #include "path.hh"
 #include "python.hh"
 #include "range.hh"
+#include "tensor.hh"
 #include "text.hh"
 #include "types.hh"
 #include "vector.hh"
@@ -38,6 +39,8 @@ struct FlowgraphConfigFieldInstance {
             boolField.update(std::move(config));
         } else if (kind == "range") {
             range.update(std::move(config));
+        } else if (kind == "tensor-config") {
+            tensor.update(std::move(config));
         } else if (kind == "markdown") {
             markdown.update(std::move(config));
         } else if (kind == "python") {
@@ -78,6 +81,8 @@ struct FlowgraphConfigFieldInstance {
             boolField.render(ctx);
         } else if (kind == "range") {
             range.render(ctx);
+        } else if (kind == "tensor-config") {
+            tensor.render(ctx);
         } else if (kind == "markdown") {
             markdown.render(ctx);
         } else if (kind == "python") {
@@ -103,6 +108,7 @@ struct FlowgraphConfigFieldInstance {
     FlowgraphConfigPathField path;
     FlowgraphConfigBoolField boolField;
     FlowgraphConfigRangeField range;
+    FlowgraphConfigTensorField tensor;
     FlowgraphConfigMarkdownField markdown;
     FlowgraphConfigPythonField python;
     FlowgraphConfigMultilineField multiline;

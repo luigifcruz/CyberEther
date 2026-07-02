@@ -25,6 +25,7 @@ bool NodeCombo::update(Config config) {
         .id = impl->config.id,
         .options = impl->config.options,
         .value = impl->config.value,
+        .width = impl->config.width,
         .onChange = impl->config.onChange,
     });
     return true;

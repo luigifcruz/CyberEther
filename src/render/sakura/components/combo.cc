@@ -22,11 +22,10 @@ bool Combo::update(Config config) {
 }
 
 void Combo::render(const Context& ctx) const {
-    (void)ctx;
     const auto& config = this->impl->config;
 
     const std::string comboId = "##" + config.id;
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SetNextItemWidth(config.width > 0.0f ? Scale(ctx, config.width) : -FLT_MIN);
 
     const char* preview = config.value.empty() ? "Select" : config.value.c_str();
     if (config.disabled) {

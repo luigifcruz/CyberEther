@@ -68,6 +68,7 @@
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
 #include <jetstream/render/sakura/components/node/float_input.hh>
+#include <jetstream/render/sakura/components/node/input_row.hh>
 #include <jetstream/render/sakura/components/node/int_input.hh>
 #include <jetstream/render/sakura/components/node/label.hh>
 #include <jetstream/render/sakura/components/node/link.hh>

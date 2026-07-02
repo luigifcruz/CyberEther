@@ -7,6 +7,7 @@ src_lst += files([
     'pin.cc',
     'field.cc',
     'combo.cc',
+    'input_row.cc',
     'label.cc',
     'text_input.cc',
     'text_area.cc',
