@@ -88,6 +88,7 @@ struct FlowgraphNode {
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
         Block::State state = Block::State::None;
+        Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
         Parser::Map config;
         std::optional<Layout> layout;
@@ -120,6 +121,21 @@ struct FlowgraphNode {
         Extent2D<F32> dimensions;
     };
 
+    static F32 DefaultNodeWidth(const Block::NodeSize& size) {
+        switch (size) {
+            case Block::NodeSize::XS:
+                return 120.0f;
+            case Block::NodeSize::M:
+                return 220.0f;
+            case Block::NodeSize::L:
+                return 320.0f;
+            case Block::NodeSize::XL:
+                return 460.0f;
+            default:
+                return 140.0f;
+        }
+    }
+
     void update(Config config) {
         this->config = std::move(config);
         const auto& block = this->config.block;
@@ -142,7 +158,7 @@ struct FlowgraphNode {
         }
 
         if (dimensions.x <= 0.0f) {
-            dimensions.x = 140.0f;
+            dimensions.x = DefaultNodeWidth(block.nodeSize);
         }
 
         if (block.layout.has_value()) {
@@ -416,7 +432,7 @@ struct FlowgraphNode {
 
  private:
     Config config;
-    Extent2D<F32> dimensions = {140.0f, 0.0f};
+    Extent2D<F32> dimensions = {0.0f, 0.0f};
     std::optional<Extent2D<F32>> gridPosition;
     std::optional<Geometry> geometry;
     Sakura::Node node;

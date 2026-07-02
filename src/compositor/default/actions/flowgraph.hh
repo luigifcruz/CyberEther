@@ -276,7 +276,7 @@ struct FlowgraphActions {
 
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
-            const NodeMeta nodeMeta = {pos.x, pos.y, 140.0f, 0.0f};
+            const NodeMeta nodeMeta = {pos.x, pos.y, 0.0f, 0.0f};
             flowgraph->metadata().set("node", nodeMeta, blockName);
         }
 
@@ -526,7 +526,7 @@ struct FlowgraphActions {
 
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
-            const NodeMeta nodeMeta = {pos.x, pos.y, 140.0f, 0.0f};
+            const NodeMeta nodeMeta = {pos.x, pos.y, 0.0f, 0.0f};
             flowgraph->metadata().set("node", nodeMeta, blockName);
         }
 

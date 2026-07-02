@@ -144,6 +144,7 @@ Result CopyBlockViewData(const std::string& name,
     data.runtime = block->runtime();
     data.provider = block->provider();
     data.state = state;
+    data.nodeSize = block->config().nodeSize();
     data.diagnostic = block->diagnostic();
     data.inputs = block->inputs();
     data.outputs = block->outputs();
@@ -455,6 +456,7 @@ Result Flowgraph::blockCreate(const std::string name,
         pending.runtime = runtime;
         pending.provider = provider;
         pending.state = Block::State::Creating;
+        pending.nodeSize = block->config().nodeSize();
         pending.config = config;
         pending.inputs = resolvedInputs;
 
