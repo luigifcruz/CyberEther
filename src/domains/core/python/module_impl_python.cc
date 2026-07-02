@@ -43,7 +43,8 @@ Result PythonImplPython::loadCompute(const std::string& source) {
                                              inputPortOrder(),
                                              inputs(),
                                              outputPortOrder(),
-                                             outputs());
+                                             outputs(),
+                                             environment());
     if (computeResult == Result::SUCCESS) {
         return Result::SUCCESS;
     }

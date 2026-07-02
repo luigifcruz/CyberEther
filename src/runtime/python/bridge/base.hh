@@ -3,11 +3,13 @@
 
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "jetstream/module_interface.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/runtime_context.hh"
+#include "jetstream/runtime_context_python.hh"
 #include "jetstream/tensor_link.hh"
 #include "runtime/python/bridge/cpython/base.hh"
 
@@ -19,7 +21,8 @@ struct Bridge {
                  const Module::Interface::EntryList& inputOrder,
                  const TensorMap& inputs,
                  const Module::Interface::EntryList& outputOrder,
-                 const TensorMap& outputs);
+                 const TensorMap& outputs,
+                 const std::shared_ptr<Flowgraph::Environment>& environment = nullptr);
     Result stop();
     Result run();
     Runtime::Context::Diagnostic diagnostic() const;
@@ -63,10 +66,40 @@ struct Bridge {
     // Tensor IO (with Attributes) [bridge/tensor.cc]
     //
 
+    struct AttributePort {
+        Tensor tensor;
+        CPython::PyObject* dict = nullptr;
+        std::unordered_map<std::string, CPython::PyObject*> snapshot;
+    };
+
+    std::vector<AttributePort> inputAttributePorts;
+    std::vector<AttributePort> outputAttributePorts;
+
     CPython::PyObject* createTensorContext(const Module::Interface::EntryList& inputOrder,
                                            const TensorMap& inputs,
                                            const Module::Interface::EntryList& outputOrder,
                                            const TensorMap& outputs);
+    CPython::PyObject* createAttributeDicts(const Module::Interface::EntryList& order,
+                                            const TensorMap& tensors,
+                                            std::vector<AttributePort>& ports);
+    void refreshAttributes();
+    void flushAttributes();
+    void destroyAttributePorts();
+
+    //
+    // Environment IO [bridge/environment.cc]
+    //
+
+    std::shared_ptr<Flowgraph::Environment> environment;
+    CPython::PyObject* environmentDict = nullptr;
+    U64 environmentEpoch = 0;
+    bool environmentSynced = false;
+
+    CPython::PyObject* createEnvironmentDict();
+    void refreshEnvironment();
+    void flushEnvironment();
+    void trackEnvironment();
+    void destroyEnvironmentDict();
 };
 
 }  // namespace Jetstream

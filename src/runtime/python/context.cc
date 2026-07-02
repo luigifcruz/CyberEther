@@ -24,8 +24,9 @@ Result PythonRuntimeContext::createCompute(const std::string& source,
                                            const Module::Interface::EntryList& inputOrder,
                                            const TensorMap& inputs,
                                            const Module::Interface::EntryList& outputOrder,
-                                           const TensorMap& outputs) {
-    return pimpl->start(source, inputOrder, inputs, outputOrder, outputs);
+                                           const TensorMap& outputs,
+                                           const std::shared_ptr<Flowgraph::Environment>& environment) {
+    return pimpl->start(source, inputOrder, inputs, outputOrder, outputs, environment);
 }
 
 Result PythonRuntimeContext::destroyCompute() {

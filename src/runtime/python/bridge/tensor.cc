@@ -1,9 +1,11 @@
+#include <any>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
 
 #include "runtime/python/bridge/base.hh"
+#include "runtime/python/bridge/convert.hh"
 #include "runtime/python/bridge/cpython/base.hh"
 
 #include "jetstream/logger.hh"
@@ -208,7 +210,8 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
     auto* dtype = PyUnicode_FromString(NumpyDtypeName(tensor.dtype()));
     auto* shape = CreateShapeTuple(tensor);
     auto* strides = CreateStridesTuple(tensor);
-    auto* spec = PyTuple_New(5);
+    auto* writableFlag = PyBool_FromLong(writable ? 1 : 0);
+    auto* spec = PyTuple_New(6);
 
     auto cleanup = [&]() {
         if (device) { Py_DecRef(device); }
@@ -216,6 +219,7 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
         if (dtype) { Py_DecRef(dtype); }
         if (shape) { Py_DecRef(shape); }
         if (strides) { Py_DecRef(strides); }
+        if (writableFlag) { Py_DecRef(writableFlag); }
         if (spec) { Py_DecRef(spec); }
     };
 
@@ -228,7 +232,7 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
         return true;
     };
 
-    if (!device || !memory || !dtype || !shape || !strides || !spec) {
+    if (!device || !memory || !dtype || !shape || !strides || !writableFlag || !spec) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't prepare Python tensor spec for tensor '{}'.", name);
         cleanup();
         return nullptr;
@@ -238,7 +242,8 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
         !setTupleItem(1, memory) ||
         !setTupleItem(2, dtype) ||
         !setTupleItem(3, shape) ||
-        !setTupleItem(4, strides)) {
+        !setTupleItem(4, strides) ||
+        !setTupleItem(5, writableFlag)) {
         cleanup();
         return nullptr;
     }
@@ -309,23 +314,220 @@ PyObject* Bridge::createTensorContext(const Module::Interface::EntryList& inputO
         return nullptr;
     }
 
-    auto* createBridge = PyDict_GetItemString(globals, "_jetstream_create_bridge");
-    if (!createBridge || !PyCallable_Check(createBridge)) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime helper '_jetstream_create_bridge' is unavailable.");
+    auto* inputAttributes = createAttributeDicts(inputOrder, inputs, inputAttributePorts);
+    if (!inputAttributes) {
         Py_DecRef(outputSpecs);
         Py_DecRef(inputSpecs);
+        destroyAttributePorts();
         return nullptr;
     }
 
-    auto* tensorContext = PyObject_CallFunctionObjArgs(createBridge, inputSpecs, outputSpecs);
+    auto* outputAttributes = createAttributeDicts(outputOrder, outputs, outputAttributePorts);
+    if (!outputAttributes) {
+        Py_DecRef(inputAttributes);
+        Py_DecRef(outputSpecs);
+        Py_DecRef(inputSpecs);
+        destroyAttributePorts();
+        return nullptr;
+    }
+
+    auto* environment = createEnvironmentDict();
+    if (!environment) {
+        Py_DecRef(outputAttributes);
+        Py_DecRef(inputAttributes);
+        Py_DecRef(outputSpecs);
+        Py_DecRef(inputSpecs);
+        destroyAttributePorts();
+        return nullptr;
+    }
+
+    auto* createBridge = PyDict_GetItemString(globals, "_jetstream_create_bridge");
+    if (!createBridge || !PyCallable_Check(createBridge)) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime helper '_jetstream_create_bridge' is unavailable.");
+        Py_DecRef(environment);
+        Py_DecRef(outputAttributes);
+        Py_DecRef(inputAttributes);
+        Py_DecRef(outputSpecs);
+        Py_DecRef(inputSpecs);
+        destroyAttributePorts();
+        destroyEnvironmentDict();
+        return nullptr;
+    }
+
+    auto* tensorContext = PyObject_CallFunctionObjArgs(createBridge,
+                                                       inputSpecs,
+                                                       outputSpecs,
+                                                       inputAttributes,
+                                                       outputAttributes,
+                                                       environment);
+    Py_DecRef(environment);
+    Py_DecRef(outputAttributes);
+    Py_DecRef(inputAttributes);
     Py_DecRef(outputSpecs);
     Py_DecRef(inputSpecs);
     if (!tensorContext) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python tensor context.");
+        destroyAttributePorts();
+        destroyEnvironmentDict();
         return nullptr;
     }
 
     return tensorContext;
+}
+
+PyObject* Bridge::createAttributeDicts(const Module::Interface::EntryList& order,
+                                       const TensorMap& tensors,
+                                       std::vector<AttributePort>& ports) {
+    auto* dicts = PyTuple_New(static_cast<Py_ssize_t>(order.size()));
+    if (!dicts) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python attribute dict tuple.");
+        return nullptr;
+    }
+
+    for (std::size_t index = 0; index < order.size(); ++index) {
+        const auto& name = order[index];
+        if (!tensors.contains(name)) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Missing tensor '{}' for attribute dict.", name);
+            Py_DecRef(dicts);
+            return nullptr;
+        }
+
+        auto* dict = PyDict_New();
+        if (!dict) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python attribute dict.");
+            Py_DecRef(dicts);
+            return nullptr;
+        }
+
+        Py_IncRef(dict);
+        if (PyTuple_SetItem(dicts, static_cast<Py_ssize_t>(index), dict) != 0) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't populate Python attribute dict tuple.");
+            Py_DecRef(dict);
+            Py_DecRef(dicts);
+            return nullptr;
+        }
+
+        ports.push_back({tensors.at(name).tensor, dict, {}});
+    }
+
+    return dicts;
+}
+
+void Bridge::refreshAttributes() {
+    auto refreshPort = [](AttributePort& port, const bool keepSnapshot) {
+        if (keepSnapshot) {
+            for (auto& [_, object] : port.snapshot) {
+                Py_DecRef(object);
+            }
+            port.snapshot.clear();
+        }
+
+        PyDict_Clear(port.dict);
+
+        for (const auto& key : port.tensor.attributeKeys()) {
+            auto* object = AnyToPyObject(port.tensor.attribute(key));
+            if (!object) {
+                JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported attribute '{}'.", key);
+                (void)ClearPythonError();
+                continue;
+            }
+
+            if (PyDict_SetItemString(port.dict, key.c_str(), object) != 0) {
+                Py_DecRef(object);
+                (void)ClearPythonError();
+                continue;
+            }
+
+            if (keepSnapshot) {
+                port.snapshot[key] = object;
+            } else {
+                Py_DecRef(object);
+            }
+        }
+    };
+
+    for (auto& port : inputAttributePorts) {
+        refreshPort(port, false);
+    }
+    for (auto& port : outputAttributePorts) {
+        refreshPort(port, true);
+    }
+}
+
+void Bridge::flushAttributes() {
+    if (outputAttributePorts.empty() || !globals) {
+        return;
+    }
+
+    auto* classify = PyDict_GetItemString(globals, "_jetstream_classify_attribute");
+    if (!classify || !PyCallable_Check(classify)) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime helper '_jetstream_classify_attribute' is unavailable.");
+        return;
+    }
+
+    for (auto& port : outputAttributePorts) {
+        PyObject* key = nullptr;
+        PyObject* value = nullptr;
+        Py_ssize_t position = 0;
+
+        while (PyDict_Next(port.dict, &position, &key, &value)) {
+            const char* keyStr = PyUnicode_AsUTF8(key);
+            if (!keyStr) {
+                (void)ClearPythonError();
+                continue;
+            }
+
+            const auto it = port.snapshot.find(keyStr);
+            const bool sameObject = it != port.snapshot.end() && it->second == value;
+
+            if (sameObject) {
+                I64 code = -1;
+                if (ClassifyPyObject(classify, value, code) != Result::SUCCESS) {
+                    continue;
+                }
+                if (code != 4 && code != 5) {
+                    continue;
+                }
+            }
+
+            std::any existing;
+            if (port.tensor.hasAttribute(keyStr)) {
+                existing = port.tensor.attribute(keyStr);
+            }
+
+            std::any converted;
+            if (PyObjectToAny(classify, value, existing, converted) != Result::SUCCESS) {
+                JST_WARN("[RUNTIME_CONTEXT_PYTHON] Ignoring unsupported attribute '{}' value.", keyStr);
+                continue;
+            }
+
+            if (sameObject && AnyDeepEquals(converted, existing)) {
+                continue;
+            }
+
+            (void)port.tensor.setAttribute(keyStr, converted);
+        }
+    }
+}
+
+void Bridge::destroyAttributePorts() {
+    auto destroyPorts = [](std::vector<AttributePort>& ports) {
+        for (auto& port : ports) {
+            for (auto& [_, object] : port.snapshot) {
+                Py_DecRef(object);
+            }
+            port.snapshot.clear();
+
+            if (port.dict) {
+                Py_DecRef(port.dict);
+                port.dict = nullptr;
+            }
+        }
+        ports.clear();
+    };
+
+    destroyPorts(inputAttributePorts);
+    destroyPorts(outputAttributePorts);
 }
 
 }  // namespace Jetstream

@@ -139,7 +139,8 @@ Result Bridge::start(const std::string& source,
                      const Module::Interface::EntryList& inputOrder,
                      const TensorMap& inputs,
                      const Module::Interface::EntryList& outputOrder,
-                     const TensorMap& outputs) {
+                     const TensorMap& outputs,
+                     const std::shared_ptr<Flowgraph::Environment>& environment) {
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     const auto loadResult = Py_Load();
@@ -150,6 +151,8 @@ Result Bridge::start(const std::string& source,
 
     consoleClear();
     JST_CHECK(stop());
+
+    this->environment = environment;
 
     GilScope gil;
     JST_CHECK(gil.result());
@@ -246,11 +249,20 @@ Result Bridge::stop() {
     if (!Py_IsLoaded()) {
         globals = nullptr;
         runner = nullptr;
+        environment.reset();
+        environmentDict = nullptr;
+        environmentSynced = false;
+        inputAttributePorts.clear();
+        outputAttributePorts.clear();
         return Result::SUCCESS;
     }
 
     GilScope gil;
     JST_CHECK(gil.result());
+
+    environment.reset();
+    destroyAttributePorts();
+    destroyEnvironmentDict();
 
     if (runner) {
         Py_DecRef(runner);
@@ -298,6 +310,9 @@ Result Bridge::run() {
     GilScope gil;
     JST_CHECK(gil.result());
 
+    refreshAttributes();
+    refreshEnvironment();
+
     auto* result = PyObject_CallFunctionObjArgs(runner);
     if (!result) {
         bool alreadyReportingComputeError = false;
@@ -312,6 +327,9 @@ Result Bridge::run() {
         setError(kComputeErrorStatus);
         return Result::SKIP;
     }
+    flushAttributes();
+    flushEnvironment();
+
     (void)consoleRefresh();
     Py_DecRef(result);
     setInfo("Running.");
