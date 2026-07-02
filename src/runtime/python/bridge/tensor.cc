@@ -34,16 +34,24 @@ const char* NumpyDtypeName(const DataType dtype) {
     }
 }
 
+U64 TensorSpanBytes(const Tensor& tensor) {
+    if (tensor.size() == 0) {
+        return 0;
+    }
+
+    U64 lastElement = 0;
+    for (const auto& backstride : tensor.backstride()) {
+        lastElement += backstride;
+    }
+
+    return (lastElement + 1) * tensor.elementSize();
+}
+
 Result ValidateTensorForNumpy(const Tensor& tensor, const std::string& name, const bool writable) {
     const auto role = writable ? "output" : "input";
 
     if (tensor.device() != DeviceType::CPU) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime currently supports CPU {} tensors only.", role);
-        return Result::ERROR;
-    }
-
-    if (!tensor.contiguous()) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime currently requires contiguous {} tensors.", role);
         return Result::ERROR;
     }
 
@@ -53,12 +61,13 @@ Result ValidateTensorForNumpy(const Tensor& tensor, const std::string& name, con
         return Result::ERROR;
     }
 
-    if (tensor.sizeBytes() > static_cast<U64>(std::numeric_limits<Py_ssize_t>::max())) {
+    const U64 spanBytes = TensorSpanBytes(tensor);
+    if (spanBytes > static_cast<U64>(std::numeric_limits<Py_ssize_t>::max())) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Tensor '{}' is too large to expose to Python.", name);
         return Result::ERROR;
     }
 
-    if (tensor.sizeBytes() > 0 && !tensor.data()) {
+    if (spanBytes > 0 && !tensor.data()) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Tensor '{}' data is null.", name);
         return Result::ERROR;
     }
@@ -66,6 +75,11 @@ Result ValidateTensorForNumpy(const Tensor& tensor, const std::string& name, con
     for (Index axis = 0; axis < tensor.rank(); ++axis) {
         if (tensor.shape(axis) > static_cast<U64>(std::numeric_limits<long long>::max())) {
             JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Tensor '{}' shape exceeds Python integer limits.", name);
+            return Result::ERROR;
+        }
+
+        if (tensor.stride(axis) > static_cast<U64>(std::numeric_limits<long long>::max()) / tensor.elementSize()) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Tensor '{}' stride exceeds Python integer limits.", name);
             return Result::ERROR;
         }
     }
@@ -104,6 +118,38 @@ PyObject* CreateShapeTuple(const Tensor& tensor) {
     return shape;
 }
 
+PyObject* CreateStridesTuple(const Tensor& tensor) {
+    if (tensor.rank() > static_cast<U64>(std::numeric_limits<Py_ssize_t>::max())) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Tensor rank exceeds Python tuple limits.");
+        return nullptr;
+    }
+
+    auto* strides = PyTuple_New(static_cast<Py_ssize_t>(tensor.rank()));
+    if (!strides) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python strides tuple.");
+        return nullptr;
+    }
+
+    for (Index axis = 0; axis < tensor.rank(); ++axis) {
+        const U64 strideBytes = tensor.stride(axis) * tensor.elementSize();
+        auto* stride = PyLong_FromLongLong(static_cast<long long>(strideBytes));
+        if (!stride) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python stride dimension.");
+            Py_DecRef(strides);
+            return nullptr;
+        }
+
+        if (PyTuple_SetItem(strides, static_cast<Py_ssize_t>(axis), stride) != 0) {
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't populate Python strides tuple.");
+            Py_DecRef(stride);
+            Py_DecRef(strides);
+            return nullptr;
+        }
+    }
+
+    return strides;
+}
+
 PyObject* CreateTensorSpec(const Tensor& tensor,
                            const std::string& name,
                            const bool writable) {
@@ -113,16 +159,18 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
 
     auto* data = const_cast<char*>(static_cast<const char*>(tensor.data()));
     auto* memory = PyMemoryView_FromMemory(data,
-                                           static_cast<Py_ssize_t>(tensor.sizeBytes()),
+                                           static_cast<Py_ssize_t>(TensorSpanBytes(tensor)),
                                            writable ? kPyBufferWrite : kPyBufferRead);
     auto* dtype = PyUnicode_FromString(NumpyDtypeName(tensor.dtype()));
     auto* shape = CreateShapeTuple(tensor);
-    auto* spec = PyTuple_New(3);
+    auto* strides = CreateStridesTuple(tensor);
+    auto* spec = PyTuple_New(4);
 
     auto cleanup = [&]() {
         if (memory) { Py_DecRef(memory); }
         if (dtype) { Py_DecRef(dtype); }
         if (shape) { Py_DecRef(shape); }
+        if (strides) { Py_DecRef(strides); }
         if (spec) { Py_DecRef(spec); }
     };
 
@@ -135,13 +183,13 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
         return true;
     };
 
-    if (!memory || !dtype || !shape || !spec) {
+    if (!memory || !dtype || !shape || !strides || !spec) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't prepare Python tensor spec for tensor '{}'.", name);
         cleanup();
         return nullptr;
     }
 
-    if (!setTupleItem(0, memory) || !setTupleItem(1, dtype) || !setTupleItem(2, shape)) {
+    if (!setTupleItem(0, memory) || !setTupleItem(1, dtype) || !setTupleItem(2, shape) || !setTupleItem(3, strides)) {
         cleanup();
         return nullptr;
     }

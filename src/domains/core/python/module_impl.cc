@@ -247,6 +247,8 @@ Result PythonImpl::validate() {
 }
 
 Result PythonImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+
     normalizeOutputSpecs(*this);
 
     for (U64 i = 0; i < inputCount; ++i) {

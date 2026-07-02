@@ -14,10 +14,15 @@ class _JetstreamBridge:
         raise KeyError(key)
 
 
-def _jetstream_tensor_from_memory(memory, dtype, shape):
+def _jetstream_tensor_from_memory(memory, dtype, shape, strides):
     _jetstream_np = _jetstream_importlib.import_module("numpy")
 
-    return _jetstream_np.frombuffer(memory, dtype=_jetstream_np.dtype(dtype)).reshape(shape)
+    return _jetstream_np.ndarray(
+        shape,
+        dtype=_jetstream_np.dtype(dtype),
+        buffer=memory,
+        strides=strides,
+    )
 
 
 def _jetstream_tensors_from_specs(
@@ -25,8 +30,8 @@ def _jetstream_tensors_from_specs(
     _tensor_from_memory=_jetstream_tensor_from_memory,
 ):
     return {
-        index: _tensor_from_memory(memory, dtype, shape)
-        for index, (memory, dtype, shape) in enumerate(specs)
+        index: _tensor_from_memory(memory, dtype, shape, strides)
+        for index, (memory, dtype, shape, strides) in enumerate(specs)
     }
 
 

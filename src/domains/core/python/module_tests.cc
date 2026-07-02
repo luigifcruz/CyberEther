@@ -90,6 +90,63 @@ TEST_CASE("Python module runs configured compute code", "[modules][python][modul
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Python module exposes non-contiguous input tensors", "[modules][python][module]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 4}) == Result::SUCCESS);
+    auto* inputData = input.data<F32>();
+    REQUIRE(inputData != nullptr);
+    for (Index i = 0; i < input.size(); ++i) {
+        inputData[i] = static_cast<F32>(i + 1);
+    }
+    REQUIRE(input.permute({1, 0}) == Result::SUCCESS);
+    REQUIRE_FALSE(input.contiguous());
+
+    TensorMap inputs;
+    inputs["input0"].produced("source", "output", input);
+
+    Modules::Python config;
+    config.code = R"PY(def compute(ctx):
+    ctx.outputs[0][...] = ctx.inputs[0] * 2.0
+)PY";
+    config.inputCount = 1;
+    config.outputCount = 1;
+    ConfigureF32Output(config, "[4, 2]");
+
+    const auto createResult = module->create("python_strided", config, inputs);
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python strided-input test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_strided", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_strided"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(skippedModules.empty());
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    const auto* data = output.data<F32>();
+    REQUIRE(data != nullptr);
+
+    for (Index i = 0; i < 4; ++i) {
+        for (Index j = 0; j < 2; ++j) {
+            const F32 expected = static_cast<F32>(j * 4 + i + 1) * 2.0f;
+            REQUIRE(std::abs(data[i * 2 + j] - expected) < 1e-5f);
+        }
+    }
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Python module creates a configured output without inputs", "[modules][python][module]") {
     std::shared_ptr<Module> module;
     REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
