@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <vector>
+
 #include "jetstream/parser.hh"
 
 #include "jetstream/memory/types.hh"
@@ -129,6 +132,43 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
     if (variable.type() == typeid(Extent2D<F32>)) {
         const auto& size = std::any_cast<Extent2D<F32>>(variable);
         encoded = jst::fmt::format("[{}, {}]", size.x, size.y);
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(Map)) {
+        const auto& map = std::any_cast<const Map&>(variable);
+
+        std::vector<std::string> keys;
+        keys.reserve(map.size());
+        for (const auto& [key, _] : map) {
+            keys.push_back(key);
+        }
+        std::sort(keys.begin(), keys.end());
+
+        std::vector<std::string> entries;
+        entries.reserve(keys.size());
+        for (const auto& key : keys) {
+            std::string entry;
+            JST_CHECK(TypedToString(map.at(key), entry));
+            entries.push_back(jst::fmt::format("{}: {}", key, entry));
+        }
+
+        encoded = jst::fmt::format("{{{}}}", jst::fmt::join(entries, ", "));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(Sequence)) {
+        const auto& sequence = std::any_cast<const Sequence&>(variable);
+
+        std::vector<std::string> entries;
+        entries.reserve(sequence.size());
+        for (const auto& value : sequence) {
+            std::string entry;
+            JST_CHECK(TypedToString(value, entry));
+            entries.push_back(std::move(entry));
+        }
+
+        encoded = jst::fmt::format("[{}]", jst::fmt::join(entries, ", "));
         return Result::SUCCESS;
     }
 

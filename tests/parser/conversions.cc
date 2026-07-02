@@ -234,6 +234,35 @@ TEST_CASE("Parser string conversions round-trip aggregates", "[parser][conversio
     }
 }
 
+TEST_CASE("Parser::TypedToString serializes nested parser values", "[parser][conversions]") {
+    Parser::Sequence sequence;
+    sequence.push_back(std::string("alpha"));
+    sequence.push_back(U64{7});
+
+    Parser::Map map;
+    map["z"] = std::string("omega");
+    map["a"] = sequence;
+
+    std::string encoded;
+    REQUIRE(Parser::TypedToString(std::any(map), encoded) == Result::SUCCESS);
+    REQUIRE(encoded == "{a: [alpha, 7], z: omega}");
+
+    REQUIRE(Parser::TypedToString(std::any(sequence), encoded) == Result::SUCCESS);
+    REQUIRE(encoded == "[alpha, 7]");
+}
+
+TEST_CASE("Parser::TypedToString rejects unsupported nested parser values", "[parser][conversions]") {
+    Parser::Map map;
+    map["bad"] = UnsupportedValue{};
+
+    std::string encoded;
+    REQUIRE(Parser::TypedToString(std::any(map), encoded) == Result::ERROR);
+
+    Parser::Sequence sequence;
+    sequence.push_back(UnsupportedValue{});
+    REQUIRE(Parser::TypedToString(std::any(sequence), encoded) == Result::ERROR);
+}
+
 TEST_CASE("Parser::StringToTyped<bool> accepts common truthy values", "[parser][conversions]") {
     bool value = false;
 
