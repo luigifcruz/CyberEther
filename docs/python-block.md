@@ -14,8 +14,9 @@ writing a native block.
 
 ## Quick Start
 
-Add a Python block to a flowgraph (it requires the **Python runtime**), give
-it one input and one output, and define a `compute(ctx)` function:
+Add a Python block to a flowgraph (it requires a
+[Python runtime](#choosing-a-python-runtime)), give it one input and one
+output, and define a `compute(ctx)` function:
 
 ```python
 def compute(ctx):
@@ -25,6 +26,41 @@ def compute(ctx):
 The code is compiled when the block is created and `compute(ctx)` runs once
 per compute cycle. Editing the code in the node reloads it in place.
 Changing the input or output counts recreates the block.
+
+## Choosing a Python Runtime
+
+CyberEther does not ship with its own Python. The block runs on a Python
+installation already on your system, the same one you use from the
+terminal, so every package installed there (NumPy, SciPy, CuPy, Astropy,
+and so on) is available to `compute`. If you already have an environment
+set up, you can point CyberEther at it and use it directly inside a flowgraph.
+
+To pick which installation is used, open **Settings**, select the
+**Runtime** tab, and use the **Python Runtime** selector:
+
+- **Auto** (the default) scans the system and uses the first working Python
+  it finds. The scan covers the executables on your `PATH` as well as
+  active `venv`, Conda, and pyenv environments, so launching CyberEther
+  from a terminal with your environment activated is enough for Auto to
+  pick it up.
+- The dropdown also lists every installation the scan found, labeled with
+  its version and location, such as
+  `Python 3.12.4 (/opt/miniconda3/bin/python)`. Pick the one that has the
+  packages you need.
+- **Custom Path** accepts the path to any `python` executable the scan did
+  not find (a leading `~` works), typed directly or chosen with
+  **Browse File**.
+
+A badge next to the selector reports whether the choice is usable:
+**Valid File** means a matching Python library was located, **Invalid**
+means it was not. The selection is saved and applies after restarting
+CyberEther.
+
+A useful rule of thumb: if `python -c "import numpy"` works in your
+terminal, selecting that same Python here makes the import work in the
+block too. Conversely, if an import fails inside the block, check which
+runtime is selected before reinstalling packages. The block may simply be
+running a different Python than your terminal.
 
 ## Block Configuration
 
@@ -149,6 +185,12 @@ Semantics:
   cycle see the updated values, and there is no mid-compute visibility.
 - **The environment persists with the flowgraph.** Keys written by Python are
   serialized when the flowgraph is saved.
+- **New keys retry incomplete blocks.** When a key first becomes visible (or
+  is cleared), blocks sitting in the incomplete state are destroyed and
+  recreated so they can pick the value up. This is how blocks that gate
+  their creation on server-provided values start once the connection
+  delivers them. In-place updates to an existing key do not trigger retries,
+  so per-cycle status writes stay cheap.
 
 The refresh path is epoch-gated and the publish path only examines keys the
 code actually touched, so a large environment (thousands of keys) costs
@@ -169,7 +211,7 @@ def compute(ctx):
 ```
 
 Access is subscription-based. The first read of a block's name registers
-interest and returns an empty mapping; from the next cycle on, that block's
+interest and returns an empty mapping. From the next cycle on, that block's
 metrics are refreshed at the start of every cycle. Because of the one-cycle
 priming delay, always read metric values with `.get()` and a sensible
 default.
@@ -299,6 +341,7 @@ printing from `compute`, since console capture wraps compute calls only.
   reconfiguring the block.
 - Environment deletions and complex-valued metadata are not supported (see
   above).
-- The runtime discovers `libpython` at startup. If no usable Python is
-  found, the block reports it in its diagnostic and skips computing without
-  affecting the rest of the flowgraph.
+- The runtime loads at startup from the installation selected in the
+  settings (see [Choosing a Python Runtime](#choosing-a-python-runtime)).
+  If no usable Python is found, the block reports it in its diagnostic and
+  skips computing without affecting the rest of the flowgraph.
