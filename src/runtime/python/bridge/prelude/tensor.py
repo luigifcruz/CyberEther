@@ -14,7 +14,20 @@ class _JetstreamBridge:
         raise KeyError(key)
 
 
-def _jetstream_tensor_from_memory(memory, dtype, shape, strides):
+def _jetstream_tensor_from_memory(device, memory, dtype, shape, strides):
+    if device == "cuda":
+        _jetstream_cp = _jetstream_importlib.import_module("cupy")
+
+        pointer, span = memory
+        base = _jetstream_cp.cuda.UnownedMemory(pointer, span, None)
+        memptr = _jetstream_cp.cuda.MemoryPointer(base, 0)
+        return _jetstream_cp.ndarray(
+            shape,
+            dtype=_jetstream_cp.dtype(dtype),
+            memptr=memptr,
+            strides=strides,
+        )
+
     _jetstream_np = _jetstream_importlib.import_module("numpy")
 
     return _jetstream_np.ndarray(
@@ -30,8 +43,8 @@ def _jetstream_tensors_from_specs(
     _tensor_from_memory=_jetstream_tensor_from_memory,
 ):
     return {
-        index: _tensor_from_memory(memory, dtype, shape, strides)
-        for index, (memory, dtype, shape, strides) in enumerate(specs)
+        index: _tensor_from_memory(device, memory, dtype, shape, strides)
+        for index, (device, memory, dtype, shape, strides) in enumerate(specs)
     }
 
 

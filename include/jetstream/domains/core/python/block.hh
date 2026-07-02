@@ -24,35 +24,46 @@ struct Python : public Block::Config {
                      outputTensorSpecs);
     JST_BLOCK_DESCRIPTION(
         "Python",
-        "Runs Python code over CPU tensors.",
+        "Runs custom Python compute code.",
         "# Python\n"
-        "The Python block executes user-provided Python code on every compute "
-        "cycle. The code must define a callable `compute(ctx)` function. The "
-        "`ctx` object contains stable `inputs` and `outputs` mappings of NumPy "
-        "arrays keyed by integer indexes (`0`, `1`, ...). Write output arrays "
-        "in place.\n\n"
+        "The Python block runs a user-defined `compute(ctx)` function on every "
+        "compute cycle with zero-copy access to the block's tensors. CPU tensors "
+        "arrive as NumPy arrays and CUDA tensors as CuPy arrays. Globals persist "
+        "across cycles, so accumulators and precomputed tables can live at module "
+        "level.\n\n"
 
         "## Arguments\n"
-        "- **Code**: Python source defining `compute(ctx)`.\n"
-        "- **Input Count**: Number of input tensors exposed as `input0`, "
-        "`input1`, ... ports and `ctx.inputs[0]`, ... arrays.\n"
-        "- **Output Count**: Number of writable output tensors exposed as `output0`, "
-        "`output1`, ... ports and `ctx.outputs[0]`, ... arrays.\n\n"
-        "- **Output Tensor Specs**: Per-port output tensor entries with "
-        "`shape`, `dtype`, and `device` fields, like `[1024]`, `F32`, `cpu`. "
-        "The Python runtime currently supports CPU tensors.\n\n"
+        "- **Code**: Python source defining `compute(ctx)`. `ctx.inputs[0]` and "
+        "`ctx.outputs[0]` correspond to the `input0` and `output0` ports. Write "
+        "outputs in place (`ctx.outputs[0][...] = value`); rebinding the name "
+        "writes nothing.\n"
+        "- **Input Count**: Number of input ports.\n"
+        "- **Output Count**: Number of output ports.\n"
+        "- **Output Tensor Specs**: Shape, data type, and device of each output "
+        "tensor. Code cannot change them at runtime.\n\n"
 
-        "## Notes\n"
-        "- Create this block with the Python runtime.\n"
-        "- Blocks with zero inputs and/or zero outputs are valid.\n"
-        "- Output ports have explicit dtype, shape, and device specs.\n"
-        "- CPU tensors are supported by the Python runtime today.\n\n"
+        "## Useful For\n"
+        "- Prototyping processing steps before writing a native block.\n"
+        "- Math or glue logic between blocks without recompiling.\n"
+        "- Using the NumPy, CuPy, and SciPy ecosystem inside a flowgraph.\n\n"
 
-        "## Example\n"
+        "## Examples\n"
         "```python\n"
         "def compute(ctx):\n"
         "    ctx.outputs[0][...] = ctx.inputs[0] * 2.0\n"
-        "```"
+        "```\n\n"
+
+        "## Implementation\n"
+        "1. The code is loaded once at block creation; imports resolve against "
+        "the selected Python runtime's environment.\n"
+        "2. Inputs are read-only views; copy before mutating.\n"
+        "3. `print()` output and exceptions appear in the block console; a "
+        "failing `compute` skips the cycle without stopping the flowgraph.\n"
+        "4. An optional `cleanup()` function runs when the block is destroyed.\n"
+        "5. CUDA tensors require CuPy. Inputs are complete when `compute` "
+        "starts, but CuPy launches are asynchronous: synchronize before "
+        "returning (e.g. `cupy.cuda.Stream.null.synchronize()`) so downstream "
+        "blocks see finished writes."
     );
 };
 

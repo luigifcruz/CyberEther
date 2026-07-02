@@ -196,8 +196,8 @@ Result ResolveOutputSpec(const U64 index,
 
     JST_CHECK(ParseDeviceSpec(spec.device, label, device));
 
-    if (device != DeviceType::CPU) {
-        JST_ERROR("[PYTHON] Python tensor {} device must be CPU today (got {}).", label, device);
+    if (device != DeviceType::CPU && device != DeviceType::CUDA) {
+        JST_ERROR("[PYTHON] Python tensor {} device must be CPU or CUDA (got {}).", label, device);
         return Result::ERROR;
     }
 
@@ -248,6 +248,7 @@ Result PythonImpl::validate() {
 
 Result PythonImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::CROSS_DEVICE));
 
     normalizeOutputSpecs(*this);
 

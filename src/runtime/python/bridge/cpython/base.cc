@@ -144,6 +144,7 @@ using PyObjectStrFn = PyObject* (*)(PyObject*);
 using PyTupleNewFn = PyObject* (*)(Py_ssize_t);
 using PyTupleSetItemFn = int (*)(PyObject*, Py_ssize_t, PyObject*);
 using PyLongFromLongLongFn = PyObject* (*)(long long);
+using PyLongFromUnsignedLongLongFn = PyObject* (*)(unsigned long long);
 using PyMemoryViewFromMemoryFn = PyObject* (*)(char*, Py_ssize_t, int);
 using PySequenceSizeFn = Py_ssize_t (*)(PyObject*);
 using PySequenceGetItemFn = PyObject* (*)(PyObject*, Py_ssize_t);
@@ -174,6 +175,7 @@ struct PythonApi {
     PyTupleNewFn PyTuple_New = nullptr;
     PyTupleSetItemFn PyTuple_SetItem = nullptr;
     PyLongFromLongLongFn PyLong_FromLongLong = nullptr;
+    PyLongFromUnsignedLongLongFn PyLong_FromUnsignedLongLong = nullptr;
     PyMemoryViewFromMemoryFn PyMemoryView_FromMemory = nullptr;
     PySequenceSizeFn PySequence_Size = nullptr;
     PySequenceGetItemFn PySequence_GetItem = nullptr;
@@ -205,6 +207,7 @@ Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadSymbol(handle, api.PyTuple_New, "PyTuple_New"));
     JST_CHECK(LoadSymbol(handle, api.PyTuple_SetItem, "PyTuple_SetItem"));
     JST_CHECK(LoadSymbol(handle, api.PyLong_FromLongLong, "PyLong_FromLongLong"));
+    JST_CHECK(LoadSymbol(handle, api.PyLong_FromUnsignedLongLong, "PyLong_FromUnsignedLongLong"));
     JST_CHECK(LoadSymbol(handle, api.PyMemoryView_FromMemory, "PyMemoryView_FromMemory"));
     JST_CHECK(LoadSymbol(handle, api.PySequence_Size, "PySequence_Size"));
     JST_CHECK(LoadSymbol(handle, api.PySequence_GetItem, "PySequence_GetItem"));
@@ -331,6 +334,10 @@ int PyTuple_SetItem(PyObject* tuple, Py_ssize_t index, PyObject* item) {
 
 PyObject* PyLong_FromLongLong(long long value) {
     return s_api.PyLong_FromLongLong(value);
+}
+
+PyObject* PyLong_FromUnsignedLongLong(unsigned long long value) {
+    return s_api.PyLong_FromUnsignedLongLong(value);
 }
 
 PyObject* PyMemoryView_FromMemory(char* mem, Py_ssize_t size, int flags) {

@@ -66,7 +66,10 @@ struct FlowgraphConfigTensorField {
     }
 
     static const std::vector<Option>& DeviceOptions() {
-        static const std::vector<Option> options = {{"cpu", "CPU"}};
+        static const std::vector<Option> options = {
+            {"cpu", "CPU"},
+            {"cuda", "CUDA"},
+        };
         return options;
     }
 

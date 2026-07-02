@@ -22,6 +22,7 @@ PyObject* PyObject_Str(PyObject* object);
 PyObject* PyTuple_New(Py_ssize_t size);
 int PyTuple_SetItem(PyObject* tuple, Py_ssize_t index, PyObject* item);
 PyObject* PyLong_FromLongLong(long long value);
+PyObject* PyLong_FromUnsignedLongLong(unsigned long long value);
 PyObject* PyMemoryView_FromMemory(char* mem, Py_ssize_t size, int flags);
 Py_ssize_t PySequence_Size(PyObject* sequence);
 PyObject* PySequence_GetItem(PyObject* sequence, Py_ssize_t index);

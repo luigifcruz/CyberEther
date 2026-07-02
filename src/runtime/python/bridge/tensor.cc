@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -15,6 +16,14 @@ namespace {
 
 inline constexpr int kPyBufferRead = 0x100;
 inline constexpr int kPyBufferWrite = 0x200;
+
+const char* PythonDeviceName(const DeviceType device) {
+    switch (device) {
+        case DeviceType::CPU: return "cpu";
+        case DeviceType::CUDA: return "cuda";
+        default: return nullptr;
+    }
+}
 
 const char* NumpyDtypeName(const DataType dtype) {
     switch (dtype) {
@@ -50,8 +59,8 @@ U64 TensorSpanBytes(const Tensor& tensor) {
 Result ValidateTensorForNumpy(const Tensor& tensor, const std::string& name, const bool writable) {
     const auto role = writable ? "output" : "input";
 
-    if (tensor.device() != DeviceType::CPU) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime currently supports CPU {} tensors only.", role);
+    if (!PythonDeviceName(tensor.device())) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime currently supports CPU and CUDA {} tensors only.", role);
         return Result::ERROR;
     }
 
@@ -150,6 +159,43 @@ PyObject* CreateStridesTuple(const Tensor& tensor) {
     return strides;
 }
 
+PyObject* CreateMemoryObject(const Tensor& tensor, const bool writable) {
+    const U64 spanBytes = TensorSpanBytes(tensor);
+
+    if (tensor.device() == DeviceType::CPU) {
+        auto* data = const_cast<char*>(static_cast<const char*>(tensor.data()));
+        return PyMemoryView_FromMemory(data,
+                                       static_cast<Py_ssize_t>(spanBytes),
+                                       writable ? kPyBufferWrite : kPyBufferRead);
+    }
+
+    const auto pointer = reinterpret_cast<std::uintptr_t>(tensor.data()) + tensor.offsetBytes();
+    auto* pointerObject = PyLong_FromUnsignedLongLong(static_cast<unsigned long long>(pointer));
+    auto* spanObject = PyLong_FromUnsignedLongLong(static_cast<unsigned long long>(spanBytes));
+    auto* memory = PyTuple_New(2);
+    if (!pointerObject || !spanObject || !memory) {
+        if (pointerObject) { Py_DecRef(pointerObject); }
+        if (spanObject) { Py_DecRef(spanObject); }
+        if (memory) { Py_DecRef(memory); }
+        return nullptr;
+    }
+
+    if (PyTuple_SetItem(memory, 0, pointerObject) != 0) {
+        Py_DecRef(pointerObject);
+        Py_DecRef(spanObject);
+        Py_DecRef(memory);
+        return nullptr;
+    }
+
+    if (PyTuple_SetItem(memory, 1, spanObject) != 0) {
+        Py_DecRef(spanObject);
+        Py_DecRef(memory);
+        return nullptr;
+    }
+
+    return memory;
+}
+
 PyObject* CreateTensorSpec(const Tensor& tensor,
                            const std::string& name,
                            const bool writable) {
@@ -157,16 +203,15 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
         return nullptr;
     }
 
-    auto* data = const_cast<char*>(static_cast<const char*>(tensor.data()));
-    auto* memory = PyMemoryView_FromMemory(data,
-                                           static_cast<Py_ssize_t>(TensorSpanBytes(tensor)),
-                                           writable ? kPyBufferWrite : kPyBufferRead);
+    auto* device = PyUnicode_FromString(PythonDeviceName(tensor.device()));
+    auto* memory = CreateMemoryObject(tensor, writable);
     auto* dtype = PyUnicode_FromString(NumpyDtypeName(tensor.dtype()));
     auto* shape = CreateShapeTuple(tensor);
     auto* strides = CreateStridesTuple(tensor);
-    auto* spec = PyTuple_New(4);
+    auto* spec = PyTuple_New(5);
 
     auto cleanup = [&]() {
+        if (device) { Py_DecRef(device); }
         if (memory) { Py_DecRef(memory); }
         if (dtype) { Py_DecRef(dtype); }
         if (shape) { Py_DecRef(shape); }
@@ -183,13 +228,17 @@ PyObject* CreateTensorSpec(const Tensor& tensor,
         return true;
     };
 
-    if (!memory || !dtype || !shape || !strides || !spec) {
+    if (!device || !memory || !dtype || !shape || !strides || !spec) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't prepare Python tensor spec for tensor '{}'.", name);
         cleanup();
         return nullptr;
     }
 
-    if (!setTupleItem(0, memory) || !setTupleItem(1, dtype) || !setTupleItem(2, shape) || !setTupleItem(3, strides)) {
+    if (!setTupleItem(0, device) ||
+        !setTupleItem(1, memory) ||
+        !setTupleItem(2, dtype) ||
+        !setTupleItem(3, shape) ||
+        !setTupleItem(4, strides)) {
         cleanup();
         return nullptr;
     }
