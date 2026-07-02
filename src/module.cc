@@ -70,12 +70,17 @@ Result Module::create(const std::string& name,
     // Verify module taints.
 
     bool taintDiscontiguous = false;
+    bool taintCrossDevice = false;
 
     if (impl->_taint != Module::Taint::CLEAN) {
         JST_TRACE("[MODULE] Module ('{}') is tainted. Verifying...", impl->_name);
 
         if ((impl->_taint & Taint::DISCONTIGUOUS) == Taint::DISCONTIGUOUS) {
             taintDiscontiguous = true;
+        }
+
+        if ((impl->_taint & Taint::CROSS_DEVICE) == Taint::CROSS_DEVICE) {
+            taintCrossDevice = true;
         }
     }
 
@@ -91,7 +96,7 @@ Result Module::create(const std::string& name,
     // Verify input tensors device matches module device.
 
     for (const auto& [name, link] : inputs) {
-        if (link.tensor.device() != impl->_device) {
+        if (link.tensor.device() != impl->_device && !taintCrossDevice) {
             JST_ERROR("[MODULE] Input tensor device ('{}', DeviceType::{})"
                       " doesn't match the module device ('{}', DeviceType::{}).",
                       name, link.tensor.device(), impl->_name, impl->_device);
