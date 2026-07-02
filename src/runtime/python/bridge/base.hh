@@ -42,6 +42,11 @@ struct Bridge {
     CPython::PyObject* globals = nullptr;
     CPython::PyObject* runner = nullptr;
 
+    CPython::PyObject* valueConverters = nullptr;
+    bool valueConvertersFetched = false;
+
+    CPython::PyObject* valueConverterTable();
+
     //
     // Status (Health) [bridge/status.cc]
     //
@@ -58,6 +63,7 @@ struct Bridge {
     //
 
     std::vector<std::string> consoleLines;
+    std::vector<std::string> consoleTailLines;
     mutable std::mutex consoleMutex;
 
     void consoleClear();

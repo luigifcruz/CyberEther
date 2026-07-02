@@ -188,16 +188,24 @@ TEST_CASE("Python module exposes tensor attributes", "[modules][python][module]"
     REQUIRE(runtime.compute({"python_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
+    const auto requireHalvedRate = [](const std::any& value) {
+        if (value.type() == typeid(F32)) {
+            REQUIRE(std::abs(std::any_cast<F32>(value) - 1000000.0f) < 1e-3f);
+            return;
+        }
+        REQUIRE(std::abs(std::any_cast<F64>(value) - 1000000.0) < 1e-3);
+    };
+
     const Tensor& output = module->outputs().at("output0").tensor;
     REQUIRE(output.hasAttribute("sampleRate"));
-    REQUIRE(std::abs(std::any_cast<F64>(output.attribute("sampleRate")) - 1000000.0) < 1e-3);
+    requireHalvedRate(output.attribute("sampleRate"));
     REQUIRE(output.hasAttribute("station"));
     REQUIRE(std::any_cast<std::string>(output.attribute("station")) == "alpha-out");
     REQUIRE(output.hasAttribute("decimated"));
     REQUIRE(std::any_cast<bool>(output.attribute("decimated")) == true);
 
     REQUIRE(runtime.compute({"python_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
-    REQUIRE(std::abs(std::any_cast<F64>(output.attribute("sampleRate")) - 1000000.0) < 1e-3);
+    requireHalvedRate(output.attribute("sampleRate"));
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
@@ -331,6 +339,20 @@ TEST_CASE("Python module reports invalid source without failing flowgraph execut
     const auto diagnostic = module->context()->runtime()->diagnostic();
     REQUIRE_FALSE(diagnostic.healthy);
     REQUIRE(diagnostic.status == "Source error.");
+    REQUIRE_FALSE(diagnostic.console.empty());
+
+    bool sawSyntaxError = false;
+    bool sawLineNumber = false;
+    for (const auto& line : diagnostic.console) {
+        if (line.find("SyntaxError") != std::string::npos) {
+            sawSyntaxError = true;
+        }
+        if (line.find("line 2") != std::string::npos) {
+            sawLineNumber = true;
+        }
+    }
+    REQUIRE(sawSyntaxError);
+    REQUIRE(sawLineNumber);
 
     Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
     REQUIRE(runtime.create({{"python_invalid_source", module}}) == Result::SUCCESS);

@@ -431,7 +431,9 @@ PyObject* Bridge::createAttributeDicts(const Module::Interface::EntryList& order
 }
 
 void Bridge::refreshAttributes() {
-    auto refreshPort = [](AttributePort& port, const bool keepSnapshot) {
+    auto* converters = valueConverterTable();
+
+    auto refreshPort = [converters](AttributePort& port, const bool keepSnapshot) {
         if (keepSnapshot) {
             for (auto& [_, object] : port.snapshot) {
                 Py_DecRef(object);
@@ -442,7 +444,7 @@ void Bridge::refreshAttributes() {
         PyDict_Clear(port.dict);
 
         for (const auto& key : port.tensor.attributeKeys()) {
-            auto* object = AnyToPyObject(port.tensor.attribute(key));
+            auto* object = AnyToPyObject(port.tensor.attribute(key), converters);
             if (!object) {
                 JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported attribute '{}'.", key);
                 (void)ClearPythonError();

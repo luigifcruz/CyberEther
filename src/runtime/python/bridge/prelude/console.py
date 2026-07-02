@@ -41,3 +41,10 @@ def _jetstream_with_console(function, *args):
 
 def _jetstream_console_snapshot():
     return _jetstream_console.snapshot()
+
+
+def _jetstream_format_exception(exc_type, exc_value, exc_traceback):
+    import traceback as _jetstream_traceback
+    return "".join(
+        _jetstream_traceback.format_exception(exc_type, exc_value, exc_traceback)
+    ).rstrip("\n")

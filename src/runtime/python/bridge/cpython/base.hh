@@ -25,11 +25,17 @@ PyObject* PyLong_FromLongLong(long long value);
 PyObject* PyLong_FromUnsignedLongLong(unsigned long long value);
 long long PyLong_AsLongLong(PyObject* object);
 unsigned long long PyLong_AsUnsignedLongLong(PyObject* object);
+PyObject* PyNumber_Index(PyObject* object);
+int PyObject_IsTrue(PyObject* object);
 PyObject* PyFloat_FromDouble(double value);
 double PyFloat_AsDouble(PyObject* object);
+struct PyComplexValue {
+    double real;
+    double imag;
+};
+
 PyObject* PyComplex_FromDoubles(double real, double imag);
-double PyComplex_RealAsDouble(PyObject* object);
-double PyComplex_ImagAsDouble(PyObject* object);
+PyComplexValue PyComplex_AsCComplex(PyObject* object);
 PyObject* PyBool_FromLong(long value);
 int PyDict_SetItemString(PyObject* dict, const char* key, PyObject* value);
 int PyDict_DelItemString(PyObject* dict, const char* key);
@@ -44,6 +50,8 @@ void PyErr_Fetch(PyObject** type, PyObject** value, PyObject** traceback);
 void PyErr_NormalizeException(PyObject** type, PyObject** value, PyObject** traceback);
 PyObject* PyUnicode_FromString(const char* str);
 const char* PyUnicode_AsUTF8(PyObject* object);
+PyObject* PyBytes_FromStringAndSize(const char* data, Py_ssize_t size);
+int PyBytes_AsStringAndSize(PyObject* object, char** data, Py_ssize_t* size);
 void Py_Initialize();
 int Py_IsInitialized();
 int PyGILState_Ensure();
@@ -58,6 +66,8 @@ PyObject* PyObject_GetAttrString(PyObject* object, const char* name);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1);
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
                                        PyObject* arg2, PyObject* arg3);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,

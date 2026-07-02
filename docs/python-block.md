@@ -93,7 +93,7 @@ def compute(ctx):
     ctx.output_attrs[0]["decimation"] = 2
 ```
 
-Editing a container-valued attribute in place (for example `ctx.output_attrs[0]["meta"]["stage"] = 2`) is detected and published as well. Attributes the block does not touch are left as-is. The block does not automatically propagate input attributes to outputs, so copy the ones you want.
+Editing a container-valued attribute in place (for example `ctx.output_attrs[0]["meta"]["stage"] = 2`) is detected and published as well. Attributes the block does not touch are left as-is. The block does not automatically propagate input attributes to outputs, so copy the ones you want. Attribute values follow the same width-preserving rules as the environment (see [Type Conversion](#type-conversion)), so halving an F32 sample rate keeps it F32.
 
 ## Flowgraph Environment
 
@@ -105,15 +105,15 @@ def compute(ctx):
     ctx.outputs[0][...] = ctx.inputs[0] * gain
 
     ctx.env["status"] = {
-        "peak": float(abs(ctx.outputs[0]).max()),
+        "peak": abs(ctx.outputs[0]).max(),
     }
 ```
 
 Semantics:
 
 - **Top-level values must be mappings.** `ctx.env["gain"] = 3.0` is rejected with a console warning, so wrap scalars in a dict.
-- **Complex values work.** A Python `complex` is stored as a 64-bit complex (CF64). Writes over an entry seeded as CF32 from the C++ side keep it CF32. Both kinds read back as Python `complex`, in the environment and in tensor attributes alike.
-- **Nested edits publish.** Both `ctx.env["k"] = {...}` and `ctx.env["k"]["field"] = value` are tracked, including dicts nested inside sequences. Sequences read back as immutable tuples. Replace them through their parent dict.
+- **Values are NumPy-typed when NumPy is available.** Numbers, including complex, read and write at their exact stored width, and typed vectors arrive as read-only NumPy arrays. Without NumPy, reads fall back to plain Python types. See [Type Conversion](#type-conversion) for the full rules.
+- **Nested edits publish.** Both `ctx.env["k"] = {...}` and `ctx.env["k"]["field"] = value` are tracked, including dicts nested inside sequences. Sequences read back as immutable containers. Replace them through their parent dict.
 - **Rejected writes are rolled back.** If a value cannot be converted or published, the local entry is restored to the flowgraph's canonical state instead of silently diverging.
 - **Deletions are not supported.** `del ctx.env["k"]` is reverted on the next cycle. Clear keys from the C++ side or the UI instead.
 - **Writes are cycle-atomic.** Downstream blocks that run later in the same cycle see the updated values, and there is no mid-compute visibility.
@@ -160,23 +160,29 @@ Details worth knowing:
 
 ## Type Conversion
 
-Values crossing between C++ and Python convert as follows.
+Values crossing between C++ and Python (the environment, tensor attributes, and metrics) convert as follows. When NumPy is importable in the selected runtime, numeric values are NumPy-typed on both sides, so a value keeps its exact width through a full round trip. Without NumPy, reads fall back to the plain Python types listed in the last column.
 
 Reading (C++ to Python):
 
-| C++ value | Python |
-|---|---|
-| `F32`, `F64` | `float` |
-| `I8` to `I64`, `U8` to `U64` | `int` |
-| `bool` | `bool` |
-| `std::string` | `str` |
-| `std::vector<F32/F64/U64>` | `tuple` |
-| `Parser::Map` | `dict` (recursive) |
-| `Parser::Sequence` | `tuple` (recursive) |
+| C++ value | Python (with NumPy) | Python (fallback) |
+|---|---|---|
+| `F32`, `F64` | `np.float32`, `np.float64` | `float` |
+| `I8` to `I64`, `U8` to `U64` | `np.int8` to `np.uint64` | `int` |
+| `CF32`, `CF64` | `np.complex64`, `np.complex128` | `complex` |
+| `bool` | `bool` | `bool` |
+| `std::string` | `str` | `str` |
+| `std::vector<U64/F32/F64/CF32/CF64>` | read-only `np.ndarray` of the matching dtype | `tuple` |
+| `Parser::Map` | `dict` (recursive) | `dict` (recursive) |
+| `Parser::Sequence` | `tuple` (recursive) | `tuple` (recursive) |
 
-Writing (Python to C++): `bool`, `int`, `float`, `str`, `dict`, and `list`/`tuple` are supported. If the key already holds a value, the write is **coerced to the existing type**: an `F32 sampleRate` stays `F32`, integer targets are range-checked exactly, and floats only land in integer slots when they are integral (writing `1.5` over an integer is rejected with a warning rather than truncated). New keys default to `bool`, `I64` (`U64` above the signed range), `F64`, and `str`. New homogeneous lists become `vector<F64>` (floats) or `vector<U64>` (non-negative integers), and anything mixed becomes a generic sequence.
+Typed vectors cross as raw buffers in both directions: reads hand NumPy the underlying bytes directly, and writes of native contiguous one-dimensional arrays copy their buffer straight into the store. One copy each way, with no per-element Python objects. The arrays are read-only, so copy before modifying.
 
-Complex scalars (`CF32`/`CF64`) and framework types (`Range`, `Extent2D`, `Tensor`, device enums) do not cross the bridge in either direction: they are skipped on read and rejected with a console warning on write.
+Writing (Python to C++) follows two rules:
+
+- **Numeric entries keep their type.** A numeric write onto a numeric entry is coerced to the stored type: an `F32` entry stays `F32`, integer targets are range-checked exactly, floats only land in integer slots when they are integral, and a complex value with a non-zero imaginary part is rejected when the target is real. Rejections are rolled back with a console warning rather than truncated. Writes that change the kind of value, for example a number over a string or a mapping over a scalar, replace the entry instead.
+- **New entries take the value's native width.** Plain Python values default to `bool`, `I64` (`U64` above the signed range), `F64`, `CF64`, and `str`. NumPy scalars store at their exact width, so `np.float32` becomes `F32`, `np.int16` becomes `I16`, and `np.complex64` becomes `CF32`. Homogeneous lists and one-dimensional arrays of floats and complex values become typed vectors of the matching width. Integer content becomes a vector of `U64` when every element is non-negative, since no narrower integer vectors exist. Anything mixed becomes a generic sequence.
+
+Not supported: multi-dimensional arrays and half precision (move bulk data through tensors), and the framework types (`Range`, `Extent2D`, `Tensor`, device enums), which are skipped on read and rejected with a console warning on write.
 
 ## State And Lifecycle
 
@@ -221,5 +227,5 @@ Background threads run freely while the flowgraph computes (the interpreter lock
 
 - One Python interpreter is shared by all Python blocks in the process, so heavy computation in one block delays the others. Blocks do get isolated globals, so one block's variables are not visible to another.
 - Output tensor geometry is fixed by the spec. Reshaping on the fly requires reconfiguring the block.
-- Environment deletions and complex-valued metadata are not supported (see above).
+- Environment deletions are not supported (see above).
 - The runtime loads at startup from the installation selected in the settings (see [Choosing a Python Runtime](#choosing-a-python-runtime)). If no usable Python is found, the block reports it in its diagnostic and skips computing without affecting the rest of the flowgraph.

@@ -1,4 +1,5 @@
 #include "runtime/python/bridge/base.hh"
+#include "runtime/python/bridge/convert.hh"
 #include "runtime/python/bridge/cpython/base.hh"
 #include "runtime/python/bridge/prelude/bridge.hh"
 
@@ -116,6 +117,31 @@ void CallPythonShutdown(PyObject* globals, const char* name) {
 
 Bridge::~Bridge() {
     (void)stop();
+}
+
+CPython::PyObject* Bridge::valueConverterTable() {
+    if (valueConvertersFetched) {
+        return valueConverters;
+    }
+    valueConvertersFetched = true;
+
+    if (!globals) {
+        return nullptr;
+    }
+
+    auto* factory = PyDict_GetItemString(globals, "_jetstream_value_converters");
+    if (!factory || !PyCallable_Check(factory)) {
+        return nullptr;
+    }
+
+    auto* table = PyObject_CallFunctionObjArgs(factory);
+    if (!table) {
+        (void)ClearPythonError();
+        return nullptr;
+    }
+
+    valueConverters = table;
+    return valueConverters;
 }
 
 Runtime::Context::Diagnostic Bridge::diagnostic() const {
@@ -251,6 +277,8 @@ Result Bridge::stop() {
     if (!Py_IsLoaded()) {
         globals = nullptr;
         runner = nullptr;
+        valueConverters = nullptr;
+        valueConvertersFetched = false;
         environment.reset();
         environmentDict = nullptr;
         environmentSynced = false;
@@ -271,6 +299,12 @@ Result Bridge::stop() {
     destroyAttributePorts();
     destroyEnvironmentDict();
     destroyMetricsDict();
+
+    if (valueConverters) {
+        Py_DecRef(valueConverters);
+        valueConverters = nullptr;
+    }
+    valueConvertersFetched = false;
 
     if (runner) {
         Py_DecRef(runner);

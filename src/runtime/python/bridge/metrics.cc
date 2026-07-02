@@ -73,7 +73,7 @@ void Bridge::refreshMetrics() {
                         continue;
                     }
 
-                    auto* object = AnyToPyObject(entry.value);
+                    auto* object = AnyToPyObject(entry.value, valueConverterTable());
                     if (!object) {
                         JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported metric '{}:{}'.",
                                   block, entry.name);

@@ -50,13 +50,15 @@ void Bridge::refreshEnvironment() {
 
     PyDict_Clear(environmentDict);
 
+    auto* converters = valueConverterTable();
+
     for (const auto& key : keys) {
         Parser::Map data;
         if (environment->get(key, data) != Result::SUCCESS) {
             continue;
         }
 
-        auto* object = AnyToPyObject(std::any(std::move(data)));
+        auto* object = AnyToPyObject(std::any(std::move(data)), converters);
         if (!object) {
             JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported environment value '{}'.", key);
             (void)ClearPythonError();
@@ -126,7 +128,7 @@ void Bridge::flushEnvironment() {
             return;
         }
 
-        auto* object = AnyToPyObject(std::any(existingData));
+        auto* object = AnyToPyObject(std::any(existingData), valueConverterTable());
         if (!object) {
             (void)ClearPythonError();
             return;

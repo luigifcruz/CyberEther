@@ -1,6 +1,7 @@
 #include "runtime/python/bridge/convert.hh"
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <typeinfo>
@@ -132,6 +133,20 @@ bool IsIntegerType(const std::type_info& type) {
            type == typeid(U32) || type == typeid(U64);
 }
 
+const std::type_info* NumpyIntegerCodeToType(const I64 code) {
+    switch (code) {
+        case 10: return &typeid(I8);
+        case 11: return &typeid(I16);
+        case 12: return &typeid(I32);
+        case 13: return &typeid(I64);
+        case 14: return &typeid(U8);
+        case 15: return &typeid(U16);
+        case 16: return &typeid(U32);
+        case 17: return &typeid(U64);
+        default: return nullptr;
+    }
+}
+
 bool CoerceFloatToType(const std::type_info& target, const F64 numeric, std::any& out) {
     if (target == typeid(F32)) {
         out = static_cast<F32>(numeric);
@@ -194,15 +209,38 @@ bool CoerceFloatToType(const std::type_info& target, const F64 numeric, std::any
     return false;
 }
 
+bool CoerceComplexToType(const std::type_info& target, const F64 real, const F64 imag, std::any& out) {
+    if (target == typeid(CF32)) {
+        out = CF32(static_cast<F32>(real), static_cast<F32>(imag));
+        return true;
+    }
+    if (target == typeid(CF64)) {
+        out = CF64(real, imag);
+        return true;
+    }
+    if (imag == 0.0) {
+        return CoerceFloatToType(target, real, out);
+    }
+    return false;
+}
+
 Result ConvertPyInteger(PyObject* value, bool& isUnsigned, I64& signedValue, U64& unsignedValue) {
-    const auto asSigned = PyLong_AsLongLong(value);
+    auto* index = PyNumber_Index(value);
+    if (!index) {
+        (void)ClearPythonError();
+        return Result::ERROR;
+    }
+
+    const auto asSigned = PyLong_AsLongLong(index);
     if (asSigned != -1 || !ClearPythonError()) {
+        Py_DecRef(index);
         isUnsigned = false;
         signedValue = asSigned;
         return Result::SUCCESS;
     }
 
-    const auto asUnsigned = PyLong_AsUnsignedLongLong(value);
+    const auto asUnsigned = PyLong_AsUnsignedLongLong(index);
+    Py_DecRef(index);
     if (asUnsigned != static_cast<unsigned long long>(-1) || !ClearPythonError()) {
         isUnsigned = true;
         unsignedValue = asUnsigned;
@@ -210,6 +248,24 @@ Result ConvertPyInteger(PyObject* value, bool& isUnsigned, I64& signedValue, U64
     }
 
     return Result::ERROR;
+}
+
+Result ConvertPyUnsignedItem(PyObject* item, U64& out) {
+    bool isUnsigned = false;
+    I64 signedValue = 0;
+    U64 unsignedValue = 0;
+    JST_CHECK(ConvertPyInteger(item, isUnsigned, signedValue, unsignedValue));
+
+    if (!isUnsigned) {
+        if (signedValue < 0) {
+            return Result::ERROR;
+        }
+        out = static_cast<U64>(signedValue);
+        return Result::SUCCESS;
+    }
+
+    out = unsignedValue;
+    return Result::SUCCESS;
 }
 
 template<typename T, typename Convert>
@@ -247,16 +303,75 @@ Result ConvertPyFloatItem(PyObject* item, F64& out) {
     return Result::SUCCESS;
 }
 
+template<typename T>
+void NdarrayBytesToVector(PyObject* value, std::any& out) {
+    auto* method = PyObject_GetAttrString(value, "tobytes");
+    if (!method) {
+        (void)ClearPythonError();
+        return;
+    }
+    if (!PyCallable_Check(method)) {
+        Py_DecRef(method);
+        return;
+    }
+
+    auto* bytes = PyObject_CallFunctionObjArgs(method);
+    Py_DecRef(method);
+    if (!bytes) {
+        (void)ClearPythonError();
+        return;
+    }
+
+    char* data = nullptr;
+    Py_ssize_t size = 0;
+    if (PyBytes_AsStringAndSize(bytes, &data, &size) != 0 ||
+        size % static_cast<Py_ssize_t>(sizeof(T)) != 0) {
+        (void)ClearPythonError();
+        Py_DecRef(bytes);
+        return;
+    }
+
+    std::vector<T> values(static_cast<std::size_t>(size) / sizeof(T));
+    if (!values.empty()) {
+        std::memcpy(values.data(), data, static_cast<std::size_t>(size));
+    }
+    Py_DecRef(bytes);
+
+    out = std::move(values);
+}
+
+void NdarrayToTypedVector(const I64 code, PyObject* value, const std::any& existing, std::any& out) {
+    const auto compatible = [&](const std::type_info& type) {
+        return !existing.has_value() || existing.type() == type;
+    };
+
+    switch (code) {
+        case 117:
+            if (compatible(typeid(std::vector<U64>))) { NdarrayBytesToVector<U64>(value, out); }
+            break;
+        case 118:
+            if (compatible(typeid(std::vector<F32>))) { NdarrayBytesToVector<F32>(value, out); }
+            break;
+        case 119:
+            if (compatible(typeid(std::vector<F64>))) { NdarrayBytesToVector<F64>(value, out); }
+            break;
+        case 120:
+            if (compatible(typeid(std::vector<CF32>))) { NdarrayBytesToVector<CF32>(value, out); }
+            break;
+        case 121:
+            if (compatible(typeid(std::vector<CF64>))) { NdarrayBytesToVector<CF64>(value, out); }
+            break;
+        default:
+            break;
+    }
+}
+
 Result ConvertPyComplexItem(PyObject* item, CF64& out) {
-    const F64 real = PyComplex_RealAsDouble(item);
-    if (real == -1.0 && ClearPythonError()) {
+    const auto value = PyComplex_AsCComplex(item);
+    if (value.real == -1.0 && ClearPythonError()) {
         return Result::ERROR;
     }
-    const F64 imag = PyComplex_ImagAsDouble(item);
-    if (imag == -1.0 && ClearPythonError()) {
-        return Result::ERROR;
-    }
-    out = CF64(real, imag);
+    out = CF64(value.real, value.imag);
     return Result::SUCCESS;
 }
 
@@ -367,48 +482,105 @@ Result ClassifyPyObject(PyObject* classify, PyObject* value, I64& code) {
     return Result::SUCCESS;
 }
 
-PyObject* AnyToPyObject(const std::any& value) {
+namespace {
+
+PyObject* ApplyConverter(PyObject* converters, const char* key, PyObject* object) {
+    if (!converters || !object) {
+        return object;
+    }
+
+    auto* converter = PyDict_GetItemString(converters, key);
+    if (!converter || !PyCallable_Check(converter)) {
+        return object;
+    }
+
+    auto* converted = PyObject_CallFunctionObjArgs(converter, object);
+    if (!converted) {
+        (void)ClearPythonError();
+        return object;
+    }
+
+    Py_DecRef(object);
+    return converted;
+}
+
+template<typename T>
+PyObject* TypedVectorToBuffer(PyObject* converters, const char* key, const std::vector<T>& values) {
+    if (!converters) {
+        return nullptr;
+    }
+
+    auto* converter = PyDict_GetItemString(converters, key);
+    if (!converter || !PyCallable_Check(converter)) {
+        return nullptr;
+    }
+
+    auto* bytes = PyBytes_FromStringAndSize(
+        values.empty() ? "" : reinterpret_cast<const char*>(values.data()),
+        static_cast<Py_ssize_t>(values.size() * sizeof(T)));
+    if (!bytes) {
+        (void)ClearPythonError();
+        return nullptr;
+    }
+
+    auto* converted = PyObject_CallFunctionObjArgs(converter, bytes);
+    Py_DecRef(bytes);
+    if (!converted) {
+        (void)ClearPythonError();
+        return nullptr;
+    }
+
+    return converted;
+}
+
+}  // namespace
+
+PyObject* AnyToPyObject(const std::any& value, PyObject* converters) {
     if (value.type() == typeid(F32)) {
-        return PyFloat_FromDouble(static_cast<double>(std::any_cast<F32>(value)));
+        return ApplyConverter(converters, "F32",
+                              PyFloat_FromDouble(static_cast<double>(std::any_cast<F32>(value))));
     }
     if (value.type() == typeid(F64)) {
-        return PyFloat_FromDouble(std::any_cast<F64>(value));
+        return ApplyConverter(converters, "F64",
+                              PyFloat_FromDouble(std::any_cast<F64>(value)));
     }
     if (value.type() == typeid(CF32)) {
         const auto& complex = std::any_cast<const CF32&>(value);
-        return PyComplex_FromDoubles(static_cast<double>(complex.real()),
-                                     static_cast<double>(complex.imag()));
+        return ApplyConverter(converters, "CF32",
+                              PyComplex_FromDoubles(static_cast<double>(complex.real()),
+                                                    static_cast<double>(complex.imag())));
     }
     if (value.type() == typeid(CF64)) {
         const auto& complex = std::any_cast<const CF64&>(value);
-        return PyComplex_FromDoubles(complex.real(), complex.imag());
+        return ApplyConverter(converters, "CF64",
+                              PyComplex_FromDoubles(complex.real(), complex.imag()));
     }
     if (value.type() == typeid(bool)) {
         return PyBool_FromLong(std::any_cast<bool>(value) ? 1 : 0);
     }
     if (value.type() == typeid(I8)) {
-        return PyLong_FromLongLong(std::any_cast<I8>(value));
+        return ApplyConverter(converters, "I8", PyLong_FromLongLong(std::any_cast<I8>(value)));
     }
     if (value.type() == typeid(I16)) {
-        return PyLong_FromLongLong(std::any_cast<I16>(value));
+        return ApplyConverter(converters, "I16", PyLong_FromLongLong(std::any_cast<I16>(value)));
     }
     if (value.type() == typeid(I32)) {
-        return PyLong_FromLongLong(std::any_cast<I32>(value));
+        return ApplyConverter(converters, "I32", PyLong_FromLongLong(std::any_cast<I32>(value)));
     }
     if (value.type() == typeid(I64)) {
-        return PyLong_FromLongLong(std::any_cast<I64>(value));
+        return ApplyConverter(converters, "I64", PyLong_FromLongLong(std::any_cast<I64>(value)));
     }
     if (value.type() == typeid(U8)) {
-        return PyLong_FromUnsignedLongLong(std::any_cast<U8>(value));
+        return ApplyConverter(converters, "U8", PyLong_FromUnsignedLongLong(std::any_cast<U8>(value)));
     }
     if (value.type() == typeid(U16)) {
-        return PyLong_FromUnsignedLongLong(std::any_cast<U16>(value));
+        return ApplyConverter(converters, "U16", PyLong_FromUnsignedLongLong(std::any_cast<U16>(value)));
     }
     if (value.type() == typeid(U32)) {
-        return PyLong_FromUnsignedLongLong(std::any_cast<U32>(value));
+        return ApplyConverter(converters, "U32", PyLong_FromUnsignedLongLong(std::any_cast<U32>(value)));
     }
     if (value.type() == typeid(U64)) {
-        return PyLong_FromUnsignedLongLong(std::any_cast<U64>(value));
+        return ApplyConverter(converters, "U64", PyLong_FromUnsignedLongLong(std::any_cast<U64>(value)));
     }
     if (value.type() == typeid(std::string)) {
         return PyUnicode_FromString(std::any_cast<const std::string&>(value).c_str());
@@ -436,85 +608,19 @@ PyObject* AnyToPyObject(const std::any& value) {
         return tuple;
     }
     if (value.type() == typeid(std::vector<F32>)) {
-        const auto& values = std::any_cast<const std::vector<F32>&>(value);
-        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
-        if (!tuple) {
-            return nullptr;
-        }
-        for (std::size_t index = 0; index < values.size(); ++index) {
-            auto* object = PyFloat_FromDouble(static_cast<double>(values[index]));
-            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
-                if (!object) { Py_DecRef(tuple); return nullptr; }
-                Py_DecRef(tuple);
-                return nullptr;
-            }
-        }
-        return tuple;
+        return TypedVectorToBuffer(converters, "VF32", std::any_cast<const std::vector<F32>&>(value));
     }
     if (value.type() == typeid(std::vector<F64>)) {
-        const auto& values = std::any_cast<const std::vector<F64>&>(value);
-        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
-        if (!tuple) {
-            return nullptr;
-        }
-        for (std::size_t index = 0; index < values.size(); ++index) {
-            auto* object = PyFloat_FromDouble(values[index]);
-            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
-                if (!object) { Py_DecRef(tuple); return nullptr; }
-                Py_DecRef(tuple);
-                return nullptr;
-            }
-        }
-        return tuple;
+        return TypedVectorToBuffer(converters, "VF64", std::any_cast<const std::vector<F64>&>(value));
     }
     if (value.type() == typeid(std::vector<U64>)) {
-        const auto& values = std::any_cast<const std::vector<U64>&>(value);
-        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
-        if (!tuple) {
-            return nullptr;
-        }
-        for (std::size_t index = 0; index < values.size(); ++index) {
-            auto* object = PyLong_FromUnsignedLongLong(values[index]);
-            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
-                if (!object) { Py_DecRef(tuple); return nullptr; }
-                Py_DecRef(tuple);
-                return nullptr;
-            }
-        }
-        return tuple;
+        return TypedVectorToBuffer(converters, "VU64", std::any_cast<const std::vector<U64>&>(value));
     }
     if (value.type() == typeid(std::vector<CF32>)) {
-        const auto& values = std::any_cast<const std::vector<CF32>&>(value);
-        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
-        if (!tuple) {
-            return nullptr;
-        }
-        for (std::size_t index = 0; index < values.size(); ++index) {
-            auto* object = PyComplex_FromDoubles(static_cast<double>(values[index].real()),
-                                                 static_cast<double>(values[index].imag()));
-            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
-                if (!object) { Py_DecRef(tuple); return nullptr; }
-                Py_DecRef(tuple);
-                return nullptr;
-            }
-        }
-        return tuple;
+        return TypedVectorToBuffer(converters, "VCF32", std::any_cast<const std::vector<CF32>&>(value));
     }
     if (value.type() == typeid(std::vector<CF64>)) {
-        const auto& values = std::any_cast<const std::vector<CF64>&>(value);
-        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
-        if (!tuple) {
-            return nullptr;
-        }
-        for (std::size_t index = 0; index < values.size(); ++index) {
-            auto* object = PyComplex_FromDoubles(values[index].real(), values[index].imag());
-            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
-                if (!object) { Py_DecRef(tuple); return nullptr; }
-                Py_DecRef(tuple);
-                return nullptr;
-            }
-        }
-        return tuple;
+        return TypedVectorToBuffer(converters, "VCF64", std::any_cast<const std::vector<CF64>&>(value));
     }
     if (value.type() == typeid(Parser::Map)) {
         const auto& map = std::any_cast<const Parser::Map&>(value);
@@ -524,7 +630,7 @@ PyObject* AnyToPyObject(const std::any& value) {
         }
 
         for (const auto& [key, entry] : map) {
-            auto* object = AnyToPyObject(entry);
+            auto* object = AnyToPyObject(entry, converters);
             if (!object) {
                 JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported value for key '{}'.", key);
                 (void)ClearPythonError();
@@ -549,7 +655,7 @@ PyObject* AnyToPyObject(const std::any& value) {
         }
 
         for (std::size_t index = 0; index < sequence.size(); ++index) {
-            auto* object = AnyToPyObject(sequence[index]);
+            auto* object = AnyToPyObject(sequence[index], converters);
             if (!object) {
                 Py_DecRef(tuple);
                 return nullptr;
@@ -612,7 +718,16 @@ Result PyObjectToAny(PyObject* classify,
         return Result::SUCCESS;
     }
 
-    if (code == 5) {
+    if (code == 5 || (code >= 117 && code <= 121)) {
+        if (code != 5) {
+            std::any direct;
+            NdarrayToTypedVector(code, value, existing, direct);
+            if (direct.has_value()) {
+                out = std::move(direct);
+                return Result::SUCCESS;
+            }
+        }
+
         const auto size = PySequence_Size(value);
         if (size < 0) {
             (void)ClearPythonError();
@@ -638,12 +753,7 @@ Result PyObjectToAny(PyObject* classify,
             if (existing.type() == typeid(std::vector<U64>)) {
                 return CoerceSequenceToTypedVector<U64>(value, size,
                     [](PyObject* item, U64& converted) {
-                        const auto numeric = PyLong_AsUnsignedLongLong(item);
-                        if (numeric == static_cast<unsigned long long>(-1) && ClearPythonError()) {
-                            return Result::ERROR;
-                        }
-                        converted = numeric;
-                        return Result::SUCCESS;
+                        return ConvertPyUnsignedItem(item, converted);
                     }, out);
             }
             if (existing.type() == typeid(std::vector<CF32>)) {
@@ -670,6 +780,8 @@ Result PyObjectToAny(PyObject* classify,
             bool allFloats = true;
             bool allIntegers = true;
             bool allComplex = true;
+            bool narrowFloats = true;
+            bool narrowComplex = true;
             for (Py_ssize_t index = 0; index < size && (allFloats || allIntegers || allComplex); ++index) {
                 auto* item = PySequence_GetItem(value, index);
                 if (!item) {
@@ -682,12 +794,24 @@ Result PyObjectToAny(PyObject* classify,
                 Py_DecRef(item);
                 JST_CHECK(result);
 
-                allFloats = allFloats && itemCode == 2;
-                allIntegers = allIntegers && itemCode == 1;
-                allComplex = allComplex && itemCode == 6;
+                allFloats = allFloats && (itemCode == 2 || itemCode == 18 || itemCode == 19);
+                allIntegers = allIntegers && (itemCode == 1 || (itemCode >= 10 && itemCode <= 17));
+                allComplex = allComplex && (itemCode == 6 || itemCode == 20 || itemCode == 21);
+                narrowFloats = narrowFloats && itemCode == 18;
+                narrowComplex = narrowComplex && itemCode == 20;
             }
 
             if (allFloats) {
+                if (narrowFloats) {
+                    return CoerceSequenceToTypedVector<F32>(value, size,
+                        [](PyObject* item, F32& converted) {
+                            F64 numeric = 0.0;
+                            JST_CHECK(ConvertPyFloatItem(item, numeric));
+                            converted = static_cast<F32>(numeric);
+                            return Result::SUCCESS;
+                        }, out);
+                }
+
                 return CoerceSequenceToTypedVector<F64>(value, size,
                     [](PyObject* item, F64& converted) {
                         return ConvertPyFloatItem(item, converted);
@@ -695,6 +819,17 @@ Result PyObjectToAny(PyObject* classify,
             }
 
             if (allComplex) {
+                if (narrowComplex) {
+                    return CoerceSequenceToTypedVector<CF32>(value, size,
+                        [](PyObject* item, CF32& converted) {
+                            CF64 numeric;
+                            JST_CHECK(ConvertPyComplexItem(item, numeric));
+                            converted = CF32(static_cast<F32>(numeric.real()),
+                                             static_cast<F32>(numeric.imag()));
+                            return Result::SUCCESS;
+                        }, out);
+                }
+
                 return CoerceSequenceToTypedVector<CF64>(value, size,
                     [](PyObject* item, CF64& converted) {
                         return ConvertPyComplexItem(item, converted);
@@ -705,12 +840,7 @@ Result PyObjectToAny(PyObject* classify,
                 std::any typedVector;
                 const auto result = CoerceSequenceToTypedVector<U64>(value, size,
                     [](PyObject* item, U64& converted) {
-                        const auto numeric = PyLong_AsUnsignedLongLong(item);
-                        if (numeric == static_cast<unsigned long long>(-1) && ClearPythonError()) {
-                            return Result::ERROR;
-                        }
-                        converted = numeric;
-                        return Result::SUCCESS;
+                        return ConvertPyUnsignedItem(item, converted);
                     }, typedVector);
                 if (result == Result::SUCCESS) {
                     out = std::move(typedVector);
@@ -747,7 +877,13 @@ Result PyObjectToAny(PyObject* classify,
     }
 
     if (code == 0) {
-        const bool flag = PyLong_AsLongLong(value) != 0;
+        const int truth = PyObject_IsTrue(value);
+        if (truth < 0) {
+            (void)ClearPythonError();
+            return Result::ERROR;
+        }
+
+        const bool flag = truth != 0;
         if (existing.has_value() &&
             CoerceIntegerToType(existing.type(), false, flag ? 1 : 0, 0, out)) {
             return Result::SUCCESS;
@@ -756,7 +892,7 @@ Result PyObjectToAny(PyObject* classify,
         return Result::SUCCESS;
     }
 
-    if (code == 1) {
+    if (code == 1 || (code >= 10 && code <= 17)) {
         bool isUnsigned = false;
         I64 signedValue = 0;
         U64 unsignedValue = 0;
@@ -770,6 +906,11 @@ Result PyObjectToAny(PyObject* classify,
             return Result::SUCCESS;
         }
 
+        if (code != 1 &&
+            CoerceIntegerToType(*NumpyIntegerCodeToType(code), isUnsigned, signedValue, unsignedValue, out)) {
+            return Result::SUCCESS;
+        }
+
         if (isUnsigned) {
             out = unsignedValue;
         } else {
@@ -778,7 +919,7 @@ Result PyObjectToAny(PyObject* classify,
         return Result::SUCCESS;
     }
 
-    if (code == 2) {
+    if (code == 2 || code == 18 || code == 19) {
         const F64 numeric = PyFloat_AsDouble(value);
         if (numeric == -1.0 && ClearPythonError()) {
             return Result::ERROR;
@@ -796,31 +937,24 @@ Result PyObjectToAny(PyObject* classify,
             }
         }
 
-        out = numeric;
+        if (code == 18) {
+            out = static_cast<F32>(numeric);
+        } else {
+            out = numeric;
+        }
         return Result::SUCCESS;
     }
 
-    if (code == 6) {
-        const F64 real = PyComplex_RealAsDouble(value);
-        if (real == -1.0 && ClearPythonError()) {
+    if (code == 6 || code == 20 || code == 21) {
+        const auto numeric = PyComplex_AsCComplex(value);
+        if (numeric.real == -1.0 && ClearPythonError()) {
             return Result::ERROR;
         }
-        const F64 imag = PyComplex_ImagAsDouble(value);
-        if (imag == -1.0 && ClearPythonError()) {
-            return Result::ERROR;
-        }
+        const F64 real = numeric.real;
+        const F64 imag = numeric.imag;
 
         if (existing.has_value()) {
-            if (existing.type() == typeid(CF32)) {
-                out = CF32(static_cast<F32>(real), static_cast<F32>(imag));
-                return Result::SUCCESS;
-            }
-            if (existing.type() == typeid(CF64)) {
-                out = CF64(real, imag);
-                return Result::SUCCESS;
-            }
-
-            if (imag == 0.0 && CoerceFloatToType(existing.type(), real, out)) {
+            if (CoerceComplexToType(existing.type(), real, imag, out)) {
                 return Result::SUCCESS;
             }
 
@@ -834,7 +968,11 @@ Result PyObjectToAny(PyObject* classify,
             }
         }
 
-        out = CF64(real, imag);
+        if (code == 20) {
+            out = CF32(static_cast<F32>(real), static_cast<F32>(imag));
+        } else {
+            out = CF64(real, imag);
+        }
         return Result::SUCCESS;
     }
 

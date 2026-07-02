@@ -303,6 +303,132 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block stores numpy values with matching widths",
+                 "[modules][python][block]") {
+    Parser::Map seeded;
+    seeded["level"] = F64{0.0};
+    REQUIRE(flowgraph->environment().set("seeded", seeded) == Result::SUCCESS);
+
+    Blocks::Python config;
+    config.code =
+        "_cycle = [0]\n"
+        "\n"
+        "def compute(ctx):\n"
+        "    try:\n"
+        "        import numpy as np\n"
+        "    except Exception:\n"
+        "        ctx.env[\"numpy_status\"] = {\"available\": False}\n"
+        "        return\n"
+        "    _cycle[0] += 1\n"
+        "    if _cycle[0] == 1:\n"
+        "        ctx.env[\"numpy_status\"] = {\"available\": True}\n"
+        "        ctx.env[\"sensor\"] = {\n"
+        "            \"gain\": np.float32(1.5),\n"
+        "            \"count\": np.int16(-7),\n"
+        "            \"index\": np.uint32(9),\n"
+        "            \"big\": np.uint64(2**63 + 1),\n"
+        "            \"flag\": np.bool_(True),\n"
+        "            \"off\": np.array(False),\n"
+        "            \"iq\": np.complex64(1 + 2j),\n"
+        "            \"wide\": np.complex128(3 - 4j),\n"
+        "            \"taps\": np.array([1 + 1j, 2 - 2j], dtype=np.complex64),\n"
+        "            \"window\": np.array([0.25, 0.75], dtype=np.float32),\n"
+        "        }\n"
+        "        ctx.env[\"seeded\"][\"level\"] = np.float32(2.5)\n"
+        "        return\n"
+        "    if _cycle[0] == 2:\n"
+        "        sensor = ctx.env.get(\"sensor\", {})\n"
+        "        taps = sensor.get(\"taps\")\n"
+        "        ctx.env[\"report\"] = {\n"
+        "            \"gain_type\": type(sensor.get(\"gain\")).__name__,\n"
+        "            \"count_type\": type(sensor.get(\"count\")).__name__,\n"
+        "            \"iq_type\": type(sensor.get(\"iq\")).__name__,\n"
+        "            \"taps_type\": type(taps).__name__,\n"
+        "            \"taps_dtype\": str(getattr(taps, \"dtype\", \"\")),\n"
+        "            \"taps_writable\": bool(getattr(taps, \"flags\", None) and taps.flags.writeable),\n"
+        "            \"level_type\": type(ctx.env.get(\"seeded\", {}).get(\"level\")).__name__,\n"
+        "        }\n"
+        "        ctx.env[\"burst\"] = {\n"
+        "            \"window\": np.arange(4, dtype=np.float32) * 0.5,\n"
+        "            \"taps\": taps * 2,\n"
+        "        }\n";
+    config.inputCount = 0;
+    config.outputCount = 0;
+
+    REQUIRE(flowgraph->blockCreate("python_numpy", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_numpy");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block numpy test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map status;
+    REQUIRE(flowgraph->environment().get("numpy_status", status) == Result::SUCCESS);
+    if (!std::any_cast<bool>(status.at("available"))) {
+        SUCCEED("Skipping Python block numpy test because NumPy is unavailable.");
+        return;
+    }
+
+    Parser::Map sensor;
+    REQUIRE(flowgraph->environment().get("sensor", sensor) == Result::SUCCESS);
+    REQUIRE(std::abs(std::any_cast<F32>(sensor.at("gain")) - 1.5f) < 1e-6f);
+    REQUIRE(std::any_cast<I16>(sensor.at("count")) == -7);
+    REQUIRE(std::any_cast<U32>(sensor.at("index")) == 9);
+    REQUIRE(std::any_cast<U64>(sensor.at("big")) == 9223372036854775809ULL);
+    REQUIRE(std::any_cast<bool>(sensor.at("flag")) == true);
+    REQUIRE(std::any_cast<bool>(sensor.at("off")) == false);
+
+    const auto iq = std::any_cast<CF32>(sensor.at("iq"));
+    REQUIRE(std::abs(iq.real() - 1.0f) < 1e-6f);
+    REQUIRE(std::abs(iq.imag() - 2.0f) < 1e-6f);
+    const auto wide = std::any_cast<CF64>(sensor.at("wide"));
+    REQUIRE(std::abs(wide.real() - 3.0) < 1e-9);
+    REQUIRE(std::abs(wide.imag() + 4.0) < 1e-9);
+
+    const auto taps = std::any_cast<std::vector<CF32>>(sensor.at("taps"));
+    REQUIRE(taps.size() == 2);
+    REQUIRE(std::abs(taps[0].real() - 1.0f) < 1e-6f);
+    REQUIRE(std::abs(taps[1].imag() + 2.0f) < 1e-6f);
+    const auto window = std::any_cast<std::vector<F32>>(sensor.at("window"));
+    REQUIRE(window.size() == 2);
+    REQUIRE(std::abs(window[0] - 0.25f) < 1e-6f);
+    REQUIRE(std::abs(window[1] - 0.75f) < 1e-6f);
+
+    Parser::Map seededOut;
+    REQUIRE(flowgraph->environment().get("seeded", seededOut) == Result::SUCCESS);
+    REQUIRE(std::abs(std::any_cast<F64>(seededOut.at("level")) - 2.5) < 1e-9);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map report;
+    REQUIRE(flowgraph->environment().get("report", report) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(report.at("gain_type")) == "float32");
+    REQUIRE(std::any_cast<std::string>(report.at("count_type")) == "int16");
+    REQUIRE(std::any_cast<std::string>(report.at("iq_type")) == "complex64");
+    REQUIRE(std::any_cast<std::string>(report.at("taps_type")) == "ndarray");
+    REQUIRE(std::any_cast<std::string>(report.at("taps_dtype")) == "complex64");
+    REQUIRE_FALSE(std::any_cast<bool>(report.at("taps_writable")));
+    REQUIRE(std::any_cast<std::string>(report.at("level_type")) == "float64");
+
+    Parser::Map burst;
+    REQUIRE(flowgraph->environment().get("burst", burst) == Result::SUCCESS);
+    const auto burstWindow = std::any_cast<std::vector<F32>>(burst.at("window"));
+    REQUIRE(burstWindow.size() == 4);
+    REQUIRE(std::abs(burstWindow[3] - 1.5f) < 1e-6f);
+    const auto burstTaps = std::any_cast<std::vector<CF32>>(burst.at("taps"));
+    REQUIRE(burstTaps.size() == 2);
+    REQUIRE(std::abs(burstTaps[0].real() - 2.0f) < 1e-6f);
+    REQUIRE(std::abs(burstTaps[0].imag() - 2.0f) < 1e-6f);
+    REQUIRE(std::abs(burstTaps[1].real() - 4.0f) < 1e-6f);
+    REQUIRE(std::abs(burstTaps[1].imag() + 4.0f) < 1e-6f);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Python block subscribes to block metrics",
                  "[modules][python][block]") {
     PythonMetricsSourceTestConfig sourceConfig;

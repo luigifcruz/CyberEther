@@ -17,7 +17,7 @@ Result ClassifyPyObject(CPython::PyObject* classify,
                         CPython::PyObject* value,
                         I64& code);
 
-CPython::PyObject* AnyToPyObject(const std::any& value);
+CPython::PyObject* AnyToPyObject(const std::any& value, CPython::PyObject* converters = nullptr);
 
 Result PyObjectToAny(CPython::PyObject* classify,
                      CPython::PyObject* value,
