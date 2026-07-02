@@ -10,6 +10,7 @@ struct Frame : public Block::Config {
 
     JST_BLOCK_TYPE(frame);
     JST_BLOCK_DOMAIN("Visualization");
+    JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(lut);
     JST_BLOCK_DESCRIPTION(
         "Frame",

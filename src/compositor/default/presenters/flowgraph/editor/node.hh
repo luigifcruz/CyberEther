@@ -200,6 +200,7 @@ struct FlowgraphNodePresenter {
             .runtime = blockData.runtime,
             .provider = blockData.provider,
             .state = blockState,
+            .nodeSize = blockData.nodeSize,
             .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
         };
         block.deviceOptions = catalog.buildDeviceOptions(block.module,

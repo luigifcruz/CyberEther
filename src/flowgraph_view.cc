@@ -201,6 +201,7 @@ Result Flowgraph::View::block(const std::string& block, BlockData& data) const {
     data.runtime = blockPtr->runtime();
     data.provider = blockPtr->provider();
     data.state = blockPtr->state();
+    data.nodeSize = blockPtr->config().nodeSize();
     data.diagnostic = blockPtr->diagnostic();
     data.inputs = blockPtr->inputs();
     data.outputs = blockPtr->outputs();
