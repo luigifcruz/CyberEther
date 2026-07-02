@@ -112,6 +112,7 @@ class JETSTREAM_API Flowgraph {
 
  private:
     Result blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames);
+    Result retryIncompleteBlocks();
 
     std::shared_ptr<Impl> impl;
 };

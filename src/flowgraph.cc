@@ -1160,6 +1160,82 @@ Result Flowgraph::blockSetErroredFromModules(const std::unordered_set<std::strin
     return Result::SUCCESS;
 }
 
+Result Flowgraph::retryIncompleteBlocks() {
+    const auto environmentKeyEpoch = [&]() -> U64 {
+        std::shared_lock lock(impl->environmentMutex);
+        return impl->environmentKeySequence;
+    };
+
+    if (environmentKeyEpoch() == impl->environmentRetrySequence.load()) {
+        return Result::SUCCESS;
+    }
+
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+
+    const U64 epoch = environmentKeyEpoch();
+    if (epoch == impl->environmentRetrySequence.load()) {
+        return Result::SUCCESS;
+    }
+    impl->environmentRetrySequence.store(epoch);
+
+    std::vector<std::string> incompleteBlocks;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+        for (const auto& name : impl->blockOrder) {
+            if (!impl->blocks.contains(name)) {
+                continue;
+            }
+
+            const auto& block = impl->blocks.at(name);
+            if (block->state() != Block::State::Incomplete) {
+                continue;
+            }
+
+            bool connected = true;
+            for (const auto& [key, _] : block->interface()->inputs()) {
+                if (!block->inputs().contains(key)) {
+                    connected = false;
+                    break;
+                }
+            }
+            if (!connected) {
+                continue;
+            }
+
+            incompleteBlocks.push_back(name);
+        }
+    }
+
+    if (incompleteBlocks.empty()) {
+        return Result::SUCCESS;
+    }
+
+    JST_INFO("[FLOWGRAPH] Environment changed. Retrying {} incomplete block(s).", incompleteBlocks.size());
+
+    for (const auto& name : incompleteBlocks) {
+        Parser::Map config;
+
+        {
+            std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+
+            if (!impl->blocks.contains(name) ||
+                impl->blocks.at(name)->state() != Block::State::Incomplete) {
+                continue;
+            }
+
+            JST_CHECK(impl->blocks.at(name)->config(config));
+        }
+
+        if (blockRecreate(name, config) != Result::SUCCESS) {
+            JST_WARN("[FLOWGRAPH] Retry of incomplete block '{}' failed.", name);
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Flowgraph::importFromFile(const std::string& path) {
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
     {
@@ -1531,6 +1607,8 @@ Result Flowgraph::compute() {
     if (!impl->created.load()) {
         return Result::SUCCESS;
     }
+
+    JST_CHECK(retryIncompleteBlocks());
 
     if (impl->scheduler) {
         std::unordered_set<std::string> failedModules;
