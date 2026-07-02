@@ -112,6 +112,7 @@ def compute(ctx):
 Semantics:
 
 - **Top-level values must be mappings.** `ctx.env["gain"] = 3.0` is rejected with a console warning, so wrap scalars in a dict.
+- **Complex values work.** A Python `complex` is stored as a 64-bit complex (CF64). Writes over an entry seeded as CF32 from the C++ side keep it CF32. Both kinds read back as Python `complex`, in the environment and in tensor attributes alike.
 - **Nested edits publish.** Both `ctx.env["k"] = {...}` and `ctx.env["k"]["field"] = value` are tracked, including dicts nested inside sequences. Sequences read back as immutable tuples. Replace them through their parent dict.
 - **Rejected writes are rolled back.** If a value cannot be converted or published, the local entry is restored to the flowgraph's canonical state instead of silently diverging.
 - **Deletions are not supported.** `del ctx.env["k"]` is reverted on the next cycle. Clear keys from the C++ side or the UI instead.
