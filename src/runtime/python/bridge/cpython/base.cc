@@ -296,6 +296,13 @@ PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObj
                                               static_cast<PyObject*>(nullptr));
 }
 
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2, PyObject* arg3, PyObject* arg4,
+                                       PyObject* arg5) {
+    return s_api.PyObject_CallFunctionObjArgs(callable, arg0, arg1, arg2, arg3, arg4, arg5,
+                                              static_cast<PyObject*>(nullptr));
+}
+
 Result Py_Load() {
     std::lock_guard<std::mutex> lock(LoaderMutex());
 

@@ -59,6 +59,9 @@ PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObj
                                        PyObject* arg2, PyObject* arg3);
 PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
                                        PyObject* arg2, PyObject* arg3, PyObject* arg4);
+PyObject* PyObject_CallFunctionObjArgs(PyObject* callable, PyObject* arg0, PyObject* arg1,
+                                       PyObject* arg2, PyObject* arg3, PyObject* arg4,
+                                       PyObject* arg5);
 
 }  // namespace Jetstream::CPython
 
