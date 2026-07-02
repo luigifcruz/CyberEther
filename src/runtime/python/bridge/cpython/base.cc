@@ -149,6 +149,9 @@ using PyLongAsLongLongFn = long long (*)(PyObject*);
 using PyLongAsUnsignedLongLongFn = unsigned long long (*)(PyObject*);
 using PyFloatFromDoubleFn = PyObject* (*)(double);
 using PyFloatAsDoubleFn = double (*)(PyObject*);
+using PyComplexFromDoublesFn = PyObject* (*)(double, double);
+using PyComplexRealAsDoubleFn = double (*)(PyObject*);
+using PyComplexImagAsDoubleFn = double (*)(PyObject*);
 using PyBoolFromLongFn = PyObject* (*)(long);
 using PyDictSetItemStringFn = int (*)(PyObject*, const char*, PyObject*);
 using PyDictNextFn = int (*)(PyObject*, Py_ssize_t*, PyObject**, PyObject**);
@@ -190,6 +193,9 @@ struct PythonApi {
     PyLongAsUnsignedLongLongFn PyLong_AsUnsignedLongLong = nullptr;
     PyFloatFromDoubleFn PyFloat_FromDouble = nullptr;
     PyFloatAsDoubleFn PyFloat_AsDouble = nullptr;
+    PyComplexFromDoublesFn PyComplex_FromDoubles = nullptr;
+    PyComplexRealAsDoubleFn PyComplex_RealAsDouble = nullptr;
+    PyComplexImagAsDoubleFn PyComplex_ImagAsDouble = nullptr;
     PyBoolFromLongFn PyBool_FromLong = nullptr;
     PyDictSetItemStringFn PyDict_SetItemString = nullptr;
     PyDictNextFn PyDict_Next = nullptr;
@@ -232,6 +238,9 @@ Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadSymbol(handle, api.PyLong_AsUnsignedLongLong, "PyLong_AsUnsignedLongLong"));
     JST_CHECK(LoadSymbol(handle, api.PyFloat_FromDouble, "PyFloat_FromDouble"));
     JST_CHECK(LoadSymbol(handle, api.PyFloat_AsDouble, "PyFloat_AsDouble"));
+    JST_CHECK(LoadSymbol(handle, api.PyComplex_FromDoubles, "PyComplex_FromDoubles"));
+    JST_CHECK(LoadSymbol(handle, api.PyComplex_RealAsDouble, "PyComplex_RealAsDouble"));
+    JST_CHECK(LoadSymbol(handle, api.PyComplex_ImagAsDouble, "PyComplex_ImagAsDouble"));
     JST_CHECK(LoadSymbol(handle, api.PyBool_FromLong, "PyBool_FromLong"));
     JST_CHECK(LoadSymbol(handle, api.PyDict_SetItemString, "PyDict_SetItemString"));
     JST_CHECK(LoadSymbol(handle, api.PyDict_Next, "PyDict_Next"));
@@ -403,6 +412,18 @@ PyObject* PyFloat_FromDouble(double value) {
 
 double PyFloat_AsDouble(PyObject* object) {
     return s_api.PyFloat_AsDouble(object);
+}
+
+PyObject* PyComplex_FromDoubles(double real, double imag) {
+    return s_api.PyComplex_FromDoubles(real, imag);
+}
+
+double PyComplex_RealAsDouble(PyObject* object) {
+    return s_api.PyComplex_RealAsDouble(object);
+}
+
+double PyComplex_ImagAsDouble(PyObject* object) {
+    return s_api.PyComplex_ImagAsDouble(object);
 }
 
 PyObject* PyBool_FromLong(long value) {

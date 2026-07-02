@@ -5,6 +5,8 @@ def _jetstream_classify_attribute(value):
         return 1
     if isinstance(value, float):
         return 2
+    if isinstance(value, complex):
+        return 6
     if isinstance(value, str):
         return 3
     if isinstance(value, dict):

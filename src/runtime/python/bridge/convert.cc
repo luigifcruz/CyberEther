@@ -43,6 +43,14 @@ bool CoerceIntegerToType(const std::type_info& target,
         out = isUnsigned ? unsignedValue != 0 : signedValue != 0;
         return true;
     }
+    if (target == typeid(CF32)) {
+        out = CF32(isUnsigned ? static_cast<F32>(unsignedValue) : static_cast<F32>(signedValue), 0.0f);
+        return true;
+    }
+    if (target == typeid(CF64)) {
+        out = CF64(isUnsigned ? static_cast<F64>(unsignedValue) : static_cast<F64>(signedValue), 0.0);
+        return true;
+    }
 
     if (isUnsigned) {
         if (target == typeid(U64)) {
@@ -135,6 +143,14 @@ bool CoerceFloatToType(const std::type_info& target, const F64 numeric, std::any
     }
     if (target == typeid(bool)) {
         out = numeric != 0.0;
+        return true;
+    }
+    if (target == typeid(CF32)) {
+        out = CF32(static_cast<F32>(numeric), 0.0f);
+        return true;
+    }
+    if (target == typeid(CF64)) {
+        out = CF64(numeric, 0.0);
         return true;
     }
 
@@ -231,6 +247,19 @@ Result ConvertPyFloatItem(PyObject* item, F64& out) {
     return Result::SUCCESS;
 }
 
+Result ConvertPyComplexItem(PyObject* item, CF64& out) {
+    const F64 real = PyComplex_RealAsDouble(item);
+    if (real == -1.0 && ClearPythonError()) {
+        return Result::ERROR;
+    }
+    const F64 imag = PyComplex_ImagAsDouble(item);
+    if (imag == -1.0 && ClearPythonError()) {
+        return Result::ERROR;
+    }
+    out = CF64(real, imag);
+    return Result::SUCCESS;
+}
+
 }  // namespace
 
 namespace {
@@ -257,6 +286,8 @@ bool AnyDeepEquals(const std::any& a, const std::any& b) {
 
     if (type == typeid(F32)) { return TypedAnyEquals<F32>(a, b); }
     if (type == typeid(F64)) { return TypedAnyEquals<F64>(a, b); }
+    if (type == typeid(CF32)) { return TypedAnyEquals<CF32>(a, b); }
+    if (type == typeid(CF64)) { return TypedAnyEquals<CF64>(a, b); }
     if (type == typeid(bool)) { return TypedAnyEquals<bool>(a, b); }
     if (type == typeid(I8)) { return TypedAnyEquals<I8>(a, b); }
     if (type == typeid(I16)) { return TypedAnyEquals<I16>(a, b); }
@@ -270,6 +301,8 @@ bool AnyDeepEquals(const std::any& a, const std::any& b) {
     if (type == typeid(std::vector<F32>)) { return TypedAnyEquals<std::vector<F32>>(a, b); }
     if (type == typeid(std::vector<F64>)) { return TypedAnyEquals<std::vector<F64>>(a, b); }
     if (type == typeid(std::vector<U64>)) { return TypedAnyEquals<std::vector<U64>>(a, b); }
+    if (type == typeid(std::vector<CF32>)) { return TypedAnyEquals<std::vector<CF32>>(a, b); }
+    if (type == typeid(std::vector<CF64>)) { return TypedAnyEquals<std::vector<CF64>>(a, b); }
 
     if (type == typeid(Parser::Map)) {
         const auto& mapA = std::any_cast<const Parser::Map&>(a);
@@ -340,6 +373,15 @@ PyObject* AnyToPyObject(const std::any& value) {
     }
     if (value.type() == typeid(F64)) {
         return PyFloat_FromDouble(std::any_cast<F64>(value));
+    }
+    if (value.type() == typeid(CF32)) {
+        const auto& complex = std::any_cast<const CF32&>(value);
+        return PyComplex_FromDoubles(static_cast<double>(complex.real()),
+                                     static_cast<double>(complex.imag()));
+    }
+    if (value.type() == typeid(CF64)) {
+        const auto& complex = std::any_cast<const CF64&>(value);
+        return PyComplex_FromDoubles(complex.real(), complex.imag());
     }
     if (value.type() == typeid(bool)) {
         return PyBool_FromLong(std::any_cast<bool>(value) ? 1 : 0);
@@ -433,6 +475,39 @@ PyObject* AnyToPyObject(const std::any& value) {
         }
         for (std::size_t index = 0; index < values.size(); ++index) {
             auto* object = PyLong_FromUnsignedLongLong(values[index]);
+            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
+                if (!object) { Py_DecRef(tuple); return nullptr; }
+                Py_DecRef(tuple);
+                return nullptr;
+            }
+        }
+        return tuple;
+    }
+    if (value.type() == typeid(std::vector<CF32>)) {
+        const auto& values = std::any_cast<const std::vector<CF32>&>(value);
+        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
+        if (!tuple) {
+            return nullptr;
+        }
+        for (std::size_t index = 0; index < values.size(); ++index) {
+            auto* object = PyComplex_FromDoubles(static_cast<double>(values[index].real()),
+                                                 static_cast<double>(values[index].imag()));
+            if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
+                if (!object) { Py_DecRef(tuple); return nullptr; }
+                Py_DecRef(tuple);
+                return nullptr;
+            }
+        }
+        return tuple;
+    }
+    if (value.type() == typeid(std::vector<CF64>)) {
+        const auto& values = std::any_cast<const std::vector<CF64>&>(value);
+        auto* tuple = PyTuple_New(static_cast<Py_ssize_t>(values.size()));
+        if (!tuple) {
+            return nullptr;
+        }
+        for (std::size_t index = 0; index < values.size(); ++index) {
+            auto* object = PyComplex_FromDoubles(values[index].real(), values[index].imag());
             if (!object || PyTuple_SetItem(tuple, static_cast<Py_ssize_t>(index), object) != 0) {
                 if (!object) { Py_DecRef(tuple); return nullptr; }
                 Py_DecRef(tuple);
@@ -571,6 +646,22 @@ Result PyObjectToAny(PyObject* classify,
                         return Result::SUCCESS;
                     }, out);
             }
+            if (existing.type() == typeid(std::vector<CF32>)) {
+                return CoerceSequenceToTypedVector<CF32>(value, size,
+                    [](PyObject* item, CF32& converted) {
+                        CF64 numeric;
+                        JST_CHECK(ConvertPyComplexItem(item, numeric));
+                        converted = CF32(static_cast<F32>(numeric.real()),
+                                         static_cast<F32>(numeric.imag()));
+                        return Result::SUCCESS;
+                    }, out);
+            }
+            if (existing.type() == typeid(std::vector<CF64>)) {
+                return CoerceSequenceToTypedVector<CF64>(value, size,
+                    [](PyObject* item, CF64& converted) {
+                        return ConvertPyComplexItem(item, converted);
+                    }, out);
+            }
         }
 
         const auto* existingSequence = std::any_cast<Parser::Sequence>(&existing);
@@ -578,7 +669,8 @@ Result PyObjectToAny(PyObject* classify,
         if (!existing.has_value() && size > 0) {
             bool allFloats = true;
             bool allIntegers = true;
-            for (Py_ssize_t index = 0; index < size && (allFloats || allIntegers); ++index) {
+            bool allComplex = true;
+            for (Py_ssize_t index = 0; index < size && (allFloats || allIntegers || allComplex); ++index) {
                 auto* item = PySequence_GetItem(value, index);
                 if (!item) {
                     (void)ClearPythonError();
@@ -592,12 +684,20 @@ Result PyObjectToAny(PyObject* classify,
 
                 allFloats = allFloats && itemCode == 2;
                 allIntegers = allIntegers && itemCode == 1;
+                allComplex = allComplex && itemCode == 6;
             }
 
             if (allFloats) {
                 return CoerceSequenceToTypedVector<F64>(value, size,
                     [](PyObject* item, F64& converted) {
                         return ConvertPyFloatItem(item, converted);
+                    }, out);
+            }
+
+            if (allComplex) {
+                return CoerceSequenceToTypedVector<CF64>(value, size,
+                    [](PyObject* item, CF64& converted) {
+                        return ConvertPyComplexItem(item, converted);
                     }, out);
             }
 
@@ -697,6 +797,44 @@ Result PyObjectToAny(PyObject* classify,
         }
 
         out = numeric;
+        return Result::SUCCESS;
+    }
+
+    if (code == 6) {
+        const F64 real = PyComplex_RealAsDouble(value);
+        if (real == -1.0 && ClearPythonError()) {
+            return Result::ERROR;
+        }
+        const F64 imag = PyComplex_ImagAsDouble(value);
+        if (imag == -1.0 && ClearPythonError()) {
+            return Result::ERROR;
+        }
+
+        if (existing.has_value()) {
+            if (existing.type() == typeid(CF32)) {
+                out = CF32(static_cast<F32>(real), static_cast<F32>(imag));
+                return Result::SUCCESS;
+            }
+            if (existing.type() == typeid(CF64)) {
+                out = CF64(real, imag);
+                return Result::SUCCESS;
+            }
+
+            if (imag == 0.0 && CoerceFloatToType(existing.type(), real, out)) {
+                return Result::SUCCESS;
+            }
+
+            if (IsIntegerType(existing.type()) ||
+                existing.type() == typeid(F32) ||
+                existing.type() == typeid(F64) ||
+                existing.type() == typeid(bool)) {
+                JST_WARN("[RUNTIME_CONTEXT_PYTHON] Rejecting complex value with non-zero "
+                         "imaginary part assigned to a real value.");
+                return Result::ERROR;
+            }
+        }
+
+        out = CF64(real, imag);
         return Result::SUCCESS;
     }
 

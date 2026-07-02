@@ -229,6 +229,80 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block round-trips complex environment values",
+                 "[modules][python][block]") {
+    Parser::Map carrier;
+    carrier["iq"] = CF32{1.5f, -2.5f};
+    carrier["reference"] = CF64{3.25, 4.75};
+    carrier["taps"] = std::vector<CF32>{{1.0f, 1.0f}, {2.0f, -2.0f}};
+    REQUIRE(flowgraph->environment().set("carrier", carrier) == Result::SUCCESS);
+
+    Blocks::Python config;
+    config.code =
+        "def compute(ctx):\n"
+        "    carrier = ctx.env.get(\"carrier\", {})\n"
+        "    iq = carrier.get(\"iq\", 0j)\n"
+        "    reference = carrier.get(\"reference\", 0j)\n"
+        "    taps = carrier.get(\"taps\", ())\n"
+        "    ctx.outputs[0][...] = abs(iq)\n"
+        "    carrier[\"iq\"] = iq * 2\n"
+        "    carrier[\"taps\"] = [tap * 2 for tap in taps]\n"
+        "    ctx.env[\"mirror\"] = {\n"
+        "        \"value\": complex(iq.real, -iq.imag),\n"
+        "        \"reference_magnitude\": abs(reference),\n"
+        "        \"spectrum\": [complex(0.0, 1.0), complex(2.0, 3.0)],\n"
+        "    }\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[1]"}};
+
+    REQUIRE(flowgraph->blockCreate("python_complex", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_complex");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block complex environment test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    block = viewBlock("python_complex");
+    const Tensor& output = block.outputs.at("output0").tensor;
+    REQUIRE(std::abs(output.at<F32>(0) - std::abs(CF32{1.5f, -2.5f})) < 1e-4f);
+
+    Parser::Map updated;
+    REQUIRE(flowgraph->environment().get("carrier", updated) == Result::SUCCESS);
+    const auto iq = std::any_cast<CF32>(updated.at("iq"));
+    REQUIRE(std::abs(iq.real() - 3.0f) < 1e-5f);
+    REQUIRE(std::abs(iq.imag() + 5.0f) < 1e-5f);
+    const auto reference = std::any_cast<CF64>(updated.at("reference"));
+    REQUIRE(std::abs(reference.real() - 3.25) < 1e-9);
+    REQUIRE(std::abs(reference.imag() - 4.75) < 1e-9);
+    const auto taps = std::any_cast<std::vector<CF32>>(updated.at("taps"));
+    REQUIRE(taps.size() == 2);
+    REQUIRE(std::abs(taps[0].real() - 2.0f) < 1e-5f);
+    REQUIRE(std::abs(taps[0].imag() - 2.0f) < 1e-5f);
+    REQUIRE(std::abs(taps[1].real() - 4.0f) < 1e-5f);
+    REQUIRE(std::abs(taps[1].imag() + 4.0f) < 1e-5f);
+
+    Parser::Map mirror;
+    REQUIRE(flowgraph->environment().get("mirror", mirror) == Result::SUCCESS);
+    const auto value = std::any_cast<CF64>(mirror.at("value"));
+    REQUIRE(std::abs(value.real() - 1.5) < 1e-5);
+    REQUIRE(std::abs(value.imag() - 2.5) < 1e-5);
+    const auto magnitude = std::any_cast<F64>(mirror.at("reference_magnitude"));
+    REQUIRE(std::abs(magnitude - std::abs(CF64{3.25, 4.75})) < 1e-9);
+    const auto spectrum = std::any_cast<std::vector<CF64>>(mirror.at("spectrum"));
+    REQUIRE(spectrum.size() == 2);
+    REQUIRE(std::abs(spectrum[0].real()) < 1e-9);
+    REQUIRE(std::abs(spectrum[0].imag() - 1.0) < 1e-9);
+    REQUIRE(std::abs(spectrum[1].real() - 2.0) < 1e-9);
+    REQUIRE(std::abs(spectrum[1].imag() - 3.0) < 1e-9);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Python block subscribes to block metrics",
                  "[modules][python][block]") {
     PythonMetricsSourceTestConfig sourceConfig;
