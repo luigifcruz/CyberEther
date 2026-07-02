@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_TYPES_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_TYPES_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include "jetstream/parser.hh"
 #include "jetstream/types.hh"
@@ -21,6 +21,10 @@ struct FlowgraphConfigFieldConfig {
     std::string help;
     std::string format;
     std::string encoded;
+    std::string status;
+    Sakura::NodeCodeEditor::StatusTone statusTone = Sakura::NodeCodeEditor::StatusTone::Info;
+    std::vector<std::string> consoleOutput;
+    bool consoleVisible = false;
     Parser::Map values;
     std::function<void(Parser::Map, bool)> onApply;
     std::function<void(Result, std::string)> onError;

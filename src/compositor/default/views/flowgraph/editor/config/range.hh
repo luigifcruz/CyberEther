@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphConfigRangeField : public Sakura::Component {
+struct FlowgraphConfigRangeField {
     using Config = FlowgraphConfigFieldConfig;
 
     void update(Config config) {

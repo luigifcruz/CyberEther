@@ -3,7 +3,7 @@
 
 #include "messages.hh"
 
-#include "jetstream/render/sakura/toast.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
 #include <functional>

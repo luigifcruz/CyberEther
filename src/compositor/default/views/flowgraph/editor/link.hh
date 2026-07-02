@@ -16,7 +16,7 @@ inline std::string FlowgraphLinkId(const std::string& consumerName, const std::s
     return consumerName + ":" + inputSlot + "link";
 }
 
-struct FlowgraphLink : public Sakura::Component {
+struct FlowgraphLink {
     struct Connection {
         std::string consumerName;
         std::string inputSlot;

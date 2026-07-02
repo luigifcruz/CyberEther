@@ -10,6 +10,7 @@ struct Note : public Block::Config {
 
     JST_BLOCK_TYPE(note);
     JST_BLOCK_DOMAIN("Visualization");
+    JST_BLOCK_NODE_SIZE(XL);
     JST_BLOCK_PARAMS(content);
     JST_BLOCK_DESCRIPTION(
         "Note",

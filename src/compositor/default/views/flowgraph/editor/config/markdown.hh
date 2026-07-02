@@ -5,7 +5,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphConfigMarkdownField : public Sakura::Component {
+struct FlowgraphConfigMarkdownField {
     using Config = FlowgraphConfigFieldConfig;
 
     void update(Config config) {
@@ -24,30 +24,18 @@ struct FlowgraphConfigMarkdownField : public Sakura::Component {
             .title = false,
             .background = false,
         });
-        preview.update({
-            .id = this->config.id + "Preview",
-            .value = value,
-        });
-        editButton.update({
-            .id = this->config.id + "Edit",
-            .str = "Edit",
-            .size = {-1.0f, 0.0f},
-            .colorKey = "card",
-            .hoveredColorKey = "card",
-            .activeColorKey = "card",
-            .onClick = [this]() {
+        markdownField.update({
+            .id = this->config.id + "Markdown",
+            .value = editing ? buffer : value,
+            .editing = editing,
+            .onChange = [this](std::string nextValue) {
+                buffer = std::move(nextValue);
+            },
+            .onEdit = [this]() {
                 buffer = value;
                 editing = true;
             },
-        });
-        doneButton.update({
-            .id = this->config.id + "Done",
-            .str = "Done",
-            .size = {-1.0f, 0.0f},
-            .colorKey = "card",
-            .hoveredColorKey = "card",
-            .activeColorKey = "card",
-            .onClick = [this]() {
+            .onDone = [this]() {
                 auto values = this->config.values;
                 values[this->config.name] = buffer;
                 if (this->config.onApply) {
@@ -56,25 +44,11 @@ struct FlowgraphConfigMarkdownField : public Sakura::Component {
                 editing = false;
             },
         });
-        editor.update({
-            .id = this->config.id + "Editor",
-            .value = buffer,
-            .onChange = [this](std::string nextValue) {
-                buffer = std::move(nextValue);
-            },
-        });
     }
 
     void render(const Sakura::Context& ctx) const {
         frame.render(ctx, [this](const Sakura::Context& ctx) {
-            if (!editing) {
-                preview.render(ctx);
-                editButton.render(ctx);
-                return;
-            }
-
-            editor.render(ctx);
-            doneButton.render(ctx);
+            markdownField.render(ctx);
         });
     }
 
@@ -85,10 +59,7 @@ struct FlowgraphConfigMarkdownField : public Sakura::Component {
     bool editing = false;
     std::string buffer;
     Sakura::NodeField frame;
-    Sakura::NodeMarkdown preview;
-    Sakura::NodeCodeEditor editor;
-    Sakura::Button editButton;
-    Sakura::Button doneButton;
+    Sakura::Retained::MarkdownEditor markdownField;
 };
 
 }  // namespace Jetstream

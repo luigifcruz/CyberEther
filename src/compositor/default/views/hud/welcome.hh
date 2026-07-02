@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_WELCOME_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_WELCOME_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct WelcomeHudTitle : public Sakura::Component {
+struct WelcomeHudTitle {
     struct Config {
         std::string title;
         std::string slogan;
@@ -47,7 +47,7 @@ struct WelcomeHudTitle : public Sakura::Component {
     Sakura::Text slogan;
 };
 
-struct WelcomeHudCell : public Sakura::Component {
+struct WelcomeHudCell {
     struct Config {
         std::string id;
         std::string icon;
@@ -119,7 +119,7 @@ struct WelcomeHudCell : public Sakura::Component {
     Sakura::Text subtitle;
 };
 
-struct WelcomeHudView : public Sakura::Component {
+struct WelcomeHudView {
     struct Config {
         std::string version;
         std::function<void()> onNewFlowgraph;

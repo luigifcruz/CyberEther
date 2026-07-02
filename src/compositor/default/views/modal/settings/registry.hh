@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REGISTRY_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REGISTRY_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <string>
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct RegistrySettingsPanel : public Sakura::Component {
+struct RegistrySettingsPanel {
     struct DomainRow {
         std::string domain;
         std::vector<std::string> blocks;

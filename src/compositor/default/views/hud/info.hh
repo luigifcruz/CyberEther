@@ -1,14 +1,14 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_INFO_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_INFO_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <string>
 #include <utility>
 
 namespace Jetstream {
 
-struct InfoHudView : public Sakura::Component {
+struct InfoHudView {
     struct Config {
         F32 frameRate = 0.0f;
         std::string viewportName;

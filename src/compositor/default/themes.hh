@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_THEMES_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_THEMES_HH
 
-#include "jetstream/render/sakura/color.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <algorithm>
 #include <string>
@@ -58,6 +58,40 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"text_secondary", {0.50f, 0.50f, 0.52f, 1.00f}},
             {"text_disabled", {0.40f, 0.40f, 0.40f, 1.0f}},
             {"text_selected_bg", {0.25f, 0.25f, 0.27f, 0.50f}},
+
+            // Editor Colors (Ayu Dark inspired)
+            {"editor_background", {0.05f, 0.05f, 0.05f, 1.00f}},
+            {"editor_text", {0.70f, 0.69f, 0.68f, 1.00f}},
+            {"editor_comment", {0.36f, 0.40f, 0.45f, 1.00f}},
+            {"editor_keyword", {1.00f, 0.56f, 0.25f, 1.00f}},
+            {"editor_string", {0.67f, 0.85f, 0.30f, 1.00f}},
+            {"editor_constant", {0.82f, 0.65f, 1.00f, 1.00f}},
+            {"editor_function", {1.00f, 0.82f, 0.45f, 1.00f}},
+            {"editor_type", {0.45f, 0.82f, 1.00f, 1.00f}},
+            {"editor_console_background", {0.03f, 0.03f, 0.04f, 0.97f}},
+            {"editor_console_header_background", {0.08f, 0.08f, 0.10f, 1.00f}},
+            {"editor_console_header_outline", {0.20f, 0.20f, 0.23f, 1.00f}},
+            {"editor_status_text", {0.92f, 0.92f, 0.92f, 1.00f}},
+            {"editor_status_info", {0.10f, 0.26f, 0.42f, 1.00f}},
+            {"editor_status_info_text", {0.84f, 0.93f, 1.00f, 1.00f}},
+            {"editor_status_info_separator", {0.08f, 0.21f, 0.34f, 1.00f}},
+            {"editor_status_success", {0.14f, 0.36f, 0.24f, 1.00f}},
+            {"editor_status_success_text", {0.84f, 1.00f, 0.90f, 1.00f}},
+            {"editor_status_success_separator", {0.11f, 0.29f, 0.19f, 1.00f}},
+            {"editor_status_warning", {0.48f, 0.34f, 0.10f, 1.00f}},
+            {"editor_status_warning_text", {1.00f, 0.94f, 0.78f, 1.00f}},
+            {"editor_status_warning_separator", {0.38f, 0.27f, 0.08f, 1.00f}},
+            {"editor_status_error", {0.45f, 0.16f, 0.16f, 1.00f}},
+            {"editor_status_error_text", {1.00f, 0.86f, 0.86f, 1.00f}},
+            {"editor_status_error_separator", {0.36f, 0.13f, 0.13f, 1.00f}},
+            {"editor_selection", {0.153f, 0.216f, 0.278f, 0.72f}},
+            {"editor_selection_match", {0.42f, 0.32f, 0.12f, 0.55f}},
+            {"editor_active_line", {0.12f, 0.14f, 0.18f, 0.40f}},
+            {"editor_line_number", {0.24f, 0.26f, 0.30f, 1.00f}},
+            {"editor_cursor", {0.93f, 0.76f, 0.46f, 1.00f}},
+            {"editor_gutter_separator", {0.18f, 0.19f, 0.22f, 0.35f}},
+            {"editor_scrollbar_track", {0.12f, 0.12f, 0.13f, 1.00f}},
+            {"editor_scrollbar_thumb", {0.42f, 0.42f, 0.42f, 0.80f}},
 
             // Border Colors
             {"border", {0.18f, 0.18f, 0.18f, 0.75f}},
@@ -201,6 +235,40 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"text_secondary", {0.45f, 0.45f, 0.48f, 1.00f}},
             {"text_disabled", {0.65f, 0.65f, 0.68f, 1.0f}},
             {"text_selected_bg", {0.70f, 0.70f, 0.72f, 0.50f}},
+
+            // Editor Colors (One Light inspired)
+            {"editor_background", {1.00f, 1.00f, 1.00f, 1.00f}},
+            {"editor_text", {0.22f, 0.23f, 0.26f, 1.00f}},
+            {"editor_comment", {0.63f, 0.63f, 0.65f, 1.00f}},
+            {"editor_keyword", {0.65f, 0.15f, 0.64f, 1.00f}},
+            {"editor_string", {0.31f, 0.63f, 0.31f, 1.00f}},
+            {"editor_constant", {0.60f, 0.41f, 0.00f, 1.00f}},
+            {"editor_function", {0.25f, 0.47f, 0.95f, 1.00f}},
+            {"editor_type", {0.76f, 0.52f, 0.00f, 1.00f}},
+            {"editor_console_background", {0.95f, 0.95f, 0.96f, 0.96f}},
+            {"editor_console_header_background", {0.94f, 0.94f, 0.95f, 1.00f}},
+            {"editor_console_header_outline", {0.82f, 0.82f, 0.85f, 1.00f}},
+            {"editor_status_text", {0.22f, 0.23f, 0.26f, 1.00f}},
+            {"editor_status_info", {0.93f, 0.96f, 1.00f, 1.00f}},
+            {"editor_status_info_text", {0.18f, 0.40f, 0.70f, 1.00f}},
+            {"editor_status_info_separator", {0.72f, 0.75f, 0.80f, 0.75f}},
+            {"editor_status_success", {0.94f, 0.98f, 0.95f, 1.00f}},
+            {"editor_status_success_text", {0.22f, 0.50f, 0.35f, 1.00f}},
+            {"editor_status_success_separator", {0.75f, 0.80f, 0.76f, 0.75f}},
+            {"editor_status_warning", {1.00f, 0.97f, 0.92f, 1.00f}},
+            {"editor_status_warning_text", {0.65f, 0.45f, 0.12f, 1.00f}},
+            {"editor_status_warning_separator", {0.80f, 0.77f, 0.70f, 0.75f}},
+            {"editor_status_error", {1.00f, 0.94f, 0.94f, 1.00f}},
+            {"editor_status_error_text", {0.70f, 0.22f, 0.22f, 1.00f}},
+            {"editor_status_error_separator", {0.80f, 0.74f, 0.74f, 0.75f}},
+            {"editor_selection", {0.80f, 0.86f, 0.96f, 0.60f}},
+            {"editor_selection_match", {1.00f, 0.88f, 0.46f, 0.58f}},
+            {"editor_active_line", {0.82f, 0.85f, 0.90f, 0.45f}},
+            {"editor_line_number", {0.63f, 0.63f, 0.65f, 1.00f}},
+            {"editor_cursor", {0.32f, 0.44f, 1.00f, 1.00f}},
+            {"editor_gutter_separator", {0.82f, 0.82f, 0.85f, 0.55f}},
+            {"editor_scrollbar_track", {0.87f, 0.87f, 0.88f, 1.00f}},
+            {"editor_scrollbar_thumb", {0.55f, 0.55f, 0.57f, 0.80f}},
 
             // Border Colors
             {"border", {0.78f, 0.78f, 0.80f, 0.75f}},
