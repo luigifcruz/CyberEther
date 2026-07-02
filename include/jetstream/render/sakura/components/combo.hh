@@ -15,6 +15,7 @@ struct Combo {
         std::string id;
         std::vector<std::string> options;
         std::string value;
+        F32 width = 0.0f;
         bool disabled = false;
         std::function<void(const std::string&)> onChange;
     };

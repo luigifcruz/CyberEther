@@ -15,6 +15,7 @@ struct NodeCombo {
         std::string id;
         std::vector<std::string> options;
         std::string value;
+        F32 width = 0.0f;
         std::function<void(const std::string&)> onChange;
     };
 
