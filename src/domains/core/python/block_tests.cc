@@ -6,6 +6,7 @@
 
 #include "jetstream/block_interface.hh"
 #include "jetstream/domains/core/python/block.hh"
+#include "jetstream/flowgraph_environment.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/runtime_context.hh"
 #include "flowgraph_fixture.hh"
@@ -111,6 +112,76 @@ TEST_CASE_METHOD(FlowgraphFixture,
     for (Index i = 0; i < computed.size(); ++i) {
         REQUIRE(std::abs(computed.at<F32>(i) - 3.0f) < 1e-5f);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block reads and writes flowgraph environment",
+                 "[modules][python][block]") {
+    Parser::Map station;
+    station["frequency"] = static_cast<F64>(100.5);
+    REQUIRE(flowgraph->environment().set("station", station) == Result::SUCCESS);
+
+    Blocks::Python config;
+    config.code =
+        "_n = 0\n"
+        "\n"
+        "def compute(ctx):\n"
+        "    global _n\n"
+        "    _n += 1\n"
+        "    station = ctx.env.get(\"station\", {})\n"
+        "    ctx.outputs[0][...] = station.get(\"frequency\", -1.0)\n"
+        "    if _n == 1:\n"
+        "        ctx.env[\"telemetry\"] = {\"count\": 9007199254740993, \"label\": \"ok\"}\n"
+        "    else:\n"
+        "        ctx.env[\"telemetry\"][\"count\"] = _n\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[1]"}};
+
+    REQUIRE(flowgraph->blockCreate("python_env", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_env");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block environment test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    block = viewBlock("python_env");
+    const Tensor& output = block.outputs.at("output0").tensor;
+    REQUIRE(std::abs(output.at<F32>(0) - 100.5f) < 1e-3f);
+
+    Parser::Map telemetry;
+    REQUIRE(flowgraph->environment().get("telemetry", telemetry) == Result::SUCCESS);
+    REQUIRE(telemetry.contains("count"));
+    REQUIRE(std::any_cast<I64>(telemetry.at("count")) == 9007199254740993LL);
+    REQUIRE(telemetry.contains("label"));
+    REQUIRE(std::any_cast<std::string>(telemetry.at("label")) == "ok");
+
+    station["frequency"] = static_cast<F64>(200.25);
+    REQUIRE(flowgraph->environment().set("station", station) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    block = viewBlock("python_env");
+    const Tensor& updated = block.outputs.at("output0").tensor;
+    REQUIRE(std::abs(updated.at<F32>(0) - 200.25f) < 1e-3f);
+
+    REQUIRE(flowgraph->environment().get("telemetry", telemetry) == Result::SUCCESS);
+    REQUIRE(std::any_cast<I64>(telemetry.at("count")) == 2);
+    REQUIRE(std::any_cast<std::string>(telemetry.at("label")) == "ok");
+
+    REQUIRE(flowgraph->environment().clear("station") == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    block = viewBlock("python_env");
+    const Tensor& cleared = block.outputs.at("output0").tensor;
+    REQUIRE(std::abs(cleared.at<F32>(0) - (-1.0f)) < 1e-3f);
+
+    REQUIRE(flowgraph->environment().get("telemetry", telemetry) == Result::SUCCESS);
+    REQUIRE(std::any_cast<I64>(telemetry.at("count")) == 3);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

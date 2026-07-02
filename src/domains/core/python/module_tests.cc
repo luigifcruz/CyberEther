@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -141,6 +142,121 @@ TEST_CASE("Python module exposes non-contiguous input tensors", "[modules][pytho
             const F32 expected = static_cast<F32>(j * 4 + i + 1) * 2.0f;
             REQUIRE(std::abs(data[i * 2 + j] - expected) < 1e-5f);
         }
+    }
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python module exposes tensor attributes", "[modules][python][module]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("sampleRate", static_cast<F32>(2000000.0f)) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("station", std::string("alpha")) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["input0"].produced("source", "output", input);
+
+    Modules::Python config;
+    config.code = R"PY(def compute(ctx):
+    ctx.outputs[0][...] = ctx.inputs[0]
+    ctx.output_attrs[0]["sampleRate"] = ctx.input_attrs[0]["sampleRate"] * 0.5
+    ctx.output_attrs[0]["station"] = ctx.input_attrs[0]["station"] + "-out"
+    ctx.output_attrs[0]["decimated"] = True
+)PY";
+    config.inputCount = 1;
+    config.outputCount = 1;
+    ConfigureF32Output(config, "[4]");
+
+    const auto createResult = module->create("python_attrs", config, inputs);
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python attribute test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_attrs", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(skippedModules.empty());
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE(output.hasAttribute("sampleRate"));
+    REQUIRE(std::abs(std::any_cast<F64>(output.attribute("sampleRate")) - 1000000.0) < 1e-3);
+    REQUIRE(output.hasAttribute("station"));
+    REQUIRE(std::any_cast<std::string>(output.attribute("station")) == "alpha-out");
+    REQUIRE(output.hasAttribute("decimated"));
+    REQUIRE(std::any_cast<bool>(output.attribute("decimated")) == true);
+
+    REQUIRE(runtime.compute({"python_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(std::abs(std::any_cast<F64>(output.attribute("sampleRate")) - 1000000.0) < 1e-3);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python module publishes nested attribute mutations", "[modules][python][module]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {1}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["input0"].produced("source", "output", input);
+
+    Modules::Python config;
+    config.code = R"PY(_n = 0
+
+def compute(ctx):
+    global _n
+    _n += 1
+    ctx.outputs[0][...] = ctx.inputs[0]
+    if _n == 1:
+        ctx.output_attrs[0]["meta"] = {"stage": 1}
+    else:
+        ctx.output_attrs[0]["meta"]["stage"] = _n
+)PY";
+    config.inputCount = 1;
+    config.outputCount = 1;
+    ConfigureF32Output(config, "[1]");
+
+    const auto createResult = module->create("python_nested_attrs", config, inputs);
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python nested attribute test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_nested_attrs", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_nested_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(skippedModules.empty());
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE(output.hasAttribute("meta"));
+    {
+        const auto meta = std::any_cast<Parser::Map>(output.attribute("meta"));
+        REQUIRE(std::any_cast<I64>(meta.at("stage")) == 1);
+    }
+
+    REQUIRE(runtime.compute({"python_nested_attrs"}, skippedModules, failedModules) == Result::SUCCESS);
+    {
+        const auto meta = std::any_cast<Parser::Map>(output.attribute("meta"));
+        REQUIRE(std::any_cast<I64>(meta.at("stage")) == 2);
     }
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
