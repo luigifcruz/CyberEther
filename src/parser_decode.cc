@@ -1,3 +1,5 @@
+#include <limits>
+
 #include "jetstream/parser.hh"
 #include "jetstream/memory/types.hh"
 
@@ -77,9 +79,70 @@ Result Parser::StringToTypedValue(const std::string& encoded, std::string& varia
     return Result::SUCCESS;
 }
 
+Result Parser::StringToTypedValue(const std::string& encoded, I8& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I8'.");
+    const auto value = std::stoi(encoded);
+    if (value < std::numeric_limits<I8>::min() || value > std::numeric_limits<I8>::max()) {
+        JST_ERROR("[PARSER] Value '{}' is out of range for 'I8'.", encoded);
+        return Result::ERROR;
+    }
+    variable = static_cast<I8>(value);
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, I16& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I16'.");
+    const auto value = std::stoi(encoded);
+    if (value < std::numeric_limits<I16>::min() || value > std::numeric_limits<I16>::max()) {
+        JST_ERROR("[PARSER] Value '{}' is out of range for 'I16'.", encoded);
+        return Result::ERROR;
+    }
+    variable = static_cast<I16>(value);
+    return Result::SUCCESS;
+}
+
 Result Parser::StringToTypedValue(const std::string& encoded, I32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I32'.");
     variable = std::stoi(encoded);
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, U8& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U8'.");
+    const auto value = std::stoull(encoded);
+    if (value > std::numeric_limits<U8>::max()) {
+        JST_ERROR("[PARSER] Value '{}' is out of range for 'U8'.", encoded);
+        return Result::ERROR;
+    }
+    variable = static_cast<U8>(value);
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, U16& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U16'.");
+    const auto value = std::stoull(encoded);
+    if (value > std::numeric_limits<U16>::max()) {
+        JST_ERROR("[PARSER] Value '{}' is out of range for 'U16'.", encoded);
+        return Result::ERROR;
+    }
+    variable = static_cast<U16>(value);
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, U32& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U32'.");
+    const auto value = std::stoull(encoded);
+    if (value > std::numeric_limits<U32>::max()) {
+        JST_ERROR("[PARSER] Value '{}' is out of range for 'U32'.", encoded);
+        return Result::ERROR;
+    }
+    variable = static_cast<U32>(value);
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, I64& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I64'.");
+    variable = std::stoll(encoded);
     return Result::SUCCESS;
 }
 

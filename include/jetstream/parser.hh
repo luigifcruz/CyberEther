@@ -156,7 +156,13 @@ class JETSTREAM_API Parser {
  private:
     static Result StringToTypedValue(const std::string& encoded, Tensor& variable);
     static Result StringToTypedValue(const std::string& encoded, std::string& variable);
+    static Result StringToTypedValue(const std::string& encoded, I8& variable);
+    static Result StringToTypedValue(const std::string& encoded, I16& variable);
     static Result StringToTypedValue(const std::string& encoded, I32& variable);
+    static Result StringToTypedValue(const std::string& encoded, I64& variable);
+    static Result StringToTypedValue(const std::string& encoded, U8& variable);
+    static Result StringToTypedValue(const std::string& encoded, U16& variable);
+    static Result StringToTypedValue(const std::string& encoded, U32& variable);
     static Result StringToTypedValue(const std::string& encoded, U64& variable);
     static Result StringToTypedValue(const std::string& encoded, F32& variable);
     static Result StringToTypedValue(const std::string& encoded, F64& variable);

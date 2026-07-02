@@ -17,8 +17,38 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
         return Result::SUCCESS;
     }
 
+    if (variable.type() == typeid(I8)) {
+        encoded = jst::fmt::format("{}", static_cast<I32>(std::any_cast<I8>(variable)));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(I16)) {
+        encoded = jst::fmt::format("{}", std::any_cast<I16>(variable));
+        return Result::SUCCESS;
+    }
+
     if (variable.type() == typeid(I32)) {
         encoded = jst::fmt::format("{}", std::any_cast<I32>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(U8)) {
+        encoded = jst::fmt::format("{}", static_cast<U32>(std::any_cast<U8>(variable)));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(U16)) {
+        encoded = jst::fmt::format("{}", std::any_cast<U16>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(U32)) {
+        encoded = jst::fmt::format("{}", std::any_cast<U32>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(I64)) {
+        encoded = jst::fmt::format("{}", std::any_cast<I64>(variable));
         return Result::SUCCESS;
     }
 
