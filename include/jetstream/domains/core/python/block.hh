@@ -41,7 +41,9 @@ struct Python : public Block::Config {
         "- Math or glue logic between blocks without recompiling.\n"
         "- Using the NumPy, CuPy, and SciPy ecosystem inside a flowgraph.\n\n"
 
-        "## Implementation\n"
+        "## Usage\n"
+
+        "### Tensor I/O\n"
         "The `input0` and `output0` ports are exposed as `ctx.inputs[0]` and "
         "`ctx.outputs[0]`, arriving as NumPy (CPU) or CuPy (CUDA) arrays. "
         "Write outputs in place and treat inputs as read-only:\n\n"
@@ -51,6 +53,7 @@ struct Python : public Block::Config {
         "    ctx.outputs[0][...] = ctx.inputs[0] * 2.0\n"
         "```\n\n"
 
+        "### Tensor Attributes\n"
         "Tensor attributes like `sampleRate` travel with the data. Read them "
         "from `ctx.input_attrs[0]` and write them to `ctx.output_attrs[0]` so "
         "downstream blocks stay informed:\n\n"
@@ -61,6 +64,7 @@ struct Python : public Block::Config {
         "    ctx.output_attrs[0][\"sampleRate\"] = ctx.input_attrs[0][\"sampleRate\"] / 2.0\n"
         "```\n\n"
 
+        "### Flowgraph Environment\n"
         "The flowgraph environment is shared with every block and the "
         "Environment window. Read it through `ctx.env` and publish by "
         "assigning dicts to top-level keys:\n\n"
@@ -72,6 +76,19 @@ struct Python : public Block::Config {
         "    ctx.env[\"status\"] = {\"peak\": float(abs(ctx.outputs[0]).max())}\n"
         "```\n\n"
 
+        "### Block Metrics\n"
+        "Metrics published by other blocks are readable through "
+        "`ctx.metrics`. The first read of a block's name subscribes to it "
+        "and returns an empty mapping, with live values available from the "
+        "next cycle on:\n\n"
+
+        "```python\n"
+        "def compute(ctx):\n"
+        "    progress = ctx.metrics[\"file_reader\"].get(\"progress\")\n"
+        "    ctx.metrics.subscribe_all()  # subscribe to every block\n"
+        "```\n\n"
+
+        "### Lifecycle And Errors\n"
         "Attribute and environment writes are published when `compute` "
         "returns. The code loads once at creation, globals persist across "
         "cycles, and an optional `cleanup()` runs at destroy. Output from "

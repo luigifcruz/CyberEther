@@ -2,7 +2,7 @@ import importlib as _jetstream_importlib
 
 
 class _JetstreamBridge:
-    def __init__(self, inputs, outputs, input_attrs, output_attrs, env):
+    def __init__(self, inputs, outputs, input_attrs, output_attrs, env, metrics):
         _jetstream_types = _jetstream_importlib.import_module("types")
 
         self.inputs = inputs
@@ -13,6 +13,7 @@ class _JetstreamBridge:
         }
         self.output_attrs = dict(enumerate(output_attrs))
         self.env = env
+        self.metrics = metrics
 
     def __getitem__(self, key):
         if key == "inputs":
@@ -25,6 +26,8 @@ class _JetstreamBridge:
             return self.output_attrs
         if key == "env":
             return self.env
+        if key == "metrics":
+            return self.metrics
         raise KeyError(key)
 
 
@@ -34,6 +37,7 @@ def _jetstream_create_bridge(
     input_attrs,
     output_attrs,
     env,
+    metrics,
     _tensors_from_specs=_jetstream_tensors_from_specs,
 ):
     return _JetstreamBridge(
@@ -42,4 +46,5 @@ def _jetstream_create_bridge(
         input_attrs,
         output_attrs,
         env,
+        metrics,
     )

@@ -4,6 +4,7 @@
 #include <limits>
 #include <string>
 #include <typeinfo>
+#include <utility>
 #include <vector>
 
 #include "jetstream/logger.hh"
@@ -369,6 +370,28 @@ PyObject* AnyToPyObject(const std::any& value) {
     }
     if (value.type() == typeid(std::string)) {
         return PyUnicode_FromString(std::any_cast<const std::string&>(value).c_str());
+    }
+    if (value.type() == typeid(std::pair<std::string, F32>)) {
+        const auto& pair = std::any_cast<const std::pair<std::string, F32>&>(value);
+        auto* label = PyUnicode_FromString(pair.first.c_str());
+        auto* fraction = PyFloat_FromDouble(static_cast<double>(pair.second));
+        auto* tuple = PyTuple_New(2);
+        if (!label || !fraction || !tuple) {
+            if (label) { Py_DecRef(label); }
+            if (fraction) { Py_DecRef(fraction); }
+            if (tuple) { Py_DecRef(tuple); }
+            return nullptr;
+        }
+        if (PyTuple_SetItem(tuple, 0, label) != 0) {
+            Py_DecRef(fraction);
+            Py_DecRef(tuple);
+            return nullptr;
+        }
+        if (PyTuple_SetItem(tuple, 1, fraction) != 0) {
+            Py_DecRef(tuple);
+            return nullptr;
+        }
+        return tuple;
     }
     if (value.type() == typeid(std::vector<F32>)) {
         const auto& values = std::any_cast<const std::vector<F32>&>(value);

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "jetstream/block_interface.hh"
+#include "jetstream/detail/block_impl.hh"
 #include "jetstream/domains/core/python/block.hh"
 #include "jetstream/flowgraph_environment.hh"
 #include "jetstream/logger.hh"
@@ -24,6 +25,49 @@ bool OptionalPythonRuntimeUnavailableForBlock() {
            error.find("No libpython was found") != std::string::npos ||
            error.find("No loadable libpython was found") != std::string::npos;
 }
+
+struct PythonMetricsSourceTestConfig : Block::Config {
+    JST_BLOCK_TYPE(python_metrics_source_test)
+    JST_BLOCK_DOMAIN("test")
+    JST_BLOCK_DESCRIPTION("Python Metrics Source Test",
+                          "Exposes public metrics for Python block tests.",
+                          "A test-only block used by Python block metric coverage.")
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct PythonMetricsSourceTestBlock : Block::Impl,
+                                      DynamicConfig<PythonMetricsSourceTestConfig> {
+    Result define() override {
+        JST_CHECK(defineInterfaceMetric("answer",
+                                        "Answer",
+                                        "Public test metric.",
+                                        "label",
+            []() -> std::any {
+                return I64{42};
+            }));
+        JST_CHECK(defineInterfaceMetric("secret",
+                                        "Secret",
+                                        "Private test metric.",
+                                        "private-label",
+            []() -> std::any {
+                return std::string("hidden");
+            }));
+        return Result::SUCCESS;
+    }
+};
+
+JST_REGISTER_BLOCK(PythonMetricsSourceTestBlock);
 
 }  // namespace
 
@@ -182,6 +226,54 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->environment().get("telemetry", telemetry) == Result::SUCCESS);
     REQUIRE(std::any_cast<I64>(telemetry.at("count")) == 3);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block subscribes to block metrics",
+                 "[modules][python][block]") {
+    PythonMetricsSourceTestConfig sourceConfig;
+    REQUIRE(flowgraph->blockCreate("peer", sourceConfig, {}, DeviceType::CPU, RuntimeType::NATIVE) ==
+            Result::SUCCESS);
+
+    Blocks::Python config;
+    config.code =
+        "_n = 0\n"
+        "\n"
+        "def compute(ctx):\n"
+        "    global _n\n"
+        "    if _n == 0:\n"
+        "        ctx.metrics.subscribe_all()\n"
+        "        assert \"peer\" not in ctx.metrics\n"
+        "        assert ctx.metrics.get(\"ghost\") == {}\n"
+        "    else:\n"
+        "        assert \"peer\" in ctx.metrics\n"
+        "        assert ctx.metrics[\"peer\"].get(\"answer\") == 42\n"
+        "        assert \"secret\" not in ctx.metrics[\"peer\"]\n"
+        "        assert \"ghost\" in ctx.metrics\n"
+        "        assert ctx.metrics[\"ghost\"] == {}\n"
+        "    _n += 1\n"
+        "    ctx.outputs[0][...] = float(_n)\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[1]"}};
+
+    REQUIRE(flowgraph->blockCreate("python_metrics", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_metrics");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block metrics test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    block = viewBlock("python_metrics");
+    const Tensor& output = block.outputs.at("output0").tensor;
+    REQUIRE(std::abs(output.at<F32>(0) - 3.0f) < 1e-5f);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

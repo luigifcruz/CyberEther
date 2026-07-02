@@ -7,5 +7,6 @@ src_lst += files([
     'console.cc',
     'convert.cc',
     'environment.cc',
+    'metrics.cc',
     'tensor.cc',
 ])

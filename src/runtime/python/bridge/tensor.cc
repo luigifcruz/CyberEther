@@ -341,9 +341,8 @@ PyObject* Bridge::createTensorContext(const Module::Interface::EntryList& inputO
         return nullptr;
     }
 
-    auto* createBridge = PyDict_GetItemString(globals, "_jetstream_create_bridge");
-    if (!createBridge || !PyCallable_Check(createBridge)) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime helper '_jetstream_create_bridge' is unavailable.");
+    auto* metrics = createMetricsDict();
+    if (!metrics) {
         Py_DecRef(environment);
         Py_DecRef(outputAttributes);
         Py_DecRef(inputAttributes);
@@ -354,12 +353,29 @@ PyObject* Bridge::createTensorContext(const Module::Interface::EntryList& inputO
         return nullptr;
     }
 
+    auto* createBridge = PyDict_GetItemString(globals, "_jetstream_create_bridge");
+    if (!createBridge || !PyCallable_Check(createBridge)) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime helper '_jetstream_create_bridge' is unavailable.");
+        Py_DecRef(metrics);
+        Py_DecRef(environment);
+        Py_DecRef(outputAttributes);
+        Py_DecRef(inputAttributes);
+        Py_DecRef(outputSpecs);
+        Py_DecRef(inputSpecs);
+        destroyAttributePorts();
+        destroyEnvironmentDict();
+        destroyMetricsDict();
+        return nullptr;
+    }
+
     auto* tensorContext = PyObject_CallFunctionObjArgs(createBridge,
                                                        inputSpecs,
                                                        outputSpecs,
                                                        inputAttributes,
                                                        outputAttributes,
-                                                       environment);
+                                                       environment,
+                                                       metrics);
+    Py_DecRef(metrics);
     Py_DecRef(environment);
     Py_DecRef(outputAttributes);
     Py_DecRef(inputAttributes);
@@ -369,6 +385,7 @@ PyObject* Bridge::createTensorContext(const Module::Interface::EntryList& inputO
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python tensor context.");
         destroyAttributePorts();
         destroyEnvironmentDict();
+        destroyMetricsDict();
         return nullptr;
     }
 

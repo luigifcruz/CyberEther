@@ -9,6 +9,7 @@ runtime_python_bridge = custom_target(
         'convert.py',
         'tensor.py',
         'environment.py',
+        'metrics.py',
         'bridge.py',
         'runtime.py',
     ]),

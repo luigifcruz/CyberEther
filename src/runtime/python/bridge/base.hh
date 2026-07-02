@@ -4,6 +4,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "jetstream/module_interface.hh"
@@ -22,7 +23,8 @@ struct Bridge {
                  const TensorMap& inputs,
                  const Module::Interface::EntryList& outputOrder,
                  const TensorMap& outputs,
-                 const std::shared_ptr<Flowgraph::Environment>& environment = nullptr);
+                 const std::shared_ptr<Flowgraph::Environment>& environment = nullptr,
+                 const std::shared_ptr<Flowgraph::View>& view = nullptr);
     Result stop();
     Result run();
     Runtime::Context::Diagnostic diagnostic() const;
@@ -100,6 +102,20 @@ struct Bridge {
     void flushEnvironment();
     void trackEnvironment();
     void destroyEnvironmentDict();
+
+    //
+    // Metrics IO [bridge/metrics.cc]
+    //
+
+    std::shared_ptr<Flowgraph::View> flowgraphView;
+    CPython::PyObject* metricsDict = nullptr;
+    std::unordered_set<std::string> metricsRequests;
+    bool metricsSubscribeAll = false;
+
+    CPython::PyObject* createMetricsDict();
+    void refreshMetrics();
+    void collectMetricsRequests();
+    void destroyMetricsDict();
 };
 
 }  // namespace Jetstream

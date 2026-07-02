@@ -44,7 +44,8 @@ Result PythonImplPython::loadCompute(const std::string& source) {
                                              inputs(),
                                              outputPortOrder(),
                                              outputs(),
-                                             environment());
+                                             environment(),
+                                             view());
     if (computeResult == Result::SUCCESS) {
         return Result::SUCCESS;
     }
