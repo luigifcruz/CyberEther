@@ -13,6 +13,14 @@ namespace Jetstream {
 // TypedToString
 //
 
+template<typename T>
+static std::string ComplexToString(const T& complex) {
+    return jst::fmt::format("{}{}{}",
+                            complex.real(),
+                            complex.imag() < 0 ? "-" : "+",
+                            std::abs(complex.imag()));
+}
+
 Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
     if (variable.type() == typeid(std::string)) {
         const auto& stringValue = std::any_cast<std::string>(variable);
@@ -71,11 +79,12 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
     }
 
     if (variable.type() == typeid(CF32)) {
-        const auto& complex = std::any_cast<CF32>(variable);
-        encoded = jst::fmt::format("{}{}{}",
-                                   complex.real(),
-                                   complex.imag() < 0 ? "-" : "+",
-                                   std::abs(complex.imag()));
+        encoded = ComplexToString(std::any_cast<CF32>(variable));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(CF64)) {
+        encoded = ComplexToString(std::any_cast<CF64>(variable));
         return Result::SUCCESS;
     }
 
@@ -108,6 +117,28 @@ Result Parser::TypedToString(const std::any& variable, std::string& encoded) {
     if (variable.type() == typeid(std::vector<F32>)) {
         const auto& values = std::any_cast<std::vector<F32>>(variable);
         encoded = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(std::vector<CF32>)) {
+        const auto& values = std::any_cast<const std::vector<CF32>&>(variable);
+        std::vector<std::string> entries;
+        entries.reserve(values.size());
+        for (const auto& value : values) {
+            entries.push_back(ComplexToString(value));
+        }
+        encoded = jst::fmt::format("[{}]", jst::fmt::join(entries, ", "));
+        return Result::SUCCESS;
+    }
+
+    if (variable.type() == typeid(std::vector<CF64>)) {
+        const auto& values = std::any_cast<const std::vector<CF64>&>(variable);
+        std::vector<std::string> entries;
+        entries.reserve(values.size());
+        for (const auto& value : values) {
+            entries.push_back(ComplexToString(value));
+        }
+        encoded = jst::fmt::format("[{}]", jst::fmt::join(entries, ", "));
         return Result::SUCCESS;
     }
 

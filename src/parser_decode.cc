@@ -197,6 +197,12 @@ Result Parser::StringToTypedValue(const std::string& encoded, CF32& variable) {
     return Result::SUCCESS;
 }
 
+Result Parser::StringToTypedValue(const std::string& encoded, CF64& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'CF64'.");
+    variable = StringToComplex<CF64>(encoded);
+    return Result::SUCCESS;
+}
+
 Result Parser::StringToTypedValue(const std::string& encoded, bool& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'bool'.");
     std::string lower_s = encoded;
@@ -251,6 +257,22 @@ Result Parser::StringToTypedValue(const std::string& encoded, std::vector<F32>& 
     const auto values = ParseListValues(encoded);
     variable = std::vector<F32>(values.size());
     std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return std::stof(s); });
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, std::vector<CF32>& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<CF32>'.");
+    const auto values = ParseListValues(encoded);
+    variable = std::vector<CF32>(values.size());
+    std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return StringToComplex<CF32>(s); });
+    return Result::SUCCESS;
+}
+
+Result Parser::StringToTypedValue(const std::string& encoded, std::vector<CF64>& variable) {
+    JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<CF64>'.");
+    const auto values = ParseListValues(encoded);
+    variable = std::vector<CF64>(values.size());
+    std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return StringToComplex<CF64>(s); });
     return Result::SUCCESS;
 }
 

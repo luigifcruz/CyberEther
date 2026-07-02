@@ -175,6 +175,36 @@ TEST_CASE("Parser string conversions round-trip aggregates", "[parser][conversio
         RequireF64VectorEq(decoded, input);
     }
 
+    SECTION("std::vector<CF32>") {
+        const std::vector<CF32> input = {{1.5f, 2.5f}, {3.0f, -4.0f}};
+        std::string encoded;
+        REQUIRE(Parser::TypedToString(std::any(input), encoded) == Result::SUCCESS);
+        REQUIRE(encoded == "[1.5+2.5, 3-4]");
+
+        std::vector<CF32> decoded;
+        REQUIRE(Parser::StringToTyped<std::vector<CF32>>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(decoded.size() == input.size());
+        for (U64 i = 0; i < decoded.size(); ++i) {
+            REQUIRE(decoded[i].real() == Catch::Approx(input[i].real()));
+            REQUIRE(decoded[i].imag() == Catch::Approx(input[i].imag()));
+        }
+    }
+
+    SECTION("std::vector<CF64>") {
+        const std::vector<CF64> input = {{1.25, -2.75}, {0.5, 0.0}};
+        std::string encoded;
+        REQUIRE(Parser::TypedToString(std::any(input), encoded) == Result::SUCCESS);
+        REQUIRE(encoded == "[1.25-2.75, 0.5+0]");
+
+        std::vector<CF64> decoded;
+        REQUIRE(Parser::StringToTyped<std::vector<CF64>>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(decoded.size() == input.size());
+        for (U64 i = 0; i < decoded.size(); ++i) {
+            REQUIRE(decoded[i].real() == Catch::Approx(input[i].real()));
+            REQUIRE(decoded[i].imag() == Catch::Approx(input[i].imag()));
+        }
+    }
+
     SECTION("Range<F32>") {
         const Range<F32> input{1.5f, 9.5f};
         std::string encoded;
@@ -229,6 +259,30 @@ TEST_CASE("Parser string conversions round-trip aggregates", "[parser][conversio
 
         CF32 decoded{};
         REQUIRE(Parser::StringToTyped<CF32>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(decoded.real() == Catch::Approx(input.real()));
+        REQUIRE(decoded.imag() == Catch::Approx(input.imag()));
+    }
+
+    SECTION("CF64 with positive imaginary value") {
+        const CF64 input{3.25, 4.75};
+        std::string encoded;
+        REQUIRE(Parser::TypedToString(std::any(input), encoded) == Result::SUCCESS);
+        REQUIRE(encoded == "3.25+4.75");
+
+        CF64 decoded{};
+        REQUIRE(Parser::StringToTyped<CF64>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(decoded.real() == Catch::Approx(input.real()));
+        REQUIRE(decoded.imag() == Catch::Approx(input.imag()));
+    }
+
+    SECTION("CF64 with negative imaginary value") {
+        const CF64 input{3.25, -4.75};
+        std::string encoded;
+        REQUIRE(Parser::TypedToString(std::any(input), encoded) == Result::SUCCESS);
+        REQUIRE(encoded == "3.25-4.75");
+
+        CF64 decoded{};
+        REQUIRE(Parser::StringToTyped<CF64>(encoded, decoded) == Result::SUCCESS);
         REQUIRE(decoded.real() == Catch::Approx(input.real()));
         REQUIRE(decoded.imag() == Catch::Approx(input.imag()));
     }
