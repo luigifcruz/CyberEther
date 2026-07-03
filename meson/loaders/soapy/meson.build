@@ -24,15 +24,18 @@ if jst_is_ios
     ]
 endif
 
-soapyhackrf_subproj = subproject(
-    'soapyhackrf',
-    required: false,
-    default_options: soapy_static_options,
-)
-if soapyhackrf_subproj.found()
-    soapyhackrf_dep = soapyhackrf_subproj.get_variable('soapyhackrf_dep')
-else
-    soapyhackrf_dep = disabler()
+soapyhackrf_available = false
+soapyhackrf_dep = disabler()
+if jst_is_macos or jst_is_linux or jst_is_windows
+    soapyhackrf_subproj = subproject(
+        'soapyhackrf',
+        required: false,
+        default_options: soapy_static_options,
+    )
+    if soapyhackrf_subproj.found()
+        soapyhackrf_dep = soapyhackrf_subproj.get_variable('soapyhackrf_dep')
+        soapyhackrf_available = true
+    endif
 endif
 
 if jst_is_macos or jst_is_linux
@@ -56,7 +59,7 @@ if jst_is_macos or jst_is_linux
             default_options: soapy_static_options,
         ).get_variable('soapyrtlsdr_dep').as_link_whole(),
     ]
-    if soapyhackrf_subproj.found()
+    if soapyhackrf_available
         whole_dep_lst += [soapyhackrf_dep.as_link_whole()]
     endif
 endif
@@ -77,7 +80,7 @@ if jst_is_windows
             default_options: soapy_static_options,
         ).get_variable('soapylms7_dep').as_link_whole(),
     ]
-    if soapyhackrf_subproj.found()
+    if soapyhackrf_available
         whole_dep_lst += [soapyhackrf_dep.as_link_whole()]
     endif
 endif
@@ -103,7 +106,7 @@ if jst_is_browser
             default_options: soapy_static_options,
         ).get_variable('soapyrtlsdr_dep').as_link_whole(),
     ]
-    if soapyhackrf_subproj.found()
+    if soapyhackrf_available
         whole_dep_lst += [soapyhackrf_dep.as_link_whole()]
     endif
 endif
@@ -123,4 +126,4 @@ if all_deps_found
 endif
 
 ldr_lst += {'SoapySDR': all_deps_found}
-ldr_lst += {'SoapyHackRF': soapyhackrf_subproj.found()}
+ldr_lst += {'SoapyHackRF': soapyhackrf_available}

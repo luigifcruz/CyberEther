@@ -1,4 +1,12 @@
-project('libhackrf', 'c', version: '2026.01.3', default_options: ['optimization=2'])
+project(
+  'libhackrf',
+  'c',
+  version: '2026.01.3',
+  default_options: [
+    'optimization=2',
+    'default_library=static',
+  ],
+)
 
 libusb_dep = dependency('libusb-1.0', required: false)
 if not libusb_dep.found()
@@ -39,11 +47,13 @@ libhackrf_lib = library(
   install: true,
 )
 
+public_inc_dirs = [include_directories('host/libhackrf/src')]
+if host_machine.system() == 'windows'
+  public_inc_dirs += [include_directories('meson/windows-pthread-shim')]
+endif
+
 libhackrf_dep = declare_dependency(
-  include_directories: [
-    include_directories('host/libhackrf/src'),
-    include_directories('meson/windows-pthread-shim'),
-  ],
+  include_directories: public_inc_dirs,
   link_with: libhackrf_lib,
   dependencies: deps,
 )
