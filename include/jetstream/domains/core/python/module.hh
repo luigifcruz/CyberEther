@@ -25,10 +25,11 @@ struct Python : public Module::Config {
     U64 inputCount = 1;
     U64 outputCount = 1;
     std::vector<TensorSpec> outputTensorSpecs;
+    bool throttled = false;
 
     JST_MODULE_TYPE(python);
     JST_MODULE_PARAMS(code, inputCount, outputCount,
-                      outputTensorSpecs);
+                      outputTensorSpecs, throttled);
 };
 
 }  // namespace Jetstream::Modules

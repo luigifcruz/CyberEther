@@ -210,7 +210,9 @@ Result PythonImpl::validate() {
 
     JST_CHECK(ValidatePortSpecs(config));
 
-    if (inputCount != config.inputCount || outputCount != config.outputCount) {
+    if (inputCount != config.inputCount ||
+        outputCount != config.outputCount ||
+        throttled != config.throttled) {
         return Result::RECREATE;
     }
 
@@ -224,6 +226,7 @@ Result PythonImpl::configure() {
     moduleConfig->inputCount = inputCount;
     moduleConfig->outputCount = outputCount;
     moduleConfig->outputTensorSpecs = outputTensorSpecs;
+    moduleConfig->throttled = throttled;
 
     return Result::SUCCESS;
 }
@@ -255,6 +258,10 @@ Result PythonImpl::define() {
                                     "Output Count",
                                     "Number of output tensor ports.",
                                     "int:"));
+    JST_CHECK(defineInterfaceConfig("throttled",
+                                    "Throttled",
+                                    "Run compute at a slow fixed rate instead of every cycle.",
+                                    "bool"));
     for (U64 i = 0; i < outputCount; ++i) {
         const auto index = std::to_string(i);
         JST_CHECK(defineInterfaceConfig("outputTensor" + index,

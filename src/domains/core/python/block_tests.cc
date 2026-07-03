@@ -85,7 +85,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.state == Block::State::Incomplete);
     REQUIRE(block.interfaceInputs.size() == 2);
     REQUIRE(block.interfaceOutputs.size() == 3);
-    REQUIRE(block.interfaceConfigs.size() == 6);
+    REQUIRE(block.interfaceConfigs.size() == 7);
     REQUIRE(block.interfaceInputs.at(0).name == "input0");
     REQUIRE(block.interfaceInputs.at(1).name == "input1");
     REQUIRE(block.interfaceOutputs.at(0).name == "output0");
@@ -121,6 +121,38 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockReconfigure("python_zero", nextConfig) == Result::SUCCESS);
     block = viewBlock("python_zero");
     REQUIRE(block.state == Block::State::Created);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block recreates the module when throttled changes",
+                 "[modules][python][block]") {
+    Blocks::Python config;
+    config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 1.0\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[4]"}};
+
+    REQUIRE(flowgraph->blockCreate("python_throttle", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_throttle");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block throttle test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    const auto previousTensorId = block.outputs.at("output0").tensor.id();
+
+    Parser::Map nextConfig = block.config;
+    nextConfig["throttled"] = true;
+
+    REQUIRE(flowgraph->blockReconfigure("python_throttle", nextConfig) == Result::SUCCESS);
+
+    block = viewBlock("python_throttle");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(std::any_cast<bool>(block.config.at("throttled")) == true);
+    REQUIRE(block.outputs.at("output0").tensor.id() != previousTensorId);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
