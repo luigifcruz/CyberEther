@@ -170,7 +170,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             // For CPU -> Vulkan, we need to create a new Vulkan buffer
             // that uses the CPU memory. This is not directly supported,
             // so we return an error for now.
-            JST_ERROR("[MEMORY:BUFFER:VULKAN] Cannot mirror from CPU device directly.");
+            JST_TRACE("[MEMORY:BUFFER:VULKAN] Cannot mirror from CPU device directly.");
             return Result::ERROR;
         }
 
@@ -283,7 +283,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         }
 #endif
 
-        JST_ERROR("[MEMORY:BUFFER:VULKAN] Cannot mirror from device {}.", source.device());
+        JST_TRACE("[MEMORY:BUFFER:VULKAN] Cannot mirror from device {}.", source.device());
         return Result::ERROR;
     }
 
