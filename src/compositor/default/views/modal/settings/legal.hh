@@ -1,14 +1,14 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_LEGAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_LEGAL_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <string>
 
 namespace Jetstream {
 
-struct LegalSettingsPanel : public Sakura::Component {
+struct LegalSettingsPanel {
     struct Config {
         std::function<void()> onViewFullLicenses;
     };

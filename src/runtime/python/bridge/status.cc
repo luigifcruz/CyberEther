@@ -40,7 +40,7 @@ std::string PythonToString(PyObject* object) {
     return result;
 }
 
-std::string TakePythonError() {
+std::string TakePythonError(PyObject* globals) {
     PyObject* type = nullptr;
     PyObject* value = nullptr;
     PyObject* traceback = nullptr;
@@ -51,6 +51,25 @@ std::string TakePythonError() {
     }
 
     PyErr_NormalizeException(&type, &value, &traceback);
+
+    if (globals && type && traceback) {
+        auto* formatter = PyDict_GetItemString(globals, "_jetstream_format_exception");
+        if (formatter && PyCallable_Check(formatter)) {
+            auto* formatted = PyObject_CallFunctionObjArgs(formatter, type, value, traceback);
+            if (formatted) {
+                const auto message = PythonToString(formatted);
+                Py_DecRef(formatted);
+                if (!message.empty()) {
+                    Py_DecRef(type);
+                    if (value) { Py_DecRef(value); }
+                    Py_DecRef(traceback);
+                    return message;
+                }
+            } else {
+                DiscardPythonError();
+            }
+        }
+    }
 
     std::string typeName = "PythonError";
     if (type) {
@@ -89,7 +108,7 @@ void Bridge::setInfo(const std::string& text) {
 
 void Bridge::setError(const std::string& text, std::string details) {
     if (details.empty() && Py_IsLoaded()) {
-        details = TakePythonError();
+        details = TakePythonError(globals);
     }
     if (details.empty()) {
         details = JST_LOG_LAST_ERROR();
@@ -104,9 +123,17 @@ void Bridge::setError(const std::string& text, std::string details) {
         consoleAppend(details);
     }
 
-    std::lock_guard<std::mutex> lock(statusMutex);
-    healthy = false;
-    status = text;
+    bool repeated = false;
+    {
+        std::lock_guard<std::mutex> lock(statusMutex);
+        repeated = !healthy && status == text;
+        healthy = false;
+        status = text;
+    }
+
+    if (!repeated && !details.empty()) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] {}\n{}", text, details);
+    }
 }
 
 }  // namespace Jetstream

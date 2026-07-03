@@ -5,7 +5,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphMetricLabel : public Sakura::Component {
+struct FlowgraphMetricLabel {
     using Config = FlowgraphMetricConfig;
 
     void update(Config config) {

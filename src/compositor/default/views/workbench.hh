@@ -18,7 +18,7 @@
 
 namespace Jetstream {
 
-struct WorkbenchView : public Sakura::Component {
+struct WorkbenchView {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;

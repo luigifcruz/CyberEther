@@ -7,7 +7,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphMetricTable : public Sakura::Component {
+struct FlowgraphMetricTable {
     using Config = FlowgraphMetricConfig;
 
     void update(Config config) {

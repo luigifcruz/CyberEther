@@ -1,6 +1,6 @@
 #include <jetstream/render/sakura/dockspace.hh>
 
-#include "base.hh"
+#include "helpers.hh"
 
 namespace Jetstream::Sakura {
 
@@ -18,9 +18,10 @@ ImGuiWindowFlags DefaultWindowFlags() {
 }
 
 ImGuiDockNodeFlags DefaultDockFlags() {
-    return ImGuiDockNodeFlags_PassthruCentralNode |
-           ImGuiDockNodeFlags_NoWindowMenuButton |
-           ImGuiDockNodeFlags_NoCloseButton;
+    return static_cast<ImGuiDockNodeFlags>(
+        static_cast<int>(ImGuiDockNodeFlags_PassthruCentralNode) |
+        static_cast<int>(ImGuiDockNodeFlags_NoWindowMenuButton) |
+        static_cast<int>(ImGuiDockNodeFlags_NoCloseButton));
 }
 
 }  // namespace

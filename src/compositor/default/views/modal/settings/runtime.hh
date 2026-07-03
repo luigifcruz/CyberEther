@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_RUNTIME_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_RUNTIME_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 #include "jetstream/runtime_context_python.hh"
 
@@ -13,7 +13,7 @@
 
 namespace Jetstream {
 
-struct RuntimeSettingsPanel : public Sakura::Component {
+struct RuntimeSettingsPanel {
     struct Config {
         std::string pythonPath;
         std::vector<PythonRuntimeContext::Candidate> pythonCandidates;

@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_BENCHMARK_HH
 
 #include "../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include "jetstream/benchmark.hh"
@@ -14,7 +14,7 @@
 
 namespace Jetstream {
 
-struct BenchmarkView : public Sakura::Component {
+struct BenchmarkView {
     struct Config {
         bool running = false;
         F32 progress = 0.0f;

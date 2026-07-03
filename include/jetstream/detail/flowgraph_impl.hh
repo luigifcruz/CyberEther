@@ -51,6 +51,8 @@ struct Flowgraph::Impl {
 
     std::unordered_map<std::string, std::vector<EnvironmentEntry>> environmentValues;
     U64 environmentSequence = 0;
+    U64 environmentKeySequence = 0;
+    std::atomic<U64> environmentRetrySequence = 0;
 
     mutable std::recursive_mutex mutationMutex;
     mutable std::recursive_mutex blockMutex;

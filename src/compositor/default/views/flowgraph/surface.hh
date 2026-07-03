@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_SURFACE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_SURFACE_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include "jetstream/surface.hh"
 
@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphDetachedSurface : public Sakura::Component {
+struct FlowgraphDetachedSurface {
     struct Config {
         std::string id;
         std::string title;
@@ -29,7 +29,7 @@ struct FlowgraphDetachedSurface : public Sakura::Component {
             .title = this->config.title,
             .size = this->config.logicalSize,
             .padding = Extent2D<F32>{4.0f, 4.0f},
-            .backgroundColor = Sakura::Color{0.0f, 0.0f, 0.0f, 1.0f},
+            .backgroundColor = ColorRGBA<F32>{0.0f, 0.0f, 0.0f, 1.0f},
             .onClose = this->config.onClose,
         });
         surface.update({

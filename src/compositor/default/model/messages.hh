@@ -7,7 +7,7 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/sakura/toast.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
 #include <deque>
@@ -215,6 +215,11 @@ struct MailRenameBlock {
     std::string newId;
 };
 
+struct MailOpenRenameBlock {
+    std::string flowgraph;
+    std::string blockId;
+};
+
 struct MailDeleteBlock {
     std::string flowgraph;
     std::string blockId;
@@ -382,6 +387,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailRunBenchmark,
                           MailResetBenchmark,
                           MailSetFlowgraphInfo,
+                          MailOpenRenameBlock,
                           MailRenameBlock,
                           MailDeleteBlock,
                           MailReloadBlock,

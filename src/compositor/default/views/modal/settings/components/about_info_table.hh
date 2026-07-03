@@ -1,14 +1,14 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_COMPONENTS_ABOUT_INFO_TABLE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_COMPONENTS_ABOUT_INFO_TABLE_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <string>
 #include <vector>
 
 namespace Jetstream {
 
-struct AboutInfoTable : public Sakura::Component {
+struct AboutInfoTable {
     struct Config {
         std::string id;
         std::string title;

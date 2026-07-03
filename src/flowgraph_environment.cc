@@ -104,7 +104,18 @@ Result Flowgraph::Environment::set(const std::string& key, const Parser::Map& da
     }
 
     entries.push_back({start, end, sequence, data});
+    ++graph->environmentKeySequence;
     return Result::SUCCESS;
+}
+
+U64 Flowgraph::Environment::epoch() const {
+    const auto graph = impl.lock();
+    if (!graph) {
+        return 0;
+    }
+
+    std::shared_lock lock(graph->environmentMutex);
+    return graph->environmentSequence;
 }
 
 Result Flowgraph::Environment::clear(const std::string& key) {
@@ -115,7 +126,10 @@ Result Flowgraph::Environment::clear(const std::string& key) {
     }
 
     std::unique_lock lock(graph->environmentMutex);
-    graph->environmentValues.erase(key);
+    ++graph->environmentSequence;
+    if (graph->environmentValues.erase(key) > 0) {
+        ++graph->environmentKeySequence;
+    }
     return Result::SUCCESS;
 }
 
@@ -127,8 +141,11 @@ Result Flowgraph::Environment::clearAll() {
     }
 
     std::unique_lock lock(graph->environmentMutex);
+    ++graph->environmentSequence;
+    if (!graph->environmentValues.empty()) {
+        ++graph->environmentKeySequence;
+    }
     graph->environmentValues.clear();
-    graph->environmentSequence = 0;
     return Result::SUCCESS;
 }
 

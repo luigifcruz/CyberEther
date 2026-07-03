@@ -8,6 +8,7 @@ namespace Jetstream::Blocks {
 struct Multiply : public Block::Config {
     JST_BLOCK_TYPE(multiply);
     JST_BLOCK_DOMAIN("Core");
+    JST_BLOCK_NODE_SIZE(XS);
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Multiply",

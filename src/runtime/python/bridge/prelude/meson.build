@@ -6,7 +6,11 @@ runtime_python_bridge = custom_target(
     'runtime_python_bridge',
     input: files([
         'console.py',
+        'convert.py',
         'tensor.py',
+        'environment.py',
+        'metrics.py',
+        'bridge.py',
         'runtime.py',
     ]),
     output: 'bridge.hh',

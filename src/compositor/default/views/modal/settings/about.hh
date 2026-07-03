@@ -3,7 +3,7 @@
 
 #include "components/about_info_table.hh"
 #include "components/about_update_card.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include "jetstream/config.hh"
 
@@ -13,7 +13,7 @@
 
 namespace Jetstream {
 
-struct AboutSettingsPanel : public Sakura::Component {
+struct AboutSettingsPanel {
     struct Config {
         bool updateAvailable = false;
         std::string updateVersion;

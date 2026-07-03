@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_COMPONENTS_ABOUT_UPDATE_CARD_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_COMPONENTS_ABOUT_UPDATE_CARD_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct AboutUpdateCard : public Sakura::Component {
+struct AboutUpdateCard {
     struct Config {
         std::string version;
         std::string buildInfo;
