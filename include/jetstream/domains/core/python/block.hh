@@ -16,12 +16,13 @@ struct Python : public Block::Config {
     U64 inputCount = 1;
     U64 outputCount = 1;
     std::vector<Modules::Python::TensorSpec> outputTensorSpecs;
+    bool throttled = false;
 
     JST_BLOCK_TYPE(python);
     JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_NODE_SIZE(XL);
     JST_BLOCK_PARAMS(code, inputCount, outputCount,
-                     outputTensorSpecs);
+                     outputTensorSpecs, throttled);
     JST_BLOCK_DESCRIPTION(
         "Python",
         "Runs custom Python compute code.",
@@ -34,7 +35,9 @@ struct Python : public Block::Config {
         "- **Input Count**: Number of input ports.\n"
         "- **Output Count**: Number of output ports.\n"
         "- **Output Tensor Specs**: Shape, data type, and device of each output "
-        "tensor.\n\n"
+        "tensor.\n"
+        "- **Throttled**: Run compute at a slow fixed rate instead of every "
+        "cycle. Useful for standalone blocks with no inputs or outputs.\n\n"
 
         "## Useful For\n"
         "- Prototyping processing steps before writing a native block.\n"

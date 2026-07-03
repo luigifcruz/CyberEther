@@ -168,7 +168,7 @@ Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
 
         const auto& module = modulesMap.at(name);
 
-        if (hasSkippedInputs(module, skippedModules)) {
+        if (skippedModules.contains(name) || hasSkippedInputs(module, skippedModules)) {
             skippedModules.insert(name);
             continue;
         }

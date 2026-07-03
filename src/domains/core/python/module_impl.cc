@@ -250,6 +250,10 @@ Result PythonImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
     JST_CHECK(defineTaint(Module::Taint::CROSS_DEVICE));
 
+    if (throttled) {
+        JST_CHECK(defineTaint(Module::Taint::THROTTLED));
+    }
+
     normalizeOutputSpecs(*this);
 
     for (U64 i = 0; i < inputCount; ++i) {

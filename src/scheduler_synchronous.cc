@@ -82,6 +82,10 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::vector<std::string> sourceModules;
     std::vector<std::string> presentModules;
 
+    static constexpr std::chrono::milliseconds throttleInterval{100};
+    std::unordered_set<std::string> throttledModules;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> throttleDeadlines;
+
     struct RuntimeSegment {
         std::shared_ptr<Runtime> runtime;
         std::vector<std::string> modules;
@@ -113,6 +117,8 @@ Result SynchronousScheduler::destroy() {
         runtimes.clear();
         topoOrder.clear();
         sourceModules.clear();
+        throttledModules.clear();
+        throttleDeadlines.clear();
         modules.clear();
 
         return Result::SUCCESS;
@@ -308,6 +314,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
     std::vector<std::shared_ptr<Module>> localSourceModules;
     U64 localGeneration;
     U64 localRuntimeCount;
+    bool throttled = false;
     {
         auto lock = sharedDataLock();
 
@@ -328,6 +335,27 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                 localSourceModules.push_back(modules.at(name));
             }
         }
+
+        // If every module is throttled and none is due, slow the loop instead of spinning.
+
+        if (throttledModules.size() == modules.size()) {
+            throttled = true;
+
+            const auto now = std::chrono::steady_clock::now();
+
+            for (const auto& name : throttledModules) {
+                const auto it = throttleDeadlines.find(name);
+                if (it == throttleDeadlines.end() || now >= it->second) {
+                    throttled = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (throttled) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return Result::SUCCESS;
     }
 
     // Phase 2: Poll source modules (no lock held, can block).
@@ -444,6 +472,21 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
 
             setComputeActive();
 
+            const auto now = std::chrono::steady_clock::now();
+
+            for (const auto& name : runtimes[i].modules) {
+                if (!throttledModules.contains(name)) {
+                    continue;
+                }
+
+                auto& deadline = throttleDeadlines[name];
+                if (now < deadline) {
+                    skippedModules.insert(name);
+                } else {
+                    deadline = now + throttleInterval;
+                }
+            }
+
             res = runtimes[i].runtime->compute(runtimes[i].modules, skippedModules, failedModules);
 
             clearComputeActive();
@@ -505,6 +548,20 @@ Result SynchronousScheduler::rebuildOrder() {
             inDegree[consumerName] += 1;
         }
     }
+
+    // Collect modules tainted with THROTTLED so compute slows them down.
+
+    throttledModules.clear();
+
+    for (const auto& [name, mod] : modules) {
+        if ((mod->taint() & Module::Taint::THROTTLED) != Module::Taint::CLEAN) {
+            throttledModules.insert(name);
+        }
+    }
+
+    std::erase_if(throttleDeadlines, [&](const auto& entry) {
+        return !throttledModules.contains(entry.first);
+    });
 
     // Kahn's algorithm for topological sort.
 

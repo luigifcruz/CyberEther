@@ -82,7 +82,8 @@ Result PythonImplPython::reconfigure() {
 
     if (config.inputCount != inputCount ||
         config.outputCount != outputCount ||
-        config.outputTensorSpecs != outputTensorSpecs) {
+        config.outputTensorSpecs != outputTensorSpecs ||
+        config.throttled != throttled) {
         return Result::RECREATE;
     }
 
