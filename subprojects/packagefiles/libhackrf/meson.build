@@ -8,18 +8,15 @@ project(
   ],
 )
 
-libusb_dep = dependency('libusb-1.0', required: false)
-if not libusb_dep.found()
-  libusb_dep = subproject(
-    'libusb',
-    required: true,
-    default_options: [
-      'default_library=static',
-      'examples=false',
-      'tests=false',
-    ],
-  ).get_variable('libusb_dep')
-endif
+libusb_dep = subproject(
+  'libusb',
+  required: true,
+  default_options: [
+    'default_library=static',
+    'examples=false',
+    'tests=false',
+  ],
+).get_variable('libusb_dep')
 
 deps = [libusb_dep]
 private_c_args = []
