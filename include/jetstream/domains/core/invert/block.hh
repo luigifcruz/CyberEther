@@ -8,6 +8,7 @@ namespace Jetstream::Blocks {
 struct Invert : public Block::Config {
     JST_BLOCK_TYPE(invert);
     JST_BLOCK_DOMAIN("Core");
+    JST_BLOCK_NODE_SIZE(XS);
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Invert",

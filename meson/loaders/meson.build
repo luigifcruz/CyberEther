@@ -20,6 +20,7 @@ subdir('json')
 subdir('rapidyaml')
 subdir('qrencode')
 subdir('libmodes')
+subdir('tree_sitter')
 subdir('onnxruntime')
 # [NEW DEPENDENCY HOOK]
 

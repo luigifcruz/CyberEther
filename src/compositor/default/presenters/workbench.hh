@@ -40,7 +40,11 @@ struct WorkbenchPresenter {
         WorkbenchView::Config config;
         config.filePending = context.state.interface.filePending;
         config.backgroundParticles = context.state.interface.backgroundParticles;
-        config.debugLatencyVisible = context.state.debug.latencyEnabled;
+        if (context.state.debug.latencyEnabled) {
+            config.debugWindow = Sakura::DebugWindow::Config{
+                .id = "latency-debug-window",
+            };
+        }
         config.menubar = menubar.build();
         config.welcomeHud = welcomeHud.build();
         config.infoHud = infoHud.build();

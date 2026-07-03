@@ -1,14 +1,14 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_LEGAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_LEGAL_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <string>
 
 namespace Jetstream {
 
-struct LegalSettingsPanel : public Sakura::Component {
+struct LegalSettingsPanel {
     struct Config {
         std::function<void()> onViewFullLicenses;
     };
@@ -95,6 +95,9 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- fmtlib - MIT License\n"
                    "- SoapySDR - Boost Software License\n"
                    "- libmodes - BSD-2-Clause License\n"
+                   "- tree-sitter - MIT License\n"
+                   "- tree-sitter-python - MIT License\n"
+                   "- tree-sitter-markdown - MIT License\n"
                    "- ONNX Runtime - MIT License\n"
                    "- GLFW - zlib/libpng License\n"
                    "- imgui-notify - MIT License\n"
@@ -120,7 +123,7 @@ struct LegalSettingsPanel : public Sakura::Component {
                    "- Font Awesome - Font Awesome Free License\n"
                    "- JetBrains Mono - SIL Open Font License 1.1\n"
                    "- Space Grotesk - SIL Open Font License 1.1\n"
-                   "- imgui_markdown - Zlib License\n"
+                   "- Inter - SIL Open Font License 1.1\n"
                    "- GLM - Happy Bunny/MIT License\n"
                    "- cpp-httplib - MIT License\n"
                    "- nlohmann/json - MIT License\n"

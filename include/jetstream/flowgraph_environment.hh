@@ -43,6 +43,7 @@ class JETSTREAM_API Flowgraph::Environment {
                Parser::Map& data,
                U64 timestamp = std::numeric_limits<U64>::min()) const;
     Result keys(std::vector<std::string>& keys) const;
+    U64 epoch() const;
 
     template<typename T>
     bool tryGet(const std::string& key,

@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MENUBAR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MENUBAR_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <array>
 #include <functional>
@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-struct MenubarView : public Sakura::Component {
+struct MenubarView {
     enum class Action {
         About,
         ViewLicense,

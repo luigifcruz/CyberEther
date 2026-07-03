@@ -13,7 +13,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphMetricInstance : public Sakura::Component {
+struct FlowgraphMetricInstance {
     void update(FlowgraphMetricConfig config) {
         const auto parts = Parser::SplitString(config.format, ":");
         kind = parts.empty() ? "" : parts[0];

@@ -18,8 +18,17 @@ class SurfaceTestUI : public TestUIBase<Render::Components::Text> {
         cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
         cfg.font = render->font("default_mono");
         cfg.elements = {
-            {"hello", {2.5f, {0.0f, 0.0f}, {1, 1}, 0.0f, "Hello Surface!"}},
-            {"info", {1.0f, {0.0f, -0.5f}, {1, 1}, 0.0f, "Text Component Test"}},
+            {"hello", {
+                .scale = 2.5f,
+                .position = {0.0f, 0.0f},
+                .alignment = {1, 1},
+                .fill = "Hello Surface!",
+            }},
+            {"info", {
+                .position = {0.0f, -0.5f},
+                .alignment = {1, 1},
+                .fill = "Text Component Test",
+            }},
         };
         JST_CHECK(render->build(component, cfg));
         return render->bind(component);

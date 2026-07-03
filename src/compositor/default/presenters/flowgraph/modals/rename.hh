@@ -17,19 +17,20 @@ struct RenameBlockModalPresenter {
     explicit RenameBlockModalPresenter(const PresenterContext& context) : context(context) {}
 
     std::optional<RenameBlockView::Config> build() const {
-        if (!context.state.interface.focusedFlowgraph.has_value() ||
-            !context.state.modal.renameBlockOldName.has_value()) {
+        const std::optional<std::string> targetFlowgraph = context.state.modal.flowgraph.has_value()
+            ? context.state.modal.flowgraph
+            : context.state.interface.focusedFlowgraph;
+        if (!targetFlowgraph.has_value() || !context.state.modal.renameBlockOldName.has_value()) {
             return std::nullopt;
         }
 
         const auto enqueue = context.callbacks.enqueueMail;
-        const std::string focusedFlowgraph = context.state.interface.focusedFlowgraph.value();
+        const std::string focusedFlowgraph = targetFlowgraph.value();
         const std::string oldName = context.state.modal.renameBlockOldName.value();
         return RenameBlockView::Config{
             .oldName = oldName,
             .onRename = [enqueue, focusedFlowgraph, oldName](const std::string& newName) {
                 enqueue(MailRenameBlock{focusedFlowgraph, oldName, newName});
-                enqueue(MailCloseModal{});
             },
         };
     }

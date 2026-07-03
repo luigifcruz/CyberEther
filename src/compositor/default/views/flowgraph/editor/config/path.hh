@@ -7,7 +7,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphConfigPathField : public Sakura::Component {
+struct FlowgraphConfigPathField {
     using Config = FlowgraphConfigFieldConfig;
 
     enum class Mode {

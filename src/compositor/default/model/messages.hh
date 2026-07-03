@@ -7,7 +7,7 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/sakura/toast.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
 #include <deque>
@@ -171,6 +171,10 @@ struct MailSetRemoteAutoJoinSessions {
     bool value = false;
 };
 
+struct MailSetPythonRuntimePath {
+    std::string value;
+};
+
 struct MailSaveFlowgraphPath {
     std::string flowgraph;
     std::string path;
@@ -209,6 +213,11 @@ struct MailRenameBlock {
     std::string flowgraph;
     std::string oldId;
     std::string newId;
+};
+
+struct MailOpenRenameBlock {
+    std::string flowgraph;
+    std::string blockId;
 };
 
 struct MailDeleteBlock {
@@ -372,11 +381,13 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
                           MailSetRemoteAutoJoinSessions,
+                          MailSetPythonRuntimePath,
                           MailSaveFlowgraphPath,
                           MailBrowseConfigPath,
                           MailRunBenchmark,
                           MailResetBenchmark,
                           MailSetFlowgraphInfo,
+                          MailOpenRenameBlock,
                           MailRenameBlock,
                           MailDeleteBlock,
                           MailReloadBlock,

@@ -8,6 +8,8 @@
 
 #include "jetstream/config.hh"
 
+#include <optional>
+
 namespace Jetstream {
 
 struct WelcomeHudPresenter {
@@ -15,10 +17,13 @@ struct WelcomeHudPresenter {
 
     explicit WelcomeHudPresenter(const PresenterContext& context) : context(context) {}
 
-    WelcomeHudView::Config build() const {
+    std::optional<WelcomeHudView::Config> build() const {
+        if (!context.state.flowgraph.items.empty() || context.state.modal.content.has_value()) {
+            return std::nullopt;
+        }
+
         const auto enqueue = context.callbacks.enqueueMail;
         return WelcomeHudView::Config{
-            .visible = context.state.flowgraph.items.empty() && !context.state.modal.content.has_value(),
             .version = "v" JETSTREAM_VERSION_STR,
             .onNewFlowgraph = [enqueue]() {
                 enqueue(MailNewFlowgraph{});

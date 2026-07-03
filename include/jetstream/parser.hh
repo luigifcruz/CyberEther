@@ -141,6 +141,11 @@ class JETSTREAM_API Parser {
             }
 
             return seed;
+        } else if constexpr (std::is_same_v<ValueType, CF32> || std::is_same_v<ValueType, CF64>) {
+            std::size_t seed = Hash(variable.real());
+            seed ^= Hash(variable.imag()) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+
+            return seed;
         } else if constexpr (detail::HasStdHash<ValueType>) {
             return std::hash<ValueType>{}(variable);
         } else {
@@ -156,11 +161,18 @@ class JETSTREAM_API Parser {
  private:
     static Result StringToTypedValue(const std::string& encoded, Tensor& variable);
     static Result StringToTypedValue(const std::string& encoded, std::string& variable);
+    static Result StringToTypedValue(const std::string& encoded, I8& variable);
+    static Result StringToTypedValue(const std::string& encoded, I16& variable);
     static Result StringToTypedValue(const std::string& encoded, I32& variable);
+    static Result StringToTypedValue(const std::string& encoded, I64& variable);
+    static Result StringToTypedValue(const std::string& encoded, U8& variable);
+    static Result StringToTypedValue(const std::string& encoded, U16& variable);
+    static Result StringToTypedValue(const std::string& encoded, U32& variable);
     static Result StringToTypedValue(const std::string& encoded, U64& variable);
     static Result StringToTypedValue(const std::string& encoded, F32& variable);
     static Result StringToTypedValue(const std::string& encoded, F64& variable);
     static Result StringToTypedValue(const std::string& encoded, CF32& variable);
+    static Result StringToTypedValue(const std::string& encoded, CF64& variable);
     static Result StringToTypedValue(const std::string& encoded, bool& variable);
     static Result StringToTypedValue(const std::string& encoded, DeviceType& variable);
     static Result StringToTypedValue(const std::string& encoded, RuntimeType& variable);
@@ -168,6 +180,8 @@ class JETSTREAM_API Parser {
     static Result StringToTypedValue(const std::string& encoded, std::vector<U64>& variable);
     static Result StringToTypedValue(const std::string& encoded, std::vector<F64>& variable);
     static Result StringToTypedValue(const std::string& encoded, std::vector<F32>& variable);
+    static Result StringToTypedValue(const std::string& encoded, std::vector<CF32>& variable);
+    static Result StringToTypedValue(const std::string& encoded, std::vector<CF64>& variable);
     static Result StringToTypedValue(const std::string& encoded, Range<F32>& variable);
     static Result StringToTypedValue(const std::string& encoded, Extent2D<U64>& variable);
     static Result StringToTypedValue(const std::string& encoded, Extent2D<F32>& variable);
@@ -272,7 +286,9 @@ class JETSTREAM_API Parser {
             if (encoded.type() == typeid(std::string)) {
                 if constexpr (std::is_same_v<ValueType, std::vector<U64>> ||
                               std::is_same_v<ValueType, std::vector<F32>> ||
-                              std::is_same_v<ValueType, std::vector<F64>>) {
+                              std::is_same_v<ValueType, std::vector<F64>> ||
+                              std::is_same_v<ValueType, std::vector<CF32>> ||
+                              std::is_same_v<ValueType, std::vector<CF64>>) {
                     JST_CHECK(StringToTyped<ValueType>(std::any_cast<const std::string&>(encoded), variable));
                     return Result::SUCCESS;
                 }

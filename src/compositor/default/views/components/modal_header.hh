@@ -1,13 +1,13 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_MODAL_HEADER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_MODAL_HEADER_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <string>
 
 namespace Jetstream {
 
-struct ModalHeader : public Sakura::Component {
+struct ModalHeader {
     struct Config {
         std::string id;
         std::string title;

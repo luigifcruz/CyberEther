@@ -333,6 +333,7 @@ struct ImNodesContext
     int CurrentNodeIdx;
     int CurrentPinIdx;
     int CurrentAttributeId;
+    bool CurrentNodeInputDisabled;
 
     ImOptionalIndex HoveredNodeIdx;
     ImOptionalIndex HoveredLinkIdx;
@@ -369,8 +370,6 @@ struct ImNodesContext
     bool  AltMouseClicked;
     bool  LeftMouseDragging;
     bool  AltMouseDragging;
-    float AltMouseScrollDelta;
-    float AltMouseScrollDeltaH;
     bool  MultipleSelectModifier;
 };
 

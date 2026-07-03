@@ -508,6 +508,33 @@ Result Shapes::updateSizes(const std::string&) {
     return Result::SUCCESS;
 }
 
+Result Shapes::updateProperties(const std::string& elementId,
+                                F32 cornerRadius,
+                                F32 borderWidth,
+                                const ColorRGBA<F32>& borderColor) {
+    const auto it = pimpl->elementIndex.find(elementId);
+    if (it == pimpl->elementIndex.end()) {
+        JST_ERROR("[SHAPES] Element not found (properties).");
+        return Result::ERROR;
+    }
+
+    // The instance buffer concatenates elements in insertion order.
+    U64 instanceOffset = 0;
+    for (U64 i = 0; i < it->second; ++i) {
+        instanceOffset += pimpl->elements[i].config.numberOfInstances;
+    }
+
+    const auto& element = pimpl->elements[it->second];
+    for (U64 i = 0; i < element.config.numberOfInstances; ++i) {
+        auto& prop = pimpl->properties.at(instanceOffset + i);
+        prop.borderColor = glm::vec4(borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+        prop.shapeParams = glm::vec4(element.config.type, borderWidth, cornerRadius, 0.0f);
+    }
+
+    pimpl->updatePropertiesBufferFlag = true;
+    return Result::SUCCESS;
+}
+
 Result Shapes::Impl::updateUniforms() {
     // Set data.
     uniforms.pixelSize = glm::vec2(config.pixelSize.x, config.pixelSize.y);

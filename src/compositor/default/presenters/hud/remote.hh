@@ -6,6 +6,8 @@
 #include "../../model/messages.hh"
 #include "../../views/hud/remote.hh"
 
+#include <optional>
+
 namespace Jetstream {
 
 struct RemoteHudPresenter {
@@ -13,11 +15,14 @@ struct RemoteHudPresenter {
 
     explicit RemoteHudPresenter(const PresenterContext& context) : context(context) {}
 
-    RemoteHudView::Config build() const {
+    std::optional<RemoteHudView::Config> build() const {
+        if (!context.state.remote.started) {
+            return std::nullopt;
+        }
+
         const auto enqueue = context.callbacks.enqueueMail;
         return RemoteHudView::Config{
-            .visible = context.state.remote.started,
-            .clientCount = context.state.remote.started ? context.state.remote.clientCount : 0,
+            .clientCount = context.state.remote.clientCount,
             .onOpen = [enqueue]() {
                 enqueue(MailOpenModal{.content = ModalContent::RemoteStreaming});
             },

@@ -23,6 +23,7 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
         .size = {settings.graphics.size.width, settings.graphics.size.height},
         .scale = settings.graphics.scale,
         .framerate = settings.graphics.framerate,
+        .pythonRuntimePath = settings.runtime.python.path,
     };
 
     return config;
@@ -333,6 +334,17 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     }
 
     JST_INFO("[CYBERETHER] Running native app.");
+
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    const auto backendConfig = Backend::Config {
+        .headless = settings.graphics.headless,
+        .pythonRuntimePath = settings.runtime.python.path,
+    };
+    if (Backend::Initialize<DeviceType::CPU>(backendConfig) != Result::SUCCESS) {
+        return -1;
+    }
+#endif
+
     LoadRegistryPlugins(settings);
 
     //

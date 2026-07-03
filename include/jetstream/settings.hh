@@ -66,14 +66,27 @@ struct JETSTREAM_API Settings {
         JST_SERDES(plugins);
     };
 
+    struct Runtime {
+        struct Python {
+            std::string path;
+
+            JST_SERDES(path);
+        };
+
+        Python python;
+
+        JST_SERDES(python);
+    };
+
     Graphics graphics;
     Remote remote;
     Interface interface;
     Developer developer;
     Benchmark benchmark;
     Registry registry;
+    Runtime runtime;
 
-    JST_SERDES(graphics, remote, interface, developer, registry);
+    JST_SERDES(graphics, remote, interface, developer, registry, runtime);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

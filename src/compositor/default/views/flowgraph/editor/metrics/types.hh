@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_TYPES_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_TYPES_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <any>
 #include <string>

@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MODALS_EXAMPLES_HH
 
 #include "../../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphExampleCell : public Sakura::Component {
+struct FlowgraphExampleCell {
     struct Config {
         std::string id;
         std::string title;
@@ -62,7 +62,7 @@ struct FlowgraphExampleCell : public Sakura::Component {
     Sakura::Text subtitle;
 };
 
-struct FlowgraphExamplesView : public Sakura::Component {
+struct FlowgraphExamplesView {
     struct Example {
         std::string key;
         std::string title;

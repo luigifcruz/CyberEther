@@ -14,6 +14,7 @@ struct Lineplot : public Block::Config {
 
     JST_BLOCK_TYPE(lineplot);
     JST_BLOCK_DOMAIN("Visualization");
+    JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(averaging, decimation, numberOfVerticalLines, numberOfHorizontalLines, thickness);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",

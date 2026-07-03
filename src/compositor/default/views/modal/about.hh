@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_ABOUT_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_ABOUT_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include "jetstream/config.hh"
 
@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct AboutView : public Sakura::Component {
+struct AboutView {
     struct Config {};
 
     void update(Config config) {

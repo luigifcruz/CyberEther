@@ -45,8 +45,8 @@ def create_plots():
 def create_annotations():
     """Create annotations for the mosaic layout."""
     lm.box("Annotations", lm.layout(M_HEIGHT, M_WIDTH, 1, 3, 0, 0), lambda: [
-        lm.markdown(
-            "# Interferometer Simulation\n"
+        lm.text(
+            "Interferometer Simulation\n"
             "Simulates 42 radio telescope antennas collecting data in real-time. "
             "Watch for SETI signals drifting across frequency bands and random "
             "radio interference bursts in the waterfall displays."

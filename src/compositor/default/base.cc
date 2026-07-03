@@ -1,5 +1,10 @@
 #include "base.hh"
 
+#include "render/sakura/runtime.hh"
+
+#include "jetstream/render/sakura/clipboard.hh"
+#include "jetstream/render/sakura/toast.hh"
+
 #include "actions/base.hh"
 #include "presenters/base.hh"
 #include "themes.hh"
@@ -92,6 +97,13 @@ Result DefaultCompositor::create() {
     state.remote.brokerUrl = settings.remote.brokerUrl;
     state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
     state.remote.framerate = static_cast<U32>(settings.remote.framerate);
+
+    // Restore runtime preferences.
+
+    state.runtime.pythonPath = settings.runtime.python.path;
+    state.runtime.pythonCandidates = PythonRuntimeContext::DiscoverRuntimes();
+    state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(state.runtime.pythonPath);
+    state.runtime.initialPythonValidation = state.runtime.pythonValidation;
 
     try {
         state.remote.codec = StringToRemoteCodec(settings.remote.codec);
@@ -198,7 +210,8 @@ Result DefaultCompositor::present() {
         .render = state.system.render.get(),
     });
 
-    workbench.render(state.sakura.runtime.context());
+    const auto& ctx = state.sakura.runtime.context();
+    workbench.render(ctx);
 
     return Result::SUCCESS;
 }
@@ -248,10 +261,18 @@ void DefaultCompositor::updateWorkbenchState() {
         return;
     }
 
-    if (state.modal.content == ModalContent::RenameBlock &&
-        (!state.interface.focusedFlowgraph.has_value() || !state.modal.renameBlockOldName.has_value())) {
-        state.modal.content.reset();
-        state.modal.renameBlockOldName.reset();
+    if (state.modal.content == ModalContent::RenameBlock) {
+        const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
+            ? state.modal.flowgraph
+            : state.interface.focusedFlowgraph;
+        if (!targetFlowgraph.has_value() ||
+            !state.flowgraph.items.contains(targetFlowgraph.value()) ||
+            !state.modal.renameBlockOldName.has_value() ||
+            !state.flowgraph.items.at(targetFlowgraph.value())->view().has(state.modal.renameBlockOldName.value())) {
+            state.modal.content.reset();
+            state.modal.flowgraph.reset();
+            state.modal.renameBlockOldName.reset();
+        }
     }
 }
 

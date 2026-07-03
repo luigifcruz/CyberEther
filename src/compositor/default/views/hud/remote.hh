@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_REMOTE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_REMOTE_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -10,9 +10,8 @@
 
 namespace Jetstream {
 
-struct RemoteHudView : public Sakura::Component {
+struct RemoteHudView {
     struct Config {
-        bool visible = false;
         U64 clientCount = 0;
         std::function<void()> onOpen;
     };
@@ -50,10 +49,6 @@ struct RemoteHudView : public Sakura::Component {
     }
 
     void render(const Sakura::Context& ctx) const {
-        if (!config.visible) {
-            return;
-        }
-
         hud.render(ctx, [this](const Sakura::Context& ctx) {
             row.render(ctx, {
                 [this](const Sakura::Context& ctx) { icon.render(ctx); },
