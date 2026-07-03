@@ -47,6 +47,7 @@ class JETSTREAM_API Module {
         SURFACE             = 1 << 2, ///< It renders a surface to be drawn on the screen.
         BROWSER_MAIN_THREAD = 1 << 3, ///< Requires main thread for create and destroy when running in the browser.
         CROSS_DEVICE        = 1 << 4, ///< Accepts input tensors living on a different device than the module.
+        THROTTLED           = 1 << 5, ///< Compute runs at a slow fixed cadence instead of the loop rate.
     };
 
     // Constructor
