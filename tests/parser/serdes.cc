@@ -24,6 +24,13 @@ void RequireF64VectorEq(const std::vector<F64>& actual, const std::vector<F64>& 
     }
 }
 
+struct ComplexSerdesConfig {
+    CF32 gain = {};
+    CF64 offset = {};
+
+    JST_SERDES(gain, offset);
+};
+
 }  // namespace
 
 TEST_CASE("JST_SERDES serializes nested structs as maps", "[parser][serdes]") {
@@ -60,6 +67,41 @@ TEST_CASE("JST_SERDES cascades string-backed nested maps", "[parser][serdes]") {
     REQUIRE(restored.inner.gain == 7);
     REQUIRE(restored.inner.enabled);
     REQUIRE(restored.label == "from-yaml");
+}
+
+TEST_CASE("JST_SERDES round-trips complex fields", "[parser][serdes]") {
+    ComplexSerdesConfig source;
+    source.gain = CF32{1.5f, -2.5f};
+    source.offset = CF64{3.25, 4.75};
+
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    REQUIRE(data.at("gain").type() == typeid(CF32));
+    REQUIRE(data.at("offset").type() == typeid(CF64));
+
+    ComplexSerdesConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.gain == source.gain);
+    REQUIRE(restored.offset == source.offset);
+    REQUIRE(restored.hash() == source.hash());
+
+    ComplexSerdesConfig different;
+    different.gain = CF32{1.5f, 2.5f};
+    different.offset = source.offset;
+    REQUIRE(different.hash() != source.hash());
+}
+
+TEST_CASE("JST_SERDES decodes string-backed complex fields", "[parser][serdes]") {
+    Parser::Map data;
+    data["gain"] = std::string("1.5-2.5");
+    data["offset"] = std::string("3.25+4.75");
+
+    ComplexSerdesConfig restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.gain.real() == Catch::Approx(1.5f));
+    REQUIRE(restored.gain.imag() == Catch::Approx(-2.5f));
+    REQUIRE(restored.offset.real() == Catch::Approx(3.25));
+    REQUIRE(restored.offset.imag() == Catch::Approx(4.75));
 }
 
 TEST_CASE("JST_SERDES serializes vectors of nested structs as sequences", "[parser][serdes]") {

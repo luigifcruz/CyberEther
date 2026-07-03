@@ -22,16 +22,17 @@ bool MenuItem::update(Config config) {
 }
 
 void MenuItem::render(const Context& ctx) const {
-    (void)ctx;
     const auto& config = this->impl->config;
 
     ImGui::PushID(config.id.c_str());
+    ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, config.colorKey));
     const char* shortcut = config.shortcut.empty() ? nullptr : config.shortcut.c_str();
     if (ImGui::MenuItem(config.label.c_str(), shortcut, config.selected, config.enabled)) {
         if (config.onClick) {
             config.onClick();
         }
     }
+    ImGui::PopStyleColor();
     ImGui::PopID();
 }
 

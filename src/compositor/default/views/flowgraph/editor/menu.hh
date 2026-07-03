@@ -93,6 +93,7 @@ struct FlowgraphNodeMenu {
         deleteBlock.update({
             .id = this->config.id + ":delete",
             .label = ICON_FA_XMARK " Delete Block",
+            .colorKey = "error_red",
             .onClick = this->config.onDelete,
         });
         documentationSeparator.update({

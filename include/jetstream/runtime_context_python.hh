@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "jetstream/flowgraph.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/runtime_context.hh"
@@ -40,7 +41,9 @@ struct JETSTREAM_API PythonRuntimeContext : Runtime::Context {
                          const Module::Interface::EntryList& inputOrder,
                          const TensorMap& inputs,
                          const Module::Interface::EntryList& outputOrder,
-                         const TensorMap& outputs);
+                         const TensorMap& outputs,
+                         const std::shared_ptr<Flowgraph::Environment>& environment = nullptr,
+                         const std::shared_ptr<Flowgraph::View>& view = nullptr);
     Result destroyCompute();
 
     virtual Result computeInitialize();

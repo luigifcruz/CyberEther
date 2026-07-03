@@ -1,7 +1,7 @@
 ---
 title: Creating Plugins
 description: How to create external CyberEther plugins.
-order: 80
+order: 82
 category: Development
 ---
 

@@ -14,6 +14,7 @@ struct MenuItem {
         std::string id;
         std::string label;
         std::string shortcut;
+        std::string colorKey = "text_primary";
         bool selected = false;
         bool enabled = true;
         std::function<void()> onClick;

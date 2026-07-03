@@ -161,10 +161,141 @@ struct RuntimeErrorSinkTestBlock : Block::Impl,
     }
 };
 
+struct EnvironmentGateTestState {
+    U64 createCalls = 0;
+    U64 sinkDefineCalls = 0;
+
+    void reset() {
+        createCalls = 0;
+        sinkDefineCalls = 0;
+    }
+};
+
+EnvironmentGateTestState& environmentGateTestState() {
+    static EnvironmentGateTestState state;
+    return state;
+}
+
+struct EnvironmentGateTestModuleConfig : Module::Config {
+    JST_MODULE_TYPE(environment_gate_test_module)
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct EnvironmentGateTestModule : Module::Impl,
+                                   DynamicConfig<EnvironmentGateTestModuleConfig>,
+                                   NativeCpuRuntimeContext,
+                                   Scheduler::Context {
+    Result define() override {
+        return defineInterfaceOutput("out");
+    }
+
+    Result create() override {
+        JST_CHECK(output.create(DeviceType::CPU, DataType::F32, {1}));
+        output.at<F32>(0) = 1.0f;
+        outputs()["out"].produced(name(), "out", output);
+        return Result::SUCCESS;
+    }
+
+    Result computeSubmit() override {
+        return Result::SUCCESS;
+    }
+
+    Tensor output;
+};
+
+struct EnvironmentGateTestBlockConfig : Block::Config {
+    JST_BLOCK_TYPE(environment_gate_test)
+    JST_BLOCK_DOMAIN("test")
+    JST_BLOCK_DESCRIPTION("Environment Gate Test",
+                          "Waits for an environment value.",
+                          "A test-only block that stays incomplete until an environment value appears.")
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct EnvironmentGateTestBlock : Block::Impl,
+                                  DynamicConfig<EnvironmentGateTestBlockConfig> {
+    Result define() override {
+        return defineInterfaceOutput("out", "Output", "Output tensor.");
+    }
+
+    Result create() override {
+        environmentGateTestState().createCalls += 1;
+
+        if (!environment()->has("gate")) {
+            JST_ERROR("[ENVIRONMENT_GATE_TEST] Waiting for 'gate' environment value.");
+            return Result::INCOMPLETE;
+        }
+
+        const auto moduleConfig = std::make_shared<EnvironmentGateTestModuleConfig>();
+        JST_CHECK(moduleCreate("source", moduleConfig, {}));
+        JST_CHECK(moduleExposeOutput("out", {"source", "out"}));
+        return Result::SUCCESS;
+    }
+};
+
+struct EnvironmentGateSinkTestBlockConfig : Block::Config {
+    JST_BLOCK_TYPE(environment_gate_sink_test)
+    JST_BLOCK_DOMAIN("test")
+    JST_BLOCK_DESCRIPTION("Environment Gate Sink Test",
+                          "Consumes gated output.",
+                          "A test-only sink block used to verify incomplete block retries.")
+
+    Result serialize(Parser::Map&) const override {
+        return Result::SUCCESS;
+    }
+
+    Result deserialize(const Parser::Map&) override {
+        return Result::SUCCESS;
+    }
+
+    std::size_t hash() const override {
+        return 0;
+    }
+};
+
+struct EnvironmentGateSinkTestBlock : Block::Impl,
+                                      DynamicConfig<EnvironmentGateSinkTestBlockConfig> {
+    Result define() override {
+        environmentGateTestState().sinkDefineCalls += 1;
+        return defineInterfaceInput("in", "Input", "Input tensor.");
+    }
+
+    Result create() override {
+        const auto moduleConfig = std::make_shared<RuntimeErrorSinkTestModuleConfig>();
+        JST_CHECK(moduleCreate("sink", moduleConfig, {{"in", inputs().at("in")}}));
+        return Result::SUCCESS;
+    }
+};
+
 JST_REGISTER_MODULE(RuntimeErrorTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 JST_REGISTER_MODULE(RuntimeErrorSinkTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
+JST_REGISTER_MODULE(EnvironmentGateTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 JST_REGISTER_BLOCK(RuntimeErrorTestBlock);
 JST_REGISTER_BLOCK(RuntimeErrorSinkTestBlock);
+JST_REGISTER_BLOCK(EnvironmentGateTestBlock);
+JST_REGISTER_BLOCK(EnvironmentGateSinkTestBlock);
 
 }  // namespace
 
@@ -233,6 +364,96 @@ TEST_CASE_METHOD(FlowgraphFixture, "Runtime module failure marks block errored",
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     REQUIRE(state.calls == 1);
     REQUIRE(state.sinkCalls == 0);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Environment change retries incomplete blocks", "[flowgraph][environment]") {
+    auto& state = environmentGateTestState();
+    state.reset();
+
+    REQUIRE(flowgraph->blockCreate("gated", "environment_gate_test", {}, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Incomplete);
+    REQUIRE(state.createCalls == 1);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Incomplete);
+    REQUIRE(state.createCalls == 1);
+
+    SimpleMetaFixture gate;
+    gate.order = 1;
+    gate.label = "ready";
+    REQUIRE(flowgraph->environment().set("gate", gate) == Result::SUCCESS);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Created);
+    REQUIRE(state.createCalls == 2);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(state.createCalls == 2);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Environment change retries incomplete downstream chain", "[flowgraph][environment]") {
+    auto& state = environmentGateTestState();
+    state.reset();
+
+    REQUIRE(flowgraph->blockCreate("gated", "environment_gate_test", {}, {}) == Result::SUCCESS);
+    TensorMap sinkInputs;
+    sinkInputs["in"].requested("gated", "out");
+    REQUIRE(flowgraph->blockCreate("sink", "environment_gate_sink_test", {}, sinkInputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Incomplete);
+    REQUIRE(viewBlock("sink").state == Block::State::Incomplete);
+
+    SimpleMetaFixture gate;
+    gate.order = 1;
+    gate.label = "ready";
+    REQUIRE(flowgraph->environment().set("gate", gate) == Result::SUCCESS);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Created);
+    REQUIRE(viewBlock("sink").state == Block::State::Created);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Environment change skips unconnected incomplete blocks", "[flowgraph][environment]") {
+    auto& state = environmentGateTestState();
+    state.reset();
+
+    REQUIRE(flowgraph->blockCreate("sink", "environment_gate_sink_test", {}, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("sink").state == Block::State::Incomplete);
+    REQUIRE(state.sinkDefineCalls == 1);
+
+    SimpleMetaFixture gate;
+    gate.order = 1;
+    gate.label = "ready";
+    REQUIRE(flowgraph->environment().set("gate", gate) == Result::SUCCESS);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("sink").state == Block::State::Incomplete);
+    REQUIRE(state.sinkDefineCalls == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Environment value update does not retry incomplete blocks", "[flowgraph][environment]") {
+    auto& state = environmentGateTestState();
+    state.reset();
+
+    REQUIRE(flowgraph->blockCreate("gated", "environment_gate_test", {}, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Incomplete);
+    REQUIRE(state.createCalls == 1);
+
+    SimpleMetaFixture telemetry;
+    telemetry.order = 1;
+    telemetry.label = "first";
+    REQUIRE(flowgraph->environment().set("telemetry", telemetry) == Result::SUCCESS);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Incomplete);
+    REQUIRE(state.createCalls == 2);
+
+    telemetry.order = 2;
+    telemetry.label = "second";
+    REQUIRE(flowgraph->environment().set("telemetry", telemetry) == Result::SUCCESS);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("gated").state == Block::State::Incomplete);
+    REQUIRE(state.createCalls == 2);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Block connection", "[flowgraph]") {

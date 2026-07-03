@@ -1,4 +1,5 @@
 #include "runtime/python/bridge/base.hh"
+#include "runtime/python/bridge/convert.hh"
 #include "runtime/python/bridge/cpython/base.hh"
 #include "runtime/python/bridge/prelude/bridge.hh"
 
@@ -118,6 +119,31 @@ Bridge::~Bridge() {
     (void)stop();
 }
 
+CPython::PyObject* Bridge::valueConverterTable() {
+    if (valueConvertersFetched) {
+        return valueConverters;
+    }
+    valueConvertersFetched = true;
+
+    if (!globals) {
+        return nullptr;
+    }
+
+    auto* factory = PyDict_GetItemString(globals, "_jetstream_value_converters");
+    if (!factory || !PyCallable_Check(factory)) {
+        return nullptr;
+    }
+
+    auto* table = PyObject_CallFunctionObjArgs(factory);
+    if (!table) {
+        (void)ClearPythonError();
+        return nullptr;
+    }
+
+    valueConverters = table;
+    return valueConverters;
+}
+
 Runtime::Context::Diagnostic Bridge::diagnostic() const {
     Runtime::Context::Diagnostic current;
 
@@ -139,7 +165,9 @@ Result Bridge::start(const std::string& source,
                      const Module::Interface::EntryList& inputOrder,
                      const TensorMap& inputs,
                      const Module::Interface::EntryList& outputOrder,
-                     const TensorMap& outputs) {
+                     const TensorMap& outputs,
+                     const std::shared_ptr<Flowgraph::Environment>& environment,
+                     const std::shared_ptr<Flowgraph::View>& view) {
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     const auto loadResult = Py_Load();
@@ -150,6 +178,9 @@ Result Bridge::start(const std::string& source,
 
     consoleClear();
     JST_CHECK(stop());
+
+    this->environment = environment;
+    this->flowgraphView = view;
 
     GilScope gil;
     JST_CHECK(gil.result());
@@ -246,11 +277,34 @@ Result Bridge::stop() {
     if (!Py_IsLoaded()) {
         globals = nullptr;
         runner = nullptr;
+        valueConverters = nullptr;
+        valueConvertersFetched = false;
+        environment.reset();
+        environmentDict = nullptr;
+        environmentSynced = false;
+        flowgraphView.reset();
+        metricsDict = nullptr;
+        metricsRequests.clear();
+        metricsSubscribeAll = false;
+        inputAttributePorts.clear();
+        outputAttributePorts.clear();
         return Result::SUCCESS;
     }
 
     GilScope gil;
     JST_CHECK(gil.result());
+
+    environment.reset();
+    flowgraphView.reset();
+    destroyAttributePorts();
+    destroyEnvironmentDict();
+    destroyMetricsDict();
+
+    if (valueConverters) {
+        Py_DecRef(valueConverters);
+        valueConverters = nullptr;
+    }
+    valueConvertersFetched = false;
 
     if (runner) {
         Py_DecRef(runner);
@@ -298,6 +352,10 @@ Result Bridge::run() {
     GilScope gil;
     JST_CHECK(gil.result());
 
+    refreshAttributes();
+    refreshEnvironment();
+    refreshMetrics();
+
     auto* result = PyObject_CallFunctionObjArgs(runner);
     if (!result) {
         bool alreadyReportingComputeError = false;
@@ -312,6 +370,10 @@ Result Bridge::run() {
         setError(kComputeErrorStatus);
         return Result::SKIP;
     }
+    flushAttributes();
+    flushEnvironment();
+    collectMetricsRequests();
+
     (void)consoleRefresh();
     Py_DecRef(result);
     setInfo("Running.");

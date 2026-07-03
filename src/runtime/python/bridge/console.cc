@@ -93,6 +93,7 @@ std::vector<std::string> PythonToStrings(PyObject* sequence) {
 void Bridge::consoleClear() {
     std::lock_guard<std::mutex> lock(consoleMutex);
     consoleLines.clear();
+    consoleTailLines.clear();
 }
 
 void Bridge::consoleAppend(const std::string& text) {
@@ -106,10 +107,12 @@ void Bridge::consoleAppend(const std::string& text) {
     while (start < text.size()) {
         const auto newline = text.find('\n', start);
         if (newline == std::string::npos) {
+            AppendLine(consoleTailLines, text.substr(start));
             AppendLine(consoleLines, text.substr(start));
             return;
         }
 
+        AppendLine(consoleTailLines, text.substr(start, newline - start));
         AppendLine(consoleLines, text.substr(start, newline - start));
         start = newline + 1;
     }
@@ -133,9 +136,12 @@ bool Bridge::consoleRefresh() {
 
     auto capturedLines = PythonToStrings(output);
     Py_DecRef(output);
-    TrimToMaxLines(capturedLines);
 
     std::lock_guard<std::mutex> lock(consoleMutex);
+    for (const auto& line : consoleTailLines) {
+        capturedLines.push_back(line);
+    }
+    TrimToMaxLines(capturedLines);
     consoleLines = std::move(capturedLines);
     return true;
 }
