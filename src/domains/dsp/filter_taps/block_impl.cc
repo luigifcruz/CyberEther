@@ -1,8 +1,6 @@
 #include <jetstream/domains/dsp/filter_taps/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
-#include <algorithm>
-
 #include <jetstream/domains/dsp/filter_taps/module.hh>
 
 namespace Jetstream::Blocks {
@@ -20,15 +18,13 @@ struct FilterTapsImpl : public Block::Impl, public DynamicConfig<Blocks::FilterT
 
 Result FilterTapsImpl::validate() {
     const auto& config = *candidate();
-    const U64 effectiveHeads = std::max(config.heads,
-                                        static_cast<U64>(config.center.size()));
 
-    if (effectiveHeads == 0) {
+    if (config.heads == 0) {
         JST_ERROR("[BLOCK_FILTER_TAPS] Heads must be greater than 0.");
         return Result::ERROR;
     }
 
-    if (heads != effectiveHeads) {
+    if (heads != config.heads) {
         return Result::RECREATE;
     }
 
@@ -36,9 +32,6 @@ Result FilterTapsImpl::validate() {
 }
 
 Result FilterTapsImpl::configure() {
-    // Keep legacy center-only configs working by treating center length as
-    // authoritative when it exceeds heads.
-    heads = std::max(heads, static_cast<U64>(center.size()));
     center.resize(heads);
 
     filterTapsConfig->sampleRate = sampleRate;

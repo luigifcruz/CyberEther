@@ -98,6 +98,7 @@ struct LegalSettingsPanel {
                    "- tree-sitter - MIT License\n"
                    "- tree-sitter-python - MIT License\n"
                    "- tree-sitter-markdown - MIT License\n"
+                   "- ONNX Runtime - MIT License\n"
                    "- GLFW - zlib/libpng License\n"
                    "- imgui-notify - MIT License\n"
                    "- spirv-cross - Apache License 2.0\n"

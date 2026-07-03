@@ -9,6 +9,7 @@
 
 #include "jetstream/provider.hh"
 #include "jetstream/runtime.hh"
+#include "jetstream/parser.hh"
 #include "jetstream/module.hh"
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
@@ -43,9 +44,11 @@ class JETSTREAM_API Registry {
     struct FlowgraphRegistration {
         std::string key;
         std::string title;
-        std::string summary;
-        std::string description;
+        std::string summary = "No summary.";
+        std::string description = "No description.";
         std::string content;
+
+        JST_SERDES(title, summary, description);
     };
 
     struct BenchmarkRegistration {
@@ -178,24 +181,32 @@ class JETSTREAM_API Registry {
 #define JST_REGISTER_BLOCK(impl_type) \
     JST_DETAIL_REGISTER_BLOCK(impl_type, __COUNTER__)
 
-#define JST_DETAIL_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val, id) \
+#define JST_DETAIL_REGISTER_EXAMPLE(key_val, content_val, id) \
     namespace { \
     [[maybe_unused]] const ::Jetstream::Result JST_DETAIL_CONCAT(__jst_register_example_, id) = \
         ::Jetstream::Registry::QueueStaticRegistration([]() { \
-            const std::string key = key_val; \
-            const std::string title = title_val; \
-            const std::string summary = summary_val; \
-            const std::string description = description_val; \
-            const std::string content = content_val; \
-            return ::Jetstream::Registry::RegisterFlowgraph( \
-                key, \
-                {key, title, summary, description, content} \
-            ); \
+            ::Jetstream::Registry::FlowgraphRegistration record; \
+            record.key = key_val; \
+            record.title = record.key; \
+            record.content = content_val; \
+            ::Jetstream::Parser::Map data; \
+            auto result = ::Jetstream::Parser::YamlDecode(record.content, data); \
+            if (result != ::Jetstream::Result::SUCCESS) { \
+                return result; \
+            } \
+            result = record.deserialize(data); \
+            if (result != ::Jetstream::Result::SUCCESS) { \
+                return result; \
+            } \
+            if (record.title.empty()) { \
+                record.title = record.key; \
+            } \
+            return ::Jetstream::Registry::RegisterFlowgraph(record.key, record); \
         }); \
     }
 
-#define JST_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val) \
-    JST_DETAIL_REGISTER_EXAMPLE(key_val, title_val, summary_val, description_val, content_val, __COUNTER__)
+#define JST_REGISTER_EXAMPLE(key_val, content_val) \
+    JST_DETAIL_REGISTER_EXAMPLE(key_val, content_val, __COUNTER__)
 
 #define JST_DETAIL_REGISTER_BENCHMARKS(module_type_val, id) \
     static std::vector<::Jetstream::Benchmark::Case> \

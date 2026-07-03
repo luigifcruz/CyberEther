@@ -21,6 +21,7 @@ subdir('rapidyaml')
 subdir('qrencode')
 subdir('libmodes')
 subdir('tree_sitter')
+subdir('onnxruntime')
 # [NEW DEPENDENCY HOOK]
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

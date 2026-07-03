@@ -11,6 +11,8 @@ CyberEther can be installed through pre-built binaries, container images, or by 
 
 The easiest way to install CyberEther is to download a pre-built binary from the [CyberEther website](https://cyberether.org).
 
+Linux releases include CPU and CUDA variants for `x86_64` and `aarch64`. The CUDA artifacts use a `-cuda` suffix and require a compatible NVIDIA driver and CUDA 13 runtime libraries on the target system.
+
 If your platform is not listed or you want to customize the build, follow the [Build From Source](#build-from-source) instructions below.
 
 ## Container Images
@@ -20,7 +22,11 @@ Docker images are also published to the GitHub Container Registry (`ghcr.io`) fo
 ```bash
 docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-x86_64
 docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64
+docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-x86_64-cuda
+docker pull ghcr.io/luigifcruz/cyberether:ubuntu24-aarch64-cuda
 ```
+
+The CUDA container images include the CUDA 13 user-space libraries, but still require a compatible NVIDIA driver and NVIDIA Container Toolkit on the host. Run them with GPU access enabled, for example `docker run --gpus all ...`.
 
 ## Build From Source
 
@@ -49,7 +55,7 @@ pacman -S libx11 libxcursor libxi libxinerama libxrandr \
 
 Python build modules.
 ```bash
-python -m pip install meson ninja numpy mapbox_earcut pyyaml
+python -m pip install meson ninja numpy mapbox_earcut
 ```
 
 #### Optional
@@ -58,6 +64,14 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 ```bash
 pacman -S bison flex nasm
 ```
+
+Machine learning inference support depends on the ONNX Runtime.
+```bash
+python -m pip install onnxruntime        # CPU
+python -m pip install onnxruntime-gpu    # CPU+CUDA
+```
+
+The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
@@ -81,7 +95,7 @@ apt install libx11-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
 
 Python build modules.
 ```bash
-python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
+python3 -m pip install meson ninja numpy mapbox_earcut
 ```
 
 #### Optional
@@ -90,6 +104,14 @@ Remote streaming support uses bundled GStreamer sources, but still needs a few g
 ```bash
 apt install bison flex nasm
 ```
+
+Machine learning inference support depends on the ONNX Runtime.
+```bash
+python -m pip install onnxruntime        # CPU
+python -m pip install onnxruntime-gpu    # CPU+CUDA
+```
+
+The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
 
@@ -108,7 +130,7 @@ brew install pkg-config glslang spirv-cross
 
 Python build modules.
 ```bash
-python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
+python3 -m pip install meson ninja numpy mapbox_earcut
 ```
 
 #### Optional
@@ -116,6 +138,11 @@ python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
 Remote streaming support uses bundled GStreamer sources, but still needs NASM.
 ```bash
 brew install nasm
+```
+
+Machine learning inference support depends on the ONNX Runtime.
+```bash
+brew install onnxruntime
 ```
 
 No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
@@ -139,7 +166,7 @@ choco install pkgconfiglite -y
 
 Python build modules.
 ```bash
-python -m pip install meson ninja numpy mapbox_earcut pyyaml
+python -m pip install meson ninja numpy mapbox_earcut
 ```
 
 #### Optional
@@ -161,7 +188,7 @@ All CyberEther runtime dependencies for the browser are included in the reposito
 On Debian or Ubuntu, the CI-equivalent packages are:
 ```bash
 apt install git build-essential pkg-config python3-pip glslang-tools spirv-cross cargo
-python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
+python3 -m pip install meson ninja numpy mapbox_earcut
 ```
 
 </details>
@@ -174,7 +201,7 @@ python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
 Build iOS from macOS with the latest [Xcode](https://developer.apple.com/xcode/) installed. You also need the same Homebrew shader tools and Python build modules used by the macOS build.
 ```bash
 brew install pkg-config glslang spirv-cross
-python3 -m pip install meson ninja numpy mapbox_earcut pyyaml
+python3 -m pip install meson ninja numpy mapbox_earcut
 ```
 
 </details>
@@ -189,6 +216,13 @@ cd CyberEther
 
 ### Build & Install
 
+To enable optional features, pass flags to `meson setup`:
+
+| Flag | Values | Description |
+|---|---|---|
+| `-Dinference` | `enabled` / `disabled` | Machine learning inference feature. |
+| `-Dremote` | `enabled` / `disabled` | Remote streaming feature. |
+
 <details>
 <summary>Linux or macOS</summary>
 
@@ -200,8 +234,6 @@ meson setup -Dbuildtype=debugoptimized build
 meson compile -C build
 meson install -C build --skip-subprojects
 ```
-
-To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
 
 After installation, run `cyberether --help` for usage instructions.
 
@@ -218,8 +250,6 @@ meson setup --vsenv -Dbuildtype=debugoptimized build
 meson compile -C build
 meson install -C build --skip-subprojects
 ```
-
-To compile the optional remote streaming support, add `-Dremote=enabled` to the setup command.
 
 After installation, run `cyberether --help` for usage instructions.
 

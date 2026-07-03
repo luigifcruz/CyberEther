@@ -3,8 +3,6 @@
 import os
 import sys
 
-import yaml
-
 
 def cpp_string(value):
     return (
@@ -29,20 +27,11 @@ def yml_to_source(path, output, inputs):
             filename = os.path.basename(file).split(".")[0]
 
             with open(os.path.join(path, file), "r", encoding="utf-8") as yml_file:
-                yml_content = yaml.safe_load(yml_file)
-                title = yml_content.get("title", filename)
-                summary = yml_content.get("summary", "No summary.")
-                description = yml_content.get("description", "No description.")
-
-                yml_file.seek(0)
                 content = yml_file.read()
 
             f.write(
                 "JST_REGISTER_EXAMPLE("
                 f'"{cpp_string(filename)}", '
-                f'"{cpp_string(title)}", '
-                f'"{cpp_string(summary)}", '
-                f'"{cpp_string(description)}", '
                 f'"{cpp_string(content)}");\n'
             )
 

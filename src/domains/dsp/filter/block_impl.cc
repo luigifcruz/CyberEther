@@ -62,19 +62,6 @@ Result FilterImpl::validate() {
         return Result::ERROR;
     }
 
-    if (config.center.empty()) {
-        JST_ERROR("[BLOCK_FILTER] At least one center frequency is required.");
-        return Result::ERROR;
-    }
-
-    if (config.heads < config.center.size()) {
-        JST_ERROR("[BLOCK_FILTER] Heads ({}) cannot be lower than the number "
-                  "of center entries ({}). Reduce center entries first to "
-                  "avoid data loss.",
-                  config.heads, config.center.size());
-        return Result::ERROR;
-    }
-
     if (heads != config.heads) {
         return Result::RECREATE;
     }
@@ -95,9 +82,7 @@ Result FilterImpl::validate() {
 }
 
 Result FilterImpl::configure() {
-    if (center.size() < heads) {
-        center.resize(heads);
-    }
+    center.resize(heads);
 
     filterTapsConfig->sampleRate = sampleRate;
     filterTapsConfig->bandwidth = bandwidth;

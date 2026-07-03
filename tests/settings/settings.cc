@@ -192,7 +192,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     settings.interface.themeKey = "Light";
     settings.remote.brokerUrl = "https://example.com";
     settings.remote.autoJoinSessions = true;
-    settings.registry.plugins.push_back("/tmp/libcyberether-extra.so");
+    settings.registry.plugins.push_back("/tmp/cyberether-extra.cep");
 
     REQUIRE(Settings::Set(settings) == Result::SUCCESS);
     REQUIRE(std::filesystem::exists(sandbox.path));
@@ -206,7 +206,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     REQUIRE(yaml.find("remote:") != std::string::npos);
     REQUIRE(yaml.find("registry:") != std::string::npos);
     REQUIRE(yaml.find("plugins:") != std::string::npos);
-    REQUIRE(yaml.find("/tmp/libcyberether-extra.so") != std::string::npos);
+    REQUIRE(yaml.find("/tmp/cyberether-extra.cep") != std::string::npos);
     REQUIRE(yaml.find("themeKey: Light") != std::string::npos);
     REQUIRE(yaml.find("brokerUrl:") != std::string::npos);
     REQUIRE(yaml.find("https://example.com") != std::string::npos);
@@ -230,7 +230,7 @@ TEST_CASE("Settings loads existing YAML", "[settings]") {
               "  logLevel: 4\n"
               "registry:\n"
               "  plugins:\n"
-              "    - /tmp/libcyberether-extra.so\n");
+              "    - /tmp/cyberether-extra.cep\n");
 
     Settings settings;
     REQUIRE(Settings::Get(settings) == Result::SUCCESS);
@@ -241,7 +241,7 @@ TEST_CASE("Settings loads existing YAML", "[settings]") {
     REQUIRE(settings.remote.autoJoinSessions);
     REQUIRE(settings.developer.logLevel == 4);
     REQUIRE(settings.registry.plugins.size() == 1);
-    REQUIRE(settings.registry.plugins[0] == "/tmp/libcyberether-extra.so");
+    REQUIRE(settings.registry.plugins[0] == "/tmp/cyberether-extra.cep");
     REQUIRE(settings.benchmark.format == "markdown");
     REQUIRE(!settings.graphics.headless);
     REQUIRE(settings.graphics.framerate == 60);

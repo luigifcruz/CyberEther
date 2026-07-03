@@ -171,6 +171,11 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
+        if (std::filesystem::path(msg.path).extension() != ".cep") {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
+            return Result::SUCCESS;
+        }
+
         if (!std::filesystem::exists(msg.path)) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
@@ -230,6 +235,11 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
+        if (std::filesystem::path(msg.path).extension() != ".cep") {
+            callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
+            return Result::SUCCESS;
+        }
+
         if (!std::filesystem::exists(msg.path)) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
@@ -272,6 +282,12 @@ struct SettingsActions {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
                                  "Cannot reload plugin because a registered path is empty.");
+                return Result::SUCCESS;
+            }
+            if (std::filesystem::path(path).extension() != ".cep") {
+                callbacks.notify(Sakura::ToastType::Error,
+                                 5000,
+                                 "Registered plugins must be .cep bundles: " + path);
                 return Result::SUCCESS;
             }
             if (!std::filesystem::exists(path)) {

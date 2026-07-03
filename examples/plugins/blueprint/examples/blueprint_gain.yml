@@ -1,0 +1,39 @@
+---
+version: 2
+
+title: Blueprint Gain
+summary: Demonstrates the CyberEther plugin blueprint gain block.
+description: A minimal flowgraph that routes a generated signal through the bundled blueprint gain block.
+
+graph:
+  - name: signal_generator
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      bufferSize: 8192
+      signalDataType: F32
+      signalType: cosine
+      sampleRate: 48000
+      frequency: 1000
+      amplitude: 1
+      phase: 0
+
+  - name: blueprint_gain
+    module: blueprint_gain
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      gain: 2
+    input:
+      signal: '${graph.signal_generator.output.signal}'
+
+  - name: lineplot
+    module: lineplot
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      signal: '${graph.blueprint_gain.output.signal}'
