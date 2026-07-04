@@ -1,8 +1,5 @@
 def _jetstream_exec_source(source):
-    def _exec():
-        exec(source, globals())
-
-    return _jetstream_with_console(_exec)
+    exec(source, globals())
 
 
 def _jetstream_load_compute(source, _exec_source=_jetstream_exec_source):
@@ -13,34 +10,27 @@ def _jetstream_load_compute(source, _exec_source=_jetstream_exec_source):
     return function
 
 
-def _jetstream_call_compute(function, ctx):
-    return _jetstream_with_console(function, ctx)
-
-
-def _jetstream_bind_compute(function, ctx, _call_compute=_jetstream_call_compute):
+def _jetstream_bind_compute(function, ctx):
     def _runner():
-        return _call_compute(function, ctx)
+        return function(ctx)
 
     return _runner
 
 
 def _jetstream_shutdown():
-    def _release_user_globals():
-        try:
-            cleanup = globals().get("cleanup")
-            if callable(cleanup):
-                cleanup()
-        finally:
-            import gc as _jetstream_cleanup_gc
+    try:
+        cleanup = globals().get("cleanup")
+        if callable(cleanup):
+            cleanup()
+    finally:
+        import gc as _jetstream_cleanup_gc
 
-            namespace = globals()
-            for key in list(namespace):
-                if key.startswith("__") or key.startswith("_jetstream_"):
-                    continue
-                namespace[key] = None
-            _jetstream_cleanup_gc.collect()
-
-    return _jetstream_with_console(_release_user_globals)
+        namespace = globals()
+        for key in list(namespace):
+            if key.startswith("__") or key.startswith("_jetstream_"):
+                continue
+            namespace[key] = None
+        _jetstream_cleanup_gc.collect()
 
 
 def _jetstream_cleanup_multiprocessing():
@@ -87,4 +77,4 @@ def _jetstream_cleanup_multiprocessing():
 
 
 def _jetstream_shutdown_runtime():
-    return _jetstream_with_console(_jetstream_cleanup_multiprocessing)
+    return _jetstream_cleanup_multiprocessing()
