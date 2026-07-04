@@ -87,3 +87,33 @@ def _jetstream_format_exception(exc_type, exc_value, exc_traceback):
     return "".join(
         _jetstream_traceback.format_exception(exc_type, exc_value, exc_traceback)
     ).rstrip("\n")
+
+
+def _jetstream_install_thread_excepthook():
+    previous = _jetstream_threading.excepthook
+    if getattr(previous, "_jetstream_console_excepthook", False):
+        return
+
+    def _jetstream_thread_excepthook(args):
+        if args.exc_type is SystemExit:
+            return
+        try:
+            console = None
+            traceback = args.exc_traceback
+            while traceback is not None:
+                console = traceback.tb_frame.f_globals.get("_jetstream_console", console)
+                traceback = traceback.tb_next
+            if console is None:
+                previous(args)
+                return
+            name = getattr(args.thread, "name", "<unknown>")
+            console.write(f"Exception in thread {name}:\n")
+            console.write(_jetstream_format_exception(args.exc_type, args.exc_value, args.exc_traceback) + "\n")
+        except Exception:
+            previous(args)
+
+    _jetstream_thread_excepthook._jetstream_console_excepthook = True
+    _jetstream_threading.excepthook = _jetstream_thread_excepthook
+
+
+_jetstream_install_thread_excepthook()
