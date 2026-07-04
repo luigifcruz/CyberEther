@@ -22,7 +22,7 @@ endif
 plugin_inc = include_directories('include', 'src')
 plugin_sources = []
 plugin_example = files('examples/blueprint_gain.yml')
-plugin_bundler = files('tools/bundler')
+plugin_bundler = files('tools/bundler.py')
 
 pymod = import('python')
 py = pymod.find_installation(required: true)

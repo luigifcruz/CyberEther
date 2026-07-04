@@ -52,14 +52,14 @@ blocks:
 |-- subprojects/
 |   `-- cyberether.wrap
 |-- tools/
-|   `-- bundler
+|   `-- bundler.py
 `-- meson.build
 ```
 
 The public headers in `include/` define the block and module configuration.
 The source files in `src/` implement the block, implement the module, and
 register the native CPU provider. Files in `examples/` are bundled as plugin
-examples. The `tools/bundler` script creates the `.cep` bundle for the copied
+examples. The `tools/bundler.py` script creates the `.cep` bundle for the copied
 blueprint.
 
 ## CEP Bundles
@@ -147,11 +147,11 @@ registrations are drained into the CyberEther registry.
 
 ## Bundling
 
-Use the blueprint's `tools/bundler` to create `.cep` files. From your copied
+Use the blueprint's `tools/bundler.py` to create `.cep` files. From your copied
 blueprint directory:
 
 ```sh
-./tools/bundler \
+./tools/bundler.py \
   --output build/cyberether_blueprint_plugin.cep \
   --name cyberether-blueprint-plugin \
   --version 0.1.0 \

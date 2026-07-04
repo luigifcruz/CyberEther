@@ -1,6 +1,6 @@
 plugin_sources = []
 plugin_example = files('blueprint/examples/blueprint_gain.yml')
-plugin_bundler = files('blueprint/tools/bundler')
+plugin_bundler = files('blueprint/tools/bundler.py')
 
 subdir('blueprint/src')
 
