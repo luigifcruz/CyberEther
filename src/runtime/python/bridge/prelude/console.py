@@ -50,6 +50,11 @@ class _JetstreamConsoleDispatcher:
     def write(self, text):
         return self._route().write(text)
 
+    def writelines(self, lines):
+        target = self._route()
+        for line in lines:
+            target.write(line)
+
     def flush(self):
         self._route().flush()
 
@@ -58,6 +63,8 @@ class _JetstreamConsoleDispatcher:
         return False
 
     def __getattr__(self, name):
+        if name == "_fallback":
+            raise AttributeError(name)
         return getattr(self._fallback, name)
 
     def _route(self):
