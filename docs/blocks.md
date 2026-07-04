@@ -7,7 +7,7 @@ category: Usage
 
 This is the catalog of every block that ships with CyberEther, grouped by the domain they appear under in the block picker. The type string in the second column is the block's stable identifier: it is what flowgraph files store and what programmatic creation uses. Each block also carries a longer description with usage notes, visible in the documentation pane of the editor, so this page lists the one-line summaries and leaves the details to the application itself.
 
-Plugins can extend this catalog with their own blocks, and writing one is covered in [Blocks And Modules](/docs/blocks-and-modules). For custom processing without C++, see the [Python block](/docs/python-block).
+Plugins can extend this catalog with their own blocks. Installing one is covered in [Installing Plugins](/docs/installing-plugins), and writing one is covered in [Blocks And Modules](/docs/blocks-and-modules). For custom processing without C++, see the [Python block](/docs/python-block).
 
 ## Core
 
