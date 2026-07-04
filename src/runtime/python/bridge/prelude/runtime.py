@@ -27,7 +27,7 @@ def _jetstream_shutdown():
 
         namespace = globals()
         for key in list(namespace):
-            if key.startswith("__") or key.startswith("_jetstream_"):
+            if key.startswith("__") or key.lower().startswith("_jetstream_"):
                 continue
             namespace[key] = None
         _jetstream_cleanup_gc.collect()
