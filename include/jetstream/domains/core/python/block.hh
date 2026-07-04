@@ -70,7 +70,8 @@ struct Python : public Block::Config {
         "### Flowgraph Environment\n"
         "The flowgraph environment is shared with every block and the "
         "Environment window. Read it through `ctx.env` and publish by "
-        "assigning dicts to top-level keys:\n\n"
+        "assigning dicts to top-level keys. Values may include `None`, "
+        "which is stored as null:\n\n"
 
         "```python\n"
         "def compute(ctx):\n"

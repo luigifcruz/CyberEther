@@ -201,6 +201,7 @@ struct PythonApi {
     PyComplexFromDoublesFn PyComplex_FromDoubles = nullptr;
     PyComplexAsCComplexFn PyComplex_AsCComplex = nullptr;
     PyBoolFromLongFn PyBool_FromLong = nullptr;
+    PyObject* Py_NoneStruct = nullptr;
     PyDictSetItemStringFn PyDict_SetItemString = nullptr;
     PyDictNextFn PyDict_Next = nullptr;
     PyDictDelItemStringFn PyDict_DelItemString = nullptr;
@@ -249,6 +250,7 @@ Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadSymbol(handle, api.PyComplex_FromDoubles, "PyComplex_FromDoubles"));
     JST_CHECK(LoadSymbol(handle, api.PyComplex_AsCComplex, "PyComplex_AsCComplex"));
     JST_CHECK(LoadSymbol(handle, api.PyBool_FromLong, "PyBool_FromLong"));
+    JST_CHECK(LoadSymbol(handle, api.Py_NoneStruct, "_Py_NoneStruct"));
     JST_CHECK(LoadSymbol(handle, api.PyDict_SetItemString, "PyDict_SetItemString"));
     JST_CHECK(LoadSymbol(handle, api.PyDict_Next, "PyDict_Next"));
     JST_CHECK(LoadSymbol(handle, api.PyDict_DelItemString, "PyDict_DelItemString"));
@@ -447,6 +449,10 @@ PyComplexValue PyComplex_AsCComplex(PyObject* object) {
 
 PyObject* PyBool_FromLong(long value) {
     return s_api.PyBool_FromLong(value);
+}
+
+PyObject* Py_GetNone() {
+    return s_api.Py_NoneStruct;
 }
 
 int PyDict_SetItemString(PyObject* dict, const char* key, PyObject* value) {

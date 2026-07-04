@@ -78,6 +78,8 @@ _JETSTREAM_DTYPE_CODES = {
 
 
 def _jetstream_classify_attribute(value):
+    if value is None:
+        return 7
     if isinstance(value, bool):
         return 0
     if isinstance(value, int):

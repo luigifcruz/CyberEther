@@ -37,6 +37,7 @@ struct PyComplexValue {
 PyObject* PyComplex_FromDoubles(double real, double imag);
 PyComplexValue PyComplex_AsCComplex(PyObject* object);
 PyObject* PyBool_FromLong(long value);
+PyObject* Py_GetNone();
 int PyDict_SetItemString(PyObject* dict, const char* key, PyObject* value);
 int PyDict_DelItemString(PyObject* dict, const char* key);
 void PyDict_Clear(PyObject* dict);
