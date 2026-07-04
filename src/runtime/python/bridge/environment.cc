@@ -43,16 +43,25 @@ void Bridge::refreshEnvironment() {
         return;
     }
 
-    std::vector<std::string> keys;
-    if (environment->keys(keys) != Result::SUCCESS) {
+    std::vector<std::pair<std::string, U64>> versions;
+    if (environment->versions(versions) != Result::SUCCESS) {
         return;
     }
 
-    PyDict_Clear(environmentDict);
+    if (!environmentSynced) {
+        PyDict_Clear(environmentDict);
+        environmentVersions.clear();
+    }
 
     auto* converters = valueConverterTable();
 
-    for (const auto& key : keys) {
+    std::vector<std::string> changed;
+    for (const auto& [key, version] : versions) {
+        const auto it = environmentVersions.find(key);
+        if (it != environmentVersions.end() && it->second == version) {
+            continue;
+        }
+
         Parser::Map data;
         if (environment->get(key, data) != Result::SUCCESS) {
             continue;
@@ -62,6 +71,9 @@ void Bridge::refreshEnvironment() {
         if (!object) {
             JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported environment value '{}'.", key);
             (void)ClearPythonError();
+            if (PyDict_DelItemString(environmentDict, key.c_str()) != 0) {
+                (void)ClearPythonError();
+            }
             continue;
         }
 
@@ -71,16 +83,35 @@ void Bridge::refreshEnvironment() {
             continue;
         }
         Py_DecRef(object);
+        changed.push_back(key);
     }
 
-    trackEnvironment();
+    std::unordered_map<std::string, U64> current;
+    current.reserve(versions.size());
+    for (auto& [key, version] : versions) {
+        current.emplace(std::move(key), version);
+    }
+
+    for (const auto& [key, version] : environmentVersions) {
+        if (current.contains(key)) {
+            continue;
+        }
+
+        if (PyDict_DelItemString(environmentDict, key.c_str()) != 0) {
+            (void)ClearPythonError();
+        }
+    }
+
+    environmentVersions = std::move(current);
+
+    trackEnvironment(changed);
 
     environmentEpoch = epoch;
     environmentSynced = true;
 }
 
-void Bridge::trackEnvironment() {
-    if (!environmentDict || !globals) {
+void Bridge::trackEnvironment(const std::vector<std::string>& keys) {
+    if (!environmentDict || !globals || keys.empty()) {
         return;
     }
 
@@ -89,7 +120,29 @@ void Bridge::trackEnvironment() {
         return;
     }
 
-    auto* result = PyObject_CallFunctionObjArgs(track, environmentDict);
+    auto* keysTuple = PyTuple_New(static_cast<Py_ssize_t>(keys.size()));
+    if (!keysTuple) {
+        (void)ClearPythonError();
+        return;
+    }
+
+    for (std::size_t index = 0; index < keys.size(); ++index) {
+        auto* key = PyUnicode_FromString(keys[index].c_str());
+        if (!key) {
+            Py_DecRef(keysTuple);
+            (void)ClearPythonError();
+            return;
+        }
+
+        if (PyTuple_SetItem(keysTuple, static_cast<Py_ssize_t>(index), key) != 0) {
+            Py_DecRef(keysTuple);
+            (void)ClearPythonError();
+            return;
+        }
+    }
+
+    auto* result = PyObject_CallFunctionObjArgs(track, environmentDict, keysTuple);
+    Py_DecRef(keysTuple);
     if (!result) {
         (void)ClearPythonError();
         return;
@@ -141,6 +194,8 @@ void Bridge::flushEnvironment() {
     };
 
     const auto count = PySequence_Size(dirtyKeys);
+    std::vector<std::string> processed;
+    processed.reserve(static_cast<std::size_t>(count > 0 ? count : 0));
     for (Py_ssize_t index = 0; index < count; ++index) {
         auto* key = PySequence_GetItem(dirtyKeys, index);
         if (!key) {
@@ -154,6 +209,7 @@ void Bridge::flushEnvironment() {
             Py_DecRef(key);
             continue;
         }
+        processed.emplace_back(keyStr);
 
         Parser::Map existingData;
         bool hasExisting = environment->has(keyStr);
@@ -199,9 +255,7 @@ void Bridge::flushEnvironment() {
         Py_DecRef(key);
     }
 
-    if (count > 0) {
-        trackEnvironment();
-    }
+    trackEnvironment(processed);
 
     Py_DecRef(dirtyKeys);
 }
@@ -212,6 +266,7 @@ void Bridge::destroyEnvironmentDict() {
         environmentDict = nullptr;
     }
     environmentSynced = false;
+    environmentVersions.clear();
 }
 
 }  // namespace Jetstream

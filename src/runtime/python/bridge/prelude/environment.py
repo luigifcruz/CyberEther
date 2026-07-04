@@ -90,9 +90,13 @@ def _jetstream_wrap_environment_value(value, mark):
     return value
 
 
-def _jetstream_track_environment(env):
+def _jetstream_track_environment(env, keys=None):
     dirty = env._jetstream_dirty
-    for key in list(dict.keys(env)):
+    if keys is None:
+        keys = list(dict.keys(env))
+    for key in keys:
+        if not dict.__contains__(env, key):
+            continue
         def _jetstream_mark(_key=key, _dirty=dirty):
             _dirty.add(_key)
         dict.__setitem__(

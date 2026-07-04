@@ -5,6 +5,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "jetstream/flowgraph.hh"
@@ -43,6 +44,7 @@ class JETSTREAM_API Flowgraph::Environment {
                Parser::Map& data,
                U64 timestamp = std::numeric_limits<U64>::min()) const;
     Result keys(std::vector<std::string>& keys) const;
+    Result versions(std::vector<std::pair<std::string, U64>>& versions) const;
     U64 epoch() const;
 
     template<typename T>
