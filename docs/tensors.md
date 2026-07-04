@@ -12,7 +12,7 @@ Every sample that moves through a flowgraph lives in a tensor: a typed n-dimensi
 A tensor is described by five things:
 
 - A **data type** from the numeric ladder: `I8` to `I64`, `U8` to `U64`, `F32`, `F64`, the complex floats `CF32` and `CF64`, and the complex integers `CI8` to `CI64` and `CU8` to `CU64`.
-- A **device** where its native buffer lives: `CPU`, `CUDA`, `Metal`, `Vulkan`, or `WebGPU`.
+- A **device** where its native buffer lives: `CPU`, `CUDA`, `Metal`, or `Vulkan`. WebGPU is a graphics-only backend and does not host tensor storage.
 - A **shape** and **strides** describing the n-dimensional layout. A freshly created tensor is contiguous, and `contiguous()` reports whether it still is after view operations.
 - An **offset** for views that start inside a parent buffer.
 - **Attributes**, the named metadata such as `sampleRate` that travels with the tensor, covered in [Metadata](/docs/metadata#tensor-attributes).
@@ -80,6 +80,29 @@ Views are how the slice and permutation blocks work, and they are the reason str
 
 This is the interoperability core. A tensor's storage is not a single buffer but a table of per-device buffers grown on demand. Asking `hasDevice(device)`, or constructing `Tensor(device, source)`, maps the existing storage onto another device, and the mapping is **zero-copy whenever the platform allows**. The `device()` accessor reports the buffer a consumer is using, and `nativeDevice()` reports where the storage originally lived.
 
+### Direction Matrix
+
+Mappings are directional. The row is where the storage natively lives, the column is the device a view is requested on, and `hasDevice()` answers exactly this table at runtime:
+
+| Native storage | CPU view | CUDA view | Metal view | Vulkan view |
+|----------------|-------------------|--------------------|-----------------|--------------------|
+| **CPU**        | native            | ✅ pinned pages    | ✅ shared wrap  | ❌                 |
+| **CUDA**       | ⚠️ unified only   | native             | ❌              | ⚠️ external memory |
+| **Metal**      | ✅ always         | ❌                 | native          | ❌                 |
+| **Vulkan**     | ⚠️ host-visible only | ✅ external memory | ❌           | native             |
+
+The conditional cells depend on how the buffer was allocated and what the drivers support:
+
+- **CPU to CUDA** registers the host pages with the driver and requires page-aligned memory. Tensors allocated by the framework always qualify, but memory wrapped from an external pointer may not.
+- **CPU to Metal** wraps the same pages as a shared-mode buffer, with the same page-alignment requirement.
+- **CUDA to CPU** only works when the allocation requested `{.hostAccessible = true}`, which lands in managed memory. A default CUDA allocation is device-only and the CPU view fails.
+- **CUDA to Vulkan** exports the allocation through an external memory handle. This requires the default device allocation, so a `hostAccessible` CUDA buffer cannot be exported, and both drivers must support the handle exchange. The CUDA and Vulkan external memory paths are unavailable on Windows.
+- **Vulkan to CUDA** imports the Vulkan allocation the same way, subject to the same driver support and the same Windows exclusion.
+- **Vulkan to CPU** uses the mapped pointer, so the buffer must be host-visible. That holds on unified-memory hardware and for `hostAccessible` allocations, but a device-local buffer on a discrete GPU has no CPU view.
+- **Metal to CPU** always works because Metal storage is allocated in shared mode.
+
+WebGPU is a graphics backend only. It has no tensor buffer backend, so no row or column exists for it, and the render layer feeds it through explicit uploads. Pairs marked ❌ bridge by staging through a device both sides can map, in practice the CPU, using the explicit `copyFrom` transfer described below.
+
 ### Sharing With The Host
 
 Mapping a tensor onto another device is one constructor call, and both views alias the same bytes from then on. A CUDA view of a CPU tensor pins the host pages with the driver and computes against them directly:
@@ -91,7 +114,7 @@ JST_CHECK(host.create(DeviceType::CPU, DataType::CF32, {2048}));
 Tensor device(DeviceType::CUDA, host);
 ```
 
-A kernel writing through `device` is writing the memory `host` reads, so a CPU consumer sees the results without any transfer. The reverse direction works the same way, and `hasDevice(device)` performs the identical mapping as a query, returning false when the platform cannot share the memory.
+A kernel writing through `device` is writing the memory `host` reads, so a CPU consumer sees the results without any transfer. The reverse direction is conditional, as the matrix shows: a CPU view of a CUDA tensor only exists when the allocation was host accessible. In both directions, `hasDevice(device)` performs the identical mapping as a query, returning false when the platform cannot share the memory.
 
 ### Sharing With Graphics
 
