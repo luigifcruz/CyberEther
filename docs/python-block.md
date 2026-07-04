@@ -118,7 +118,7 @@ Semantics:
 - **Rejected writes are rolled back.** If a value cannot be converted or published, the local entry is restored to the flowgraph's canonical state instead of silently diverging.
 - **Deletions are not supported.** `del ctx.env["k"]` is reverted on the next cycle. Clear keys from the C++ side or the UI instead.
 - **Writes are cycle-atomic.** Downstream blocks that run later in the same cycle see the updated values, and there is no mid-compute visibility.
-- **The environment persists with the flowgraph.** Keys written by Python are serialized when the flowgraph is saved.
+- **The environment is runtime state.** It lives in memory alongside the flowgraph and is not written into the flowgraph file. Blocks that need values at startup should publish them again when the flowgraph loads.
 - **New keys retry incomplete blocks.** When a key first becomes visible (or is cleared), blocks sitting in the incomplete state are destroyed and recreated so they can pick the value up. This is how blocks that gate their creation on server-provided values start once the connection delivers them. In-place updates to an existing key do not trigger retries, so per-cycle status writes stay cheap.
 
 The refresh path is version-gated per key and the publish path only examines keys the code actually touched, so a large environment (thousands of keys) costs nothing per cycle while idle, and the cycle after a change only converts the keys that actually changed. The one moment proportional to the total key count is the initial population. When consuming an external feed that resends full snapshots, diff against the previous snapshot and assign only changed keys so the publish side stays proportional to the changes too.
