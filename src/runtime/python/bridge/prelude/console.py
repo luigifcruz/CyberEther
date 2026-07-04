@@ -38,6 +38,7 @@ class _JetstreamConsole:
 
 
 _jetstream_console = _JetstreamConsole()
+_jetstream_console_bypass = _jetstream_threading.local()
 
 
 class _JetstreamConsoleDispatcher:
@@ -52,10 +53,16 @@ class _JetstreamConsoleDispatcher:
     def flush(self):
         self._route().flush()
 
+    def isatty(self):
+        # TODO: Return True once the console UI renders ANSI colors.
+        return False
+
     def __getattr__(self, name):
         return getattr(self._fallback, name)
 
     def _route(self):
+        if getattr(_jetstream_console_bypass, "active", False):
+            return self._fallback
         try:
             frame = _jetstream_sys._getframe(2)
         except ValueError:
@@ -94,6 +101,13 @@ def _jetstream_install_thread_excepthook():
     if getattr(previous, "_jetstream_console_excepthook", False):
         return
 
+    def _previous_unrouted(args):
+        _jetstream_console_bypass.active = True
+        try:
+            previous(args)
+        finally:
+            _jetstream_console_bypass.active = False
+
     def _jetstream_thread_excepthook(args):
         if args.exc_type is SystemExit:
             return
@@ -104,13 +118,13 @@ def _jetstream_install_thread_excepthook():
                 console = traceback.tb_frame.f_globals.get("_jetstream_console", console)
                 traceback = traceback.tb_next
             if console is None:
-                previous(args)
+                _previous_unrouted(args)
                 return
             name = getattr(args.thread, "name", "<unknown>")
             console.write(f"Exception in thread {name}:\n")
             console.write(_jetstream_format_exception(args.exc_type, args.exc_value, args.exc_traceback) + "\n")
         except Exception:
-            previous(args)
+            _previous_unrouted(args)
 
     _jetstream_thread_excepthook._jetstream_console_excepthook = True
     _jetstream_threading.excepthook = _jetstream_thread_excepthook
