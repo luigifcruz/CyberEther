@@ -25,13 +25,13 @@ This is a standalone CyberEther plugin blueprint. Copy this directory, rename
 |           |-- module_impl.hh
 |           `-- module_impl_native_cpu.cc
 |-- tools/
-|   `-- bundler
+|   `-- bundler.py
 `-- meson.build
 ```
 
 The `src/plugin.cc` exports the CyberEther plugin ABI symbol for the target shared
 library. The build packages that library, `manifest.yml`, and bundled examples
-into a `.cep` plugin bundle using `tools/bundler`.
+into a `.cep` plugin bundle using `tools/bundler.py`.
 
 ## Build
 
