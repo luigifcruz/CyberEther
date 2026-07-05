@@ -280,3 +280,16 @@ TEST_CASE("Python runtime validation treats framework binaries as libraries", "[
     REQUIRE(validation.programPath.empty());
     REQUIRE(attemptedFrameworkLibrary);
 }
+
+TEST_CASE("Python runtime validation rejects framework libraries below minimum version", "[settings][runtime][python]") {
+    TempPathRoot sandbox("old-python-framework-runtime");
+    const auto fakeLibraryPath = sandbox.root / "Python.framework" / "Versions" / "3.8" / "Python";
+    WriteFile(fakeLibraryPath, "not a dynamic library");
+
+    const auto validation = PythonRuntimeContext::ValidateRuntimePath(fakeLibraryPath.string());
+
+    REQUIRE(!validation.valid);
+    REQUIRE(validation.libraryPath.empty());
+    REQUIRE(validation.programPath.empty());
+    REQUIRE(validation.message.find("below the minimum supported version 3.9") != std::string::npos);
+}

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <mutex>
 #include <shared_mutex>
 
@@ -74,6 +75,32 @@ Result Flowgraph::Environment::keys(std::vector<std::string>& keys) const {
         if (!entries.empty()) {
             keys.push_back(key);
         }
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Flowgraph::Environment::versions(std::vector<std::pair<std::string, U64>>& versions) const {
+    const auto graph = impl.lock();
+    if (!graph) {
+        JST_ERROR("[FLOWGRAPH] Environment is no longer attached to a flowgraph.");
+        return Result::ERROR;
+    }
+
+    std::shared_lock lock(graph->environmentMutex);
+
+    versions.clear();
+    versions.reserve(graph->environmentValues.size());
+    for (const auto& [key, entries] : graph->environmentValues) {
+        if (entries.empty()) {
+            continue;
+        }
+
+        U64 version = 0;
+        for (const auto& entry : entries) {
+            version = std::max(version, entry.sequence);
+        }
+        versions.emplace_back(key, version);
     }
 
     return Result::SUCCESS;

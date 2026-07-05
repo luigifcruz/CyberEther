@@ -102,11 +102,12 @@ struct Bridge {
     CPython::PyObject* environmentDict = nullptr;
     U64 environmentEpoch = 0;
     bool environmentSynced = false;
+    std::unordered_map<std::string, U64> environmentVersions;
 
     CPython::PyObject* createEnvironmentDict();
     void refreshEnvironment();
     void flushEnvironment();
-    void trackEnvironment();
+    void trackEnvironment(const std::vector<std::string>& keys);
     void destroyEnvironmentDict();
 
     //

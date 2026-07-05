@@ -11,6 +11,7 @@
 #include <regex>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Jetstream {
@@ -127,6 +128,31 @@ void AddPath(std::vector<std::string>& paths, const std::filesystem::path& path)
     }
 
     paths.push_back(value);
+}
+
+constexpr int kMinimumPythonMajor = 3;
+constexpr int kMinimumPythonMinor = 9;
+
+std::optional<std::pair<int, int>> ParsePythonMajorMinor(const std::string& text) {
+    static const std::regex versionRegex(R"((\d+)\.(\d+))");
+
+    std::smatch match;
+    if (!std::regex_search(text, match, versionRegex)) {
+        return std::nullopt;
+    }
+
+    return std::make_pair(std::stoi(match[1].str()), std::stoi(match[2].str()));
+}
+
+bool MeetsMinimumPythonVersion(const std::pair<int, int>& version) {
+    if (version.first != kMinimumPythonMajor) {
+        return version.first > kMinimumPythonMajor;
+    }
+    return version.second >= kMinimumPythonMinor;
+}
+
+std::string MinimumPythonVersionLabel() {
+    return std::to_string(kMinimumPythonMajor) + "." + std::to_string(kMinimumPythonMinor);
 }
 
 std::optional<std::string> ExtractPythonVersion(const std::filesystem::path& path) {
@@ -439,11 +465,32 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
     const auto expandedPath = ExpandUserPath(path);
     validation.inputPath = expandedPath.string();
 
+    if (LooksLikePythonExecutable(validation.inputPath)) {
+        if (const auto version = ProbePythonVersion(validation.inputPath)) {
+            const auto parsed = ParsePythonMajorMinor(*version);
+            if (parsed.has_value() && !MeetsMinimumPythonVersion(*parsed)) {
+                validation.message = *version + " at " + validation.inputPath +
+                                     " is below the minimum supported version " +
+                                     MinimumPythonVersionLabel() + ".";
+                return validation;
+            }
+        }
+    }
+
     const auto candidates = PythonLibraryCandidates(path);
     validation.attempts = candidates;
     for (const auto& candidate : candidates) {
         if (!FileIsRegular(candidate)) {
             continue;
+        }
+
+        const auto version = ExtractPythonVersion(candidate);
+        const auto parsed = version.has_value() ? ParsePythonMajorMinor(*version) : std::nullopt;
+        if (parsed.has_value() && !MeetsMinimumPythonVersion(*parsed)) {
+            validation.message = "Python " + *version + " library " + candidate +
+                                 " is below the minimum supported version " +
+                                 MinimumPythonVersionLabel() + ".";
+            return validation;
         }
 
         validation.valid = true;

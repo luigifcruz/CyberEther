@@ -533,9 +533,35 @@ PyObject* TypedVectorToBuffer(PyObject* converters, const char* key, const std::
     return converted;
 }
 
+std::string PyTypeName(PyObject* value) {
+    auto* cls = PyObject_GetAttrString(value, "__class__");
+    if (!cls) {
+        (void)ClearPythonError();
+        return "unknown";
+    }
+
+    auto* name = PyObject_GetAttrString(cls, "__name__");
+    Py_DecRef(cls);
+    if (!name) {
+        (void)ClearPythonError();
+        return "unknown";
+    }
+
+    const char* str = PyUnicode_AsUTF8(name);
+    const std::string result = str ? str : "unknown";
+    Py_DecRef(name);
+
+    return result;
+}
+
 }  // namespace
 
 PyObject* AnyToPyObject(const std::any& value, PyObject* converters) {
+    if (!value.has_value()) {
+        auto* none = Py_GetNone();
+        Py_IncRef(none);
+        return none;
+    }
     if (value.type() == typeid(F32)) {
         return ApplyConverter(converters, "F32",
                               PyFloat_FromDouble(static_cast<double>(std::any_cast<F32>(value))));
@@ -679,6 +705,11 @@ Result PyObjectToAny(PyObject* classify,
     I64 code = -1;
     JST_CHECK(ClassifyPyObject(classify, value, code));
 
+    if (code == 7) {
+        out = std::any();
+        return Result::SUCCESS;
+    }
+
     if (code == 3) {
         const char* str = PyUnicode_AsUTF8(value);
         if (!str) {
@@ -710,7 +741,10 @@ Result PyObjectToAny(PyObject* classify,
             }
 
             std::any converted;
-            JST_CHECK(PyObjectToAny(classify, entryValue, entryExisting, converted));
+            if (PyObjectToAny(classify, entryValue, entryExisting, converted) != Result::SUCCESS) {
+                JST_WARN("[RUNTIME_CONTEXT_PYTHON] Can't convert value for key '{}'.", keyStr);
+                return Result::ERROR;
+            }
             map[keyStr] = std::move(converted);
         }
 
@@ -976,6 +1010,7 @@ Result PyObjectToAny(PyObject* classify,
         return Result::SUCCESS;
     }
 
+    JST_WARN("[RUNTIME_CONTEXT_PYTHON] Unsupported Python value of type '{}'.", PyTypeName(value));
     return Result::ERROR;
 }
 

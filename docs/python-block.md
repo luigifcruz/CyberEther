@@ -28,7 +28,7 @@ To pick which installation is used, open **Settings**, select the **Runtime** ta
 - The dropdown also lists every installation the scan found, labeled with its version and location, such as `Python 3.12.4 (/opt/miniconda3/bin/python)`. Pick the one that has the packages you need.
 - **Custom Path** accepts the path to any `python` executable the scan did not find (a leading `~` works), typed directly or chosen with **Browse File**.
 
-A badge next to the selector reports whether the choice is usable: **Valid File** means a matching Python library was located, **Invalid** means it was not. The selection is saved and applies after restarting CyberEther.
+A badge next to the selector reports whether the choice is usable: **Valid File** means a matching Python library was located, **Invalid** means it was not. The selection is saved and applies after restarting CyberEther. The minimum supported version is Python 3.9. Older installations are reported as invalid and skipped by Auto.
 
 A useful rule of thumb: if `python -c "import numpy"` works in your terminal, selecting that same Python here makes the import work in the block too. Conversely, if an import fails inside the block, check which runtime is selected before reinstalling packages. The block may simply be running a different Python than your terminal.
 
@@ -112,15 +112,16 @@ def compute(ctx):
 Semantics:
 
 - **Top-level values must be mappings.** `ctx.env["gain"] = 3.0` is rejected with a console warning, so wrap scalars in a dict.
+- **Null round-trips.** Fields holding `None` are stored as null, shown as `null` in the Environment window, and read back as `None`.
 - **Values are NumPy-typed when NumPy is available.** Numbers, including complex, read and write at their exact stored width, and typed vectors arrive as read-only NumPy arrays. Without NumPy, reads fall back to plain Python types. See [Type Conversion](#type-conversion) for the full rules.
 - **Nested edits publish.** Both `ctx.env["k"] = {...}` and `ctx.env["k"]["field"] = value` are tracked, including dicts nested inside sequences. Sequences read back as immutable containers. Replace them through their parent dict.
 - **Rejected writes are rolled back.** If a value cannot be converted or published, the local entry is restored to the flowgraph's canonical state instead of silently diverging.
 - **Deletions are not supported.** `del ctx.env["k"]` is reverted on the next cycle. Clear keys from the C++ side or the UI instead.
 - **Writes are cycle-atomic.** Downstream blocks that run later in the same cycle see the updated values, and there is no mid-compute visibility.
-- **The environment persists with the flowgraph.** Keys written by Python are serialized when the flowgraph is saved.
+- **The environment is runtime state.** It lives in memory alongside the flowgraph and is not written into the flowgraph file. Blocks that need values at startup should publish them again when the flowgraph loads.
 - **New keys retry incomplete blocks.** When a key first becomes visible (or is cleared), blocks sitting in the incomplete state are destroyed and recreated so they can pick the value up. This is how blocks that gate their creation on server-provided values start once the connection delivers them. In-place updates to an existing key do not trigger retries, so per-cycle status writes stay cheap.
 
-The refresh path is epoch-gated and the publish path only examines keys the code actually touched, so a large environment (thousands of keys) costs nothing per cycle while idle. The expensive moments are the initial population and the cycle after any change, both proportional to the total key count. When consuming an external feed that resends full snapshots, diff against the previous snapshot and assign only changed keys.
+The refresh path is version-gated per key and the publish path only examines keys the code actually touched, so a large environment (thousands of keys) costs nothing per cycle while idle, and the cycle after a change only converts the keys that actually changed. The one moment proportional to the total key count is the initial population. When consuming an external feed that resends full snapshots, diff against the previous snapshot and assign only changed keys so the publish side stays proportional to the changes too.
 
 ## Block Metrics
 
@@ -174,6 +175,7 @@ Reading (C++ to Python):
 | `std::vector<U64/F32/F64/CF32/CF64>` | read-only `np.ndarray` of the matching dtype | `tuple` |
 | `Parser::Map` | `dict` (recursive) | `dict` (recursive) |
 | `Parser::Sequence` | `tuple` (recursive) | `tuple` (recursive) |
+| null | `None` | `None` |
 
 Typed vectors cross as raw buffers in both directions: reads hand NumPy the underlying bytes directly, and writes of native contiguous one-dimensional arrays copy their buffer straight into the store. One copy each way, with no per-element Python objects. The arrays are read-only, so copy before modifying.
 
@@ -182,13 +184,16 @@ Writing (Python to C++) follows two rules:
 - **Numeric entries keep their type.** A numeric write onto a numeric entry is coerced to the stored type: an `F32` entry stays `F32`, integer targets are range-checked exactly, floats only land in integer slots when they are integral, and a complex value with a non-zero imaginary part is rejected when the target is real. Rejections are rolled back with a console warning rather than truncated. Writes that change the kind of value, for example a number over a string or a mapping over a scalar, replace the entry instead.
 - **New entries take the value's native width.** Plain Python values default to `bool`, `I64` (`U64` above the signed range), `F64`, `CF64`, and `str`. NumPy scalars store at their exact width, so `np.float32` becomes `F32`, `np.int16` becomes `I16`, and `np.complex64` becomes `CF32`. Homogeneous lists and one-dimensional arrays of floats and complex values become typed vectors of the matching width. Integer content becomes a vector of `U64` when every element is non-negative, since no narrower integer vectors exist. Anything mixed becomes a generic sequence.
 
+Writing `None` stores a null regardless of what the entry previously held, at top level of a value, nested in a dict, or inside a sequence.
+
 Not supported: multi-dimensional arrays and half precision (move bulk data through tensors), and the framework types (`Range`, `Extent2D`, `Tensor`, device enums), which are skipped on read and rejected with a console warning on write.
 
 ## State And Lifecycle
 
 - **Globals persist across cycles.** Module-level variables survive between `compute` calls. Use them for accumulators, precomputed tables, or open connections. Module-level code runs once, at block creation or code reload.
 - **Optional `cleanup()` hook.** If defined, it runs when the block is destroyed or the code is reloaded. Close files, stop threads, and release resources there.
-- **Errors do not stop the flowgraph.** Exceptions raised by `compute` are captured in the block console. The failing cycle is skipped, and the block remains skipped until the code is reloaded or the block is recreated. Output written to `print()` also appears in the block console.
+- **Errors do not stop the flowgraph.** Exceptions raised by `compute` are captured in the block console. The failing cycle is skipped, and the block remains skipped until the code is reloaded or the block is recreated.
+- **Console output routes to the owning block.** Output written to `print()` appears in the block console no matter which thread printed it, and an uncaught exception in a background thread lands there as a traceback too. Captured output identifies as non-interactive, so libraries that check for a terminal fall back to plain formatting.
 - **References go stale across cycles.** Arrays, attribute values, and environment entries are refreshed each cycle, so fetch them from `ctx` inside `compute` rather than caching them in globals.
 
 ## Feeding Data From External Services
@@ -221,7 +226,9 @@ def cleanup():
     _thread.join(timeout=2.0)
 ```
 
-Background threads run freely while the flowgraph computes (the interpreter lock is released between cycles), but they must never touch `ctx`. Only `compute` may read or write it. Report worker errors by queueing them and printing from `compute`, since console capture wraps compute calls only.
+Background threads run freely while the flowgraph computes (the interpreter lock is released between cycles), but they must never touch `ctx`. Only `compute` may read or write it. Printing from a worker thread is fine, and the output lands in the block console just like prints from `compute`.
+
+One caveat for native client libraries: some compiled extensions hold the interpreter lock while they block on the network, which stalls every Python block in the flowgraph even from a background thread. If the timing display freezes as soon as a worker connects, prefer the library's async API driven by an event loop inside the thread, poll over plain HTTP with the standard library, or move the connection into a helper subprocess.
 
 ## Limitations
 

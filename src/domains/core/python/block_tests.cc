@@ -335,6 +335,55 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block round-trips null environment values",
+                 "[modules][python][block]") {
+    Parser::Map station;
+    station["label"] = std::string("otl");
+    station["offset"] = std::any();
+    REQUIRE(flowgraph->environment().set("station", station) == Result::SUCCESS);
+
+    Blocks::Python config;
+    config.code =
+        "def compute(ctx):\n"
+        "    station = ctx.env.get(\"station\", {})\n"
+        "    ctx.outputs[0][...] = 1.0 if station.get(\"offset\") is None else 0.0\n"
+        "    ctx.env[\"status\"] = {\n"
+        "        \"value\": None,\n"
+        "        \"items\": [None, 1.0],\n"
+        "        \"nested\": {\"missing\": None},\n"
+        "    }\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[1]"}};
+
+    REQUIRE(flowgraph->blockCreate("python_null", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_null");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block null environment test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    block = viewBlock("python_null");
+    const Tensor& output = block.outputs.at("output0").tensor;
+    REQUIRE(output.at<F32>(0) == 1.0f);
+
+    Parser::Map status;
+    REQUIRE(flowgraph->environment().get("status", status) == Result::SUCCESS);
+    REQUIRE(!status.at("value").has_value());
+    const auto& items = std::any_cast<const Parser::Sequence&>(status.at("items"));
+    REQUIRE(items.size() == 2);
+    REQUIRE(!items[0].has_value());
+    REQUIRE(std::abs(std::any_cast<F64>(items[1]) - 1.0) < 1e-9);
+    const auto& nested = std::any_cast<const Parser::Map&>(status.at("nested"));
+    REQUIRE(!nested.at("missing").has_value());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Python block stores numpy values with matching widths",
                  "[modules][python][block]") {
     Parser::Map seeded;
