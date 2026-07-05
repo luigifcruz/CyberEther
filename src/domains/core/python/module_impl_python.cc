@@ -40,6 +40,7 @@ struct PythonImplPython : public PythonImpl,
 
 Result PythonImplPython::loadCompute(const std::string& source) {
     const auto computeResult = createCompute(source,
+                                             {},
                                              inputPortOrder(),
                                              inputs(),
                                              outputPortOrder(),

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "jetstream/flowgraph.hh"
@@ -38,6 +39,7 @@ struct JETSTREAM_API PythonRuntimeContext : Runtime::Context {
     Diagnostic diagnostic() const override;
 
     Result createCompute(const std::string& source,
+                         const std::unordered_map<std::string, std::string>& pieces,
                          const Module::Interface::EntryList& inputOrder,
                          const TensorMap& inputs,
                          const Module::Interface::EntryList& outputOrder,
