@@ -1,6 +1,7 @@
 #include <jetstream/runtime_context_python.hh>
 
 #include "bridge/base.hh"
+#include "runtime/helpers.hh"
 
 namespace Jetstream {
 
@@ -21,13 +22,20 @@ PythonRuntimeContext::Diagnostic PythonRuntimeContext::diagnostic() const {
 }
 
 Result PythonRuntimeContext::createCompute(const std::string& source,
+                                           const std::unordered_map<std::string, std::string>& pieces,
                                            const Module::Interface::EntryList& inputOrder,
                                            const TensorMap& inputs,
                                            const Module::Interface::EntryList& outputOrder,
                                            const TensorMap& outputs,
                                            const std::shared_ptr<Flowgraph::Environment>& environment,
                                            const std::shared_ptr<Flowgraph::View>& view) {
-    return pimpl->start(source, inputOrder, inputs, outputOrder, outputs, environment, view);
+    std::string expandedSource = source;
+    if (!pieces.empty()) {
+        JST_CHECK(ExpandSourcePieces(source, pieces, expandedSource));
+        JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Expanded Python source:\n{}", expandedSource);
+    }
+
+    return pimpl->start(expandedSource, inputOrder, inputs, outputOrder, outputs, environment, view);
 }
 
 Result PythonRuntimeContext::destroyCompute() {

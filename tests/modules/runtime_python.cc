@@ -5,6 +5,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <thread>
 #include <unordered_set>
 #include <utility>
@@ -50,7 +51,9 @@ def compute(ctx):
     elif current != _seen:
         raise RuntimeError("Python context arrays changed")
     ctx.outputs[0][...] = ctx.inputs[0] * 3.0
-)PY") : source(std::move(source)) {}
+)PY",
+                                      std::unordered_map<std::string, std::string> pieces = {})
+        : source(std::move(source)), pieces(std::move(pieces)) {}
 
     Result define() override {
         JST_CHECK(defineInterfaceInput("in"));
@@ -64,6 +67,7 @@ def compute(ctx):
         outputs()["out"].produced(name(), "out", output);
 
         return createCompute(source,
+                             pieces,
                              {"in"},
                              inputs(),
                              {"out"},
@@ -71,14 +75,16 @@ def compute(ctx):
     }
 
     std::string source;
+    std::unordered_map<std::string, std::string> pieces;
     Tensor input;
     Tensor output;
 };
 
-std::shared_ptr<Module> makePythonRuntimeSmokeModule(std::string source = {}) {
-    auto impl = source.empty()
+std::shared_ptr<Module> makePythonRuntimeSmokeModule(std::string source = {},
+                                                     std::unordered_map<std::string, std::string> pieces = {}) {
+    auto impl = source.empty() && pieces.empty()
                     ? std::make_shared<PythonRuntimeSmokeModule>()
-                    : std::make_shared<PythonRuntimeSmokeModule>(std::move(source));
+                    : std::make_shared<PythonRuntimeSmokeModule>(std::move(source), std::move(pieces));
     auto runtimeContext = std::static_pointer_cast<Runtime::Context>(impl);
     auto schedulerContext = std::static_pointer_cast<Scheduler::Context>(impl);
     auto context = std::make_shared<Module::Context>(runtimeContext,
@@ -151,6 +157,52 @@ TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[
 
     for (Index i = 0; i < output.size(); ++i) {
         REQUIRE(std::abs(data[i] - static_cast<F32>((i + 1) * 3)) < 1e-5f);
+    }
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    destroyPythonCompute(module);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python runtime expands source pieces before compiling compute()", "[runtime][python]") {
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
+
+    for (Index i = 0; i < input.size(); ++i) {
+        input.at<F32>(i) = static_cast<F32>(i + 1);
+    }
+
+    TensorMap inputs;
+    inputs["in"].produced("source", "out", input);
+
+    auto module = makePythonRuntimeSmokeModule(R"PY(
+def compute(ctx):
+    <<<BODY>>>
+)PY", {{"BODY", "ctx.outputs[0][...] = ctx.inputs[0] + 5.0"}});
+
+    Parser::Map config;
+    const auto createResult = module->create("python_runtime_piece_smoke", config, inputs);
+
+    if (createResult != Result::SUCCESS && optionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python runtime source-piece test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_runtime_piece_smoke", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_runtime_piece_smoke"}, skippedModules, failedModules) == Result::SUCCESS);
+
+    Tensor output = module->outputs().at("out").tensor;
+    const auto* data = output.data<F32>();
+    REQUIRE(data != nullptr);
+
+    for (Index i = 0; i < output.size(); ++i) {
+        REQUIRE(std::abs(data[i] - static_cast<F32>(i + 6)) < 1e-5f);
     }
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
