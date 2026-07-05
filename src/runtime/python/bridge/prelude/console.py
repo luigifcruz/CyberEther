@@ -104,8 +104,8 @@ def _jetstream_format_exception(exc_type, exc_value, exc_traceback):
 
 
 def _jetstream_install_thread_excepthook():
-    previous = _jetstream_threading.excepthook
-    if getattr(previous, "_jetstream_console_excepthook", False):
+    previous = getattr(_jetstream_threading, "excepthook", None)
+    if previous is None or getattr(previous, "_jetstream_console_excepthook", False):
         return
 
     def _previous_unrouted(args):

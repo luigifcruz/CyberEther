@@ -28,7 +28,7 @@ To pick which installation is used, open **Settings**, select the **Runtime** ta
 - The dropdown also lists every installation the scan found, labeled with its version and location, such as `Python 3.12.4 (/opt/miniconda3/bin/python)`. Pick the one that has the packages you need.
 - **Custom Path** accepts the path to any `python` executable the scan did not find (a leading `~` works), typed directly or chosen with **Browse File**.
 
-A badge next to the selector reports whether the choice is usable: **Valid File** means a matching Python library was located, **Invalid** means it was not. The selection is saved and applies after restarting CyberEther.
+A badge next to the selector reports whether the choice is usable: **Valid File** means a matching Python library was located, **Invalid** means it was not. The selection is saved and applies after restarting CyberEther. The minimum supported version is Python 3.9. Older installations are reported as invalid and skipped by Auto.
 
 A useful rule of thumb: if `python -c "import numpy"` works in your terminal, selecting that same Python here makes the import work in the block too. Conversely, if an import fails inside the block, check which runtime is selected before reinstalling packages. The block may simply be running a different Python than your terminal.
 
