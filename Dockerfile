@@ -96,6 +96,7 @@ WORKDIR /workspace
 RUN git config --global --add safe.directory /workspace
 
 ARG BUILD_TYPE=release
+ARG RUN_TESTS=false
 ARG PREFIX=/usr
 
 RUN rm -rf build && \
@@ -110,5 +111,8 @@ RUN rm -rf build && \
       -Dremote=enabled \
       -Dinference=enabled && \
     meson compile -C build && \
+    if [ "${RUN_TESTS}" = "true" ]; then \
+      meson test -C build --print-errorlogs; \
+    fi && \
     meson install -C build && \
     rm -rf build subprojects

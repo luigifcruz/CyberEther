@@ -48,15 +48,15 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base }}
             BUILD_TYPE=release
+            RUN_TESTS=${{ !contains(matrix.tag, 'cuda') }}
 
       - name: Smoke test
         run: |
           docker run --rm local/cyberether:${{ matrix.tag }} test -f /usr/bin/cyberether
 
-      - name: Meson tests
-        if: ${{ !contains(matrix.tag, 'cuda') }}
+      - name: Verify build cleanup
         run: |
-          docker run --rm local/cyberether:${{ matrix.tag }} meson test -C /workspace/build --print-errorlogs
+          docker run --rm local/cyberether:${{ matrix.tag }} sh -c 'test ! -e /workspace/build && test ! -e /workspace/subprojects'
 
       - name: Save image artifact
         run: |
