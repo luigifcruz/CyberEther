@@ -145,6 +145,20 @@ JST_REGISTER_MODULE(BlueprintGainImplNativeCpu,
 When CyberEther loads a compatible target from the bundle, those static
 registrations are drained into the CyberEther registry.
 
+## Dependencies
+
+A plugin bundle is copied to machines you do not control, so its shared
+libraries should load without extra setup. The recommendation is to depend only
+on libraries that are commonly present on the target system, such as the C and
+C++ standard libraries, and to link everything else statically into the plugin
+library.
+
+If static linking is not possible for some dependency, the plugin documentation
+must clearly list every external dependency the user needs to install, including
+the expected version range and the package name on each supported system. A
+plugin that fails to load because of a missing shared library is hard for users
+to diagnose, so treat undocumented runtime dependencies as a packaging bug.
+
 ## Bundling
 
 Use the blueprint's `tools/bundler.py` to create `.cep` files. From your copied
