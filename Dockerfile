@@ -101,13 +101,14 @@ ARG PREFIX=/usr
 RUN rm -rf build && \
     meson setup build \
       --force-fallback-for=libffi,openssl \
-      --default-library=static \
+      --default-library=shared \
       -Dlibffi:default_library=static \
       -Dopenssl:default_library=static \
       -Dprefix=${PREFIX} \
       -Dbuildtype=${BUILD_TYPE} \
       -Dexamples=false \
       -Dremote=enabled \
-      -Dinference=enabled
-RUN meson compile -C build
-RUN meson install -C build
+      -Dinference=enabled && \
+    meson compile -C build && \
+    meson install -C build && \
+    rm -rf build subprojects
