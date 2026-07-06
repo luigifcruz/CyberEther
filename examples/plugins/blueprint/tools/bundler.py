@@ -125,7 +125,7 @@ def main():
         "--min-jetstream-version",
         dest="minimum_jetstream_version",
         required=True,
-        help="Minimum CyberEther/Jetstream version, for example 1.5.0.",
+        help="Minimum CyberEther/Jetstream version, for example 1.6.0.",
     )
     parser.add_argument(
         "--target",
