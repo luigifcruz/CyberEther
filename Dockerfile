@@ -101,7 +101,7 @@ ARG PREFIX=/usr
 RUN rm -rf build && \
     meson setup build \
       --force-fallback-for=libffi,openssl \
-      --default-library=static \
+      --default-library=shared \
       -Dlibffi:default_library=static \
       -Dopenssl:default_library=static \
       -Dprefix=${PREFIX} \
