@@ -105,7 +105,6 @@ Result Buffer::create(const DeviceType& device, const Buffer& source) {
     }
 
     if (!(impl->backend = MakeBackend(device))) {
-        JST_ERROR("[MEMORY:BUFFER] Unsupported device {}.", device);
         return Result::ERROR;
     }
 
