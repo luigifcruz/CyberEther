@@ -52,7 +52,8 @@ blocks:
 |-- subprojects/
 |   `-- cyberether.wrap
 |-- tools/
-|   `-- bundler.py
+|   |-- bundler.py
+|   `-- merger.py
 `-- meson.build
 ```
 
@@ -60,7 +61,8 @@ The public headers in `include/` define the block and module configuration.
 The source files in `src/` implement the block, implement the module, and
 register the native CPU provider. Files in `examples/` are bundled as plugin
 examples. The `tools/bundler.py` script creates the `.cep` bundle for the copied
-blueprint.
+blueprint, and `tools/merger.py` combines single-target bundles into one
+multi-target bundle.
 
 ## CEP Bundles
 
@@ -176,6 +178,32 @@ blueprint directory:
 
 Repeat `--target` for production bundles that include multiple compatible
 libraries. Repeat `--example` to include more example flowgraphs.
+
+## Merging Bundles
+
+Passing every target to a single `bundler.py` invocation requires all shared
+libraries to be available on one machine. Release automation usually builds
+each target on its own runner instead, producing one single-target `.cep` per
+platform. Use `tools/merger.py` to combine those into one multi-target bundle:
+
+```sh
+./tools/merger.py \
+  --output build/cyberether_blueprint_plugin.cep \
+  build/macos-arm64.cep \
+  build/linux-x86_64.cep
+```
+
+The merger validates the inputs before writing the output:
+
+- Every input bundle must have identical metadata, including the name,
+  version, and minimum Jetstream version.
+- Each `system`, `device`, and `arch` combination may appear in only one
+  input bundle.
+- Examples with the same path must have identical content. Matching examples
+  are deduplicated in the output.
+
+The output is written atomically, so an interrupted merge never leaves a
+partial `.cep` behind.
 
 ## Building Standalone
 
