@@ -108,6 +108,7 @@ RUN rm -rf build && \
       -Dbuildtype=${BUILD_TYPE} \
       -Dexamples=false \
       -Dremote=enabled \
-      -Dinference=enabled
-RUN meson compile -C build
-RUN meson install -C build
+      -Dinference=enabled && \
+    meson compile -C build && \
+    meson install -C build && \
+    rm -rf build subprojects
