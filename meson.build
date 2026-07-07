@@ -137,7 +137,7 @@ if jst_is_browser or jst_is_static
         link_whole: libjetstream
     )
 else
-    libjetstream = library(
+    libjetstream = shared_library(
         'jetstream',
         src_lst,
         cpp_args: ['-DJST_IS_LIBRARY'],
@@ -171,7 +171,9 @@ if not jst_is_static
     pkg = import('pkgconfig')
     pkg.generate(
         libjetstream,
-        libraries: dep_lst,
+        name: 'jetstream',
+        description: 'CyberEther',
+        version: meson.project_version(),
     )
 endif
 
