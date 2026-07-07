@@ -57,6 +57,7 @@ struct Superluminal::Impl {
 
     Result buildLinePlotGraph(PlotState& state);
     Result buildWaterfallPlotGraph(PlotState& state);
+    Result buildScatterPlotGraph(PlotState& state);
 
     struct GraphNode {
         std::string module;
@@ -852,8 +853,10 @@ Result Superluminal::Impl::createGraph() {
                 break;
             case Type::Interface:
                 break;
-            case Type::Heat:
             case Type::Scatter:
+                JST_CHECK(buildScatterPlotGraph(state));
+                break;
+            case Type::Heat:
                 JST_FATAL("[SUPERLUMINAL] Plot type for '{}' not implemented yet.", name);
                 break;
         }
@@ -1057,6 +1060,78 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
     // Update plot state.
 
     state.block = state.name + "_waterfall";
+
+    return Result::SUCCESS;
+}
+
+Result Superluminal::Impl::buildScatterPlotGraph(PlotState& state) {
+    JST_DEBUG("[SUPERLUMINAL] Building scatter plot graph named '{}'.", state.name);
+
+    // Access buffer metadata.
+
+    const auto& buf = state.config.buffer;
+
+    if (buf.dtype() != DataType::CF32) {
+        JST_ERROR("[SUPERLUMINAL] Scatter plot requires a complex (CF32) buffer.");
+        return Result::ERROR;
+    }
+
+    // Build graph.
+
+    auto graph = Graph{};
+    auto hash = std::to_string(BufferKey(buf));
+    auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
+    auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
+    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
+
+    if (state.config.channelAxis != -1 && state.config.channelIndex != -1) {
+        U64 axis = state.config.channelAxis;
+        U64 index = state.config.channelIndex;
+
+        // Parse slice string.
+
+        std::string slice;
+        for (U64 i = 0; i < buf.rank(); i++) {
+            if (i == axis) {
+                slice += jst::fmt::format("{}", index);
+            } else {
+                slice += jst::fmt::format(":");
+            }
+            if (i != buf.rank() - 1) {
+                slice += ",";
+            }
+        }
+        slice = jst::fmt::format("[{}]", slice);
+
+        // Create slice module.
+
+        graph.push_back({
+            "slice",
+            {"slice", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"slice", slice}},
+                {{"buffer", port}}},
+        });
+
+        graph.push_back({
+            "duplicate",
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+                {{"buffer", "${domain.slice.output.buffer}"}}},
+        });
+
+        port = jst::fmt::format("${{domain.duplicate.output.buffer}}");
+    }
+
+    graph.push_back({
+        "constellation",
+        {"constellation", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+            {{"signal", port}}},
+    });
+
+    JST_CHECK(flowgraph->importFromBlob(GraphToYaml(graph, state.name)));
+
+    // Update plot state.
+
+    state.block = state.name + "_constellation";
 
     return Result::SUCCESS;
 }
