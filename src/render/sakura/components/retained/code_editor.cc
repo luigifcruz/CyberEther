@@ -253,7 +253,7 @@ struct CodeEditorRoot : public Component {
         viewRect = frame();
 
         const bool visible = !viewRect.empty();
-        const auto editorBackground = ctx.color("editor_background");
+        const auto editorBackground = ctx.color(config.backgroundColorKey);
         const F32 pad = kStatusTextHorizontalPadding * pixelRatio();
         const F32 outline = outlineHeightPixels();
 
@@ -271,7 +271,7 @@ struct CodeEditorRoot : public Component {
                     : config.lineWrapping                            ? TextGrid::Wrap::Character
                                                                      : TextGrid::Wrap::None,
             .language = ToEditorLanguage(config.language),
-            .backgroundColorKey = "editor_background",
+            .backgroundColorKey = config.backgroundColorKey,
             .textColorKey = "editor_text",
             .lineNumberColorKey = "editor_line_number",
             .gutterSeparatorColorKey = "editor_gutter_separator",

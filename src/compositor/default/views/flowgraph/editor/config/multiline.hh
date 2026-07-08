@@ -24,6 +24,7 @@ struct FlowgraphConfigMultilineField {
             .id = this->config.id + "Editor",
             .value = this->config.encoded,
             .collapsible = collapsible,
+            .backgroundColorKey = "card",
             .onChange = [this](std::string value) {
                 auto values = this->config.values;
                 values[this->config.name] = std::move(value);

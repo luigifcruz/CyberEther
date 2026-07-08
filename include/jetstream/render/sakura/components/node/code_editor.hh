@@ -29,6 +29,7 @@ struct NodeCodeEditor {
         bool lineNumbers = true;
         bool lineWrapping = false;
         F32 editorFontSize = 15.0f;
+        std::string backgroundColorKey = "editor_background";
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;
     };
