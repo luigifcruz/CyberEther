@@ -15,19 +15,30 @@ struct FlowgraphConfigMultilineField {
             collapsible = parts.size() > 1 && parts[1] == "collapsible";
             parsedFormat = this->config.format;
         }
+        if (this->config.encoded != parsedEncoded) {
+            buffer = this->config.encoded;
+            parsedEncoded = this->config.encoded;
+        }
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
             .help = this->config.help,
         });
+        const bool dirty = buffer != parsedEncoded;
         editor.update({
             .id = this->config.id + "Editor",
-            .value = this->config.encoded,
+            .value = buffer,
+            .status = dirty ? "Edited. Press Ctrl+Enter to apply." : this->config.status,
+            .statusTone = dirty ? Sakura::NodeCodeEditor::StatusTone::Info : this->config.statusTone,
             .collapsible = collapsible,
             .backgroundColorKey = "card",
-            .onChange = [this](std::string value) {
+            .onChange = [this](std::string nextValue) {
+                buffer = std::move(nextValue);
+            },
+            .onSubmit = [this](std::string nextValue) {
+                buffer = std::move(nextValue);
                 auto values = this->config.values;
-                values[this->config.name] = std::move(value);
+                values[this->config.name] = buffer;
                 if (this->config.onApply) {
                     this->config.onApply(std::move(values), false);
                 }
@@ -44,6 +55,8 @@ struct FlowgraphConfigMultilineField {
  private:
     Config config;
     std::string parsedFormat;
+    std::string parsedEncoded;
+    std::string buffer;
     bool collapsible = false;
     Sakura::NodeField frame;
     Sakura::NodeCodeEditor editor;
