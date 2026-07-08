@@ -11,6 +11,7 @@
 #include "jetstream/types.hh"
 
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace Jetstream {
@@ -39,11 +40,17 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     if (Backend::Initialized<DeviceType::CPU>()) {
+        auto& backend = Backend::State<DeviceType::CPU>();
+        const auto hardwareThreads = std::thread::hardware_concurrency();
+        const auto hardwareThreadsText = hardwareThreads == 0 ? std::string("Unknown") : std::to_string(hardwareThreads);
+        const auto pythonRuntimePath = backend->getPythonRuntimePath().empty() ? std::string("Auto") : backend->getPythonRuntimePath();
         tables.push_back({
             .id = "AboutCpuBackend",
             .title = "CPU Backend",
             .rows = {
                 {"Status", "Initialized"},
+                {"Hardware Threads", hardwareThreadsText},
+                {"Python Runtime", pythonRuntimePath},
             },
         });
     }
@@ -57,13 +64,15 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "CUDA Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Type", jst::fmt::format("{}", backend->getPhysicalDeviceType())},
                 {"API Version", backend->getApiVersion()},
                 {"Compute Capability", backend->getComputeCapability()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
-                {"Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
-                {"Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
-                {"Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
+                {"Interoperability", ""},
+                {"Can Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
+                {"Can Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
+                {"Can Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
             },
         });
     }
@@ -77,10 +86,11 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "Metal Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Type", jst::fmt::format("{}", backend->getPhysicalDeviceType())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
-                {"Processors", jst::fmt::format("{}", backend->getActiveProcessorCount())},
+                {"Processor Count", jst::fmt::format("{}/{}", backend->getActiveProcessorCount(), backend->getTotalProcessorCount())},
                 {"Low Power Mode", backend->getLowPowerStatus() ? "Yes" : "No"},
                 {"Thermal State", jst::fmt::format("{}", backend->getThermalState())},
             },
@@ -96,9 +106,16 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "Vulkan Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Type", jst::fmt::format("{}", backend->getPhysicalDeviceType())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
+                {"Processor Count", jst::fmt::format("{}", backend->getTotalProcessorCount())},
+                {"Staging Buffer", jst::fmt::format("{:.2f} MB", static_cast<F32>(backend->getStagingBufferSize()) / JST_MB)},
+                {"Interoperability", ""},
+                {"Can Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
+                {"Can Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
+                {"Can Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
                 {"Low Power Mode", backend->getLowPowerStatus() ? "Yes" : "No"},
                 {"Thermal State", jst::fmt::format("{}", backend->getThermalState())},
             },
@@ -114,9 +131,12 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "WebGPU Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Type", jst::fmt::format("{}", backend->getPhysicalDeviceType())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
+                {"Processor Count", jst::fmt::format("{}", backend->getTotalProcessorCount())},
+                {"Staging Buffer", jst::fmt::format("{:.2f} MB", static_cast<F32>(backend->getStagingBufferSize()) / JST_MB)},
                 {"Low Power Mode", backend->getLowPowerStatus() ? "Yes" : "No"},
                 {"Thermal State", jst::fmt::format("{}", backend->getThermalState())},
             },

@@ -25,6 +25,9 @@ class WebGPU {
     bool hasUnifiedMemory() const;
     U64 getPhysicalMemory() const;
     U64 getTotalProcessorCount() const;
+    const U64& getStagingBufferSize() const {
+        return config.stagingBufferSize;
+    }
     bool getLowPowerStatus() const;
     U64 getThermalState() const;
 
