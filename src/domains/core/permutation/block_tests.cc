@@ -25,6 +25,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("perm_block", saved) == Result::SUCCESS);
     REQUIRE(saved.contains("permutation"));
+    REQUIRE(saved.contains("contiguous"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -60,6 +61,34 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(updatedOut.shape(0) == 1);
     REQUIRE(updatedOut.shape(1) == 16);
     REQUIRE(viewBlock("perm_recfg").state == Block::State::Created);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Permutation block materializes contiguous output when requested",
+                 "[modules][permutation][block][contiguous]") {
+    Blocks::Window source;
+    source.size = 16;
+    REQUIRE(flowgraph->blockCreate("perm_contig_src", source, {}) == Result::SUCCESS);
+
+    Blocks::ExpandDims expand;
+    expand.axis = 1;
+
+    TensorMap expandInputs;
+    expandInputs["buffer"].requested("perm_contig_src", "window");
+    REQUIRE(flowgraph->blockCreate("perm_contig_expand", expand, expandInputs) == Result::SUCCESS);
+
+    Blocks::Permutation config;
+    config.permutation = {1, 0};
+    config.contiguous = true;
+
+    TensorMap inputs;
+    inputs["buffer"].requested("perm_contig_expand", "buffer");
+    REQUIRE(flowgraph->blockCreate("perm_contig", config, inputs) == Result::SUCCESS);
+
+    const Tensor output = viewBlock("perm_contig").outputs.at("buffer").tensor;
+    REQUIRE(output.shape(0) == 1);
+    REQUIRE(output.shape(1) == 16);
+    REQUIRE(output.contiguous());
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
