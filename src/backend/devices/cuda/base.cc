@@ -126,7 +126,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("Interoperability:");
     JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
-    JST_INFO("  - Can Export Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Import Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
     JST_INFO("-----------------------------------------------------");
 }
 
