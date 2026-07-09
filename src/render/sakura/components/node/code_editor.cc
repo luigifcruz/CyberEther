@@ -37,6 +37,7 @@ bool NodeCodeEditor::update(Config config) {
         .lineNumbers = impl->config.lineNumbers,
         .lineWrapping = impl->config.lineWrapping,
         .editorFontSize = impl->config.editorFontSize,
+        .backgroundColorKey = impl->config.backgroundColorKey,
         .onChange = impl->config.onChange,
         .onSubmit = impl->config.onSubmit,
     });
@@ -44,13 +45,8 @@ bool NodeCodeEditor::update(Config config) {
 }
 
 void NodeCodeEditor::render(const Context& ctx) const {
-    const ImVec4 background = Private::ImColor(ctx, "card");
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
-    ImGui::PushStyleColor(ImGuiCol_Button, background);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, background);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, background);
     impl->editor.render(ctx);
-    ImGui::PopStyleColor(3);
     ImGui::PopStyleVar();
 }
 
