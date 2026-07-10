@@ -3,6 +3,7 @@
 import gzip
 import json
 import os
+import shutil
 import struct
 import sys
 import urllib.request
@@ -126,9 +127,7 @@ def emit_compressed(fh, filename, filepath):
 
 # Download missing GeoJSON files from Natural Earth.
 
-GEODATA_BASE_URL = (
-    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
-)
+GEODATA_BASE_URL = "https://cdn.cyberether.org/geodata/"
 
 
 def download_if_missing(filepath):
@@ -136,10 +135,20 @@ def download_if_missing(filepath):
         return
     filename = os.path.basename(filepath)
     url = GEODATA_BASE_URL + filename
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "CyberEther/1.0 (+https://github.com/luigifcruz/CyberEther)"},
+    )
+    temporary_filepath = filepath + ".part"
     print(f"[GEODATA] Downloading {filename}...")
     try:
-        urllib.request.urlretrieve(url, filepath)
+        with urllib.request.urlopen(request) as response:
+            with open(temporary_filepath, "wb") as output:
+                shutil.copyfileobj(response, output)
+        os.replace(temporary_filepath, filepath)
     except Exception as e:
+        if os.path.exists(temporary_filepath):
+            os.remove(temporary_filepath)
         print(f"[GEODATA] Failed to download {filename}: {e}", file=sys.stderr)
         sys.exit(1)
     size_mb = os.path.getsize(filepath) / (1024 * 1024)
