@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -129,7 +131,23 @@ void destroyPythonCompute(const std::shared_ptr<Module>& module) {
 
 TEST_CASE("Python runtime discovery removes executable aliases", "[runtime][python]") {
     const auto candidates = PythonRuntimeContext::DiscoverRuntimes();
+#if defined(_WIN32)
+    REQUIRE_FALSE(candidates.empty());
+#endif
     for (U64 i = 0; i < candidates.size(); ++i) {
+        const auto validation = PythonRuntimeContext::ValidateRuntimePath(candidates[i].path);
+        CAPTURE(candidates[i].path);
+        CHECK(validation.valid);
+        CHECK(equivalentPaths(validation.libraryPath, candidates[i].libraryPath));
+#if defined(_WIN32)
+        CHECK_FALSE(validation.programPath.empty());
+        auto programName = std::filesystem::path(validation.programPath).filename().string();
+        std::ranges::transform(programName, programName.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        CHECK(programName != "py.exe");
+#endif
+
         for (U64 j = i + 1; j < candidates.size(); ++j) {
             const auto firstDirectory = std::filesystem::path(candidates[i].path).parent_path();
             const auto secondDirectory = std::filesystem::path(candidates[j].path).parent_path();
