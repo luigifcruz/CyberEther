@@ -112,6 +112,21 @@ Result TestContext::run() {
     for (const auto& [name, entry] : pimpl->module->outputs()) {
         if (entry.tensor.device() == DeviceType::CPU) {
             pimpl->cpuOutputs[name] = entry.tensor;
+        } else if (entry.tensor.device() == DeviceType::CUDA &&
+                   entry.tensor.contiguous() &&
+                   entry.tensor.offset() == 0 &&
+                   entry.tensor.sizeBytes() == entry.tensor.buffer().sizeBytes()) {
+            Tensor cpuOutput;
+            JST_CHECK(cpuOutput.create(DeviceType::CPU,
+                                       entry.tensor.dtype(),
+                                       entry.tensor.shape()));
+
+            Tensor deviceMappedOutput;
+            JST_CHECK(deviceMappedOutput.create(entry.tensor.device(), cpuOutput));
+            JST_CHECK(deviceMappedOutput.copyFrom(entry.tensor));
+            JST_CHECK(cpuOutput.propagateAttributes(entry.tensor));
+
+            pimpl->cpuOutputs[name] = cpuOutput;
         } else {
             pimpl->cpuOutputs[name] = Tensor(DeviceType::CPU, entry.tensor);
         }
