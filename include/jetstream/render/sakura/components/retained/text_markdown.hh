@@ -15,6 +15,7 @@ struct TextMarkdown : public Component {
         std::string id;
         std::string value;
         F32 fontSize = 15.0f;
+        bool scrollbar = false;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
         std::string lineNumberColorKey = "editor_line_number";

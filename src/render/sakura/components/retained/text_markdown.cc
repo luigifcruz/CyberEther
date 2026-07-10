@@ -481,7 +481,7 @@ struct TextMarkdown::Impl {
             .fontName = kBodyFont,
             .monospace = false,
             .showActiveLine = false,
-            .scrollbar = false,
+            .scrollbar = config.scrollbar,
             .wrap = TextGrid::Wrap::Word,
             .lineScale = lineScale,
             .lineTopGap = lineTopGap,
