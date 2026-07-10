@@ -1126,6 +1126,51 @@ TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with diamond dependency", "
     }
 }
 
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Block recreation topologically orders uneven converging branches",
+                 "[flowgraph][recreation]") {
+    // Topology:
+    //        ┌──► short ───────────────────┐
+    // gen1 ──┤                             ├──► merge
+    //        └──► long1 ──► long2 ──► long3 ──┘
+
+    REQUIRE(flowgraph->blockCreate("gen1", "signal_generator", {}, {}) == Result::SUCCESS);
+
+    TensorMap shortInputs;
+    shortInputs["buffer"].requested("gen1", "signal");
+    REQUIRE(flowgraph->blockCreate("short", "duplicate", {}, shortInputs) == Result::SUCCESS);
+
+    TensorMap long1Inputs;
+    long1Inputs["buffer"].requested("gen1", "signal");
+    REQUIRE(flowgraph->blockCreate("long1", "duplicate", {}, long1Inputs) == Result::SUCCESS);
+
+    TensorMap long2Inputs;
+    long2Inputs["buffer"].requested("long1", "buffer");
+    REQUIRE(flowgraph->blockCreate("long2", "duplicate", {}, long2Inputs) == Result::SUCCESS);
+
+    TensorMap long3Inputs;
+    long3Inputs["buffer"].requested("long2", "buffer");
+    REQUIRE(flowgraph->blockCreate("long3", "duplicate", {}, long3Inputs) == Result::SUCCESS);
+
+    TensorMap mergeInputs;
+    mergeInputs["a"].requested("short", "buffer");
+    mergeInputs["b"].requested("long3", "buffer");
+    REQUIRE(flowgraph->blockCreate("merge", "add", {}, mergeInputs) == Result::SUCCESS);
+
+    Parser::Map newConfig;
+    newConfig["bufferSize"] = std::string("1024");
+    REQUIRE(flowgraph->blockReconfigure("gen1", newConfig) == Result::SUCCESS);
+
+    for (const auto& name : {"gen1", "short", "long1", "long2", "long3", "merge"}) {
+        REQUIRE(viewBlock(name).state == Block::State::Created);
+    }
+
+    const auto merge = viewBlock("merge");
+    REQUIRE(merge.outputs.at("sum").tensor.shape() == Shape{1024});
+    REQUIRE(merge.inputs.at("b").external.has_value());
+    REQUIRE(merge.inputs.at("b").external->block == "long3");
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Block recreation with fan-out", "[flowgraph][recreation]") {
     // Topology:
     //        ┌──► add1

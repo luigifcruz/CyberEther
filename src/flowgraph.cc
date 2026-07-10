@@ -264,7 +264,6 @@ Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& res
 }
 
 std::vector<std::string> Flowgraph::Impl::collectDownstream(const std::string& name) const {
-    std::vector<std::string> result;
     std::queue<std::string> queue;
     std::unordered_set<std::string> visited;
 
@@ -283,7 +282,6 @@ std::vector<std::string> Flowgraph::Impl::collectDownstream(const std::string& n
         }
 
         visited.insert(current);
-        result.push_back(current);
 
         if (edges.contains(current)) {
             for (const auto& dep : edges.at(current)) {
@@ -291,6 +289,14 @@ std::vector<std::string> Flowgraph::Impl::collectDownstream(const std::string& n
                     queue.push(dep);
                 }
             }
+        }
+    }
+
+    std::vector<std::string> result;
+    result.reserve(visited.size());
+    for (const auto& block : blockOrder) {
+        if (visited.contains(block)) {
+            result.push_back(block);
         }
     }
 
