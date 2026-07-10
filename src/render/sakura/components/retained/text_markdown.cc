@@ -29,6 +29,7 @@ constexpr F32 kCodePadRatio = 0.4f;
 constexpr F32 kRuleThicknessRatio = 0.12f;
 constexpr F32 kQuoteBarRatio = 0.18f;
 constexpr F32 kQuoteIndentEmRatio = 0.4f;
+constexpr F32 kScrollbarGutterFontRatio = 14.0f / 15.0f;
 constexpr const char* kBodyFont = "default_body";
 
 using StyleId = TextGrid::StyleId;
@@ -569,6 +570,9 @@ void TextMarkdown::layout(const Context& ctx) {
     const F32 barWidth = body * kQuoteBarRatio;
     const F32 ruleThick = std::max(1.0f, body * kRuleThicknessRatio);
     const F32 dotSize = std::max(2.0f, body * 0.22f);
+    const bool scrollbarVisible = impl->config.scrollbar && metrics.contentHeight > rect.height;
+    const F32 decorationWidth = std::max(
+        0.0f, rect.width - (scrollbarVisible ? body * kScrollbarGutterFontRatio : 0.0f));
     const bool on = !rect.empty();
     const auto codeBg = ctx.color(impl->config.scrollbarTrackColorKey);
     const auto barColor = ctx.color(impl->config.lineNumberColorKey);
@@ -585,7 +589,7 @@ void TextMarkdown::layout(const Context& ctx) {
 
         if (d.rule) {
             decoInstances.push_back({
-                .rect = {rect.x, top + lineHeight * 0.5f - ruleThick * 0.5f, rect.width, ruleThick},
+                .rect = {rect.x, top + lineHeight * 0.5f - ruleThick * 0.5f, decorationWidth, ruleThick},
                 .visible = on,
                 .backgroundColor = ruleColor,
             });
@@ -594,7 +598,7 @@ void TextMarkdown::layout(const Context& ctx) {
         if (d.code) {
             const F32 bottom = sourceLineTop(d.last) + sourceLineHeight(d.last);
             decoInstances.push_back({
-                .rect = {rect.x, top - codePad, rect.width, (bottom - top) + 2.0f * codePad},
+                .rect = {rect.x, top - codePad, decorationWidth, (bottom - top) + 2.0f * codePad},
                 .visible = on,
                 .backgroundColor = codeBg,
             });
