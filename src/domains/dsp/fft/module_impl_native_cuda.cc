@@ -62,9 +62,30 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
 
     const unsigned long long batch = index / transformLength;
     const unsigned long long outputIndex = index % transformLength;
-    const KernelComplex* spectrum = reinterpret_cast<const KernelComplex*>(input);
+
+    if (mode == 3) {
+        if (outputIndex >= spectrumLength) {
+            return;
+        }
+
+        const float* packed = reinterpret_cast<const float*>(input);
+        const unsigned long long batchOffset = batch * transformLength;
+        KernelComplex value = {packed[batchOffset], 0.0f};
+        if (outputIndex > 0) {
+            const unsigned long long realIndex = (2 * outputIndex) - 1;
+            const unsigned long long imaginaryIndex = realIndex + 1;
+            value.real = packed[batchOffset + realIndex];
+            if (imaginaryIndex < transformLength) {
+                value.imag = packed[batchOffset + imaginaryIndex];
+            }
+        }
+
+        reinterpret_cast<KernelComplex*>(output)[(batch * spectrumLength) + outputIndex] = value;
+        return;
+    }
 
     if (mode == 1) {
+        const KernelComplex* spectrum = reinterpret_cast<const KernelComplex*>(input);
         float value;
         if (outputIndex == 0) {
             value = spectrum[batch * spectrumLength].real;
@@ -83,6 +104,7 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
         return;
     }
 
+    const KernelComplex* spectrum = reinterpret_cast<const KernelComplex*>(input);
     KernelComplex value = {0.0f, 0.0f};
     if (outputIndex < spectrumLength) {
         value = spectrum[(batch * spectrumLength) + outputIndex];
@@ -104,6 +126,7 @@ enum class LayoutMode : I32 {
     Gather = 0,
     PackReal = 1,
     ExpandComplex = 2,
+    UnpackReal = 3,
 };
 
 Result CheckCufft(const cufftResult status, const std::string_view operation) {
@@ -192,9 +215,12 @@ Result FftImplNativeCuda::computeInitialize() {
 
     long long dimensions[] = {static_cast<long long>(transformLength)};
     const auto cufftBatchSize = static_cast<long long>(batchSize);
-    const cufftType cufftTransformType = transformType == TransformType::C2C
-                                             ? CUFFT_C2C
-                                             : CUFFT_R2C;
+    cufftType cufftTransformType = CUFFT_R2C;
+    if (transformType == TransformType::C2C) {
+        cufftTransformType = CUFFT_C2C;
+    } else if (transformType == TransformType::R2R && !forward) {
+        cufftTransformType = CUFFT_C2R;
+    }
     std::size_t workSize = 0;
 
     JST_CHECK(CheckCufft(cufftMakePlanMany64(plan,
@@ -329,10 +355,18 @@ Result FftImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         transformInput = stagingData;
     }
 
+    if (transformType == TransformType::R2R && !forward) {
+        JST_CHECK(scheduleLayout(stream, transformInput, spectrumData, LayoutMode::UnpackReal));
+        return CheckCufft(cufftExecC2R(plan,
+                                       reinterpret_cast<cufftComplex*>(spectrumData),
+                                       reinterpret_cast<cufftReal*>(outputData)),
+                          "cufftExecC2R");
+    }
+
     JST_CHECK(CheckCufft(cufftExecR2C(plan,
                                       reinterpret_cast<cufftReal*>(transformInput),
                                       reinterpret_cast<cufftComplex*>(spectrumData)),
-                           "cufftExecR2C"));
+                         "cufftExecR2C"));
 
     const LayoutMode outputMode = transformType == TransformType::R2R
                                       ? LayoutMode::PackReal

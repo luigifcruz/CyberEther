@@ -109,7 +109,7 @@ Result FftImplNativeCpu::kernelR2R() {
                            inputStride,
                            outputStride,
                            axes,
-                           true,  // real2hermitian
+                           forward,
                            forward,
                            input.data<F32>(),
                            output.data<F32>(),
