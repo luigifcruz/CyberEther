@@ -126,9 +126,7 @@ def emit_compressed(fh, filename, filepath):
 
 # Download missing GeoJSON files from Natural Earth.
 
-GEODATA_BASE_URL = (
-    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
-)
+GEODATA_BASE_URL = "https://cdn.cyberether.org/geodata/"
 
 
 def download_if_missing(filepath):
