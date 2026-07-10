@@ -460,6 +460,21 @@ std::string CandidateLabel(const std::string& path, const PythonRuntimeContext::
     return name + " (" + path + ")";
 }
 
+bool PathsEquivalent(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+    std::error_code ec;
+    return lhs == rhs || (std::filesystem::equivalent(lhs, rhs, ec) && !ec);
+}
+
+bool ContainsRuntimeCandidate(const std::vector<PythonRuntimeContext::Candidate>& candidates,
+                              const std::string& path,
+                              const std::string& libraryPath) {
+    const auto directory = std::filesystem::path(path).parent_path();
+    return std::ranges::any_of(candidates, [&](const auto& candidate) {
+        return PathsEquivalent(std::filesystem::path(candidate.path).parent_path(), directory) &&
+               PathsEquivalent(candidate.libraryPath, libraryPath);
+    });
+}
+
 PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::string& path) {
     PythonRuntimeContext::Validation validation;
     const auto expandedPath = ExpandUserPath(path);
@@ -515,6 +530,9 @@ std::vector<PythonRuntimeContext::Candidate> DiscoverRuntimeCandidatesInOrder() 
     for (const auto& path : paths) {
         const auto validation = ValidateExplicitPythonRuntimePath(path);
         if (!validation.valid) {
+            continue;
+        }
+        if (ContainsRuntimeCandidate(candidates, path, validation.libraryPath)) {
             continue;
         }
 

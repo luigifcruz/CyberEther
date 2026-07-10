@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -113,6 +114,11 @@ bool optionalPythonRuntimeUnavailable() {
            error.find("No loadable libpython was found") != std::string::npos;
 }
 
+bool equivalentPaths(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+    std::error_code ec;
+    return lhs == rhs || (std::filesystem::equivalent(lhs, rhs, ec) && !ec);
+}
+
 void destroyPythonCompute(const std::shared_ptr<Module>& module) {
     auto pythonContext = std::dynamic_pointer_cast<PythonRuntimeContext>(module->context()->runtime());
     REQUIRE(pythonContext != nullptr);
@@ -120,6 +126,20 @@ void destroyPythonCompute(const std::shared_ptr<Module>& module) {
 }
 
 }  // namespace
+
+TEST_CASE("Python runtime discovery removes executable aliases", "[runtime][python]") {
+    const auto candidates = PythonRuntimeContext::DiscoverRuntimes();
+    for (U64 i = 0; i < candidates.size(); ++i) {
+        for (U64 j = i + 1; j < candidates.size(); ++j) {
+            const auto firstDirectory = std::filesystem::path(candidates[i].path).parent_path();
+            const auto secondDirectory = std::filesystem::path(candidates[j].path).parent_path();
+            const bool aliases = equivalentPaths(firstDirectory, secondDirectory) &&
+                                 equivalentPaths(candidates[i].libraryPath, candidates[j].libraryPath);
+            CAPTURE(candidates[i].path, candidates[j].path);
+            CHECK_FALSE(aliases);
+        }
+    }
+}
 
 TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[runtime][python]") {
     Tensor input;
