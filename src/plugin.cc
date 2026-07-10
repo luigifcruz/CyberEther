@@ -22,24 +22,6 @@
 
 #include <zlib.h>
 
-#if defined(JST_OS_WINDOWS)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#ifdef ERROR
-#undef ERROR
-#endif
-#ifdef FATAL
-#undef FATAL
-#endif
-#elif !defined(JST_OS_BROWSER)
-#include <dlfcn.h>
-#endif
-
 namespace Jetstream {
 
 struct Plugin::Impl {
@@ -118,7 +100,6 @@ struct Plugin::Impl {
     std::vector<Plugin::Info> list();
 
  private:
-    static std::string pathToUtf8(const std::filesystem::path& path);
     static std::string normalizePath(const std::string& path);
     static std::string cacheFileName(const std::string& sourcePath, uint64_t generation);
     static std::string lowercase(std::string value);
@@ -130,7 +111,7 @@ struct Plugin::Impl {
     static bool safeRelativePath(const std::string& rawPath, std::filesystem::path& relativePath);
 
     static void closeHandle(void* handle);
-    static const JetstreamPluginAbi* loadAbi(void* handle);
+    static const JetstreamPluginAbi* loadAbi(void* handle, std::string& error);
 
     static Result readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes);
     static Result readTextFile(const std::filesystem::path& path, std::string& content);
@@ -181,38 +162,26 @@ Plugin::Impl::~Impl() {
     cleanup();
 }
 
-std::string Plugin::Impl::pathToUtf8(const std::filesystem::path& path) {
-    const auto utf8Path = path.u8string();
-
-    std::string value;
-    value.reserve(utf8Path.size());
-    for (const auto ch : utf8Path) {
-        value.push_back(static_cast<char>(ch));
-    }
-
-    return value;
-}
-
 std::string Plugin::Impl::normalizePath(const std::string& path) {
     std::error_code ec;
-    const auto inputPath = std::filesystem::u8path(path);
+    const auto inputPath = Platform::PathFromUtf8(path);
 
     const auto canonicalPath = std::filesystem::weakly_canonical(inputPath, ec);
     if (!ec) {
-        return pathToUtf8(canonicalPath);
+        return Platform::PathToUtf8(canonicalPath);
     }
 
     ec.clear();
     const auto absolutePath = std::filesystem::absolute(inputPath, ec);
     if (!ec) {
-        return pathToUtf8(absolutePath);
+        return Platform::PathToUtf8(absolutePath);
     }
 
     return path;
 }
 
 std::string Plugin::Impl::cacheFileName(const std::string& sourcePath, uint64_t generation) {
-    auto filename = pathToUtf8(std::filesystem::u8path(sourcePath).filename());
+    auto filename = Platform::PathToUtf8(Platform::PathFromUtf8(sourcePath).filename());
     if (filename.empty()) {
         filename = "plugin";
     }
@@ -362,30 +331,12 @@ bool Plugin::Impl::safeRelativePath(const std::string& rawPath, std::filesystem:
 }
 
 void Plugin::Impl::closeHandle(void* handle) {
-    if (handle == nullptr) {
-        return;
-    }
-
-#if defined(JST_OS_WINDOWS)
-    FreeLibrary(reinterpret_cast<HMODULE>(handle));
-#elif !defined(JST_OS_BROWSER)
-    dlclose(handle);
-#else
-    (void)handle;
-#endif
+    Platform::CloseDynamicLibrary(handle);
 }
 
-const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle) {
-#if defined(JST_OS_WINDOWS)
+const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle, std::string& error) {
     return reinterpret_cast<const JetstreamPluginAbi*>(
-        GetProcAddress(reinterpret_cast<HMODULE>(handle), JETSTREAM_PLUGIN_ABI_SYMBOL));
-#elif !defined(JST_OS_BROWSER)
-    dlerror();
-    return reinterpret_cast<const JetstreamPluginAbi*>(dlsym(handle, JETSTREAM_PLUGIN_ABI_SYMBOL));
-#else
-    (void)handle;
-    return nullptr;
-#endif
+        Platform::LoadDynamicLibrarySymbol(handle, JETSTREAM_PLUGIN_ABI_SYMBOL, error));
 }
 
 Result Plugin::Impl::readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes) {
@@ -817,7 +768,7 @@ Result Plugin::Impl::copyToCache(const std::string& sourcePath, std::string& cac
     const auto destination = cacheRunDirectory / cacheFileName(sourcePath, ++cacheGeneration);
 
     std::error_code ec;
-    std::filesystem::copy_file(std::filesystem::u8path(sourcePath),
+    std::filesystem::copy_file(Platform::PathFromUtf8(sourcePath),
                                destination,
                                std::filesystem::copy_options::overwrite_existing,
                                ec);
@@ -831,7 +782,7 @@ Result Plugin::Impl::copyToCache(const std::string& sourcePath, std::string& cac
         return Result::ERROR;
     }
 
-    cachedPath = pathToUtf8(destination);
+    cachedPath = Platform::PathToUtf8(destination);
     return Result::SUCCESS;
 }
 
@@ -843,7 +794,7 @@ Result Plugin::Impl::ensureCacheReady() {
     std::string cachePath;
     JST_CHECK(Platform::CachePath(cachePath));
 
-    const auto cacheRoot = std::filesystem::u8path(cachePath) / "registry-plugins";
+    const auto cacheRoot = Platform::PathFromUtf8(cachePath) / "registry-plugins";
     const auto runsDirectory = cacheRoot / "runs";
 
     std::error_code ec;
@@ -854,7 +805,7 @@ Result Plugin::Impl::ensureCacheReady() {
     }
 
     Platform::FileLock maintenanceLock;
-    JST_CHECK(maintenanceLock.acquire(pathToUtf8(cacheRoot / "maintenance.lock")));
+    JST_CHECK(maintenanceLock.acquire(Platform::PathToUtf8(cacheRoot / "maintenance.lock")));
 
     sweepCache(runsDirectory);
     JST_CHECK(createCacheRunDirectory(runsDirectory));
@@ -871,7 +822,7 @@ Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDi
 
         ec.clear();
         if (std::filesystem::create_directory(candidate, ec)) {
-            if (cacheOwnerLock.acquire(pathToUtf8(candidate / "owner.lock")) != Result::SUCCESS) {
+            if (cacheOwnerLock.acquire(Platform::PathToUtf8(candidate / "owner.lock")) != Result::SUCCESS) {
                 std::error_code cleanupEc;
                 (void)std::filesystem::remove_all(candidate, cleanupEc);
                 return Result::ERROR;
@@ -908,7 +859,7 @@ Result Plugin::Impl::extractToCache(const std::string& sourcePath, std::string& 
         return Result::ERROR;
     }
 
-    extractedPath = pathToUtf8(destination);
+    extractedPath = Platform::PathToUtf8(destination);
     return Result::SUCCESS;
 }
 
@@ -927,7 +878,7 @@ void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
         }
 
         Platform::FileLock staleOwnerLock;
-        const auto lockResult = staleOwnerLock.acquire(pathToUtf8(entry.path() / "owner.lock"), false);
+        const auto lockResult = staleOwnerLock.acquire(Platform::PathToUtf8(entry.path() / "owner.lock"), false);
         if (lockResult != Result::SUCCESS) {
             continue;
         }
@@ -1126,7 +1077,7 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
         }
 
         void* handle = nullptr;
-        const auto libraryPath = pathToUtf8(bundlePath / relativePath);
+        const auto libraryPath = Platform::PathToUtf8(bundlePath / relativePath);
         if (openPlugin(libraryPath, handle) != Result::SUCCESS) {
             if (handle != nullptr) {
                 closeHandle(handle);
@@ -1168,17 +1119,10 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
 
 Result Plugin::Impl::openPlugin(const std::string& path, void*& handle) {
     handle = nullptr;
+    std::string error;
 
     try {
-#if defined(JST_OS_WINDOWS)
-        handle = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
-#elif defined(JST_OS_BROWSER)
-        JST_ERROR("[PLUGIN] Plugins are not supported in this platform.");
-        return Result::ERROR;
-#else
-        dlerror();
-        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-#endif
+        handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Local, error);
     } catch (const Result& status) {
         JST_ERROR("[PLUGIN] Exception while loading plugin '{}': {}", path, status);
         return Result::ERROR;
@@ -1190,35 +1134,23 @@ Result Plugin::Impl::openPlugin(const std::string& path, void*& handle) {
         return Result::ERROR;
     }
 
-#if defined(JST_OS_WINDOWS)
     if (handle == nullptr) {
-        JST_ERROR("[PLUGIN] Failed to load plugin '{}'.", path);
+        JST_ERROR("[PLUGIN] Failed to load plugin '{}': {}", path, error);
         return Result::ERROR;
     }
-#elif !defined(JST_OS_BROWSER)
-    if (handle == nullptr) {
-        const char* error = dlerror();
-        JST_ERROR("[PLUGIN] Failed to load plugin '{}': {}", path, error != nullptr ? error : "unknown error");
-        return Result::ERROR;
-    }
-#endif
 
     JST_CHECK(validatePluginAbi(path, handle));
     return Result::SUCCESS;
 }
 
 Result Plugin::Impl::validatePluginAbi(const std::string& path, void* handle) {
-    const auto abi = loadAbi(handle);
+    std::string error;
+    const auto abi = loadAbi(handle, error);
     if (abi == nullptr) {
-#if defined(JST_OS_WINDOWS)
-        JST_ERROR("[PLUGIN] Plugin '{}' does not export '{}'.", path, JETSTREAM_PLUGIN_ABI_SYMBOL);
-#elif !defined(JST_OS_BROWSER)
-        const char* error = dlerror();
         JST_ERROR("[PLUGIN] Plugin '{}' does not export '{}': {}.",
                   path,
                   JETSTREAM_PLUGIN_ABI_SYMBOL,
-                  error != nullptr ? error : "unknown error");
-#endif
+                  error);
         return Result::ERROR;
     }
 

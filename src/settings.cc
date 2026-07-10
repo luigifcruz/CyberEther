@@ -32,7 +32,7 @@ Result Settings::Impl::ResolvePath(std::filesystem::path& path) {
     std::string configPath;
     JST_CHECK(Platform::ConfigPath(configPath));
 
-    path = std::filesystem::u8path(configPath) / Filename;
+    path = Platform::PathFromUtf8(configPath) / Filename;
     return Result::SUCCESS;
 }
 

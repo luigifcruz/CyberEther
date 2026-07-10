@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_PLATFORM_HH
 #define JETSTREAM_PLATFORM_HH
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -11,6 +12,22 @@
 #include "jetstream/logger.hh"
 
 namespace Jetstream::Platform {
+
+enum class DynamicLibraryVisibility {
+    Local,
+    Global,
+};
+
+JETSTREAM_API std::filesystem::path PathFromUtf8(const std::string& path);
+JETSTREAM_API std::string PathToUtf8(const std::filesystem::path& path);
+
+JETSTREAM_API void* OpenDynamicLibrary(const std::string& path,
+                                       DynamicLibraryVisibility visibility,
+                                       std::string& error);
+JETSTREAM_API void CloseDynamicLibrary(void* handle);
+JETSTREAM_API void* LoadDynamicLibrarySymbol(void* handle,
+                                             const char* symbol,
+                                             std::string& error);
 
 class JETSTREAM_API FileLock {
  public:

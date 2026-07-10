@@ -8,6 +8,7 @@
 #include <utility>
 
 #if !defined(JST_OS_WINDOWS) && !defined(JST_OS_BROWSER)
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
@@ -80,6 +81,86 @@ EM_JS(void, _jst_start_pick_folder, (), {
 
 namespace Jetstream::Platform {
 
+std::filesystem::path PathFromUtf8(const std::string& path) {
+    return std::filesystem::path(std::u8string(path.begin(), path.end()));
+}
+
+std::string PathToUtf8(const std::filesystem::path& path) {
+    const auto utf8Path = path.u8string();
+    return std::string(utf8Path.begin(), utf8Path.end());
+}
+
+void* OpenDynamicLibrary(const std::string& path,
+                         DynamicLibraryVisibility visibility,
+                         std::string& error) {
+    error.clear();
+
+#if defined(JST_OS_WINDOWS)
+    (void)visibility;
+    const auto nativePath = PathFromUtf8(path);
+    auto* handle = LoadLibraryW(nativePath.c_str());
+    if (!handle) {
+        error = "Windows error " + std::to_string(GetLastError());
+    }
+    return reinterpret_cast<void*>(handle);
+#elif defined(JST_OS_BROWSER)
+    (void)path;
+    (void)visibility;
+    error = "dynamic libraries are not supported on this platform";
+    return nullptr;
+#else
+    dlerror();
+    const int flags = RTLD_NOW |
+                      (visibility == DynamicLibraryVisibility::Global ? RTLD_GLOBAL : RTLD_LOCAL);
+    void* handle = dlopen(path.c_str(), flags);
+    if (!handle) {
+        if (const char* loaderError = dlerror()) {
+            error = loaderError;
+        } else {
+            error = "unknown dynamic library error";
+        }
+    }
+    return handle;
+#endif
+}
+
+void CloseDynamicLibrary(void* handle) {
+    if (!handle) {
+        return;
+    }
+
+#if defined(JST_OS_WINDOWS)
+    (void)FreeLibrary(reinterpret_cast<HMODULE>(handle));
+#elif !defined(JST_OS_BROWSER)
+    (void)dlclose(handle);
+#endif
+}
+
+void* LoadDynamicLibrarySymbol(void* handle, const char* symbol, std::string& error) {
+    error.clear();
+
+#if defined(JST_OS_WINDOWS)
+    auto* address = GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol);
+    if (!address) {
+        error = "Windows error " + std::to_string(GetLastError());
+    }
+    return reinterpret_cast<void*>(address);
+#elif defined(JST_OS_BROWSER)
+    (void)handle;
+    (void)symbol;
+    error = "dynamic libraries are not supported on this platform";
+    return nullptr;
+#else
+    dlerror();
+    void* address = dlsym(handle, symbol);
+    if (const char* loaderError = dlerror()) {
+        error = loaderError;
+        return nullptr;
+    }
+    return address;
+#endif
+}
+
 struct FileLock::Impl {
     std::string path;
     bool locked = false;
@@ -94,7 +175,7 @@ struct FileLock::Impl {
 };
 
 Result FileLock::Impl::ensureParentDirectory(const std::string& path) {
-    const auto parent = std::filesystem::u8path(path).parent_path();
+    const auto parent = PathFromUtf8(path).parent_path();
     if (parent.empty()) {
         return Result::SUCCESS;
     }
@@ -143,7 +224,7 @@ Result FileLock::acquire(const std::string& path, bool wait) {
     JST_CHECK(Impl::ensureParentDirectory(path));
 
 #if defined(JST_OS_WINDOWS)
-    const auto lockPath = std::filesystem::u8path(path);
+    const auto lockPath = PathFromUtf8(path);
     HANDLE handle = CreateFileW(lockPath.c_str(),
                                 GENERIC_READ | GENERIC_WRITE,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -355,18 +436,6 @@ Result CachePath(std::string& path) {
 
 namespace {
 
-std::string WindowsPathToUtf8(const std::filesystem::path& nativePath) {
-    const auto utf8Path = nativePath.u8string();
-
-    std::string utf8String;
-    utf8String.reserve(utf8Path.size());
-    for (const auto ch : utf8Path) {
-        utf8String.push_back(static_cast<char>(ch));
-    }
-
-    return utf8String;
-}
-
 Result WindowsEnvPath(const wchar_t* name, std::filesystem::path& path) {
     const DWORD requiredSize = GetEnvironmentVariableW(name, nullptr, 0);
     if (requiredSize == 0) {
@@ -393,7 +462,7 @@ Result ConfigPath(std::string& path) {
         return Result::ERROR;
     }
 
-    path = WindowsPathToUtf8(appData / L"CyberEther");
+    path = PathToUtf8(appData / L"CyberEther");
     return Result::SUCCESS;
 }
 
@@ -402,12 +471,12 @@ Result CachePath(std::string& path) {
     std::filesystem::path localAppData;
 
     if (WindowsEnvPath(L"LOCALAPPDATA", localAppData) == Result::SUCCESS) {
-        path = WindowsPathToUtf8(localAppData / L"CyberEther" / L"Cache");
+        path = PathToUtf8(localAppData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
 
     if (WindowsEnvPath(L"APPDATA", appData) == Result::SUCCESS) {
-        path = WindowsPathToUtf8(appData / L"CyberEther" / L"Cache");
+        path = PathToUtf8(appData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
 
