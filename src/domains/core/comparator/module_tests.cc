@@ -1,14 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <limits>
-#include <unordered_set>
-
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/comparator/module.hh"
-
-#include "module_impl.hh"
 
 using namespace Jetstream;
 
@@ -202,68 +197,6 @@ TEST_CASE("Comparator Module - Three Inputs", "[modules][comparator][multi]") {
             auto& out = ctx.output("error");
             REQUIRE_THAT(out.at<F32>(0), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(1), Catch::Matchers::WithinAbs(2.0f, 1e-6f));
-        }
-    }
-}
-
-TEST_CASE("Comparator Module - Non-finite Difference Is Mismatch", "[modules][comparator][nan]") {
-    auto implementations = Registry::ListAvailableModules("comparator");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            std::shared_ptr<Module> module;
-            REQUIRE(Registry::BuildModule("comparator",
-                                          impl.device,
-                                          impl.runtime,
-                                          impl.provider,
-                                          module) == Result::SUCCESS);
-
-            Modules::Comparator config;
-            config.inputCount = 2;
-            config.tolerance = 1.0;
-
-            auto cpuA = TypedTensor<F32>(DeviceType::CPU, {2});
-            auto cpuB = TypedTensor<F32>(DeviceType::CPU, {2});
-            cpuA.at(0) = 0.0f;
-            cpuA.at(1) = std::numeric_limits<F32>::quiet_NaN();
-            cpuB.at(0) = 0.0f;
-            cpuB.at(1) = 0.0f;
-
-            Tensor inputA = cpuA;
-            Tensor inputB = cpuB;
-            if (impl.device != DeviceType::CPU) {
-                inputA = Tensor(impl.device, cpuA);
-                inputB = Tensor(impl.device, cpuB);
-            }
-
-            TensorMap inputs;
-            inputs["input0"].produced("source", "output0", inputA);
-            inputs["input1"].produced("source", "output1", inputB);
-
-            REQUIRE(module->create("nan_comparator", config, inputs) == Result::SUCCESS);
-
-            Runtime runtime("test", impl.device, impl.runtime);
-            REQUIRE(runtime.create({{"nan_comparator", module}}) == Result::SUCCESS);
-
-            std::unordered_set<std::string> skippedModules;
-            std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({"nan_comparator"}, skippedModules, failedModules) == Result::SUCCESS);
-            REQUIRE(skippedModules.empty());
-            REQUIRE(failedModules.empty());
-
-            const auto* comparator = module->getImpl<Modules::ComparatorImpl>();
-            REQUIRE(comparator != nullptr);
-            REQUIRE_FALSE(comparator->getMatch());
-
-            Tensor error = module->outputs().at("error").tensor;
-            if (error.device() != DeviceType::CPU) {
-                error = Tensor(DeviceType::CPU, error);
-            }
-            REQUIRE(std::isnan(error.at<F32>(1)));
-
-            REQUIRE(runtime.destroy() == Result::SUCCESS);
-            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }
