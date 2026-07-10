@@ -22,6 +22,7 @@ constexpr F32 kLineHeightFontRatio = 18.0f / kReferenceFontSize;
 constexpr F32 kSurfaceInset = 2.0f;
 constexpr F32 kButtonTopGap = 10.0f;
 constexpr F32 kButtonPadY = 6.0f;
+constexpr F32 kContentFitSlackPixels = 1.0f;
 
 }  // namespace
 
@@ -79,7 +80,8 @@ struct MarkdownEditorBody : public Component {
         const F32 lineHeight = fontSize * kLineHeightFontRatio;
         const F32 buttonH = fontSize + 2.0f * kButtonPadY;
         const F32 contentLogical = activeContentPx / std::max(1e-3f, pixelRatio);
-        const F32 total = pad + contentLogical + kButtonTopGap + buttonH + pad;
+        const F32 contentFitSlack = kContentFitSlackPixels / std::max(1e-3f, pixelRatio);
+        const F32 total = pad + contentLogical + contentFitSlack + kButtonTopGap + buttonH + pad;
 
         const F32 viewportHeight = ImGui::GetMainViewport() ? ImGui::GetMainViewport()->WorkSize.y : 0.0f;
         const F32 maxHeight = Unscale(ctx, viewportHeight * std::clamp(maxAutoHeightWindowRatio, 0.0f, 1.0f));
@@ -136,6 +138,7 @@ struct MarkdownEditorBody : public Component {
                 .id = id + ":preview",
                 .value = value,
                 .fontSize = fontSizePixels,
+                .scrollbar = true,
                 .textColorKey = "editor_text",
                 .lineNumberColorKey = "editor_line_number",
                 .gutterSeparatorColorKey = "editor_gutter_separator",
