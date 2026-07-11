@@ -6,11 +6,11 @@
 #include <vector>
 #include <thread>
 #include <functional>
-#include <cstdlib>
 #include <string>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
+#include "jetstream/platform.hh"
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -303,23 +303,22 @@ inline bool WindowMightBeWayland() {
 #ifdef JST_OS_LINUX
     // Try to get the session type from the environment variables.
 
-    const char* xdgSessionType = std::getenv("XDG_SESSION_TYPE");
-    if (xdgSessionType != nullptr) {
-        std::string sessionTypeStr(xdgSessionType);
-        if (sessionTypeStr == "wayland" && std::getenv("WAYLAND_DISPLAY") != nullptr) {
+    std::string environmentValue;
+    if (Platform::EnvironmentVariable("XDG_SESSION_TYPE", environmentValue) == Result::SUCCESS) {
+        if (environmentValue == "wayland" &&
+            Platform::EnvironmentVariable("WAYLAND_DISPLAY", environmentValue) == Result::SUCCESS) {
             return true;
-        } else if (sessionTypeStr == "x11" && std::getenv("DISPLAY") != nullptr) {
+        } else if (environmentValue == "x11" &&
+                   Platform::EnvironmentVariable("DISPLAY", environmentValue) == Result::SUCCESS) {
             return false;
         }
     }
 
-    const char* waylandDisplayEnv = std::getenv("WAYLAND_DISPLAY");
-    if (waylandDisplayEnv != nullptr) {
+    if (Platform::EnvironmentVariable("WAYLAND_DISPLAY", environmentValue) == Result::SUCCESS) {
         return true;
     }
 
-    const char* displayEnv = std::getenv("DISPLAY");
-    if (displayEnv != nullptr) {
+    if (Platform::EnvironmentVariable("DISPLAY", environmentValue) == Result::SUCCESS) {
         return false;
     }
 
