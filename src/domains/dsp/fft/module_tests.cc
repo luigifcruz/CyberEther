@@ -104,3 +104,285 @@ TEST_CASE("FFT - Forward/Inverse Roundtrip CF32", "[modules][fft][roundtrip]") {
         }
     }
 }
+
+TEST_CASE("FFT - FFTPACK Real Signal F32", "[modules][fft][real][fftpack]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.forward = true;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
+            input.at<F32>(0) = 1.0f;
+            input.at<F32>(1) = 2.0f;
+            input.at<F32>(2) = 3.0f;
+            input.at<F32>(3) = 4.0f;
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            const F32 expected[] = {10.0f, -2.0f, 2.0f, -2.0f};
+
+            REQUIRE(out.dtype() == DataType::F32);
+            REQUIRE(out.shape() == Shape{4});
+            for (U64 i = 0; i < out.size(); ++i) {
+                REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(expected[i], 1e-4f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - FFTPACK Real Inverse F32", "[modules][fft][real][fftpack][inverse]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.forward = false;
+            ctx.setConfig(config);
+
+            Tensor storage;
+            REQUIRE(storage.create(DeviceType::CPU, DataType::F32, {2, 4}) == Result::SUCCESS);
+            storage.at<F32>(1, 0) = 10.0f;
+            storage.at<F32>(1, 1) = -2.0f;
+            storage.at<F32>(1, 2) = 2.0f;
+            storage.at<F32>(1, 3) = -2.0f;
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(1), Token()}) == Result::SUCCESS);
+            REQUIRE(input.contiguous());
+            REQUIRE(input.offset() != 0);
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            const F32 expected[] = {4.0f, 8.0f, 12.0f, 16.0f};
+            for (U64 i = 0; i < out.size(); ++i) {
+                REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(expected[i], 1e-4f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - FFTPACK Real Inverse Edge Lengths F32",
+          "[modules][fft][real][fftpack][inverse][edge]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Fft config;
+            config.forward = false;
+
+            Tensor singleton;
+            REQUIRE(singleton.create(DeviceType::CPU, DataType::F32, {1}) == Result::SUCCESS);
+            singleton.at<F32>(0) = 3.0f;
+
+            TestContext singletonCtx("fft", impl.device, impl.runtime, impl.provider);
+            singletonCtx.setConfig(config);
+            singletonCtx.setInput("signal", singleton);
+            REQUIRE(singletonCtx.run() == Result::SUCCESS);
+            REQUIRE_THAT(singletonCtx.output("signal").at<F32>(0),
+                         Catch::Matchers::WithinAbs(3.0f, 1e-4f));
+
+            Tensor odd;
+            REQUIRE(odd.create(DeviceType::CPU, DataType::F32, {5}) == Result::SUCCESS);
+            odd.at<F32>(0) = 0.0f;
+            odd.at<F32>(1) = 0.0f;
+            odd.at<F32>(2) = 0.0f;
+            odd.at<F32>(3) = 0.0f;
+            odd.at<F32>(4) = 1.0f;
+
+            TestContext oddCtx("fft", impl.device, impl.runtime, impl.provider);
+            oddCtx.setConfig(config);
+            oddCtx.setInput("signal", odd);
+            REQUIRE(oddCtx.run() == Result::SUCCESS);
+
+            const auto& output = oddCtx.output("signal");
+            for (U64 i = 0; i < odd.size(); ++i) {
+                const F32 expected = static_cast<F32>(
+                    -2.0 * std::sin(4.0 * JST_PI * static_cast<F64>(i) / 5.0));
+                REQUIRE_THAT(output.at<F32>(i),
+                             Catch::Matchers::WithinAbs(expected, 1e-4f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - FFTPACK Real Odd Roundtrip F32", "[modules][fft][real][fftpack][roundtrip]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            constexpr U64 bufferSize = 7;
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {bufferSize}) == Result::SUCCESS);
+            const F32 samples[] = {1.0f, -2.0f, 3.5f, 0.25f, -1.25f, 2.0f, 0.5f};
+            for (U64 i = 0; i < bufferSize; ++i) {
+                input.at<F32>(i) = samples[i];
+            }
+
+            TestContext forwardCtx("fft", impl.device, impl.runtime, impl.provider);
+            Modules::Fft forwardConfig;
+            forwardConfig.forward = true;
+            forwardCtx.setConfig(forwardConfig);
+            forwardCtx.setInput("signal", input);
+            REQUIRE(forwardCtx.run() == Result::SUCCESS);
+
+            TestContext inverseCtx("fft", impl.device, impl.runtime, impl.provider);
+            Modules::Fft inverseConfig;
+            inverseConfig.forward = false;
+            inverseCtx.setConfig(inverseConfig);
+            inverseCtx.setInput("signal", forwardCtx.output("signal"));
+            REQUIRE(inverseCtx.run() == Result::SUCCESS);
+
+            const auto& recovered = inverseCtx.output("signal");
+            for (U64 i = 0; i < bufferSize; ++i) {
+                REQUIRE_THAT(recovered.at<F32>(i),
+                             Catch::Matchers::WithinAbs(samples[i] * bufferSize, 1e-3f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - FFTPACK Real Inverse Batched Strided F32",
+          "[modules][fft][real][fftpack][inverse][batch][strided]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor storage;
+            REQUIRE(storage.create(DeviceType::CPU, DataType::F32, {3, 4, 2}) == Result::SUCCESS);
+
+            const F32 packed[][4] = {
+                {10.0f, -2.0f, 2.0f, -2.0f},
+                {20.0f, -4.0f, 4.0f, -4.0f},
+            };
+            for (U64 row = 0; row < 4; ++row) {
+                for (U64 batch = 0; batch < 2; ++batch) {
+                    storage.at<F32>(1, row, batch) = packed[batch][row];
+                }
+            }
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(1), Token(), Token()}) == Result::SUCCESS);
+            REQUIRE(input.permute({1, 0}) == Result::SUCCESS);
+            REQUIRE(input.shape() == Shape{2, 4});
+            REQUIRE(input.offset() != 0);
+            REQUIRE_FALSE(input.contiguous());
+
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+            Modules::Fft config;
+            config.forward = false;
+            ctx.setConfig(config);
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            for (U64 batch = 0; batch < 2; ++batch) {
+                for (U64 i = 0; i < 4; ++i) {
+                    const F32 expected = static_cast<F32>((batch + 1) * (i + 1) * 4);
+                    REQUIRE_THAT(out.at<F32>(batch, i),
+                                 Catch::Matchers::WithinAbs(expected, 1e-4f));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - Batched CF32", "[modules][fft][batch]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.forward = true;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {2, 4}) == Result::SUCCESS);
+            for (U64 batch = 0; batch < input.shape(0); ++batch) {
+                for (U64 i = 0; i < input.shape(1); ++i) {
+                    input.at<CF32>(batch, i) = CF32(static_cast<F32>(batch + 1), 0.0f);
+                }
+            }
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.shape() == Shape{2, 4});
+            for (U64 batch = 0; batch < out.shape(0); ++batch) {
+                REQUIRE_THAT(out.at<CF32>(batch, 0).real(),
+                             Catch::Matchers::WithinAbs(4.0f * static_cast<F32>(batch + 1), 1e-4f));
+                REQUIRE_THAT(out.at<CF32>(batch, 0).imag(),
+                             Catch::Matchers::WithinAbs(0.0f, 1e-4f));
+                for (U64 i = 1; i < out.shape(1); ++i) {
+                    REQUIRE_THAT(std::abs(out.at<CF32>(batch, i)),
+                                 Catch::Matchers::WithinAbs(0.0f, 1e-4f));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - Strided Offset CF32", "[modules][fft][strided][offset]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.forward = true;
+            ctx.setConfig(config);
+
+            Tensor storage;
+            REQUIRE(storage.create(DeviceType::CPU, DataType::CF32, {3, 4, 3}) == Result::SUCCESS);
+            for (U64 row = 0; row < storage.shape(1); ++row) {
+                for (U64 batch = 0; batch < storage.shape(2); ++batch) {
+                    storage.at<CF32>(1, row, batch) =
+                        CF32(static_cast<F32>(batch + 1), 0.0f);
+                }
+            }
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(1), Token(), Token()}) == Result::SUCCESS);
+            REQUIRE(input.permute({1, 0}) == Result::SUCCESS);
+            REQUIRE(input.shape() == Shape{3, 4});
+            REQUIRE(input.offset() != 0);
+            REQUIRE_FALSE(input.contiguous());
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.shape() == Shape{3, 4});
+            for (U64 batch = 0; batch < out.shape(0); ++batch) {
+                REQUIRE_THAT(out.at<CF32>(batch, 0).real(),
+                             Catch::Matchers::WithinAbs(4.0f * static_cast<F32>(batch + 1), 1e-4f));
+                for (U64 i = 1; i < out.shape(1); ++i) {
+                    REQUIRE_THAT(std::abs(out.at<CF32>(batch, i)),
+                                 Catch::Matchers::WithinAbs(0.0f, 1e-4f));
+                }
+            }
+        }
+    }
+}
