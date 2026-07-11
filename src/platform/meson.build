@@ -1,5 +1,6 @@
 src_lst += files([
     'base.cc',
+    'process.cc',
 ])
 
 if jst_is_ios

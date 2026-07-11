@@ -601,41 +601,17 @@ Result PickFile(std::string& path,
 Result PickFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
-    std::array<char, 1024> buffer;
-    std::string command = "zenity --file-selection ";
+    std::vector<std::string> arguments = {"--file-selection"};
 
     if (!extensions.empty()) {
-        command += "--file-filter='Selected files | ";
+        std::string filter = "Selected files |";
         for (size_t i = 0; i < extensions.size(); ++i) {
-            if (i > 0) command += " ";
-            command += "*." + extensions[i];
+            filter += " *." + extensions[i];
         }
-        command += "' ";
-    }
-    command += "2>/dev/null";
-
-    auto pipeDeleter = [](FILE* file) { if (file) pclose(file); };
-    std::unique_ptr<FILE, decltype(pipeDeleter)> pipe(popen(command.c_str(), "r"), pipeDeleter);
-
-    if (!pipe) {
-        JST_ERROR("Failed to open file selection dialog.");
-        return Result::ERROR;
+        arguments.push_back("--file-filter=" + filter);
     }
 
-    if (pipe.get() == nullptr) {
-        JST_ERROR("No file selected or operation cancelled.");
-        return Result::ERROR;
-    }
-
-    const auto res = fgets(buffer.data(), buffer.size(), pipe.get());
-    if (res == nullptr) {
-        JST_ERROR("No file selected or operation cancelled.");
-        return Result::ERROR;
-    }
-
-    path = buffer.data();
-
-    if (path.empty()) {
+    if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }
@@ -732,30 +708,15 @@ Result PickFolder(std::string& path,
 
 Result PickFolder(std::string& path,
                   std::function<void(std::string)> callback) {
-    std::array<char, 1024> buffer;
-    std::string command = "zenity --file-selection --directory 2>/dev/null";
-
-    auto pipeDeleter = [](FILE* file) { if (file) pclose(file); };
-    std::unique_ptr<FILE, decltype(pipeDeleter)> pipe(popen(command.c_str(), "r"), pipeDeleter);
-
-    if (!pipe) {
-        JST_ERROR("Failed to open folder selection dialog.");
-        return Result::ERROR;
-    }
-
-    if (pipe.get() == nullptr) {
+    if (RunProcess("zenity", {"--file-selection", "--directory"}, path) != Result::SUCCESS ||
+        path.empty()) {
         JST_ERROR("No folder selected or operation cancelled.");
         return Result::ERROR;
     }
 
-    const auto res = fgets(buffer.data(), buffer.size(), pipe.get());
-
-    if (res == nullptr) {
-        JST_ERROR("No folder selected or operation cancelled.");
-        return Result::ERROR;
+    if (path.back() == '\n') {
+        path.pop_back();
     }
-
-    path = buffer.data();
 
     if (callback) {
         callback(path);
@@ -805,31 +766,13 @@ Result SaveFile(std::string& path,
 
 Result SaveFile(std::string& path,
                 std::function<void(std::string)> callback) {
-    std::array<char, 1024> buffer;
-    std::string command = "zenity --file-selection --save --confirm-overwrite --file-filter='YAML files | *.yml *.yaml' 2>/dev/null";
-
-    auto pipeDeleter = [](FILE* file) { if (file) pclose(file); };
-    std::unique_ptr<FILE, decltype(pipeDeleter)> pipe(popen(command.c_str(), "r"), pipeDeleter);
-
-    if (!pipe) {
-        JST_ERROR("Failed to open save file dialog.");
-        return Result::ERROR;
-    }
-
-    if (pipe.get() == nullptr) {
-        JST_ERROR("No file selected or operation cancelled.");
-        return Result::ERROR;
-    }
-
-    const auto res = fgets(buffer.data(), buffer.size(), pipe.get());
-    if (res == nullptr) {
-        JST_ERROR("No file selected or operation cancelled.");
-        return Result::ERROR;
-    }
-
-    path = buffer.data();
-
-    if (path.empty()) {
+    const std::vector<std::string> arguments = {
+        "--file-selection",
+        "--save",
+        "--confirm-overwrite",
+        "--file-filter=YAML files | *.yml *.yaml",
+    };
+    if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }

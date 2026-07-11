@@ -141,6 +141,29 @@ TEST_CASE("Platform dynamic library errors include a reason", "[platform][librar
     Platform::CloseDynamicLibrary(handle);
 }
 
+TEST_CASE("Platform processes capture standard output", "[platform][process]") {
+    std::string output;
+#if defined(JST_OS_WINDOWS)
+    REQUIRE(Platform::RunProcess("cmd.exe", {"/D", "/C", "echo cyberether-process"}, output, 5000) ==
+            Result::SUCCESS);
+#elif defined(JST_OS_LINUX) || defined(JST_OS_MAC)
+    REQUIRE(Platform::RunProcess("/bin/echo", {"cyberether-process"}, output, 5000) ==
+            Result::SUCCESS);
+#else
+    output = "unchanged";
+    REQUIRE(Platform::RunProcess("unsupported", {}, output, 5000) == Result::ERROR);
+    REQUIRE(output == "unchanged");
+    return;
+#endif
+
+    REQUIRE(output.find("cyberether-process") != std::string::npos);
+
+    output = "unchanged";
+    REQUIRE(Platform::RunProcess("cyberether-process-that-does-not-exist", {}, output, 5000) ==
+            Result::ERROR);
+    REQUIRE(output == "unchanged");
+}
+
 TEST_CASE("Platform config and cache paths follow platform conventions", "[platform][paths]") {
 #if defined(JST_OS_LINUX)
     SECTION("absolute XDG overrides do not require HOME and do not create directories") {
