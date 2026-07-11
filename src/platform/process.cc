@@ -115,6 +115,10 @@ bool ResolveWindowsExecutable(const std::string& executable, std::wstring& resol
 }
 
 std::wstring QuoteWindowsArgument(const std::wstring& argument) {
+    if (!argument.empty() && argument.find_first_of(L" \t\n\v\"") == std::wstring::npos) {
+        return argument;
+    }
+
     std::wstring quoted = L"\"";
     std::size_t backslashes = 0;
 
