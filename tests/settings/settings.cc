@@ -37,8 +37,10 @@ bool SetWideEnvValue(const wchar_t* name, const std::optional<std::wstring>& val
 
 struct ScopedWideEnvVar {
     explicit ScopedWideEnvVar(const wchar_t* name) : name(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            originalValue = value;
+        std::filesystem::path value;
+        const auto utf8Name = Platform::PathToUtf8(std::filesystem::path(name));
+        if (Platform::EnvironmentPath(utf8Name, value) == Result::SUCCESS) {
+            originalValue = value.native();
         }
     }
 
@@ -58,8 +60,9 @@ struct ScopedWideEnvVar {
 
 struct ScopedEnvVar {
     explicit ScopedEnvVar(const char* name) : name(name) {
-        if (const char* value = std::getenv(name)) {
-            originalValue = value;
+        std::filesystem::path value;
+        if (Platform::EnvironmentPath(name, value) == Result::SUCCESS) {
+            originalValue = Platform::PathToUtf8(value);
         }
     }
 

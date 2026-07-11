@@ -516,13 +516,13 @@ struct TextGrid::Impl {
             if (config.wrap == Wrap::None) {
                 push(0, len);
             } else if (config.monospace) {
-                for (const auto [start, end] : WrapSegments(text, wrapCols, config.wrap == Wrap::Word)) {
+                for (const auto& [start, end] : WrapSegments(text, wrapCols, config.wrap == Wrap::Word)) {
                     push(start, end);
                 }
             } else {
                 const F32 wrapWidth = std::max(
                     1.0f, textViewportWidthPixels() - lineIndentAt(line) - trailingMargin);
-                for (const auto [start, end] : wrapSegmentsProportional(line, wrapWidth, config.wrap == Wrap::Word)) {
+                for (const auto& [start, end] : wrapSegmentsProportional(line, wrapWidth, config.wrap == Wrap::Word)) {
                     push(start, end);
                 }
             }

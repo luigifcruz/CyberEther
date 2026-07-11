@@ -22,6 +22,45 @@ std::string PathToUtf8(const std::filesystem::path& path) {
     return std::string(utf8Path.begin(), utf8Path.end());
 }
 
+Result EnvironmentVariable(const std::string& name, std::string& value) {
+    try {
+#if defined(JST_OS_WINDOWS)
+        const auto nativeName = PathFromUtf8(name).native();
+        SetLastError(ERROR_SUCCESS);
+        const DWORD requiredSize = GetEnvironmentVariableW(nativeName.c_str(), nullptr, 0);
+        if (requiredSize == 0) {
+            if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+                return Result::ERROR;
+            }
+
+            value.clear();
+            return Result::SUCCESS;
+        }
+
+        std::wstring nativeValue(requiredSize, L'\0');
+        const DWORD writtenSize = GetEnvironmentVariableW(
+            nativeName.c_str(), nativeValue.data(), requiredSize);
+        if (writtenSize == 0 || writtenSize >= requiredSize) {
+            return Result::ERROR;
+        }
+
+        nativeValue.resize(writtenSize);
+        value = PathToUtf8(std::filesystem::path(std::move(nativeValue)));
+#else
+        const char* environmentValue = std::getenv(name.c_str());
+        if (!environmentValue) {
+            return Result::ERROR;
+        }
+
+        value = environmentValue;
+#endif
+    } catch (...) {
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result EnvironmentPath(const std::string& name, std::filesystem::path& path) {
     try {
 #if defined(JST_OS_WINDOWS)

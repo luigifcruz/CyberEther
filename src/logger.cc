@@ -7,6 +7,20 @@
 #include <string>
 
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
+
+namespace {
+
+int InitialDebugLevel() {
+    std::string value;
+    if (Jetstream::Platform::EnvironmentVariable("JST_DEBUG", value) != Jetstream::Result::SUCCESS) {
+        return JST_LOG_DEBUG_DEFAULT_LEVEL;
+    }
+
+    return std::atoi(value.c_str());
+}
+
+}  // namespace
 
 std::string& JST_LOG_LAST_WARNING() {
     static std::string __JST_LOG_LAST_WARNING;
@@ -29,9 +43,7 @@ std::mutex& _JST_LOG_MUTEX() {
 }
 
 int& _JST_LOG_DEBUG_LEVEL() {
-    static int __JST_LOG_DEBUG_LEVEL =
-        (std::getenv("JST_DEBUG") ? std::atoi(std::getenv("JST_DEBUG"))
-                                  : JST_LOG_DEBUG_DEFAULT_LEVEL);
+    static int __JST_LOG_DEBUG_LEVEL = InitialDebugLevel();
     return __JST_LOG_DEBUG_LEVEL;
 }
 

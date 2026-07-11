@@ -40,8 +40,10 @@ bool SetWideEnvValue(const wchar_t* name, const std::optional<std::wstring>& val
 
 struct ScopedWideEnvVar {
     explicit ScopedWideEnvVar(const wchar_t* name) : name(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            originalValue = value;
+        std::filesystem::path value;
+        const auto utf8Name = Platform::PathToUtf8(std::filesystem::path(name));
+        if (Platform::EnvironmentPath(utf8Name, value) == Result::SUCCESS) {
+            originalValue = value.native();
         }
     }
 
@@ -61,8 +63,9 @@ struct ScopedWideEnvVar {
 
 struct ScopedEnvVar {
     explicit ScopedEnvVar(const char* name) : name(name) {
-        if (const char* value = std::getenv(name)) {
-            originalValue = value;
+        std::filesystem::path value;
+        if (Platform::EnvironmentPath(name, value) == Result::SUCCESS) {
+            originalValue = Platform::PathToUtf8(value);
         }
     }
 
@@ -99,6 +102,27 @@ struct TempPathRoot {
 TEST_CASE("Platform paths preserve UTF-8", "[platform][paths]") {
     const std::string utf8Path = "CyberEther-\xC3\x9C-\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E";
     REQUIRE(Platform::PathToUtf8(Platform::PathFromUtf8(utf8Path)) == utf8Path);
+}
+
+TEST_CASE("Platform environment variables preserve values", "[platform][paths]") {
+    const ScopedEnvVar environment("CYBERETHER_TEST_ENVIRONMENT_VARIABLE");
+    REQUIRE(environment.set("cyberether-environment-value"));
+
+    std::string value;
+    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::SUCCESS);
+    REQUIRE(value == "cyberether-environment-value");
+
+#if !defined(JST_OS_WINDOWS)
+    REQUIRE(environment.set(std::string()));
+    value = "unchanged";
+    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::SUCCESS);
+    REQUIRE(value.empty());
+#endif
+
+    REQUIRE(environment.set(std::nullopt));
+    value = "unchanged";
+    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::ERROR);
+    REQUIRE(value == "unchanged");
 }
 
 TEST_CASE("Platform environment paths are native", "[platform][paths]") {
