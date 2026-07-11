@@ -1596,9 +1596,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     std::string yamlText;
     JST_CHECK(Parser::YamlEncode(root, yamlText));
 
-    blob.clear();
-    const char header[] = {'-', '-', '-', '\n'};
-    blob.insert(blob.end(), std::begin(header), std::end(header));
+    blob = {'-', '-', '-', '\n'};
     blob.insert(blob.end(), yamlText.begin(), yamlText.end());
 
     return Result::SUCCESS;
