@@ -300,12 +300,7 @@ inline Result TransitionImageLayout(VkCommandBuffer& commandBuffer,
 }
 
 inline bool WindowMightBeWayland() {
-    // Return false if we are not on Linux.
-
-#ifndef JST_OS_LINUX
-    return false;
-#endif
-
+#ifdef JST_OS_LINUX
     // Try to get the session type from the environment variables.
 
     const char* xdgSessionType = std::getenv("XDG_SESSION_TYPE");
@@ -330,6 +325,9 @@ inline bool WindowMightBeWayland() {
 
     // If we can't get the session type, default to true.
     return true;
+#else
+    return false;
+#endif
 }
 
 }  // namespace Jetstream::Backend
