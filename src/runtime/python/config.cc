@@ -1,6 +1,7 @@
 #include <jetstream/runtime_context_python.hh>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -13,6 +14,22 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef FATAL
+#undef FATAL
+#endif
+#endif
 
 namespace Jetstream {
 
@@ -36,10 +53,7 @@ std::string CompactPythonVersion(const std::string& version) {
 }
 #endif
 
-#if defined(_WIN32)
-#define JST_POPEN _popen
-#define JST_PCLOSE _pclose
-#else
+#if !defined(_WIN32)
 #define JST_POPEN popen
 #define JST_PCLOSE pclose
 #endif
@@ -73,19 +87,8 @@ std::string LastNonEmptyLine(const std::string& value) {
     return result;
 }
 
+#if !defined(_WIN32)
 std::string ShellQuote(const std::string& value) {
-#if defined(_WIN32)
-    std::string quoted = "\"";
-    for (const char c : value) {
-        if (c == '"') {
-            quoted += "\\\"";
-        } else {
-            quoted += c;
-        }
-    }
-    quoted += "\"";
-    return quoted;
-#else
     std::string quoted = "'";
     for (const char c : value) {
         if (c == '\'') {
@@ -96,8 +99,300 @@ std::string ShellQuote(const std::string& value) {
     }
     quoted += "'";
     return quoted;
-#endif
 }
+#endif
+
+#if defined(_WIN32)
+
+constexpr DWORD kPythonProbeTimeoutMs = 5000;
+constexpr DWORD kPythonProbePollMs = 10;
+constexpr DWORD kPythonProbeDrainTimeoutMs = 1000;
+constexpr std::size_t kPythonProbeMaxOutputBytes = 64 * 1024;
+
+std::optional<std::wstring> ToWide(const std::string& value) {
+    const auto convert = [&](UINT codePage, DWORD flags) -> std::optional<std::wstring> {
+        const int size = MultiByteToWideChar(
+            codePage, flags, value.data(), static_cast<int>(value.size()), nullptr, 0);
+        if (size <= 0) {
+            return std::nullopt;
+        }
+
+        std::wstring wide(static_cast<std::size_t>(size), L'\0');
+        if (MultiByteToWideChar(
+                codePage, flags, value.data(), static_cast<int>(value.size()), wide.data(), size) <= 0) {
+            return std::nullopt;
+        }
+        return wide;
+    };
+
+    if (const auto utf8 = convert(CP_UTF8, MB_ERR_INVALID_CHARS)) {
+        return utf8;
+    }
+    return convert(CP_ACP, 0);
+}
+
+std::optional<std::wstring> ResolveWindowsExecutable(const std::string& value) {
+    const auto executable = ToWide(value);
+    if (!executable) {
+        return std::nullopt;
+    }
+    if (executable->find_first_of(L"\\/:") != std::wstring::npos) {
+        return executable;
+    }
+
+    const DWORD required = SearchPathW(nullptr, executable->c_str(), L".exe", 0, nullptr, nullptr);
+    if (required == 0) {
+        return std::nullopt;
+    }
+
+    std::wstring resolved(required, L'\0');
+    const DWORD length = SearchPathW(
+        nullptr, executable->c_str(), L".exe", static_cast<DWORD>(resolved.size()), resolved.data(), nullptr);
+    if (length == 0 || length >= resolved.size()) {
+        return std::nullopt;
+    }
+    resolved.resize(length);
+    return resolved;
+}
+
+std::wstring QuoteWindowsArgument(std::wstring_view value) {
+    std::wstring quoted(1, L'"');
+    std::size_t backslashes = 0;
+    for (const wchar_t c : value) {
+        if (c == L'\\') {
+            ++backslashes;
+            continue;
+        }
+        if (c == L'"') {
+            quoted.append(backslashes * 2 + 1, L'\\');
+            quoted += c;
+            backslashes = 0;
+            continue;
+        }
+        quoted.append(backslashes, L'\\');
+        backslashes = 0;
+        quoted += c;
+    }
+    quoted.append(backslashes * 2, L'\\');
+    quoted += L'"';
+    return quoted;
+}
+
+void CloseWindowsHandle(HANDLE& handle) {
+    if (handle && handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(handle);
+    }
+    handle = nullptr;
+}
+
+bool DrainWindowsPipe(HANDLE pipe, std::string& output) {
+    if (output.size() >= kPythonProbeMaxOutputBytes) {
+        return false;
+    }
+
+    char buffer[1024];
+    DWORD bytesAvailable = 0;
+    if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &bytesAvailable, nullptr)) {
+        return false;
+    }
+    if (bytesAvailable == 0) {
+        return true;
+    }
+
+    const auto remaining = static_cast<DWORD>(kPythonProbeMaxOutputBytes - output.size());
+    const DWORD bytesToRead = std::min({bytesAvailable, static_cast<DWORD>(sizeof(buffer)), remaining});
+    DWORD bytesRead = 0;
+    if (!ReadFile(pipe, buffer, bytesToRead, &bytesRead, nullptr) || bytesRead == 0) {
+        return false;
+    }
+    output.append(buffer, bytesRead);
+    return true;
+}
+
+std::optional<std::string> RunWindowsPythonProbe(const std::string& pythonPath, const char* script) {
+    const auto application = ResolveWindowsExecutable(pythonPath);
+    const auto wideScript = ToWide(script);
+    if (!application || !wideScript) {
+        return std::nullopt;
+    }
+
+    SECURITY_ATTRIBUTES security{
+        .nLength = sizeof(SECURITY_ATTRIBUTES),
+        .lpSecurityDescriptor = nullptr,
+        .bInheritHandle = TRUE,
+    };
+    HANDLE stdoutRead = nullptr;
+    HANDLE stdoutWrite = nullptr;
+    HANDLE stderrRead = nullptr;
+    HANDLE stderrWrite = nullptr;
+    HANDLE stdinHandle = nullptr;
+    HANDLE job = nullptr;
+
+    const auto closePipes = [&]() {
+        CloseWindowsHandle(stdoutRead);
+        CloseWindowsHandle(stdoutWrite);
+        CloseWindowsHandle(stderrRead);
+        CloseWindowsHandle(stderrWrite);
+        CloseWindowsHandle(stdinHandle);
+        CloseWindowsHandle(job);
+    };
+
+    if (!CreatePipe(&stdoutRead, &stdoutWrite, &security, 0) ||
+        !SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
+        !CreatePipe(&stderrRead, &stderrWrite, &security, 0) ||
+        !SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0)) {
+        closePipes();
+        return std::nullopt;
+    }
+
+    stdinHandle = CreateFileW(L"NUL",
+                              GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE,
+                              &security,
+                              OPEN_EXISTING,
+                              FILE_ATTRIBUTE_NORMAL,
+                              nullptr);
+    if (stdinHandle == INVALID_HANDLE_VALUE) {
+        closePipes();
+        return std::nullopt;
+    }
+
+    std::array<HANDLE, 3> inheritedHandles = {stdinHandle, stdoutWrite, stderrWrite};
+    SIZE_T attributeListSize = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeListSize);
+    if (attributeListSize == 0) {
+        closePipes();
+        return std::nullopt;
+    }
+
+    std::vector<unsigned char> attributeListStorage(attributeListSize);
+    auto* attributeList = reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(attributeListStorage.data());
+    if (!InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize)) {
+        closePipes();
+        return std::nullopt;
+    }
+    if (!UpdateProcThreadAttribute(attributeList,
+                                   0,
+                                   PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                   inheritedHandles.data(),
+                                   sizeof(inheritedHandles),
+                                   nullptr,
+                                   nullptr)) {
+        DeleteProcThreadAttributeList(attributeList);
+        closePipes();
+        return std::nullopt;
+    }
+
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = stdinHandle;
+    startup.StartupInfo.hStdOutput = stdoutWrite;
+    startup.StartupInfo.hStdError = stderrWrite;
+    startup.lpAttributeList = attributeList;
+
+    job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo{};
+    jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo))) {
+        DeleteProcThreadAttributeList(attributeList);
+        closePipes();
+        return std::nullopt;
+    }
+
+    PROCESS_INFORMATION process{};
+    std::wstring commandLine = QuoteWindowsArgument(*application) +
+                               L" -X utf8 -c " + QuoteWindowsArgument(*wideScript);
+    if (!CreateProcessW(application->c_str(),
+                        commandLine.data(),
+                        nullptr,
+                        nullptr,
+                        TRUE,
+                        CREATE_NO_WINDOW | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT,
+                        nullptr,
+                        nullptr,
+                        &startup.StartupInfo,
+                        &process)) {
+        DeleteProcThreadAttributeList(attributeList);
+        closePipes();
+        return std::nullopt;
+    }
+    DeleteProcThreadAttributeList(attributeList);
+
+    CloseWindowsHandle(stdoutWrite);
+    CloseWindowsHandle(stderrWrite);
+    CloseWindowsHandle(stdinHandle);
+
+    if (!AssignProcessToJobObject(job, process.hProcess)) {
+        TerminateProcess(process.hProcess, 1);
+        WaitForSingleObject(process.hProcess, kPythonProbeTimeoutMs);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        closePipes();
+        return std::nullopt;
+    }
+
+    std::string standardOutput;
+    std::string standardError;
+    bool stdoutOpen = true;
+    bool stderrOpen = true;
+    DWORD waitResult = WAIT_FAILED;
+    if (ResumeThread(process.hThread) != static_cast<DWORD>(-1)) {
+        const ULONGLONG deadline = GetTickCount64() + kPythonProbeTimeoutMs;
+        while (true) {
+            if (stdoutOpen) {
+                stdoutOpen = DrainWindowsPipe(stdoutRead, standardOutput);
+            }
+            if (stderrOpen) {
+                stderrOpen = DrainWindowsPipe(stderrRead, standardError);
+            }
+
+            waitResult = WaitForSingleObject(process.hProcess, kPythonProbePollMs);
+            if (waitResult != WAIT_TIMEOUT || GetTickCount64() >= deadline) {
+                break;
+            }
+        }
+    }
+
+    if (waitResult != WAIT_OBJECT_0) {
+        TerminateJobObject(job, 1);
+        WaitForSingleObject(process.hProcess, kPythonProbeTimeoutMs);
+    }
+
+    DWORD exitCode = 1;
+    GetExitCodeProcess(process.hProcess, &exitCode);
+    CloseWindowsHandle(job);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+
+    const ULONGLONG drainDeadline = GetTickCount64() + kPythonProbeDrainTimeoutMs;
+    while ((stdoutOpen || stderrOpen) && GetTickCount64() < drainDeadline) {
+        if (stdoutOpen) {
+            stdoutOpen = DrainWindowsPipe(stdoutRead, standardOutput);
+        }
+        if (stderrOpen) {
+            stderrOpen = DrainWindowsPipe(stderrRead, standardError);
+        }
+        if (stdoutOpen || stderrOpen) {
+            Sleep(1);
+        }
+    }
+    CloseWindowsHandle(stdoutRead);
+    CloseWindowsHandle(stderrRead);
+    (void)standardError;
+
+    if (waitResult != WAIT_OBJECT_0 || exitCode != 0) {
+        return std::nullopt;
+    }
+
+    const auto value = LastNonEmptyLine(standardOutput);
+    if (value.empty()) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+#endif
 
 std::filesystem::path ExpandUserPath(const std::string& value) {
     if (value == "~" || value.starts_with("~/") || value.starts_with("~\\")) {
@@ -230,12 +525,11 @@ std::optional<std::string> RunPythonProbe(const std::string& pythonPath, const c
         return std::nullopt;
     }
 
-    std::string command = ShellQuote(pythonPath) + " -c " + ShellQuote(script);
 #if defined(_WIN32)
-    command += " 2>NUL";
+    return RunWindowsPythonProbe(pythonPath, script);
 #else
+    std::string command = ShellQuote(pythonPath) + " -c " + ShellQuote(script);
     command += " 2>/dev/null";
-#endif
 
     FILE* pipe = JST_POPEN(command.c_str(), "r");
     if (!pipe) {
@@ -255,6 +549,7 @@ std::optional<std::string> RunPythonProbe(const std::string& pythonPath, const c
     }
 
     return value;
+#endif
 }
 
 std::optional<std::string> ProbePythonLibraryPath(const std::string& pythonPath) {
@@ -287,6 +582,16 @@ std::optional<std::string> ProbePythonVersion(const std::string& pythonPath) {
 
     return RunPythonProbe(pythonPath, kProbeScript);
 }
+
+#if defined(_WIN32)
+std::optional<std::string> ProbePythonProgramPath(const std::string& pythonPath) {
+    constexpr const char* kProbeScript =
+        "import os, sys; "
+        "print(os.path.abspath(sys.executable))";
+
+    return RunPythonProbe(pythonPath, kProbeScript);
+}
+#endif
 
 std::vector<std::string> PythonLibraryCandidates(const std::string& configuredPath) {
     std::vector<std::string> candidates;
@@ -460,6 +765,21 @@ std::string CandidateLabel(const std::string& path, const PythonRuntimeContext::
     return name + " (" + path + ")";
 }
 
+bool PathsEquivalent(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+    std::error_code ec;
+    return lhs == rhs || (std::filesystem::equivalent(lhs, rhs, ec) && !ec);
+}
+
+bool ContainsRuntimeCandidate(const std::vector<PythonRuntimeContext::Candidate>& candidates,
+                              const std::string& path,
+                              const std::string& libraryPath) {
+    const auto directory = std::filesystem::path(path).parent_path();
+    return std::ranges::any_of(candidates, [&](const auto& candidate) {
+        return PathsEquivalent(std::filesystem::path(candidate.path).parent_path(), directory) &&
+               PathsEquivalent(candidate.libraryPath, libraryPath);
+    });
+}
+
 PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::string& path) {
     PythonRuntimeContext::Validation validation;
     const auto expandedPath = ExpandUserPath(path);
@@ -493,11 +813,21 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
             return validation;
         }
 
+        if (LooksLikePythonExecutable(validation.inputPath)) {
+#if defined(_WIN32)
+            const auto programPath = ProbePythonProgramPath(validation.inputPath);
+            if (!programPath) {
+                validation.message = "Can't resolve the Python executable launched by " +
+                                     validation.inputPath + ".";
+                return validation;
+            }
+            validation.programPath = *programPath;
+#else
+            validation.programPath = validation.inputPath;
+#endif
+        }
         validation.valid = true;
         validation.libraryPath = candidate;
-        if (LooksLikePythonExecutable(validation.inputPath)) {
-            validation.programPath = validation.inputPath;
-        }
         validation.message = "Valid Python runtime: " + validation.libraryPath;
         return validation;
     }
@@ -515,6 +845,9 @@ std::vector<PythonRuntimeContext::Candidate> DiscoverRuntimeCandidatesInOrder() 
     for (const auto& path : paths) {
         const auto validation = ValidateExplicitPythonRuntimePath(path);
         if (!validation.valid) {
+            continue;
+        }
+        if (ContainsRuntimeCandidate(candidates, path, validation.libraryPath)) {
             continue;
         }
 
