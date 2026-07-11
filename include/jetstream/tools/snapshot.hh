@@ -52,7 +52,7 @@ class Snapshot<T, std::enable_if_t<!std::is_trivially_copyable_v<T>>> {
     Snapshot& operator=(Snapshot&&) = delete;
 
     void publish(const T& newValue) {
-#if defined(_MSC_VER)
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
         value.store(std::make_shared<const T>(newValue), std::memory_order_release);
 #else
         std::atomic_store_explicit(&value,
@@ -62,7 +62,7 @@ class Snapshot<T, std::enable_if_t<!std::is_trivially_copyable_v<T>>> {
     }
 
     void publish(T&& newValue) {
-#if defined(_MSC_VER)
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
         value.store(std::make_shared<const T>(std::move(newValue)), std::memory_order_release);
 #else
         std::atomic_store_explicit(&value,
@@ -72,7 +72,7 @@ class Snapshot<T, std::enable_if_t<!std::is_trivially_copyable_v<T>>> {
     }
 
     T get() const {
-#if defined(_MSC_VER)
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
         return *value.load(std::memory_order_acquire);
 #else
         return *std::atomic_load_explicit(&value, std::memory_order_acquire);
@@ -80,7 +80,7 @@ class Snapshot<T, std::enable_if_t<!std::is_trivially_copyable_v<T>>> {
     }
 
  private:
-#if defined(_MSC_VER)
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
     std::atomic<std::shared_ptr<const T>> value;
 #else
     std::shared_ptr<const T> value;
