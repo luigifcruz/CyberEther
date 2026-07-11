@@ -95,26 +95,26 @@ Result Module::create(const std::string& name,
 
     // Verify input tensors device matches module device.
 
-    for (const auto& [name, link] : inputs) {
+    for (const auto& [inputName, link] : inputs) {
         if (link.tensor.device() != impl->_device && !taintCrossDevice) {
             JST_ERROR("[MODULE] Input tensor device ('{}', DeviceType::{})"
                       " doesn't match the module device ('{}', DeviceType::{}).",
-                      name, link.tensor.device(), impl->_name, impl->_device);
+                      inputName, link.tensor.device(), impl->_name, impl->_device);
             return Result::ERROR;
         }
 
         if (!link.tensor.validShape()) {
-            JST_ERROR("[MODULE] Input tensor ('{}') is invalid.", name);
+            JST_ERROR("[MODULE] Input tensor ('{}') is invalid.", inputName);
             return Result::ERROR;
         }
 
         if (link.tensor.size() == 0) {
-            JST_ERROR("[MODULE] Module ('{}') input tensor ('{}') size is zero.", impl->_name, name);
+            JST_ERROR("[MODULE] Module ('{}') input tensor ('{}') size is zero.", impl->_name, inputName);
             return Result::ERROR;
         }
 
         if (!link.tensor.contiguous() && !taintDiscontiguous) {
-            JST_ERROR("[MODULE] Contiguous tensor expected for module ('{}') input tensor ('{}').", impl->_name, name);
+            JST_ERROR("[MODULE] Contiguous tensor expected for module ('{}') input tensor ('{}').", impl->_name, inputName);
             return Result::ERROR;
         }
     }
