@@ -174,7 +174,8 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        if (!msg.force && state.flowgraph.items.at(msg.flowgraph)->path().empty()) {
+        const auto& flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        if (!msg.force && !flowgraph->view().empty()) {
             state.modal.flowgraph = msg.flowgraph;
             state.modal.content = ModalContent::FlowgraphClose;
             return Result::SUCCESS;
