@@ -9,6 +9,7 @@
 
 #include <jetstream/flowgraph_environment.hh>
 #include <jetstream/flowgraph_metadata.hh>
+#include <jetstream/platform.hh>
 
 #include "common.hh"
 
@@ -21,7 +22,8 @@ struct TempFlowgraphFile {
     explicit TempFlowgraphFile(const std::string& name) {
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
         path = std::filesystem::temp_directory_path() /
-               ("cyberether-flowgraph-" + name + "-" + std::to_string(nonce) + ".yaml");
+               Platform::PathFromUtf8("cyberether-flowgraph-" + name + "-" +
+                                      std::to_string(nonce) + ".yaml");
     }
 
     ~TempFlowgraphFile() {
@@ -359,8 +361,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
 
     SECTION("importFromFile rejects missing files") {
         const TempFlowgraphFile tempFile("missing");
-        REQUIRE(flowgraph->importFromFile(tempFile.path.string()) == Result::ERROR);
-        REQUIRE(flowgraph->path() == tempFile.path.string());
+        const auto path = Platform::PathToUtf8(tempFile.path);
+        REQUIRE(flowgraph->importFromFile(path) == Result::ERROR);
+        REQUIRE(flowgraph->path() == path);
     }
 
     SECTION("exportToFile and importFromFile round-trip a flowgraph") {
@@ -380,8 +383,9 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
         REQUIRE(flowgraph->environment().set("session", session) == Result::SUCCESS);
 
         const TempFlowgraphFile tempFile("roundtrip");
-        REQUIRE(flowgraph->exportToFile(tempFile.path.string()) == Result::SUCCESS);
-        REQUIRE(flowgraph->path() == tempFile.path.string());
+        const auto path = Platform::PathToUtf8(tempFile.path);
+        REQUIRE(flowgraph->exportToFile(path) == Result::SUCCESS);
+        REQUIRE(flowgraph->path() == path);
         REQUIRE(std::filesystem::exists(tempFile.path));
 
         std::ifstream file(tempFile.path, std::ios::binary);
@@ -394,8 +398,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Flowgraph file APIs are covered", "[flowgrap
 
         Flowgraph imported;
         REQUIRE(imported.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
-        REQUIRE(imported.importFromFile(tempFile.path.string()) == Result::SUCCESS);
-        REQUIRE(imported.path() == tempFile.path.string());
+        REQUIRE(imported.importFromFile(path) == Result::SUCCESS);
+        REQUIRE(imported.path() == path);
         REQUIRE(imported.title() == "File Graph");
         REQUIRE(imported.summary() == "File Summary");
         REQUIRE(imported.author() == "File Author");

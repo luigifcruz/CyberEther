@@ -88,7 +88,7 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        if (!std::filesystem::exists(msg.path)) {
+        if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected file does not exist.");
             return Result::SUCCESS;
         }

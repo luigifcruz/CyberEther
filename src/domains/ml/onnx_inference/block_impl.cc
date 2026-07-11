@@ -4,6 +4,7 @@
 #include <jetstream/config.hh>
 #include <jetstream/domains/ml/onnx_inference/module.hh>
 #include <jetstream/domains/ml/onnx_inference/onnx_types.hh>
+#include <jetstream/platform.hh>
 
 #ifdef JST_OS_WINDOWS
 #include <filesystem>
@@ -91,7 +92,7 @@ Result OnnxInferenceImpl::readModelTensorNames() {
         Ort::SessionOptions sessionOptions;
 
 #ifdef JST_OS_WINDOWS
-        const auto ortModelPath = std::filesystem::path(modelPath).wstring();
+        const auto ortModelPath = Platform::PathFromUtf8(modelPath);
         const ORTCHAR_T* ortModelPathData = ortModelPath.c_str();
 #else
         const ORTCHAR_T* ortModelPathData = modelPath.c_str();

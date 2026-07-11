@@ -232,7 +232,7 @@ std::string Plugin::Impl::currentArch() {
 }
 
 bool Plugin::Impl::isCepPath(const std::string& path) {
-    return lowercase(std::filesystem::path(path).extension().string()) == ".cep";
+    return lowercase(Platform::PathToUtf8(Platform::PathFromUtf8(path).extension())) == ".cep";
 }
 
 bool Plugin::Impl::isDeviceAvailable(DeviceType device) {
@@ -310,7 +310,7 @@ bool Plugin::Impl::safeRelativePath(const std::string& rawPath, std::filesystem:
         return false;
     }
 
-    std::filesystem::path candidate(rawPath);
+    auto candidate = Platform::PathFromUtf8(rawPath);
     if (candidate.is_absolute() || candidate.has_root_name()) {
         return false;
     }
@@ -342,14 +342,14 @@ const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle, std::string& error
 Result Plugin::Impl::readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        JST_ERROR("[PLUGIN] Failed to open '{}'.", path.string());
+        JST_ERROR("[PLUGIN] Failed to open '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
     file.seekg(0, std::ios::end);
     const auto size = file.tellg();
     if (size < 0) {
-        JST_ERROR("[PLUGIN] Failed to determine size for '{}'.", path.string());
+        JST_ERROR("[PLUGIN] Failed to determine size for '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -358,7 +358,7 @@ Result Plugin::Impl::readFileBytes(const std::filesystem::path& path, std::vecto
     if (!bytes.empty()) {
         file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!file) {
-            JST_ERROR("[PLUGIN] Failed to read '{}'.", path.string());
+            JST_ERROR("[PLUGIN] Failed to read '{}'.", Platform::PathToUtf8(path));
             return Result::ERROR;
         }
     }
@@ -418,7 +418,7 @@ Result Plugin::Impl::decompressGzip(const std::vector<uint8_t>& compressed,
 Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
                                        const std::filesystem::path& destination) {
     std::vector<uint8_t> compressed;
-    JST_CHECK(readFileBytes(std::filesystem::path(sourcePath), compressed));
+    JST_CHECK(readFileBytes(Platform::PathFromUtf8(sourcePath), compressed));
 
     std::vector<uint8_t> tar;
     JST_CHECK(decompressGzip(compressed, tar));
@@ -426,7 +426,8 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
     std::error_code ec;
     std::filesystem::create_directories(destination, ec);
     if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.", destination.string());
+        JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.",
+                  Platform::PathToUtf8(destination));
         return Result::ERROR;
     }
 
@@ -521,19 +522,20 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
         if (type == '5') {
             std::filesystem::create_directories(outputPath, ec);
             if (ec) {
-                JST_ERROR("[PLUGIN] Failed to create directory '{}'.", outputPath.string());
+                JST_ERROR("[PLUGIN] Failed to create directory '{}'.", Platform::PathToUtf8(outputPath));
                 return Result::ERROR;
             }
         } else if (type == '0') {
             std::filesystem::create_directories(outputPath.parent_path(), ec);
             if (ec) {
-                JST_ERROR("[PLUGIN] Failed to create directory '{}'.", outputPath.parent_path().string());
+                JST_ERROR("[PLUGIN] Failed to create directory '{}'.",
+                          Platform::PathToUtf8(outputPath.parent_path()));
                 return Result::ERROR;
             }
 
             std::ofstream file(outputPath, std::ios::binary | std::ios::trunc);
             if (!file) {
-                JST_ERROR("[PLUGIN] Failed to create file '{}'.", outputPath.string());
+                JST_ERROR("[PLUGIN] Failed to create file '{}'.", Platform::PathToUtf8(outputPath));
                 return Result::ERROR;
             }
 
@@ -541,7 +543,7 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
                 file.write(reinterpret_cast<const char*>(tar.data() + dataOffset),
                            static_cast<std::streamsize>(entrySize));
                 if (!file) {
-                    JST_ERROR("[PLUGIN] Failed to write file '{}'.", outputPath.string());
+                    JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
                     return Result::ERROR;
                 }
             }
@@ -778,7 +780,7 @@ Result Plugin::Impl::copyToCache(const std::string& sourcePath, std::string& cac
 
         JST_ERROR("[PLUGIN] Failed to copy plugin '{}' to cache '{}'.",
                   sourcePath,
-                  destination.string());
+                  Platform::PathToUtf8(destination));
         return Result::ERROR;
     }
 
@@ -800,7 +802,8 @@ Result Plugin::Impl::ensureCacheReady() {
     std::error_code ec;
     std::filesystem::create_directories(runsDirectory, ec);
     if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.", runsDirectory.string());
+        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.",
+                  Platform::PathToUtf8(runsDirectory));
         return Result::ERROR;
     }
 
@@ -833,7 +836,8 @@ Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDi
         }
 
         if (ec) {
-            JST_ERROR("[PLUGIN] Failed to create plugin cache run directory '{}'.", candidate.string());
+            JST_ERROR("[PLUGIN] Failed to create plugin cache run directory '{}'.",
+                      Platform::PathToUtf8(candidate));
             return Result::ERROR;
         }
     }
@@ -867,7 +871,8 @@ void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
     std::error_code ec;
     std::filesystem::directory_iterator entries(runsDirectory, ec);
     if (ec) {
-        JST_WARN("[PLUGIN] Failed to inspect plugin cache directory '{}'.", runsDirectory.string());
+        JST_WARN("[PLUGIN] Failed to inspect plugin cache directory '{}'.",
+                 Platform::PathToUtf8(runsDirectory));
         return;
     }
 
@@ -888,7 +893,8 @@ void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
         std::error_code cleanupEc;
         (void)std::filesystem::remove_all(entry.path(), cleanupEc);
         if (cleanupEc) {
-            JST_WARN("[PLUGIN] Failed to remove stale plugin cache directory '{}'.", entry.path().string());
+            JST_WARN("[PLUGIN] Failed to remove stale plugin cache directory '{}'.",
+                     Platform::PathToUtf8(entry.path()));
         }
     }
 }
@@ -905,7 +911,7 @@ void Plugin::Impl::cleanupCache() {
     (void)std::filesystem::remove_all(cacheRunDirectory, ec);
     if (ec) {
         JST_WARN("[PLUGIN] Failed to remove plugin cache run directory '{}'.",
-                 cacheRunDirectory.string());
+                 Platform::PathToUtf8(cacheRunDirectory));
     }
 
     cacheRunDirectory.clear();
@@ -1056,7 +1062,7 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
         return fail();
     }
 
-    const auto bundlePath = std::filesystem::path(extractedPath);
+    const auto bundlePath = Platform::PathFromUtf8(extractedPath);
     Manifest manifest;
     if (loadManifest(bundlePath, manifest) != Result::SUCCESS ||
         validateManifest(sourcePath, manifest) != Result::SUCCESS) {
@@ -1192,9 +1198,9 @@ Result Plugin::Impl::registerExamples(const std::filesystem::path& bundlePath, c
         JST_CHECK(readTextFile(examplePath, content));
 
         Registry::FlowgraphRegistration record;
-        record.key = examplePath.stem().string();
+        record.key = Platform::PathToUtf8(examplePath.stem());
         if (record.key.empty()) {
-            record.key = relativePath.string();
+            record.key = Platform::PathToUtf8(relativePath);
         }
         record.title = record.key;
         record.content = content;
@@ -1236,7 +1242,7 @@ void Plugin::Impl::removeCachedPluginFiles(Record& plugin) {
     std::error_code ec;
 
     if (!plugin.extractedPath.empty()) {
-        (void)std::filesystem::remove_all(std::filesystem::path(plugin.extractedPath), ec);
+        (void)std::filesystem::remove_all(Platform::PathFromUtf8(plugin.extractedPath), ec);
         if (ec) {
             JST_WARN("[PLUGIN] Failed to remove extracted plugin '{}'.", plugin.extractedPath);
         }
@@ -1246,7 +1252,7 @@ void Plugin::Impl::removeCachedPluginFiles(Record& plugin) {
 
     if (!plugin.loadedPath.empty()) {
         ec.clear();
-        (void)std::filesystem::remove(std::filesystem::path(plugin.loadedPath), ec);
+        (void)std::filesystem::remove(Platform::PathFromUtf8(plugin.loadedPath), ec);
         if (ec) {
             JST_WARN("[PLUGIN] Failed to remove cached plugin '{}'.", plugin.loadedPath);
         }

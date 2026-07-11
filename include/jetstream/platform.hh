@@ -21,6 +21,8 @@ enum class DynamicLibraryVisibility {
 JETSTREAM_API std::filesystem::path PathFromUtf8(const std::string& path);
 JETSTREAM_API std::string PathToUtf8(const std::filesystem::path& path);
 
+JETSTREAM_API Result EnvironmentPath(const std::string& name, std::filesystem::path& path);
+
 JETSTREAM_API void* OpenDynamicLibrary(const std::string& path,
                                        DynamicLibraryVisibility visibility,
                                        std::string& error);

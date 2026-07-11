@@ -34,18 +34,6 @@ bool SetEnvValue(const char* name, const std::optional<std::string>& value) {
 
 #if defined(JST_OS_WINDOWS)
 
-std::string PathToUtf8(const std::filesystem::path& path) {
-    const auto utf8Path = path.u8string();
-
-    std::string utf8String;
-    utf8String.reserve(utf8Path.size());
-    for (const auto ch : utf8Path) {
-        utf8String.push_back(static_cast<char>(ch));
-    }
-
-    return utf8String;
-}
-
 bool SetWideEnvValue(const wchar_t* name, const std::optional<std::wstring>& value) {
     return _wputenv_s(name, value ? value->c_str() : L"") == 0;
 }
@@ -94,7 +82,8 @@ struct TempPathRoot {
     explicit TempPathRoot(const std::string& label) {
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
         root = std::filesystem::temp_directory_path() /
-               ("cyberether-platform-" + label + "-" + std::to_string(nonce));
+               Platform::PathFromUtf8("cyberether-platform-" + label + "-" +
+                                      std::to_string(nonce));
     }
 
     ~TempPathRoot() {
@@ -106,6 +95,51 @@ struct TempPathRoot {
 };
 
 }  // namespace
+
+TEST_CASE("Platform paths preserve UTF-8", "[platform][paths]") {
+    const std::string utf8Path = "CyberEther-\xC3\x9C-\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E";
+    REQUIRE(Platform::PathToUtf8(Platform::PathFromUtf8(utf8Path)) == utf8Path);
+}
+
+TEST_CASE("Platform environment paths are native", "[platform][paths]") {
+    const ScopedEnvVar environment("CYBERETHER_TEST_ENVIRONMENT_PATH");
+    REQUIRE(environment.set("cyberether/environment/path"));
+
+    std::filesystem::path path;
+    REQUIRE(Platform::EnvironmentPath(environment.name, path) == Result::SUCCESS);
+    REQUIRE(path == Platform::PathFromUtf8("cyberether/environment/path"));
+
+    REQUIRE(environment.set(std::string()));
+    path = "unchanged";
+    REQUIRE(Platform::EnvironmentPath(environment.name, path) == Result::ERROR);
+    REQUIRE(path == "unchanged");
+
+    REQUIRE(environment.set(std::nullopt));
+    path = "unchanged";
+    REQUIRE(Platform::EnvironmentPath(environment.name, path) == Result::ERROR);
+    REQUIRE(path == "unchanged");
+
+#if defined(JST_OS_WINDOWS)
+    const ScopedWideEnvVar wideEnvironment(L"CYBERETHER_TEST_WIDE_ENVIRONMENT_PATH");
+    const std::wstring widePath = L"cyberether-\u00dcnicode-\u65e5\u672c\u8a9e";
+    REQUIRE(wideEnvironment.set(widePath));
+    REQUIRE(Platform::EnvironmentPath("CYBERETHER_TEST_WIDE_ENVIRONMENT_PATH", path) ==
+            Result::SUCCESS);
+    REQUIRE(path == std::filesystem::path(widePath));
+#endif
+}
+
+TEST_CASE("Platform dynamic library errors include a reason", "[platform][library]") {
+    std::string error;
+    void* handle = Platform::OpenDynamicLibrary(
+        "cyberether-library-that-does-not-exist",
+        Platform::DynamicLibraryVisibility::Local,
+        error);
+
+    REQUIRE(handle == nullptr);
+    REQUIRE(!error.empty());
+    Platform::CloseDynamicLibrary(handle);
+}
 
 TEST_CASE("Platform config and cache paths follow platform conventions", "[platform][paths]") {
 #if defined(JST_OS_LINUX)
@@ -121,8 +155,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar xdgCacheEnv("XDG_CACHE_HOME");
 
         REQUIRE(homeEnv.set(std::nullopt));
-        REQUIRE(xdgConfigEnv.set(configRoot.string()));
-        REQUIRE(xdgCacheEnv.set(cacheRoot.string()));
+        REQUIRE(xdgConfigEnv.set(Platform::PathToUtf8(configRoot)));
+        REQUIRE(xdgCacheEnv.set(Platform::PathToUtf8(cacheRoot)));
 
         std::string configPath;
         std::string cachePath;
@@ -130,8 +164,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(std::filesystem::path(configPath) == expectedConfig);
-        REQUIRE(std::filesystem::path(cachePath) == expectedCache);
+        REQUIRE(Platform::PathFromUtf8(configPath) == expectedConfig);
+        REQUIRE(Platform::PathFromUtf8(cachePath) == expectedCache);
         REQUIRE(!std::filesystem::exists(configRoot));
         REQUIRE(!std::filesystem::exists(expectedConfig));
         REQUIRE(!std::filesystem::exists(cacheRoot));
@@ -148,7 +182,7 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar xdgConfigEnv("XDG_CONFIG_HOME");
         const ScopedEnvVar xdgCacheEnv("XDG_CACHE_HOME");
 
-        REQUIRE(homeEnv.set(homeRoot.string()));
+        REQUIRE(homeEnv.set(Platform::PathToUtf8(homeRoot)));
         REQUIRE(xdgConfigEnv.set(std::nullopt));
         REQUIRE(xdgCacheEnv.set(std::nullopt));
 
@@ -158,8 +192,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(std::filesystem::path(configPath) == expectedConfig);
-        REQUIRE(std::filesystem::path(cachePath) == expectedCache);
+        REQUIRE(Platform::PathFromUtf8(configPath) == expectedConfig);
+        REQUIRE(Platform::PathFromUtf8(cachePath) == expectedCache);
         REQUIRE(!std::filesystem::exists(homeRoot / ".config"));
         REQUIRE(!std::filesystem::exists(expectedConfig));
         REQUIRE(!std::filesystem::exists(homeRoot / ".cache"));
@@ -176,7 +210,7 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar xdgConfigEnv("XDG_CONFIG_HOME");
         const ScopedEnvVar xdgCacheEnv("XDG_CACHE_HOME");
 
-        REQUIRE(homeEnv.set(homeRoot.string()));
+        REQUIRE(homeEnv.set(Platform::PathToUtf8(homeRoot)));
         REQUIRE(xdgConfigEnv.set("relative-config"));
         REQUIRE(xdgCacheEnv.set("relative-cache"));
 
@@ -186,8 +220,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(std::filesystem::path(configPath) == expectedConfig);
-        REQUIRE(std::filesystem::path(cachePath) == expectedCache);
+        REQUIRE(Platform::PathFromUtf8(configPath) == expectedConfig);
+        REQUIRE(Platform::PathFromUtf8(cachePath) == expectedCache);
         REQUIRE(!std::filesystem::exists(homeRoot / ".config"));
         REQUIRE(!std::filesystem::exists(expectedConfig));
         REQUIRE(!std::filesystem::exists(homeRoot / ".cache"));
@@ -205,8 +239,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar xdgConfigEnv("XDG_CONFIG_HOME");
         const ScopedEnvVar xdgCacheEnv("XDG_CACHE_HOME");
 
-        REQUIRE(homeEnv.set(homeRoot.string()));
-        REQUIRE(xdgConfigEnv.set(configRoot.string()));
+        REQUIRE(homeEnv.set(Platform::PathToUtf8(homeRoot)));
+        REQUIRE(xdgConfigEnv.set(Platform::PathToUtf8(configRoot)));
         REQUIRE(xdgCacheEnv.set(std::nullopt));
 
         std::string configPath;
@@ -215,8 +249,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(std::filesystem::path(configPath) == expectedConfig);
-        REQUIRE(std::filesystem::path(cachePath) == expectedCache);
+        REQUIRE(Platform::PathFromUtf8(configPath) == expectedConfig);
+        REQUIRE(Platform::PathFromUtf8(cachePath) == expectedCache);
     }
 
     SECTION("cache can use XDG while config falls back to HOME") {
@@ -230,9 +264,9 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar xdgConfigEnv("XDG_CONFIG_HOME");
         const ScopedEnvVar xdgCacheEnv("XDG_CACHE_HOME");
 
-        REQUIRE(homeEnv.set(homeRoot.string()));
+        REQUIRE(homeEnv.set(Platform::PathToUtf8(homeRoot)));
         REQUIRE(xdgConfigEnv.set(std::nullopt));
-        REQUIRE(xdgCacheEnv.set(cacheRoot.string()));
+        REQUIRE(xdgCacheEnv.set(Platform::PathToUtf8(cacheRoot)));
 
         std::string configPath;
         std::string cachePath;
@@ -240,8 +274,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(std::filesystem::path(configPath) == expectedConfig);
-        REQUIRE(std::filesystem::path(cachePath) == expectedCache);
+        REQUIRE(Platform::PathFromUtf8(configPath) == expectedConfig);
+        REQUIRE(Platform::PathFromUtf8(cachePath) == expectedCache);
     }
 
     SECTION("relative XDG overrides require HOME and fail cleanly without it") {
@@ -272,7 +306,7 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar xdgConfigEnv("XDG_CONFIG_HOME");
         const ScopedEnvVar xdgCacheEnv("XDG_CACHE_HOME");
 
-        REQUIRE(homeEnv.set(homeRoot.string()));
+        REQUIRE(homeEnv.set(Platform::PathToUtf8(homeRoot)));
         REQUIRE(xdgConfigEnv.set(std::string()));
         REQUIRE(xdgCacheEnv.set(std::string()));
 
@@ -282,8 +316,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(std::filesystem::path(configPath) == expectedConfig);
-        REQUIRE(std::filesystem::path(cachePath) == expectedCache);
+        REQUIRE(Platform::PathFromUtf8(configPath) == expectedConfig);
+        REQUIRE(Platform::PathFromUtf8(cachePath) == expectedCache);
     }
 #elif defined(JST_OS_WINDOWS)
     SECTION("windows resolves APPDATA and LOCALAPPDATA without creating directories") {
@@ -296,8 +330,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar appDataEnv("APPDATA");
         const ScopedEnvVar localAppDataEnv("LOCALAPPDATA");
 
-        REQUIRE(appDataEnv.set(appDataRoot.string()));
-        REQUIRE(localAppDataEnv.set(localAppDataRoot.string()));
+        REQUIRE(appDataEnv.set(Platform::PathToUtf8(appDataRoot)));
+        REQUIRE(localAppDataEnv.set(Platform::PathToUtf8(localAppDataRoot)));
 
         std::string configPath;
         std::string cachePath;
@@ -305,8 +339,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(configPath == PathToUtf8(expectedConfig));
-        REQUIRE(cachePath == PathToUtf8(expectedCache));
+        REQUIRE(configPath == Platform::PathToUtf8(expectedConfig));
+        REQUIRE(cachePath == Platform::PathToUtf8(expectedCache));
         REQUIRE(!std::filesystem::exists(expectedConfig));
         REQUIRE(!std::filesystem::exists(expectedCache));
     }
@@ -320,7 +354,7 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         const ScopedEnvVar appDataEnv("APPDATA");
         const ScopedEnvVar localAppDataEnv("LOCALAPPDATA");
 
-        REQUIRE(appDataEnv.set(appDataRoot.string()));
+        REQUIRE(appDataEnv.set(Platform::PathToUtf8(appDataRoot)));
         REQUIRE(localAppDataEnv.set(std::nullopt));
 
         std::string configPath;
@@ -329,8 +363,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(configPath == PathToUtf8(expectedConfig));
-        REQUIRE(cachePath == PathToUtf8(expectedCache));
+        REQUIRE(configPath == Platform::PathToUtf8(expectedConfig));
+        REQUIRE(cachePath == Platform::PathToUtf8(expectedCache));
         REQUIRE(!std::filesystem::exists(expectedConfig));
         REQUIRE(!std::filesystem::exists(expectedCache));
     }
@@ -354,8 +388,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        REQUIRE(configPath == PathToUtf8(expectedConfig));
-        REQUIRE(cachePath == PathToUtf8(expectedCache));
+        REQUIRE(configPath == Platform::PathToUtf8(expectedConfig));
+        REQUIRE(cachePath == Platform::PathToUtf8(expectedCache));
         REQUIRE(!std::filesystem::exists(expectedConfig));
         REQUIRE(!std::filesystem::exists(expectedCache));
     }
@@ -411,8 +445,8 @@ TEST_CASE("Platform config and cache paths follow platform conventions", "[platf
         REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
         REQUIRE(Platform::CachePath(cachePath) == Result::SUCCESS);
 
-        const std::filesystem::path config(configPath);
-        const std::filesystem::path cache(cachePath);
+        const auto config = Platform::PathFromUtf8(configPath);
+        const auto cache = Platform::PathFromUtf8(cachePath);
         REQUIRE(config.is_absolute());
         REQUIRE(cache.is_absolute());
         REQUIRE(config.filename() == "CyberEther");

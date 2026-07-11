@@ -1,3 +1,4 @@
+#include <exception>
 #include <mutex>
 #include <string>
 
@@ -223,10 +224,34 @@ PythonApi s_api;
 void* s_libraryHandle = nullptr;
 bool s_libraryLoaded = false;
 PyInterpreterState* s_interpreter = nullptr;
+#if defined(JST_OS_WINDOWS)
+std::wstring s_programName;
+#else
 wchar_t* s_programName = nullptr;
+#endif
 
 void SetPythonProgramName(const PythonApi& api, const std::string& programPath) {
-    if (programPath.empty() || s_programName || !api.Py_SetProgramName || !api.Py_DecodeLocale) {
+    if (programPath.empty() || !api.Py_SetProgramName) {
+        return;
+    }
+
+#if defined(JST_OS_WINDOWS)
+    if (!s_programName.empty()) {
+        return;
+    }
+
+    try {
+        s_programName = Platform::PathFromUtf8(programPath).native();
+    } catch (const std::exception& exception) {
+        JST_WARN("[RUNTIME_CONTEXT_PYTHON] Can't decode Python program path '{}': {}.",
+                 programPath,
+                 exception.what());
+        return;
+    }
+
+    api.Py_SetProgramName(s_programName.data());
+#else
+    if (s_programName || !api.Py_DecodeLocale) {
         return;
     }
 
@@ -237,6 +262,7 @@ void SetPythonProgramName(const PythonApi& api, const std::string& programPath) 
     }
 
     api.Py_SetProgramName(s_programName);
+#endif
 }
 
 }  // namespace

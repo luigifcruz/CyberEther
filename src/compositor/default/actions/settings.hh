@@ -6,6 +6,7 @@
 #include "../model/state.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
@@ -171,12 +172,12 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
-        if (std::filesystem::path(msg.path).extension() != ".cep") {
+        if (Platform::PathFromUtf8(msg.path).extension() != ".cep") {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
             return Result::SUCCESS;
         }
 
-        if (!std::filesystem::exists(msg.path)) {
+        if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
         }
@@ -235,12 +236,12 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
-        if (std::filesystem::path(msg.path).extension() != ".cep") {
+        if (Platform::PathFromUtf8(msg.path).extension() != ".cep") {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
             return Result::SUCCESS;
         }
 
-        if (!std::filesystem::exists(msg.path)) {
+        if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
         }
@@ -284,13 +285,13 @@ struct SettingsActions {
                                  "Cannot reload plugin because a registered path is empty.");
                 return Result::SUCCESS;
             }
-            if (std::filesystem::path(path).extension() != ".cep") {
+            if (Platform::PathFromUtf8(path).extension() != ".cep") {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
                                  "Registered plugins must be .cep bundles: " + path);
                 return Result::SUCCESS;
             }
-            if (!std::filesystem::exists(path)) {
+            if (!std::filesystem::exists(Platform::PathFromUtf8(path))) {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
                                  "A registered plugin does not exist: " + path);

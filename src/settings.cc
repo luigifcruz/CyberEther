@@ -48,7 +48,7 @@ Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& set
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
     if (ec) {
-        JST_ERROR("[SETTINGS] Failed to query settings file '{}'.", path.string());
+        JST_ERROR("[SETTINGS] Failed to query settings file '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -58,7 +58,7 @@ Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& set
 
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        JST_ERROR("[SETTINGS] Can't open settings file '{}'.", path.string());
+        JST_ERROR("[SETTINGS] Can't open settings file '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -76,7 +76,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
         if (ec) {
-            JST_ERROR("[SETTINGS] Cannot create directory '{}'.", parent.string());
+            JST_ERROR("[SETTINGS] Cannot create directory '{}'.", Platform::PathToUtf8(parent));
             return Result::ERROR;
         }
     }
@@ -91,7 +91,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
 
     std::ofstream file(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
-        JST_ERROR("[SETTINGS] Can't open temporary settings file '{}'.", tempPath.string());
+        JST_ERROR("[SETTINGS] Can't open temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
         return Result::ERROR;
     }
 
@@ -102,7 +102,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code cleanupEc;
         (void)std::filesystem::remove(tempPath, cleanupEc);
 
-        JST_ERROR("[SETTINGS] Failed to write temporary settings file '{}'.", tempPath.string());
+        JST_ERROR("[SETTINGS] Failed to write temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
         return Result::ERROR;
     }
 
@@ -111,7 +111,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code cleanupEc;
         (void)std::filesystem::remove(tempPath, cleanupEc);
 
-        JST_ERROR("[SETTINGS] Failed to finalize temporary settings file '{}'.", tempPath.string());
+        JST_ERROR("[SETTINGS] Failed to finalize temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
         return Result::ERROR;
     }
 
@@ -121,7 +121,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code cleanupEc;
         (void)std::filesystem::remove(tempPath, cleanupEc);
 
-        JST_ERROR("[SETTINGS] Failed to replace settings file '{}'.", path.string());
+        JST_ERROR("[SETTINGS] Failed to replace settings file '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 

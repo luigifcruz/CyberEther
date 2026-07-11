@@ -1,8 +1,10 @@
 #include "jetstream/platform.hh"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <memory>
 #include <utility>
@@ -81,6 +83,60 @@ EM_JS(void, _jst_start_pick_folder, (), {
 
 namespace Jetstream::Platform {
 
+#if defined(JST_OS_WINDOWS)
+namespace {
+
+constexpr std::size_t WindowsDialogPathCapacity = 32768;
+
+void AppendWindowsFilter(std::vector<wchar_t>& filter, const std::wstring& value) {
+    filter.insert(filter.end(), value.begin(), value.end());
+    filter.push_back(L'\0');
+}
+
+std::vector<wchar_t> WindowsOpenFileFilter(const std::vector<std::string>& extensions) {
+    std::vector<wchar_t> filter;
+    AppendWindowsFilter(filter, L"All Files");
+    AppendWindowsFilter(filter, L"*.*");
+
+    if (!extensions.empty()) {
+        std::wstring label = L"Selected Files (";
+        std::wstring patterns;
+        for (std::size_t i = 0; i < extensions.size(); ++i) {
+            const auto extension = PathFromUtf8(extensions[i]).native();
+            if (i > 0) {
+                label += L", ";
+                patterns += L";";
+            }
+            label += L"." + extension;
+            patterns += L"*." + extension;
+        }
+        label += L")";
+        AppendWindowsFilter(filter, label);
+        AppendWindowsFilter(filter, patterns);
+    }
+
+    filter.push_back(L'\0');
+    return filter;
+}
+
+bool InitializeWindowsDialogPath(const std::string& path,
+                                 std::array<wchar_t, WindowsDialogPathCapacity>& buffer) {
+    if (path.empty()) {
+        return true;
+    }
+
+    const auto nativePath = PathFromUtf8(path).native();
+    if (nativePath.size() >= buffer.size()) {
+        return false;
+    }
+
+    std::copy(nativePath.begin(), nativePath.end(), buffer.begin());
+    return true;
+}
+
+}  // namespace
+#endif
+
 std::filesystem::path PathFromUtf8(const std::string& path) {
     return std::filesystem::path(std::u8string(path.begin(), path.end()));
 }
@@ -90,6 +146,39 @@ std::string PathToUtf8(const std::filesystem::path& path) {
     return std::string(utf8Path.begin(), utf8Path.end());
 }
 
+Result EnvironmentPath(const std::string& name, std::filesystem::path& path) {
+    try {
+#if defined(JST_OS_WINDOWS)
+        const auto nativeName = PathFromUtf8(name).native();
+        const DWORD requiredSize = GetEnvironmentVariableW(nativeName.c_str(), nullptr, 0);
+        if (requiredSize == 0) {
+            return Result::ERROR;
+        }
+
+        std::wstring value(requiredSize, L'\0');
+        const DWORD writtenSize = GetEnvironmentVariableW(
+            nativeName.c_str(), value.data(), requiredSize);
+        if (writtenSize == 0 || writtenSize >= requiredSize) {
+            return Result::ERROR;
+        }
+
+        value.resize(writtenSize);
+        path = std::filesystem::path(std::move(value));
+#else
+        const char* value = std::getenv(name.c_str());
+        if (!value || !*value) {
+            return Result::ERROR;
+        }
+
+        path = std::filesystem::path(value);
+#endif
+    } catch (...) {
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 void* OpenDynamicLibrary(const std::string& path,
                          DynamicLibraryVisibility visibility,
                          std::string& error) {
@@ -97,12 +186,19 @@ void* OpenDynamicLibrary(const std::string& path,
 
 #if defined(JST_OS_WINDOWS)
     (void)visibility;
-    const auto nativePath = PathFromUtf8(path);
-    auto* handle = LoadLibraryW(nativePath.c_str());
-    if (!handle) {
-        error = "Windows error " + std::to_string(GetLastError());
+    try {
+        const auto nativePath = PathFromUtf8(path);
+        auto* handle = LoadLibraryW(nativePath.c_str());
+        if (!handle) {
+            error = "Windows error " + std::to_string(GetLastError());
+        }
+        return reinterpret_cast<void*>(handle);
+    } catch (const std::exception& exception) {
+        error = exception.what();
+    } catch (...) {
+        error = "failed to convert the UTF-8 library path";
     }
-    return reinterpret_cast<void*>(handle);
+    return nullptr;
 #elif defined(JST_OS_BROWSER)
     (void)path;
     (void)visibility;
@@ -183,7 +279,7 @@ Result FileLock::Impl::ensureParentDirectory(const std::string& path) {
     std::error_code ec;
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-        JST_ERROR("Failed to create file lock directory '{}'.", parent.string());
+        JST_ERROR("Failed to create file lock directory '{}'.", PathToUtf8(parent));
         return Result::ERROR;
     }
 
@@ -381,83 +477,51 @@ Result CachePath(std::string& path) {
 
 #elif defined(JST_OS_LINUX)
 
-namespace {
-
-Result ResolveLinuxBasePath(const char* homeEnv, std::string& homePath) {
-    const char* home = std::getenv(homeEnv);
-    if (!home || std::string(home).empty()) {
-        JST_ERROR("Failed to resolve app path because {} is not set.", homeEnv);
-        return Result::ERROR;
-    }
-
-    homePath = home;
-    return Result::SUCCESS;
-}
-
-}  // namespace
-
 Result ConfigPath(std::string& path) {
-    const char* xdg = std::getenv("XDG_CONFIG_HOME");
-    if (xdg && *xdg) {
-        const std::filesystem::path basePath(xdg);
+    std::filesystem::path basePath;
+    if (EnvironmentPath("XDG_CONFIG_HOME", basePath) == Result::SUCCESS) {
         if (basePath.is_absolute()) {
-            path = (basePath / "cyberether").string();
+            path = PathToUtf8(basePath / "cyberether");
             return Result::SUCCESS;
         }
 
         JST_WARN("XDG_CONFIG_HOME must be an absolute path. Falling back to $HOME/.config.");
     }
 
-    std::string homePath;
-    JST_CHECK(ResolveLinuxBasePath("HOME", homePath));
-    path = (std::filesystem::path(homePath) / ".config" / "cyberether").string();
+    std::filesystem::path homePath;
+    if (EnvironmentPath("HOME", homePath) != Result::SUCCESS) {
+        JST_ERROR("Failed to resolve app path because HOME is not set.");
+        return Result::ERROR;
+    }
+    path = PathToUtf8(homePath / ".config" / "cyberether");
     return Result::SUCCESS;
 }
 
 Result CachePath(std::string& path) {
-    const char* xdg = std::getenv("XDG_CACHE_HOME");
-    if (xdg && *xdg) {
-        const std::filesystem::path basePath(xdg);
+    std::filesystem::path basePath;
+    if (EnvironmentPath("XDG_CACHE_HOME", basePath) == Result::SUCCESS) {
         if (basePath.is_absolute()) {
-            path = (basePath / "cyberether").string();
+            path = PathToUtf8(basePath / "cyberether");
             return Result::SUCCESS;
         }
 
         JST_WARN("XDG_CACHE_HOME must be an absolute path. Falling back to $HOME/.cache.");
     }
 
-    std::string homePath;
-    JST_CHECK(ResolveLinuxBasePath("HOME", homePath));
-    path = (std::filesystem::path(homePath) / ".cache" / "cyberether").string();
+    std::filesystem::path homePath;
+    if (EnvironmentPath("HOME", homePath) != Result::SUCCESS) {
+        JST_ERROR("Failed to resolve app path because HOME is not set.");
+        return Result::ERROR;
+    }
+    path = PathToUtf8(homePath / ".cache" / "cyberether");
     return Result::SUCCESS;
 }
 
 #elif defined(JST_OS_WINDOWS)
 
-namespace {
-
-Result WindowsEnvPath(const wchar_t* name, std::filesystem::path& path) {
-    const DWORD requiredSize = GetEnvironmentVariableW(name, nullptr, 0);
-    if (requiredSize == 0) {
-        return Result::ERROR;
-    }
-
-    std::wstring value(requiredSize, L'\0');
-    const DWORD writtenSize = GetEnvironmentVariableW(name, value.data(), requiredSize);
-    if (writtenSize == 0 || writtenSize >= requiredSize) {
-        return Result::ERROR;
-    }
-
-    value.resize(writtenSize);
-    path = value;
-    return Result::SUCCESS;
-}
-
-}  // namespace
-
 Result ConfigPath(std::string& path) {
     std::filesystem::path appData;
-    if (WindowsEnvPath(L"APPDATA", appData) != Result::SUCCESS) {
+    if (EnvironmentPath("APPDATA", appData) != Result::SUCCESS) {
         JST_ERROR("Failed to resolve config path because APPDATA is not set.");
         return Result::ERROR;
     }
@@ -470,12 +534,12 @@ Result CachePath(std::string& path) {
     std::filesystem::path appData;
     std::filesystem::path localAppData;
 
-    if (WindowsEnvPath(L"LOCALAPPDATA", localAppData) == Result::SUCCESS) {
+    if (EnvironmentPath("LOCALAPPDATA", localAppData) == Result::SUCCESS) {
         path = PathToUtf8(localAppData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
 
-    if (WindowsEnvPath(L"APPDATA", appData) == Result::SUCCESS) {
+    if (EnvironmentPath("APPDATA", appData) == Result::SUCCESS) {
         path = PathToUtf8(appData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
@@ -592,45 +656,26 @@ Result PickFile(std::string& path,
 Result PickFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
-    // File path buffer
-    char buf[256] = {'\0'};
-    memcpy_s(buf, 256, path.c_str(), path.length());
-
-    // Create OpenFilenameA Struct
-    OPENFILENAMEA ofn;
-    ZeroMemory(&ofn, sizeof(OPENFILENAME));
-
-    // Fill struct
-    ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = NULL;
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = 256;
-
-    std::string filter = "All Files\0*.*\0";
-    if (!extensions.empty()) {
-        filter += "Selected Files (";
-        for (size_t i = 0; i < extensions.size(); ++i) {
-            if (i > 0) filter += ", ";
-            filter += "." + extensions[i];
-        }
-        filter += ")\0";
-        for (size_t i = 0; i < extensions.size(); ++i) {
-            if (i > 0) filter += ";";
-            filter += "*." + extensions[i];
-        }
-        filter += "\0";
-        ofn.nFilterIndex = 2;
+    std::array<wchar_t, WindowsDialogPathCapacity> buffer = {};
+    if (!InitializeWindowsDialogPath(path, buffer)) {
+        JST_ERROR("Initial file path is too long.");
+        return Result::ERROR;
     }
-    ofn.nFilterIndex = 1;
-    ofn.lpstrFilter = filter.c_str();
 
-    bool ret = GetOpenFileNameA(&ofn);
-    if (!ret) {
+    auto filter = WindowsOpenFileFilter(extensions);
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = buffer.data();
+    ofn.nMaxFile = static_cast<DWORD>(buffer.size());
+    ofn.lpstrFilter = filter.data();
+    ofn.nFilterIndex = extensions.empty() ? 1 : 2;
+
+    if (!GetOpenFileNameW(&ofn)) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }
 
-    path = std::string(ofn.lpstrFile);
+    path = PathToUtf8(std::filesystem::path(buffer.data()));
 
     if (path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
@@ -804,29 +849,27 @@ Result SaveFile(std::string& path,
 
 Result SaveFile(std::string& path,
                 std::function<void(std::string)> callback) {
-    /* File path buffer */
-    char buf[256] = {'\0'};
-    memcpy_s(buf,256,path.c_str(),path.length());
+    std::array<wchar_t, WindowsDialogPathCapacity> buffer = {};
+    if (!InitializeWindowsDialogPath(path, buffer)) {
+        JST_ERROR("Initial file path is too long.");
+        return Result::ERROR;
+    }
 
-    /* Create OpenFilenameA Struct */
-    OPENFILENAMEA ofn;
-    ZeroMemory(&ofn, sizeof(OPENFILENAME));
-
-    /* Fill struct */
-    ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = NULL;
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = 256;
-    ofn.lpstrFilter = "All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0";
+    static constexpr wchar_t filter[] =
+        L"All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0\0";
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = buffer.data();
+    ofn.nMaxFile = static_cast<DWORD>(buffer.size());
+    ofn.lpstrFilter = filter;
     ofn.nFilterIndex = 2;
 
-    bool ret = GetSaveFileNameA(&ofn);
-    if (!ret) {
+    if (!GetSaveFileNameW(&ofn)) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
     }
 
-    path = std::string(ofn.lpstrFile);
+    path = PathToUtf8(std::filesystem::path(buffer.data()));
 
     if (path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
