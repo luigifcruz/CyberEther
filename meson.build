@@ -49,7 +49,12 @@ if jst_is_browser
 endif
 
 if jst_is_windows
-    add_project_arguments('/Zc:preprocessor', '/bigobj', language: 'cpp')
+    add_project_arguments(
+        '/Zc:preprocessor',
+        '/bigobj',
+        '/D_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING',
+        language: 'cpp',
+    )
 endif
 
 cpp = meson.get_compiler('cpp')
