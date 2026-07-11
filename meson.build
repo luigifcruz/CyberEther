@@ -52,6 +52,12 @@ if jst_is_windows
     add_project_arguments('/Zc:preprocessor', '/bigobj', language: 'cpp')
 endif
 
+cpp = meson.get_compiler('cpp')
+if cpp.has_argument('-Wno-missing-field-initializers')
+    # Config aggregates intentionally rely on defaults for unspecified fields.
+    add_project_arguments('-Wno-missing-field-initializers', language: 'cpp')
+endif
+
 if get_option('native')
     if not jst_is_windows
         add_project_arguments('-march=native', language: 'cpp')
