@@ -52,23 +52,39 @@ class Snapshot<T, std::enable_if_t<!std::is_trivially_copyable_v<T>>> {
     Snapshot& operator=(Snapshot&&) = delete;
 
     void publish(const T& newValue) {
+#if defined(_MSC_VER)
+        value.store(std::make_shared<const T>(newValue), std::memory_order_release);
+#else
         std::atomic_store_explicit(&value,
                                    std::make_shared<const T>(newValue),
                                    std::memory_order_release);
+#endif
     }
 
     void publish(T&& newValue) {
+#if defined(_MSC_VER)
+        value.store(std::make_shared<const T>(std::move(newValue)), std::memory_order_release);
+#else
         std::atomic_store_explicit(&value,
                                    std::make_shared<const T>(std::move(newValue)),
                                    std::memory_order_release);
+#endif
     }
 
     T get() const {
+#if defined(_MSC_VER)
+        return *value.load(std::memory_order_acquire);
+#else
         return *std::atomic_load_explicit(&value, std::memory_order_acquire);
+#endif
     }
 
  private:
+#if defined(_MSC_VER)
+    std::atomic<std::shared_ptr<const T>> value;
+#else
     std::shared_ptr<const T> value;
+#endif
 };
 
 }  // namespace Jetstream::Tools
