@@ -245,7 +245,9 @@ class TestUIBase {
         ImGui::Text("Dimensions:");
         ImGui::Text("  Window: %.0fx%.0f", totalSize.x, totalSize.y);
         ImGui::Text("  Content: %.0fx%.0f", contentSize.x, contentSize.y);
-        ImGui::Text("  Buffer: %llux%llu", surface->size().x, surface->size().y);
+        ImGui::Text("  Buffer: %llux%llu",
+                    static_cast<unsigned long long>(surface->size().x),
+                    static_cast<unsigned long long>(surface->size().y));
 
         JST_CHECK_THROW(renderInfoPanel(totalSize, contentSize));
 
