@@ -63,7 +63,7 @@ TEST_CASE("FM - Linear Phase Ramp", "[modules][fm][phase]") {
             // Create linear phase ramp (constant frequency offset).
             const U64 bufferSize = 128;
             const F32 freqOffset = 10e3f;  // 10 kHz offset
-            const F32 phaseIncrement = 2.0f * JST_PI * freqOffset / sampleRate;
+            const F32 phaseIncrement = 2.0f * static_cast<F32>(JST_PI) * freqOffset / sampleRate;
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {bufferSize}) == Result::SUCCESS);
@@ -83,7 +83,7 @@ TEST_CASE("FM - Linear Phase Ramp", "[modules][fm][phase]") {
             // Output should be constant (constant frequency = constant demodulated value).
             // Expected value based on FM demod formula.
             const F32 kf = 100e3f / sampleRate;
-            const F32 ref = 1.0f / (2.0f * JST_PI * kf);
+            const F32 ref = 1.0f / (2.0f * static_cast<F32>(JST_PI) * kf);
             const F32 expected = phaseIncrement * ref;
 
             for (U64 i = 1; i < bufferSize; ++i) {
