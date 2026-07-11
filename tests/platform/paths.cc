@@ -104,6 +104,27 @@ TEST_CASE("Platform paths preserve UTF-8", "[platform][paths]") {
     REQUIRE(Platform::PathToUtf8(Platform::PathFromUtf8(utf8Path)) == utf8Path);
 }
 
+TEST_CASE("Platform environment variables preserve values", "[platform][paths]") {
+    const ScopedEnvVar environment("CYBERETHER_TEST_ENVIRONMENT_VARIABLE");
+    REQUIRE(environment.set("cyberether-environment-value"));
+
+    std::string value;
+    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::SUCCESS);
+    REQUIRE(value == "cyberether-environment-value");
+
+#if !defined(JST_OS_WINDOWS)
+    REQUIRE(environment.set(std::string()));
+    value = "unchanged";
+    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::SUCCESS);
+    REQUIRE(value.empty());
+#endif
+
+    REQUIRE(environment.set(std::nullopt));
+    value = "unchanged";
+    REQUIRE(Platform::EnvironmentVariable(environment.name, value) == Result::ERROR);
+    REQUIRE(value == "unchanged");
+}
+
 TEST_CASE("Platform environment paths are native", "[platform][paths]") {
     const ScopedEnvVar environment("CYBERETHER_TEST_ENVIRONMENT_PATH");
     REQUIRE(environment.set("cyberether/environment/path"));

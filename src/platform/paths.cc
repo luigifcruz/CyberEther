@@ -26,9 +26,15 @@ Result EnvironmentVariable(const std::string& name, std::string& value) {
     try {
 #if defined(JST_OS_WINDOWS)
         const auto nativeName = PathFromUtf8(name).native();
+        SetLastError(ERROR_SUCCESS);
         const DWORD requiredSize = GetEnvironmentVariableW(nativeName.c_str(), nullptr, 0);
         if (requiredSize == 0) {
-            return Result::ERROR;
+            if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
+                return Result::ERROR;
+            }
+
+            value.clear();
+            return Result::SUCCESS;
         }
 
         std::wstring nativeValue(requiredSize, L'\0');
@@ -42,7 +48,7 @@ Result EnvironmentVariable(const std::string& name, std::string& value) {
         value = PathToUtf8(std::filesystem::path(std::move(nativeValue)));
 #else
         const char* environmentValue = std::getenv(name.c_str());
-        if (!environmentValue || !*environmentValue) {
+        if (!environmentValue) {
             return Result::ERROR;
         }
 
