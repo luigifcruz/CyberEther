@@ -82,6 +82,38 @@ bool Utf8ToWide(const std::string& value, std::wstring& wide) {
                                size) == size;
 }
 
+bool ResolveWindowsExecutable(const std::string& executable, std::wstring& resolved) {
+    std::wstring nativeExecutable;
+    if (!Utf8ToWide(executable, nativeExecutable)) {
+        return false;
+    }
+    if (nativeExecutable.find_first_of(L"\\/:") != std::wstring::npos) {
+        resolved = std::move(nativeExecutable);
+        return true;
+    }
+
+    const DWORD requiredSize =
+        SearchPathW(nullptr, nativeExecutable.c_str(), L".exe", 0, nullptr, nullptr);
+    if (requiredSize == 0) {
+        return false;
+    }
+
+    resolved.resize(requiredSize);
+    const DWORD writtenSize = SearchPathW(nullptr,
+                                          nativeExecutable.c_str(),
+                                          L".exe",
+                                          static_cast<DWORD>(resolved.size()),
+                                          resolved.data(),
+                                          nullptr);
+    if (writtenSize == 0 || writtenSize >= resolved.size()) {
+        resolved.clear();
+        return false;
+    }
+
+    resolved.resize(writtenSize);
+    return true;
+}
+
 std::wstring QuoteWindowsArgument(const std::wstring& argument) {
     std::wstring quoted = L"\"";
     std::size_t backslashes = 0;
@@ -112,7 +144,7 @@ Result RunWindowsProcess(const std::string& executable,
                          std::string& output,
                          U64 timeoutMilliseconds) {
     std::wstring nativeExecutable;
-    if (!Utf8ToWide(executable, nativeExecutable)) {
+    if (!ResolveWindowsExecutable(executable, nativeExecutable)) {
         return Result::ERROR;
     }
 
