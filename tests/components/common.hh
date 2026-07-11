@@ -144,7 +144,7 @@ class TestUIBase {
         JST_CHECK(setupFramebuffer());
         JST_CHECK(setupSurface());
 
-        ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1, 0.1f, 0.1f, 1.0f);
+        ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.1f, 0.1f, 0.1f, 1.0f);
 
         JST_CHECK(instance->start());
 
