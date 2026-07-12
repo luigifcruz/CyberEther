@@ -9,7 +9,7 @@ struct WorkspaceBackground::Impl {
         Extent2D<F32> position;
         F32 velocity = 0.0f;
         F32 radius = 0.0f;
-        F32 alpha = 0.0f;
+        F32 alphaSeed = 0.0f;
         F32 phase = 0.0f;
     };
 
@@ -74,14 +74,21 @@ void WorkspaceBackground::render(const Context& ctx) {
                     areaPos.y + unit(impl->randomGenerator) * areaSize.y,
                 },
                 .velocity = 10.0f + unit(impl->randomGenerator) * 30.0f,
-                .radius = 1.0f + unit(impl->randomGenerator) * 2.5f,
-                .alpha = 0.15f + unit(impl->randomGenerator) * 0.25f,
+                .radius = 0.8f + unit(impl->randomGenerator) * 1.8f,
+                .alphaSeed = unit(impl->randomGenerator),
                 .phase = unit(impl->randomGenerator) * 6.28318f,
             });
         }
     }
 
     const ImVec4 baseColor = Private::ImColor(ctx, config.particleColorKey);
+    const ImVec4 backgroundColor = Private::ImColor(ctx, config.backgroundColorKey);
+    const F32 backgroundLuminance = 0.2126f * backgroundColor.x +
+                                    0.7152f * backgroundColor.y +
+                                    0.0722f * backgroundColor.z;
+    const bool darkBackground = backgroundLuminance < 0.5f;
+    const F32 alphaLo = darkBackground ? 0.2f : 0.28f;
+    const F32 alphaHi = darkBackground ? 0.6f : 0.58f;
     const F32 time = static_cast<F32>(ImGui::GetTime());
     const F32 deltaTime = ImGui::GetIO().DeltaTime;
     std::uniform_real_distribution<F32> unit(0.0f, 1.0f);
@@ -103,17 +110,12 @@ void WorkspaceBackground::render(const Context& ctx) {
         }
 
         const F32 twinkle = std::sin(time * 2.0f + particle.phase) * 0.1f + 0.9f;
-        const F32 finalAlpha = particle.alpha * twinkle;
+        const F32 finalAlpha = (alphaLo + particle.alphaSeed * (alphaHi - alphaLo)) * twinkle;
         const ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(baseColor.x,
                                                                   baseColor.y,
                                                                   baseColor.z,
                                                                   finalAlpha));
-        const ImU32 glowColor = ImGui::ColorConvertFloat4ToU32(ImVec4(baseColor.x,
-                                                                      baseColor.y,
-                                                                      baseColor.z,
-                                                                      finalAlpha * 0.3f));
 
-        drawList->AddCircleFilled(Private::ToImVec2(renderPos), particle.radius * Scale(ctx, 2.5f), glowColor, 12);
         drawList->AddCircleFilled(Private::ToImVec2(renderPos), particle.radius * ScalingFactor(ctx), color, 12);
     }
     ImGui::PopID();

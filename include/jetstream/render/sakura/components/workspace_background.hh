@@ -16,7 +16,7 @@ struct WorkspaceBackground {
         F32 topOffset = 0.0f;
         U64 particleCount = 60;
         std::string backgroundColorKey = "background";
-        std::string particleColorKey = "cyber_blue";
+        std::string particleColorKey = "workspace_particle";
     };
 
     WorkspaceBackground();
