@@ -151,6 +151,23 @@ int PrintUsageError(const char* program, const std::string& message) {
     return CLI_USAGE_ERROR;
 }
 
+class LogLevelGuard {
+ public:
+    explicit LogLevelGuard(int level) : previous_(_JST_LOG_DEBUG_LEVEL()) {
+        JST_LOG_SET_DEBUG_LEVEL(level);
+    }
+
+    LogLevelGuard(const LogLevelGuard&) = delete;
+    LogLevelGuard& operator=(const LogLevelGuard&) = delete;
+
+    ~LogLevelGuard() {
+        JST_LOG_SET_DEBUG_LEVEL(previous_);
+    }
+
+ private:
+    int previous_;
+};
+
 }  // namespace
 
 static void printUsage(const char* program,
@@ -585,6 +602,11 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         } catch (const Result&) {
             return PrintUsageError(argv[0], "The configured CyberEther Remote codec or encoder is invalid.");
         }
+    }
+
+    std::optional<LogLevelGuard> benchmarkLogLevel;
+    if (command == CommandType::Benchmark) {
+        benchmarkLogLevel.emplace(-1);
     }
 
     JST_INFO("[CYBERETHER] Running native app.");
