@@ -263,6 +263,31 @@ TEST_CASE("Settings can update memory without persisting", "[settings]") {
     REQUIRE(restored.developer.timingEnabled);
 }
 
+TEST_CASE("Transient settings can be restored before a retained update", "[settings]") {
+    SettingsSandbox sandbox("transient-restore");
+
+    Settings retained;
+    retained.graphics.scale = 1.25f;
+    retained.remote.brokerUrl = "https://retained.example.com";
+    REQUIRE(Settings::Set(retained) == Result::SUCCESS);
+
+    Settings runtime = retained;
+    runtime.graphics.scale = 3.0f;
+    runtime.remote.brokerUrl = "https://runtime.example.com";
+    REQUIRE(Settings::Set(runtime, false) == Result::SUCCESS);
+    REQUIRE(Settings::Set(retained, false) == Result::SUCCESS);
+
+    Settings updated;
+    REQUIRE(Settings::Get(updated) == Result::SUCCESS);
+    updated.interface.infoPanelEnabled = false;
+    REQUIRE(Settings::Set(updated) == Result::SUCCESS);
+
+    const auto yaml = ReadFile(sandbox.path);
+    REQUIRE(yaml.find("https://retained.example.com") != std::string::npos);
+    REQUIRE(yaml.find("https://runtime.example.com") == std::string::npos);
+    REQUIRE(yaml.find("scale: 1.25") != std::string::npos);
+}
+
 TEST_CASE("Python runtime validation treats framework binaries as libraries", "[settings][runtime][python]") {
     TempPathRoot sandbox("fake-python-framework-runtime");
     const auto fakeLibraryPath = sandbox.root / "Python.framework" / "Versions" / "3.14" / "Python";

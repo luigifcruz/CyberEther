@@ -251,6 +251,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         settings = {};
         (void)Settings::Set(settings, false);
     }
+    const Settings retainedSettings = settings;
 
     JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
 
@@ -616,7 +617,15 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         instance = std::make_shared<Instance>();
 
-        if (instance->create(config) != Result::SUCCESS) {
+        const Result createResult = instance->create(config);
+
+        // The compositor initializes from the effective CLI settings. Restore
+        // retained settings before later UI changes can persist CLI overrides.
+        if (Settings::Set(retainedSettings, false) != Result::SUCCESS) {
+            return -1;
+        }
+
+        if (createResult != Result::SUCCESS) {
             return -1;
         }
 
