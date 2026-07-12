@@ -24,6 +24,8 @@ JETSTREAM_API std::string PathToUtf8(const std::filesystem::path& path);
 JETSTREAM_API Result EnvironmentVariable(const std::string& name, std::string& value);
 JETSTREAM_API Result EnvironmentPath(const std::string& name, std::filesystem::path& path);
 
+JETSTREAM_API bool PrepareStandardOutputForAnsi();
+
 JETSTREAM_API Result RunProcess(const std::string& executable,
                                 const std::vector<std::string>& arguments,
                                 std::string& output,
