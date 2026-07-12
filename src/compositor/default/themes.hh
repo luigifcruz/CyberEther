@@ -31,6 +31,7 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
 
             // Background Colors
             {"background", {0.0f, 0.0f, 0.0f, 1.00f}},
+            {"workspace_particle", {0.976f, 0.976f, 0.976f, 1.0f}},
             {"panel", {0.05f, 0.05f, 0.05f, 1.00f}},
             {"card", {0.08f, 0.08f, 0.08f, 1.00f}},
             {"popup_bg", {0.06f, 0.06f, 0.06f, 1.0f}},
@@ -208,6 +209,7 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
 
             // Background Colors
             {"background", {0.97f, 0.97f, 0.98f, 1.00f}},
+            {"workspace_particle", {0.149f, 0.149f, 0.149f, 1.0f}},
             {"panel", {0.95f, 0.95f, 0.96f, 1.00f}},
             {"card", {0.93f, 0.93f, 0.94f, 1.00f}},
             {"popup_bg", {0.96f, 0.96f, 0.97f, 1.0f}},
