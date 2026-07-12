@@ -59,11 +59,9 @@ struct JETSTREAM_API Instance::Remote {
     const std::string& roomId() const;
     const std::string& accessToken() const;
     const std::string& inviteUrl() const;
-    const std::vector<ClientInfo>& clients() const;
-    const std::vector<std::string>& waitlist() const;
+    std::vector<ClientInfo> clients() const;
+    std::vector<std::string> waitlist() const;
 
-    Result updateWaitlist();
-    Result updateSessions();
     Result approveClient(const std::string& code);
 
  private:

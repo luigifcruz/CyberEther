@@ -40,7 +40,7 @@ void Instance::Remote::Supervisor::run() {
             break;
         }
 
-        const auto& waitlist = remote_->waitlist();
+        const auto waitlist = remote_->waitlist();
         if (waitlist.empty()) {
             continue;
         }

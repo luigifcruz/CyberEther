@@ -36,14 +36,6 @@ struct Instance::Remote::Impl {
         return Result::SUCCESS;
     }
 
-    Result updateWaitlist() {
-        return Result::SUCCESS;
-    }
-
-    Result updateSessions() {
-        return Result::SUCCESS;
-    }
-
     Result approveClient(const std::string&) {
         return Result::ERROR;
     }
@@ -93,20 +85,12 @@ const std::string& Instance::Remote::inviteUrl() const {
     return impl->inviteUrl_;
 }
 
-const std::vector<Instance::Remote::ClientInfo>& Instance::Remote::clients() const {
+std::vector<Instance::Remote::ClientInfo> Instance::Remote::clients() const {
     return impl->clients_;
 }
 
-const std::vector<std::string>& Instance::Remote::waitlist() const {
+std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
-}
-
-Result Instance::Remote::updateWaitlist() {
-    return impl->updateWaitlist();
-}
-
-Result Instance::Remote::updateSessions() {
-    return impl->updateSessions();
 }
 
 Result Instance::Remote::approveClient(const std::string& code) {
