@@ -7,7 +7,11 @@ if catch2_dep.found()
     subdir('flowgraph')
 endif
 
-if catch2_dep.found() and not jst_is_ios and not jst_is_android
+# TODO: Re-enable after CLI output capture supports separate Windows static CRTs.
+if catch2_dep.found() and \
+   not jst_is_ios and \
+   not jst_is_android and \
+   not jst_is_windows
     subdir('cli')
 endif
 
