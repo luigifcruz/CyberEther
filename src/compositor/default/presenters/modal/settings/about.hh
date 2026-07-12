@@ -64,6 +64,7 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "CUDA Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Index", jst::fmt::format("{}", backend->getDeviceId())},
                 {"API Version", backend->getApiVersion()},
                 {"Compute Capability", backend->getComputeCapability()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
@@ -103,6 +104,7 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "Vulkan Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Index", jst::fmt::format("{}", backend->getDeviceId())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},

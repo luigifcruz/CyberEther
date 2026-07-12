@@ -174,6 +174,7 @@ TEST_CASE("CLI displays contextual help and version", "[cli]") {
 TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
     Expect("run values",
            {"--renderer=METAL",
+            "--device-index=7",
             "--size=640X480",
             "--scale=2",
             "--framerate=30",
@@ -185,6 +186,7 @@ TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
             "--help"},
            0,
            {"Preferred graphics backend (current: metal)",
+            "Vulkan and CUDA device index (current: 7)",
             "Viewport size (current: 640x480)",
             "Interface scale factor (current: 2.0)",
             "Target frame rate (current: 30)",
@@ -195,6 +197,10 @@ TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
            {"--format=JSON", "benchmark", "fft", "--help"},
            0,
            {"benchmark [options] [block]", "Output format (current: json)"});
+    Expect("zero device index",
+           {"--device-index", "0", "--help"},
+           0,
+           {"Vulkan and CUDA device index (current: 0)"});
 }
 
 TEST_CASE("CLI rejects invalid syntax and command conflicts", "[cli]") {
@@ -205,6 +211,10 @@ TEST_CASE("CLI rejects invalid syntax and command conflicts", "[cli]") {
     Expect("multiple flowgraphs", {"one.yml", "two.yml"}, 2, {}, {"Only one flowgraph"});
     Expect("multiple benchmark blocks", {"benchmark", "fft", "am"}, 2, {}, {"Only one benchmark block"});
     Expect("run option with benchmark", {"benchmark", "--headless"}, 2, {}, {"not available for the benchmark command"});
+    Expect("device index with benchmark",
+           {"benchmark", "--device-index", "7", "--help"},
+           0,
+           {"Vulkan and CUDA device index (current: 7)"});
     Expect("benchmark option with run", {"run", "--format", "json"}, 2, {}, {"only available for the benchmark command"});
 }
 
@@ -232,6 +242,10 @@ TEST_CASE("CLI validates numeric values", "[cli]") {
         {"--framerate=0", "Invalid value for --framerate"},
         {"--framerate=-1", "Invalid value for --framerate"},
         {"--framerate=18446744073709551616", "Invalid value for --framerate"},
+        {"--device-index", "Missing value for --device-index"},
+        {"--device-index=-1", "Invalid value for --device-index"},
+        {"--device-index=invalid", "Invalid value for --device-index"},
+        {"--device-index=18446744073709551616", "Invalid value for --device-index"},
     };
     for (const auto& [argument, message] : errors) {
         Expect(argument, {argument}, 2, {}, {message});

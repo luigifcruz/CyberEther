@@ -24,6 +24,7 @@ namespace {
 Instance::Config BuildInstanceConfig(const Settings& settings) {
     Instance::Config config = {
         .device = settings.graphics.device,
+        .deviceId = settings.graphics.deviceId,
         .compositor = CompositorType::DEFAULT,
         .headless = settings.graphics.headless,
         .size = {settings.graphics.size.width, settings.graphics.size.height},
@@ -131,6 +132,22 @@ bool ParsePositiveInteger(const std::string& value, U64& result) {
     return true;
 }
 
+bool ParseDeviceId(const std::string& value, U64& result) {
+    if (value.empty() || !std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return std::isdigit(c);
+    })) {
+        return false;
+    }
+
+    try {
+        size_t parsed = 0;
+        result = std::stoull(value, &parsed);
+        return parsed == value.size();
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 bool ParsePositiveFloat(const std::string& value, F32& result) {
     try {
         size_t parsed = 0;
@@ -208,7 +225,9 @@ static void printUsage(const char* program,
     jst::fmt::print("Global Options:\n");
     jst::fmt::print("  -h, --help                   Show this help\n");
     jst::fmt::print("  -v, -vv                      Set debug or trace log level\n");
-    jst::fmt::print("  -V, --version                Show version\n\n");
+    jst::fmt::print("  -V, --version                Show version\n");
+    jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n\n",
+                    settings.graphics.deviceId);
 
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("Graphics Options:\n");
@@ -405,6 +424,20 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             }
             settings.graphics.device = StringToDevice(value);
             runOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--device-index") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --device-index. Expected a non-negative integer.");
+            }
+            U64 deviceId = 0;
+            if (!ParseDeviceId(value, deviceId)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --device-index: '{}'. Expected a non-negative integer.", value));
+            }
+            settings.graphics.deviceId = deviceId;
             continue;
         }
 
@@ -611,11 +644,17 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
     JST_INFO("[CYBERETHER] Running native app.");
 
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     const auto backendConfig = Backend::Config {
+        .deviceId = settings.graphics.deviceId,
         .headless = settings.graphics.headless,
         .pythonRuntimePath = settings.runtime.python.path,
     };
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (Backend::Configure<DeviceType::CUDA>(backendConfig) != Result::SUCCESS) {
+        return -1;
+    }
+#endif
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     if (Backend::Initialize<DeviceType::CPU>(backendConfig) != Result::SUCCESS) {
         return -1;
     }

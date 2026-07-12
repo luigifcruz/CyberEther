@@ -20,6 +20,7 @@ struct JETSTREAM_API Settings {
 
     struct Graphics {
         std::optional<DeviceType> device{};
+        U64 deviceId = 0;
         bool headless = false;
         Size size;
         F32 scale = 1.0f;

@@ -174,6 +174,7 @@ TEST_CASE("Settings returns defaults when file is missing", "[settings]") {
 
     REQUIRE(settings.graphics.size.width == 1920);
     REQUIRE(settings.graphics.size.height == 1080);
+    REQUIRE(settings.graphics.deviceId == 0);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.remote.brokerUrl == "https://cyberether.org");
@@ -186,6 +187,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
 
     Settings settings;
     settings.benchmark.format = "json";
+    settings.graphics.deviceId = 2;
     settings.graphics.headless = true;
     settings.graphics.size.width = 1280;
     settings.graphics.size.height = 720;
@@ -202,6 +204,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     REQUIRE(yaml.find("format") == std::string::npos);
     REQUIRE(yaml.find("graphics:") != std::string::npos);
     REQUIRE(yaml.find("headless") == std::string::npos);
+    REQUIRE(yaml.find("deviceId") == std::string::npos);
     REQUIRE(yaml.find("interface:") != std::string::npos);
     REQUIRE(yaml.find("remote:") != std::string::npos);
     REQUIRE(yaml.find("registry:") != std::string::npos);
