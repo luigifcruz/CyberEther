@@ -164,7 +164,7 @@ TEST_CASE("CLI displays contextual help and version", "[cli]") {
     Expect("benchmark help",
            {"benchmark", "--help"},
            0,
-           {"benchmark [options]", "Benchmark Options:\n"},
+           {"benchmark [options] [block]", "Benchmark Options:\n"},
            {},
            {"Graphics Options:\n"});
     Expect("command ordering", {"-v", "run", "--help"}, 0, {"run [options] [flowgraph]"});
@@ -192,18 +192,18 @@ TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
             "Streaming codec (current: h264)",
             "Streaming encoder (current: auto)"});
     Expect("benchmark values",
-           {"--format=JSON", "benchmark", "--help"},
+           {"--format=JSON", "benchmark", "fft", "--help"},
            0,
-           {"Output format (current: json)"});
+           {"benchmark [options] [block]", "Output format (current: json)"});
 }
 
 TEST_CASE("CLI rejects invalid syntax and command conflicts", "[cli]") {
     Expect("malformed delimiter value", {"--=value", "--help"}, 2, {}, {"Unknown option: '--=value'."});
     Expect("empty malformed delimiter", {"--=", "--help"}, 2, {}, {"Unknown option: '--='."});
     Expect("dash-prefixed flowgraph", {"--", "--flowgraph.yml", "second.yml"}, 2, {}, {"Only one flowgraph"});
-    Expect("benchmark delimiter", {"benchmark", "--", "--flowgraph.yml"}, 2, {}, {"does not accept a flowgraph"});
+    Expect("benchmark delimiter", {"benchmark", "--", "--block", "second"}, 2, {}, {"Only one benchmark block"});
     Expect("multiple flowgraphs", {"one.yml", "two.yml"}, 2, {}, {"Only one flowgraph"});
-    Expect("benchmark flowgraph", {"benchmark", "flowgraph.yml"}, 2, {}, {"does not accept a flowgraph"});
+    Expect("multiple benchmark blocks", {"benchmark", "fft", "am"}, 2, {}, {"Only one benchmark block"});
     Expect("run option with benchmark", {"benchmark", "--headless"}, 2, {}, {"not available for the benchmark command"});
     Expect("benchmark option with run", {"run", "--format", "json"}, 2, {}, {"only available for the benchmark command"});
 }

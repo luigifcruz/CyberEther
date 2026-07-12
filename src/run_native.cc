@@ -13,6 +13,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/plugin.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
 
@@ -177,12 +178,12 @@ static void printUsage(const char* program,
     if (!command.has_value()) {
         jst::fmt::print("  {} [options] [flowgraph]\n", program);
         jst::fmt::print("  {} run [options] [flowgraph]\n", program);
-        jst::fmt::print("  {} benchmark [options]\n\n", program);
+        jst::fmt::print("  {} benchmark [options] [block]\n\n", program);
         jst::fmt::print("Commands:\n");
         jst::fmt::print("  run                          Launch CyberEther (default)\n");
         jst::fmt::print("  benchmark                    Run performance benchmarks\n\n");
     } else if (*command == CommandType::Benchmark) {
-        jst::fmt::print("  {} benchmark [options]\n\n", program);
+        jst::fmt::print("  {} benchmark [options] [block]\n\n", program);
     } else {
         jst::fmt::print("  {} run [options] [flowgraph]\n\n", program);
     }
@@ -236,7 +237,7 @@ static void printUsage(const char* program,
         jst::fmt::print("  {} --remote flowgraph.yaml\n", program);
     }
     if (!command.has_value() || *command == CommandType::Benchmark) {
-        jst::fmt::print("  {} benchmark --format json\n", program);
+        jst::fmt::print("  {} benchmark fft --format json\n", program);
     }
 }
 
@@ -270,6 +271,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     std::string runOption;
     std::string remoteSettingOption;
     std::string benchmarkOption;
+    std::string benchmarkFilter;
     bool positionalOnly = false;
 
     for (int i = 1; i < argc; i++) {
@@ -545,8 +547,12 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         }
 
         if (command == CommandType::Benchmark) {
-            return PrintUsageError(argv[0], jst::fmt::format(
-                "The benchmark command does not accept a flowgraph: '{}'.", originalArg));
+            if (!benchmarkFilter.empty()) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Only one benchmark block may be provided; received '{}'.", originalArg));
+            }
+            benchmarkFilter = Lowercase(originalArg);
+            continue;
         }
 
         if (!flowgraphPath.empty()) {
@@ -600,7 +606,12 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     //
 
     if (command == CommandType::Benchmark) {
-        Benchmark::Run(settings.benchmark.format);
+        if (!benchmarkFilter.empty() &&
+            Registry::ListAvailableBenchmarks(benchmarkFilter).empty()) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "No benchmarks found for block '{}'.", benchmarkFilter));
+        }
+        Benchmark::Run(settings.benchmark.format, benchmarkFilter);
         return 0;
     }
 

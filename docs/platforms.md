@@ -14,14 +14,14 @@ The primary target. CyberEther runs as a plain native binary with direct access 
 ```
 cyberether [options] [flowgraph]
 cyberether run [options] [flowgraph]
-cyberether benchmark [options]
+cyberether benchmark [options] [block]
 ```
 
 The default command launches the full application and `benchmark` runs the benchmark suite. The graphics options prefer a renderer (`--renderer metal` or `--renderer vulkan`, with fallback to an available backend), control viewport geometry (`--size`, `--scale`, `--framerate`), and let `--headless` run without a window entirely. Passing one flowgraph file as a positional argument loads it at startup, which combined with `--headless` is the deployment shape for unattended machines.
 
 Long options with values accept either `--option value` or `--option=value`. Use `--` to treat every following argument as positional, such as for a flowgraph path beginning with a dash. Run `cyberether --help` or `cyberether run --help` for the complete option list.
 
-The benchmark command accepts `--format markdown`, `--format json`, or `--format csv` to select its output format. Run `cyberether benchmark --help` for its command-specific help.
+The benchmark command accepts `--format markdown`, `--format json`, or `--format csv` to select its output format. Pass a block type such as `fft` to run only that block's benchmarks: `cyberether benchmark fft --format json`. Run `cyberether benchmark --help` for its command-specific help.
 
 Quirks:
 
