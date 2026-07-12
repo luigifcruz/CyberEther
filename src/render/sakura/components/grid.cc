@@ -26,13 +26,14 @@ void Grid::render(const Context& ctx, Children children) const {
 
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, Private::ToImVec2(Scale(ctx, config.cellPadding)));
+    ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchSame |
+                            ImGuiTableFlags_NoBordersInBody |
+                            ImGuiTableFlags_NoBordersInBodyUntilResize |
+                            ImGuiTableFlags_ScrollY;
+    flags |= config.outerPadding ? ImGuiTableFlags_PadOuterX : ImGuiTableFlags_NoPadOuterX;
     if (ImGui::BeginTable(config.id.c_str(),
                           std::max<U64>(1, config.columns),
-                          ImGuiTableFlags_SizingStretchSame |
-                          ImGuiTableFlags_PadOuterX |
-                          ImGuiTableFlags_NoBordersInBody |
-                          ImGuiTableFlags_NoBordersInBodyUntilResize |
-                          ImGuiTableFlags_ScrollY,
+                          flags,
                           Private::ToImVec2(Scale(ctx, config.size)))) {
         for (U64 i = 0; i < config.columns; ++i) {
             const std::string columnId = "##grid-column" + std::to_string(i);

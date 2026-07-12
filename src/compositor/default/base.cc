@@ -49,6 +49,9 @@ DefaultCompositor::DefaultCompositor() :
         .setClipboardText = [](const std::string& value) {
             Sakura::SetClipboardText(value);
         },
+        .requestFile = [this](FilePickerRequest request) {
+            return actions.requestFile(std::move(request));
+        },
     },
     actions(state, callbacks),
     presenters(state, callbacks) {}
@@ -158,6 +161,8 @@ Result DefaultCompositor::create() {
 Result DefaultCompositor::destroy() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Destroying compositor.");
 
+    actions.cancelFilePicker();
+
     return Result::SUCCESS;
 }
 
@@ -195,6 +200,7 @@ Result DefaultCompositor::poll() {
     updateFilePendingState();
     updateBenchmarkState();
     updateRemoteState();
+    actions.reconcileFilePicker();
     updateStacksState();
 
     // Build view configs while flowgraph access is confined to poll.

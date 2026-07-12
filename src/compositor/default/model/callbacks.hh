@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_MODEL_CALLBACKS_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_MODEL_CALLBACKS_HH
 
+#include "file_picker.hh"
 #include "messages.hh"
 
 #include "jetstream/render/sakura/base.hh"
@@ -17,6 +18,7 @@ struct DefaultCompositorCallbacks {
     std::function<void(Sakura::ToastType, I32, const std::string&)> notify;
     std::function<void(Result, const std::string&)> notifyResult;
     std::function<void(const std::string&)> setClipboardText;
+    std::function<Result(FilePickerRequest)> requestFile;
 };
 
 }  // namespace Jetstream

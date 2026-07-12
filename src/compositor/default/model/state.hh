@@ -15,6 +15,7 @@
 
 #include "ui.hh"
 #include "meta.hh"
+#include "file_picker.hh"
 
 #include <future>
 #include <memory>
@@ -132,6 +133,20 @@ struct DefaultCompositorState {
         std::vector<std::string> waitlist;
     };
 
+    struct FilePickerState {
+        bool active = false;
+        bool overwritePending = false;
+        U64 generation = 0;
+        FilePickerMode mode = FilePickerMode::Open;
+        std::string root;
+        std::string directory;
+        std::string selectedPath;
+        std::string filename;
+        std::string error;
+        std::vector<std::string> extensions;
+        std::vector<FilePickerEntry> entries;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -145,6 +160,7 @@ struct DefaultCompositorState {
     BenchmarkState benchmark;
     ClipboardState clipboard;
     RemoteState remote;
+    FilePickerState filePicker;
 };
 
 }  // namespace Jetstream

@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_BASE_HH
 
 #include "benchmark.hh"
+#include "file_picker.hh"
 #include "flowgraph.hh"
 #include "remote.hh"
 #include "settings.hh"
@@ -13,6 +14,7 @@
 #include <memory>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 namespace Jetstream {
@@ -24,6 +26,7 @@ class DefaultActions {
         settings = std::make_shared<SettingsActions>(state, callbacks);
         benchmark = std::make_shared<BenchmarkActions>(state, callbacks);
         remote = std::make_shared<RemoteActions>(state, callbacks);
+        filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         stacks = std::make_shared<StackActions>(state, callbacks);
     }
@@ -42,6 +45,9 @@ class DefaultActions {
         if (Handle(*remote, mail, result)) {
             return result;
         }
+        if (Handle(*filePicker, mail, result)) {
+            return result;
+        }
         if (Handle(*flowgraph, mail, result)) {
             return result;
         }
@@ -51,6 +57,18 @@ class DefaultActions {
 
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unhandled mail.");
         return Result::ERROR;
+    }
+
+    Result requestFile(FilePickerRequest request) {
+        return filePicker->request(std::move(request));
+    }
+
+    void reconcileFilePicker() {
+        filePicker->reconcileAvailability();
+    }
+
+    void cancelFilePicker() {
+        filePicker->cancel();
     }
 
  private:
@@ -72,6 +90,7 @@ class DefaultActions {
     }
 
     std::shared_ptr<BenchmarkActions> benchmark;
+    std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<SettingsActions> settings;
