@@ -106,6 +106,7 @@ Result Instance::create(const Config& config) {
         };
 #endif  // JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
         auto buildHeadless = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
 
@@ -120,6 +121,7 @@ Result Instance::create(const Config& config) {
 
             return Result::SUCCESS;
         };
+#endif  // JETSTREAM_RENDER_VULKAN_AVAILABLE
 
         std::optional<Result> result;
 

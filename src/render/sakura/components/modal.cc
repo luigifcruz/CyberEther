@@ -60,6 +60,10 @@ void Modal::render(const Context& ctx, Child child) {
                                             Private::ToImVec2(Scale(ctx, {config.size->x, FLT_MAX})));
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
     } else {
+        if (config.minWidth > 0.0f) {
+            ImGui::SetNextWindowSizeConstraints({Scale(ctx, config.minWidth), 0.0f},
+                                                {FLT_MAX, FLT_MAX});
+        }
         flags |= ImGuiWindowFlags_AlwaysAutoResize;
     }
 

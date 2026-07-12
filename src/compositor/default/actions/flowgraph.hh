@@ -33,7 +33,6 @@ struct FlowgraphActions {
                               MailSaveFlowgraph,
                               MailCloseFlowgraph,
                               MailSaveFlowgraphPath,
-                              MailBrowseConfigPath,
                               MailSetFlowgraphInfo,
                               MailCreateBlock,
                               MailOpenRenameBlock,
@@ -75,8 +74,13 @@ struct FlowgraphActions {
     Result handle(const MailOpenFlowgraph&) {
         std::string path;
         auto enqueueMail = callbacks.enqueueMail;
-        Platform::PickFile(path, {"yaml", "yml"}, [enqueueMail](std::string p) mutable {
-            enqueueMail(MailOpenFlowgraphPath{std::move(p)});
+        callbacks.requestFile({
+            .mode = FilePickerMode::Open,
+            .initialPath = path,
+            .extensions = {"yaml", "yml"},
+            .callback = [enqueueMail](std::string p) mutable {
+                enqueueMail(MailOpenFlowgraphPath{std::move(p)});
+            },
         });
 
         return Result::SUCCESS;
@@ -88,7 +92,7 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        if (!std::filesystem::exists(msg.path)) {
+        if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected file does not exist.");
             return Result::SUCCESS;
         }
@@ -149,8 +153,13 @@ struct FlowgraphActions {
         if (path.empty()) {
             std::string pickedPath;
             auto enqueueMail = callbacks.enqueueMail;
-            Platform::SaveFile(pickedPath, [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
-                enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
+            callbacks.requestFile({
+                .mode = FilePickerMode::Save,
+                .initialPath = pickedPath,
+                .extensions = {"yaml", "yml"},
+                .callback = [enqueueMail, flowgraph = msg.flowgraph](std::string p) mutable {
+                    enqueueMail(MailSaveFlowgraph{.flowgraph = flowgraph, .path = std::move(p)});
+                },
             });
 
             return Result::SUCCESS;
@@ -174,7 +183,8 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        if (!msg.force && state.flowgraph.items.at(msg.flowgraph)->path().empty()) {
+        const auto& flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        if (!msg.force && !flowgraph->view().empty()) {
             state.modal.flowgraph = msg.flowgraph;
             state.modal.content = ModalContent::FlowgraphClose;
             return Result::SUCCESS;
@@ -210,24 +220,6 @@ struct FlowgraphActions {
             callbacks.enqueueMail(MailSaveFlowgraph{.flowgraph = msg.flowgraph, .path = msg.path});
             state.modal.content.reset();
             state.modal.flowgraph.reset();
-        }
-
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailBrowseConfigPath& msg) {
-        std::string path = msg.path;
-        const auto callback = [onSelect = msg.onSelect](std::string selectedPath) {
-            if (onSelect) {
-                onSelect(std::move(selectedPath));
-            }
-        };
-
-        const Result result = msg.save
-            ? Platform::SaveFile(path, callback)
-            : Platform::PickFile(path, msg.extensions, callback);
-        if (result != Result::SUCCESS && !Platform::IsFilePending()) {
-            callbacks.notifyResult(result, "");
         }
 
         return Result::SUCCESS;

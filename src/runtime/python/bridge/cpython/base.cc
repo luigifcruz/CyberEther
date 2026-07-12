@@ -1,28 +1,12 @@
+#include <exception>
 #include <mutex>
 #include <string>
-
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#ifdef ERROR
-#undef ERROR
-#endif
-#ifdef FATAL
-#undef FATAL
-#endif
-#else
-#include <dlfcn.h>
-#endif
 
 #include "runtime/python/bridge/cpython/base.hh"
 
 #include "jetstream/backend/base.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/runtime_context_python.hh"
 
 namespace Jetstream::CPython {
@@ -36,13 +20,10 @@ std::mutex& LoaderMutex() {
 
 template<typename T>
 Result LoadSymbol(void* handle, T& target, const char* symbol) {
-#if defined(_WIN32)
-    target = reinterpret_cast<T>(GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol));
-#else
-    target = reinterpret_cast<T>(dlsym(handle, symbol));
-#endif
+    std::string error;
+    target = reinterpret_cast<T>(Platform::LoadDynamicLibrarySymbol(handle, symbol, error));
     if (!target) {
-        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't load Python symbol '{}'.", symbol);
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't load Python symbol '{}': {}", symbol, error);
         return Result::ERROR;
     }
     return Result::SUCCESS;
@@ -50,24 +31,13 @@ Result LoadSymbol(void* handle, T& target, const char* symbol) {
 
 template<typename T>
 Result LoadOptionalSymbol(void* handle, T& target, const char* symbol) {
-#if defined(_WIN32)
-    target = reinterpret_cast<T>(GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol));
-#else
-    target = reinterpret_cast<T>(dlsym(handle, symbol));
-#endif
+    std::string error;
+    target = reinterpret_cast<T>(Platform::LoadDynamicLibrarySymbol(handle, symbol, error));
     return Result::SUCCESS;
 }
 
 void CloseLibrary(void* handle) {
-    if (!handle) {
-        return;
-    }
-
-#if defined(_WIN32)
-    FreeLibrary(reinterpret_cast<HMODULE>(handle));
-#else
-    dlclose(handle);
-#endif
+    Platform::CloseDynamicLibrary(handle);
 }
 
 std::string ConfiguredPythonPath() {
@@ -79,28 +49,8 @@ std::string ConfiguredPythonPath() {
 }
 
 bool TryOpenLibrary(const std::string& path, void*& handle, std::string& error) {
-#if defined(_WIN32)
-    handle = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
-    if (handle) {
-        return true;
-    }
-
-    error = "Windows error " + std::to_string(GetLastError());
-    return false;
-#else
-    dlerror();
-    handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
-    if (handle) {
-        return true;
-    }
-
-    if (const char* dlError = dlerror()) {
-        error = dlError;
-    } else {
-        error = "unknown dlopen error";
-    }
-    return false;
-#endif
+    handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Global, error);
+    return handle != nullptr;
 }
 
 Result OpenPythonLibrary(PythonRuntimeContext::Validation& validation, void*& handle) {
@@ -274,10 +224,34 @@ PythonApi s_api;
 void* s_libraryHandle = nullptr;
 bool s_libraryLoaded = false;
 PyInterpreterState* s_interpreter = nullptr;
+#if defined(JST_OS_WINDOWS)
+std::wstring s_programName;
+#else
 wchar_t* s_programName = nullptr;
+#endif
 
 void SetPythonProgramName(const PythonApi& api, const std::string& programPath) {
-    if (programPath.empty() || s_programName || !api.Py_SetProgramName || !api.Py_DecodeLocale) {
+    if (programPath.empty() || !api.Py_SetProgramName) {
+        return;
+    }
+
+#if defined(JST_OS_WINDOWS)
+    if (!s_programName.empty()) {
+        return;
+    }
+
+    try {
+        s_programName = Platform::PathFromUtf8(programPath).native();
+    } catch (const std::exception& exception) {
+        JST_WARN("[RUNTIME_CONTEXT_PYTHON] Can't decode Python program path '{}': {}.",
+                 programPath,
+                 exception.what());
+        return;
+    }
+
+    api.Py_SetProgramName(s_programName.data());
+#else
+    if (s_programName || !api.Py_DecodeLocale) {
         return;
     }
 
@@ -288,6 +262,7 @@ void SetPythonProgramName(const PythonApi& api, const std::string& programPath) 
     }
 
     api.Py_SetProgramName(s_programName);
+#endif
 }
 
 }  // namespace

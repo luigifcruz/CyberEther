@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+
+#include "jetstream/platform.hh"
 #include <fstream>
 #include <string>
 #include <vector>
@@ -15,7 +17,7 @@ namespace {
 
 std::filesystem::path TestFilePath(const std::string& suffix) {
     auto path = std::filesystem::temp_directory_path() /
-                ("jst_test_file_reader_" + suffix + ".raw");
+                Platform::PathFromUtf8("jst_test_file_reader_" + suffix + ".raw");
     return path;
 }
 
@@ -52,7 +54,7 @@ void ExpectFirstBatch(const std::string& suffix,
                             impl.provider);
 
             Modules::FileReader config;
-            config.filepath = path.string();
+            config.filepath = Platform::PathToUtf8(path);
             config.dataType = dataType;
             config.batchSize = expectedBatch.size();
             config.loop = false;
@@ -217,7 +219,7 @@ TEST_CASE("FileReader module reports incomplete when file is missing",
             TestContext ctx("file_reader", impl.device, impl.runtime,
                             impl.provider);
             Modules::FileReader config;
-            config.filepath = missing.string();
+            config.filepath = Platform::PathToUtf8(missing);
             config.dataType = "CF32";
             config.batchSize = 4;
             ctx.setConfig(config);
@@ -243,7 +245,7 @@ TEST_CASE("FileReader module loop wraps at end-of-file",
             TestContext ctx("file_reader", impl.device, impl.runtime,
                             impl.provider);
             Modules::FileReader config;
-            config.filepath = path.string();
+            config.filepath = Platform::PathToUtf8(path);
             config.dataType = "F32";
             config.batchSize = 2;
             config.loop = true;
@@ -280,7 +282,7 @@ TEST_CASE("FileReader module playing=false is a no-op success",
             TestContext ctx("file_reader", impl.device, impl.runtime,
                             impl.provider);
             Modules::FileReader config;
-            config.filepath = path.string();
+            config.filepath = Platform::PathToUtf8(path);
             config.dataType = "F32";
             config.batchSize = 2;
             config.loop = false;

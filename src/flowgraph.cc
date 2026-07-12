@@ -4,6 +4,7 @@
 #include "jetstream/detail/flowgraph_impl.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
 
 #include <algorithm>
@@ -1249,7 +1250,7 @@ Result Flowgraph::importFromFile(const std::string& path) {
         impl->path = path;
     }
 
-    const auto flowgraphPath = std::filesystem::u8path(path);
+    const auto flowgraphPath = Platform::PathFromUtf8(path);
 
     std::ifstream file(flowgraphPath, std::ios::binary);
     if (!file) {
@@ -1473,7 +1474,7 @@ Result Flowgraph::exportToFile(const std::string& path) {
     std::vector<char> blob;
     JST_CHECK(exportToBlob(blob));
 
-    const auto flowgraphPath = std::filesystem::u8path(exportPath);
+    const auto flowgraphPath = Platform::PathFromUtf8(exportPath);
 
     const auto parent = flowgraphPath.parent_path();
     if (!parent.empty()) {
@@ -1601,9 +1602,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     std::string yamlText;
     JST_CHECK(Parser::YamlEncode(root, yamlText));
 
-    blob.clear();
-    const char header[] = {'-', '-', '-', '\n'};
-    blob.insert(blob.end(), std::begin(header), std::end(header));
+    blob = {'-', '-', '-', '\n'};
     blob.insert(blob.end(), yamlText.begin(), yamlText.end());
 
     return Result::SUCCESS;

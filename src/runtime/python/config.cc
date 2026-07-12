@@ -1,8 +1,8 @@
 #include <jetstream/runtime_context_python.hh>
+#include <jetstream/platform.hh>
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <iterator>
@@ -36,14 +36,6 @@ std::string CompactPythonVersion(const std::string& version) {
 }
 #endif
 
-#if defined(_WIN32)
-#define JST_POPEN _popen
-#define JST_PCLOSE _pclose
-#else
-#define JST_POPEN popen
-#define JST_PCLOSE pclose
-#endif
-
 std::string Trim(const std::string& value) {
     const auto isSpace = [](unsigned char c) { return std::isspace(c); };
     const auto begin = std::ranges::find_if_not(value, isSpace);
@@ -73,48 +65,23 @@ std::string LastNonEmptyLine(const std::string& value) {
     return result;
 }
 
-std::string ShellQuote(const std::string& value) {
-#if defined(_WIN32)
-    std::string quoted = "\"";
-    for (const char c : value) {
-        if (c == '"') {
-            quoted += "\\\"";
-        } else {
-            quoted += c;
-        }
-    }
-    quoted += "\"";
-    return quoted;
-#else
-    std::string quoted = "'";
-    for (const char c : value) {
-        if (c == '\'') {
-            quoted += "'\\''";
-        } else {
-            quoted += c;
-        }
-    }
-    quoted += "'";
-    return quoted;
-#endif
-}
-
 std::filesystem::path ExpandUserPath(const std::string& value) {
     if (value == "~" || value.starts_with("~/") || value.starts_with("~\\")) {
-        const char* home = std::getenv("HOME");
+        std::filesystem::path home;
+        auto homeResult = Platform::EnvironmentPath("HOME", home);
 #if defined(_WIN32)
-        if (!home) {
-            home = std::getenv("USERPROFILE");
+        if (homeResult != Result::SUCCESS) {
+            homeResult = Platform::EnvironmentPath("USERPROFILE", home);
         }
 #endif
-        if (home) {
+        if (homeResult == Result::SUCCESS) {
             if (value == "~") {
-                return std::filesystem::path(home);
+                return home;
             }
-            return std::filesystem::path(home) / value.substr(2);
+            return home / Platform::PathFromUtf8(value.substr(2));
         }
     }
-    return std::filesystem::path(value);
+    return Platform::PathFromUtf8(value);
 }
 
 void AddPath(std::vector<std::string>& paths, const std::filesystem::path& path) {
@@ -122,7 +89,7 @@ void AddPath(std::vector<std::string>& paths, const std::filesystem::path& path)
         return;
     }
 
-    const auto value = path.string();
+    const auto value = Platform::PathToUtf8(path);
     if (value.empty() || std::ranges::find(paths, value) != paths.end()) {
         return;
     }
@@ -159,7 +126,7 @@ std::optional<std::string> ExtractPythonVersion(const std::filesystem::path& pat
     static const std::regex versionRegex(R"((\d+)\.(\d+)(?:\.\d+)?)");
 
     for (auto current = path; !current.empty();) {
-        const auto name = current.filename().string();
+        const auto name = Platform::PathToUtf8(current.filename());
         std::smatch match;
         if (std::regex_search(name, match, versionRegex)) {
             return match[1].str() + "." + match[2].str();
@@ -176,9 +143,9 @@ std::optional<std::string> ExtractPythonVersion(const std::filesystem::path& pat
 }
 
 bool LooksLikeFrameworkLibrary(const std::filesystem::path& path) {
-    const auto leaf = Lowercase(path.filename().string());
+    const auto leaf = Lowercase(Platform::PathToUtf8(path.filename()));
     for (auto current = path.parent_path(); !current.empty();) {
-        const auto name = Lowercase(current.filename().string());
+        const auto name = Lowercase(Platform::PathToUtf8(current.filename()));
         constexpr std::string_view suffix = ".framework";
         if (name.ends_with(suffix)) {
             const auto frameworkName = name.substr(0, name.size() - suffix.size());
@@ -196,12 +163,12 @@ bool LooksLikeFrameworkLibrary(const std::filesystem::path& path) {
 }
 
 bool LooksLikePythonExecutable(const std::string& value) {
-    const auto path = std::filesystem::path(value);
+    const auto path = Platform::PathFromUtf8(value);
     if (LooksLikeFrameworkLibrary(path)) {
         return false;
     }
 
-    auto name = Lowercase(path.filename().string());
+    auto name = Lowercase(Platform::PathToUtf8(path.filename()));
 #if defined(_WIN32)
     if (name == "py.exe") {
         return true;
@@ -230,24 +197,11 @@ std::optional<std::string> RunPythonProbe(const std::string& pythonPath, const c
         return std::nullopt;
     }
 
-    std::string command = ShellQuote(pythonPath) + " -c " + ShellQuote(script);
-#if defined(_WIN32)
-    command += " 2>NUL";
-#else
-    command += " 2>/dev/null";
-#endif
-
-    FILE* pipe = JST_POPEN(command.c_str(), "r");
-    if (!pipe) {
+    std::string output;
+    if (Platform::RunProcess(pythonPath, {"-X", "utf8", "-c", script}, output, 10000) !=
+        Result::SUCCESS) {
         return std::nullopt;
     }
-
-    std::string output;
-    char buffer[1024];
-    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        output += buffer;
-    }
-    (void)JST_PCLOSE(pipe);
 
     const auto value = LastNonEmptyLine(output);
     if (value.empty()) {
@@ -288,10 +242,21 @@ std::optional<std::string> ProbePythonVersion(const std::string& pythonPath) {
     return RunPythonProbe(pythonPath, kProbeScript);
 }
 
+#if defined(_WIN32)
+std::optional<std::string> ProbePythonProgramPath(const std::string& pythonPath) {
+    constexpr const char* kProbeScript =
+        "import os, sys; "
+        "print(os.path.abspath(sys.executable))";
+
+    return RunPythonProbe(pythonPath, kProbeScript);
+}
+#endif
+
 std::vector<std::string> PythonLibraryCandidates(const std::string& configuredPath) {
     std::vector<std::string> candidates;
     const auto expandedPath = ExpandUserPath(configuredPath);
-    const bool isPythonExecutable = LooksLikePythonExecutable(expandedPath.string());
+    const auto expandedPathUtf8 = Platform::PathToUtf8(expandedPath);
+    const bool isPythonExecutable = LooksLikePythonExecutable(expandedPathUtf8);
 
     if (!isPythonExecutable) {
         AddPath(candidates, expandedPath);
@@ -299,20 +264,20 @@ std::vector<std::string> PythonLibraryCandidates(const std::string& configuredPa
 
     std::error_code ec;
     const auto canonicalPath = std::filesystem::weakly_canonical(expandedPath, ec);
-    if (!ec && !LooksLikePythonExecutable(canonicalPath.string())) {
+    if (!ec && !LooksLikePythonExecutable(Platform::PathToUtf8(canonicalPath))) {
         AddPath(candidates, canonicalPath);
     }
 
     if (isPythonExecutable) {
-        if (const auto probedPath = ProbePythonLibraryPath(expandedPath.string())) {
-            AddPath(candidates, *probedPath);
+        if (const auto probedPath = ProbePythonLibraryPath(expandedPathUtf8)) {
+            AddPath(candidates, Platform::PathFromUtf8(*probedPath));
         }
     }
 
     auto addDerivedCandidates = [&](const std::filesystem::path& path) {
         const auto version = ExtractPythonVersion(path);
         const auto parent = path.parent_path();
-        const auto parentName = Lowercase(parent.filename().string());
+        const auto parentName = Lowercase(Platform::PathToUtf8(parent.filename()));
         const auto root = parentName == "bin" || parentName == "scripts" ? parent.parent_path() : parent;
 
         if (parentName == "bin") {
@@ -353,7 +318,7 @@ bool FileIsRegular(const std::filesystem::path& path) {
 }
 
 void AddExecutableFromPath(std::vector<std::string>& paths, const std::filesystem::path& path) {
-    if (!LooksLikePythonExecutable(path.string()) || !FileIsRegular(path)) {
+    if (!LooksLikePythonExecutable(Platform::PathToUtf8(path)) || !FileIsRegular(path)) {
         return;
     }
 
@@ -384,14 +349,14 @@ void AddExecutablesFromDirectory(std::vector<std::string>& paths, const std::fil
 }
 
 void AddPathEnvironmentExecutables(std::vector<std::string>& paths) {
-    const char* rawPath = std::getenv("PATH");
-    if (!rawPath) {
+    std::filesystem::path rawPath;
+    if (Platform::EnvironmentPath("PATH", rawPath) != Result::SUCCESS) {
         return;
     }
 
-    std::string path(rawPath);
+    const auto& path = rawPath.native();
 #if defined(_WIN32)
-    constexpr char kSeparator = ';';
+    constexpr wchar_t kSeparator = L';';
 #else
     constexpr char kSeparator = ':';
 #endif
@@ -401,7 +366,7 @@ void AddPathEnvironmentExecutables(std::vector<std::string>& paths) {
         const auto end = path.find(kSeparator, start);
         const auto directory = path.substr(start, end == std::string::npos ? std::string::npos : end - start);
         if (!directory.empty()) {
-            AddExecutablesFromDirectory(paths, directory);
+            AddExecutablesFromDirectory(paths, std::filesystem::path(directory));
         }
         if (end == std::string::npos) {
             break;
@@ -414,21 +379,23 @@ void AddCommonPythonExecutables(std::vector<std::string>& paths) {
     AddPathEnvironmentExecutables(paths);
 
     for (const char* variable : {"VIRTUAL_ENV", "CONDA_PREFIX"}) {
-        if (const char* root = std::getenv(variable)) {
+        std::filesystem::path root;
+        if (Platform::EnvironmentPath(variable, root) == Result::SUCCESS) {
 #if defined(_WIN32)
-            AddExecutableFromPath(paths, std::filesystem::path(root) / "python.exe");
-            AddExecutablesFromDirectory(paths, std::filesystem::path(root));
-            AddExecutableFromPath(paths, std::filesystem::path(root) / "Scripts" / "python.exe");
-            AddExecutablesFromDirectory(paths, std::filesystem::path(root) / "Scripts");
+            AddExecutableFromPath(paths, root / "python.exe");
+            AddExecutablesFromDirectory(paths, root);
+            AddExecutableFromPath(paths, root / "Scripts" / "python.exe");
+            AddExecutablesFromDirectory(paths, root / "Scripts");
 #else
-            AddExecutableFromPath(paths, std::filesystem::path(root) / "bin" / "python");
-            AddExecutablesFromDirectory(paths, std::filesystem::path(root) / "bin");
+            AddExecutableFromPath(paths, root / "bin" / "python");
+            AddExecutablesFromDirectory(paths, root / "bin");
 #endif
         }
     }
 
-    if (const char* pyenvRoot = std::getenv("PYENV_ROOT")) {
-        const auto pyenvVersions = std::filesystem::path(pyenvRoot) / "versions";
+    std::filesystem::path pyenvRoot;
+    if (Platform::EnvironmentPath("PYENV_ROOT", pyenvRoot) == Result::SUCCESS) {
+        const auto pyenvVersions = pyenvRoot / "versions";
         std::error_code ec;
         if (std::filesystem::is_directory(pyenvVersions, ec) && !ec) {
             for (const auto& entry : std::filesystem::directory_iterator(pyenvVersions, ec)) {
@@ -451,7 +418,7 @@ std::string CandidateLabel(const std::string& path, const PythonRuntimeContext::
     std::string name;
     if (LooksLikePythonExecutable(path)) {
         name = ProbePythonVersion(path).value_or("Python");
-    } else if (const auto version = ExtractPythonVersion(validation.libraryPath)) {
+    } else if (const auto version = ExtractPythonVersion(Platform::PathFromUtf8(validation.libraryPath))) {
         name = "Python " + *version;
     } else {
         name = "Python Runtime";
@@ -460,10 +427,26 @@ std::string CandidateLabel(const std::string& path, const PythonRuntimeContext::
     return name + " (" + path + ")";
 }
 
+bool PathsEquivalent(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+    std::error_code ec;
+    return lhs == rhs || (std::filesystem::equivalent(lhs, rhs, ec) && !ec);
+}
+
+bool ContainsRuntimeCandidate(const std::vector<PythonRuntimeContext::Candidate>& candidates,
+                              const std::string& path,
+                              const std::string& libraryPath) {
+    const auto directory = Platform::PathFromUtf8(path).parent_path();
+    const auto nativeLibraryPath = Platform::PathFromUtf8(libraryPath);
+    return std::ranges::any_of(candidates, [&](const auto& candidate) {
+        return PathsEquivalent(Platform::PathFromUtf8(candidate.path).parent_path(), directory) &&
+               PathsEquivalent(Platform::PathFromUtf8(candidate.libraryPath), nativeLibraryPath);
+    });
+}
+
 PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::string& path) {
     PythonRuntimeContext::Validation validation;
     const auto expandedPath = ExpandUserPath(path);
-    validation.inputPath = expandedPath.string();
+    validation.inputPath = Platform::PathToUtf8(expandedPath);
 
     if (LooksLikePythonExecutable(validation.inputPath)) {
         if (const auto version = ProbePythonVersion(validation.inputPath)) {
@@ -480,11 +463,12 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
     const auto candidates = PythonLibraryCandidates(path);
     validation.attempts = candidates;
     for (const auto& candidate : candidates) {
-        if (!FileIsRegular(candidate)) {
+        const auto candidatePath = Platform::PathFromUtf8(candidate);
+        if (!FileIsRegular(candidatePath)) {
             continue;
         }
 
-        const auto version = ExtractPythonVersion(candidate);
+        const auto version = ExtractPythonVersion(candidatePath);
         const auto parsed = version.has_value() ? ParsePythonMajorMinor(*version) : std::nullopt;
         if (parsed.has_value() && !MeetsMinimumPythonVersion(*parsed)) {
             validation.message = "Python " + *version + " library " + candidate +
@@ -493,11 +477,21 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
             return validation;
         }
 
+        if (LooksLikePythonExecutable(validation.inputPath)) {
+#if defined(_WIN32)
+            const auto programPath = ProbePythonProgramPath(validation.inputPath);
+            if (!programPath) {
+                validation.message = "Can't resolve the Python executable launched by " +
+                                     validation.inputPath + ".";
+                return validation;
+            }
+            validation.programPath = *programPath;
+#else
+            validation.programPath = validation.inputPath;
+#endif
+        }
         validation.valid = true;
         validation.libraryPath = candidate;
-        if (LooksLikePythonExecutable(validation.inputPath)) {
-            validation.programPath = validation.inputPath;
-        }
         validation.message = "Valid Python runtime: " + validation.libraryPath;
         return validation;
     }
@@ -515,6 +509,9 @@ std::vector<PythonRuntimeContext::Candidate> DiscoverRuntimeCandidatesInOrder() 
     for (const auto& path : paths) {
         const auto validation = ValidateExplicitPythonRuntimePath(path);
         if (!validation.valid) {
+            continue;
+        }
+        if (ContainsRuntimeCandidate(candidates, path, validation.libraryPath)) {
             continue;
         }
 

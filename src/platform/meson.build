@@ -1,5 +1,11 @@
 src_lst += files([
-    'base.cc',
+    'dialogs.cc',
+    'dynamic_library.cc',
+    'file_lock.cc',
+    'paths.cc',
+    'process.cc',
+    'terminal.cc',
+    'url.cc',
 ])
 
 if jst_is_ios

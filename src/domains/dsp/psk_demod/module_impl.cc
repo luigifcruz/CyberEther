@@ -5,7 +5,7 @@
 
 namespace Jetstream::Modules {
 
-static constexpr F32 kPi = JST_PI;
+static constexpr F32 kPi = static_cast<F32>(JST_PI);
 
 Result PskDemodImpl::validate() {
     const auto& config = *candidate();

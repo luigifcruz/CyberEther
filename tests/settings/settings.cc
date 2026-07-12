@@ -37,8 +37,10 @@ bool SetWideEnvValue(const wchar_t* name, const std::optional<std::wstring>& val
 
 struct ScopedWideEnvVar {
     explicit ScopedWideEnvVar(const wchar_t* name) : name(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            originalValue = value;
+        std::filesystem::path value;
+        const auto utf8Name = Platform::PathToUtf8(std::filesystem::path(name));
+        if (Platform::EnvironmentPath(utf8Name, value) == Result::SUCCESS) {
+            originalValue = value.native();
         }
     }
 
@@ -58,8 +60,9 @@ struct ScopedWideEnvVar {
 
 struct ScopedEnvVar {
     explicit ScopedEnvVar(const char* name) : name(name) {
-        if (const char* value = std::getenv(name)) {
-            originalValue = value;
+        std::filesystem::path value;
+        if (Platform::EnvironmentPath(name, value) == Result::SUCCESS) {
+            originalValue = Platform::PathToUtf8(value);
         }
     }
 
@@ -79,7 +82,8 @@ struct TempPathRoot {
     explicit TempPathRoot(const std::string& label) {
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
         root = std::filesystem::temp_directory_path() /
-               ("cyberether-settings-" + label + "-" + std::to_string(nonce));
+               Platform::PathFromUtf8("cyberether-settings-" + label + "-" +
+                                      std::to_string(nonce));
     }
 
     ~TempPathRoot() {
@@ -97,8 +101,8 @@ struct SettingsSandbox {
         homeEnv = std::make_unique<ScopedEnvVar>("HOME");
         xdgConfigEnv = std::make_unique<ScopedEnvVar>("XDG_CONFIG_HOME");
 
-        if (!homeEnv->set((tempRoot->root / "home").string()) ||
-            !xdgConfigEnv->set((tempRoot->root / "config").string())) {
+        if (!homeEnv->set(Platform::PathToUtf8(tempRoot->root / "home")) ||
+            !xdgConfigEnv->set(Platform::PathToUtf8(tempRoot->root / "config"))) {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #elif defined(JST_OS_WINDOWS)
@@ -113,7 +117,7 @@ struct SettingsSandbox {
         tempRoot = std::make_unique<TempPathRoot>(label);
         fixedHomeEnv = std::make_unique<ScopedEnvVar>("CFFIXED_USER_HOME");
 
-        if (!fixedHomeEnv->set(tempRoot->root.string())) {
+        if (!fixedHomeEnv->set(Platform::PathToUtf8(tempRoot->root))) {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #endif
@@ -123,7 +127,7 @@ struct SettingsSandbox {
             throw std::runtime_error("failed to resolve settings path");
         }
 
-        path = std::filesystem::u8path(configPath) / "settings.yaml";
+        path = Platform::PathFromUtf8(configPath) / "settings.yaml";
     }
 
     ~SettingsSandbox() = default;
@@ -296,15 +300,16 @@ TEST_CASE("Python runtime validation treats framework binaries as libraries", "[
     const auto fakeLibraryPath = sandbox.root / "Python.framework" / "Versions" / "3.14" / "Python";
     WriteFile(fakeLibraryPath, "not a dynamic library");
 
-    const auto validation = PythonRuntimeContext::ValidateRuntimePath(fakeLibraryPath.string());
+    const auto fakeLibraryPathUtf8 = Platform::PathToUtf8(fakeLibraryPath);
+    const auto validation = PythonRuntimeContext::ValidateRuntimePath(fakeLibraryPathUtf8);
 
     bool attemptedFrameworkLibrary = false;
     for (const auto& attempt : validation.attempts) {
-        attemptedFrameworkLibrary = attemptedFrameworkLibrary || attempt == fakeLibraryPath.string();
+        attemptedFrameworkLibrary = attemptedFrameworkLibrary || attempt == fakeLibraryPathUtf8;
     }
 
     REQUIRE(validation.valid);
-    REQUIRE(validation.libraryPath == fakeLibraryPath.string());
+    REQUIRE(validation.libraryPath == fakeLibraryPathUtf8);
     REQUIRE(validation.programPath.empty());
     REQUIRE(attemptedFrameworkLibrary);
 }
@@ -314,7 +319,8 @@ TEST_CASE("Python runtime validation rejects framework libraries below minimum v
     const auto fakeLibraryPath = sandbox.root / "Python.framework" / "Versions" / "3.8" / "Python";
     WriteFile(fakeLibraryPath, "not a dynamic library");
 
-    const auto validation = PythonRuntimeContext::ValidateRuntimePath(fakeLibraryPath.string());
+    const auto validation =
+        PythonRuntimeContext::ValidateRuntimePath(Platform::PathToUtf8(fakeLibraryPath));
 
     REQUIRE(!validation.valid);
     REQUIRE(validation.libraryPath.empty());

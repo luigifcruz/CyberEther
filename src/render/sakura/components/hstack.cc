@@ -31,7 +31,7 @@ void HStack::render(const Context& ctx, Children children) const {
 
         if (i + 1 < children.size()) {
             ImGui::SameLine();
-            if (config.spacing > 0.0f) {
+            if (config.spacing != 0.0f) {
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Scale(ctx, config.spacing));
             }
         }

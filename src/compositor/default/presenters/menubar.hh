@@ -56,7 +56,10 @@ struct MenubarPresenter {
                         enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Legal});
                         break;
                     case MenubarView::Action::CheckForUpdates:
-                        enqueue(MailCheckForUpdates{});
+                        enqueue(MailOpenUrl{
+                            .url = "https://github.com/luigifcruz/CyberEther/releases",
+                            .notifyResult = true,
+                        });
                         break;
                     case MenubarView::Action::Preferences:
                         enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::General});

@@ -13,11 +13,10 @@ inline Result ConvertToOptimalStorage(auto& window,
 
     if (optimalDevice == tensor.device()) {
         storage = tensor.clone();
-        const bool enableZeroCopy = storage.device() == window->device();
 
         JST_TRACE("[RENDER] Tensor Device: {} | Render Device: {} | Optimal Device: {} | Zero-Copy: {}",
                   tensor.device(), window->device(), storage.device(),
-                  enableZeroCopy ? "YES" : "NO");
+                  storage.device() == window->device() ? "YES" : "NO");
 
         return Result::SUCCESS;
     }

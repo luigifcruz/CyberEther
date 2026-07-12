@@ -20,6 +20,7 @@ struct Grid {
         U64 columns = 2;
         Extent2D<F32> size = {0.0f, 0.0f};
         Extent2D<F32> cellPadding = {4.0f, 2.0f};
+        bool outerPadding = true;
     };
 
     Grid();
