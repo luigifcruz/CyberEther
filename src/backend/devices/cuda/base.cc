@@ -20,7 +20,8 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         JST_FATAL("[CUDA] Cannot get device count: {}", err);
     });
     if (config.deviceId >= static_cast<U64>(deviceCount)) {
-       JST_FATAL("[CUDA] Cannot get desired device ID ({}).", config.deviceId);
+        JST_FATAL("[CUDA] Cannot get desired device ID ({}).", config.deviceId);
+        JST_CHECK_THROW(Result::ERROR);
     }
 
     // Setup device.
@@ -117,6 +118,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [CUDA]")
     JST_INFO("-----------------------------------------------------");
+    JST_INFO("Device ID:          {}", getDeviceId());
     JST_INFO("Device Name:        {}", getDeviceName());
     JST_INFO("Device Type:        {}", getPhysicalDeviceType());
     JST_INFO("API Version:        {}", getApiVersion());

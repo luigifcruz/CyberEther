@@ -109,6 +109,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
     // Initialize the instance.
 
     Instance::Config instanceConfig = {
+        .deviceId = impl->config.deviceId,
         .size = impl->config.interfaceSize,
         .scale = impl->config.interfaceScale,
     };

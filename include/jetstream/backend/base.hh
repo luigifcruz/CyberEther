@@ -82,6 +82,15 @@ struct GetBackend<DeviceType::CUDA> {
 
 class JETSTREAM_API Instance {
  public:
+    Result configure(const DeviceType& id, const Config& config) {
+        std::lock_guard lock(mutex);
+        if (backends.contains(id)) {
+            return Result::SUCCESS;
+        }
+        configurations[id] = config;
+        return Result::SUCCESS;
+    }
+
     template<DeviceType DeviceId>
     Result initialize(const Config& config) {
         using BackendType = typename GetBackend<DeviceId>::Type;
@@ -106,10 +115,10 @@ class JETSTREAM_API Instance {
     const auto& state() {
         using BackendType = typename GetBackend<DeviceId>::Type;
         if (!backends.contains(DeviceId)) {
-            JST_WARN("The {} backend is not initialized. Initializing with default headless settings.", DeviceId);
-
-            Backend::Config config;
-            config.headless = true;
+            Backend::Config config = configurations.contains(DeviceId)
+                ? configurations.at(DeviceId)
+                : Backend::Config{.headless = true};
+            JST_WARN("The {} backend is not initialized. Initializing with configured settings.", DeviceId);
             JST_CHECK_THROW(initialize<DeviceId>(config));
         }
         return std::get<std::unique_ptr<BackendType>>(backends[DeviceId]);
@@ -121,6 +130,7 @@ class JETSTREAM_API Instance {
 
     Result destroyAll() {
         backends.clear();
+        configurations.clear();
         return Result::SUCCESS;
     }
 
@@ -144,6 +154,7 @@ class JETSTREAM_API Instance {
     > BackendHolder;
 
     std::unordered_map<DeviceType, BackendHolder> backends;
+    std::unordered_map<DeviceType, Config> configurations;
     std::mutex mutex;
 };
 
@@ -152,6 +163,11 @@ JETSTREAM_API Instance& Get();
 template<DeviceType D>
 const auto& State() {
     return Get().state<D>();
+}
+
+template<DeviceType D>
+Result Configure(const Config& config) {
+    return Get().configure(D, config);
 }
 
 template<DeviceType D>
