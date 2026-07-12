@@ -175,6 +175,9 @@ TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
     Expect("run values",
            {"--renderer=METAL",
             "--device-index=7",
+            "--plugin=first.cep",
+            "--plugin",
+            "second.cep",
             "--size=640X480",
             "--scale=2",
             "--framerate=30",
@@ -194,7 +197,7 @@ TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
             "Streaming codec (current: h264)",
             "Streaming encoder (current: auto)"});
     Expect("benchmark values",
-           {"--format=JSON", "benchmark", "fft", "--help"},
+           {"--format=JSON", "benchmark", "fft", "--plugin=benchmark.cep", "--help"},
            0,
            {"benchmark [options] [block]", "Output format (current: json)"});
     Expect("zero device index",
@@ -206,6 +209,7 @@ TEST_CASE("CLI accepts normalized and inline values", "[cli]") {
 TEST_CASE("CLI rejects invalid syntax and command conflicts", "[cli]") {
     Expect("malformed delimiter value", {"--=value", "--help"}, 2, {}, {"Unknown option: '--=value'."});
     Expect("empty malformed delimiter", {"--=", "--help"}, 2, {}, {"Unknown option: '--='."});
+    Expect("missing plugin path", {"--plugin"}, 2, {}, {"Missing value for --plugin"});
     Expect("dash-prefixed flowgraph", {"--", "--flowgraph.yml", "second.yml"}, 2, {}, {"Only one flowgraph"});
     Expect("benchmark delimiter", {"benchmark", "--", "--block", "second"}, 2, {}, {"Only one benchmark block"});
     Expect("multiple flowgraphs", {"one.yml", "two.yml"}, 2, {}, {"Only one flowgraph"});

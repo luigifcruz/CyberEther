@@ -6,6 +6,7 @@
 #include <optional>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 #include "jetstream/run.hh"
 #include "jetstream/config.hh"
@@ -226,8 +227,9 @@ static void printUsage(const char* program,
     jst::fmt::print("  -h, --help                   Show this help\n");
     jst::fmt::print("  -v, -vv                      Set debug or trace log level\n");
     jst::fmt::print("  -V, --version                Show version\n");
-    jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n\n",
+    jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n",
                     settings.graphics.deviceId);
+    jst::fmt::print("  --plugin <path>              Load a .cep plugin (repeatable)\n\n");
 
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("Graphics Options:\n");
@@ -308,6 +310,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     std::string remoteSettingOption;
     std::string benchmarkOption;
     std::string benchmarkFilter;
+    std::vector<std::string> commandLinePlugins;
     bool positionalOnly = false;
 
     for (int i = 1; i < argc; i++) {
@@ -396,6 +399,15 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             }
             jst::fmt::print("CyberEther v{}-{}\n", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
             return 0;
+        }
+
+        if (!positionalOnly && arg == "--plugin") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --plugin. Expected a .cep path.");
+            }
+            commandLinePlugins.push_back(value);
+            continue;
         }
 
         if (!positionalOnly && arg == "-v") {
@@ -661,6 +673,12 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 #endif
 
     LoadRegistryPlugins(settings);
+    for (const auto& path : commandLinePlugins) {
+        if (Plugin::Load(path) != Result::SUCCESS) {
+            jst::fmt::print(stderr, "Error: Failed to load command-line plugin '{}'.\n", path);
+            return -1;
+        }
+    }
 
     //
     // Benchmark Logic
