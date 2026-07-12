@@ -15,7 +15,9 @@
 namespace Jetstream {
 
 struct Benchmark::Impl {
-    void run(const std::string& outputType, std::ostream& out);
+    void run(const std::string& outputType,
+             const std::string& blockType,
+             std::ostream& out);
     U64 totalCount();
     U64 currentCount();
     void resetResults();
@@ -29,7 +31,9 @@ Benchmark::Impl& Benchmark::benchmark() {
     return impl;
 }
 
-void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
+void Benchmark::Impl::run(const std::string& outputType,
+                          const std::string& blockType,
+                          std::ostream& out) {
     using namespace ankerl;
     using namespace std::chrono_literals;
 
@@ -46,7 +50,7 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
     resetResults();
 
-    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks(blockType)) {
         const auto specs = benchmark.factory();
         if (specs.empty()) {
             continue;
@@ -186,7 +190,13 @@ const Benchmark::ResultMapType& Benchmark::Impl::getResults() {
 }
 
 void Benchmark::Run(const std::string& outputType, std::ostream& out) {
-    benchmark().run(outputType, out);
+    benchmark().run(outputType, "", out);
+}
+
+void Benchmark::Run(const std::string& outputType,
+                    const std::string& blockType,
+                    std::ostream& out) {
+    benchmark().run(outputType, blockType, out);
 }
 
 U64 Benchmark::TotalCount() {

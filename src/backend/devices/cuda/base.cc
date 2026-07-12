@@ -20,7 +20,8 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
         JST_FATAL("[CUDA] Cannot get device count: {}", err);
     });
     if (config.deviceId >= static_cast<U64>(deviceCount)) {
-       JST_FATAL("[CUDA] Cannot get desired device ID ({}).", config.deviceId);
+        JST_FATAL("[CUDA] Cannot get desired device ID ({}).", config.deviceId);
+        JST_CHECK_THROW(Result::ERROR);
     }
 
     // Setup device.
@@ -117,6 +118,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [CUDA]")
     JST_INFO("-----------------------------------------------------");
+    JST_INFO("Device ID:          {}", getDeviceId());
     JST_INFO("Device Name:        {}", getDeviceName());
     JST_INFO("Device Type:        {}", getPhysicalDeviceType());
     JST_INFO("API Version:        {}", getApiVersion());
@@ -134,6 +136,16 @@ CUDA::~CUDA() {
     if (_isAvailable) {
         cuCtxDestroy(context);
     }
+}
+
+Result CUDA::activate() const {
+    JST_CUDA_CHECK(cudaSetDevice(config.deviceId), [&]{
+        JST_ERROR("[CUDA] Cannot activate device ID ({}): {}", config.deviceId, err);
+    });
+    JST_CUDA_CHECK(cuCtxSetCurrent(context), [&]{
+        JST_ERROR("[CUDA] Cannot activate context for device ID ({}): {}", config.deviceId, err);
+    });
+    return Result::SUCCESS;
 }
 
 bool CUDA::isAvailable() const {

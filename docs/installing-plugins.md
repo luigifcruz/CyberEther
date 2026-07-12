@@ -43,6 +43,22 @@ CyberEther loads the plugin immediately and shows a "Plugin loaded." notificatio
 
 From now on, the plugin loads automatically every time CyberEther starts. If a plugin fails to load at startup, CyberEther logs a warning and continues starting normally.
 
+## Loading Plugins Temporarily
+
+Use the repeatable `--plugin` option to load one or more bundles for only the current process:
+
+```bash
+cyberether --plugin path/to/first.cep --plugin path/to/second.cep
+```
+
+The option also works with benchmarks, including benchmarks registered by a plugin:
+
+```bash
+cyberether benchmark custom_block --plugin path/to/plugin.cep
+```
+
+Command-line plugins are loaded in addition to registered plugins for that run. They are not added to the registry or saved in `settings.yaml`. If an explicitly requested bundle fails to load, the command exits with an error.
+
 ## Using The Plugin
 
 The plugin's blocks appear in the block catalog alongside the built-in blocks. Add them to a flowgraph the same way you add any other block.
@@ -84,4 +100,4 @@ The exact reason is printed to the log. Run CyberEther from a terminal and look 
 A few limitations to be aware of:
 
 - Plugins are not supported in the browser version of CyberEther.
-- There is no command line flag for loading plugins. Registration happens through the preferences window and persists across sessions.
+- Command-line plugins are temporary. Register a plugin through the preferences window to load it automatically in future sessions.

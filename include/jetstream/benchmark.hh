@@ -40,6 +40,9 @@ class JETSTREAM_API Benchmark {
     using ResultMapType = std::map<std::string, std::vector<Measurement>>;
 
     static void Run(const std::string& outputType, std::ostream& out = std::cout);
+    static void Run(const std::string& outputType,
+                    const std::string& blockType,
+                    std::ostream& out = std::cout);
     static U64 TotalCount();
     static U64 CurrentCount();
     static void ResetResults();

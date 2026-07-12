@@ -174,6 +174,7 @@ TEST_CASE("Settings returns defaults when file is missing", "[settings]") {
 
     REQUIRE(settings.graphics.size.width == 1920);
     REQUIRE(settings.graphics.size.height == 1080);
+    REQUIRE(settings.graphics.deviceId == 0);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.remote.brokerUrl == "https://cyberether.org");
@@ -186,6 +187,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
 
     Settings settings;
     settings.benchmark.format = "json";
+    settings.graphics.deviceId = 2;
     settings.graphics.headless = true;
     settings.graphics.size.width = 1280;
     settings.graphics.size.height = 720;
@@ -202,6 +204,7 @@ TEST_CASE("Settings persists root YAML", "[settings]") {
     REQUIRE(yaml.find("format") == std::string::npos);
     REQUIRE(yaml.find("graphics:") != std::string::npos);
     REQUIRE(yaml.find("headless") == std::string::npos);
+    REQUIRE(yaml.find("deviceId") == std::string::npos);
     REQUIRE(yaml.find("interface:") != std::string::npos);
     REQUIRE(yaml.find("remote:") != std::string::npos);
     REQUIRE(yaml.find("registry:") != std::string::npos);
@@ -261,6 +264,31 @@ TEST_CASE("Settings can update memory without persisting", "[settings]") {
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
     REQUIRE(restored.interface.themeKey == "Transient");
     REQUIRE(restored.developer.timingEnabled);
+}
+
+TEST_CASE("Transient settings can be restored before a retained update", "[settings]") {
+    SettingsSandbox sandbox("transient-restore");
+
+    Settings retained;
+    retained.graphics.scale = 1.25f;
+    retained.remote.brokerUrl = "https://retained.example.com";
+    REQUIRE(Settings::Set(retained) == Result::SUCCESS);
+
+    Settings runtime = retained;
+    runtime.graphics.scale = 3.0f;
+    runtime.remote.brokerUrl = "https://runtime.example.com";
+    REQUIRE(Settings::Set(runtime, false) == Result::SUCCESS);
+    REQUIRE(Settings::Set(retained, false) == Result::SUCCESS);
+
+    Settings updated;
+    REQUIRE(Settings::Get(updated) == Result::SUCCESS);
+    updated.interface.infoPanelEnabled = false;
+    REQUIRE(Settings::Set(updated) == Result::SUCCESS);
+
+    const auto yaml = ReadFile(sandbox.path);
+    REQUIRE(yaml.find("https://retained.example.com") != std::string::npos);
+    REQUIRE(yaml.find("https://runtime.example.com") == std::string::npos);
+    REQUIRE(yaml.find("scale: 1.25") != std::string::npos);
 }
 
 TEST_CASE("Python runtime validation treats framework binaries as libraries", "[settings][runtime][python]") {

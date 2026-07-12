@@ -286,10 +286,14 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 
         std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
-        vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
+        JST_VK_CHECK_THROW(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data()), [&]{
+            JST_FATAL("[VULKAN] Can't enumerate physical devices.");
+        });
 
         std::vector<VkPhysicalDevice> validPhysicalDevices;
         for (const auto& candidatePhysicalDevice : physicalDevices) {
+            VkPhysicalDeviceProperties candidateProperties;
+            vkGetPhysicalDeviceProperties(candidatePhysicalDevice, &candidateProperties);
             const auto& requiredExtensions = getRequiredDeviceExtensions();
             const auto& supportedExtensions = checkDeviceExtensionSupport(candidatePhysicalDevice, requiredExtensions);
             const auto& extensionCheck = requiredExtensions.size() == supportedExtensions.size();
@@ -297,10 +301,14 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             const auto& queueFamilyIndices = FindQueueFamilies(candidatePhysicalDevice);
             const auto& queueFamilyCheck = queueFamilyIndices.isComplete();
 
-            JST_DEBUG("[VULKAN] Candidate device - Extension check: {}, Queue family check: {}",
+            JST_DEBUG("[VULKAN] Candidate device '{}' - Extension check: {}, Queue family check: {}",
+                      candidateProperties.deviceName,
                       extensionCheck ? "OK" : "FAIL", queueFamilyCheck ? "OK" : "FAIL");
 
             if (extensionCheck && queueFamilyCheck) {
+                JST_DEBUG("[VULKAN] Device ID {}: {}",
+                          validPhysicalDevices.size(),
+                          candidateProperties.deviceName);
                 validPhysicalDevices.push_back(candidatePhysicalDevice);
             }
         }
@@ -309,7 +317,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             JST_CHECK_THROW(Result::FATAL);
         }
         if (validPhysicalDevices.size() <= config.deviceId) {
-            JST_FATAL("[VULKAN] Can't find desired device ID.");
+            JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId);
             JST_CHECK_THROW(Result::FATAL);
         }
         physicalDevice = validPhysicalDevices[config.deviceId];
@@ -604,6 +612,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [VULKAN]")
     JST_INFO("-----------------------------------------------------");
+    JST_INFO("Device ID:        {}", getDeviceId());
     JST_INFO("Device Name:      {}", getDeviceName());
     JST_INFO("Device Type:      {}", getPhysicalDeviceType());
     JST_INFO("API Version:      {}", getApiVersion());

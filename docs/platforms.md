@@ -12,10 +12,16 @@ The same CyberEther runs in three shapes: as a native application on your machin
 The primary target. CyberEther runs as a plain native binary with direct access to the GPU and every backend the platform provides:
 
 ```
-cyberether [command] [options] [flowgraph]
+cyberether [options] [flowgraph]
+cyberether run [options] [flowgraph]
+cyberether benchmark [options] [block]
 ```
 
-The default command runs the full application and `benchmark` runs the benchmark suite. The graphics options select the render device (`--device metal` or `--device vulkan`), the window geometry (`--size`, `--scale`, `--framerate`), and `--headless` runs without a window entirely. Passing a flowgraph file loads it at startup, which combined with `--headless` is the deployment shape for unattended machines.
+The default command launches the full application and `benchmark` runs the benchmark suite. The graphics options prefer a renderer (`--renderer metal` or `--renderer vulkan`, with fallback to an available backend), select the zero-based Vulkan and CUDA device ordinal with `--device-index`, control viewport geometry (`--size`, `--scale`, `--framerate`), and let `--headless` run without a window entirely. Passing one flowgraph file as a positional argument loads it at startup, which combined with `--headless` is the deployment shape for unattended machines. Vulkan and CUDA enumerate devices independently, so the same ordinal is not guaranteed to identify the same physical GPU in both APIs.
+
+Long options with values accept either `--option value` or `--option=value`. Use `--` to treat every following argument as positional, such as for a flowgraph path beginning with a dash. Run `cyberether --help` or `cyberether run --help` for the complete option list.
+
+The benchmark command accepts `--format markdown`, `--format json`, or `--format csv` to select its output format. Pass a block type such as `fft` to run only that block's benchmarks: `cyberether benchmark fft --format json`. The CUDA benchmarks honor the global `--device-index` selection. Run `cyberether benchmark --help` for its command-specific help.
 
 Quirks:
 
@@ -37,16 +43,20 @@ Quirks:
 
 ## Remote
 
-A remote instance is a native CyberEther, usually headless on a server, that streams its interface to you and takes interaction back, so the full application runs at the remote machine's compute capacity. This platform will be available soon.
+A remote instance is a native CyberEther, usually headless on a server, that streams its interface to you and takes interaction back, so the full application runs at the remote machine's compute capacity. CyberEther Remote is a mode of the native application rather than a separate command:
+
+```
+cyberether --remote --broker https://cyberether.org [flowgraph]
+```
 
 ## Picking One
 
-| | Native | Web |
-|---|---|---|
-| Compute | Local, all backends | In-browser, CPU via WebAssembly |
-| Hardware access | Full | Browser APIs only |
-| Python blocks | Yes | No |
-| Install required | Yes | No |
-| Best for | Daily use, development, deployment | Trying it, demos, sharing |
+| | Native | Web | Remote |
+|---|---|---|---|
+| Compute | Local, all backends | In-browser, CPU via WebAssembly | Remote machine, all native backends |
+| Hardware access | Full | Browser APIs only | Full access on the remote machine |
+| Python blocks | Yes | No | Yes |
+| Install required | Yes | No | On the remote machine |
+| Best for | Daily use, development, deployment | Trying it, demos, sharing | Headless and high-performance systems |
 
-The rule of thumb: develop and deploy native, share via web, and stream from big hardware once remote lands.
+The rule of thumb: develop and deploy native, share via web, and use CyberEther Remote to stream from larger or unattended systems.

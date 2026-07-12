@@ -70,6 +70,7 @@ Result Instance::create(const Config& config) {
 
     {
         auto backendConfig = Backend::Config {
+            .deviceId = config.deviceId,
             .headless = config.headless,
             .pythonRuntimePath = config.pythonRuntimePath,
         };
@@ -83,6 +84,9 @@ Result Instance::create(const Config& config) {
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
         JST_CHECK(Backend::Initialize<DeviceType::CPU>(backendConfig));
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        JST_CHECK(Backend::Configure<DeviceType::CUDA>(backendConfig));
 #endif
 
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
