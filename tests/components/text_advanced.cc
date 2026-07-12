@@ -79,7 +79,7 @@ class TextTestUI : public TestUIBase<Render::Components::Text> {
     }
 
     Result renderInfoPanel([[maybe_unused]] const ImVec2& totalSize, [[maybe_unused]] const ImVec2& contentSize) override {
-        ImGui::Text("  Frames: %llu", frameCounter);
+        ImGui::Text("  Frames: %llu", static_cast<unsigned long long>(frameCounter));
         ImGui::Separator();
         ImGui::Text("Elements: 17 text objects");
         ImGui::Text("Features:");

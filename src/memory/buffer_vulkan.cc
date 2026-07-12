@@ -57,7 +57,9 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         auto& fence = state->getDefaultFence();
         auto& commandBuffer = state->getDefaultCommandBuffer();
         const auto& unified = state->hasUnifiedMemory();
+#if !defined(JST_OS_WINDOWS)
         const auto& canExport = state->canExportDeviceMemory();
+#endif
 
         // Create buffer object.
 

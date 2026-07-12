@@ -11,6 +11,7 @@ static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
 
+#ifndef JST_OS_WINDOWS
 static bool IsWaylandPlatform() {
 #ifdef GLFW_PLATFORM_WAYLAND
     return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
@@ -18,6 +19,7 @@ static bool IsWaylandPlatform() {
     return false;
 #endif
 }
+#endif
 
 static bool keepRunningFlag;
 
@@ -373,6 +375,9 @@ VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkS
 }
 
 VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+#ifdef JST_OS_WINDOWS
+    static_cast<void>(availablePresentModes);
+#endif
     if (config.vsync) {
         // TODO: Re-evaluate if we want MAILBOX.
 #ifndef JST_OS_WINDOWS

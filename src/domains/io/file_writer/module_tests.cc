@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
+
+#include "jetstream/platform.hh"
 #include <fstream>
 
 #include "jetstream/testing.hh"
@@ -11,7 +13,8 @@ using namespace Jetstream;
 namespace {
 
 std::filesystem::path getTestFilePath(const std::string& suffix) {
-    auto path = std::filesystem::temp_directory_path() / ("jst_test_file_writer_" + suffix + ".raw");
+    auto path = std::filesystem::temp_directory_path() /
+                Platform::PathFromUtf8("jst_test_file_writer_" + suffix + ".raw");
     return path;
 }
 
@@ -43,7 +46,7 @@ void expectFileWriterSuccess(const std::string& suffix,
                             impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.filepath = testPath.string();
+            config.filepath = Platform::PathToUtf8(testPath);
             config.overwrite = true;
             config.recording = true;
             ctx.setConfig(config);
@@ -134,7 +137,7 @@ TEST_CASE("FileWriter Module - No overwrite protection",
                            impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.filepath = testPath.string();
+            config.filepath = Platform::PathToUtf8(testPath);
 
             config.overwrite = false;
             config.recording = true;
@@ -168,7 +171,7 @@ TEST_CASE("FileWriter Module - Missing parent directory",
                             impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.filepath = testPath.string();
+            config.filepath = Platform::PathToUtf8(testPath);
             config.overwrite = true;
             config.recording = true;
             ctx.setConfig(config);
@@ -199,7 +202,7 @@ TEST_CASE("FileWriter Module - Recording disabled",
                             impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.filepath = testPath.string();
+            config.filepath = Platform::PathToUtf8(testPath);
             config.overwrite = true;
             config.recording = false;
             ctx.setConfig(config);
@@ -252,7 +255,7 @@ TEST_CASE("FileWriter Module - Unsupported input dtype",
                             impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.filepath = testPath.string();
+            config.filepath = Platform::PathToUtf8(testPath);
             config.overwrite = true;
             config.recording = true;
             ctx.setConfig(config);
@@ -282,7 +285,7 @@ TEST_CASE("FileWriter Module - Multiple runs overwrite with latest buffer",
                             impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.filepath = testPath.string();
+            config.filepath = Platform::PathToUtf8(testPath);
             config.overwrite = true;
             config.recording = true;
             ctx.setConfig(config);

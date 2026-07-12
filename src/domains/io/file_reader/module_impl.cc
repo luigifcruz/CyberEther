@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include "jetstream/platform.hh"
+
 namespace Jetstream::Modules {
 
 Result FileReaderImpl::validate() {
@@ -57,7 +59,7 @@ Result FileReaderImpl::create() {
         return Result::INCOMPLETE;
     }
 
-    filePath = std::filesystem::u8path(filepath);
+    filePath = Platform::PathFromUtf8(filepath);
 
     if (!std::filesystem::exists(filePath)) {
         JST_WARN("[MODULE_FILE_READER] File '{}' does not exist.", filepath);

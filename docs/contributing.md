@@ -63,6 +63,14 @@ The verbose level can be selected at runtime using the `JST_DEBUG` environment v
 | `JST_DEBUG=1` | <span style="color: #eab308; font-weight: 600">WARN</span> | Warning messages, typically for non-critical issues, which can be recovered or which are temporary failures. |
 | `JST_DEBUG=0` | <span style="color: #ef4444; font-weight: 600">ERROR & FATAL</span> | Error or fatal messages - most of the time these are (hopefully) logged before the application crashes. |
 
+Log colors are automatically disabled when standard output is not attached to a compatible terminal. Users can also disable colors by setting the standard `NO_COLOR` environment variable to a non-empty value:
+
+```sh
+NO_COLOR=1 cyberether
+```
+
+Applications embedding Jetstream can disable log colors programmatically by calling `JST_LOG_COLOR(false)`.
+
 If you are writing a new module or block, use the logger to communicate problems or warnings to the user. If you print something to the console and return a `Result::ERROR`, `Result::WARNING`, or `Result::FATAL`, the compositor will display a notification to the user with the last message you printed.
 
 ### Testing

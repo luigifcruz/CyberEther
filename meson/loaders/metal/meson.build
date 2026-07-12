@@ -13,7 +13,7 @@ foreach x_dep : deps
     all_deps_found = all_deps_found and x_dep.found()
 endforeach
 
-if target_machine.cpu_family() != 'aarch64'
+if all_deps_found and target_machine.cpu_family() != 'aarch64'
     warning('Metal backend is only available on Apple Silicon Macs.')
     all_deps_found = false
 endif

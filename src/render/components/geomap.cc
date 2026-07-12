@@ -18,7 +18,7 @@
 
 namespace Jetstream::Render::Components {
 
-static constexpr F32 kPi = JST_PI;
+static constexpr F32 kPi = static_cast<F32>(JST_PI);
 static constexpr F32 MaxMercatorLatitude = 85.05112878f;
 
 static inline F32 ClampMercatorLatitude(const F32 lat) {

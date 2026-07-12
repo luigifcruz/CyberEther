@@ -3,6 +3,8 @@
 #include <any>
 #include <chrono>
 #include <filesystem>
+
+#include "jetstream/platform.hh"
 #include <fstream>
 #include <string>
 #include <thread>
@@ -18,7 +20,7 @@ namespace {
 
 std::filesystem::path TestFilePath(const std::string& suffix) {
     auto path = std::filesystem::temp_directory_path() /
-                ("jst_test_file_reader_block_" + suffix + ".raw");
+                Platform::PathFromUtf8("jst_test_file_reader_block_" + suffix + ".raw");
     return path;
 }
 
@@ -67,7 +69,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map config;
-    config["filepath"] = path.string();
+    config["filepath"] = Platform::PathToUtf8(path);
     config["dataType"] = std::string("F32");
     config["batchSize"] = std::string("4");
 
@@ -98,7 +100,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     WriteRawFile(path, data);
 
     Parser::Map config;
-    config["filepath"] = path.string();
+    config["filepath"] = Platform::PathToUtf8(path);
     config["dataType"] = std::string("U8");
     config["batchSize"] = std::to_string(data.size());
     config["loop"] = std::string("false");
@@ -136,7 +138,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map config;
-    config["filepath"] = path.string();
+    config["filepath"] = Platform::PathToUtf8(path);
     config["dataType"] = std::string("F32");
     config["batchSize"] = std::string("4");
     config["loop"] = std::string("true");
@@ -149,7 +151,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(viewBlock("reader").state == Block::State::Created);
 
     Parser::Map resize;
-    resize["filepath"] = path.string();
+    resize["filepath"] = Platform::PathToUtf8(path);
     resize["dataType"] = std::string("F32");
     resize["batchSize"] = std::string("2");
     resize["loop"] = std::string("false");

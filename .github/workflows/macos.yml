@@ -46,11 +46,12 @@ jobs:
   bin:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4.3.1
+      - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: |
           set -euo pipefail
+          brew untap aws/tap 2>/dev/null || true
           brew install pkg-config spirv-cross glslang nasm
 
       - name: Install Python dependencies
@@ -78,7 +79,7 @@ jobs:
 
       - name: Upload Meson test logs
         if: failure()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: macos-meson-test-logs
           path: |
@@ -117,7 +118,7 @@ jobs:
             ${{ env.SYSTEM_MACOS_DYLIBS }}
             ${{ env.BUNDLED_MACOS_DYLIBS }}
 
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v7
         with:
           name: cyberether-bin-macos-arm64
           path: .dist/artifacts/cyberether-macos-arm64.tar.gz
@@ -138,7 +139,7 @@ jobs:
       APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
       APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -165,7 +166,7 @@ jobs:
       - name: Package DMG notarization
         run: apps/macos/sign-notarize-dmg.sh
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cyberether-dmg-macos-arm64
           path: .dist/macos/*.dmg

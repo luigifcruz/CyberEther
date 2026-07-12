@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+
+#include "jetstream/platform.hh"
 #include <fstream>
 #include <string>
 
@@ -43,7 +45,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map readerConfig;
-    readerConfig["filepath"] = path.string();
+    readerConfig["filepath"] = Platform::PathToUtf8(path);
     readerConfig["dataType"] = std::string("F32");
     readerConfig["batchSize"] = std::string("64");
     readerConfig["loop"] = std::string("true");
@@ -83,7 +85,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map readerConfig;
-    readerConfig["filepath"] = path.string();
+    readerConfig["filepath"] = Platform::PathToUtf8(path);
     readerConfig["dataType"] = std::string("F32");
     readerConfig["batchSize"] = std::string("64");
     readerConfig["loop"] = std::string("true");

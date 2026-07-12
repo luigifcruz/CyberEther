@@ -49,7 +49,18 @@ if jst_is_browser
 endif
 
 if jst_is_windows
-    add_project_arguments('/Zc:preprocessor', '/bigobj', language: 'cpp')
+    add_project_arguments(
+        '/Zc:preprocessor',
+        '/bigobj',
+        '/D_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING',
+        language: 'cpp',
+    )
+endif
+
+cpp = meson.get_compiler('cpp')
+if cpp.has_argument('-Wno-missing-field-initializers')
+    # Config aggregates intentionally rely on defaults for unspecified fields.
+    add_project_arguments('-Wno-missing-field-initializers', language: 'cpp')
 endif
 
 if get_option('native')
@@ -94,8 +105,8 @@ cfg_lst.set('version_minor', version_parts[1])
 cfg_lst.set('version_patch', version_parts[2])
 cfg_lst.set('buildtype', get_option('buildtype'))
 cfg_lst.set('optimization', get_option('optimization'))
-cfg_lst.set('debug', get_option('debug'))
-cfg_lst.set('native', get_option('native'))
+cfg_lst.set('debug', get_option('debug') ? 'true' : 'false')
+cfg_lst.set('native', get_option('native') ? 'true' : 'false')
 
 cfg_lst.set('JST_IS_STATIC', jst_is_static)
 cfg_lst.set('JST_IS_SHARED', not jst_is_static)

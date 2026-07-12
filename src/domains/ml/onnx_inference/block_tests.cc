@@ -7,6 +7,7 @@
 
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/ml/onnx_inference/block.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/registry.hh"
 
 using namespace Jetstream;
@@ -69,7 +70,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block ignores legacy manual t
 TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block keeps config UI when model metadata cannot be read",
                  "[modules][onnx_inference][block]") {
     const std::string missingModel = "missing-jetstream-onnx-model-for-test.onnx";
-    REQUIRE_FALSE(std::filesystem::exists(missingModel));
+    REQUIRE_FALSE(std::filesystem::exists(Platform::PathFromUtf8(missingModel)));
 
     Parser::Map config;
     config["modelPath"] = missingModel;
