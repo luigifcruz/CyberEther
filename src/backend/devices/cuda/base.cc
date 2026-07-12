@@ -136,6 +136,16 @@ CUDA::~CUDA() {
     }
 }
 
+Result CUDA::activate() const {
+    JST_CUDA_CHECK(cudaSetDevice(config.deviceId), [&]{
+        JST_ERROR("[CUDA] Cannot activate device ID ({}): {}", config.deviceId, err);
+    });
+    JST_CUDA_CHECK(cuCtxSetCurrent(context), [&]{
+        JST_ERROR("[CUDA] Cannot activate context for device ID ({}): {}", config.deviceId, err);
+    });
+    return Result::SUCCESS;
+}
+
 bool CUDA::isAvailable() const {
     return _isAvailable;
 }

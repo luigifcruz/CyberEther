@@ -14,6 +14,7 @@ class CUDA {
     explicit CUDA(const Config& config);
     ~CUDA();
 
+    Result activate() const;
     bool isAvailable() const;
     std::string getDeviceName() const;
     std::string getApiVersion() const;

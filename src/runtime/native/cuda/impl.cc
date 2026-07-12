@@ -1,5 +1,6 @@
 #include <jetstream/detail/runtime_impl.hh>
 #include <jetstream/runtime_context_native_cuda.hh>
+#include <jetstream/backend/base.hh>
 #include <jetstream/backend/devices/cuda/helpers.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -32,6 +33,8 @@ struct NativeCudaRuntime : public Runtime::Impl {
 };
 
 Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
+    JST_CHECK(Backend::State<DeviceType::CUDA>()->activate());
+
     // Create stream.
 
     JST_CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), [&]{
@@ -115,6 +118,8 @@ Result NativeCudaRuntime::create(const Runtime::Modules& modules) {
 }
 
 Result NativeCudaRuntime::destroy() {
+    JST_CHECK(Backend::State<DeviceType::CUDA>()->activate());
+
     // Deinitalize modules.
 
     for (auto& [name, module] : modulesMap) {
@@ -156,6 +161,8 @@ Result NativeCudaRuntime::destroy() {
 Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,
                                   std::unordered_set<std::string>& skippedModules,
                                   std::unordered_set<std::string>& failedModules) {
+    JST_CHECK(Backend::State<DeviceType::CUDA>()->activate());
+
     const auto& targetNames = modules.empty() ? moduleNames : modules;
     std::vector<std::string> executedModules;
 
