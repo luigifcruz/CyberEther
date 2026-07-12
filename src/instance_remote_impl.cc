@@ -933,6 +933,7 @@ void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann
         if (deltaMode == 0) { dx /= 100.0; dy /= 100.0; }
         else if (deltaMode == 2) { dx *= 3.0; dy *= 3.0; }
 
+        dx = -dx;
         dy = -dy;
 
         ImGuiIO& io = ImGui::GetIO();
