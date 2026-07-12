@@ -18,7 +18,8 @@ struct WelcomeHudPresenter {
     explicit WelcomeHudPresenter(const PresenterContext& context) : context(context) {}
 
     std::optional<WelcomeHudView::Config> build() const {
-        if (!context.state.flowgraph.items.empty() || context.state.modal.content.has_value()) {
+        if (!context.state.flowgraph.items.empty() || context.state.modal.content.has_value() ||
+            context.state.filePicker.active) {
             return std::nullopt;
         }
 

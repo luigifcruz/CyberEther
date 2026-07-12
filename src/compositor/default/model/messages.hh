@@ -187,6 +187,29 @@ struct MailBrowseConfigPath {
     std::function<void(std::string)> onSelect;
 };
 
+struct MailFilePickerNavigate {
+    U64 generation = 0;
+    std::string path;
+};
+
+struct MailFilePickerSelect {
+    U64 generation = 0;
+    std::string path;
+};
+
+struct MailFilePickerSetFilename {
+    U64 generation = 0;
+    std::string value;
+};
+
+struct MailFilePickerConfirm {
+    U64 generation = 0;
+};
+
+struct MailFilePickerCancel {
+    U64 generation = 0;
+};
+
 struct MailRunBenchmark {};
 
 struct MailResetBenchmark {};
@@ -384,6 +407,11 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetPythonRuntimePath,
                           MailSaveFlowgraphPath,
                           MailBrowseConfigPath,
+                          MailFilePickerNavigate,
+                          MailFilePickerSelect,
+                          MailFilePickerSetFilename,
+                          MailFilePickerConfirm,
+                          MailFilePickerCancel,
                           MailRunBenchmark,
                           MailResetBenchmark,
                           MailSetFlowgraphInfo,

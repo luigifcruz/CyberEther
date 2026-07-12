@@ -3,6 +3,7 @@
 
 #include "flowgraph/key_value.hh"
 #include "flowgraph/window.hh"
+#include "file_picker.hh"
 #include "hud/info.hh"
 #include "hud/remote.hh"
 #include "hud/welcome.hh"
@@ -31,6 +32,7 @@ struct WorkbenchView {
         std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
         std::optional<FlowgraphKeyValueWindow::Config> flowgraphEnvironment;
         std::vector<FlowgraphWindow::Config> flowgraphs;
+        FilePickerView::Config filePicker;
     };
 
     void update(Config config) {
@@ -107,6 +109,7 @@ struct WorkbenchView {
         }
 
         modal.update(std::move(this->config.modal));
+        filePicker.update(std::move(this->config.filePicker));
     }
 
     void render(const Sakura::Context& ctx) {
@@ -150,6 +153,7 @@ struct WorkbenchView {
         }
 
         modal.render(ctx);
+        filePicker.render(ctx);
     }
 
  private:
@@ -169,6 +173,7 @@ struct WorkbenchView {
     FlowgraphKeyValueWindow flowgraphMetadataWindow;
     FlowgraphKeyValueWindow flowgraphEnvironmentWindow;
     ModalView modal;
+    FilePickerView filePicker;
 };
 
 }  // namespace Jetstream

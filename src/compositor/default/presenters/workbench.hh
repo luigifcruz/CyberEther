@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_WORKBENCH_HH
 
 #include "context.hh"
+#include "file_picker.hh"
 #include "flowgraph/environment.hh"
 #include "flowgraph/metadata.hh"
 #include "flowgraph/window.hh"
@@ -17,6 +18,7 @@ namespace Jetstream {
 
 struct WorkbenchPresenter {
     const PresenterContext& context;
+    FilePickerPresenter filePicker;
     MenubarPresenter menubar;
     WelcomeHudPresenter welcomeHud;
     InfoHudPresenter infoHud;
@@ -27,6 +29,7 @@ struct WorkbenchPresenter {
     ModalPresenter modal;
 
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
+                                                                   filePicker(context),
                                                                    menubar(context),
                                                                    welcomeHud(context),
                                                                    infoHud(context),
@@ -56,6 +59,7 @@ struct WorkbenchPresenter {
         config.flowgraphMetadata = flowgraphMetadata.build();
         config.flowgraphEnvironment = flowgraphEnvironment.build();
         config.modal = modal.build();
+        config.filePicker = filePicker.build();
         return config;
     }
 };
