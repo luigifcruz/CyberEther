@@ -140,7 +140,7 @@ write_desktop_file() {
 Type=Application
 Name=$APP_NAME
 Comment=CyberEther signal processing runtime
-Exec=$EXECUTABLE_NAME %F
+Exec=$EXECUTABLE_NAME %f
 Icon=$ICON_NAME
 Terminal=false
 Categories=Science;Engineering;

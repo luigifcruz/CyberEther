@@ -7,4 +7,8 @@ if catch2_dep.found()
     subdir('flowgraph')
 endif
 
+if catch2_dep.found() and not jst_is_ios and not jst_is_android
+    subdir('cli')
+endif
+
 subdir('components')
