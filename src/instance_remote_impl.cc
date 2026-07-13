@@ -1,4 +1,4 @@
-#include "jetstream/instance_remote.hh"
+#include "instance_remote_impl.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/capture.hh"
 #include "jetstream/logger.hh"
@@ -10,6 +10,7 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <condition_variable>
 #include <chrono>
 #include <atomic>
@@ -20,181 +21,14 @@
 #include <thread>
 #include <unordered_map>
 
-#define GST_USE_UNSTABLE_API
-#include <gst/webrtc/webrtc.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/sdp/sdp.h>
 #include <gst/video/video-event.h>
 #include <gst/gststructure.h>
 
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-#include <gst/cuda/gstcuda.h>
-#endif
-
-#include <httplib.h>
-#include <nlohmann/json.hpp>
-
 extern "C" void gst_init_static_plugins(void);
 
 namespace Jetstream {
-
-struct Instance::Remote::Impl {
-    ~Impl() = default;
-
-    bool supported() const;
-    Result create(const Instance::Remote::Config& config);
-    Result destroy();
-    Result captureFrame();
-    Result updateWaitlist();
-    Result updateSessions();
-    Result approveClient(const std::string& code);
-
-    Config config;
-    Viewport::Generic* viewport = nullptr;
-    DeviceType viewportDevice = DeviceType::None;
-    bool started_ = false;
-    std::string roomId_;
-    std::string consumerToken;
-    std::string inviteUrl_;
-    std::vector<std::string> waitlist_;
-    std::vector<ClientInfo> clients_;
-    std::map<CodecType, std::vector<EncoderType>> availableEncoderCache;
-
-    enum class EncodingStrategyType {
-        None,
-        Software,
-        HardwareNVENC,
-        HardwareV4L2,
-        HardwareVideoToolbox,
-        HardwareMediaFoundation,
-    };
-
-    struct EncodingCombination {
-        DeviceType device = DeviceType::None;
-        EncodingStrategyType strategy = EncodingStrategyType::None;
-        std::vector<std::string> plugins;
-    };
-
-    Extent2D<U64> size;
-
-    DeviceType inputMemoryDevice_ = DeviceType::None;
-    EncodingStrategyType encodingStrategy = EncodingStrategyType::None;
-
-    // Broker state
-    std::string producerToken;
-    std::string clientDomain;
-    std::string signallerUrl;
-
-    std::unique_ptr<httplib::Client> brokerClient;
-
-    Result createBroker();
-    Result destroyBroker();
-
-    Result createRoom();
-
-    // Stream
-    GstElement* pipeline = nullptr;
-    GstElement* source = nullptr;
-    GstElement* encoder = nullptr;
-    GstElement* tee = nullptr;
-
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-    GstCudaContext* gstCudaContext = nullptr;
-#endif
-
-    std::unique_ptr<httplib::ws::WebSocketClient> signallerClient;
-    std::thread signallerThread;
-    std::atomic<bool> signallerRunning = false;
-    std::mutex signallerMutex;
-    std::string producerPeerId;
-
-    struct WebRtcSession {
-        std::string sessionId;
-        std::string peerId;
-        GstElement* queue = nullptr;
-        GstElement* payloader = nullptr;
-        GstElement* rtpCaps = nullptr;
-        GstElement* webrtc = nullptr;
-        GstPad* teeSrcPad = nullptr;
-        GstPad* webrtcSinkPad = nullptr;
-        gulong iceHandler = 0;
-        gulong channelHandler = 0;
-    };
-
-    struct WebRtcSignalContext {
-        Impl* impl = nullptr;
-        std::string sessionId;
-    };
-
-    std::mutex sessionsMutex;
-    std::unordered_map<std::string, std::unique_ptr<WebRtcSession>> sessions;
-
-    std::atomic<bool> streaming = false;
-    std::mutex streamMutex;
-
-    Result createStream();
-    Result startStream();
-    Result stopStream();
-    Result destroyStream();
-    std::vector<EncoderType> available(CodecType codec);
-    std::vector<EncodingCombination> encodingCombinations(CodecType codec);
-    static EncoderType EncoderFromEncodingStrategy(EncodingStrategyType strategy);
-    static bool EncoderMatchesStrategy(EncoderType encoder, EncodingStrategyType strategy);
-    Result createWebRtcSession(const std::string& sessionId, const std::string& peerId);
-    void destroyWebRtcSession(const std::string& sessionId);
-    void destroyAllWebRtcSessions();
-    GstElement* refSessionWebrtc(const std::string& sessionId);
-    GstElement* createPayloader();
-    GstElement* createRtpCapsFilter();
-    Result startSignaller();
-    Result stopSignaller();
-    void signallerLoop();
-    void handleSignallerMessage(const std::string& payload);
-    void handleStartSession(const nlohmann::json& j);
-    void handlePeerMessage(const nlohmann::json& j);
-    void handleEndSession(const nlohmann::json& j);
-    bool sendSignallerMessage(const nlohmann::json& j);
-    void sendSessionDescription(const std::string& sessionId, const GstWebRTCSessionDescription* desc);
-    void sendIceCandidate(const std::string& sessionId, guint mlineIndex, const gchar* candidate);
-    Result applyRemoteDescription(const std::string& sessionId,
-                                  const std::string& type,
-                                  const std::string& sdp);
-
-    Result checkGstreamerPlugins(const std::vector<std::string>& plugins,
-                                 const bool& silent = false);
-    static const char* GetEncodingStrategyPrettyName(const EncodingStrategyType& strategy);
-    void handleInput(const std::string& kind, const nlohmann::json& j);
-    void createControlChannel(const std::string& sessionId);
-    static void onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data);
-    static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
-    static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
-    static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
-    static void onAnswerCreatedCallback(GstPromise* promise, gpointer user_data);
-
-    struct WebRtcPromiseContext {
-        Impl* impl = nullptr;
-        std::string sessionId;
-    };
-
-    std::thread sessionMonitorThread;
-    std::atomic<bool> sessionMonitorRunning = false;
-
-    std::unique_ptr<Viewport::FrameCapture> frameCapture;
-    std::thread frameSubmissionThread;
-    std::atomic<bool> frameSubmissionRunning = false;
-
-    // Frame submission
-    std::mutex bufferMutex;
-    std::condition_variable bufferCond;
-    bool bufferProcessed = false;
-
-    std::atomic<bool> forceKeyframe = false;
-    std::chrono::time_point<std::chrono::steady_clock> initialFrameTime;
-    std::chrono::time_point<std::chrono::steady_clock> lastKeyframeTime;
-
-    static void OnBufferReleaseCallback(gpointer user_data);
-    Result pushNewFrame(const void* data);
-};
 
 Instance::Remote::Remote(Viewport::Generic* viewport) {
     impl = std::make_shared<Impl>();
@@ -240,20 +74,14 @@ const std::string& Instance::Remote::inviteUrl() const {
     return impl->inviteUrl_;
 }
 
-const std::vector<Instance::Remote::ClientInfo>& Instance::Remote::clients() const {
+std::vector<Instance::Remote::ClientInfo> Instance::Remote::clients() const {
+    std::lock_guard<std::mutex> lock(impl->remoteStateMutex);
     return impl->clients_;
 }
 
-const std::vector<std::string>& Instance::Remote::waitlist() const {
+std::vector<std::string> Instance::Remote::waitlist() const {
+    std::lock_guard<std::mutex> lock(impl->remoteStateMutex);
     return impl->waitlist_;
-}
-
-Result Instance::Remote::updateWaitlist() {
-    return impl->updateWaitlist();
-}
-
-Result Instance::Remote::updateSessions() {
-    return impl->updateSessions();
 }
 
 Result Instance::Remote::approveClient(const std::string& code) {
@@ -322,16 +150,6 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
         }
     });
 
-    this->sessionMonitorRunning = true;
-    this->sessionMonitorThread = std::thread([this]() {
-        while (this->sessionMonitorRunning) {
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            if (!this->sessionMonitorRunning) break;
-            updateWaitlist();
-            updateSessions();
-        }
-    });
-
     this->started_ = true;
     JST_INFO("[REMOTE] Remote streaming started.");
     return Result::SUCCESS;
@@ -339,11 +157,6 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
 
 Result Instance::Remote::Impl::destroy() {
     JST_DEBUG("[REMOTE] Destroying remote streaming.");
-
-    this->sessionMonitorRunning = false;
-    if (this->sessionMonitorThread.joinable()) {
-        this->sessionMonitorThread.join();
-    }
 
     this->frameSubmissionRunning = false;
     if (this->frameCapture) {
@@ -373,73 +186,11 @@ Result Instance::Remote::Impl::captureFrame() {
     return Result::SUCCESS;
 }
 
-Result Instance::Remote::Impl::updateWaitlist() {
-    if (!this->started_) {
-        return Result::SUCCESS;
-    }
-
-    auto res = this->brokerClient->Get("/api/v1/remote/room/waitlist");
-    if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull waitlist: [{}] /api/v1/remote/room/waitlist.", res ? res->status : 0);
-        return Result::ERROR;
-    }
-
-    try {
-        auto j = nlohmann::json::parse(res->body);
-
-        if (!j.contains("sessions")) {
-            JST_ERROR("[REMOTE] Missing field 'sessions': {}", res->body);
-            return Result::ERROR;
-        }
-
-        this->waitlist_ = j["sessions"].get<std::vector<std::string>>();
-    } catch (const std::exception& e) {
-        JST_ERROR("[REMOTE] JSON parse error '{}': {}", e.what(), res->body);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
-}
-
-Result Instance::Remote::Impl::updateSessions() {
-    if (!this->started_) {
-        return Result::SUCCESS;
-    }
-
-    auto res = this->brokerClient->Get("/api/v1/remote/room/active");
-    if (!res || res->status != 200) {
-        JST_ERROR("[REMOTE] Failed to pull sessions: [{}] /api/v1/remote/room/active.", res ? res->status : 0);
-        return Result::ERROR;
-    }
-
-    try {
-        auto j = nlohmann::json::parse(res->body);
-
-        if (!j.contains("sessions")) {
-            JST_ERROR("[REMOTE] Missing field 'sessions': {}", res->body);
-            return Result::ERROR;
-        }
-
-        auto sessions = j["sessions"].get<std::vector<std::string>>();
-        this->clients_.clear();
-        for (const auto& s : sessions) {
-            this->clients_.push_back({s});
-        }
-    } catch (const std::exception& e) {
-        JST_ERROR("[REMOTE] JSON parse error '{}': {}", e.what(), res->body);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
-}
-
 Result Instance::Remote::Impl::approveClient(const std::string& code) {
     if (!this->started_) {
         JST_ERROR("[REMOTE] Can't approve client when session is not started.");
         return Result::ERROR;
     }
-
-    JST_CHECK(updateWaitlist());
 
     auto to_lower = [](std::string_view s) {
         std::string out(s);
@@ -448,112 +199,28 @@ Result Instance::Remote::Impl::approveClient(const std::string& code) {
         return out;
     };
 
-    for (auto& sessionId : this->waitlist_) {
+    std::vector<std::string> waitlist;
+    {
+        std::lock_guard<std::mutex> lock(remoteStateMutex);
+        waitlist = waitlist_;
+    }
+    for (const auto& sessionId : waitlist) {
         JST_DEBUG("[REMOTE] Candidate session: {}", sessionId);
 
         if (sessionId.ends_with(to_lower(code))) {
             JST_INFO("[REMOTE] Client authorization code '{}' approved.", code);
 
-            auto json = nlohmann::json{{"sessionId", sessionId}};
-            auto res = this->brokerClient->Post("/api/v1/remote/room/approval", json.dump(), "application/json");
-            if (!res || res->status != 200) {
-                JST_ERROR("[REMOTE] Failed to post approval: [{}] /api/v1/remote/room/approval.", res ? res->status : 0);
+            if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
+                JST_ERROR("[REMOTE] Failed to send client approval.");
                 return Result::ERROR;
             }
 
-            JST_CHECK(updateSessions());
             return Result::SUCCESS;
         }
     }
 
     JST_ERROR("[REMOTE] Client authorization code '{}' not found.", code);
     return Result::ERROR;
-}
-
-//
-// Broker
-//
-
-Result Instance::Remote::Impl::createBroker() {
-    JST_INFO("[REMOTE] Connecting to broker at '{}'.", config.broker);
-    brokerClient = std::make_unique<httplib::Client>(config.broker);
-
-    {
-        auto res = brokerClient->Get("/api/v1");
-        if (!res || res->status != 200) {
-            JST_ERROR("[REMOTE] Failed to connect to server.");
-            return Result::ERROR;
-        }
-        JST_DEBUG("[REMOTE] Connected to server.");
-    }
-
-    JST_CHECK(createRoom());
-
-    JST_INFO("[REMOTE] Signaller URL: '{}'.", signallerUrl);
-
-    brokerClient->set_bearer_token_auth(producerToken);
-
-    inviteUrl_ = jst::fmt::format("{}#{}", clientDomain, consumerToken);
-
-    JST_CHECK(startStream());
-
-    return Result::SUCCESS;
-}
-
-Result Instance::Remote::Impl::destroyBroker() {
-    JST_DEBUG("[REMOTE] Closing broker connection.");
-    JST_CHECK(stopStream());
-    return Result::SUCCESS;
-}
-
-Result Instance::Remote::Impl::createRoom() {
-    auto params = httplib::Params{};
-    auto res = brokerClient->Post("/api/v1/remote/room", params);
-    if (!res || res->status != 201) {
-        JST_ERROR("[REMOTE] Failed to create room: [{}] /api/v1/remote/room.", res ? res->status : 0);
-        return Result::ERROR;
-    }
-
-    try {
-        auto j = nlohmann::json::parse(res->body);
-
-        if (!j.contains("roomId")) {
-            JST_ERROR("[REMOTE] Missing field 'roomId': {}", res->body);
-            return Result::ERROR;
-        }
-
-        if (!j.contains("producerToken")) {
-            JST_ERROR("[REMOTE] Missing field 'producerToken': {}", res->body);
-            return Result::ERROR;
-        }
-
-        if (!j.contains("consumerToken")) {
-            JST_ERROR("[REMOTE] Missing field 'consumerToken': {}", res->body);
-            return Result::ERROR;
-        }
-
-        if (!j.contains("signallerUrl")) {
-            JST_ERROR("[REMOTE] Missing field 'signallerUrl': {}", res->body);
-            return Result::ERROR;
-        }
-
-        if (!j.contains("clientDomain")) {
-            JST_ERROR("[REMOTE] Missing field 'clientDomain': {}", res->body);
-            return Result::ERROR;
-        }
-
-        roomId_ = j["roomId"].get<std::string>();
-        producerToken = j["producerToken"].get<std::string>();
-        consumerToken = j["consumerToken"].get<std::string>();
-        signallerUrl = j["signallerUrl"].get<std::string>();
-        clientDomain = j["clientDomain"].get<std::string>();
-    } catch (const std::exception& e) {
-        JST_ERROR("[REMOTE] JSON parse error '{}': {}", e.what(), res->body);
-        return Result::ERROR;
-    }
-
-    JST_DEBUG("[REMOTE] New room created.");
-    return Result::SUCCESS;
 }
 
 //
@@ -963,13 +630,10 @@ void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann
         if (k != ImGuiKey_None) {
             ImGui::GetIO().AddKeyEvent(k, pressed);
         }
-        JST_TRACE("[REMOTE] Keyboard: event (pressed='{}', key='{}', code='{}', ImGuiKey='{}')", pressed ? "down" : "up", code, key, (int)k);
-
         if (pressed && !ctrl && !alt && !meta) {
             const unsigned int cp = firstCodepoint(key);
             if (cp >= 0x20 && cp != 0x7F) {
                 ImGui::GetIO().AddInputCharacter(cp);
-                JST_TRACE("[REMOTE] Keyboard: char (key='{}', code='U+{:04X}')", key, cp);
             }
         }
         return;
@@ -981,25 +645,33 @@ void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann
 void Instance::Remote::Impl::onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data) {
     (void)self;
 
-    JST_TRACE("[REMOTE] Received string: {}", data);
+    const std::string payload = data ? data : "";
+    if (payload.empty() || payload.size() > 16 * 1024) {
+        JST_WARN("[REMOTE] Rejected invalid control message size.");
+        return;
+    }
 
     nlohmann::json j;
 
     try {
-        j = nlohmann::json::parse(data);
+        j = nlohmann::json::parse(payload);
     } catch (const std::exception& e) {
-        JST_ERROR("[REMOTE] Bad control JSON: {} (payload='{}')", e.what(), data);
+        JST_ERROR("[REMOTE] Bad control JSON: {}", e.what());
         return;
     }
 
-    const std::string kind = j.value("kind", "");
-    if (kind.empty()) {
-        JST_WARN("[REMOTE] Control msg without 'kind': '{}'", data);
+    if (!j.is_object() || !j.contains("kind") || !j["kind"].is_string()) {
+        JST_WARN("[REMOTE] Control message is missing a valid kind.");
         return;
     }
+    const std::string kind = j["kind"].get<std::string>();
 
     auto* that = reinterpret_cast<Instance::Remote::Impl*>(user_data);
-    that->handleInput(kind, j);
+    try {
+        that->handleInput(kind, j);
+    } catch (const std::exception& e) {
+        JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
+    }
 }
 
 void Instance::Remote::Impl::onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data) {
@@ -1345,19 +1017,6 @@ Result Instance::Remote::Impl::startStream() {
         return Result::ERROR;
     }
 
-    if (startSignaller() != Result::SUCCESS) {
-        gst_element_set_state(pipeline, GST_STATE_NULL);
-        gst_object_unref(pipeline);
-        pipeline = nullptr;
-        source = nullptr;
-        encoder = nullptr;
-        tee = nullptr;
-#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
-        gst_clear_object(&gstCudaContext);
-#endif
-        return Result::ERROR;
-    }
-
     initialFrameTime = std::chrono::steady_clock::now();
     lastKeyframeTime = initialFrameTime;
     forceKeyframe.store(true);
@@ -1369,7 +1028,6 @@ Result Instance::Remote::Impl::startStream() {
 Result Instance::Remote::Impl::stopStream() {
     JST_DEBUG("[REMOTE] Stopping stream.");
 
-    JST_CHECK(stopSignaller());
     destroyAllWebRtcSessions();
 
     if (streaming) {
@@ -1721,100 +1379,94 @@ void Instance::Remote::Impl::destroyAllWebRtcSessions() {
 // Signalling
 //
 
-Result Instance::Remote::Impl::startSignaller() {
-    JST_DEBUG("[REMOTE] Starting WebRTC signaller.");
-
-    signallerClient = std::make_unique<httplib::ws::WebSocketClient>(signallerUrl);
-    signallerClient->set_write_timeout(1);
-    signallerClient->set_tcp_nodelay(true);
-
-    if (!signallerClient->is_valid() || !signallerClient->connect()) {
-        JST_ERROR("[REMOTE] Failed to connect to signaller '{}'.", signallerUrl);
-        signallerClient.reset();
-        return Result::ERROR;
-    }
-
-    signallerRunning = true;
-    signallerThread = std::thread([this]() { signallerLoop(); });
-
-    return Result::SUCCESS;
-}
-
-Result Instance::Remote::Impl::stopSignaller() {
-    signallerRunning = false;
-
-    {
-        std::lock_guard<std::mutex> lock(signallerMutex);
-        if (signallerClient) {
-            signallerClient->close();
-        }
-    }
-
-    if (signallerThread.joinable()) {
-        signallerThread.join();
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(signallerMutex);
-        signallerClient.reset();
-        producerPeerId.clear();
-    }
-
-    return Result::SUCCESS;
-}
-
-void Instance::Remote::Impl::signallerLoop() {
-    while (signallerRunning) {
-        std::string payload;
-        httplib::ws::ReadResult result = httplib::ws::Fail;
-        httplib::ws::WebSocketClient* client = nullptr;
-
-        {
-            std::lock_guard<std::mutex> lock(signallerMutex);
-            if (!signallerClient || !signallerClient->is_open()) {
-                break;
-            }
-            client = signallerClient.get();
-        }
-
-        if (client) {
-            result = client->read(payload);
-        }
-
-        if (result == httplib::ws::Text) {
-            handleSignallerMessage(payload);
-        } else if (result == httplib::ws::Binary) {
-            JST_WARN("[REMOTE] Ignoring binary signaller message.");
-        } else if (signallerRunning) {
-            JST_ERROR("[REMOTE] Signaller connection closed.");
-            break;
-        }
-    }
-}
-
 void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) {
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(payload);
     } catch (const std::exception& e) {
-        JST_ERROR("[REMOTE] Bad signaller JSON: {} (payload='{}')", e.what(), payload);
+        JST_ERROR("[REMOTE] Bad signaller JSON: {}", e.what());
         return;
     }
 
-    const std::string type = j.value("type", "");
+    if (!j.is_object() || !j.contains("type") || !j["type"].is_string()) {
+        JST_ERROR("[REMOTE] Invalid signaller message.");
+        return;
+    }
+
+    const std::string type = j["type"].get<std::string>();
     if (type == "welcome") {
-        {
-            std::lock_guard<std::mutex> lock(signallerMutex);
-            producerPeerId = j.value("peerId", "");
+        if (!j.contains("peerId") || !j["peerId"].is_string()) {
+            JST_ERROR("[REMOTE] Invalid signaller welcome message.");
+            return;
         }
 
-        nlohmann::json status = {
-            {"type", "setPeerStatus"},
-            {"peerId", j.value("peerId", "")},
-            {"roles", nlohmann::json::array({"producer"})},
-            {"meta", {{"token", producerToken}}},
-        };
-        (void)sendSignallerMessage(status);
+        return;
+    }
+
+    if (type == "roomCreated") {
+        if (!j.contains("roomId") || !j["roomId"].is_string() ||
+            !j.contains("consumerToken") || !j["consumerToken"].is_string() ||
+            !j.contains("clientDomain") || !j["clientDomain"].is_string()) {
+            JST_ERROR("[REMOTE] Invalid roomCreated message.");
+            std::lock_guard<std::mutex> lock(roomMutex);
+            roomFailed = true;
+            roomCondition.notify_all();
+            return;
+        }
+
+        const auto roomId = j["roomId"].get<std::string>();
+        const auto token = j["consumerToken"].get<std::string>();
+        const auto domain = j["clientDomain"].get<std::string>();
+        const bool secureDomain = domain.starts_with("https://");
+        const bool insecureDomain = domain.starts_with("http://");
+        if (roomId.empty() || roomId.size() > 64 || token.empty() || token.size() > 128 ||
+            domain.size() > 2048 || (!secureDomain && !insecureDomain)) {
+            JST_ERROR("[REMOTE] Rejected invalid remote room parameters.");
+            std::lock_guard<std::mutex> lock(roomMutex);
+            roomFailed = true;
+            roomCondition.notify_all();
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(roomMutex);
+            roomId_ = roomId;
+            consumerToken = token;
+            clientDomain = domain;
+            roomReady = true;
+        }
+        roomCondition.notify_all();
+        return;
+    }
+
+    if (type == "roomState") {
+        if (!j.contains("waiting") || !j["waiting"].is_array() ||
+            !j.contains("active") || !j["active"].is_array() ||
+            j["waiting"].size() > 256 || j["active"].size() > 256) {
+            JST_ERROR("[REMOTE] Invalid roomState message.");
+            return;
+        }
+
+        std::vector<std::string> waiting;
+        std::vector<ClientInfo> active;
+        for (const auto& session : j["waiting"]) {
+            if (!session.is_string() || session.get_ref<const std::string&>().size() > 64) {
+                JST_ERROR("[REMOTE] Invalid waiting session identifier.");
+                return;
+            }
+            waiting.push_back(session.get<std::string>());
+        }
+        for (const auto& session : j["active"]) {
+            if (!session.is_string() || session.get_ref<const std::string&>().size() > 64) {
+                JST_ERROR("[REMOTE] Invalid active session identifier.");
+                return;
+            }
+            active.push_back({session.get<std::string>()});
+        }
+
+        std::lock_guard<std::mutex> lock(remoteStateMutex);
+        waitlist_ = std::move(waiting);
+        clients_ = std::move(active);
         return;
     }
 
@@ -1834,7 +1486,17 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
     }
 
     if (type == "error") {
-        JST_ERROR("[REMOTE] Signaller error: {}", j.value("details", "unknown"));
+        const std::string details = j.contains("details") && j["details"].is_string()
+                                      ? j["details"].get<std::string>()
+                                      : "unknown";
+        JST_ERROR("[REMOTE] Signaller error: {}", details);
+        {
+            std::lock_guard<std::mutex> lock(roomMutex);
+            if (!roomReady) {
+                roomFailed = true;
+            }
+        }
+        roomCondition.notify_all();
         return;
     }
 
@@ -1842,10 +1504,16 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
 }
 
 void Instance::Remote::Impl::handleStartSession(const nlohmann::json& j) {
-    const std::string sessionId = j.value("sessionId", "");
-    const std::string peerId = j.value("peerId", "");
-    if (sessionId.empty() || peerId.empty()) {
-        JST_ERROR("[REMOTE] Invalid startSession message: {}", j.dump());
+    if (!j.contains("sessionId") || !j["sessionId"].is_string() ||
+        !j.contains("peerId") || !j["peerId"].is_string()) {
+        JST_ERROR("[REMOTE] Invalid startSession message.");
+        return;
+    }
+
+    const std::string sessionId = j["sessionId"].get<std::string>();
+    const std::string peerId = j["peerId"].get<std::string>();
+    if (sessionId.empty() || sessionId.size() > 64 || peerId.empty() || peerId.size() > 64) {
+        JST_ERROR("[REMOTE] Invalid startSession identifiers.");
         return;
     }
 
@@ -1857,6 +1525,12 @@ void Instance::Remote::Impl::handleStartSession(const nlohmann::json& j) {
     JST_INFO("[REMOTE] Starting WebRTC session '{}' with peer '{}'.", sessionId, peerId);
 
     if (j.contains("offer") && !j["offer"].is_null()) {
+        if (!j["offer"].is_string() || j["offer"].get_ref<const std::string&>().size() > 128 * 1024) {
+            JST_ERROR("[REMOTE] Invalid startSession offer.");
+            destroyWebRtcSession(sessionId);
+            (void)sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}});
+            return;
+        }
         const std::string offer = j["offer"].get<std::string>();
         if (applyRemoteDescription(sessionId, "offer", offer) != Result::SUCCESS) {
             destroyWebRtcSession(sessionId);
@@ -1883,15 +1557,26 @@ void Instance::Remote::Impl::handleStartSession(const nlohmann::json& j) {
 }
 
 void Instance::Remote::Impl::handlePeerMessage(const nlohmann::json& j) {
-    const std::string sessionId = j.value("sessionId", "");
-    if (sessionId.empty()) {
-        JST_ERROR("[REMOTE] Peer message without sessionId: {}", j.dump());
+    if (!j.contains("sessionId") || !j["sessionId"].is_string()) {
+        JST_ERROR("[REMOTE] Peer message without a valid sessionId.");
+        return;
+    }
+    const std::string sessionId = j["sessionId"].get<std::string>();
+    if (sessionId.empty() || sessionId.size() > 64) {
+        JST_ERROR("[REMOTE] Peer message has an invalid sessionId.");
         return;
     }
 
     if (j.contains("sdp")) {
         const auto& sdp = j["sdp"];
-        if (applyRemoteDescription(sessionId, sdp.value("type", ""), sdp.value("sdp", "")) != Result::SUCCESS) {
+        if (!sdp.is_object() || !sdp.contains("type") || !sdp["type"].is_string() ||
+            !sdp.contains("sdp") || !sdp["sdp"].is_string() ||
+            sdp["sdp"].get_ref<const std::string&>().size() > 128 * 1024) {
+            JST_ERROR("[REMOTE] Peer message has an invalid session description.");
+            return;
+        }
+        if (applyRemoteDescription(sessionId, sdp["type"].get<std::string>(),
+                                   sdp["sdp"].get<std::string>()) != Result::SUCCESS) {
             destroyWebRtcSession(sessionId);
             (void)sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}});
         }
@@ -1900,8 +1585,23 @@ void Instance::Remote::Impl::handlePeerMessage(const nlohmann::json& j) {
 
     if (j.contains("ice")) {
         const auto& ice = j["ice"];
-        const guint mlineIndex = ice.value("sdpMLineIndex", ice.value("sdp_m_line_index", 0));
-        const std::string candidate = ice.value("candidate", "");
+        if (!ice.is_object() || !ice.contains("candidate") || !ice["candidate"].is_string() ||
+            ice["candidate"].get_ref<const std::string&>().size() > 8 * 1024) {
+            JST_ERROR("[REMOTE] Peer message has an invalid ICE candidate.");
+            return;
+        }
+
+        guint mlineIndex = 0;
+        if (ice.contains("sdpMLineIndex") && !ice["sdpMLineIndex"].is_null()) {
+            if (!ice["sdpMLineIndex"].is_number_unsigned() ||
+                ice["sdpMLineIndex"].get<uint64_t>() > 65535) {
+                JST_ERROR("[REMOTE] Peer message has an invalid ICE media index.");
+                return;
+            }
+            mlineIndex = ice["sdpMLineIndex"].get<guint>();
+        }
+
+        const std::string candidate = ice["candidate"].get<std::string>();
         if (!candidate.empty()) {
             GstElement* sessionWebrtc = refSessionWebrtc(sessionId);
             if (sessionWebrtc) {
@@ -1914,20 +1614,19 @@ void Instance::Remote::Impl::handlePeerMessage(const nlohmann::json& j) {
 }
 
 void Instance::Remote::Impl::handleEndSession(const nlohmann::json& j) {
-    const std::string sessionId = j.value("sessionId", "");
-    if (!sessionId.empty()) {
-        JST_INFO("[REMOTE] WebRTC session '{}' ended.", sessionId);
-        destroyWebRtcSession(sessionId);
+    if (!j.contains("sessionId") || !j["sessionId"].is_string()) {
+        JST_ERROR("[REMOTE] Invalid endSession message.");
+        return;
     }
-}
 
-bool Instance::Remote::Impl::sendSignallerMessage(const nlohmann::json& j) {
-    const std::string payload = j.dump();
-    std::lock_guard<std::mutex> lock(signallerMutex);
-    if (!signallerClient || !signallerClient->is_open()) {
-        return false;
+    const std::string sessionId = j["sessionId"].get<std::string>();
+    if (sessionId.empty() || sessionId.size() > 64) {
+        JST_ERROR("[REMOTE] Invalid endSession identifier.");
+        return;
     }
-    return signallerClient->send(payload);
+
+    JST_INFO("[REMOTE] WebRTC session '{}' ended.", sessionId);
+    destroyWebRtcSession(sessionId);
 }
 
 void Instance::Remote::Impl::sendSessionDescription(const std::string& sessionId,
