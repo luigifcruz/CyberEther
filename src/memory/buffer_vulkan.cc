@@ -214,7 +214,10 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             bufferInfo.size = JST_PAGE_ALIGNED_SIZE(source.size());
             bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                               VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                               VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                               VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
             bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             bufferInfo.pNext = &extBufferCreateInfo;
 
