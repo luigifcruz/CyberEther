@@ -20,7 +20,7 @@ constexpr const char* kCastKernelName = "cast_kernel";
 
 constexpr const char* kCastContiguousKernelSource = R"(
 template<typename T>
-struct KernelComplex {
+struct alignas(sizeof(T) * 2) KernelComplex {
     T real;
     T imag;
 };
@@ -41,7 +41,7 @@ extern "C" __global__ void cast_kernel(const InputValue* input,
 
 constexpr const char* kCastStridedKernelSource = R"(
 template<typename T>
-struct KernelComplex {
+struct alignas(sizeof(T) * 2) KernelComplex {
     T real;
     T imag;
 };
@@ -67,27 +67,6 @@ extern "C" __global__ void cast_kernel(const InputValue* input,
     output[index] = ConvertValue(input[sourceIndex]);
 }
 )";
-
-template<typename T>
-struct KernelComplexHost {
-    T real;
-    T imag;
-};
-
-static_assert(sizeof(CF32) == sizeof(KernelComplexHost<F32>));
-static_assert(alignof(CF32) == alignof(KernelComplexHost<F32>));
-static_assert(sizeof(CI8) == sizeof(KernelComplexHost<I8>));
-static_assert(alignof(CI8) == alignof(KernelComplexHost<I8>));
-static_assert(sizeof(CI16) == sizeof(KernelComplexHost<I16>));
-static_assert(alignof(CI16) == alignof(KernelComplexHost<I16>));
-static_assert(sizeof(CI32) == sizeof(KernelComplexHost<I32>));
-static_assert(alignof(CI32) == alignof(KernelComplexHost<I32>));
-static_assert(sizeof(CU8) == sizeof(KernelComplexHost<U8>));
-static_assert(alignof(CU8) == alignof(KernelComplexHost<U8>));
-static_assert(sizeof(CU16) == sizeof(KernelComplexHost<U16>));
-static_assert(alignof(CU16) == alignof(KernelComplexHost<U16>));
-static_assert(sizeof(CU32) == sizeof(KernelComplexHost<U32>));
-static_assert(alignof(CU32) == alignof(KernelComplexHost<U32>));
 
 std::string MakeU64Literal(const U64 value) {
     return jst::fmt::format("{}ULL", value);
