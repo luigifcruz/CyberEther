@@ -44,10 +44,15 @@ Result WaterfallImpl::create() {
     const U64 lastAxis = input.rank() - 1;
     numberOfElements = input.shape()[lastAxis];
     numberOfBatches = (input.rank() == 2) ? input.shape()[0] : 1;
+    ringState = {};
 
     // Allocate internal buffers.
 
-    JST_CHECK(frequencyBins.create(device(), DataType::F32, {numberOfElements, height}));
+    Buffer::Config renderStateConfig{};
+    renderStateConfig.hostAccessible =
+        device() == DeviceType::CUDA && !CanUseRenderZeroCopy(render(), device());
+
+    JST_CHECK(frequencyBins.create(device(), DataType::F32, {numberOfElements, height}, renderStateConfig));
 
     return Result::SUCCESS;
 }
@@ -124,12 +129,14 @@ Result WaterfallImpl::createPresent() {
     // Signal buffer.
 
     {
+        JST_CHECK(ConvertToOptimalStorage(window, frequencyBins, frequencyBinsRender));
+
         Render::Buffer::Config cfg;
-        cfg.buffer = frequencyBins.data();
+        cfg.buffer = RenderStorageBuffer(frequencyBinsRender);
         cfg.size = frequencyBins.size();
         cfg.elementByteSize = sizeof(F32);
         cfg.target = Render::Buffer::Target::STORAGE;
-        cfg.enableZeroCopy = false;
+        cfg.enableZeroCopy = frequencyBinsRender.device() == window->device();
         JST_CHECK(window->build(signalBuffer, cfg));
         JST_CHECK(window->bind(signalBuffer));
     }
@@ -253,18 +260,16 @@ Result WaterfallImpl::present() {
         axis->updatePixelSize(pixelSize);
     }
 
-    int start = last;
-    int blocks = (inc - last);
-
-    if (blocks < 0) {
-        blocks = height - last;
-        signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
-        start = 0;
-        blocks = inc;
+    const auto dirtyPlan = ringState.dirtyPlan(height);
+    if (dirtyPlan.firstRowCount > 0) {
+        JST_CHECK(signalBuffer->update(dirtyPlan.startRow * numberOfElements,
+                                       dirtyPlan.firstRowCount * numberOfElements));
     }
-
-    signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
-    last = inc;
+    if (dirtyPlan.secondRowCount > 0) {
+        JST_CHECK(signalBuffer->update(0,
+                                       dirtyPlan.secondRowCount * numberOfElements));
+    }
+    ringState.clearDirty();
 
     const auto& paddingScale = axis->paddingScale();
 
@@ -272,13 +277,13 @@ Result WaterfallImpl::present() {
     signalUniforms.width = numberOfElements;
     signalUniforms.height = height;
     signalUniforms.interpolate = interpolate;
-    signalUniforms.index = inc / (float)signalUniforms.height;
+    signalUniforms.index = ringState.writeIndex / (float)signalUniforms.height;
     signalUniforms.offset = interaction.offset + 0.5f * (1.0f - 1.0f / interaction.zoom);
     signalUniforms.maxSize = signalUniforms.width * signalUniforms.height;
     signalUniforms.paddingScaleX = paddingScale.x;
     signalUniforms.paddingScaleY = paddingScale.y;
 
-    signalUniformBuffer->update();
+    JST_CHECK(signalUniformBuffer->update());
 
     // Update tick labels.
 

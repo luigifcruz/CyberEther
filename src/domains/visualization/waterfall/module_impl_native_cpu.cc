@@ -19,9 +19,6 @@ struct WaterfallImplNativeCpu : public WaterfallImpl,
     Result presentInitialize() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
-
- private:
-    U64 writeIndex = 0;
 };
 
 Result WaterfallImplNativeCpu::create() {
@@ -36,10 +33,6 @@ Result WaterfallImplNativeCpu::create() {
         return Result::ERROR;
     }
 
-    // Initialize state.
-
-    writeIndex = 0;
-
     return Result::SUCCESS;
 }
 
@@ -52,26 +45,31 @@ Result WaterfallImplNativeCpu::presentSubmit() {
 }
 
 Result WaterfallImplNativeCpu::computeSubmit() {
-    const auto totalSize = input.size();
-    const auto fftSize = numberOfElements;
-    const auto offset = writeIndex * fftSize;
-    const auto size = std::min(totalSize, (height - writeIndex) * fftSize);
+    const auto plan = PlanWaterfallWrite(ringState.writeIndex,
+                                         numberOfBatches,
+                                         height);
+    const U64 firstRowCount = std::min(plan.rowCount,
+                                       height - plan.destinationRow);
 
     // Copy input data to frequency bins buffer (circular buffer pattern).
 
     F32* freqData = static_cast<F32*>(frequencyBins.data());
     const F32* inputData = static_cast<const F32*>(input.data());
 
-    std::copy(inputData, inputData + size, freqData + offset);
+    std::copy_n(inputData + plan.sourceRow * numberOfElements,
+                firstRowCount * numberOfElements,
+                freqData + plan.destinationRow * numberOfElements);
 
-    if (size < totalSize) {
-        std::copy(inputData + size, inputData + totalSize, freqData);
+    const U64 secondRowCount = plan.rowCount - firstRowCount;
+    if (secondRowCount > 0) {
+        std::copy_n(inputData + (plan.sourceRow + firstRowCount) * numberOfElements,
+                    secondRowCount * numberOfElements,
+                    freqData);
     }
 
     // Update write index.
 
-    writeIndex = (writeIndex + numberOfBatches) % height;
-    inc = writeIndex;
+    ringState.advance(numberOfBatches, height);
 
     return Result::SUCCESS;
 }
