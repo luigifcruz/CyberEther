@@ -2,7 +2,6 @@
 
 #include <any>
 
-#include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
 #include "resources/shaders/waterfall_shaders.hh"
 
@@ -48,9 +47,9 @@ Result WaterfallImpl::create() {
 
     // Allocate internal buffers.
 
+    // TODO: Restore CUDA/Vulkan zero-copy after adding cross-API synchronization.
     Buffer::Config renderStateConfig{};
-    renderStateConfig.hostAccessible =
-        device() == DeviceType::CUDA && !CanUseRenderZeroCopy(render(), device());
+    renderStateConfig.hostAccessible = device() == DeviceType::CUDA;
 
     JST_CHECK(frequencyBins.create(device(), DataType::F32, {numberOfElements, height}, renderStateConfig));
 
@@ -129,14 +128,12 @@ Result WaterfallImpl::createPresent() {
     // Signal buffer.
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window, frequencyBins, frequencyBinsRender));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = RenderStorageBuffer(frequencyBinsRender);
+        cfg.buffer = frequencyBins.data();
         cfg.size = frequencyBins.size();
         cfg.elementByteSize = sizeof(F32);
         cfg.target = Render::Buffer::Target::STORAGE;
-        cfg.enableZeroCopy = frequencyBinsRender.device() == window->device();
+        cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalBuffer, cfg));
         JST_CHECK(window->bind(signalBuffer));
     }

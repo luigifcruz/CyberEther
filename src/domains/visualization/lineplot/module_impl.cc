@@ -3,7 +3,6 @@
 #include <any>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
 #include "resources/shaders/global_shaders.hh"
 #include "resources/shaders/lineplot_shaders.hh"
@@ -86,9 +85,9 @@ Result LineplotImpl::create() {
 
     // Allocate internal buffers.
 
+    // TODO: Restore CUDA/Vulkan zero-copy after adding cross-API synchronization.
     Buffer::Config renderStateConfig{};
-    renderStateConfig.hostAccessible =
-        device() == DeviceType::CUDA && !CanUseRenderZeroCopy(render(), device());
+    renderStateConfig.hostAccessible = device() == DeviceType::CUDA;
 
     JST_CHECK(signalPoints.create(device(), DataType::F32, {numberOfElements, 2}, renderStateConfig));
     JST_CHECK(signalVertices.create(device(), DataType::F32, {numberOfElements - 1, 4, 4}, renderStateConfig));
@@ -218,27 +217,23 @@ Result LineplotImpl::createPresent() {
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window, signalPoints, signalPointsRender));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = RenderStorageBuffer(signalPointsRender);
+        cfg.buffer = signalPoints.data();
         cfg.elementByteSize = sizeof(F32);
         cfg.size = signalPoints.size();
         cfg.target = Render::Buffer::Target::STORAGE;
-        cfg.enableZeroCopy = signalPointsRender.device() == window->device();
+        cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalPointsBuffer, cfg));
         JST_CHECK(window->bind(signalPointsBuffer));
     }
 
     {
-        JST_CHECK(ConvertToOptimalStorage(window, signalVertices, signalVerticesRender));
-
         Render::Buffer::Config cfg;
-        cfg.buffer = RenderStorageBuffer(signalVerticesRender);
+        cfg.buffer = signalVertices.data();
         cfg.elementByteSize = sizeof(F32);
         cfg.size = signalVertices.size();
         cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
-        cfg.enableZeroCopy = signalVerticesRender.device() == window->device();
+        cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalVerticesBuffer, cfg));
         JST_CHECK(window->bind(signalVerticesBuffer));
     }

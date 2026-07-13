@@ -41,8 +41,6 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
     Tensor input;
     Tensor signalPoints;
     Tensor signalVertices;
-    Tensor signalPointsRender;
-    Tensor signalVerticesRender;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;

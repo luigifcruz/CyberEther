@@ -27,7 +27,6 @@ struct WaterfallImpl : public Module::Impl, public DynamicConfig<Waterfall> {
  protected:
     Tensor input;
     Tensor frequencyBins;
-    Tensor frequencyBinsRender;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
