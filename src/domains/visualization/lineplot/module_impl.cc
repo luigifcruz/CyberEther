@@ -72,7 +72,8 @@ Result LineplotImpl::create() {
     // Calculate parameters.
 
     const U64 lastAxis = input.rank() - 1;
-    numberOfElements = input.shape()[lastAxis] / decimation;
+    inputRowWidth = input.shape()[lastAxis];
+    numberOfElements = inputRowWidth / decimation;
     numberOfBatches = (input.rank() == 2) ? input.shape()[0] : 1;
     normalizationFactor = 1.0f / (0.5f * numberOfBatches);
 
@@ -85,8 +86,12 @@ Result LineplotImpl::create() {
 
     // Allocate internal buffers.
 
-    JST_CHECK(signalPoints.create(device(), DataType::F32, {numberOfElements, 2}));
-    JST_CHECK(signalVertices.create(device(), DataType::F32, {numberOfElements - 1, 4, 4}));
+    Buffer::Config renderStateConfig{};
+    renderStateConfig.hostAccessible =
+        device() == DeviceType::CUDA && !CanUseRenderZeroCopy(render(), device());
+
+    JST_CHECK(signalPoints.create(device(), DataType::F32, {numberOfElements, 2}, renderStateConfig));
+    JST_CHECK(signalVertices.create(device(), DataType::F32, {numberOfElements - 1, 4, 4}, renderStateConfig));
 
     JST_CHECK(cursorSignalPoint.create(DeviceType::CPU, DataType::F32, {2}));
 
@@ -213,23 +218,27 @@ Result LineplotImpl::createPresent() {
     }
 
     {
+        JST_CHECK(ConvertToOptimalStorage(window, signalPoints, signalPointsRender));
+
         Render::Buffer::Config cfg;
-        cfg.buffer = signalPoints.data();
+        cfg.buffer = RenderStorageBuffer(signalPointsRender);
         cfg.elementByteSize = sizeof(F32);
         cfg.size = signalPoints.size();
         cfg.target = Render::Buffer::Target::STORAGE;
-        cfg.enableZeroCopy = false;
+        cfg.enableZeroCopy = signalPointsRender.device() == window->device();
         JST_CHECK(window->build(signalPointsBuffer, cfg));
         JST_CHECK(window->bind(signalPointsBuffer));
     }
 
     {
+        JST_CHECK(ConvertToOptimalStorage(window, signalVertices, signalVerticesRender));
+
         Render::Buffer::Config cfg;
-        cfg.buffer = signalVertices.data();
+        cfg.buffer = RenderStorageBuffer(signalVerticesRender);
         cfg.elementByteSize = sizeof(F32);
         cfg.size = signalVertices.size();
         cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
-        cfg.enableZeroCopy = false;
+        cfg.enableZeroCopy = signalVerticesRender.device() == window->device();
         JST_CHECK(window->build(signalVerticesBuffer, cfg));
         JST_CHECK(window->bind(signalVerticesBuffer));
     }
@@ -389,20 +398,20 @@ Result LineplotImpl::present() {
     // Process update flags.
 
     if (updateSignalPointsFlag) {
-        signalPointsBuffer->update();
+        JST_CHECK(signalPointsBuffer->update());
         signalKernel->update();
         updateCursorState();
         updateSignalPointsFlag = false;
     }
 
     if (updateSignalUniformBufferFlag) {
-        signalUniformBuffer->update();
+        JST_CHECK(signalUniformBuffer->update());
         signalKernel->update();
         updateSignalUniformBufferFlag = false;
     }
 
     if (updateCursorUniformBufferFlag) {
-        cursorUniformBuffer->update();
+        JST_CHECK(cursorUniformBuffer->update());
         updateCursorUniformBufferFlag = false;
     }
 
@@ -461,6 +470,13 @@ void LineplotImpl::updateState() {
     updateSignalUniformBufferFlag = true;
 }
 
+Result LineplotImpl::readSignalPoint(const U64 index, F32* point) {
+    const auto* signalData = signalPoints.data<F32>();
+    point[0] = signalData[(index * 2) + 0];
+    point[1] = signalData[(index * 2) + 1];
+    return Result::SUCCESS;
+}
+
 void LineplotImpl::updateCursorState() {
     const auto& paddingScale = axis->paddingScale();
 
@@ -469,11 +485,11 @@ void LineplotImpl::updateCursorState() {
     const auto stepX = 2.0f / numberOfElements;
     const U64 cursorIndex = std::clamp(static_cast<U64>((cursorPos.x + 1.0f) / stepX), U64{0}, numberOfElements - 1);
 
-    F32* signalData = static_cast<F32*>(signalPoints.data());
     F32* cursorData = static_cast<F32*>(cursorSignalPoint.data());
 
-    cursorData[0] = signalData[(cursorIndex * 2) + 0];
-    cursorData[1] = signalData[(cursorIndex * 2) + 1];
+    if (readSignalPoint(cursorIndex, cursorData) != Result::SUCCESS) {
+        return;
+    }
 
     const auto cursorValueX = cursorData[0] * paddingScale.x;
     const auto cursorValueY = cursorData[1] * paddingScale.y;
