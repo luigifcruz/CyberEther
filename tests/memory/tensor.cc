@@ -10,6 +10,7 @@
 #include "jetstream/memory/token.hh"
 #include "jetstream/memory/types.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/tools/automatic_iterator.hh"
 
 #ifdef JETSTREAM_BACKEND_METAL_AVAILABLE
 #include "jetstream/backend/devices/metal/base.hh"
@@ -1604,6 +1605,92 @@ TEST_CASE("More API Coverage", "[tensor][missing]") {
         Tensor t3(t1);
         const Index& id3 = t3.id();
         REQUIRE(id3 == id1);
+    }
+}
+
+TEST_CASE("AutomaticIterator writes arbitrary-rank non-contiguous outputs",
+          "[tools][automatic_iterator]") {
+    Tensor inputStorage(DeviceType::CPU, DataType::F32, {2, 2, 3, 4, 2});
+    Tensor outputStorage(DeviceType::CPU, DataType::F32, {2, 2, 3, 4, 2});
+    Tensor scaleStorage(DeviceType::CPU, DataType::F32, {2, 1, 2, 1, 2});
+
+    for (U64 i = 0; i < inputStorage.size(); ++i) {
+        inputStorage.data<F32>()[i] = static_cast<F32>(i + 1);
+        outputStorage.data<F32>()[i] = -1.0f;
+    }
+    for (U64 i = 0; i < scaleStorage.size(); ++i) {
+        scaleStorage.data<F32>()[i] = static_cast<F32>(i + 1);
+    }
+
+    Tensor input = inputStorage.clone();
+    Tensor output = outputStorage.clone();
+    Tensor scale = scaleStorage.clone();
+    REQUIRE(input.slice({Token(1), Token(), Token(), Token(), Token()}) == Result::SUCCESS);
+    REQUIRE(output.slice({Token(1), Token(), Token(), Token(), Token()}) == Result::SUCCESS);
+    REQUIRE(scale.slice({Token(1), Token(), Token(), Token(), Token()}) == Result::SUCCESS);
+    REQUIRE(input.permute({1, 0, 2, 3}) == Result::SUCCESS);
+    REQUIRE(output.permute({1, 0, 2, 3}) == Result::SUCCESS);
+    REQUIRE(scale.broadcastTo(input.shape()) == Result::SUCCESS);
+
+    REQUIRE(input.shape() == Shape{3, 2, 4, 2});
+    REQUIRE(input.offset() != 0);
+    REQUIRE(output.offset() != 0);
+    REQUIRE_FALSE(input.contiguous());
+    REQUIRE_FALSE(output.contiguous());
+    REQUIRE_FALSE(scale.contiguous());
+    REQUIRE(scale.stride(0) == 0);
+    REQUIRE(scale.stride(2) == 0);
+
+    REQUIRE(AutomaticIterator<F32, F32, F32>(
+        [](const F32 in, const F32 multiplier, F32& out) {
+            out = in * multiplier;
+        },
+        input, scale, output) == Result::SUCCESS);
+
+    for (U64 i = 0; i < 3; ++i) {
+        for (U64 j = 0; j < 2; ++j) {
+            for (U64 k = 0; k < 4; ++k) {
+                for (U64 l = 0; l < 2; ++l) {
+                    REQUIRE(output.at<F32>(i, j, k, l) ==
+                            input.at<F32>(i, j, k, l) * scale.at<F32>(i, j, k, l));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("AutomaticIterator has no fixed non-contiguous rank limit",
+          "[tools][automatic_iterator]") {
+    Shape shape(17, 1);
+    shape.front() = 2;
+    shape.back() = 2;
+
+    Tensor input(DeviceType::CPU, DataType::F32, shape);
+    Tensor output(DeviceType::CPU, DataType::F32, shape);
+    for (U64 i = 0; i < input.size(); ++i) {
+        input.data<F32>()[i] = static_cast<F32>(i + 1);
+        output.data<F32>()[i] = 0.0f;
+    }
+
+    Shape axes(17);
+    for (U64 i = 0; i < axes.size(); ++i) {
+        axes[i] = i;
+    }
+    std::swap(axes.front(), axes.back());
+    REQUIRE(input.permute(axes) == Result::SUCCESS);
+    REQUIRE(output.permute(axes) == Result::SUCCESS);
+    REQUIRE(input.rank() == 17);
+    REQUIRE_FALSE(input.contiguous());
+    REQUIRE_FALSE(output.contiguous());
+
+    REQUIRE(AutomaticIterator<F32, F32>(
+        [](const F32 in, F32& out) {
+            out = in * 2.0f;
+        },
+        input, output) == Result::SUCCESS);
+
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE(output.data<F32>()[i] == input.data<F32>()[i] * 2.0f);
     }
 }
 
